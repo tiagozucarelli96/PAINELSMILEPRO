@@ -1,0 +1,36 @@
+SITE / ACESSO
+- URL do painel: https://smileeventos.com.br/painel/index.php?page=dashboard
+- Logo atual: logo.png
+
+BANCO (MySQL)
+- DB: smilee12_painel_smile
+- User: smilee12_painel_admin@localhost
+- Senha: senhapainel123
+
+PERMISSÕES (colunas da tabela `usuarios`)
+perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios, perm_portao,
+perm_banco_smile, perm_banco_smile_admin, perm_notas_fiscais, perm_estoque_logistico,
+perm_dados_contrato, perm_uso_fiorino
+
+ARQUIVOS-CHAVE (estado atual)
+- config.php -> carrega TODAS as novas permissões na sessão
+- index.php -> roteador (inclui sidebar/páginas); rotas: usuario_novo / usuario_editar
+- sidebar.php -> enxuta (sem CSS inline); mostra: Dashboard, Tarefas, Lista, Solicitar Pagamento, Portão e Sair
+- dashboard-2.php -> cards clicáveis; “Pagamentos” renomeado pra “Solicitar Pagamento”; tudo condicional às permissões
+- usuarios.php -> TABELA compacta de permissões (sem “Em massa”)
+- usuario_novo.php -> layout 2 colunas; status fixo ATIVO; sem “Função”; permissões manual (todas desmarcadas); redireciono via JS
+- Placeholders: banco_smile.php, banco_smile_admin.php, notas_fiscais.php, estoque_logistico.php, dados_contrato.php, uso_fiorino.php
+
+DECISÕES DO PROJETO
+- Senhas em texto puro.
+- “Função (perfil)” desativada (criação e edição são via checkboxes).
+- Lista de Compras passou a ter permissão: perm_lista.
+- Sidebar reduzida a 4 funções (Tarefas, Lista, Solicitar Pagamento, Portão).
+- Para evitar “headers already sent”, páginas internas abrem via index.php?page=...
+
+PRÓXIMOS PASSOS
+1) usuario_editar.php no mesmo layout (2 colunas), com:
+   - Status (Ativo/Inativo)
+   - Senha opcional (em branco = mantém)
+   - Mesmas permissões em checkboxes
+2) Polimento fino (se necessário) e escolha do primeiro módulo para implementar.

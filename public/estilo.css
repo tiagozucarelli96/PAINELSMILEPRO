@@ -1,0 +1,216 @@
+/* ========== LOGIN ========== */
+body.login-bg {
+    background: linear-gradient(to right, #1a2a6c, #2c3e50, #004aad);
+    background-size: 300% 300%;
+    animation: gradient 15s ease infinite;
+    font-family: 'Lucida Sans Unicode', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+@keyframes gradient {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
+}
+
+.login-container {
+    width: 100%;
+    max-width: 420px;
+}
+
+.login-box {
+    background-color: white;
+    border: 2px solid #004aad;
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.2);
+    text-align: center;
+}
+
+.login-logo {
+    max-width: 180px;
+    height: auto;
+    margin-bottom: 20px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.login-box h2 {
+    color: #004aad;
+    margin-bottom: 20px;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #aaa;
+    border-radius: 8px;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+
+button {
+    background-color: #004aad;
+    color: white;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #003580;
+}
+
+.login-erro {
+    color: red;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+/* ========== PAINEL INTERNO ========== */
+body {
+    background-color: #f0f6ff;
+    font-family: 'Lucida Sans Unicode', sans-serif;
+    color: #4c3b2a;
+    margin: 0;
+    padding: 0;
+    display: flex;
+}
+
+.sidebar {
+    width: 220px;
+    background-color: #004aad;
+    padding: 20px;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sidebar img {
+    max-width: 150px;
+    margin-bottom: 30px;
+    filter: none; invert(1); /* deixa a logo branca no fundo azul */
+}
+
+.sidebar nav {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar nav a {
+    text-decoration: none;
+    color: white;
+    font-weight: 600;
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px;
+    border-radius: 6px;
+    border-bottom: 3px solid #62a6ff; /* faixa azul clara */
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.sidebar nav a:hover {
+    background-color: #003580;
+    border-bottom: 3px solid white;
+    color: #ffffff;
+}
+
+.main-content {
+    margin-left: 240px;
+    padding: 40px;
+    flex: 1;
+}
+
+h1, h2, h3 {
+    color: #004aad;
+}
+
+/* Cards */
+.card {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    padding: 20px;
+    width: 220px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    transition: all 0.2s;
+}
+
+.card:hover {
+    transform: scale(1.03);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+.card h3 {
+    color: #004aad;
+    margin-bottom: 10px;
+}
+
+.card p {
+    font-size: 14px;
+    color: #333;
+}
+/* ======== DASHBOARD (grid + badges + estados) ======== */
+.cards-grid{
+  display:grid; gap:20px;
+  grid-template-columns: repeat(4, minmax(220px,1fr));
+}
+@media (max-width: 1100px){ .cards-grid{ grid-template-columns: repeat(3, minmax(220px,1fr)); } }
+@media (max-width: 900px) { .cards-grid{ grid-template-columns: repeat(2, minmax(220px,1fr)); } }
+@media (max-width: 560px) { .cards-grid{ grid-template-columns: 1fr; } }
+
+/* Ajustes dos cards na dashboard (aproveita .card já existente) */
+.card{
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 18px;
+  width: auto;
+  border: 1px solid #dbe6ff;
+  text-align: left; /* já havia center; aqui deixamos left na dashboard */
+}
+.card .icon{ width: 42px; height: 42px; flex: 0 0 auto; }
+.card .text h3{ margin: 0 0 6px; font-size: 18px; color: #004aad; }
+.card .text p{ margin: 0; color: #555; font-size: 14px; }
+
+/* Hover */
+.card:hover{ transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+
+/* Estado desabilitado */
+.card--disabled{
+  opacity: .45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Badge (contador) */
+.badge{
+  position: absolute; top: 10px; right: 10px;
+  min-width: 22px; height: 22px; padding: 0 6px;
+  background: #004aad; color: #fff; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+}
+
+/* Link envolve o card quando habilitado */
+.card-link{ text-decoration: none; color: inherit; display: block; }
