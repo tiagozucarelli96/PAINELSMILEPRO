@@ -3,8 +3,8 @@ set -e
 
 PORT="${PORT:-8080}"
 
-# Gera config do Nginx atrelada ao $PORT
-cat > /etc/nginx/conf.d/default.conf <<EOF
+# Gera a config do Nginx usando o $PORT (Alpine usa http.d)
+cat > /etc/nginx/http.d/default.conf <<EOF
 server {
     listen ${PORT};
     server_name _;
@@ -13,7 +13,7 @@ server {
     index index.php index.html;
 
     location / {
-        try_files \$uri /index.php\$is_args\$args;
+        try_files \$uri \$uri/ /index.php?\$args;
     }
 
     location ~ \.php$ {
