@@ -2,7 +2,7 @@
 FROM php:8.2-fpm-alpine
 
 # Dependências
-RUN apk add --no-cache nginx bash libpq-dev postgresql-dev
+RUN apk add --no-cache nginx bash postgresql-dev
 
 # Extensões PHP
 RUN docker-php-ext-install pdo pdo_pgsql
@@ -11,13 +11,12 @@ RUN docker-php-ext-install pdo pdo_pgsql
 WORKDIR /var/www
 COPY . /var/www
 
-# Nginx runtime
-RUN mkdir -p /run/nginx
+# Pastas do Nginx/FPM
+RUN mkdir -p /run/nginx /etc/nginx/http.d
 
 # Start script
 COPY start.sh /start.sh
-RUN chmod +x /start.sh \
- && sed -i 's/\r$//' /start.sh   # normaliza finais de linha
+RUN chmod +x /start.sh && sed -i 's/\r$//' /start.sh
 
 EXPOSE 8080
 CMD ["/start.sh"]
