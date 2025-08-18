@@ -1,10 +1,10 @@
 # Dockerfile — Painel Smile PRO (Railway)
 FROM php:8.2-fpm-alpine
 
-# Nginx + Postgres client libs
+# Dependências
 RUN apk add --no-cache nginx bash libpq-dev postgresql-dev
 
-# Extensões PHP necessárias
+# Extensões PHP
 RUN docker-php-ext-install pdo pdo_pgsql
 
 # App
@@ -14,9 +14,10 @@ COPY . /var/www
 # Nginx runtime
 RUN mkdir -p /run/nginx
 
-# Script de start (gera conf com o $PORT e sobe Nginx + FPM)
+# Start script
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+RUN chmod +x /start.sh \
+ && sed -i 's/\r$//' /start.sh   # normaliza finais de linha
 
 EXPOSE 8080
 CMD ["/start.sh"]
