@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-
+/teste
 /**
  * Index — roteador canônico (sem loops)
  * - Usa suas deps originais
