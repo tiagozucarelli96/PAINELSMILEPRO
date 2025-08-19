@@ -1,5 +1,5 @@
 <?php
-// conexao.php — somente Postgres (Railway)
+// public/conexao.php — somente Postgres (Railway)
 declare(strict_types=1);
 
 $debug = getenv('APP_DEBUG') === '1';
@@ -17,10 +17,7 @@ try {
     if (!$dbUrl) {
         throw new RuntimeException('DATABASE_URL não definido nas variáveis do serviço Web.');
     }
-
-    // Normaliza prefixo (alguns providers usam postgresql://)
     $dbUrl = preg_replace('#^postgresql://#', 'postgres://', $dbUrl);
-
     $parts = parse_url($dbUrl);
     if (!$parts || empty($parts['host']) || empty($parts['path'])) {
         throw new RuntimeException('DATABASE_URL inválido.');
@@ -32,14 +29,11 @@ try {
     $pass = urldecode($parts['pass'] ?? '');
     $name = ltrim($parts['path'], '/');
 
-    // Lê query string (sslmode etc.)
+    // sslmode (se existir na query string)
     $query = [];
-    if (!empty($parts['query'])) {
-        parse_str($parts['query'], $query);
-    }
+    if (!empty($parts['query'])) parse_str($parts['query'], $query);
     $sslmode = $query['sslmode'] ?? 'require';
 
-    // DSN pgsql com UTF8 e sslmode
     $dsn = sprintf(
         "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='-c client_encoding=UTF8'",
         $host, $port, $name, $sslmode
