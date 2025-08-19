@@ -22,7 +22,7 @@ try{
     if (isset($_GET['action']) && $_GET['action']==='delete') {
         $id = (int)($_GET['id'] ?? 0);
         if ($id>0){
-            $st = $pdo->prepare("UPDATE lc_listas SET deleted_at=NOW() WHERE id=? AND deleted_at IS NULL");
+            $st = $pdo->prepare("UPDATE lc_listas SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL");
             $st->execute([$id]);
             $msg='Lista movida para a Lixeira.';
             header("Location: lista_compras.php?msg=".urlencode($msg)); exit;
