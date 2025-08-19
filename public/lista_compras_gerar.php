@@ -30,7 +30,7 @@ function weekday_pt($dateYmd){
 /**
  * Garante a coluna ficha_id em lc_itens (PostgreSQL)
  * - sem SHOW COLUMNS
- * - sem AFTER/UNSIGNED
+  * - sem AFTER
  * - cria FK/índice se faltarem
  */
 function ensure_col_ficha_on_itens(PDO $pdo){
