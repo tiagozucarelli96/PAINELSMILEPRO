@@ -8,6 +8,10 @@ FPM_PORT="9000"
 # Pastas básicas
 mkdir -p /run/nginx /etc/nginx/http.d
 
+# 🔹 limpa configs padrão que causam "duplicate listen"
+rm -f /etc/nginx/conf.d/* || true
+rm -f /etc/nginx/http.d/* || true
+
 # Remove qualquer override antigo de pool
 rm -f /usr/local/etc/php-fpm.d/zz-railway.conf || true
 
@@ -25,10 +29,8 @@ server {
     access_log /dev/stdout;
     error_log  /dev/stderr info;
 
-root /var/www/public;
-listen 8080;
-fastcgi_pass 127.0.0.1:9000;
-
+    root /var/www/public;
+    index index.php index.html;
 
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
