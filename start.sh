@@ -1,25 +1,24 @@
 #!/usr/bin/env sh
 set -e
 
-PORT="${PORT:-8080}"
+# Porta fixa do web server
+WEBPORT="8080"
 
 # Pastas necessárias
 mkdir -p /run/nginx /run/php /etc/nginx/http.d
 
-# ====== PHP-FPM em SOCKET (evita colisão com $PORT=9000) ======
+# PHP-FPM em SOCKET (evita conflito com portas)
 CONF="/usr/local/etc/php-fpm.d/www.conf"
-# ouvir em socket
-sed -ri 's@^listen\s*=\s*.*@listen = /run/php/php-fpm.sock@' "$CONF"
-# garantir permissões e env
+sed -ri 's@^listen\s*=.*@listen = /run/php/php-fpm.sock@' "$CONF"
 grep -q '^listen.owner' "$CONF" || echo 'listen.owner = nginx' >> "$CONF"
 grep -q '^listen.group' "$CONF" || echo 'listen.group = nginx' >> "$CONF"
 grep -q '^listen.mode'  "$CONF" || echo 'listen.mode = 0660'  >> "$CONF"
 sed -ri 's@^;?clear_env\s*=.*@clear_env = no@' "$CONF"
 
-# ====== NGINX ouvindo no $PORT ======
+# Nginx ouvindo em 8080
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
-    listen 0.0.0.0:${PORT};
+    listen 0.0.0.0:${WEBPORT};
     server_name _;
 
     access_log /dev/stdout;
@@ -43,13 +42,9 @@ server {
 }
 EOF
 
-echo "[start] Testing nginx config..."
-nginx -t
+echo "[start] Testing nginx config..."; nginx -t
+echo "[start] Testing php-fpm config..."; php-fpm -t
 
-echo "[start] Testing php-fpm config..."
-php-fpm -t
-
-# Sobe serviços
 php-fpm -D
-echo "[start] Starting nginx on port ${PORT}..."
+echo "[start] Starting nginx on port ${WEBPORT}..."
 exec nginx -g "daemon off;"
