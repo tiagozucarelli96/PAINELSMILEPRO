@@ -25,8 +25,10 @@ server {
     access_log /dev/stdout;
     error_log  /dev/stderr info;
 
-    root /var/www/public;
-    index index.php index.html;
+root /var/www/public;
+listen 8080;
+fastcgi_pass 127.0.0.1:9000;
+
 
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
