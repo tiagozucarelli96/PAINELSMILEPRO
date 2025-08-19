@@ -139,7 +139,7 @@ label.small{display:block;margin:4px 0 6px;color:#33518a;font-weight:700;font-si
 <body>
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
-  <h1 class="page-title">Editar usuário #<?php echo (int)$id; ?><?php if ($colNome) echo ' — '.h($u[$colNome] ?? ''); ?></h1>
+  <h1 class="page-title"> #<?php echo (int)$id; ?><?php if ($colNome) echo ' — '.h($u[$colNome] ?? ''); ?></h1>
 
 
   <div class="form">
