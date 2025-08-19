@@ -3,12 +3,25 @@ set -e
 
 PORT="${PORT:-8080}"
 
-mkdir -p /run/nginx /etc/nginx/http.d
+# Garante pastas
+mkdir -p /run/nginx /run/php /etc/nginx/http.d
 
+# Força o PHP-FPM a escutar em SOCKET (evita colisão com $PORT=9000)
+cat > /usr/local/etc/php-fpm.d/zz-railway.conf <<'EOF'
+[www]
+listen = /run/php/php-fpm.sock
+listen.mode = 0660
+clear_env = no
+EOF
+
+# Nginx ouvindo no $PORT
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
     listen 0.0.0.0:${PORT};
     server_name _;
+
+    access_log /dev/stdout;
+    error_log  /dev/stderr info;
 
     root /var/www/public;
     index index.php index.html;
@@ -19,7 +32,7 @@ server {
 
     location ~ \.php$ {
         include /etc/nginx/fastcgi_params;
-        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_pass unix:/run/php/php-fpm.sock;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_read_timeout 300;
     }
@@ -31,6 +44,7 @@ EOF
 echo "[start] Testing nginx config..."
 nginx -t
 
+# Sobe serviços
 php-fpm -D
 echo "[start] Starting nginx on port ${PORT}..."
 exec nginx -g "daemon off;"
