@@ -128,7 +128,7 @@ function delUser(id){
         <tr>
           <td><?php echo h($r[$colLogin] ?? ($r['login'] ?? '—')); ?></td>
       <td><?php echo $colAtivo ? ('<span class="status-badge">'.( (int)$r[$colAtivo]===1 ? 'ativo' : 'inativo' ).'</span>') : '—'; ?></td>
-          <td><?php echo $colFuncao ? ('<span class="badge role">'.h($r[$colFuncao]).'</span>') : '—'; ?></td>
+          <td><?php echo $colFuncao ? ('<span class="role-badge">'.h($r[$colFuncao]).'</span>') : '—'; ?></td>
 
           <?php if (in_array('perm_usuarios',$permCols,true)): ?><td><?php echo ok($r['perm_usuarios'] ?? 0); ?></td><?php endif; ?>
           <?php if (in_array('perm_pagamentos',$permCols,true)): ?><td><?php echo ok($r['perm_pagamentos'] ?? 0); ?></td><?php endif; ?>
