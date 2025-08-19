@@ -2,65 +2,85 @@
 declare(strict_types=1);
 
 /**
- * Index — definitivo (sem loop, com fallback e debug opcional)
+ * Index — roteador canônico (sem loops)
+ * - Usa suas deps originais
+ * - Mantém exigeLogin()/refreshPermissoes() se existirem
+ * - Mapeia os arquivos reais que você TEM no /public (conforme o probe)
+ * - Buffer para evitar "headers already sent"
  */
+
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/config.php';
 
-// Login/permissões do seu projeto
+// Segurança/permissões do seu projeto (se existirem)
 if (function_exists('exigeLogin')) exigeLogin();
 if (function_exists('refreshPermissoes')) {
-    try { refreshPermissoes($pdo); } catch (Throwable $e) {
-        if (getenv('APP_DEBUG') === '1') error_log('[refreshPermissoes] '.$e->getMessage());
-    }
+  try { refreshPermissoes($pdo); } catch (Throwable $e) {
+    if (getenv('APP_DEBUG') === '1') error_log('[refreshPermissoes] '.$e->getMessage());
+  }
 }
 
-// página solicitada
+// Página solicitada
 $page = (string)($_GET['page'] ?? 'dashboard');
 $page = preg_replace('/[^a-z0-9_\-]/i', '', $page);
 
-// mapa fixo garante dashboard.php
-$routes_fixed = ['dashboard' => __DIR__ . '/dashboard.php'];
+// Mapa de rotas -> arquivos reais (baseado na listagem do _route_probe.php)
+$routes = [
+  'dashboard'           => __DIR__ . '/dashboard.php',
+  'dashboard-2'         => __DIR__ . '/dashboard.php',
+  'dashboard2'          => __DIR__ . '/dashboard.php',
 
-// mescla com rotas do seu config (se existirem)
-if (isset($routes) && is_array($routes)) {
-    $norm = [];
-    foreach ($routes as $k => $v) {
-        $norm[$k] = str_contains($v, DIRECTORY_SEPARATOR) ? $v : (__DIR__ . '/' . ltrim($v, '/'));
-    }
-    // FIXO tem prioridade para evitar loop em 'dashboard'
-    $routes = array_merge($norm, $routes_fixed);
-} else {
-    $routes = $routes_fixed;
-}
+  'tarefas'             => __DIR__ . '/tarefas.php',
+  'usuarios'            => __DIR__ . '/usuarios.php',
+  'usuario_novo'        => __DIR__ . '/usuario_novo.php',
+  'usuario_editar'      => __DIR__ . '/usuario_editar.php',
 
-// resolve alvo
+  'pagamentos'          => __DIR__ . '/pagamentos.php',
+  'admin_pagamentos'    => __DIR__ . '/admin_pagamentos.php',
+
+  'uso_fiorino'         => __DIR__ . '/uso_fiorino.php',
+  'portao'              => __DIR__ . '/portao.php',
+  'demandas'            => __DIR__ . '/demandas.php',
+
+  'notas_fiscais'       => __DIR__ . '/notas_fiscais.php',
+  'estoque_logistico'   => __DIR__ . '/estoque_logistico.php',
+  'dados_contrato'      => __DIR__ . '/dados_contrato.php',
+
+  'banco_smile'         => __DIR__ . '/banco_smile.php',
+  'banco_smile_admin'   => __DIR__ . '/banco_smile_admin.php',
+
+  // Aliases para seus nomes reais
+  'lista'               => __DIR__ . '/lista_compras.php',
+  'lista_compras'       => __DIR__ . '/lista_compras.php',
+  'lista_gerar'         => __DIR__ . '/lista_compras_gerar.php',
+  'lista_lixeira'       => __DIR__ . '/lista_compras_lixeira.php',
+];
+
+// Resolve alvo
 $alvo = $routes[$page] ?? null;
 
-// fallback: page.php e page-2.php
+// Fallback: tenta page.php e page-2.php se existirem
 if (!$alvo || !is_file($alvo)) {
-    foreach ([__DIR__."/{$page}.php", __DIR__."/{$page}-2.php"] as $c) {
-        if (is_file($c)) { $alvo = $c; break; }
-    }
+  foreach ([__DIR__."/$page.php", __DIR__."/$page-2.php"] as $c) {
+    if (is_file($c)) { $alvo = $c; break; }
+  }
 }
 
+// 404 se não achou
 if (!$alvo || !is_file($alvo)) {
-    http_response_code(404);
-    echo "<!doctype html><meta charset='utf-8'><style>body{font-family:system-ui;background:#0b1a33;color:#fff;padding:40px}</style><h1>404</h1><p>Página não encontrada.</p>";
-    if (getenv('APP_DEBUG') === '1') { error_log("[route404] page={$page}"); }
-    exit;
+  http_response_code(404);
+  echo "<!doctype html><meta charset='utf-8'><style>body{font-family:system-ui;background:#0b1a33;color:#fff;padding:40px}</style><h1>404</h1><p>Página não encontrada.</p>";
+  if (getenv('APP_DEBUG') === '1') error_log("[route404] page=$page");
+  exit;
 }
 
-// buffer para evitar "headers already sent"
+// Buffer — evita warnings se a página der header('Location: ...')
 ob_start();
 require $alvo;
 $conteudo = ob_get_clean();
 
-// se houve redirect, não imprime layout
+// Se houve redirect, não imprime layout
 foreach (headers_list() as $h) { if (stripos($h, 'Location:') === 0) exit; }
-
-// debug opcional no log
-if (getenv('APP_DEBUG') === '1') { error_log("[route] page={$page} alvo={$alvo}"); }
 ?>
 <!doctype html>
 <html lang="pt-BR">
