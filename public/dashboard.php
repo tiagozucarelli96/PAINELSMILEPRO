@@ -1,3 +1,1 @@
-<?php
-header('Location: index.php?page=dashboard');
-exit;
+<?php header('Location: index.php?page=dashboard'); exit;
