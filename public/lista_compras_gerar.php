@@ -1,5 +1,5 @@
 <?php
-// lista_compras_gerar.php — Gerar Lista de Compras (gera Compras + Encomendas)
+// lista_compras_gerar.php — Gerar Lista de Compras (gera Compras + Encomendas) — versão PostgreSQL
 session_start();
 ini_set('display_errors', 1); error_reporting(E_ALL);
 
@@ -26,15 +26,50 @@ function weekday_pt($dateYmd){
     $names = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
     return $names[$w] ?? '';
 }
+
+/**
+ * Garante a coluna ficha_id em lc_itens (PostgreSQL)
+ * - sem SHOW COLUMNS
+ * - sem AFTER/UNSIGNED
+ * - cria FK/índice se faltarem
+ */
 function ensure_col_ficha_on_itens(PDO $pdo){
-    // adiciona coluna ficha_id em lc_itens se não existir
-    $q = $pdo->query("SHOW COLUMNS FROM lc_itens LIKE 'ficha_id'");
-    if (!$q->fetch()){
-        $pdo->exec("ALTER TABLE lc_itens ADD COLUMN ficha_id INTEGER NULL");
-        $pdo->exec("ALTER TABLE lc_itens ADD CONSTRAINT fk_itens_ficha FOREIGN KEY (ficha_id) REFERENCES lc_fichas(id)");
-        $pdo->exec("CREATE INDEX idx_itens_ficha ON lc_itens(ficha_id)");
+    // coluna existe?
+    $st = $pdo->prepare("SELECT 1
+                           FROM information_schema.columns
+                          WHERE table_schema='public'
+                            AND table_name='lc_itens'
+                            AND column_name='ficha_id'");
+    $st->execute();
+    $hasCol = (bool)$st->fetchColumn();
+
+    if (!$hasCol) {
+        $pdo->exec("ALTER TABLE lc_itens ADD COLUMN IF NOT EXISTS ficha_id INTEGER NULL");
     }
+
+    // FK existe?
+    $st = $pdo->prepare("SELECT 1
+                           FROM information_schema.table_constraints tc
+                           JOIN information_schema.key_column_usage kcu
+                             ON tc.constraint_name = kcu.constraint_name
+                          WHERE tc.table_schema='public'
+                            AND tc.table_name='lc_itens'
+                            AND tc.constraint_type='FOREIGN KEY'
+                            AND tc.constraint_name='fk_itens_ficha'");
+    $st->execute();
+    $hasFk = (bool)$st->fetchColumn();
+
+    if (!$hasFk) {
+        // só cria se a coluna existir mesmo
+        $pdo->exec("ALTER TABLE lc_itens
+                    ADD CONSTRAINT fk_itens_ficha
+                    FOREIGN KEY (ficha_id) REFERENCES lc_fichas(id)");
+    }
+
+    // índice (opcional, para performance)
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_itens_ficha ON lc_itens(ficha_id)");
 }
+
 function fetch_assoc(PDO $pdo, string $sql, array $params=[]){
     $st = $pdo->prepare($sql); $st->execute($params);
     return $st->fetch(PDO::FETCH_ASSOC);
@@ -80,16 +115,17 @@ $action = $_GET['action'] ?? '';
 $grupo_id = isset($_GET['grupo_id']) ? (int)$_GET['grupo_id'] : 0;
 $editPayload = null;
 if ($action === 'edit' && $grupo_id > 0){
-    // garante tabela de payload
+    // garante tabela de payload (PostgreSQL)
     $pdo->exec("CREATE TABLE IF NOT EXISTS lc_geracoes_input (
-        grupo_id INT UNSIGNED PRIMARY KEY,
-        payload_json MEDIUMTEXT NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        grupo_id INTEGER PRIMARY KEY,
+        payload_json JSONB NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_ginp_grupo FOREIGN KEY (grupo_id) REFERENCES lc_geracoes(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    )");
     $row = fetch_assoc($pdo, "SELECT payload_json FROM lc_geracoes_input WHERE grupo_id=?", [$grupo_id]);
     if ($row){
-        $editPayload = json_decode($row['payload_json'], true);
+        // payload_json vem como string JSON — decodifica
+        $editPayload = json_decode(is_array($row['payload_json']) ? json_encode($row['payload_json']) : (string)$row['payload_json'], true);
     }
 }
 
@@ -177,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
             }
 
             if ($it['tipo']==='preparo'){
-                $fid = (int)($it['ficha_id'] ?? 0);
+                $fid = (int)($it['ficha_id'] ?? $it['ficha_id_join'] ?? 0);
                 if ($fid<=0){
                     $chosen = isset($fichaChosen[$iid]) ? (int)$fichaChosen[$iid] : 0;
                     if ($chosen<=0){
@@ -198,43 +234,45 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
             }
         }
 
-        // Cria grupo (geração)
+        // Cria grupo (geração) — usar RETURNING id no PostgreSQL
         $grupoToken = uuidv4();
-        $st = $pdo->prepare("INSERT INTO lc_geracoes (grupo_token, criado_por, criado_por_nome) VALUES (:t,:u,:n)");
+        $st = $pdo->prepare("INSERT INTO lc_geracoes (grupo_token, criado_por, criado_por_nome)
+                             VALUES (:t,:u,:n) RETURNING id");
         $st->execute([
             ':t'=>$grupoToken,
             ':u'=>$_SESSION['id'] ?? null,
             ':n'=>$_SESSION['nome'] ?? null
         ]);
-        $grupoId = (int)$pdo->lastInsertId();
+        $grupoId = (int)$st->fetchColumn();
 
-        // Salva input para futura edição
+        // Salva input para futura edição (tabela já garantida acima na seção de edição)
         $pdo->exec("CREATE TABLE IF NOT EXISTS lc_geracoes_input (
-            grupo_id INT UNSIGNED PRIMARY KEY,
-            payload_json MEDIUMTEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            grupo_id INTEGER PRIMARY KEY,
+            payload_json JSONB NOT NULL,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT fk_ginp_grupo FOREIGN KEY (grupo_id) REFERENCES lc_geracoes(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        )");
         $payload = [
             'events'=>$normEvents,
             'sel'=>array_map('array_values', $sel),
             'forn'=>$fornChosen,
             'ficha'=>$fichaChosen,
         ];
-        $st = $pdo->prepare("INSERT INTO lc_geracoes_input (grupo_id, payload_json) VALUES (?,?)");
+        $st = $pdo->prepare("INSERT INTO lc_geracoes_input (grupo_id, payload_json) VALUES (?, ?::jsonb)");
         $st->execute([$grupoId, json_encode($payload, JSON_UNESCAPED_UNICODE)]);
 
-        // Insere eventos (snapshot)
+        // Insere eventos (snapshot) — usar RETURNING id
         $eventIds = [];
         foreach ($normEvents as $e){
             $st = $pdo->prepare("INSERT INTO lc_lista_eventos
                 (grupo_id, espaco, convidados, horario, evento_texto, data_evento, dia_semana, aplicar_fixos)
-                VALUES (:g,:esp,:conv,:hor,:txt,:dt,:dia,1)");
+                VALUES (:g,:esp,:conv,:hor,:txt,:dt,:dia,1)
+                RETURNING id");
             $st->execute([
                 ':g'=>$grupoId, ':esp'=>$e['espaco'], ':conv'=>$e['convidados'], ':hor'=>$e['hora'],
                 ':txt'=>$e['evento_texto'], ':dt'=>$e['data'], ':dia'=>$e['dia_semana']
             ]);
-            $eventIds[] = (int)$pdo->lastInsertId();
+            $eventIds[] = (int)$st->fetchColumn();
         }
 
         // Motor de cálculo
@@ -245,7 +283,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
 
         // Recursão de fichas
         $cacheFicha = []; // ficha_id => ['r_qtd','r_un','comp'=>[]]
-        function getFicha(PDO $pdo, $ficha_id, &$cacheFicha){
+        function getFicha(PDO $pdo, $ficha_id, array &$cacheFicha){
             if (isset($cacheFicha[$ficha_id])) return $cacheFicha[$ficha_id];
             $fi = fetch_assoc($pdo, "SELECT id, rendimento_qtd, rendimento_unid FROM lc_fichas WHERE id=?", [$ficha_id]);
             $comp = fetch_all($pdo, "SELECT * FROM lc_ficha_componentes WHERE ficha_id=? ORDER BY ordem ASC, id ASC", [$ficha_id]);
@@ -258,8 +296,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
             $compras[$insumo_id][$un]['q_bruta'] += $qtd;
             $compras[$insumo_id][$un]['por_evento'][$eventId] = ($compras[$insumo_id][$un]['por_evento'][$eventId] ?? 0) + $qtd;
         }
-        function explodeFicha(PDO $pdo, $ficha_id, $escala, $eventId, &$compras, &$encomendas, $mapForn){
-            $fi = getFicha($pdo, $ficha_id, $GLOBALS['cacheFicha']);
+        function explodeFicha(PDO $pdo, $ficha_id, $escala, $eventId, array &$compras, array &$encomendas, array $mapForn, array &$cacheFicha, array $prefGlobal){
+            $fi = getFicha($pdo, $ficha_id, $cacheFicha);
             $r_qtd = (float)($fi['rendimento_qtd'] ?? 1);
             if ($r_qtd <= 0) $r_qtd = 1;
             $factor = $escala / $r_qtd;
@@ -275,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
                     $it = fetch_assoc($pdo, "SELECT id, nome, unidade_compra, fornecedor_id FROM lc_itens WHERE id=?", [$item_id]);
                     if ($it && (int)$it['fornecedor_id']>0){
                         $fornId = (int)$it['fornecedor_id'];
-                        $modo = $mapForn[$fornId]['modo_padrao'] ?? ($GLOBALS['prefGlobal']['modo_padrao'] ?? 'consolidado');
+                        $modo = $mapForn[$fornId]['modo_padrao'] ?? ($prefGlobal['modo_padrao'] ?? 'consolidado');
                         $un = $it['unidade_compra'];
                         $encomendas[] = [
                             'fornecedor_id'=>$fornId,
@@ -292,13 +330,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
                 } elseif ($c['componente_tipo']==='sub_ficha'){
                     $sfid = (int)$c['sub_ficha_id'];
                     $q_sub = (float)$c['quantidade'] * $factor;
-                    // interpreta quantidade como "qtd de rendimentos" da sub-ficha
-                    $sfi = getFicha($pdo, $sfid, $GLOBALS['cacheFicha']);
+                    $sfi = getFicha($pdo, $sfid, $cacheFicha);
                     $r_sub = (float)($sfi['rendimento_qtd'] ?? 1);
                     if ($r_sub <= 0) $r_sub = 1;
-                    $escala_sub = $q_sub; // já em unidades de "lote/un" da sub
-                    $escala_conv = $escala_sub; // assumimos compatível
-                    explodeFicha($pdo, $sfid, $escala_conv, $eventId, $compras, $encomendas, $mapForn);
+                    $escala_conv = $q_sub; // já em unidades de "lote/un" da sub
+                    explodeFicha($pdo, $sfid, $escala_conv, $eventId, $compras, $encomendas, $mapForn, $cacheFicha, $prefGlobal);
                 }
             }
         }
@@ -334,9 +370,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
                 } else { // preparo
                     $fid = (int)($it['ficha_id_join'] ?? $it['ficha_id'] ?? 0);
                     if ($fid<=0) throw new Exception('Item de preparo sem ficha vinculada: '.$it['nome']);
-                    // A demanda do item deve estar na mesma unidade do rendimento da ficha.
-                    // Assumimos que você definiu coerente (ex.: rendimento em "un" e demanda em "un").
-                    explodeFicha($pdo, $fid, (float)$demanda, $eventId, $compras, $encomendas, $mapForn);
+                    explodeFicha($pdo, $fid, (float)$demanda, $eventId, $compras, $encomendas, $mapForn, $cacheFicha, $prefGlobal);
                 }
             }
 
@@ -398,11 +432,12 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['post_action'] ?? '') === 'sa
         $datas = array_map(fn($e)=>date('d/m', strtotime($e['data'])), $normEvents);
         $resumo = count($normEvents).' evento'.(count($normEvents)>1?'s':'').' ('.implode(', ', array_slice($datas,0,3)).(count($datas)>3?', …':'').')';
 
-        // Cria duas linhas em lc_listas
+        // Cria duas linhas em lc_listas (CURRENT_TIMESTAMP em vez de NOW)
         $snapUserId = $_SESSION['id'] ?? null;
         $snapUserNm = $_SESSION['nome'] ?? null;
         $st = $pdo->prepare("INSERT INTO lc_listas (grupo_id, tipo, data_gerada, espaco_consolidado, eventos_resumo, criado_por, criado_por_nome)
-                             VALUES (:g,'compras',NOW(),:e,:r,:u,:n), (:g,'encomendas',NOW(),:e,:r,:u,:n)");
+                             VALUES (:g,'compras',CURRENT_TIMESTAMP,:e,:r,:u,:n),
+                                    (:g,'encomendas',CURRENT_TIMESTAMP,:e,:r,:u,:n)");
         $st->execute([':g'=>$grupoId, ':e'=>$espaco_consolidado, ':r'=>$resumo, ':u'=>$snapUserId, ':n'=>$snapUserNm]);
 
         $pdo->commit();
