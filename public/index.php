@@ -30,16 +30,16 @@ if (isset($_GET['diag'])) {
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
-    header('Location: index.php?page=dashboard'); // já logado
+    header('Location: index.php?page=dashboard');
   } else {
-    header('Location: login.php');                 // precisa logar
+    header('Location: login.php');
   }
   exit;
 }
 
-/* rotas permitidas (arquivo => existente em /public) */
+/* rotas permitidas */
 $routes = [
-  'dashboard'           => 'dashboard2.php',   // usa o SEU dashboard
+  'dashboard'           => 'dashboard2.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'pagamentos'          => 'pagamentos.php',
@@ -52,16 +52,18 @@ $routes = [
   'estoque_logistico'   => 'estoque_logistico.php',
   'dados_contrato'      => 'dados_contrato.php',
   'uso_fiorino'         => 'uso_fiorino.php',
-  // adicione novas rotas aqui conforme necessário
 ];
 
-/* exige login para qualquer rota daqui */
+/* exige login */
 if (empty($_SESSION['logado'])) {
   header('Location: login.php');
   exit;
 }
 
-/* resolve e inclui */
+/* >>> popula as permissões da sessão sem mexer no login */
+require __DIR__ . '/permissoes_boot.php';
+
+/* resolve e inclui a página */
 $file = $routes[$page] ?? null;
 $path = $file ? (__DIR__.'/'.$file) : null;
 
