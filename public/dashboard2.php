@@ -1,1 +1,68 @@
-<?php header('Location: index.php?page=dashboard'); exit;
+<?php
+// dashboard-2.php — Painel (sem redirect)
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+?>
+<style>
+.dashboard-title{ margin:12px 0 18px; font-weight:800; color:#0c3a91; letter-spacing:.2px; }
+.card-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap:20px; }
+.card-link{ text-decoration:none; display:block; border-radius:16px; transition: transform .12s, box-shadow .12s; }
+.card{ background:#fff; border:1px solid #dfe7f4; border-radius:16px; padding:18px 22px; box-shadow:0 10px 24px rgba(13,51,125,.08); display:flex; align-items:center; gap:16px; min-height:88px; }
+.card h3{ margin:0; font-weight:800; letter-spacing:.2px; color:#0c3a91; font-size:20px; }
+.card p{ margin:0; color:#4a566a; font-size:15px; opacity:.9; }
+.card .text{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.card .icon{ font-size:28px; line-height:1; filter: drop-shadow(0 2px 8px rgba(0,0,0,.08)); }
+.card-link:hover{ transform: translateY(-2px); }
+.card-link:hover .card{ box-shadow:0 14px 28px rgba(13,51,125,.12), 0 2px 0 rgba(255,255,255,.6) inset; border-color:#cfe0ff; }
+</style>
+
+<h1 class="dashboard-title">Bem-vindo, <?= htmlspecialchars($_SESSION['nome'] ?? 'Usuário') ?>!</h1>
+
+<div class="card-grid">
+  <?php if (!empty($_SESSION['perm_tarefas'])): ?>
+  <a class="card-link" href="index.php?page=tarefas"><div class="card"><div class="icon">📋</div><div class="text"><h3>Tarefas</h3><p>Organize e acompanhe suas pendências.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_lista'])): ?>
+  <a class="card-link" href="index.php?page=lista"><div class="card"><div class="icon">🛒</div><div class="text"><h3>Lista de Compras</h3><p>Gere as listas por evento.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_demandas'])): ?>
+  <a class="card-link" href="index.php?page=pagamentos"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Solicitar Pagamento</h3><p>Envie solicitações para o financeiro.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_pagamentos'])): ?>
+  <a class="card-link" href="index.php?page=admin_pagamentos"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Gestão de Pagamentos (ADM)</h3><p>Aprovar, gerenciar e exportar.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_usuarios'])): ?>
+  <a class="card-link" href="index.php?page=usuarios"><div class="card"><div class="icon">👥</div><div class="text"><h3>Usuários (ADM)</h3><p>Gerenciar acessos e permissões.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_portao'])): ?>
+  <a class="card-link" href="index.php?page=portao"><div class="card"><div class="icon">🚪</div><div class="text"><h3>Portão</h3><p>Abrir/registrar acionamentos.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
+  <a class="card-link" href="index.php?page=banco_smile"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Banco Smile</h3><p>Consultas e operações internas.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_banco_smile_admin'])): ?>
+  <a class="card-link" href="index.php?page=banco_smile_admin"><div class="card"><div class="icon">💵</div><div class="text"><h3>Administração Banco Smile</h3><p>Configurações e auditoria.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_notas_fiscais'])): ?>
+  <a class="card-link" href="index.php?page=notas_fiscais"><div class="card"><div class="icon">📔</div><div class="text"><h3>Notas Fiscais</h3><p>Emissão e acompanhamento.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_estoque_logistico'])): ?>
+  <a class="card-link" href="index.php?page=estoque_logistico"><div class="card"><div class="icon">📦</div><div class="text"><h3>Estoque Logístico</h3><p>Entrada, saída e inventário.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_dados_contrato'])): ?>
+  <a class="card-link" href="index.php?page=dados_contrato"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Dados para Contrato</h3><p>Informações para documentos.</p></div></div></a>
+  <?php endif; ?>
+
+  <?php if (!empty($_SESSION['perm_uso_fiorino'])): ?>
+  <a class="card-link" href="index.php?page=uso_fiorino"><div class="card"><div class="icon">🚘</div><div class="text"><h3>Uso de Fiorino</h3><p>Agendamento e controle.</p></div></div></a>
+  <?php endif; ?>
+</div>
