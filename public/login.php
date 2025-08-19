@@ -80,3 +80,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                     $ok = (strtolower($stored) === md5($senhaInput));
                 }
                 // 3) texto puro
+                if (!$ok) {
+                    $ok = hash_equals($stored, $senhaInput);
+                }
+
+                if (!$ok) {
+                    $erro = 'Senha inválida.';
+                } else {
+                    // ativo? (se houver coluna)
+                    if (array_key_exists('ativo', $u) && (int)$u['ativo'] !== 1) {
+                        $erro = 'Usuário desativado.';
+                    } else {
+                        $_SESSION['logado'] = 1;
+                        $_SESSION['id']     = (int)($u['id'] ?? 0);
+                        $_SESSION['nome']   = $u['nome'] ?? ($u['nome_completo'] ?? ($u['name'] ?? 'Usuário'));
+                        // Permissões continuam sendo tratadas pelo permissoes_boot.php no index.php
+                        header('Location: index.php?page=dashboard');
+                        exit;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $erro = 'Erro no login: '.$e->getMessage();
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel Smile – Login</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+/* Layout do login (igual ao antigo) */
+body.login-bg{
+  min-height:100vh;margin:0;
+  background:linear-gradient(135deg,#0b1b3a,#0a1630 60%,#081024);
+  display:grid;place-items:center;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff
+}
+.login-container{width:100%;max-width:420px;padding:16px}
+.login-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
+.login-logo{width:140px;display:block;margin:0 auto 12px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35))}
+h2{text-align:center;margin:6px 0 18px;font-weight:600}
+.login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
+form input{width:100%;padding:12px 14px;margin:8px 0;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;outline:none}
+form input::placeholder{color:#cdd3e1}
+form button{width:100%;padding:12px 14px;margin-top:10px;border-radius:10px;border:0;background:#1e66ff;color:#fff;font-weight:600;cursor:pointer}
+form button:hover{filter:brightness(1.08)}
+.footer-note{text-align:center;margin-top:10px;font-size:12px;opacity:.8}
+</style>
+</head>
+<body class="login-bg">
+  <div class="login-container">
+    <div class="login-box">
+      <img class="login-logo" src="logo.png" alt="Logo do Grupo Smile">
+      <h2>Acessar o Painel</h2>
+
+      <?php if (!empty($_GET['erro']) && $_GET['erro'] === 'desativado'): ?>
+        <div class="login-erro">Usuário desativado.</div>
+      <?php endif; ?>
+
+      <?php if (!empty($erro)): ?>
+        <div class="login-erro"><strong>Atenção:</strong>
+          <div><small><?php echo h($erro); ?></small></div>
+        </div>
+      <?php endif; ?>
+
+      <form method="post" autocomplete="off">
+        <!-- Mantemos o nome "login" e também aceitamos "loguin" no PHP -->
+        <input type="text" name="login" placeholder="Login (usuário ou e-mail)" required>
+        <input type="password" name="senha" placeholder="Senha" required>
+        <button type="submit">Entrar</button>
+      </form>
+
+      <div class="footer-note">© Grupo Smile Eventos</div>
+    </div>
+  </div>
+</body>
+</html>
