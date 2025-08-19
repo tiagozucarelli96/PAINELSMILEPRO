@@ -1,20 +1,20 @@
 #!/usr/bin/env sh
 set -e
 
-# Porta pública do webserver (o seu domínio está mapeado para 8080)
+# Web em 8080 (porta pública do serviço)
 WEBPORT="8080"
-# Porta interna do PHP-FPM (não exposta)
-FPM_PORT="9001"
+# PHP-FPM na porta padrão 9000 (interna)
+FPM_PORT="9000"
 
 # Pastas necessárias
 mkdir -p /run/nginx /etc/nginx/http.d
 
-# Força o PHP-FPM a ouvir em 127.0.0.1:9001 (em vez de socket/9000)
+# Força o PHP-FPM a ouvir em 127.0.0.1:9000
 CONF="/usr/local/etc/php-fpm.d/www.conf"
 sed -ri "s@^listen\s*=.*@listen = 127.0.0.1:${FPM_PORT}@" "$CONF"
 sed -ri 's@^;?clear_env\s*=.*@clear_env = no@' "$CONF"
 
-# Config do Nginx ouvindo no 8080 e repassando pro FPM:9001
+# Nginx ouvindo em 8080 e repassando para o FPM:9000
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
     listen 0.0.0.0:${WEBPORT};
