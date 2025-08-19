@@ -1,6 +1,26 @@
 <?php
 declare(strict_types=1);
-require_once __DIR__ . '/_bootstrap.php';
+
+// Debug (controlado por APP_DEBUG na Railway)
+$APP_DEBUG = getenv('APP_DEBUG') === '1';
+ini_set('display_errors', $APP_DEBUG ? '1' : '0');
+ini_set('display_startup_errors', $APP_DEBUG ? '1' : '0');
+error_reporting($APP_DEBUG ? E_ALL : 0);
+
+// Fuso Brasil
+date_default_timezone_set('America/Sao_Paulo');
+
+// Sessão
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.cookie_httponly','1');
+    ini_set('session.use_strict_mode','1');
+    session_name('SMILESESS');
+    session_start();
+}
+
+// Usa apenas seus arquivos já existentes
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/config.php';
 
 $erro = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -28,22 +48,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$u) {
                 $erro = 'Usuário não encontrado.';
             } else {
-                $hashBanco = (string)$u['senha'];
-                $okSenha = false;
+                $hash = (string)$u['senha'];
+                $ok = false;
 
-                if ($hashBanco === $senha) {
-                    $okSenha = true;
-                } elseif (strlen($hashBanco) === 32 && $hashBanco === md5($senha)) {
-                    $okSenha = true;
-                } elseif (password_get_info($hashBanco)['algoName'] ?? false) {
-                    $okSenha = password_verify($senha, $hashBanco);
+                // aceita texto puro (legado), md5 (legado) e password_hash (moderno)
+                if ($hash === $senha) {
+                    $ok = true;
+                } elseif (strlen($hash) === 32 && $hash === md5($senha)) {
+                    $ok = true;
+                } elseif (password_get_info($hash)['algoName'] ?? false) {
+                    $ok = password_verify($senha, $hash);
                 }
 
-                if (!$okSenha) {
+                if (!$ok) {
                     $erro = 'Senha inválida.';
                 } elseif (strtolower((string)$u['status']) !== 'ativo') {
                     $erro = 'Usuário inativo.';
                 } else {
+                    // mesmas variáveis de sessão que o sistema espera
                     $_SESSION['logado']          = 1;
                     $_SESSION['id_usuario']      = (int)$u['id'];
                     $_SESSION['nome']            = (string)$u['nome'];
@@ -62,8 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } catch (Throwable $e) {
-            $erro = 'Falha ao autenticar.';
-            if ($APP_DEBUG) { $erro .= ' Detalhes: '.$e->getMessage(); }
+            $erro = 'Falha ao autenticar.' . ($APP_DEBUG ? ' Detalhes: '.$e->getMessage() : '');
         }
     }
 }
@@ -77,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="icon" href="/favicon.ico">
 <style>
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:#0b1a33;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center}
-.card{background:#0f2250;border:1px solid #1d3a7a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:28px; width:100%;max-width:380px}
+.card{background:#0f2250;border:1px solid #1d3a7a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:28px;max-width:380px;width:100%}
 h1{margin:0 0 16px;font-size:20px}
 label{display:block;font-size:13px;margin:14px 0 6px}
 input{width:100%;padding:12px;border-radius:10px;border:1px solid #355fb3;background:#0b1e44;color:#fff;outline:none}
