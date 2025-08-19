@@ -2,70 +2,53 @@
 declare(strict_types=1);
 
 /**
- * Index do Painel — compatível com seus arquivos atuais.
- * - Usa suas dependências originais
+ * Index do Painel — solução definitiva
+ * - Usa suas deps originais
  * - Mantém exigeLogin() e refreshPermissoes()
- * - Resolve rotas automaticamente: page.php, page-2.php, e alias admin_pagamentos⇄pagamentos_admin
- * - Evita "Cannot modify header information" com output buffer
+ * - Rota canônica "dashboard" -> dashboard.php
+ * - Output buffer evita "headers already sent"
  */
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/config.php';
 
-// Segurança / sessão conforme seu sistema
 if (function_exists('exigeLogin')) {
     exigeLogin();
 }
 if (function_exists('refreshPermissoes')) {
     try { refreshPermissoes($pdo); } catch (Throwable $e) {
-        if (getenv('APP_DEBUG') === '1') {
-            error_log('[refreshPermissoes] ' . $e->getMessage());
-        }
+        if (getenv('APP_DEBUG') === '1') { error_log('[refreshPermissoes] '.$e->getMessage()); }
     }
 }
 
-// $routes pode vir do seu config.php. Se não vier, iniciamos vazio.
-if (!isset($routes) || !is_array($routes)) { $routes = []; }
-
-// Rota solicitada
+/** Roteamento */
 $page = (string)($_GET['page'] ?? 'dashboard');
-$page = preg_replace('/[^a-z0-9_\-]/i', '', $page); // permite hífen
+$page = preg_replace('/[^a-z0-9_\-]/i', '', $page);
 
-// Resolve caminho do arquivo da rota
-$alvo = null;
+// Mapa base obrigatório (garante dashboard)
+$routes_fixed = [
+    'dashboard' => __DIR__ . '/dashboard.php',
+];
 
-// 1) Se config.php mapeou e o arquivo existe, usa
-if (isset($routes[$page])) {
-    $candidato = $routes[$page];
-    // Se veio só o nome, posiciona na pasta atual
-    if (!str_contains($candidato, DIRECTORY_SEPARATOR)) {
-        $candidato = __DIR__ . '/' . ltrim($candidato, '/');
+// Se seu config.php definiu $routes, mescla sem sobrescrever o fixed
+if (isset($routes) && is_array($routes)) {
+    // normaliza caminhos relativos
+    $norm = [];
+    foreach ($routes as $k => $v) {
+        $norm[$k] = str_contains($v, DIRECTORY_SEPARATOR) ? $v : (__DIR__ . '/' . ltrim($v, '/'));
     }
-    if (is_file($candidato)) {
-        $alvo = $candidato;
-    }
+    $routes = array_merge($norm, $routes_fixed);
+} else {
+    $routes = $routes_fixed;
 }
 
-// 2) Heurística de fallback (sem depender do $routes)
-if (!$alvo) {
-    $candidatos = [];
+// Resolve alvo
+$alvo = $routes[$page] ?? null;
 
-    // page.php e page-2.php
-    $candidatos[] = __DIR__ . "/{$page}.php";
-    $candidatos[] = __DIR__ . "/{$page}-2.php";
-
-    // alias admin_pagamentos <-> pag/adm
-    if ($page === 'admin_pagamentos') {
-        $candidatos[] = __DIR__ . "/pagamentos_admin.php";
-    }
-    if ($page === 'pagamentos_admin') {
-        $candidatos[] = __DIR__ . "/admin_pagamentos.php";
-    }
-
-    // Tenta cada candidato
-    foreach ($candidatos as $c) {
-        if (is_file($c)) { $alvo = $c; break; }
-    }
+// Fallback suave: page.php e page-2.php (caso ainda existam)
+if (!$alvo || !is_file($alvo)) {
+    $candidatos = [ __DIR__."/{$page}.php", __DIR__."/{$page}-2.php" ];
+    foreach ($candidatos as $c) { if (is_file($c)) { $alvo = $c; break; } }
 }
 
 if (!$alvo || !is_file($alvo)) {
@@ -74,16 +57,13 @@ if (!$alvo || !is_file($alvo)) {
     exit;
 }
 
-// ===== Evita "headers already sent" =====
-// Carrega a página de destino em buffer. Se ela der header('Location: ...'), não imprimimos layout.
+// ==== Evita "headers already sent"
 ob_start();
 require $alvo;
 $conteudo = ob_get_clean();
 
-// Se foi enviado Location, respeita o redirect e não imprime nada
-foreach (headers_list() as $h) {
-    if (stripos($h, 'Location:') === 0) { exit; }
-}
+// Se houve redirect, não imprime layout
+foreach (headers_list() as $h) { if (stripos($h, 'Location:') === 0) { exit; } }
 ?>
 <!doctype html>
 <html lang="pt-BR">
