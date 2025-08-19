@@ -21,6 +21,8 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY start.sh /start.sh
 
 # 5) Permissões e EOL do start.sh
+RUN mkdir -p /run/nginx /run/php /etc/nginx/http.d
+COPY start.sh /start.sh
 RUN chmod +x /start.sh && sed -i 's/\r$//' /start.sh
 
 # 6) Exposição e entrada
