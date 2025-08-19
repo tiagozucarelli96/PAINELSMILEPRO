@@ -1,21 +1,20 @@
 #!/usr/bin/env sh
 set -e
 
-# Porta fixa do web server
+# Porta pública do webserver (o seu domínio está mapeado para 8080)
 WEBPORT="8080"
+# Porta interna do PHP-FPM (não exposta)
+FPM_PORT="9001"
 
 # Pastas necessárias
-mkdir -p /run/nginx /run/php /etc/nginx/http.d
+mkdir -p /run/nginx /etc/nginx/http.d
 
-# PHP-FPM em SOCKET (evita conflito com portas)
+# Força o PHP-FPM a ouvir em 127.0.0.1:9001 (em vez de socket/9000)
 CONF="/usr/local/etc/php-fpm.d/www.conf"
-sed -ri 's@^listen\s*=.*@listen = /run/php/php-fpm.sock@' "$CONF"
-grep -q '^listen.owner' "$CONF" || echo 'listen.owner = nginx' >> "$CONF"
-grep -q '^listen.group' "$CONF" || echo 'listen.group = nginx' >> "$CONF"
-grep -q '^listen.mode'  "$CONF" || echo 'listen.mode = 0660'  >> "$CONF"
+sed -ri "s@^listen\s*=.*@listen = 127.0.0.1:${FPM_PORT}@" "$CONF"
 sed -ri 's@^;?clear_env\s*=.*@clear_env = no@' "$CONF"
 
-# Nginx ouvindo em 8080
+# Config do Nginx ouvindo no 8080 e repassando pro FPM:9001
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
     listen 0.0.0.0:${WEBPORT};
@@ -33,7 +32,7 @@ server {
 
     location ~ \.php$ {
         include /etc/nginx/fastcgi_params;
-        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_pass 127.0.0.1:${FPM_PORT};
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
         fastcgi_read_timeout 300;
     }
