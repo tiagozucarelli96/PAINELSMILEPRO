@@ -12,7 +12,7 @@ WORKDIR /var/www
 COPY . /var/www
 
 # Pastas do Nginx/FPM
-RUN mkdir -p /run/nginx /etc/nginx/http.d
+RUN mkdir -p /run/nginx /run/php /etc/nginx/http.d
 
 # Start script
 COPY start.sh /start.sh
