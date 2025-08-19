@@ -11,7 +11,7 @@ RUN docker-php-ext-install pdo pdo_pgsql
 WORKDIR /var/www
 RUN mkdir -p /var/www/public /run/nginx /run/php /etc/nginx/http.d
 
-# 4) Copia o código e o script de inicialização
+# 4) Copia código do app (somente public) e start.sh
 COPY public/ /var/www/public/
 COPY start.sh /start.sh
 
