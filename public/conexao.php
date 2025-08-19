@@ -50,6 +50,11 @@ try {
     $pdo = new PDO($dsn, $user, $pass, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+ ]);
+   // Usa o schema do dump (primeiro) e mantém 'public' como fallback
+$schema = getenv('DB_SCHEMA') ?: 'smilee12_painel_smile';
+$schema = preg_replace('/[^a-zA-Z0-9_]/', '', $schema);
+$pdo->exec("SET search_path TO {$schema}, public");                
     ]);
 
 } catch (Throwable $e) {
