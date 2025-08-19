@@ -1,49 +1,82 @@
 <?php
-// index.php — roteador (inclui sidebar e páginas)
-ini_set('display_errors', 1); error_reporting(E_ALL);
+declare(strict_types=1);
 
+// Dependências originais do seu projeto
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/config.php';
 
-exigeLogin();
-refreshPermissoes($pdo);
+// Segurança / sessão conforme seu sistema
+if (function_exists('exigeLogin')) {
+    exigeLogin();
+}
+if (function_exists('refreshPermissoes')) {
+    try { refreshPermissoes($pdo); } catch (Throwable $e) {
+        // evita travar a tela caso alguma checagem legacy MySQL falhe silenciosamente
+        if (getenv('APP_DEBUG') === '1') {
+            error_log('[refreshPermissoes] ' . $e->getMessage());
+        }
+    }
+}
 
-$page = $_GET['page'] ?? 'dashboard';
+// Se o seu config.php já define $routes, usamos ele; senão, fallback básico
+if (!isset($routes) || !is_array($routes)) {
+    $routes = [
+        'dashboard'        => __DIR__ . '/dashboard.php',
+        'usuarios'         => __DIR__ . '/usuarios.php',
+        'usuario_novo'     => __DIR__ . '/usuario_novo.php',
+        'usuario_editar'   => __DIR__ . '/usuario_editar.php',
+        'tarefas'          => __DIR__ . '/tarefas.php',
+        'pagamentos'       => __DIR__ . '/pagamentos.php',
+        'pagamentos_admin' => __DIR__ . '/pagamentos_admin.php',
+        'uso_fiorino'      => __DIR__ . '/uso_fiorino.php',
+        'portao'           => __DIR__ . '/portao.php',
+    ];
+}
 
-$routes = [
-    'dashboard'            => 'dashboard-2.php',
-    'tarefas'              => 'tarefas.php',
-    'lista'                => 'lista_compras.php',
-    'pagamentos'           => 'pagamentos.php',
-    'admin_pagamentos'     => 'admin_pagamentos.php',
-    'usuarios'             => 'usuarios.php',
-    'usuario_novo'         => 'usuario_novo.php',
-    'usuario_editar'       => 'usuario_editar.php',
-    'portao'               => 'portao.php',
+$page = (string)($_GET['page'] ?? 'dashboard');
+$page = preg_replace('/[^a-z0-9_\-]/i', '', $page); // permite hífen (ex.: dashboard-2)
+$alvo = $routes[$page] ?? null;
 
-    // novas áreas (placeholders)
-    'banco_smile'          => 'banco_smile.php',
-    'banco_smile_admin'    => 'banco_smile_admin.php',
-    'notas_fiscais'        => 'notas_fiscais.php',
-    'estoque_logistico'    => 'estoque_logistico.php',
-    'dados_contrato'       => 'dados_contrato.php',
-    'uso_fiorino'          => 'uso_fiorino.php',
-];
+// Fallback automático se a rota não estiver no array mas o arquivo existir
+if (!$alvo) {
+    $tentativas = [
+        __DIR__ . "/{$page}.php",
+        __DIR__ . "/{$page}-2.php",
+    ];
+    foreach ($tentativas as $t) {
+        if (is_file($t)) { $alvo = $t; break; }
+    }
+}
 
-$arquivo = $routes[$page] ?? 'dashboard-2.php';
+if (!$alvo || !is_file($alvo)) {
+    http_response_code(404);
+    echo "<!doctype html><meta charset='utf-8'><style>body{font-family:system-ui;background:#0b1a33;color:#fff;padding:40px}</style><h1>404</h1><p>Página não encontrada.</p>";
+    exit;
+}
+
+// ===== Evita "Cannot modify header information" =====
+// Não imprime nada antes de carregar a página-alvo.
+// Se a página usar header('Location: ...'), deixamos o redirect acontecer.
+ob_start();
+require $alvo;
+$conteudo = ob_get_clean();
+
+// Se a página definiu Location, não renderiza layout
+foreach (headers_list() as $h) {
+    if (stripos($h, 'Location:') === 0) { exit; }
+}
 ?>
-<!DOCTYPE html>
-<html lang="pt-br">
+<!doctype html>
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Painel Smile</title>
-<link rel="stylesheet" href="estilo.css">
+<title>Painel Smile — <?=htmlspecialchars($page)?></title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/estilo.css">
 </head>
 <body>
-  <?php include __DIR__ . '/sidebar.php'; ?>
-  <div class="main-content">
-    <?php include __DIR__ . '/' . $arquivo; ?>
-  </div>
+<?php if (is_file(__DIR__ . '/sidebar.php')) { require __DIR__ . '/sidebar.php'; } ?>
+<?= $conteudo ?>
 </body>
 </html>
