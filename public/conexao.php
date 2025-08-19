@@ -1,5 +1,5 @@
 <?php
-// public/conexao.php — somente Postgres (Railway)
+// public/conexao.php — somente Postgres (Railway) com saneamento de sslmode
 declare(strict_types=1);
 
 $debug = getenv('APP_DEBUG') === '1';
@@ -7,7 +7,7 @@ ini_set('display_errors', $debug ? '1' : '0');
 ini_set('display_startup_errors', $debug ? '1' : '0');
 ini_set('log_errors', '1');
 ini_set('error_log', 'php://stderr');
-error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
+error_reporting($debug ? E_ALL : (EALL & ~E_NOTICE));
 
 $pdo = null;
 $db_error = '';
@@ -17,6 +17,8 @@ try {
     if (!$dbUrl) {
         throw new RuntimeException('DATABASE_URL não definido nas variáveis do serviço Web.');
     }
+
+    // Normaliza prefixo e decompõe a URL
     $dbUrl = preg_replace('#^postgresql://#', 'postgres://', $dbUrl);
     $parts = parse_url($dbUrl);
     if (!$parts || empty($parts['host']) || empty($parts['path'])) {
@@ -29,11 +31,17 @@ try {
     $pass = urldecode($parts['pass'] ?? '');
     $name = ltrim($parts['path'], '/');
 
-    // sslmode (se existir na query string)
+    // Lê e saneia sslmode
     $query = [];
     if (!empty($parts['query'])) parse_str($parts['query'], $query);
-    $sslmode = $query['sslmode'] ?? 'require';
+    $sslmode = strtolower((string)($query['sslmode'] ?? 'require'));
+    $sslmode = rtrim($sslmode, "_- "); // remove underline/tracinhos sobrando
+    $allowed = ['disable','allow','prefer','require','verify-ca','verify-full'];
+    if (!in_array($sslmode, $allowed, true)) {
+        $sslmode = 'require'; // fallback seguro
+    }
 
+    // DSN final
     $dsn = sprintf(
         "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='-c client_encoding=UTF8'",
         $host, $port, $name, $sslmode
