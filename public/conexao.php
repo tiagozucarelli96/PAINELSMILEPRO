@@ -26,13 +26,43 @@ try {
 
     $host = $parts['host'];
     $port = isset($parts['port']) ? (int)$parts['port'] : 5432;
-    $user = urldecode($parts['user'] ?? '');
-    $pass = urldecode($parts['pass'] ?? '');
+    $user = isset($parts['user']) ? urldecode($parts['user']) : '';
+    $pass = isset($parts['pass']) ? urldecode($parts['pass']) : '';
     $name = ltrim($parts['path'], '/');
 
-    // Lê e saneia sslmode
+    // Query string (sslmode etc.)
     $query = [];
-    if (!empty($parts['query'])) parse_str($parts['query'], $query);
-    $sslmode = strtolower((string)($query['sslmode'] ?? 'require'));
+    if (!empty($parts['query'])) { parse_str($parts['query'], $query); }
+    $sslmode = isset($query['sslmode']) ? strtolower((string)$query['sslmode']) : 'require';
     $sslmode = rtrim($sslmode, "_- ");
-    $allowed = ['disable','allow','prefer','require','verif]()
+    $allowed = array('disable','allow','prefer','require','verify-ca','verify-full');
+    if (!in_array($sslmode, $allowed, true)) {
+        $sslmode = 'require';
+    }
+
+    // DSN final
+    $dsn = 'pgsql:host='.$host.';port='.$port.';dbname='.$name.';sslmode='.$sslmode.";options='-c client_encoding=UTF8'";
+
+    // Conexão
+    $pdo = new PDO($dsn, $user, $pass, array(
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ));
+
+    // Ajusta o search_path para o schema importado
+    $schema = getenv('DB_SCHEMA');
+    if (!$schema) { $schema = 'smilee12_painel_smile'; }
+    $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $schema);
+    if ($schema && $schema !== 'public') {
+        $pdo->exec('SET search_path TO '.$schema.', public');
+    }
+
+} catch (Throwable $e) {
+    $db_error = $e->getMessage();
+    if ($debug) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'Erro de conexão (Postgres): '.$db_error."\n";
+        exit;
+    }
+}
