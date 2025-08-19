@@ -30,7 +30,7 @@ function ensure_col_ficha_on_itens(PDO $pdo){
     // adiciona coluna ficha_id em lc_itens se não existir
     $q = $pdo->query("SHOW COLUMNS FROM lc_itens LIKE 'ficha_id'");
     if (!$q->fetch()){
-        $pdo->exec("ALTER TABLE lc_itens ADD COLUMN ficha_id INT UNSIGNED NULL AFTER fornecedor_id");
+        $pdo->exec("ALTER TABLE lc_itens ADD COLUMN ficha_id INTEGER NULL");
         $pdo->exec("ALTER TABLE lc_itens ADD CONSTRAINT fk_itens_ficha FOREIGN KEY (ficha_id) REFERENCES lc_fichas(id)");
         $pdo->exec("CREATE INDEX idx_itens_ficha ON lc_itens(ficha_id)");
     }
