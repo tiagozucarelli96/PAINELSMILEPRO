@@ -1,13 +1,23 @@
-FROM php:8.2-fpm
+# Dockerfile — Painel Smile PRO (Railway)
+FROM php:8.2-fpm-alpine
 
-RUN apt-get update && apt-get install -y nginx supervisor libpq-dev && docker-php-ext-install pdo pdo_pgsql
+# 1) Pacotes do sistema
+RUN apk add --no-cache nginx bash postgresql-dev
 
+# 2) Extensões PHP necessárias
+RUN docker-php-ext-install pdo pdo_pgsql
+
+# 3) Estrutura de app
+WORKDIR /var/www
+RUN mkdir -p /var/www/public /run/nginx /run/php /etc/nginx/http.d
+
+# 4) Copia código do app (somente public) e start.sh
+COPY public/ /var/www/public/
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
 
-COPY nginx.conf /etc/nginx/nginx.conf
+# 5) Permissões e EOL do start.sh
+RUN chmod +x /start.sh && sed -i 's/\r$//' /start.sh
 
-WORKDIR /var/www/html
-COPY public/ /var/www/html/
-
+# 6) Exposição e entrada
+EXPOSE 8080
 CMD ["/start.sh"]

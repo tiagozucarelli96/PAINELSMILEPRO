@@ -1,170 +1,123 @@
 <?php
-// login.php
-ini_set('display_errors', 1); error_reporting(E_ALL);
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+declare(strict_types=1);
 
-require_once __DIR__ . '/conexao.php'; // deve definir $pdo e $db_error (se houver)
+// Debug (controlado por APP_DEBUG na Railway)
+$APP_DEBUG = getenv('APP_DEBUG') === '1';
+ini_set('display_errors', $APP_DEBUG ? '1' : '0');
+ini_set('display_startup_errors', $APP_DEBUG ? '1' : '0');
+error_reporting($APP_DEBUG ? E_ALL : 0);
+
+// Fuso Brasil
+date_default_timezone_set('America/Sao_Paulo');
+
+// Sessão
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.cookie_httponly','1');
+    ini_set('session.use_strict_mode','1');
+    session_name('SMILESESS');
+    session_start();
+}
+
+// Usa apenas seus arquivos já existentes
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/config.php';
+
 $erro = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $login = trim($_POST['login'] ?? '');
+    $senha = (string)($_POST['senha'] ?? '');
 
-// Utilitários para detectar colunas existentes
-function colExists(PDO $pdo, string $table, string $col): bool {
-    $sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = :t
-              AND COLUMN_NAME = :c";
-    $st = $pdo->prepare($sql);
-    $st->execute([':t' => $table, ':c' => $col]);
-    return (bool)$st->fetchColumn();
-}
-function firstExistingCol(PDO $pdo, string $table, array $candidates, ?string $fallback = null): ?string {
-    foreach ($candidates as $c) {
-        if (colExists($pdo, $table, $c)) return $c;
-    }
-    return $fallback;
-}
-
-// Se já logado, vai para o painel
-if (!empty($_SESSION['logado']) && $_SESSION['logado'] == 1) {
-    header('Location: index.php?page=dashboard');
-    exit;
-}
-
-// Se houve erro de conexão no conexao.php, exibe banner e evita tentar login
-if (!empty($db_error ?? '')) {
-    $erro = $db_error;
-}
-
-// Processa login somente se há PDO ativo e sem erro pendente
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
-    $loginInput = trim($_POST['loguin'] ?? $_POST['login'] ?? $_POST['email'] ?? '');
-    $senhaInput = $_POST['senha'] ?? ''; // não usar trim()
-
-    if ($loginInput === '' || $senhaInput === '') {
+    if ($login === '' || $senha === '') {
         $erro = 'Informe login e senha.';
     } else {
         try {
-            if (!isset($pdo) || !$pdo) throw new Exception('Conexão não disponível.');
-
-            // Detecta nomes reais das colunas na tabela `usuarios`
-            $loginCol = firstExistingCol($pdo, 'usuarios', ['loguin','login','usuario','username','user','email']);
-            $senhaCol = firstExistingCol($pdo, 'usuarios', ['senha','senha_hash','password','pass']);
-
-            if (!$loginCol) throw new Exception('Não encontrei a coluna de login na tabela `usuarios`.');
-            if (!$senhaCol) throw new Exception('Não encontrei a coluna de senha na tabela `usuarios`.');
-
-            // Permissões/estado: se não existirem no esquema, caem para valor padrão via alias
-            $permCols = [
-                'perm_usuarios'         => 0,
-                'perm_financeiro_admin' => 0,
-                'perm_portao'           => 0,
-                'ativo'                 => 1,
-            ];
-            $selectParts = ['id', 'nome', "{$loginCol} AS login_val", "{$senhaCol} AS senha_val"];
-            foreach ($permCols as $c => $def) {
-                if (colExists($pdo, 'usuarios', $c)) {
-                    $selectParts[] = $c;
-                } else {
-                    // constante com alias para garantir índice no array retornado
-                    $selectParts[] = (is_int($def) ? $def : ("'".$def."'")) . " AS {$c}";
-                }
-            }
-
-            $sql = "SELECT ".implode(', ', $selectParts)."
+            $sql = "SELECT id, nome, login, senha, funcao,
+                           COALESCE(perm_pagamentos,0) AS perm_pagamentos,
+                           COALESCE(perm_tarefas,0)    AS perm_tarefas,
+                           COALESCE(perm_demandas,0)   AS perm_demandas,
+                           COALESCE(perm_usuarios,0)   AS perm_usuarios,
+                           COALESCE(perm_portao,0)     AS perm_portao,
+                           status
                     FROM usuarios
-                    WHERE {$loginCol} = :login
+                    WHERE login = :login
                     LIMIT 1";
             $st = $pdo->prepare($sql);
-            $st->execute([':login' => $loginInput]);
+            $st->execute([':login' => $login]);
             $u = $st->fetch();
 
             if (!$u) {
                 $erro = 'Usuário não encontrado.';
             } else {
-                $dbHash = (string)$u['senha_val'];
+                $hash = (string)$u['senha'];
                 $ok = false;
 
-                // 1) hash seguro (bcrypt/argon)
-                if (preg_match('/^\$2[ayb]\$|\$argon2/i', $dbHash) && password_verify($senhaInput, $dbHash)) {
+                // aceita texto puro (legado), md5 (legado) e password_hash (moderno)
+                if ($hash === $senha) {
                     $ok = true;
-                }
-                // 2) texto puro
-                if (!$ok && hash_equals($dbHash, $senhaInput)) {
+                } elseif (strlen($hash) === 32 && $hash === md5($senha)) {
                     $ok = true;
-                }
-                // 3) md5 (legado)
-                if (!$ok && hash_equals($dbHash, md5($senhaInput))) {
-                    $ok = true;
+                } elseif (password_get_info($hash)['algoName'] ?? false) {
+                    $ok = password_verify($senha, $hash);
                 }
 
-                if ($ok) {
-                    if ((int)$u['ativo'] !== 1) {
-                        $erro = 'Usuário desativado.';
-                    } else {
-                        $_SESSION['logado']                 = 1;
-                        $_SESSION['id_usuario']             = (int)$u['id'];
-                        $_SESSION['nome']                   = $u['nome'];
-                        $_SESSION['perm_usuarios']          = (int)$u['perm_usuarios'];
-                        $_SESSION['perm_financeiro_admin']  = (int)$u['perm_financeiro_admin'];
-                        $_SESSION['perm_portao']            = (int)$u['perm_portao'];
-                        $_SESSION['ativo']                  = (int)$u['ativo'];
-
-                        header('Location: index.php?page=dashboard');
-                        exit;
-                    }
-                } else {
+                if (!$ok) {
                     $erro = 'Senha inválida.';
+                } elseif (strtolower((string)$u['status']) !== 'ativo') {
+                    $erro = 'Usuário inativo.';
+                } else {
+                    // mesmas variáveis de sessão que o sistema espera
+                    $_SESSION['logado']          = 1;
+                    $_SESSION['id_usuario']      = (int)$u['id'];
+                    $_SESSION['nome']            = (string)$u['nome'];
+                    $_SESSION['login']           = (string)$u['login'];
+                    $_SESSION['funcao']          = (string)($u['funcao'] ?? '');
+                    $_SESSION['perm_pagamentos'] = (int)$u['perm_pagamentos'];
+                    $_SESSION['perm_tarefas']    = (int)$u['perm_tarefas'];
+                    $_SESSION['perm_demandas']   = (int)$u['perm_demandas'];
+                    $_SESSION['perm_usuarios']   = (int)$u['perm_usuarios'];
+                    $_SESSION['perm_portao']     = (int)$u['perm_portao'];
+                    $_SESSION['status']          = (string)$u['status'];
+
+                    session_regenerate_id(true);
+                    header('Location: /index.php?page=dashboard');
+                    exit;
                 }
             }
         } catch (Throwable $e) {
-            $erro = 'Erro no login: ' . $e->getMessage();
+            $erro = 'Falha ao autenticar.' . ($APP_DEBUG ? ' Detalhes: '.$e->getMessage() : '');
         }
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Painel Smile – Login</title>
-<link rel="stylesheet" href="estilo.css">
+<title>Login • Painel Smile</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="/favicon.ico">
 <style>
-/* fallback visual */
-body.login-bg{min-height:100vh;margin:0;background:linear-gradient(135deg,#0b1b3a,#0a1630 60%,#081024);display:grid;place-items:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff}
-.login-container{width:100%;max-width:420px;padding:16px}
-.login-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
-.login-logo{width:140px;display:block;margin:0 auto 12px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35))}
-h2{text-align:center;margin:6px 0 18px;font-weight:600}
-.login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
-form input{width:100%;padding:12px 14px;margin:8px 0;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;outline:none}
-form input::placeholder{color:#cdd3e1}
-form button{width:100%;padding:12px 14px;margin-top:10px;border-radius:10px;border:0;background:#1e66ff;color:#fff;font-weight:600;cursor:pointer}
-form button:hover{filter:brightness(1.08)}
-.footer-note{text-align:center;margin-top:10px;font-size:12px;opacity:.8}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:#0b1a33;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.card{background:#0f2250;border:1px solid #1d3a7a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:28px;max-width:380px;width:100%}
+h1{margin:0 0 16px;font-size:20px}
+label{display:block;font-size:13px;margin:14px 0 6px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid #355fb3;background:#0b1e44;color:#fff;outline:none}
+input::placeholder{color:#9bb4e8}
+.btn{margin-top:18px;width:100%;padding:12px 14px;border-radius:10px;border:0;background:#2d6bff;color:#fff;font-weight:700;cursor:pointer}
+.err{background:#3a0f1b;border:1px solid #932c45;color:#ffdbe4;padding:10px 12px;border-radius:10px;margin-bottom:10px;font-size:13px}
+.footer{font-size:12px;opacity:.7;text-align:center;margin-top:10px}
 </style>
 </head>
-<body class="login-bg">
-    <div class="login-container">
-        <div class="login-box">
-            <img class="login-logo" src="logo.png" alt="Logo do Grupo Smile">
-            <h2>Acessar o Painel</h2>
-
-            <?php if (!empty($_GET['erro']) && $_GET['erro'] === 'desativado'): ?>
-                <div class="login-erro">Usuário desativado.</div>
-            <?php endif; ?>
-
-            <?php if (!empty($erro)): ?>
-                <div class="login-erro"><strong>Atenção:</strong> <div><small><?= htmlspecialchars($erro) ?></small></div></div>
-            <?php endif; ?>
-
-            <form method="post" autocomplete="off">
-                <input type="text" name="loguin" placeholder="Login (usuário ou e-mail)" required>
-                <input type="password" name="senha" placeholder="Senha" required>
-                <button type="submit">Entrar</button>
-            </form>
-
-            <div class="footer-note">© Grupo Smile Eventos</div>
-        </div>
-    </div>
+<body>
+  <form class="card" method="post" action="/login.php" autocomplete="off">
+    <h1>Entrar</h1>
+    <?php if ($erro): ?><div class="err"><?=htmlspecialchars($erro)?></div><?php endif; ?>
+    <label for="login">Login</label>
+    <input id="login" name="login" type="text" placeholder="seu usuário" autofocus required>
+    <label for="senha">Senha</label>
+    <input id="senha" name="senha" type="password" placeholder="sua senha" required>
+    <button class="btn" type="submit">Acessar</button>
+    <div class="footer">© Grupo Smile Eventos</div>
+  </form>
 </body>
 </html>
