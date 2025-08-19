@@ -214,3 +214,15 @@ h1, h2, h3 {
 
 /* Link envolve o card quando habilitado */
 .card-link{ text-decoration: none; color: inherit; display: block; }
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #e9f9ef;
+  color: #1b7f3a;
+  border: 1px solid #bfe9cc;
+  white-space: nowrap;
+}
+
