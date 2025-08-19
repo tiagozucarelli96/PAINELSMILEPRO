@@ -225,4 +225,15 @@ h1, h2, h3 {
   border: 1px solid #bfe9cc;
   white-space: nowrap;
 }
+.role-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef2ff;
+  color: #004aad;
+  border: 1px solid #cfe0ff;
+  white-space: nowrap;
+}
 
