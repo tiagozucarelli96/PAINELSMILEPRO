@@ -1,68 +1,127 @@
 <?php
-// dashboard.php — canônico (sem redirect)
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+// public/dashboard.php — Dashboard com sidebar + cards (compatível com seu schema)
+declare(strict_types=1);
+session_start();
+if (empty($_SESSION['logado'])) { header('Location: login.php'); exit; }
+
+require_once __DIR__ . '/conexao.php';
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
+// Conta linhas de uma tabela. Se não existir, retorna null (e o card some).
+function count_table(PDO $pdo, string $table): ?int {
+  try {
+    $st = $pdo->query("SELECT COUNT(*) FROM {$table}");
+    return (int)$st->fetchColumn();
+  } catch (Throwable $e) {
+    return null;
+  }
+}
+
+// Escolhemos tabelas que o seu schema mostrou no schema_check.php
+$tables = [
+  ['label'=>'Usuários',        'tbl'=>'usuarios',              'icon'=>'👤'],
+  ['label'=>'Categorias',      'tbl'=>'categorias',            'icon'=>'🗂️'],
+  ['label'=>'Itens',           'tbl'=>'itens',                 'icon'=>'📦'],
+  ['label'=>'Insumos',         'tbl'=>'insumos',               'icon'=>'🧪'],
+  ['label'=>'Fornecedores',    'tbl'=>'fornecedores',          'icon'=>'🏭'],
+  ['label'=>'Pagamentos',      'tbl'=>'pagamentos',            'icon'=>'💳'],
+  ['label'=>'Tarefas',         'tbl'=>'tarefas',               'icon'=>'📝'],
+  // novas do módulo LC (podem estar vazias, mas já mostramos quando existirem)
+  ['label'=>'Listas (LC)',     'tbl'=>'lc_listas',             'icon'=>'🛒'],
+  ['label'=>'Eventos (LC)',    'tbl'=>'lc_lista_eventos',      'icon'=>'📅'],
+  ['label'=>'Pref. Encomendas','tbl'=>'lc_pref_encomendas',    'icon'=>'⚙️'],
+];
+
+$cards = [];
+foreach ($tables as $t) {
+  $c = count_table($pdo, $t['tbl']);
+  if ($c !== null) $cards[] = ['label'=>$t['label'], 'count'=>$c, 'icon'=>$t['icon']];
+}
+
+// Links rápidos (somente se os arquivos existem)
+$quick = [];
+foreach ([
+  ['Gerar Lista','lista_compras_gerar.php','🧮'],
+  ['Dashboard Compras','lista_compras.php','📊'],
+  ['Notas Fiscais','notas_fiscais.php','🧾'],
+  ['Pagamentos','pagamentos.php','💸'],
+  ['Demandas','demandas.php','📌'],
+  ['Config.','configuracoes.php','⚙️'],
+] as $l) {
+  [$txt,$href,$ic] = $l;
+  if (is_file(__DIR__.'/'.$href)) $quick[] = [$txt,$href,$ic];
+}
 ?>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Painel • <?=h($_SESSION['nome'] ?? 'Usuário')?></title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="estilo.css">
 <style>
-.dashboard-title{ margin:12px 0 18px; font-weight:800; color:#0c3a91; letter-spacing:.2px; }
-.card-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap:20px; }
-.card-link{ text-decoration:none; display:block; border-radius:16px; transition: transform .12s, box-shadow .12s; }
-.card{ background:#fff; border:1px solid #dfe7f4; border-radius:16px; padding:18px 22px; box-shadow:0 10px 24px rgba(13,51,125,.08); display:flex; align-items:center; gap:16px; min-height:88px; }
-.card h3{ margin:0; font-weight:800; letter-spacing:.2px; color:#0c3a91; font-size:20px; }
-.card p{ margin:0; color:#4a566a; font-size:15px; opacity:.9; }
-.card .text{ display:flex; flex-direction:column; gap:6px; min-width:0; }
-.card .icon{ font-size:28px; line-height:1; filter: drop-shadow(0 2px 8px rgba(0,0,0,.08)); }
-.card-link:hover{ transform: translateY(-2px); }
-.card-link:hover .card{ box-shadow:0 14px 28px rgba(13,51,125,.12), 0 2px 0 rgba(255,255,255,.6) inset; border-color:#cfe0ff; }
+/* fallback leve caso estilo.css não carregue */
+:root{--bg:#0b1220;--panel:#0f1b35;--text:#fff;--muted:#9fb0d9}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.container{display:flex;min-height:100dvh}
+.sidebar-wrap{width:260px;background:var(--panel);padding:16px}
+.main{flex:1; padding:24px}
+.hi{margin:0 0 18px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.card{background:#0b1430;border:1px solid #1c2a5a;border-radius:12px;padding:14px}
+.kpi{font-size:28px;font-weight:800}
+.muted{color:var(--muted)}
+.quick{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.quick a{display:inline-block;background:#1a2b5f;color:#fff;text-decoration:none;padding:10px 12px;border-radius:10px;border:1px solid #2b3a64}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.logout a{color:#8ab4ff;text-decoration:none}
 </style>
+</head>
+<body>
+<div class="container">
+  <div class="sidebar-wrap">
+    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; }
+    else { ?>
+      <div style="color:#fff">
+        <h2 style="margin-top:0">Menu</h2>
+        <nav style="display:flex;flex-direction:column;gap:8px">
+          <a href="dashboard.php" style="color:#8ab4ff">🏠 Painel</a>
+          <?php foreach ($quick as $q): ?><a href="<?=h($q[1])?>" style="color:#8ab4ff"><?=h($q[2].' '.$q[0])?></a><?php endforeach; ?>
+          <a href="logout.php" style="color:#f99">🚪 Sair</a>
+        </nav>
+      </div>
+    <?php } ?>
+  </div>
 
-<h1 class="dashboard-title">Bem-vindo, <?= htmlspecialchars($_SESSION['nome'] ?? 'Usuário') ?>!</h1>
+  <div class="main">
+    <div class="topbar">
+      <h1 class="hi">Bem-vindo, <?=h($_SESSION['nome'] ?? 'Usuário')?>!</h1>
+      <div class="logout"><a href="logout.php">Sair</a></div>
+    </div>
 
-<div class="card-grid">
-  <?php if (!empty($_SESSION['perm_tarefas'])): ?>
-  <a class="card-link" href="index.php?page=tarefas"><div class="card"><div class="icon">📋</div><div class="text"><h3>Tarefas</h3><p>Organize e acompanhe suas pendências.</p></div></div></a>
-  <?php endif; ?>
+    <?php if ($cards): ?>
+      <div class="grid">
+        <?php foreach ($cards as $c): ?>
+          <div class="card">
+            <div class="muted"><?=h($c['icon'].' '.$c['label'])?></div>
+            <div class="kpi"><?=h((string)$c['count'])?></div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <div class="card">Nenhuma tabela reconhecida no schema atual.</div>
+    <?php endif; ?>
 
-  <?php if (!empty($_SESSION['perm_lista'])): ?>
-  <a class="card-link" href="index.php?page=lista"><div class="card"><div class="icon">🛒</div><div class="text"><h3>Lista de Compras</h3><p>Gere as listas por evento.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_demandas'])): ?>
-  <a class="card-link" href="index.php?page=pagamentos"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Solicitar Pagamento</h3><p>Envie solicitações para o financeiro.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_pagamentos'])): ?>
-  <a class="card-link" href="index.php?page=admin_pagamentos"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Gestão de Pagamentos (ADM)</h3><p>Aprovar, gerenciar e exportar.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_usuarios'])): ?>
-  <a class="card-link" href="index.php?page=usuarios"><div class="card"><div class="icon">👥</div><div class="text"><h3>Usuários (ADM)</h3><p>Gerenciar acessos e permissões.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_portao'])): ?>
-  <a class="card-link" href="index.php?page=portao"><div class="card"><div class="icon">🚪</div><div class="text"><h3>Portão</h3><p>Abrir/registrar acionamentos.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
-  <a class="card-link" href="index.php?page=banco_smile"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Banco Smile</h3><p>Consultas e operações internas.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_banco_smile_admin'])): ?>
-  <a class="card-link" href="index.php?page=banco_smile_admin"><div class="card"><div class="icon">💵</div><div class="text"><h3>Administração Banco Smile</h3><p>Configurações e auditoria.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_notas_fiscais'])): ?>
-  <a class="card-link" href="index.php?page=notas_fiscais"><div class="card"><div class="icon">📔</div><div class="text"><h3>Notas Fiscais</h3><p>Emissão e acompanhamento.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_estoque_logistico'])): ?>
-  <a class="card-link" href="index.php?page=estoque_logistico"><div class="card"><div class="icon">📦</div><div class="text"><h3>Estoque Logístico</h3><p>Entrada, saída e inventário.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_dados_contrato'])): ?>
-  <a class="card-link" href="index.php?page=dados_contrato"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Dados para Contrato</h3><p>Informações para documentos.</p></div></div></a>
-  <?php endif; ?>
-
-  <?php if (!empty($_SESSION['perm_uso_fiorino'])): ?>
-  <a class="card-link" href="index.php?page=uso_fiorino"><div class="card"><div class="icon">🚘</div><div class="text"><h3>Uso de Fiorino</h3><p>Agendamento e controle.</p></div></div></a>
-  <?php endif; ?>
+    <?php if ($quick): ?>
+      <h3 style="margin-top:22px">Acessos rápidos</h3>
+      <div class="quick">
+        <?php foreach ($quick as $q): ?>
+          <a href="<?=h($q[1])?>"><?=h($q[2].' '.$q[0])?></a>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </div>
 </div>
+</body>
+</html>
