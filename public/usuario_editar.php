@@ -1,179 +1,149 @@
 <?php
-session_start();
+// public/usuario_editar.php — edição com layout alinhado (flexível ao schema)
+declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// Acesso
-if (!isset($_SESSION['logado']) || intval($_SESSION['perm_usuarios'] ?? 0) !== 1) {
-    http_response_code(403);
-    echo 'Acesso negado.';
-    exit;
+// Permissão
+if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
+    http_response_code(403); echo "Acesso negado."; exit;
 }
 
-@include_once __DIR__ . '/conexao.php';
-if (!isset($pdo)) { http_response_code(500); echo 'Falha na conexão.'; exit; }
+require_once __DIR__ . '/conexao.php';
+if (!isset($pdo)) { http_response_code(500); echo "Falha na conexão."; exit; }
 
-$id = intval($_GET['id'] ?? 0);
-if ($id <= 0) { header('Location: index.php?page=usuarios'); exit; }
+// Helpers de schema
+function cols(PDO $pdo, string $table): array {
+  $st = $pdo->prepare("select column_name from information_schema.columns where table_schema=current_schema() and table_name=:t");
+  $st->execute([":t"=>$table]);
+  return $st->fetchAll(PDO::FETCH_COLUMN);
+}
+function hascol(array $cols, string $c): bool { return in_array($c, $cols, true); }
+function truthy($v): bool { $s=strtolower((string)$v); return $s==='1'||$s==='t'||$s==='true'||$s==='on'||$s==='y'||$s==='yes'; }
 
-// Salvar (PRG) -> volta para a rota do dashboard
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $nome   = trim($_POST['nome'] ?? '');
-    $login  = trim($_POST['login'] ?? '');
-    $senha  = $_POST['senha'] ?? '';
-    $status = trim($_POST['status'] ?? '');
-    $funcao = trim($_POST['funcao'] ?? '');
+$T = 'usuarios';
+$C = cols($pdo, $T);
 
-    $perm_usuarios   = isset($_POST['perm_usuarios']) ? 1 : 0;
-    $perm_pagamentos = isset($_POST['perm_pagamentos']) ? 1 : 0;
-    $perm_tarefas    = isset($_POST['perm_tarefas']) ? 1 : 0;
-    $perm_demandas   = isset($_POST['perm_demandas']) ? 1 : 0;
-    $perm_portao     = isset($_POST['perm_portao']) ? 1 : 0;
+$id = (int)($_GET['id'] ?? 0);
+if ($id<=0) { header("Location: index.php?page=usuarios"); exit; }
 
-    if ($senha !== '') {
-        $sql = "UPDATE usuarios
-                   SET nome=:nome, login=:login, senha=:senha,
-                       status=:status, funcao=:funcao,
-                       perm_usuarios=:perm_usuarios, perm_pagamentos=:perm_pagamentos,
-                       perm_tarefas=:perm_tarefas, perm_demandas=:perm_demandas, perm_portao=:perm_portao
-                 WHERE id=:id LIMIT 1";
-        $params = [
-          ':nome'=>$nome, ':login'=>$login, ':senha'=>$senha, // legado: texto puro
-          ':status'=>$status, ':funcao'=>$funcao,
-          ':perm_usuarios'=>$perm_usuarios, ':perm_pagamentos'=>$perm_pagamentos,
-          ':perm_tarefas'=>$perm_tarefas, ':perm_demandas'=>$perm_demandas, ':perm_portao'=>$perm_portao,
-          ':id'=>$id
-        ];
-    } else {
-        $sql = "UPDATE usuarios
-                   SET nome=:nome, login=:login,
-                       status=:status, funcao=:funcao,
-                       perm_usuarios=:perm_usuarios, perm_pagamentos=:perm_pagamentos,
-                       perm_tarefas=:perm_tarefas, perm_demandas=:perm_demandas, perm_portao=:perm_portao
-                 WHERE id=:id LIMIT 1";
-        $params = [
-          ':nome'=>$nome, ':login'=>$login,
-          ':status'=>$status, ':funcao'=>$funcao,
-          ':perm_usuarios'=>$perm_usuarios, ':perm_pagamentos'=>$perm_pagamentos,
-          ':perm_tarefas'=>$perm_tarefas, ':perm_demandas'=>$perm_demandas, ':perm_portao'=>$perm_portao,
-          ':id'=>$id
-        ];
+// Descobre colunas “principais”
+$colNome   = hascol($C,'nome') ? 'nome' : (hascol($C,'nome_completo') ? 'nome_completo' : (hascol($C,'name') ? 'name' : null));
+$loginCands= array_values(array_filter(['loguin','login','usuario','username','user','email'], fn($c)=>hascol($C,$c)));
+$colLogin  = $loginCands[0] ?? null;
+$colAtivo  = hascol($C,'ativo') ? 'ativo' : (hascol($C,'status') ? 'status' : null);
+$colFuncao = hascol($C,'funcao') ? 'funcao' : (hascol($C,'cargo') ? 'cargo' : null);
+$colSenhaHash = hascol($C,'senha_hash') ? 'senha_hash' : null;
+$colSenhaText = hascol($C,'senha') ? 'senha' : null;
+
+// Permissões conhecidas
+$permKeys = array_values(array_filter([
+  hascol($C,'perm_usuarios') ? 'perm_usuarios' : null,
+  hascol($C,'perm_pagamentos') ? 'perm_pagamentos' : null,
+  hascol($C,'perm_tarefas') ? 'perm_tarefas' : null,
+  hascol($C,'perm_demandas') ? 'perm_demandas' : null,
+  hascol($C,'perm_portao') ? 'perm_portao' : null,
+  hascol($C,'perm_banco_smile') ? 'perm_banco_smile' : null,
+  hascol($C,'perm_banco_smile_admin') ? 'perm_banco_smile_admin' : null,
+  hascol($C,'perm_notas_fiscais') ? 'perm_notas_fiscais' : null,
+  hascol($C,'perm_estoque_logistico') ? 'perm_estoque_logistico' : null,
+  hascol($C,'perm_dados_contrato') ? 'perm_dados_contrato' : null,
+  hascol($C,'perm_uso_fiorino') ? 'perm_uso_fiorino' : null,
+]));
+
+// Carrega usuário
+$st = $pdo->prepare("select * from {$T} where id=:id limit 1");
+$st->execute([':id'=>$id]);
+$u = $st->fetch(PDO::FETCH_ASSOC);
+if (!$u) { header("Location: index.php?page=usuarios"); exit; }
+
+// POST: salvar
+$msg=''; $err='';
+if ($_SERVER['REQUEST_METHOD']==='POST') {
+  try{
+    $set = []; $bind = [':id'=>$id];
+
+    if ($colNome) { $set[]="{$colNome}=:nome"; $bind[':nome'] = trim((string)($_POST['nome'] ?? $u[$colNome] ?? '')); }
+    if ($colLogin){ $set[]="{$colLogin}=:login"; $bind[':login']= trim((string)($_POST['login']?? $u[$colLogin] ?? '')); }
+    if ($colFuncao){ $set[]="{$colFuncao}=:funcao"; $bind[':funcao']= trim((string)($_POST['funcao']?? $u[$colFuncao] ?? '')); }
+
+    if ($colAtivo){
+      $ativo = isset($_POST['ativo']) ? 1 : 0;
+      $set[]="{$colAtivo}=:ativo"; $bind[':ativo']=$ativo;
     }
 
-    $st = $pdo->prepare($sql);
-    $st->execute($params);
+    // senha: só atualiza se preenchida
+    $nova = (string)($_POST['senha'] ?? '');
+    if ($nova !== '') {
+      if ($colSenhaHash){
+        $set[]="{$colSenhaHash}=:sh"; $bind[':sh'] = password_hash($nova, PASSWORD_DEFAULT);
+      } elseif ($colSenhaText){
+        $set[]="{$colSenhaText}=:st"; $bind[':st'] = $nova; // mantém legado (texto/md5 gerido fora)
+      }
+    }
 
-    header('Location: index.php?page=usuarios&ok=1');
+    // Permissões
+    foreach ($permKeys as $k){
+      $set[]="{$k}=:{$k}";
+      $bind[":{$k}"] = isset($_POST[$k]) ? 1 : 0;
+    }
+
+    if (!$set) throw new RuntimeException("Nada para atualizar.");
+    $sql = "update {$T} set ".implode(', ',$set)." where id=:id";
+    $st = $pdo->prepare($sql); $st->execute($bind);
+
+    header("Location: index.php?page=usuarios&msg=".urlencode("Usuário atualizado."));
     exit;
+  } catch(Throwable $e){ $err = $e->getMessage(); }
 }
 
-// Carregar
-$st = $pdo->prepare("SELECT * FROM usuarios WHERE id=:id LIMIT 1");
-$st->execute([':id' => $id]);
-$u = $st->fetch(PDO::FETCH_ASSOC);
-if (!$u) { header('Location: index.php?page=usuarios'); exit; }
-?>
-<!DOCTYPE html>
+// Helpers view
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+$val = function($key, $def='') use ($u){ return h($u[$key] ?? $def); };
+
+?><!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Editar Usuário</title>
+<title>Editar usuário</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="estilo.css">
 <style>
-/* Somente alinhamento visual desta página */
-
-/* containers */
-.content-narrow{max-width:900px;margin:0 auto}
-.group{background:#fff;border:1px solid #e6ecff;border-radius:12px;padding:16px;margin:12px 0}
-
-/* campos topo */
-.form-row{display:flex;gap:16px;flex-wrap:wrap}
-.form-row .col{flex:1;min-width:260px}
-.input{padding:10px;border:1px solid #cfd8ea;border-radius:10px;font-size:14px;width:100%;height:44px;box-sizing:border-box}
-select.input{height:44px}
-.label{font-size:13px;color:#1d3c8f;margin-bottom:6px;display:block}
-
-/* permissões: grid 2 colunas, itens centralizados e alinhados */
-.checks{
-  display:grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  column-gap: 40px;
-  row-gap: 12px;
-  align-items:center;
+:root{
+  --bg:#0b1220; --panel:#0f1b35; --muted:#9fb0d9; --text:#fff;
+  --b:#e5edff; --accent:#004aad;
 }
-.checks label{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  font-size:16px;
-  line-height:1.2;
-  color:#4c3b2a; /* mantém paleta existente */
-  padding:6px 0;
-}
-.checks input[type="checkbox"]{
-  width:18px;height:18px;vertical-align:middle;flex:0 0 auto;
-}
+body{margin:0; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:var(--bg); color:var(--text)}
+.main-content{ padding:24px; }
 
-/* rodapé do formulário */
-.form-actions{display:flex;gap:10px;margin-top:12px;align-items:center}
-.btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:11px 16px;font-weight:700;cursor:pointer}
-.btn-outline{background:#e9efff;color:#004aad}
+.form-wrap{background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:18px 20px; box-shadow:0 10px 30px rgba(0,0,0,.35); backdrop-filter: blur(6px);}
+.form-title{margin:0 0 14px; font-weight:800; color:#cfe0ff; letter-spacing:.2px}
+
+.form-grid{ display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+.form-grid .full{ grid-column: 1 / -1; }
+@media (max-width: 980px){ .form-grid{ grid-template-columns: 1fr; } }
+
+.field{ display:flex; flex-direction:column; gap:6px; }
+.field label{ font-size:14px; color:#d9e5ff; }
+.field input[type="text"],
+.field input[type="password"],
+.field input[type="email"],
+.field select, .field textarea{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid #2b3a64; background:#0b1430; color:#fff; outline:none;
+}
+.field small{ color:#9fb0d9; }
+
+.checks{ display:grid; gap:8px; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); background:#0b1430; border:1px dashed #2b3a64; padding:12px; border-radius:12px; }
+.checks label{ display:flex; align-items:center; gap:8px; font-size:14px; color:#e6efff; }
+
+.form-actions{ display:flex; gap:10px; margin-top:14px; }
+.btn{background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+.btn.btn-outline{ background:transparent; border:1px solid #2b3a64; color:#cfe0ff; }
 </style>
 </head>
 <body>
-<?php include __DIR__ . '/sidebar.php'; ?>
-<main class="main-content">
-  <div class="content-narrow">
-    <h1>Editar Usuário</h1>
+<?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
+<div class="main-content">
+  <div class="form-wrap">
+    <h1 class="form-title">Editar usuário #<?php echo (int)$id; ?></h1>
 
-    <form method="post" action="">
-      <div class="group">
-        <div class="form-row">
-          <div class="col">
-            <label class="label">Nome</label>
-            <input class="input" type="text" name="nome" value="<?php echo htmlspecialchars($u['nome'] ?? '', ENT_QUOTES); ?>" required>
-          </div>
-          <div class="col">
-            <label class="label">Login</label>
-            <input class="input" type="text" name="login" value="<?php echo htmlspecialchars($u['login'] ?? '', ENT_QUOTES); ?>" required>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="col">
-            <label class="label">Senha (em branco para manter)</label>
-            <input class="input" type="text" name="senha" value="">
-          </div>
-          <div class="col">
-            <label class="label">Status</label>
-            <?php $stx = strtolower($u['status'] ?? ''); ?>
-            <select class="input" name="status">
-              <option value="ativo"   <?php echo $stx==='ativo'?'selected':''; ?>>ativo</option>
-              <option value="inativo" <?php echo $stx==='inativo'?'selected':''; ?>>inativo</option>
-            </select>
-          </div>
-          <div class="col">
-            <label class="label">Função</label>
-            <input class="input" type="text" name="funcao" value="<?php echo htmlspecialchars($u['funcao'] ?? '', ENT_QUOTES); ?>" placeholder="ex.: admin">
-          </div>
-        </div>
-      </div>
-
-      <div class="group">
-        <div class="label" style="margin-bottom:8px">Permissões</div>
-        <div class="checks">
-          <label><input type="checkbox" name="perm_usuarios"   <?php echo intval($u['perm_usuarios'])===1?'checked':''; ?>> Usuários</label>
-          <label><input type="checkbox" name="perm_pagamentos" <?php echo intval($u['perm_pagamentos'])===1?'checked':''; ?>> Pagamentos</label>
-          <label><input type="checkbox" name="perm_tarefas"    <?php echo intval($u['perm_tarefas'])===1?'checked':''; ?>> Tarefas</label>
-          <label><input type="checkbox" name="perm_demandas"   <?php echo intval($u['perm_demandas'])===1?'checked':''; ?>> Demandas</label>
-          <label><input type="checkbox" name="perm_portao"     <?php echo intval($u['perm_portao'])===1?'checked':''; ?>> Portão</label>
-        </div>
-      </div>
-
-      <div class="form-actions">
-        <button class="btn" type="submit">Salvar</button>
-        <a class="btn btn-outline" href="index.php?page=usuarios">Voltar</a>
-      </div>
-    </form>
-  </div>
-</main>
-</body>
-</html>
+    <?php if ($err): ?><div class="login-erro" style="background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px"><b
