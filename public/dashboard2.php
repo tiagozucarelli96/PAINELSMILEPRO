@@ -1,12 +1,10 @@
 <?php
-// public/dashboard2.php — usa seu layout + sidebar
+// public/dashboard2.php — seu layout com sidebar + cards, sem shorthand
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-
-// garante conexão e preenche permissões sem mexer no login
 require_once __DIR__ . '/conexao.php';
-if (is_file(__DIR__ . '/permissoes_boot.php')) {
-  require_once __DIR__ . '/permissoes_boot.php';
-}
+if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+$nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -16,7 +14,6 @@ if (is_file(__DIR__ . '/permissoes_boot.php')) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="estilo.css">
 <style>
-/* seus ajustes específicos do dashboard (mantive exatamente) */
 .dashboard-title{ margin:12px 0 18px; font-weight:800; color:#0c3a91; letter-spacing:.2px; }
 .card-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap:20px; }
 .card-link{ text-decoration:none; display:block; border-radius:16px; transition: transform .12s, box-shadow .12s; }
@@ -31,10 +28,60 @@ if (is_file(__DIR__ . '/permissoes_boot.php')) {
 </head>
 <body>
 
-<?php
-// sua sidebar (o arquivo já tem <div class="sidebar"> ... )
-if (is_file(__DIR__ . '/sidebar.php')) { include __DIR__ . '/sidebar.php'; }
-?>
+<?php if (is_file(__DIR__ . '/sidebar.php')) { include __DIR__ . '/sidebar.php'; } ?>
 
 <div class="main-content">
-  <h1 class="dashboard-title">Bem-vindo, <?= htmlspecialchars($_SESSION['nome']()_
+  <h1 class="dashboard-title">Bem-vindo, <?php echo h($nomeUser); ?>!</h1>
+
+  <div class="card-grid">
+    <?php if (!empty($_SESSION['perm_tarefas'])): ?>
+      <a class="card-link" href="index.php?page=tarefas"><div class="card"><div class="icon">📋</div><div class="text"><h3>Tarefas</h3><p>Organize e acompanhe suas pendências.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_lista'])): ?>
+      <a class="card-link" href="index.php?page=lista"><div class="card"><div class="icon">🛒</div><div class="text"><h3>Lista de Compras</h3><p>Gere as listas por evento.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_demandas'])): ?>
+      <a class="card-link" href="index.php?page=pagamentos"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Solicitar Pagamento</h3><p>Envie solicitações para o financeiro.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_pagamentos'])): ?>
+      <a class="card-link" href="index.php?page=admin_pagamentos"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Gestão de Pagamentos (ADM)</h3><p>Aprovar, gerenciar e exportar.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_usuarios'])): ?>
+      <a class="card-link" href="index.php?page=usuarios"><div class="card"><div class="icon">👥</div><div class="text"><h3>Usuários (ADM)</h3><p>Gerenciar acessos e permissões.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_portao'])): ?>
+      <a class="card-link" href="index.php?page=portao"><div class="card"><div class="icon">🚪</div><div class="text"><h3>Portão</h3><p>Abrir/registrar acionamentos.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
+      <a class="card-link" href="index.php?page=banco_smile"><div class="card"><div class="icon">🏦</div><div class="text"><h3>Banco Smile</h3><p>Consultas e operações internas.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_banco_smile_admin'])): ?>
+      <a class="card-link" href="index.php?page=banco_smile_admin"><div class="card"><div class="icon">💵</div><div class="text"><h3>Administração Banco Smile</h3><p>Configurações e auditoria.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_notas_fiscais'])): ?>
+      <a class="card-link" href="index.php?page=notas_fiscais"><div class="card"><div class="icon">📔</div><div class="text"><h3>Notas Fiscais</h3><p>Emissão e acompanhamento.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_estoque_logistico'])): ?>
+      <a class="card-link" href="index.php?page=estoque_logistico"><div class="card"><div class="icon">📦</div><div class="text"><h3>Estoque Logístico</h3><p>Entrada, saída e inventário.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_dados_contrato'])): ?>
+      <a class="card-link" href="index.php?page=dados_contrato"><div class="card"><div class="icon">🧾</div><div class="text"><h3>Dados para Contrato</h3><p>Informações para documentos.</p></div></div></a>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['perm_uso_fiorino'])): ?>
+      <a class="card-link" href="index.php?page=uso_fiorino"><div class="card"><div class="icon">🚘</div><div class="text"><h3>Uso de Fiorino</h3><p>Agendamento e controle.</p></div></div></a>
+    <?php endif; ?>
+  </div>
+</div>
+</body>
+</html>
