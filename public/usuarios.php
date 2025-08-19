@@ -1,5 +1,5 @@
 <?php
-// public/usuarios.php — listagem com layout alinhado e compatível com schema
+// public/usuarios.php — listagem de usuários com toolbar alinhada
 declare(strict_types=1);
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -47,16 +47,14 @@ if (isset($_GET['del'], $_GET['conf']) && (int)$_GET['conf']===1) {
 }
 
 $q = trim($_GET['q'] ?? '');
-$where = [];
-$bind = [];
+$where = []; $bind = [];
 if ($q !== '') {
   if ($colNome)  { $where[] = "{$colNome} ILIKE :q"; }
   if ($colLogin) { $where[] = "{$colLogin} ILIKE :q"; }
   $bind[':q'] = "%{$q}%";
 }
 $sql = "select * from {$T}".($where ? " where ".implode(" OR ", $where) : "")." order by id asc limit 500";
-$rows = $pdo->prepare($sql);
-$rows->execute($bind);
+$rows = $pdo->prepare($sql); $rows->execute($bind);
 $rows = $rows->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!doctype html>
@@ -67,31 +65,31 @@ $rows = $rows->fetchAll(PDO::FETCH_ASSOC);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="estilo.css">
 <style>
-body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#f3f7ff; color:#0b1430;}
-.main-content{ padding:24px; }
-.page-title{ margin:0 0 16px; font-weight:800; color:#0c3a91; letter-spacing:.2px; }
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f3f7ff;color:#0b1430;}
+.main-content{padding:24px;}
+.page-title{margin:0 0 16px;font-weight:800;color:#0c3a91;letter-spacing:.2px;}
 
-.toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:12px;
-  list-style:none; padding:0; }
-.toolbar input[type="text"]{ flex:1; min-width:240px; padding:10px 12px; border-radius:10px; border:1px solid #cfe0ff; background:#fff; }
-.toolbar .btn{ flex:0 0 auto; width:auto; white-space:nowrap; }
-.btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-.btn.gray{ background:#e9efff; color:#004aad; }
+.toolbar{
+  display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px;
+}
+.toolbar .left{display:flex; gap:10px; align-items:center; flex:1;}
+.toolbar input[type="text"]{flex:1; min-width:260px; padding:10px 12px; border-radius:10px; border:1px solid #cfe0ff; background:#fff;}
+.btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer; width:auto; white-space:nowrap;}
+.btn.gray{background:#e9efff;color:#004aad;}
 
-.table{ width:100%; border-collapse:collapse; background:#fff; border:1px solid #dfe7f4; border-radius:12px; overflow:hidden; }
-.table th,.table td{ padding:10px 12px; border-bottom:1px solid #eef4ff; text-align:left; white-space:nowrap; }
-.table th{ background:#f6faff; color:#0c3a91; font-weight:800; }
+.table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #dfe7f4;border-radius:12px;overflow:hidden;}
+.table th,.table td{padding:10px 12px;border-bottom:1px solid #eef4ff;text-align:left;white-space:nowrap;}
+.table th{background:#f6faff;color:#0c3a91;font-weight:800;}
 
-.badge{ display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; }
-.badge.ok{ background:#e9f9ef; color:#1b7f3a; border:1px solid #bfe9cc; }
-.badge.role{ background:#eef2ff; color:#004aad; border:1px solid #cfe0ff; }
-.actions a{ margin-right:8px; text-decoration:none; }
-a.btn-link{ padding:6px 10px; border-radius:8px; background:#eef2ff; border:1px solid #cfe0ff; color:#004aad; }
-a.btn-link.danger{ background:#ffefef; border-color:#ffd6d6; color:#8a0c0c; }
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;}
+.badge.ok{background:#e9f9ef;color:#1b7f3a;border:1px solid #bfe9cc;}
+.badge.role{background:#eef2ff;color:#004aad;border:1px solid #cfe0ff;}
+a.btn-link{padding:6px 10px;border-radius:8px;background:#eef2ff;border:1px solid #cfe0ff;color:#004aad;text-decoration:none;margin-right:8px;}
+a.btn-link.danger{background:#ffefef;border-color:#ffd6d6;color:#8a0c0c;}
 </style>
 <script>
 function delUser(id){
-  if(confirm('Excluir usuário #' + id + '?')) {
+  if(confirm('Excluir usuário #' + id + '?')){
     location.href = 'index.php?page=usuarios&del='+id+'&conf=1';
   }
 }
@@ -103,9 +101,11 @@ function delUser(id){
   <h1 class="page-title">Usuários & Permissões</h1>
 
   <form class="toolbar" method="get" action="index.php">
-    <input type="hidden" name="page" value="usuarios">
-    <input type="text" name="q" placeholder="Nome ou login" value="<?php echo h($q); ?>">
-    <button class="btn" type="submit">Buscar</button>
+    <div class="left">
+      <input type="hidden" name="page" value="usuarios">
+      <input type="text" name="q" placeholder="Nome ou login" value="<?php echo h($q); ?>">
+      <button class="btn" type="submit">Buscar</button>
+    </div>
     <a class="btn gray" href="usuario_novo.php">+ Novo Usuário</a>
   </form>
 
@@ -136,7 +136,7 @@ function delUser(id){
           <?php if (in_array('perm_demandas',$permCols,true)): ?><td><?php echo ok($r['perm_demandas'] ?? 0); ?></td><?php endif; ?>
           <?php if (in_array('perm_portao',$permCols,true)): ?><td><?php echo ok($r['perm_portao'] ?? 0); ?></td><?php endif; ?>
 
-          <td class="actions">
+          <td>
             <a class="btn-link" href="usuario_editar.php?id=<?php echo (int)$r['id']; ?>">Editar</a>
             <a class="btn-link danger" href="javascript:void(0)" onclick="delUser(<?php echo (int)$r['id']; ?>)">Excluir</a>
           </td>
