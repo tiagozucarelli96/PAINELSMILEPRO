@@ -35,7 +35,7 @@ $permCols = array_values(array_filter([
   hascol($C,'perm_portao') ? 'perm_portao' : null,
 ]));
 
-// excluir (opcional, com confirmação)
+// excluir
 if (isset($_GET['del'], $_GET['conf']) && (int)$_GET['conf']===1) {
   $did = (int)$_GET['del'];
   if ($did>0) {
@@ -58,8 +58,8 @@ $sql = "select * from {$T}".($where ? " where ".implode(" OR ", $where) : "")." 
 $rows = $pdo->prepare($sql);
 $rows->execute($bind);
 $rows = $rows->fetchAll(PDO::FETCH_ASSOC);
-
-?><!doctype html>
+?>
+<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
@@ -68,11 +68,13 @@ $rows = $rows->fetchAll(PDO::FETCH_ASSOC);
 <link rel="stylesheet" href="estilo.css">
 <style>
 body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:#f3f7ff; color:#0b1430;}
-.main-content{ padding:24px; } /* mantém layout ao lado da sidebar */
+.main-content{ padding:24px; }
 .page-title{ margin:0 0 16px; font-weight:800; color:#0c3a91; letter-spacing:.2px; }
 
-.toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:12px; }
-.toolbar input[type="text"]{ flex:1; padding:10px 12px; border-radius:10px; border:1px solid #cfe0ff; background:#fff; }
+.toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:12px;
+  list-style:none; padding:0; }
+.toolbar input[type="text"]{ flex:1; min-width:240px; padding:10px 12px; border-radius:10px; border:1px solid #cfe0ff; background:#fff; }
+.toolbar .btn{ flex:0 0 auto; width:auto; white-space:nowrap; }
 .btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
 .btn.gray{ background:#e9efff; color:#004aad; }
 
