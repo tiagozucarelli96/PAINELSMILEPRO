@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
             $ins = $pdo->prepare("
                 INSERT INTO portao_logs (usuario_id, acao, ip, user_agent, criado_em)
-                VALUES (:uid, :acao, :ip, :ua, NOW())
+                VALUES (:uid, :acao, :ip, :ua, CURRENT_TIMESTAMP)
             ");
             $ins->execute([
                 ':uid'  => (int)($_SESSION['id_usuario'] ?? 0),
