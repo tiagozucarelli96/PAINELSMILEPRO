@@ -1,20 +1,22 @@
 #!/usr/bin/env sh
 set -e
 
-# Web em 8080 (porta pública do serviço)
+# Web exposto (Railway) e FPM interno
 WEBPORT="8080"
-# PHP-FPM na porta padrão 9000 (interna)
 FPM_PORT="9000"
 
-# Pastas necessárias
+# Pastas básicas
 mkdir -p /run/nginx /etc/nginx/http.d
+
+# Remove qualquer override antigo de pool
+rm -f /usr/local/etc/php-fpm.d/zz-railway.conf || true
 
 # Força o PHP-FPM a ouvir em 127.0.0.1:9000
 CONF="/usr/local/etc/php-fpm.d/www.conf"
 sed -ri "s@^listen\s*=.*@listen = 127.0.0.1:${FPM_PORT}@" "$CONF"
 sed -ri 's@^;?clear_env\s*=.*@clear_env = no@' "$CONF"
 
-# Nginx ouvindo em 8080 e repassando para o FPM:9000
+# Nginx ouvindo em 8080 e repassando pro FPM:9000
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
     listen 0.0.0.0:${WEBPORT};
