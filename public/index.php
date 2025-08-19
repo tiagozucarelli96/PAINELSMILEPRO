@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+session_start();
+
 $debug = getenv('APP_DEBUG') === '1';
 ini_set('display_errors', $debug ? '1' : '0');
 ini_set('display_startup_errors', $debug ? '1' : '0');
@@ -8,45 +10,67 @@ ini_set('log_errors', '1');
 ini_set('error_log', 'php://stderr');
 error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 
-$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-
-// Health
+/* utilidades */
 if (isset($_GET['ping'])) {
-    header('Content-Type: text/plain; charset=utf-8');
-    echo "PONG\nPHP ".PHP_VERSION."\n";
-    exit;
+  header('Content-Type: text/plain; charset=utf-8');
+  echo "PONG\nPHP ".PHP_VERSION."\n";
+  exit;
 }
-
-// Diagnóstico
 if (isset($_GET['diag'])) {
-    $files = array_values(array_diff(scandir(__DIR__), ['.', '..']));
-    ?><!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Diag</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>body{font-family:system-ui;margin:0;background:#0b1220;color:#fff}
-    .wrap{max-width:860px;margin:40px auto;padding:24px;background:#0f1b35;border-radius:16px}
-    code{background:#0b1430;padding:2px 6px;border-radius:6px}</style></head><body>
-    <div class="wrap">
-      <h1>🔎 Diagnóstico</h1>
-      <p>Dir: <code>/public</code></p>
-      <ul><?php foreach ($files as $f): ?><li><code><?=htmlspecialchars($f)?></code></li><?php endforeach; ?></ul>
-      <p><a href="/">Voltar</a> · <a href="/?ping=1">Ping</a></p>
-    </div></body></html><?php
-    exit;
+  $files = array_values(array_diff(scandir(__DIR__), ['.', '..']));
+  ?><!doctype html><meta charset="utf-8"><title>Diag</title><body style="font-family:system-ui;background:#0b1220;color:#fff">
+  <div style="max-width:860px;margin:40px auto;padding:24px;background:#0f1b35;border-radius:16px">
+    <h1>/public</h1><ul><?php foreach ($files as $f): ?><li><code><?=htmlspecialchars($f)?></code></li><?php endforeach; ?></ul>
+    <p><a href="/">Voltar</a></p>
+  </div></body><?php
+  exit;
 }
 
-// Só redireciona na RAIZ
-if ($path === '/' || $path === '' || $path === '/index.php') {
-    $target = 'login.php';
-    if (is_file(__DIR__ . '/' . $target)) {
-        header('Location: ' . $target, true, 302);
-        exit;
-    }
-    http_response_code(500);
-    echo "Arquivo de entrada ausente: public/{$target}";
-    exit;
+/* sem ?page -> manda para login ou dashboard */
+$page = $_GET['page'] ?? '';
+if ($page === '' || $page === null) {
+  if (!empty($_SESSION['logado'])) {
+    header('Location: index.php?page=dashboard'); // já logado
+  } else {
+    header('Location: login.php');                 // precisa logar
+  }
+  exit;
 }
 
-// Se chegou aqui é porque o router mandou algo inexistente pra cá
+/* rotas permitidas (arquivo => existente em /public) */
+$routes = [
+  'dashboard'           => 'dashboard2.php',   // usa o SEU dashboard
+  'tarefas'             => 'tarefas.php',
+  'lista'               => 'lista_compras.php',
+  'pagamentos'          => 'pagamentos.php',
+  'admin_pagamentos'    => 'admin_pagamentos.php',
+  'usuarios'            => 'usuarios.php',
+  'portao'              => 'portao.php',
+  'banco_smile'         => 'banco_smile.php',
+  'banco_smile_admin'   => 'banco_smile_admin.php',
+  'notas_fiscais'       => 'notas_fiscais.php',
+  'estoque_logistico'   => 'estoque_logistico.php',
+  'dados_contrato'      => 'dados_contrato.php',
+  'uso_fiorino'         => 'uso_fiorino.php',
+  // adicione novas rotas aqui conforme necessário
+];
+
+/* exige login para qualquer rota daqui */
+if (empty($_SESSION['logado'])) {
+  header('Location: login.php');
+  exit;
+}
+
+/* resolve e inclui */
+$file = $routes[$page] ?? null;
+$path = $file ? (__DIR__.'/'.$file) : null;
+
+if ($path && is_file($path)) {
+  require $path;
+  exit;
+}
+
+/* 404 simples */
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
-echo "404 - Rota não encontrada\n";
+echo "404 - Rota não encontrada";
