@@ -3,17 +3,18 @@ set -e
 
 PORT="${PORT:-8080}"
 
-# Gera a config do Nginx usando o $PORT (Alpine usa http.d)
+mkdir -p /run/nginx /etc/nginx/http.d
+
 cat > /etc/nginx/http.d/default.conf <<EOF
 server {
-    listen ${PORT};
+    listen 0.0.0.0:${PORT};
     server_name _;
 
     root /var/www/public;
     index index.php index.html;
 
     location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+        try_files \$uri \$uri/ /index.php?\$query_string;
     }
 
     location ~ \.php$ {
@@ -27,6 +28,9 @@ server {
 }
 EOF
 
-# Sobe serviços
+echo "[start] Testing nginx config..."
+nginx -t
+
 php-fpm -D
-nginx -g "daemon off;"
+echo "[start] Starting nginx on port ${PORT}..."
+exec nginx -g "daemon off;"
