@@ -1,23 +1,14 @@
-# Dockerfile — Painel Smile PRO (Railway)
-FROM php:8.2-fpm-alpine
+# Dockerfile — PHP embutido (sem Apache)
+FROM php:8.2-cli
 
-# 1) Pacotes do sistema
-RUN apk add --no-cache nginx bash postgresql-dev
+# Extensões que você usa
+RUN docker-php-ext-install pdo pdo_mysql
 
-# 2) Extensões PHP necessárias
-RUN docker-php-ext-install pdo pdo_pgsql
+WORKDIR /app
+COPY . /app
 
-# 3) Estrutura de app
-WORKDIR /var/www
-RUN mkdir -p /var/www/public /run/nginx /run/php /etc/nginx/http.d
-
-# 4) Copia o código e o script de inicialização
-COPY public/ /var/www/public/
-COPY start.sh /start.sh
-
-# 5) Permissões e EOL do start.sh
-RUN chmod +x /start.sh && sed -i 's/\r$//' /start.sh
-
-# 6) Exposição e entrada
+# Sobe o servidor embutido do PHP na porta exigida pelo Railway
+# -t public => serve a pasta /app/public
+# entrypoint único (sem start.sh)
 EXPOSE 8080
-CMD ["/start.sh"]
+CMD ["bash", "-lc", "php -S 0.0.0.0:${PORT:-8080} -t public public/index.php"]
