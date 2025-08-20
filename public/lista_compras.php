@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 
     // carrega mapa de itens selecionados
     $ids = implode(',', array_map('intval', array_keys($selItemIds)));
-    $itens = $pdo->query("select * from lc_itens where id in ($ids)")->fetchAll(PDO::FETCH_UNIQUE|PDO::FETCH_ASSOC);
+    $itens = $pdo->query("select * from lc_itens where ativo is true order by nome")->fetchAll(PDO::FETCH_ASSOC);
 
     // auxiliares de acumulação
     $compras = [];   // key: nome_insumo|unidade -> quantidade
