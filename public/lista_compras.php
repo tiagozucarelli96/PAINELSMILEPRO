@@ -16,7 +16,7 @@ function dow_pt(\DateTime $d): string {
 $err=''; $msg='';
 
 // carrega categorias + itens para o formulário
-$cats = $pdo->query("select id, nome from lc_categorias where (ativo = 1 or ativo is true) order by ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+$cats = $pdo->query("select id, nome from lc_categorias where ativo = 1 order by ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $itensByCat = [];
 if ($cats) {
   $st = $pdo->query("select id, categoria_id, tipo, nome, unidade, fornecedor_id, ficha_id from lc_itens where ativo is true order by nome");
