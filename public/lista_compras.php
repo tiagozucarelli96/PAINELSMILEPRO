@@ -245,8 +245,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $pdo->commit();
-        header('Location: dashboard.php?msg='.urlencode('Listas geradas com sucesso!'));
-        exit;
+        header('Location: lc_index.php?msg='.urlencode('Listas geradas com sucesso!'));
+exit;
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }

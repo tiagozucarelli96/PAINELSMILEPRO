@@ -39,7 +39,8 @@ $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
     <?php endif; ?>
 
     <?php if (!empty($_SESSION['perm_lista'])): ?>
-      <a class="card-link" href="index.php?page=lista"><div class="card"><div class="icon">🛒</div><div class="text"><h3>Lista de Compras</h3><p>Gere as listas por evento.</p></div></div></a>
+      <!-- ALTERADO: agora aponta para lc_index.php -->
+      <a class="card-link" href="lc_index.php"><div class="card"><div class="icon">🛒</div><div class="text"><h3>Lista de Compras</h3><p>Gere as listas por evento.</p></div></div></a>
     <?php endif; ?>
 
     <?php if (!empty($_SESSION['perm_demandas'])): ?>
