@@ -1,87 +1,89 @@
 <?php
 declare(strict_types=1);
-// public/lista_compras.php - Gerador de Listas de Compras
+// public/lista_compras.php - Gerador de Listas de Compras (PostgreSQL/Railway)
 
-// Iniciar sessão e verificar autenticação
-if (session_status() === PHP_SESSION_NONE) { 
-    session_start(); 
+// ========= Sessão / Auth robusto =========
+$https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? null) == 443;
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'secure'   => $https,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
 }
 
-// Verificação de segurança mais robusta
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true || !isset($_SESSION['user_id'])) { 
-    http_response_code(403); 
-    echo "Acesso negado. Faça login para continuar."; 
-    exit; 
+// Normaliza variáveis de sessão mais comuns
+$uid = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+$logadoFlag = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? $_SESSION['auth'] ?? null;
+// Converte flags possíveis em boolean
+$estaLogado = filter_var($logadoFlag, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+if ($estaLogado === null) {
+    // Trata strings/inteiros típicos ("1","true",1)
+    $estaLogado = in_array((string)$logadoFlag, ['1','true','on','yes'], true);
 }
 
-require_once __DIR__.'/conexao.php';
-if (!isset($pdo)) { 
-    echo "Falha na conexão com o banco de dados."; 
-    exit; 
+if (!$uid || !is_numeric($uid) || !$estaLogado) {
+    http_response_code(403);
+    echo "Acesso negado. Faça login para continuar.";
+    exit;
 }
+$uid = (int)$uid;
 
-function h($s){ 
-    return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); 
-}
+// ========= Conexão =========
+require_once __DIR__ . '/conexao.php';
+if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
+// ========= Helpers =========
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string {
-    $dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    static $dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
     return $dias[(int)$d->format('w')];
 }
 
-$err = ''; 
-$msg = '';
+$err = '';
 
-// carrega categorias + itens para o formulário
-$cats = $pdo->query("select id, nome from lc_categorias where ativo = 1 order by ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+// ========= Cargas (formulário) =========
+$cats = $pdo->query("SELECT id, nome FROM lc_categorias WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+
 $itensByCat = [];
-if ($cats) {
-    $st = $pdo->query("select id, categoria_id, tipo, nome, unidade, fornecedor_id, ficha_id from lc_itens where ativo is true order by nome");
-    foreach ($st as $r) { 
-        $itensByCat[$r['categoria_id']][] = $r; 
-    }
-}
+$st = $pdo->query("SELECT id, categoria_id, tipo::text AS tipo, nome, unidade, fornecedor_id, ficha_id 
+                   FROM lc_itens 
+                   WHERE ativo IS TRUE 
+                   ORDER BY nome");
+foreach ($st as $r) { $itensByCat[$r['categoria_id']][] = $r; }
 
-// fornecedores (para mostrar modo padrão e permitir override)
-$forns = $pdo->query("select id, nome, modo_padrao from fornecedores order by nome")->fetchAll(PDO::FETCH_ASSOC);
+$forns = $pdo->query("SELECT id, nome, modo_padrao::text AS modo_padrao FROM fornecedores ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $usuarioId = (int)($_SESSION['user_id'] ?? 0);
-        $usuarioNome = (string)($_SESSION['user_name'] ?? ''); // ajuste aos nomes reais da sessão
+        $usuarioId   = $uid;
+        $usuarioNome = (string)($_SESSION['user_name'] ?? ($_SESSION['nome'] ?? ''));
 
-        // eventos (array de linhas)
+        // Eventos
         $evs = $_POST['eventos'] ?? [];
-        if (!$evs || !is_array($evs)) {
-            throw new Exception('Informe ao menos um evento.');
-        }
+        if (!$evs || !is_array($evs)) { throw new Exception('Informe ao menos um evento.'); }
 
-        // itens selecionados (por categoria)
+        // Itens selecionados
         $sel = $_POST['itens'] ?? []; // itens[categoria_id][] = item_id
         $selItemIds = [];
-        foreach ($sel as $catId => $ids) {
-            foreach ((array)$ids as $iid) { 
-                $selItemIds[(int)$iid] = true; 
-            }
+        foreach ($sel as $ids) {
+            foreach ((array)$ids as $iid) { $iid = (int)$iid; if ($iid>0) $selItemIds[$iid]=true; }
         }
-        if (!$selItemIds) {
-            throw new Exception('Selecione itens em alguma categoria.');
-        }
+        if (!$selItemIds) { throw new Exception('Selecione itens em alguma categoria.'); }
 
-        // overrides de fornecedores
-        $ov = $_POST['fornecedor_modo'] ?? []; // fornecedor_modo[fornecedor_id] = 'consolidado' | 'separado'
+        // Overrides por fornecedor
+        $ov = $_POST['fornecedor_modo'] ?? []; // [fornecedor_id] => 'consolidado'|'separado'
 
-        // cria grupo_id (simples, pode migrar depois pra sequence/tabela)
-        $grupoId = (int)$pdo->query("select coalesce(max(grupo_id),0)+1 from lc_listas")->fetchColumn();
-
-        // strings de cabeçalho/resumo
+        // Cabeçalho/resumo
         $espacos = [];
         $eventosRows = [];
         foreach ($evs as $e) {
             $espacos[] = trim((string)($e['espaco'] ?? ''));
             $dt = new DateTime($e['data'] ?? 'now');
-            $eventosRows[] = sprintf(
-                '%s (%s %s %s)',
+            $eventosRows[] = sprintf('%s (%s %s %s)',
                 trim((string)($e['evento'] ?? '')),
                 dow_pt($dt),
                 $dt->format('d/m'),
@@ -90,124 +92,151 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $espacos = array_values(array_unique(array_filter($espacos)));
         $espacoConsolidado = count($espacos) > 1 ? 'Múltiplos' : ($espacos[0] ?? '');
-        $eventosResumo = count($eventosRows).' evento(s): '.implode(' • ', $eventosRows);
+        $eventosResumo = count($eventosRows) . ' evento(s): ' . implode(' • ', $eventosRows);
+        $numEvs = count($evs);
 
-        // cria 2 registros em lc_listas
-        $now = (new DateTime())->format('Y-m-d H:i:s');
-        $ins = $pdo->prepare("insert into lc_listas (grupo_id,tipo,data_gerada,espaco_consolidado,eventos_resumo,criado_por,criado_por_nome)
-                              values (:g,:t,:d,:e,:r,:u,:un)");
+        // Transação
+        $pdo->beginTransaction();
+
+        // grupo_id (simples): max+1
+        $grupoId = (int)$pdo->query("SELECT COALESCE(MAX(grupo_id),0)+1 FROM lc_listas")->fetchColumn();
+
+        // Cria cabeçalhos
+        $insLista = $pdo->prepare("
+            INSERT INTO lc_listas (grupo_id, tipo, espaco_consolidado, eventos_resumo, criado_por, criado_por_nome)
+            VALUES (:g, :t, :e, :r, :u, :un)
+        ");
         foreach (['compras','encomendas'] as $tipo) {
-            $ins->execute([
-                ':g'=>$grupoId, ':t'=>$tipo, ':d'=>$now,
+            $insLista->execute([
+                ':g'=>$grupoId, ':t'=>$tipo,
                 ':e'=>$espacoConsolidado, ':r'=>$eventosResumo,
                 ':u'=>$usuarioId, ':un'=>$usuarioNome
             ]);
         }
 
-        // salva eventos do grupo
-        $insEv = $pdo->prepare("insert into lc_listas_eventos (grupo_id,espaco,convidados,horario,evento,data,dia_semana)
-                                values (:g,:es,:cv,:hr,:ev,:dt,:dw)");
+        // Salva eventos (RETURNING)
+        $eventosIdx = [];
+        $insEv = $pdo->prepare("
+            INSERT INTO lc_listas_eventos (grupo_id, espaco, convidados, horario, evento, data, dia_semana)
+            VALUES (:g,:es,:cv,:hr,:ev,:dt,:dw)
+            RETURNING id, espaco, to_char(data,'DD/MM') AS d, horario
+        ");
         foreach ($evs as $e) {
             $esp = trim((string)($e['espaco'] ?? ''));
             $cv  = (int)($e['convidados'] ?? 0);
             $hr  = trim((string)($e['horario'] ?? ''));
             $evn = trim((string)($e['evento'] ?? ''));
             $dt  = new DateTime($e['data'] ?? 'now');
+
             $insEv->execute([
                 ':g'=>$grupoId, ':es'=>$esp, ':cv'=>$cv, ':hr'=>$hr, ':ev'=>$evn,
                 ':dt'=>$dt->format('Y-m-d'), ':dw'=>dow_pt($dt)
             ]);
+            $eventosIdx[] = $insEv->fetch(PDO::FETCH_ASSOC);
         }
 
-        // carrega mapa de itens selecionados
+        // Carrega apenas ITENS selecionados
         $ids = implode(',', array_map('intval', array_keys($selItemIds)));
-        $itens = $pdo->query("select * from lc_itens where ativo is true order by nome")->fetchAll(PDO::FETCH_ASSOC);
+        $itens = $pdo->query("
+            SELECT id, tipo::text AS tipo, nome, unidade, fornecedor_id, ficha_id
+            FROM lc_itens
+            WHERE ativo IS TRUE AND id IN ($ids)
+            ORDER BY nome
+        ")->fetchAll(PDO::FETCH_ASSOC);
 
-        // auxiliares de acumulação
-        $compras = [];   // key: nome_insumo|unidade -> quantidade
-        $encom = [];     // key: fornecedor_id|evento_key|null -> (nome_item, unidade) => quantidade
+        // Auxiliares
+        $compras = []; // "nome|unidade" => qtd
+        $encom   = []; // "fornecedorId|eventoId" => ["nome|un" => qtd]
 
-        // funções auxiliares
-        $getFichaComp = $pdo->prepare("select c.insumo_id, i.nome as nome_insumo, c.quantidade, c.unidade
-                                       from lc_ficha_componentes c
-                                       join lc_insumos i on i.id=c.insumo_id
-                                       where c.ficha_id=:f");
+        $getFichaComp = $pdo->prepare("
+            SELECT i.nome AS nome_insumo, c.quantidade, c.unidade
+            FROM lc_ficha_componentes c
+            JOIN lc_insumos i ON i.id=c.insumo_id
+            WHERE c.ficha_id=:f
+        ");
+
         $fornMap = [];
-        foreach ($forns as $f) { 
-            $fornMap[$f['id']] = $f; 
-        }
+        foreach ($forns as $f) { $fornMap[(int)$f['id']] = $f; }
 
-        // index eventos para encomendas separadas
-        $evDb = $pdo->prepare("select id, espaco, to_char(data,'DD/MM') as d, horario from lc_listas_eventos where grupo_id=:g order by id");
-        $evDb->execute([':g'=>$grupoId]);
-        $eventosIdx = $evDb->fetchAll(PDO::FETCH_ASSOC);
-
-        // processa cada item
-        foreach ($itens as $itemId => $it) {
+        // Processa itens
+        foreach ($itens as $it) {
             $tipo = $it['tipo'];
+
             if ($tipo === 'preparo') {
-                if (!$it['ficha_id']) continue;
-                $getFichaComp->execute([':f'=>$it['ficha_id']]);
-                foreach ($getFichaComp as $fc) {
-                    // soma por insumo
-                    $key = $fc['nome_insumo'].'|'.$fc['unidade'];
-                    $compras[$key] = ($compras[$key] ?? 0) + (float)$fc['quantidade'] * count($evs);
+                if (!empty($it['ficha_id'])) {
+                    $getFichaComp->execute([':f'=>(int)$it['ficha_id']]);
+                    foreach ($getFichaComp as $fc) {
+                        $key = $fc['nome_insumo'].'|'.$fc['unidade'];
+                        $compras[$key] = ($compras[$key] ?? 0) + (float)$fc['quantidade'] * $numEvs;
+                    }
                 }
             } elseif ($tipo === 'comprado') {
-                $fid = (int)$it['fornecedor_id'];
-                $modo = $ov[$fid] ?? ($fornMap[$fid]['modo_padrao'] ?? 'consolidado');
+                $fid  = (int)($it['fornecedor_id'] ?? 0);
+                $modo = $ov[$fid] ?? ($fornMap[$fid]['modo_padrao'] ?? 'consolidado'); // 'consolidado'|'separado'
+
+                $nk = $it['nome'].'|'.$it['unidade'];
                 if ($modo === 'separado') {
                     foreach ($eventosIdx as $e) {
-                        $k = $fid.'|'.$e['id']; // por evento
-                        $encom[$k][$it['nome'].'|'.$it['unidade']] = ($encom[$k][$it['nome'].'|'.$it['unidade']] ?? 0) + 1;
+                        $k = $fid.'|'.(int)$e['id']; // por evento
+                        $encom[$k][$nk] = ($encom[$k][$nk] ?? 0) + 1;
                     }
                 } else {
                     $k = $fid.'|0'; // consolidado
-                    $encom[$k][$it['nome'].'|'.$it['unidade']] = ($encom[$k][$it['nome'].'|'.$it['unidade']] ?? 0) + count($evs);
+                    $encom[$k][$nk] = ($encom[$k][$nk] ?? 0) + $numEvs;
                 }
-            } else { // 'fixo'
-                // entra 1x por evento em COMPRAS
+            } else { // fixo
                 $key = $it['nome'].'|'.$it['unidade'];
-                $compras[$key] = ($compras[$key] ?? 0) + 1 * count($evs);
+                $compras[$key] = ($compras[$key] ?? 0) + 1 * $numEvs;
             }
         }
 
-        // persiste COMPRAS
-        $insC = $pdo->prepare("insert into lc_compras_consolidadas (grupo_id, insumo_id, nome_insumo, unidade, quantidade)
-                               values (:g, null, :n, :u, :q)");
-        foreach ($compras as $k => $qtd) {
+        // Persiste COMPRAS
+        $insC = $pdo->prepare("
+            INSERT INTO lc_compras_consolidadas (grupo_id, insumo_id, nome_insumo, unidade, quantidade)
+            VALUES (:g, NULL, :n, :u, :q)
+        ");
+        foreach ($compras as $k=>$qtd) {
             [$nome,$uni] = explode('|',$k,2);
             $insC->execute([':g'=>$grupoId, ':n'=>$nome, ':u'=>$uni, ':q'=>$qtd]);
         }
 
-        // persiste ENCOMENDAS
-        $insE = $pdo->prepare("insert into lc_encomendas_itens (grupo_id, fornecedor_id, fornecedor_nome, evento_id, evento_label, item_id, nome_item, unidade, quantidade)
-                               values (:g,:f,:fn,:ev,:el,:it,:n,:u,:q)");
-        foreach ($encom as $k => $map) {
+        // Persiste ENCOMENDAS
+        $insE = $pdo->prepare("
+            INSERT INTO lc_encomendas_itens
+                (grupo_id, fornecedor_id, fornecedor_nome, evento_id, evento_label, item_id, nome_item, unidade, quantidade)
+            VALUES (:g,:f,:fn,:ev,:el,:it,:n,:u,:q)
+        ");
+        $evLabelById = [];
+        foreach ($eventosIdx as $e) { $evLabelById[(int)$e['id']] = $e['espaco'].' • '.$e['d'].' '.$e['horario']; }
+
+        foreach ($encom as $k=>$map) {
             [$fid,$evId] = array_map('intval', explode('|',$k,2));
-            $fn = $fornMap[$fid]['nome'] ?? 'Fornecedor';
-            $el = null;
-            if ($evId>0) {
-                foreach ($eventosIdx as $e) { 
-                    if ((int)$e['id']===$evId) { 
-                        $el = $e['espaco'].' • '.$e['d'].' '.$e['horario']; 
-                        break; 
-                    } 
-                }
-            }
-            foreach ($map as $nk => $qtd) {
+            $fn = $fornMap[$fid]['nome'] ?? 'Sem fornecedor';
+            $el = $evId>0 ? ($evLabelById[$evId] ?? null) : null;
+
+            foreach ($map as $nk=>$qtd) {
                 [$nome,$uni] = explode('|',$nk,2);
                 $insE->execute([
-                    ':g'=>$grupoId, ':f'=>$fid, ':fn'=>$fn,
-                    ':ev'=>$evId>0?$evId:null, ':el'=>$el,
-                    ':it'=>null, ':n'=>$nome, ':u'=>$uni, ':q'=>$qtd
+                    ':g'=>$grupoId,
+                    ':f'=>$fid ?: null,
+                    ':fn'=>$fn,
+                    ':ev'=>$evId>0 ? $evId : null,
+                    ':el'=>$el,
+                    ':it'=>null,
+                    ':n'=>$nome,
+                    ':u'=>$uni,
+                    ':q'=>$qtd
                 ]);
             }
         }
 
-        // salva overrides escolhidos
-        if ($ov) {
-            $insOv = $pdo->prepare("insert into lc_encomendas_overrides (grupo_id, fornecedor_id, modo) values (:g,:f,:m)");
+        // Overrides escolhidos
+        if (!empty($ov)) {
+            $insOv = $pdo->prepare("
+                INSERT INTO lc_encomendas_overrides (grupo_id, fornecedor_id, modo)
+                VALUES (:g,:f,:m)
+                ON CONFLICT (grupo_id, fornecedor_id) DO UPDATE SET modo = EXCLUDED.modo
+            ");
             foreach ($ov as $fid=>$m) {
                 if ($m==='consolidado' || $m==='separado') {
                     $insOv->execute([':g'=>$grupoId, ':f'=>(int)$fid, ':m'=>$m]);
@@ -215,11 +244,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Redirecionamento corrigido para evitar loop
+        $pdo->commit();
         header('Location: dashboard.php?msg='.urlencode('Listas geradas com sucesso!'));
         exit;
 
-    } catch(Throwable $e){
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
         $err = $e->getMessage();
     }
 }
@@ -242,7 +272,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .category{margin-bottom:10px}
         .items{display:none;margin-top:8px;padding-left:12px}
         .items.active{display:block}
-        .switch{margin-left:8px;font-size:12px}
         .btn{background:#004aad;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
         .btn.gray{background:#e9efff;color:#004aad}
         .alert{padding:10px;border-radius:8px;margin-bottom:10px}
@@ -250,11 +279,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .alert.success{background:#edffed;border:1px solid #b3ffb3;color:#0c8a0c}
     </style>
     <script>
-        function toggleCat(id){ 
-            const el=document.getElementById('items-'+id); 
-            if(el){ 
-                el.classList.toggle('active'); 
-            } 
+        function toggleCat(id){
+            const el = document.getElementById('items-'+id);
+            if (el) el.classList.toggle('active');
         }
     </script>
 </head>
@@ -264,13 +291,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <h1>Gerar Lista de Compras</h1>
 
     <div class="form">
-        <?php if($err): ?>
-            <div class="alert err"><?php echo h($err); ?></div>
-        <?php endif; ?>
-        
-        <?php if(isset($_GET['msg'])): ?>
-            <div class="alert success"><?php echo h($_GET['msg']); ?></div>
-        <?php endif; ?>
+        <?php if ($err): ?><div class="alert err"><?=h($err)?></div><?php endif; ?>
+        <?php if (isset($_GET['msg'])): ?><div class="alert success"><?=h($_GET['msg'])?></div><?php endif; ?>
 
         <form method="post">
             <div class="block">
@@ -299,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
                     </div>
                 </div>
-                <!-- poderia adicionar botão "+ evento" com JS no futuro -->
+                <!-- futuro: botão "+ evento" via JS -->
             </div>
 
             <div class="block">
@@ -307,18 +329,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php foreach ($cats as $c): ?>
                     <div class="category">
                         <label>
-                            <input type="checkbox" onclick="toggleCat(<?php echo (int)$c['id']; ?>)"> 
-                            <?php echo h($c['nome']); ?>
+                            <input type="checkbox" onclick="toggleCat(<?= (int)$c['id'] ?>)">
+                            <?= h($c['nome']) ?>
                         </label>
-                        <div class="items" id="items-<?php echo (int)$c['id']; ?>">
+                        <div class="items" id="items-<?= (int)$c['id'] ?>">
                             <?php foreach (($itensByCat[$c['id']] ?? []) as $it): ?>
                                 <label style="display:block;margin:6px 0">
-                                    <input type="checkbox" name="itens[<?php echo (int)$c['id']; ?>][]" value="<?php echo (int)$it['id']; ?>">
-                                    <?php echo h($it['nome']); ?> 
-                                    <small>(<?php echo h($it['tipo']); ?><?php
-                                        if ($it['tipo']==='preparo' && $it['ficha_id']) echo ', ficha #'.$it['ficha_id'];
-                                        if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.$it['fornecedor_id'];
-                                    ?>)</small>
+                                    <input type="checkbox" name="itens[<?= (int)$c['id'] ?>][]" value="<?= (int)$it['id'] ?>">
+                                    <?= h($it['nome']) ?>
+                                    <small>(
+                                        <?= h($it['tipo']) ?>
+                                        <?php
+                                            if ($it['tipo']==='preparo'  && $it['ficha_id'])      echo ', ficha #'.(int)$it['ficha_id'];
+                                            if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.(int)$it['fornecedor_id'];
+                                        ?>
+                                    )</small>
                                 </label>
                             <?php endforeach; ?>
                             <?php if (empty($itensByCat[$c['id']])): ?>
@@ -334,9 +359,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <h2>Encomendas — Modo por Fornecedor</h2>
                 <?php foreach ($forns as $f): ?>
                     <label style="display:block;margin:6px 0">
-                        <?php echo h($f['nome']); ?>:
-                        <select name="fornecedor_modo[<?php echo (int)$f['id']; ?>]" class="input" style="max-width:220px; display:inline-block">
-                            <option value="">Padrão: <?php echo h($f['modo_padrao']); ?></option>
+                        <?= h($f['nome']) ?>:
+                        <select name="fornecedor_modo[<?= (int)$f['id'] ?>]" class="input" style="max-width:220px; display:inline-block">
+                            <option value="">Padrão: <?= h($f['modo_padrao']) ?></option>
                             <option value="consolidado">Consolidado</option>
                             <option value="separado">Separado por evento</option>
                         </select>
