@@ -249,7 +249,10 @@ body.login-bg {
 /* ========== PAINEL INTERNO ========== */
 body.panel {
     background-color: var(--gray-light);
-    display: flex;
+    display: flex !important;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
 }
 
 /* Sidebar */
@@ -261,10 +264,11 @@ body.panel {
     position: fixed;
     top: 0;
     left: 0;
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     align-items: center;
     z-index: 100;
+    visibility: visible !important;
 }
 
 .sidebar img {
@@ -276,7 +280,7 @@ body.panel {
     display: block;
     margin-left: auto;
     margin-right: auto;
-    filter: invert(1); /* deixa a logo branca no fundo azul */
+    /* Removido o filter: invert(1) para manter a logo original */
 }
 
 .sidebar nav {
@@ -308,9 +312,10 @@ body.panel {
 
 /* Conteúdo principal */
 .main-content {
-    margin-left: 240px;
+    margin-left: 240px !important;
     padding: var(--spacing-xxl);
     flex: 1;
+    min-width: 0; /* Evita overflow horizontal */
 }
 
 /* Tipografia */

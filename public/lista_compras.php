@@ -285,7 +285,7 @@ exit;
         }
     </script>
 </head>
-<body>
+<body class="panel">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
     <h1>Gerar Lista de Compras</h1>

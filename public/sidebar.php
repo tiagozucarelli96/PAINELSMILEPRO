@@ -3,7 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 ?>
 <aside class="sidebar">
-  <img src="logo.png" alt="Logo Grupo Smile">
+  <img src="logo.png" alt="Logo Grupo Smile" style="max-width: 150px; max-height: 72px; width: auto; height: auto;">
 
   <nav>
     <a href="index.php?page=dashboard">🏠 Dashboard</a>

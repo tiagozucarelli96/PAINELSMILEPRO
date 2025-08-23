@@ -29,31 +29,9 @@ $current = 'tarefas';
   <title>Tarefas | Painel Smile</title>
   <link rel="stylesheet" href="estilo.css" />
 </head>
-<body>
+<body class="panel">
 
-<!-- SIDEBAR -->
-<div class="sidebar">
-  <img src="arquivos/logo-smile.png" alt="Logo Smile Eventos" />
-  <nav>
-    <a href="dashboard.php" class="<?= $current==='dashboard'?'active':'' ?>"><span class="icon">🏠</span>Dashboard</a>
-    <?php if (!empty($_SESSION['perm_usuarios'])): ?>
-      <a href="usuarios.php" class="<?= $current==='usuarios'?'active':'' ?>"><span class="icon">👥</span>Usuários</a>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['perm_solicitar_pagamento'])): ?>
-      <a href="pagamentos.php" class="<?= $current==='pagamentos'?'active':'' ?>"><span class="icon">💸</span>Pagamentos</a>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['perm_lista_compras'])): ?>
-      <a href="lista_compras.php" class="<?= $current==='lista_compras'?'active':'' ?>"><span class="icon">🛒</span>Lista de Compras</a>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['perm_tarefas'])): ?>
-      <a href="tarefas.php" class="<?= $current==='tarefas'?'active':'' ?>"><span class="icon">📋</span>Tarefas</a>
-    <?php endif; ?>
-    <?php if (!empty($_SESSION['perm_demandas'])): ?>
-      <a href="demandas.php" class="<?= $current==='demandas'?'active':'' ?>"><span class="icon">📁</span>Demandas</a>
-    <?php endif; ?>
-    <a href="logout.php"><span class="icon">🚪</span>Sair</a>
-  </nav>
-</div>
+<?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 
 <!-- CONTEÚDO -->
 <div class="main-content">

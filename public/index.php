@@ -52,6 +52,7 @@ $routes = [
   'estoque_logistico'   => 'estoque_logistico.php',
   'dados_contrato'      => 'dados_contrato.php',
   'uso_fiorino'         => 'uso_fiorino.php',
+  'test_sidebar'        => 'test_sidebar.php',
 ];
 
 /* exige login */

@@ -26,7 +26,7 @@ $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
 .card-link:hover .card{ box-shadow:0 14px 28px rgba(13,51,125,.12), 0 2px 0 rgba(255,255,255,.6) inset; border-color:#cfe0ff; }
 </style>
 </head>
-<body>
+<body class="panel">
 
 <?php if (is_file(__DIR__ . '/sidebar.php')) { include __DIR__ . '/sidebar.php'; } ?>
 
