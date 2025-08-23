@@ -19,6 +19,7 @@ if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function brDate($iso){ $t=strtotime((string)$iso); return $t?date('d/m/Y H:i',$t):(string)$iso; }
 
+// últimos 8 grupos
 $rows = $pdo->query("
 WITH base AS (
   SELECT grupo_id,
@@ -59,23 +60,23 @@ tailwind.config = {
 
     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-            <h1 class="text-4xl font-extrabold text-primary mb-1">Lista de Compras</h1>
-            <p class="text-gray-500 text-base">Listas geradas e encomendas em um só lugar.</p>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Lista de Compras</h1>
+            <p class="text-gray-600">Gerencie suas listas de compras e encomendas</p>
         </div>
-        <div class="flex flex-col sm:flex-row sm:justify-end w-full sm:w-auto gap-3">
-            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5 text-sm" href="lista_compras.php">
+        <div class="flex flex-col sm:flex-row gap-3">
+            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5" href="lista_compras.php">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                 </svg>
                 Gerar nova
             </a>
-            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-medium rounded-xl text-sm shadow-sm hover:shadow-md transition-all duration-200" href="historico.php">
+            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200" href="historico.php">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
                 Histórico
             </a>
-            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-medium rounded-xl text-sm shadow-sm hover:shadow-md transition-all duration-200" href="configurar.php">
+            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200" href="configurar.php">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -86,15 +87,15 @@ tailwind.config = {
     </div>
 
     <?php if (!$rows): ?>
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-10 text-center max-w-xl mx-auto">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
             <div class="w-16 h-16 bg-primary-light rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                 </svg>
             </div>
-            <h3 class="text-xl font-semibold text-gray-900 mb-3">Nenhum grupo encontrado</h3>
-            <p class="text-gray-600 text-sm mb-6">Clique em <strong>"Gerar nova"</strong> para começar a criar suas listas de compras.</p>
-            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-medium rounded-xl shadow-md hover:shadow-lg transition-all duration-200" href="lista_compras.php">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Nenhum grupo encontrado</h3>
+            <p class="text-gray-600 mb-6">Clique em <strong>"Gerar nova"</strong> para começar a criar suas listas de compras.</p>
+            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all duration-200" href="lista_compras.php">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                 </svg>
@@ -109,6 +110,7 @@ tailwind.config = {
                     <h3 class="text-lg font-bold text-gray-900">Grupo #<?= (int)$r['grupo_id'] ?></h3>
                     <div class="w-2 h-2 bg-green-500 rounded-full"></div>
                 </div>
+                
                 <div class="text-sm text-gray-500 mb-4">
                     <div class="flex items-center">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,6 +119,7 @@ tailwind.config = {
                         <?= h(brDate($r['data_gerada'])) ?>
                     </div>
                 </div>
+                
                 <?php if (!empty($r['espaco_consolidado'])): ?>
                 <div class="mb-4">
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary-light text-primary">
@@ -127,6 +130,7 @@ tailwind.config = {
                     </span>
                 </div>
                 <?php endif; ?>
+                
                 <?php if (!empty($r['eventos_resumo'])): ?>
                 <div class="mb-6">
                     <p class="text-sm text-gray-600 line-clamp-3" title="<?= h((string)$r['eventos_resumo']) ?>">
@@ -134,6 +138,7 @@ tailwind.config = {
                     </p>
                 </div>
                 <?php endif; ?>
+                
                 <div class="flex flex-col sm:flex-row gap-3 mt-auto">
                     <a class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-primary-light hover:bg-blue-100 text-primary font-medium rounded-xl text-sm transition-colors duration-200" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=compras">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
