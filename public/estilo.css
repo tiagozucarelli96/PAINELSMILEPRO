@@ -78,11 +78,14 @@ body.login-bg {
 
 .login-logo {
     max-width: 180px;
+    max-height: 72px;
+    width: auto;
     height: auto;
     margin-bottom: var(--spacing-lg);
     display: block;
     margin-left: auto;
     margin-right: auto;
+    filter: none;
 }
 
 .login-box h2 {
@@ -261,11 +264,18 @@ body.panel {
     display: flex;
     flex-direction: column;
     align-items: center;
+    z-index: 100;
 }
 
 .sidebar img {
     max-width: 150px;
+    max-height: 72px;
+    width: auto;
+    height: auto;
     margin-bottom: var(--spacing-xl);
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
     filter: invert(1); /* deixa a logo branca no fundo azul */
 }
 
@@ -410,25 +420,6 @@ p, .text-normal {
     margin-bottom: var(--spacing-sm);
     font-size: 15px;
 }
-/* ========== HOTFIX PAINEL ========== */
-
-/* Sidebar sempre visível e respeitando layout */
-.sidebar {
-    display: block !important;
-    visibility: visible !important;
-    width: 240px !important;
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    background: #004AAD; /* cor azul principal */
-    border-right: 1px solid #e5e7eb;
-    z-index: 1000;
-  }
-  
-  /* Corrige o espaço do conteúdo */
-  body.has-sidebar .main-content {
-    margin-left: 240px !important;
   }
   
   /* Limite do logo */
