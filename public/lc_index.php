@@ -38,54 +38,120 @@ SELECT * FROM base ORDER BY data_gerada DESC LIMIT 8
 <meta charset="utf-8">
 <title>Lista de Compras — Painel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="estilo.css">
-<style>
-.wrap{padding:16px}
-.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-h1{margin:0}
-.btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}
-.btn.gray{background:#e9efff;color:#004aad}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
-.card{background:#fff;border:1px solid #dfe7f4;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
-.muted{color:#667b9f;font-size:12px}
-.kv{display:flex;gap:6px;flex-wrap:wrap}
-.kv span{background:#f2f6ff;border:1px solid #e6eeff;border-radius:999px;padding:4px 8px;font-size:12px}
-.actions{display:flex;gap:8px;margin-top:auto}
-</style>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: '#004AAD',
+        'primary-light': '#e9efff',
+        'primary-dark': '#003d8a'
+      }
+    }
+  }
+}
+</script>
 </head>
-<body>
+<body class="bg-gray-50 min-h-screen">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
-<div class="wrap">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <div class="header">
-        <h1>Lista de Compras — Painel</h1>
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-            <a class="btn" href="lista_compras.php">+ Gerar nova</a>
-            <a class="btn gray" href="historico.php">Histórico</a>
-            <a class="btn gray" href="configurar.php">Configurar</a>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Lista de Compras</h1>
+            <p class="text-gray-600">Gerencie suas listas de compras e encomendas</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3">
+            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5" href="lista_compras.php">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                Gerar nova
+            </a>
+            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200" href="historico.php">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Histórico
+            </a>
+            <a class="inline-flex items-center px-6 py-3 bg-primary-light hover:bg-blue-100 text-primary font-semibold rounded-xl shadow-sm hover:shadow-md transition-all duration-200" href="configurar.php">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                Configurar
+            </a>
         </div>
     </div>
 
     <?php if (!$rows): ?>
-        <div class="card">
-            <div class="muted">Sem grupos ainda. Clique em <strong>“+ Gerar nova”</strong> para começar.</div>
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
+            <div class="w-16 h-16 bg-primary-light rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Nenhum grupo encontrado</h3>
+            <p class="text-gray-600 mb-6">Clique em <strong>"Gerar nova"</strong> para começar a criar suas listas de compras.</p>
+            <a class="inline-flex items-center px-6 py-3 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all duration-200" href="lista_compras.php">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                Criar primeira lista
+            </a>
         </div>
     <?php else: ?>
-        <div class="grid">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <?php foreach ($rows as $r): ?>
-            <div class="card">
-                <div><strong>Grupo #<?= (int)$r['grupo_id'] ?></strong></div>
-                <div class="muted">Gerado: <?= h(brDate($r['data_gerada'])) ?></div>
-                <div class="kv">
-                    <span><?= h((string)$r['espaco_consolidado']) ?: '—' ?></span>
+            <div class="bg-white rounded-2xl shadow-sm hover:shadow-md border border-gray-200 p-6 transition-all duration-200 hover:-translate-y-1">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">Grupo #<?= (int)$r['grupo_id'] ?></h3>
+                    <div class="w-2 h-2 bg-green-500 rounded-full"></div>
                 </div>
-                <div class="muted" title="<?= h((string)$r['eventos_resumo']) ?>" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">
-                    <?= h((string)$r['eventos_resumo']) ?>
+                
+                <div class="text-sm text-gray-500 mb-4">
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <?= h(brDate($r['data_gerada'])) ?>
+                    </div>
                 </div>
-                <div class="actions">
-                    <a class="btn gray" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=compras">Ver Compras</a>
-                    <a class="btn" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=encomendas">Ver Encomendas</a>
+                
+                <?php if (!empty($r['espaco_consolidado'])): ?>
+                <div class="mb-4">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary-light text-primary">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                        <?= h((string)$r['espaco_consolidado']) ?>
+                    </span>
+                </div>
+                <?php endif; ?>
+                
+                <?php if (!empty($r['eventos_resumo'])): ?>
+                <div class="mb-6">
+                    <p class="text-sm text-gray-600 line-clamp-3" title="<?= h((string)$r['eventos_resumo']) ?>">
+                        <?= h((string)$r['eventos_resumo']) ?>
+                    </p>
+                </div>
+                <?php endif; ?>
+                
+                <div class="flex flex-col sm:flex-row gap-3 mt-auto">
+                    <a class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-primary-light hover:bg-blue-100 text-primary font-medium rounded-xl text-sm transition-colors duration-200" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=compras">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        Compras
+                    </a>
+                    <a class="flex-1 inline-flex items-center justify-center px-4 py-2.5 bg-primary hover:bg-primary-dark text-white font-medium rounded-xl text-sm shadow-md hover:shadow-lg transition-all duration-200" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=encomendas">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                        Encomendas
+                    </a>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -94,5 +160,14 @@ h1{margin:0}
 
 </div>
 </div>
+
+<style>
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+</style>
 </body>
 </html>
