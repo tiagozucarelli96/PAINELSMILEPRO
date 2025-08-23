@@ -410,3 +410,36 @@ p, .text-normal {
     margin-bottom: var(--spacing-sm);
     font-size: 15px;
 }
+/* ========== HOTFIX PAINEL ========== */
+
+/* Sidebar sempre visível e respeitando layout */
+.sidebar {
+    display: block !important;
+    visibility: visible !important;
+    width: 240px !important;
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: #004AAD; /* cor azul principal */
+    border-right: 1px solid #e5e7eb;
+    z-index: 1000;
+  }
+  
+  /* Corrige o espaço do conteúdo */
+  body.has-sidebar .main-content {
+    margin-left: 240px !important;
+  }
+  
+  /* Limite do logo */
+  header img,
+  .logo img,
+  img.site-logo {
+    max-height: 72px !important;
+    width: auto !important;
+    height: auto !important;
+    display: block;
+    margin: 10px auto;
+    filter: none !important; /* remove o invert que estragava */
+  }
+  
