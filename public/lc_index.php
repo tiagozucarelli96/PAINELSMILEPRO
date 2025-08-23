@@ -1,140 +1,310 @@
 <?php
 declare(strict_types=1);
-// public/lc_index.php — Painel do módulo Lista de Compras (PostgreSQL/Railway)
+// public/index.php — Painel do módulo Lista de Compras (PostgreSQL/Railway) — HISTÓRICO
 
+// ========= Sessão / Auth =========
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? '') == '443');
 if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_set_cookie_params([
-        'lifetime' => 0, 'path' => '/', 'secure' => $https,
-        'httponly' => true, 'samesite' => 'Lax',
-    ]);
+    session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>$https,'httponly'=>true,'samesite'=>'Lax']);
     session_start();
 }
 $uid = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
 $logadoFlag = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? $_SESSION['auth'] ?? null;
 $estaLogado = filter_var($logadoFlag, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
 if ($estaLogado === null) { $estaLogado = in_array((string)$logadoFlag, ['1','true','on','yes'], true); }
-if (!$uid || !is_numeric($uid) || !$estaLogado) { http_response_code(403); echo "Acesso negado. Faça login para continuar."; exit; }
-
-require_once __DIR__ . '/conexao.php';
-if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
-
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function brDate(string $isoTs): string {
-    if (!$isoTs) return '';
-    $t = strtotime($isoTs);
-    return $t ? date('d/m/Y H:i', $t) : $isoTs;
+if (!$uid || !is_numeric((string)$uid) || !$estaLogado) {
+    http_response_code(403);
+    echo "Acesso negado.";
+    exit;
 }
 
-// Últimos 8 grupos
-$rows = $pdo->query("
-WITH base AS (
-  SELECT grupo_id,
-         max(data_gerada)          AS data_gerada,
-         max(espaco_consolidado)   AS espaco_consolidado,
-         max(eventos_resumo)       AS eventos_resumo
-  FROM lc_listas
-  GROUP BY grupo_id
-)
-SELECT * FROM base ORDER BY data_gerada DESC LIMIT 8
-")->fetchAll(PDO::FETCH_ASSOC);
+// ========= Conexão =========
+$db_error = '';
+$pdo = null;
+try {
+    // Usa DATABASE_URL do Railway, se existir; senão, PGHOST/PGUSER/etc.
+    if (!empty($_ENV['DATABASE_URL'] ?? getenv('DATABASE_URL'))) {
+        $url = getenv('DATABASE_URL') ?: $_ENV['DATABASE_URL'];
+        // formatos comuns: postgres://user:pass@host:port/dbname
+        $parts = parse_url($url);
+        $dbhost = $parts['host'] ?? 'localhost';
+        $dbport = $parts['port'] ?? 5432;
+        $dbuser = $parts['user'] ?? '';
+        $dbpass = $parts['pass'] ?? '';
+        $dbname = ltrim($parts['path'] ?? '', '/');
+        $dsn = "pgsql:host={$dbhost};port={$dbport};dbname={$dbname};";
+        $pdo = new PDO($dsn, $dbuser, $dbpass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    } else {
+        $dbhost = getenv('PGHOST') ?: ($_ENV['PGHOST'] ?? 'localhost');
+        $dbport = (int)(getenv('PGPORT') ?: ($_ENV['PGPORT'] ?? 5432));
+        $dbuser = getenv('PGUSER') ?: ($_ENV['PGUSER'] ?? '');
+        $dbpass = getenv('PGPASSWORD') ?: ($_ENV['PGPASSWORD'] ?? '');
+        $dbname = getenv('PGDATABASE') ?: ($_ENV['PGDATABASE'] ?? '');
+        $dsn = "pgsql:host={$dbhost};port={$dbport};dbname={$dbname};";
+        $pdo = new PDO($dsn, $dbuser, $dbpass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    }
+} catch (Throwable $e) {
+    $db_error = 'Falha ao conectar ao banco: ' . $e->getMessage();
+}
+
+// ========= Paginação / filtros =========
+function intParam(string $key, int $default = 1): int {
+    $v = isset($_GET[$key]) ? (int)$_GET[$key] : $default;
+    return $v > 0 ? $v : $default;
+}
+$pp = 10; // itens por página
+$p1 = intParam('p1', 1); // página compras
+$p2 = intParam('p2', 1); // página encomendas
+$off1 = ($p1 - 1) * $pp;
+$off2 = ($p2 - 1) * $pp;
+
+// ========= Helpers =========
+function fmtDataPt(?string $ts): string {
+    if (!$ts) return '-';
+    try {
+        $d = new DateTime($ts);
+        return $d->format('d/m/Y H:i');
+    } catch (Throwable) { return $ts; }
+}
+
+function h(string $s): string {
+    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+// ========= Consultas =========
+$compras = $encomendas = [];
+$total1 = $total2 = 0;
+$erroQuery = '';
+
+if ($pdo) {
+    try {
+        // Tabela esperada: lc_listas (id, tipo, resumo_eventos, espaco_resumo, criado_por, criado_em, deletado_em)
+        // tipo: lc_tipo_lista => 'compras' | 'encomendas'
+        // Join opcional com usuarios (id, nome)
+        $sqlBase = "
+            SELECT l.id,
+                   l.tipo,
+                   COALESCE(l.espaco_resumo, 'Múltiplos') AS espaco_resumo,
+                   COALESCE(l.resumo_eventos, '')           AS resumo_eventos,
+                   l.criado_em,
+                   COALESCE(u.nome, '—')                    AS criado_por
+            FROM lc_listas l
+            LEFT JOIN usuarios u ON u.id = l.criado_por
+            WHERE l.deletado_em IS NULL AND l.tipo = :tipo
+            ORDER BY l.criado_em DESC
+            LIMIT :limit OFFSET :offset
+        ";
+        $stmt1 = $pdo->prepare($sqlBase);
+        $stmt1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
+        $stmt1->bindValue(':limit', $pp, PDO::PARAM_INT);
+        $stmt1->bindValue(':offset', $off1, PDO::PARAM_INT);
+        $stmt1->execute();
+        $compras = $stmt1->fetchAll();
+
+        $stmt2 = $pdo->prepare($sqlBase);
+        $stmt2->bindValue(':tipo', 'encomendas', PDO::PARAM_STR);
+        $stmt2->bindValue(':limit', $pp, PDO::PARAM_INT);
+        $stmt2->bindValue(':offset', $off2, PDO::PARAM_INT);
+        $stmt2->execute();
+        $encomendas = $stmt2->fetchAll();
+
+        // Totais p/ paginação
+        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE deletado_em IS NULL AND tipo = :tipo";
+        $c1 = $pdo->prepare($sqlCount);
+        $c1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
+        $c1->execute();
+        $total1 = (int)$c1->fetchColumn();
+
+        $c2 = $pdo->prepare($sqlCount);
+        $c2->bindValue(':tipo', 'encomendas', PDO::PARAM_STR);
+        $c2->execute();
+        $total2 = (int)$c2->fetchColumn();
+    } catch (Throwable $e) {
+        $erroQuery = 'Erro ao carregar histórico: ' . $e->getMessage();
+    }
+}
+
+$pages1 = (int)ceil(($total1 ?: 0) / $pp);
+$pages2 = (int)ceil(($total2 ?: 0) / $pp);
+
+// ========= Permissões basicas =========
+$isAdmin = !empty($_SESSION['perm_usuarios']) || !empty($_SESSION['perm_admin']) || !empty($_SESSION['is_admin']);
+
+// ========= UI =========
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <title>Lista de Compras — Painel</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Usa o CSS do painel (mesmo do histórico) -->
-  <link rel="stylesheet" href="estilo.css">
-  <style>
-    /* Complementos mínimos locais */
-    .wrap{padding:16px}
-    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-    .actions-top a{margin-left:8px}
-    .grid-cards{display:grid;gap:16px;grid-template-columns:repeat(4,minmax(220px,1fr))}
-    @media (max-width:1100px){.grid-cards{grid-template-columns:repeat(3,minmax(220px,1fr))}}
-    @media (max-width:900px){.grid-cards{grid-template-columns:repeat(2,minmax(220px,1fr))}}
-    @media (max-width:560px){.grid-cards{grid-template-columns:1fr}}
-    .muted{color:#667b9f;font-size:12px}
-    .line-clamp-3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-    .card .title{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .chip{display:inline-flex;align-items:center;gap:6px;background:#e9efff;color:#004aad;border:1px solid #d0dcff;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600}
-    .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-    /* Garantias caso algo tenha mexido no CSS global */
-    .sidebar{display:block!important;visibility:visible!important;}
-    .main-content{margin-left:240px;}
-    header img,.logo img,img.site-logo{max-height:72px!important;width:auto!important;height:auto!important;}
-  </style>
+<meta charset="utf-8">
+<title>Lista de Compras — Histórico</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{ --azul:#004aad; --bg:#f6f8ff; --cinza:#667085; --borda:#e5e7eb; }
+*{ box-sizing: border-box; }
+body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial; background:var(--bg); color:#0f172a; }
+.container{ max-width:1100px; margin:22px auto; padding:0 16px; }
+.topbar{ display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+.topbar .grow{ flex:1; }
+.btn{ background:var(--azul); color:#fff; border:none; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
+.btn.secondary{ background:#e9efff; color:#0f172a; }
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+.card{ background:#fff; border:1px solid var(--borda); border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:18px; }
+.card h2{ font-size:18px; margin:0; padding:14px 16px; border-bottom:1px solid var(--borda); }
+.table-wrap{ overflow:auto; }
+table{ width:100%; border-collapse:collapse; }
+th,td{ padding:12px 10px; border-bottom:1px solid var(--borda); text-align:left; font-size:14px; vertical-align:top; }
+th{ background:#fafafa; color:#111827; font-weight:700; }
+.badge{ display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:3px 8px; border-radius:999px; font-size:12px; }
+.meta{ color:var(--cinza); font-size:12px; }
+.actions a, .actions button{ font-size:13px; margin-right:10px; text-decoration:none; }
+.pagin{ display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; }
+.pagin a, .pagin span{ padding:6px 10px; border:1px solid var(--borda); border-radius:8px; background:#fff; text-decoration:none; color:#111827; }
+.pagin .atual{ background:#eff6ff; border-color:#bfdbfe; font-weight:700; }
+.alert{ background:#fff8e1; border:1px solid #fde68a; padding:10px 12px; border-radius:10px; margin-bottom:12px; font-size:14px; }
+.err{ background:#fee2e2; border:1px solid #fecaca; padding:10px 12px; border-radius:10px; margin-bottom:12px; }
+.top-buttons{ display:flex; gap:10px; }
+@media (max-width:640px){
+  th:nth-child(3), td:nth-child(3){ display:none; } /* esconde 'Espaço' no mobile p/ caber */
+}
+</style>
 </head>
-<body class="panel has-sidebar">
-<?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
+<body>
+<div class="container">
 
-<div class="main-content">
-  <div class="wrap">
-
-    <div class="header">
-      <div>
-        <h1>Lista de Compras</h1>
-        <p class="text-normal" style="margin:0;color:#6c757d">Gerencie suas listas de compras e encomendas.</p>
-      </div>
-      <div class="actions-top">
-        <a class="btn" href="lista_compras.php">+ Gerar nova</a>
-        <a class="btn gray" href="historico.php">⏱ Histórico</a>
-        <a class="btn gray" href="configurar.php">⚙️ Configurar</a>
-      </div>
+  <div class="topbar">
+    <div class="grow">
+      <h1 style="margin:0;font-size:22px;">Lista de Compras — Histórico</h1>
+      <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
     </div>
-
-    <?php if (!$rows): ?>
-      <div class="card" style="text-align:center">
-        <div style="width:64px;height:64px;background:#e9efff;border-radius:999px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">
-          <span style="font-size:28px;color:#004aad">🧾</span>
-        </div>
-        <h3 class="mb-sm">Nenhum grupo encontrado</h3>
-        <p class="text-normal" style="color:#6c757d">Clique em <strong>“+ Gerar nova”</strong> para começar a criar suas listas de compras.</p>
-        <div style="margin-top:12px">
-          <a class="btn" href="lista_compras.php">+ Criar primeira lista</a>
-        </div>
-      </div>
-    <?php else: ?>
-
-      <div class="grid-cards">
-        <?php foreach ($rows as $r): ?>
-          <div class="card">
-            <div class="title">
-              <h3 style="margin:0">Grupo #<?= (int)$r['grupo_id'] ?></h3>
-              <span style="width:10px;height:10px;background:#2ecc71;border-radius:999px;display:inline-block"></span>
-            </div>
-
-            <div class="mb-sm muted">
-              <?= h(brDate((string)$r['data_gerada'])) ?>
-            </div>
-
-            <?php if (!empty($r['espaco_consolidado'])): ?>
-              <div class="mb-sm">
-                <span class="chip">🏢 <?= h((string)$r['espaco_consolidado']) ?></span>
-              </div>
-            <?php endif; ?>
-
-            <?php if (!empty($r['eventos_resumo'])): ?>
-              <div class="mb-sm">
-                <div class="text-normal line-clamp-3" title="<?= h((string)$r['eventos_resumo']) ?>">
-                  <?= h((string)$r['eventos_resumo']) ?>
-                </div>
-              </div>
-            <?php endif; ?>
-
-            <div class="btn-row">
-              <a class="btn gray" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=compras">Ver Compras</a>
-              <a class="btn" href="ver.php?g=<?= (int)$r['grupo_id'] ?>&tab=encomendas">Ver Encomendas</a>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      </div>
-
-    <?php endif; ?>
-
+    <div class="top-buttons">
+      <form action="gerar.php" method="get">
+        <button class="btn">Gerar Lista de Compras</button>
+      </form>
+      <form action="configuracoes.php" method="get">
+        <button class="btn secondary" <?php echo $isAdmin? '' : 'disabled'; ?>>Configurações</button>
+      </form>
+    </div>
   </div>
+
+  <?php if ($db_error): ?>
+    <div class="err"><?php echo h($db_error); ?></div>
+  <?php elseif ($erroQuery): ?>
+    <div class="err"><?php echo h($erroQuery); ?></div>
+  <?php endif; ?>
+
+  <!-- Compras -->
+  <div class="card">
+    <h2>Últimas listas de compras</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px;">Nº</th>
+            <th>Data gerada</th>
+            <th>Espaço</th>
+            <th>Eventos (resumo)</th>
+            <th>Criado por</th>
+            <th style="width:210px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php if (!$compras): ?>
+          <tr><td colspan="6">
+            <div class="alert">Nenhuma lista gerada ainda. Clique em <strong>Gerar Lista de Compras</strong> para começar.</div>
+          </td></tr>
+        <?php else: foreach ($compras as $r): ?>
+          <tr>
+            <td>#<?php echo (int)$r['id']; ?></td>
+            <td>
+              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
+              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
+            </td>
+            <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
+            <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
+            <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
+            <td class="actions">
+              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
+              <a href="pdf_compras.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
+              <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php if ($pages1 > 1): ?>
+      <div class="pagin">
+        <?php for ($i=1; $i<=$pages1; $i++): ?>
+          <?php if ($i === $p1): ?>
+            <span class="atual"><?php echo $i; ?></span>
+          <?php else: ?>
+            <a href="?p1=<?php echo $i; ?>&p2=<?php echo $p2; ?>"><?php echo $i; ?></a>
+          <?php endif; ?>
+        <?php endfor; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <!-- Encomendas -->
+  <div class="card">
+    <h2>Últimas listas de encomendas</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px;">Nº</th>
+            <th>Data gerada</th>
+            <th>Espaço</th>
+            <th>Eventos (resumo)</th>
+            <th>Criado por</th>
+            <th style="width:210px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php if (!$encomendas): ?>
+          <tr><td colspan="6">
+            <div class="alert">Sem listas de encomendas ainda. Ao gerar uma lista, a saída é criada automaticamente.</div>
+          </td></tr>
+        <?php else: foreach ($encomendas as $r): ?>
+          <tr>
+            <td>#<?php echo (int)$r['id']; ?></td>
+            <td>
+              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
+              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
+            </td>
+            <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
+            <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
+            <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
+            <td class="actions">
+              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
+              <a href="pdf_encomendas.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
+              <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
+            </td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php if ($pages2 > 1): ?>
+      <div class="pagin">
+        <?php for ($i=1; $i<=$pages2; $i++): ?>
+          <?php if ($i === $p2): ?>
+            <span class="atual"><?php echo $i; ?></span>
+          <?php else: ?>
+            <a href="?p1=<?php echo $p1; ?>&p2=<?php echo $i; ?>"><?php echo $i; ?></a>
+          <?php endif; ?>
+        <?php endfor; ?>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <div class="meta">Dica: “Espaço” mostra a unidade consolidada; quando múltiplas, exibe <strong>Múltiplos</strong>.</div>
 </div>
 </body>
 </html>

@@ -63,19 +63,22 @@ if (!$hrow || !$hrow['data_gerada']) { http_response_code(404); echo "Grupo não
 
 // ========= Data sources =========
 if ($tab === 'compras') {
-    // COMPRAS consolidadas
+    // COMPRAS: join para pegar nome do insumo (o gerador salva insumo_id)
     $sql = "
-      SELECT nome_insumo, unidade, SUM(quantidade)::numeric(12,3) AS quantidade
-      FROM lc_compras_consolidadas
-      WHERE grupo_id = :g
-      GROUP BY nome_insumo, unidade
-      ORDER BY nome_insumo
+      SELECT i.nome AS nome_insumo,
+             COALESCE(c.unidade,'') AS unidade,
+             SUM(c.quantidade)::numeric(12,3) AS quantidade
+      FROM lc_compras_consolidadas c
+      JOIN lc_insumos i ON i.id = c.insumo_id
+      WHERE c.grupo_id = :g
+      GROUP BY i.nome, c.unidade
+      ORDER BY i.nome
     ";
     $st = $pdo->prepare($sql);
     $st->execute([':g'=>$g]);
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    // filtro em memória (simples) para q
+    // filtro em memória para q
     if ($q !== '') {
         $rows = array_values(array_filter($rows, function($r) use ($q){
             $hay = strtolower(($r['nome_insumo'] ?? '').' '.($r['unidade'] ?? ''));
@@ -97,17 +100,20 @@ if ($tab === 'compras') {
     }
 
 } else {
-    // ENCOMENDAS por fornecedor / opcional por evento
+    // ENCOMENDAS: join para nomes de fornecedor e insumo
+    // Evento: se não houver tabela de eventos, geramos um rótulo simples
     $sql = "
       SELECT 
-        fornecedor_nome,
-        COALESCE(evento_label,'') AS evento_label,
-        nome_item,
-        COALESCE(unidade,'') AS unidade,
-        SUM(quantidade)::numeric(12,3) AS quantidade
-      FROM lc_encomendas_itens
-      WHERE grupo_id = :g
-      GROUP BY fornecedor_nome, evento_label, nome_item, unidade
+        COALESCE(f.nome, 'Fornecedor #'||ei.fornecedor_id) AS fornecedor_nome,
+        CASE WHEN ei.evento_id IS NULL THEN '' ELSE ('Evento #'||ei.evento_id) END AS evento_label,
+        COALESCE(i.nome, 'Item #'||ei.insumo_id) AS nome_item,
+        COALESCE(ei.unidade,'') AS unidade,
+        SUM(ei.quantidade)::numeric(12,3) AS quantidade
+      FROM lc_encomendas_itens ei
+      LEFT JOIN fornecedores f ON f.id = ei.fornecedor_id
+      LEFT JOIN lc_insumos i   ON i.id = ei.insumo_id
+      WHERE ei.grupo_id = :g
+      GROUP BY fornecedor_nome, evento_label, nome_item, ei.unidade
       ORDER BY fornecedor_nome, evento_label, nome_item
     ";
     $st = $pdo->prepare($sql);
@@ -179,7 +185,7 @@ if ($tab === 'compras') {
         .section .inner{padding:8px 12px}
     </style>
 </head>
-<body>
+<body class="panel has-sidebar">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
 <div class="wrap">
@@ -240,7 +246,7 @@ if ($tab === 'compras') {
             </div>
 
         <?php else: /* ENCOMENDAS */ ?>
-            <?php if (empty($grouped)): ?>
+            <?php if (empty($grouped ?? [])): ?>
                 <div class="muted">Nenhuma encomenda nesta lista.</div>
             <?php else: ?>
                 <?php foreach ($grouped as $fornecedor => $byEvent): ?>
