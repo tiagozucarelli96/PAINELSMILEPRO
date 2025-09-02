@@ -143,35 +143,7 @@ $isAdmin = !empty($_SESSION['perm_usuarios']) || !empty($_SESSION['perm_admin'])
 <meta charset="utf-8">
 <title>Lista de Compras — Histórico</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-:root{ --azul:#004aad; --bg:#f6f8ff; --cinza:#667085; --borda:#e5e7eb; }
-*{ box-sizing: border-box; }
-body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial; background:var(--bg); color:#0f172a; }
-.container{ max-width:1100px; margin:22px auto; padding:0 16px; }
-.topbar{ display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
-.topbar .grow{ flex:1; }
-.btn{ background:var(--azul); color:#fff; border:none; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
-.btn.secondary{ background:#e9efff; color:#0f172a; }
-.btn:disabled{ opacity:.5; cursor:not-allowed; }
-.card{ background:#fff; border:1px solid var(--borda); border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:18px; }
-.card h2{ font-size:18px; margin:0; padding:14px 16px; border-bottom:1px solid var(--borda); }
-.table-wrap{ overflow:auto; }
-table{ width:100%; border-collapse:collapse; }
-th,td{ padding:12px 10px; border-bottom:1px solid var(--borda); text-align:left; font-size:14px; vertical-align:top; }
-th{ background:#fafafa; color:#111827; font-weight:700; }
-.badge{ display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:3px 8px; border-radius:999px; font-size:12px; }
-.meta{ color:var(--cinza); font-size:12px; }
-.actions a, .actions button{ font-size:13px; margin-right:10px; text-decoration:none; }
-.pagin{ display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; }
-.pagin a, .pagin span{ padding:6px 10px; border:1px solid var(--borda); border-radius:8px; background:#fff; text-decoration:none; color:#111827; }
-.pagin .atual{ background:#eff6ff; border-color:#bfdbfe; font-weight:700; }
-.alert{ background:#fff8e1; border:1px solid #fde68a; padding:10px 12px; border-radius:10px; margin-bottom:12px; font-size:14px; }
-.err{ background:#fee2e2; border:1px solid #fecaca; padding:10px 12px; border-radius:10px; margin-bottom:12px; }
-.top-buttons{ display:flex; gap:10px; }
-@media (max-width:640px){
-  th:nth-child(3), td:nth-child(3){ display:none; } /* esconde 'Espaço' no mobile p/ caber */
-}
-</style>
+<link rel="stylesheet" href="estilo.css">
 </head>
 <body class="panel has-sidebar">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
