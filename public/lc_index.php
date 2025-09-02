@@ -90,7 +90,7 @@ if ($pdo) {
         $sqlBase = "
             SELECT l.id,
                    l.tipo,
-                   COALESCE(l.espaco_resumo, 'Múltiplos') AS espaco_resumo,
+                   COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
                    COALESCE(l.resumo_eventos, '')           AS resumo_eventos,
                    l.criado_em,
                    COALESCE(u.nome, '—')                    AS criado_por
@@ -174,23 +174,35 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
 }
 </style>
 </head>
-<body>
-<div class="container">
+<body class="panel has-sidebar">
+<?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
+<div class="main-content">
+  <div class="container">
 
+    <!-- INÍCIO CONTEÚDO -->
+    <div class="topbar">
+      ...seu conteúdo (tabelas, cards etc.)...
+    </div>
+    <!-- FIM CONTEÚDO -->
+
+  </div> <!-- fecha .container -->
+</div> <!-- fecha .main-content -->
+</body>
+</html>
   <div class="topbar">
     <div class="grow">
       <h1 style="margin:0;font-size:22px;">Lista de Compras — Histórico</h1>
       <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
     </div>
     <div class="top-buttons">
-      <form action="gerar.php" method="get">
-        <button class="btn">Gerar Lista de Compras</button>
-      </form>
-      <form action="configuracoes.php" method="get">
-        <button class="btn secondary" <?php echo $isAdmin? '' : 'disabled'; ?>>Configurações</button>
-      </form>
-    </div>
-  </div>
+  <a class="btn" href="lista_compras.php">Gerar Lista de Compras</a>
+  <?php if ($isAdmin): ?>
+    <a class="btn secondary" href="configuracoes.php">Configurações</a>
+  <?php else: ?>
+    <a class="btn secondary" style="pointer-events:none;opacity:.6">Configurações</a>
+  <?php endif; ?>
+</div>
+
 
   <?php if ($db_error): ?>
     <div class="err"><?php echo h($db_error); ?></div>
