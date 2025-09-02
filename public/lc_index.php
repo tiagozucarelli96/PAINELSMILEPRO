@@ -99,8 +99,7 @@ if ($pdo) {
         WHERE l.deletado_em IS NULL AND l.tipo = :tipo
         ORDER BY l.data_gerada DESC, l.grupo_id DESC
         LIMIT :limit OFFSET :offset
-    ";    
-        ";
+    ";
         $stmt1 = $pdo->prepare($sqlBase);
         $stmt1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $stmt1->bindValue(':limit', $pp, PDO::PARAM_INT);
