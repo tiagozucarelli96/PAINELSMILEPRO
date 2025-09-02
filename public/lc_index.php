@@ -88,17 +88,18 @@ if ($pdo) {
         // tipo: lc_tipo_lista => 'compras' | 'encomendas'
         // Join opcional com usuarios (id, nome)
         $sqlBase = "
-            SELECT l.id,
-                   l.tipo,
-                   COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
-                   COALESCE(l.resumo_eventos, '')           AS resumo_eventos,
-                   l.criado_em,
-                   COALESCE(u.nome, '—')                    AS criado_por
-            FROM lc_listas l
-            LEFT JOIN usuarios u ON u.id = l.criado_por
-            WHERE l.deletado_em IS NULL AND l.tipo = :tipo
-            ORDER BY l.criado_em DESC
-            LIMIT :limit OFFSET :offset
+    SELECT l.grupo_id,
+           l.tipo,
+           COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
+           COALESCE(l.eventos_resumo, '')              AS resumo_eventos,
+           l.data_gerada,
+           COALESCE(u.nome, '—')                       AS criado_por
+    FROM lc_listas l
+    LEFT JOIN usuarios u ON u.id = l.criado_por
+    WHERE l.deletado_em IS NULL AND l.tipo = :tipo
+    ORDER BY l.data_gerada DESC, l.grupo_id DESC
+    LIMIT :limit OFFSET :offset
+";
         ";
         $stmt1 = $pdo->prepare($sqlBase);
         $stmt1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
