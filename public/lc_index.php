@@ -84,7 +84,7 @@ $erroQuery = '';
 
 if ($pdo) {
     try {
-        // Tabela esperada: lc_listas (id, tipo, eventos_resumo, espaco_consolidado, criado_por, criado_por_nome, data_gerada, deleted_at)
+        // Tabela esperada: lc_listas (id, tipo, eventos_resumo, espaco_consolidado, criado_por, criado_por_nome, data_gerada)
         // tipo: lc_tipo_lista => 'compras' | 'encomendas'
         $sqlBase = "
         SELECT l.id,
@@ -95,7 +95,7 @@ if ($pdo) {
                l.data_gerada,
                COALESCE(l.criado_por_nome, '—')            AS criado_por
         FROM lc_listas l
-        WHERE l.deleted_at IS NULL AND l.tipo = :tipo
+        WHERE l.tipo = :tipo
         ORDER BY l.data_gerada DESC, l.grupo_id DESC
         LIMIT :limit OFFSET :offset
     ";
@@ -114,7 +114,7 @@ if ($pdo) {
         $encomendas = $stmt2->fetchAll();
 
         // Totais p/ paginação
-        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE deleted_at IS NULL AND tipo = :tipo";
+        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE tipo = :tipo";
         $c1 = $pdo->prepare($sqlCount);
         $c1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $c1->execute();
