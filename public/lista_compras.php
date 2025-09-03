@@ -4,7 +4,7 @@ declare(strict_types=1);
 // Versão: 2025-09-03 (rascunho in-page + integração ME Eventos)
 
 ini_set('display_errors','1'); error_reporting(E_ALL);
-
+?>
 // ========= Sessão / Auth =========
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? null) == 443);
 if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -167,8 +167,7 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
   })();
 })();
 </script>
-
-
+<?php
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
 CREATE TABLE IF NOT EXISTS lc_rascunhos (
