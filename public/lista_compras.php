@@ -28,60 +28,55 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
 
 // ========= Integração ME Eventos (AJAX) =========
-// GET ?ajax=me_buscar&start=YYYY-MM-DD&end=YYYY-MM-DD&search=...&page=1&limit=50
-if (($_GET['ajax'] ?? '') === 'me_buscar') {
-    header('Content-Type: application/json; charset=utf-8');
-    $ME_BASE = getenv('ME_BASE_URL') ?: '';
-    $ME_KEY  = getenv('ME_API_KEY')   ?: '';
-    if (!$ME_BASE || !$ME_KEY) {
-        echo json_encode(['ok'=>false, 'error'=>'Configuração ausente: defina ME_BASE_URL e ME_API_KEY.']); exit;
-    }
-    $qs = [
-        'start' => $_GET['start'] ?? '',
-        'end'   => $_GET['end']   ?? '',
-        'search'=> $_GET['search']?? '',
-        'page'  => $_GET['page']  ?? '1',
-        'limit' => $_GET['limit'] ?? '50',
-        // você pode acrescentar field_sort/sort se desejar
-    ];
-    // monta URL
-    $url = rtrim($ME_BASE,'/').'/api/v1/events';
-    $sep = '?';
-    foreach ($qs as $k=>$v){ if ($v !== '') { $url .= $sep.urlencode($k).'='.urlencode($v); $sep='&'; } }
-
-    // chama API
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER     => ['Authorization: Bearer '.$ME_KEY, 'Accept: application/json'],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-    ]);
-    $resp = curl_exec($ch);
-    $err  = curl_error($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($err || !$resp || $http >= 400) {
-        echo json_encode(['ok'=>false, 'error'=>"Erro na API ($http): ".($err ?: $resp)]); exit;
-    }
-    $json = json_decode($resp, true);
-    // A doc informa que a listagem vem em "data" e paginação em "pagination"
-    // Campos de interesse: dataevento, horaevento, localevento, nomeevento, convidados
-    $rows = $json['data'] ?? $json ?? [];
-    $out  = [];
-    foreach ($rows as $e) {
-        $out[] = [
-            'espaco'     => (string)($e['localevento'] ?? ''),
-            'convidados' => (int)($e['convidados'] ?? 0),
-            'horario'    => (string)($e['horaevento'] ?? ''),
-            'evento'     => (string)($e['nomeevento'] ?? ''),
-            'data'       => substr((string)($e['dataevento'] ?? ''), 0, 10),
-        ];
-    }
-    echo json_encode(['ok'=>true, 'events'=>$out, 'pagination'=>$json['pagination'] ?? null], JSON_UNESCAPED_UNICODE);
-    exit;
+// ---- MONTA A URL (sem usar urlencode que vira espaço=+; usar rawurlencode em valores) ----
+// --- BASE/KEY ---
+$ME_BASE = rtrim(getenv('ME_BASE_URL') ?: '', '/');   // ex.: https://app2.meeventos.com.br/lisbonbuffet
+$ME_KEY  = getenv('ME_API_KEY') ?: '';
+header('Content-Type: application/json; charset=utf-8');
+if (!$ME_BASE || !$ME_KEY) {
+    echo json_encode(['ok'=>false,'error'=>'Configuração ausente: ME_BASE_URL e ME_API_KEY.']); exit;
 }
 
+// --- NORMALIZA PARAMS ---
+$start = trim((string)($_GET['start'] ?? ''));
+$end   = trim((string)($_GET['end']   ?? ''));
+$search= trim((string)($_GET['search']?? ''));
+$page  = max(1, (int)($_GET['page']  ?? 1));
+$limit = (int)($_GET['limit'] ?? 50);
+if ($limit < 1) $limit = 50; elseif ($limit > 200) $limit = 200;
+
+// só aceita datas Y-m-d
+$reDate = '/^\d{4}-\d{2}-\d{2}$/';
+if ($start !== '' && !preg_match($reDate,$start)) $start = '';
+if ($end   !== '' && !preg_match($reDate,$end))   $end   = '';
+
+// --- MONTA URL ---
+$base = $ME_BASE . '/api/v1/events';
+$params = ["page={$page}","limit={$limit}"];
+if ($start !== '') $params[] = 'start='  . rawurlencode($start);
+if ($end   !== '') $params[] = 'end='    . rawurlencode($end);
+if ($search!== '') $params[] = 'search=' . rawurlencode($search);
+$url = $base . '?' . implode('&',$params);
+
+// --- CHAMADA cURL ---
+$ch = curl_init($url);
+curl_setopt_array($ch, [
+  CURLOPT_HTTPHEADER     => [
+    'Authorization: Bearer '.$ME_KEY,
+    'Accept: application/json'
+  ],
+  CURLOPT_USERAGENT      => 'PainelSmile/1.0 (+PHP cURL)',
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_TIMEOUT        => 20,
+]);
+$resp = curl_exec($ch);
+$err  = curl_error($ch);
+$http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if ($err || !$resp || $http >= 400) {
+  echo json_encode(['ok'=>false,'error'=>"Erro na API ($http): ".($err ?: $resp),'debug_url'=>$url]); exit;
+}
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
 CREATE TABLE IF NOT EXISTS lc_rascunhos (
