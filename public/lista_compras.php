@@ -4,7 +4,7 @@ declare(strict_types=1);
 // Versão: 2025-09-03 (rascunho in-page + integração ME Eventos)
 
 ini_set('display_errors','1'); error_reporting(E_ALL);
-?>
+
 // ========= Sessão / Auth =========
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? null) == 443);
 if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -27,7 +27,7 @@ if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
 
-
+?>
 <!-- === BLOCO: Cabeçalho + Botão Buscar na ME === -->
 <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px;">
   <strong>Dados do Evento</strong>
