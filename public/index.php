@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 session_start();
-<?php
+
 declare(strict_types=1);
 
 session_start();
