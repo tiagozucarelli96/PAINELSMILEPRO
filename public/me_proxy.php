@@ -2,14 +2,9 @@
 // me_proxy.php — Proxy seguro para ME Eventos (GET /api/v1/events)
 declare(strict_types=1);
 
-// (Opcional) proteja por sessão/login do seu painel:
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['ok'=>false,'erro'=>'Não autorizado']);
-    exit;
-}
+// DESBLOQUEIO TEMPORÁRIO PARA TESTE — REMOVER EM PRODUÇÃO
+// (deixe sem checagem de sessão enquanto valida a ME)
 
 header('Content-Type: application/json; charset=utf-8');
 
