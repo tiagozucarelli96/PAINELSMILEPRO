@@ -3,9 +3,6 @@ declare(strict_types=1);
 
 session_start();
 
-declare(strict_types=1);
-
-session_start();
 /* ===== ATALHO TEMPORÁRIO (REMOVER APÓS O TESTE) ===== */
 if (
   (isset($_GET['route']) && $_GET['route'] === 'me_proxy') ||
