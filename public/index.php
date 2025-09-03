@@ -2,6 +2,20 @@
 declare(strict_types=1);
 
 session_start();
+<?php
+declare(strict_types=1);
+
+session_start();
+/* ===== ATALHO TEMPORÁRIO (REMOVER APÓS O TESTE) ===== */
+if (
+  (isset($_GET['route']) && $_GET['route'] === 'me_proxy') ||
+  (isset($_GET['page'])  && $_GET['page']  === 'me_proxy')
+) {
+  header('Content-Type: application/json; charset=utf-8');
+  require __DIR__ . '/me_proxy.php';
+  exit;
+}
+/* ===== FIM DO ATALHO TEMPORÁRIO ===== */
 
 $debug = getenv('APP_DEBUG') === '1';
 ini_set('display_errors', $debug ? '1' : '0');
