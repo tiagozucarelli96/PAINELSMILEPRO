@@ -1,14 +1,17 @@
 <?php
-// File: public/tarefas.php
 declare(strict_types=1);
-session_start();
 
-require_once __DIR__ . '/conexao.php'; // $pdo (PDO Postgres)
-
-if (empty($_SESSION['user_id'])) {
-  header('Location: /login.php'); exit;
+// Não iniciar sessão duas vezes
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
 }
-$userId = (int) $_SESSION['user_id'];
+
+// Evita avisos irem para a saída (e quebrarem header)
+ini_set('display_errors', '0'); // loga mas não mostra
+// ini_set('log_errors', '1'); // opcional: ligar logs
+
+require_once __DIR__ . '/conexao.php'; // $pdo
+
 
 // ---- Helpers ----
 function clickup_authorize_url(): string {
