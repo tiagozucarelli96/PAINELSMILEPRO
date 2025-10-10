@@ -1,11 +1,12 @@
 <?php
-// File: public/auth/clickup/callback.php
-
 declare(strict_types=1);
-session_start();
 
-// Ajuste o caminho da sua conexão (PDO Postgres)
-require_once __DIR__ . '/../../conexao.php'; // deve expor $pdo (PDO) conectado no Postgres
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_start();
+}
+
+require_once __DIR__ . '/../../conexao.php';
+
 
 // ----- Config -----
 $CLIENT_ID     = getenv('CLICKUP_CLIENT_ID') ?: '';
