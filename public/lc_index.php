@@ -84,21 +84,22 @@ $erroQuery = '';
 
 if ($pdo) {
     try {
-        // Tabela esperada: lc_listas (id, tipo, eventos_resumo, espaco_consolidado, criado_por, criado_por_nome, data_gerada, deleted_at)
+        // Tabela esperada: lc_listas (id, tipo, resumo_eventos, espaco_resumo, criado_por, criado_em, deletado_em)
         // tipo: lc_tipo_lista => 'compras' | 'encomendas'
+        // Join opcional com usuarios (id, nome)
         $sqlBase = "
-        SELECT l.id,
-               l.grupo_id,
-               l.tipo,
-               COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
-               COALESCE(l.eventos_resumo, '')              AS resumo_eventos,
-               l.data_gerada,
-               COALESCE(l.criado_por_nome, '—')            AS criado_por
-        FROM lc_listas l
-        WHERE l.deleted_at IS NULL AND l.tipo = :tipo
-        ORDER BY l.data_gerada DESC, l.grupo_id DESC
-        LIMIT :limit OFFSET :offset
-    ";
+            SELECT l.id,
+                   l.tipo,
+                   COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
+                   COALESCE(l.resumo_eventos, '')           AS resumo_eventos,
+                   l.criado_em,
+                   COALESCE(u.nome, '—')                    AS criado_por
+            FROM lc_listas l
+            LEFT JOIN usuarios u ON u.id = l.criado_por
+            WHERE l.deletado_em IS NULL AND l.tipo = :tipo
+            ORDER BY l.criado_em DESC
+            LIMIT :limit OFFSET :offset
+        ";
         $stmt1 = $pdo->prepare($sqlBase);
         $stmt1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $stmt1->bindValue(':limit', $pp, PDO::PARAM_INT);
@@ -114,7 +115,7 @@ if ($pdo) {
         $encomendas = $stmt2->fetchAll();
 
         // Totais p/ paginação
-        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE deleted_at IS NULL AND tipo = :tipo";
+        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE deletado_em IS NULL AND tipo = :tipo";
         $c1 = $pdo->prepare($sqlCount);
         $c1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $c1->execute();
@@ -231,17 +232,17 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
           </td></tr>
         <?php else: foreach ($compras as $r): ?>
           <tr>
-            <td>#<?php echo (int)$r['grupo_id']; ?></td>
+            <td>#<?php echo (int)$r['id']; ?></td>
             <td>
-              <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
-              <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
+              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
+              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
             </td>
             <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
             <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
             <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
             <td class="actions">
-              <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
-              <a href="pdf_compras.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
+              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
+              <a href="pdf_compras.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
               <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
             </td>
           </tr>
@@ -284,17 +285,17 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
           </td></tr>
         <?php else: foreach ($encomendas as $r): ?>
           <tr>
-            <td>#<?php echo (int)$r['grupo_id']; ?></td>
+            <td>#<?php echo (int)$r['id']; ?></td>
             <td>
-              <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
-              <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
+              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
+              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
             </td>
             <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
             <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
             <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
             <td class="actions">
-              <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
-              <a href="pdf_encomendas.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
+              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
+              <a href="pdf_encomendas.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
               <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
             </td>
           </tr>
