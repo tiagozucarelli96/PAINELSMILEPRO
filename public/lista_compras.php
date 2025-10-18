@@ -43,23 +43,6 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
   <div><label>Evento</label><input id="evento_nome" name="evento_nome" class="input-sm" required readonly></div>
   <div><label>Data</label><input id="evento_data" name="evento_data" type="date" class="input-sm" required readonly></div>
 </div>
-<input type="hidden" id="evento_id_me" name="evento_id_me" required>
-
-<!-- === BLOCO: Modal de Busca na ME === -->
-<div id="modalME" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
-  <div style="max-width:980px;margin:40px auto;background:#fff;border-radius:12px;padding:16px;">
-    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-      <div><label>Início</label><input type="date" id="me_start" class="input-sm" value="<?php echo date('Y-m-d'); ?>"></div>
-      <div><label>Fim</label><input type="date" id="me_end" class="input-sm" value="<?php echo date('Y-m-d', strtotime('+30 days')); ?>"></div>
-      <div style="flex:1;min-width:240px;"><label>Buscar</label><input type="text" id="me_q" class="input-sm" placeholder="cliente, observação, evento…"></div>
-      <button type="button" id="me_exec" class="btn">Buscar</button>
-      <button type="button" id="me_close" class="btn" style="background:#777;">Fechar</button>
-    </div>
-    <div id="me_results" style="margin-top:14px;max-height:460px;overflow:auto;border:1px solid #eee;border-radius:10px">
-      <div style="padding:12px;color:#666">Use os filtros e clique em Buscar.</div>
-    </div>
-  </div>
-</div>
 
 <?php
 // ========= Rascunhos (tudo na mesma página) =========
@@ -631,7 +614,7 @@ function addEventoME(e){
     $draftIds = $RAS_PAYLOAD['payload']['itens_ids'] ?? [];
     $draftSet = array_flip(array_map('intval',$draftIds));
     ?>
-
+<input type="hidden" id="evento_id_me" name="evento_id_me" required>
     <form id="formLC" method="post">
       <?php if ($RAS_PAYLOAD): ?>
         <input type="hidden" name="rascunho_id" value="<?= (int)$RAS_PAYLOAD['id'] ?>">
@@ -762,6 +745,21 @@ function addEventoME(e){
     <div id="meResultados"></div>
     <div style="margin-top:8px;font-size:12px;color:#666">
       Dica: Informe um intervalo curto (ex.: fim de semana) para carregar mais rápido.
+    </div>
+  </div>
+</div>
+    <!-- === BLOCO: Modal de Busca na ME === -->
+<div id="modalME" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
+  <div style="max-width:980px;margin:40px auto;background:#fff;border-radius:12px;padding:16px;">
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+      <div><label>Início</label><input type="date" id="me_start" class="input-sm" value="<?php echo date('Y-m-d'); ?>"></div>
+      <div><label>Fim</label><input type="date" id="me_end" class="input-sm" value="<?php echo date('Y-m-d', strtotime('+30 days')); ?>"></div>
+      <div style="flex:1;min-width:240px;"><label>Buscar</label><input type="text" id="me_q" class="input-sm" placeholder="cliente, observação, evento…"></div>
+      <button type="button" id="me_exec" class="btn">Buscar</button>
+      <button type="button" id="me_close" class="btn" style="background:#777;">Fechar</button>
+    </div>
+    <div id="me_results" style="margin-top:14px;max-height:460px;overflow:auto;border:1px solid #eee;border-radius:10px">
+      <div style="padding:12px;color:#666">Use os filtros e clique em Buscar.</div>
     </div>
   </div>
 </div>
