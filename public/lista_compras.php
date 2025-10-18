@@ -102,7 +102,7 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
     try {
       // Enquanto o atalho temporário existir no index.php, usamos ?page=me_proxy.
       // Depois, você pode trocar por "/me_proxy.php?..." direto.
-      const r = await fetch('/?page=me_proxy&' + params.toString(), { headers: { 'Accept': 'application/json' }});
+      const r = await fetch('/me_proxy.php?' + params.toString(), { headers: { 'Accept': 'application/json' }});
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
 
