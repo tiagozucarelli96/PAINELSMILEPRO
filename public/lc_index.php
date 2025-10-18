@@ -84,22 +84,21 @@ $erroQuery = '';
 
 if ($pdo) {
     try {
-        // Tabela esperada: lc_listas (id, tipo, resumo_eventos, espaco_resumo, criado_por, criado_em, deletado_em)
+        // Tabela esperada: lc_listas (id, tipo, eventos_resumo, espaco_consolidado, criado_por, criado_por_nome, data_gerada)
         // tipo: lc_tipo_lista => 'compras' | 'encomendas'
-        // Join opcional com usuarios (id, nome)
         $sqlBase = "
-            SELECT l.id,
-                   l.tipo,
-                   COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
-                   COALESCE(l.resumo_eventos, '')           AS resumo_eventos,
-                   l.criado_em,
-                   COALESCE(u.nome, '—')                    AS criado_por
-            FROM lc_listas l
-            LEFT JOIN usuarios u ON u.id = l.criado_por
-            WHERE l.deletado_em IS NULL AND l.tipo = :tipo
-            ORDER BY l.criado_em DESC
-            LIMIT :limit OFFSET :offset
-        ";
+        SELECT l.id,
+               l.grupo_id,
+               l.tipo,
+               COALESCE(l.espaco_consolidado, 'Múltiplos') AS espaco_resumo,
+               COALESCE(l.eventos_resumo, '')              AS resumo_eventos,
+               l.data_gerada,
+               COALESCE(l.criado_por_nome, '—')            AS criado_por
+        FROM lc_listas l
+        WHERE l.tipo = :tipo
+        ORDER BY l.data_gerada DESC, l.grupo_id DESC
+        LIMIT :limit OFFSET :offset
+    ";
         $stmt1 = $pdo->prepare($sqlBase);
         $stmt1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $stmt1->bindValue(':limit', $pp, PDO::PARAM_INT);
@@ -115,7 +114,7 @@ if ($pdo) {
         $encomendas = $stmt2->fetchAll();
 
         // Totais p/ paginação
-        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE deletado_em IS NULL AND tipo = :tipo";
+        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE tipo = :tipo";
         $c1 = $pdo->prepare($sqlCount);
         $c1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $c1->execute();
@@ -144,35 +143,7 @@ $isAdmin = !empty($_SESSION['perm_usuarios']) || !empty($_SESSION['perm_admin'])
 <meta charset="utf-8">
 <title>Lista de Compras — Histórico</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-:root{ --azul:#004aad; --bg:#f6f8ff; --cinza:#667085; --borda:#e5e7eb; }
-*{ box-sizing: border-box; }
-body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial; background:var(--bg); color:#0f172a; }
-.container{ max-width:1100px; margin:22px auto; padding:0 16px; }
-.topbar{ display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
-.topbar .grow{ flex:1; }
-.btn{ background:var(--azul); color:#fff; border:none; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
-.btn.secondary{ background:#e9efff; color:#0f172a; }
-.btn:disabled{ opacity:.5; cursor:not-allowed; }
-.card{ background:#fff; border:1px solid var(--borda); border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.05); margin-bottom:18px; }
-.card h2{ font-size:18px; margin:0; padding:14px 16px; border-bottom:1px solid var(--borda); }
-.table-wrap{ overflow:auto; }
-table{ width:100%; border-collapse:collapse; }
-th,td{ padding:12px 10px; border-bottom:1px solid var(--borda); text-align:left; font-size:14px; vertical-align:top; }
-th{ background:#fafafa; color:#111827; font-weight:700; }
-.badge{ display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; color:#1e3a8a; padding:3px 8px; border-radius:999px; font-size:12px; }
-.meta{ color:var(--cinza); font-size:12px; }
-.actions a, .actions button{ font-size:13px; margin-right:10px; text-decoration:none; }
-.pagin{ display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; }
-.pagin a, .pagin span{ padding:6px 10px; border:1px solid var(--borda); border-radius:8px; background:#fff; text-decoration:none; color:#111827; }
-.pagin .atual{ background:#eff6ff; border-color:#bfdbfe; font-weight:700; }
-.alert{ background:#fff8e1; border:1px solid #fde68a; padding:10px 12px; border-radius:10px; margin-bottom:12px; font-size:14px; }
-.err{ background:#fee2e2; border:1px solid #fecaca; padding:10px 12px; border-radius:10px; margin-bottom:12px; }
-.top-buttons{ display:flex; gap:10px; }
-@media (max-width:640px){
-  th:nth-child(3), td:nth-child(3){ display:none; } /* esconde 'Espaço' no mobile p/ caber */
-}
-</style>
+<link rel="stylesheet" href="estilo.css">
 </head>
 <body class="panel has-sidebar">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
@@ -181,27 +152,19 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
 
     <!-- INÍCIO CONTEÚDO -->
     <div class="topbar">
-      ...seu conteúdo (tabelas, cards etc.)...
+      <div class="grow">
+        <h1 style="margin:0;font-size:22px;">Lista de Compras — Histórico</h1>
+        <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
+      </div>
+      <div class="top-buttons">
+        <a class="btn" href="lista_compras.php">Gerar Lista de Compras</a>
+        <?php if ($isAdmin): ?>
+          <a class="btn secondary" href="configuracoes.php">Configurações</a>
+        <?php else: ?>
+          <a class="btn secondary" style="pointer-events:none;opacity:.6">Configurações</a>
+        <?php endif; ?>
+      </div>
     </div>
-    <!-- FIM CONTEÚDO -->
-
-  </div> <!-- fecha .container -->
-</div> <!-- fecha .main-content -->
-</body>
-</html>
-  <div class="topbar">
-    <div class="grow">
-      <h1 style="margin:0;font-size:22px;">Lista de Compras — Histórico</h1>
-      <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
-    </div>
-    <div class="top-buttons">
-  <a class="btn" href="lista_compras.php">Gerar Lista de Compras</a>
-  <?php if ($isAdmin): ?>
-    <a class="btn secondary" href="configuracoes.php">Configurações</a>
-  <?php else: ?>
-    <a class="btn secondary" style="pointer-events:none;opacity:.6">Configurações</a>
-  <?php endif; ?>
-</div>
 
 
   <?php if ($db_error): ?>
@@ -210,60 +173,60 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
     <div class="err"><?php echo h($erroQuery); ?></div>
   <?php endif; ?>
 
-  <!-- Compras -->
-  <div class="card">
-    <h2>Últimas listas de compras</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:70px;">Nº</th>
-            <th>Data gerada</th>
-            <th>Espaço</th>
-            <th>Eventos (resumo)</th>
-            <th>Criado por</th>
-            <th style="width:210px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-        <?php if (!$compras): ?>
-          <tr><td colspan="6">
-            <div class="alert">Nenhuma lista gerada ainda. Clique em <strong>Gerar Lista de Compras</strong> para começar.</div>
-          </td></tr>
-        <?php else: foreach ($compras as $r): ?>
-          <tr>
-            <td>#<?php echo (int)$r['id']; ?></td>
-            <td>
-              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
-              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
-            </td>
-            <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
-            <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
-            <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
-            <td class="actions">
-              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
-              <a href="pdf_compras.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
-              <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
-            </td>
-          </tr>
-        <?php endforeach; endif; ?>
-        </tbody>
-      </table>
-    </div>
-    <?php if ($pages1 > 1): ?>
-      <div class="pagin">
-        <?php for ($i=1; $i<=$pages1; $i++): ?>
-          <?php if ($i === $p1): ?>
-            <span class="atual"><?php echo $i; ?></span>
-          <?php else: ?>
-            <a href="?p1=<?php echo $i; ?>&p2=<?php echo $p2; ?>"><?php echo $i; ?></a>
-          <?php endif; ?>
-        <?php endfor; ?>
+    <!-- Compras -->
+    <div class="card">
+      <h2>Últimas listas de compras</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:70px;">Nº</th>
+              <th>Data gerada</th>
+              <th>Espaço</th>
+              <th>Eventos (resumo)</th>
+              <th>Criado por</th>
+              <th style="width:210px;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php if (!$compras): ?>
+            <tr><td colspan="6">
+              <div class="alert">Nenhuma lista gerada ainda. Clique em <strong>Gerar Lista de Compras</strong> para começar.</div>
+            </td></tr>
+          <?php else: foreach ($compras as $r): ?>
+            <tr>
+              <td>#<?php echo (int)$r['grupo_id']; ?></td>
+              <td>
+                <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
+                <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
+              </td>
+              <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
+              <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
+              <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
+              <td class="actions">
+                <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
+                <a href="pdf_compras.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
+                <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
+              </td>
+            </tr>
+          <?php endforeach; endif; ?>
+          </tbody>
+        </table>
       </div>
-    <?php endif; ?>
-  </div>
+      <?php if ($pages1 > 1): ?>
+        <div class="pagin">
+          <?php for ($i=1; $i<=$pages1; $i++): ?>
+            <?php if ($i === $p1): ?>
+              <span class="atual"><?php echo $i; ?></span>
+            <?php else: ?>
+              <a href="?p1=<?php echo $i; ?>&p2=<?php echo $p2; ?>"><?php echo $i; ?></a>
+            <?php endif; ?>
+          <?php endfor; ?>
+        </div>
+      <?php endif; ?>
+    </div>
 
-  <!-- Encomendas -->
+    <!-- Encomendas -->
   <div class="card">
     <h2>Últimas listas de encomendas</h2>
     <div class="table-wrap">
@@ -285,17 +248,17 @@ th{ background:#fafafa; color:#111827; font-weight:700; }
           </td></tr>
         <?php else: foreach ($encomendas as $r): ?>
           <tr>
-            <td>#<?php echo (int)$r['id']; ?></td>
+            <td>#<?php echo (int)$r['grupo_id']; ?></td>
             <td>
-              <?php echo h(fmtDataPt($r['criado_em'] ?? '')); ?><br>
-              <span class="meta">ID interno: <?php echo (int)$r['id']; ?></span>
+              <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
+              <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
             </td>
             <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
             <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
             <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
             <td class="actions">
-              <a href="ver.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Visualizar</a>
-              <a href="pdf_encomendas.php?id=<?php echo (int)$r['id']; ?>" target="_blank">PDF</a>
+              <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
+              <a href="pdf_encomendas.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
               <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
             </td>
           </tr>
