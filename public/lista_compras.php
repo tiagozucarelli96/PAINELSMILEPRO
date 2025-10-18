@@ -636,9 +636,7 @@ function addEventoME(e){
                 <input class="input" type="date" name="eventos[<?= $i ?>][data]" value="<?= h($e['data'] ?? '') ?>">
               </div>
             </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
+    
 
       <div class="block">
         <h2>Categorias e Itens</h2>
