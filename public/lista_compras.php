@@ -28,14 +28,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
 
 ?>
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lista de Compras</title>
-</head>
-<body>
+
 <!-- === BLOCO: Cabeçalho + Botão Buscar na ME === -->
 <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px;">
   <strong>Dados do Evento</strong>
