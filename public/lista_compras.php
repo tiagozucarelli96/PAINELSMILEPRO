@@ -415,14 +415,14 @@ function addEventoME(e){
   /* 1) Reserva espaço pro menu azul (ajuste a largura se o seu menu tiver outro tamanho) */
   :root { --largura-menu: 180px; /* se o seu menu tiver 200px, mude aqui */ }
 
-  /* Conteúdo principal não fica "por baixo" do menu fixo */
+/* Conteúdo principal não fica "por baixo" do menu fixo */
   .page-content,
   .content,
   .main,
   #conteudo,
   .wrap,
-  .container {
-    .main-content { /* <-- ADICIONE ESTA LINHA */
+  .container,
+  .main-content { /* <--- A CLASSE DEVE ESTAR AQUI, SEPARADA POR VÍRGULA */
     margin-left: var(--largura-menu);
     padding: 12px 16px;
     min-width: 0; /* evita esmagamento de grids */
@@ -620,20 +620,6 @@ function addEventoME(e){
         <input type="hidden" name="rascunho_id" value="<?= (int)$RAS_PAYLOAD['id'] ?>">
       <?php endif; ?>
       <input type="hidden" name="acao" id="acao" value="">
-
-      <div class="block">
-        <h2 style="display:flex;align-items:center;gap:8px">
-          Eventos
-          <button class="btn gray" type="button" onclick="abrirME()">Buscar na ME Eventos</button>
-        </h2>
-        <div id="ev-wrap">
-          <?php foreach ($evDraft as $i=>$e): ?>
-            <div class="grid ev-row">
-              <div>
-                <label class="small">Espaço</label>
-                <input class="input" name="eventos[<?= $i ?>][espaco]" required value="<?= h($e['espaco'] ?? '') ?>">
-              </div>
-              <div>
                 <label class="small">Convidados</label>
                 <input class="input" type="number" name="eventos[<?= $i ?>][convidados]" min="0" value="<?= (int)($e['convidados'] ?? 0) ?>">
               </div>
@@ -710,43 +696,7 @@ function addEventoME(e){
   </div>
 </div>
 
-<!-- Modal ME -->
-<div class="modal" id="modalME">
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <h3>Buscar eventos na ME</h3>
-      <button class="btn gray" type="button" onclick="fecharME()">Fechar</button>
-    </div>
-    <form onsubmit="buscarME(event)" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px">
-      <div>
-        <label class="small">Início</label>
-        <input class="input" type="date" name="start" required>
-      </div>
-      <div>
-        <label class="small">Fim</label>
-        <input class="input" type="date" name="end" required>
-      </div>
-      <div style="flex:1;min-width:220px">
-        <label class="small">Buscar (nome/cliente/obs)</label>
-        <input class="input" type="text" name="search" placeholder="Ex: Ouro, aniversário, cliente...">
-      </div>
-      <div>
-        <label class="small">Página</label>
-        <input class="input" type="number" name="page" value="1" min="1">
-      </div>
-      <div>
-        <label class="small">Limite</label>
-        <input class="input" type="number" name="limit" value="50" min="1" max="200">
-      </div>
-      <div style="align-self:end">
-        <button class="btn" type="submit">Buscar</button>
-      </div>
-    </form>
-    <div id="meResultados"></div>
-    <div style="margin-top:8px;font-size:12px;color:#666">
-      Dica: Informe um intervalo curto (ex.: fim de semana) para carregar mais rápido.
-    </div>
-  </div>
+
 </div>
     <!-- === BLOCO: Modal de Busca na ME === -->
 <div id="modalME" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
