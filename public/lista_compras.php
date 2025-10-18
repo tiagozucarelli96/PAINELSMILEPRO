@@ -553,6 +553,7 @@ function addEventoME(e){
   #conteudo,
   .wrap,
   .container {
+    .main-content { /* <-- ADICIONE ESTA LINHA */
     margin-left: var(--largura-menu);
     padding: 12px 16px;
     min-width: 0; /* evita esmagamento de grids */
