@@ -68,113 +68,6 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
   </div>
 </div>
 
-<!-- === BLOCO: Script ME (usa o proxy ?page=me_proxy) === -->
-<script>
-(function(){
-  const $ = s => document.querySelector(s);
-  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
-
-  const openModal  = () => { modal.style.display = 'block'; };
-  const closeModal = () => { modal.style.display = 'none'; };
-
-  btnOpen?.addEventListener('click', openModal);
-  btnClose?.addEventListener('click', closeModal);
-
-  // MAPEAMENTO EXATO solicitado
-  function mapEventoToForm(raw){
-    const pad = s => (s||'').toString();
-    return {
-      espaco:     pad(raw.tipoEvento),                 // Espaço
-      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
-      hora:       pad(raw.horaevento).slice(0,5),      // Horário (HH:MM)
-      nome:       pad(raw.observacao||''),             // Evento
-      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
-      id:         pad(raw.id||'')
-    };
-  }
-
-  // Buscar no proxy
-  btnExec?.addEventListener('click', async ()=>{
-    const start = $('#me_start').value || '';
-    const end   = $('#me_end').value   || '';
-    const q     = $('#me_q').value     || '';
-
-    const params = new URLSearchParams();
-    if (start) params.set('start', start);
-    if (end)   params.set('end', end);
-    if (q)     params.set('search', q);
-    params.set('field_sort','id'); params.set('sort','desc');
-    params.set('page','1'); params.set('limit','50');
-
-    box.innerHTML = '<div style="padding:12px">Buscando…</div>';
-    try {
-      // Enquanto o atalho temporário existir no index.php, usamos ?page=me_proxy.
-      // Depois, você pode trocar por "/me_proxy.php?..." direto.
-      const r = await fetch('/me_proxy.php?' + params.toString(), { headers: { 'Accept': 'application/json' }});
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const j = await r.json();
-
-      const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
-      if (!lista.length) { box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; return; }
-
-      const header = `
-        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
-          <div>Observação (Cliente)</div><div>Tipo</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
-        </div>`;
-
-      const rows = lista.map(raw => {
-        const ev = mapEventoToForm(raw);
-        const cliente = raw.nomeCliente ?? raw.nomecliente ?? '';
-        const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
-        const payload = encodeURIComponent(JSON.stringify({ev}));
-        return `
-          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
-            <div><strong>${ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
-            <div>${ev.espaco || ''}</div>
-            <div>${ev.convidados || ''}</div>
-            <div>${dataBR || ''}</div>
-            <div>${ev.hora || ''}</div>
-            <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
-          </div>`;
-      }).join('');
-
-      box.innerHTML = header + rows;
-
-      // Seleciona evento -> preenche e trava
-      box.querySelectorAll('.me-usar').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const {ev} = JSON.parse(decodeURIComponent(btn.getAttribute('data-payload')));
-          const set = (id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v??''; el.readOnly=true; } };
-          set('evento_espaco', ev.espaco);
-          set('evento_convidados', ev.convidados);
-          set('evento_hora', ev.hora);
-          set('evento_nome', ev.nome);
-          set('evento_data', ev.data);
-          const hid = document.getElementById('evento_id_me'); if (hid) hid.value = ev.id || '';
-          closeModal();
-          document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
-        });
-      });
-
-    } catch (e) {
-      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
-    }
-  });
-
-  // Impede submit sem evento da ME
-  (function(){
-    const form = document.querySelector('form');
-    if (!form) return;
-    form.addEventListener('submit', (ev)=>{
-      const hid = document.getElementById('evento_id_me');
-      if (!hid || !hid.value) {
-        ev.preventDefault();
-        alert('Selecione um evento pela ME antes de gerar a lista.');
-      }
-    });
-  })();
-})();
-</script>
 <?php
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
@@ -587,7 +480,113 @@ function addEventoME(e){
     .lc-aside-fix { position: static; }
   }
 </style>
+<!-- === BLOCO: Script ME (usa o proxy ?page=me_proxy) === -->
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
 
+  const openModal  = () => { modal.style.display = 'block'; };
+  const closeModal = () => { modal.style.display = 'none'; };
+
+  btnOpen?.addEventListener('click', openModal);
+  btnClose?.addEventListener('click', closeModal);
+
+  // MAPEAMENTO EXATO solicitado
+  function mapEventoToForm(raw){
+    const pad = s => (s||'').toString();
+    return {
+      espaco:     pad(raw.tipoEvento),                 // Espaço
+      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
+      hora:       pad(raw.horaevento).slice(0,5),      // Horário (HH:MM)
+      nome:       pad(raw.observacao||''),             // Evento
+      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
+      id:         pad(raw.id||'')
+    };
+  }
+
+  // Buscar no proxy
+  btnExec?.addEventListener('click', async ()=>{
+    const start = $('#me_start').value || '';
+    const end   = $('#me_end').value   || '';
+    const q     = $('#me_q').value     || '';
+
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end)   params.set('end', end);
+    if (q)     params.set('search', q);
+    params.set('field_sort','id'); params.set('sort','desc');
+    params.set('page','1'); params.set('limit','50');
+
+    box.innerHTML = '<div style="padding:12px">Buscando…</div>';
+    try {
+      // Enquanto o atalho temporário existir no index.php, usamos ?page=me_proxy.
+      // Depois, você pode trocar por "/me_proxy.php?..." direto.
+      const r = await fetch('/me_proxy.php?' + params.toString(), { headers: { 'Accept': 'application/json' }});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+
+      const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
+      if (!lista.length) { box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; return; }
+
+      const header = `
+        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
+          <div>Observação (Cliente)</div><div>Tipo</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
+        </div>`;
+
+      const rows = lista.map(raw => {
+        const ev = mapEventoToForm(raw);
+        const cliente = raw.nomeCliente ?? raw.nomecliente ?? '';
+        const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
+        const payload = encodeURIComponent(JSON.stringify({ev}));
+        return `
+          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
+            <div><strong>${ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
+            <div>${ev.espaco || ''}</div>
+            <div>${ev.convidados || ''}</div>
+            <div>${dataBR || ''}</div>
+            <div>${ev.hora || ''}</div>
+            <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
+          </div>`;
+      }).join('');
+
+      box.innerHTML = header + rows;
+
+      // Seleciona evento -> preenche e trava
+      box.querySelectorAll('.me-usar').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const {ev} = JSON.parse(decodeURIComponent(btn.getAttribute('data-payload')));
+          const set = (id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v??''; el.readOnly=true; } };
+          set('evento_espaco', ev.espaco);
+          set('evento_convidados', ev.convidados);
+          set('evento_hora', ev.hora);
+          set('evento_nome', ev.nome);
+          set('evento_data', ev.data);
+          const hid = document.getElementById('evento_id_me'); if (hid) hid.value = ev.id || '';
+          closeModal();
+          document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
+        });
+      });
+
+    } catch (e) {
+      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
+    }
+  });
+
+  // Impede submit sem evento da ME
+  (function(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('submit', (ev)=>{
+      const hid = document.getElementById('evento_id_me');
+      if (!hid || !hid.value) {
+        ev.preventDefault();
+        alert('Selecione um evento pela ME antes de gerar a lista.');
+      }
+    });
+  })();
+})();
+</script>
 </head>
 <body class="panel">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
