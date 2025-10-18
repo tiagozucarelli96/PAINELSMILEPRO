@@ -28,6 +28,14 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
 
 ?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lista de Compras</title>
+</head>
+<body>
 <!-- === BLOCO: Cabeçalho + Botão Buscar na ME === -->
 <div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px;">
   <strong>Dados do Evento</strong>
@@ -526,6 +534,59 @@ function addEventoME(e){
   fecharME();
 }
 </script>
+    <style>
+  /* ====== Hotfix de layout – Lista de Compras ======
+     Objetivo: reservar espaço pro menu azul à esquerda
+     e criar 2 colunas: miolo (1fr) + painel direito (360px)
+  */
+
+  /* Garante cálculo correto de largura/padding */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* 1) Reserva espaço pro menu azul (ajuste a largura se o seu menu tiver outro tamanho) */
+  :root { --largura-menu: 180px; /* se o seu menu tiver 200px, mude aqui */ }
+
+  /* Conteúdo principal não fica "por baixo" do menu fixo */
+  .page-content,
+  .content,
+  .main,
+  #conteudo,
+  .wrap,
+  .container {
+    margin-left: var(--largura-menu);
+    padding: 12px 16px;
+    min-width: 0; /* evita esmagamento de grids */
+  }
+
+  /* 2) Duas colunas: miolo + painel direito */
+  .lc-grid-fix {
+    display: grid;
+    grid-template-columns: 1fr 360px; /* miolo / painel direito */
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* Painel direito fica “grudado” no topo ao rolar */
+  .lc-aside-fix {
+    position: sticky;
+    top: 12px;
+  }
+
+  /* 3) Campos do topo (Espaço, Convidados, Horário, Evento, Data) em grid fluido */
+  .lc-filtros-topo {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(160px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  /* 4) Responsivo: em telas menores, quebra as colunas */
+  @media (max-width: 1200px) {
+    .lc-grid-fix { grid-template-columns: 1fr; }
+    .lc-aside-fix { position: static; }
+  }
+</style>
+
 </head>
 <body class="panel">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
