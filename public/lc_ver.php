@@ -1,143 +1,301 @@
 <?php
-// lc_ver.php — detalhe de um grupo (Compras + Encomendas)
-require_once __DIR__.'/conexao.php';
-header('Content-Type: text/html; charset=utf-8');
+// public/lc_ver.php
+// Visualiza uma lista gerada (compras ou encomendas)
 
-$grupo = isset($_GET['grupo']) ? (int)$_GET['grupo'] : 0;
-if ($grupo <= 0) { http_response_code(400); echo "grupo inválido"; exit; }
+session_start();
+require_once __DIR__ . '/conexao.php';
 
-try {
-  $pdo = getPdo();
+$id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras'; // compras|encomendas
 
-  // Cabeçalhos do grupo (devem existir 2 linhas: compras e encomendas)
-  $cab = $pdo->prepare("
-    SELECT grupo_id, tipo, COALESCE(espaco_consolidado,'') AS espaco, 
-           COALESCE(eventos_resumo,'') AS eventos, COALESCE(criado_por,'') AS criado_por,
-           COALESCE(created_at, NOW()) AS dt
-    FROM lc_listas
-    WHERE grupo_id = :g
-    ORDER BY tipo ASC
+if ($id <= 0) {
+  echo "Lista inválida.";
+  exit;
+}
+
+// Cabeçalho
+$stmt = $pdo->prepare("
+  SELECT l.*, u.nome AS criado_por_nome
+  FROM lc_listas l
+  LEFT JOIN usuarios u ON u.id = l.criado_por
+  WHERE l.id = :id
+");
+$stmt->execute([':id' => $id]);
+$lista = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$lista) {
+  echo "Lista não encontrada.";
+  exit;
+}
+
+// Eventos vinculados
+$stmtEv = $pdo->prepare("SELECT * FROM lc_listas_eventos WHERE lista_id = :id ORDER BY id");
+$stmtEv->execute([':id' => $id]);
+$eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
+
+// Itens (dependendo do tipo)
+if ($tipo === 'encomendas') {
+  $stmtItens = $pdo->prepare("
+    SELECT e.*, f.nome AS fornecedor_nome
+    FROM lc_encomendas_itens e
+    LEFT JOIN fornecedores f ON f.id = e.fornecedor_id
+    WHERE e.lista_id = :id
+    ORDER BY f.nome NULLS LAST, e.evento_id, e.item_nome
   ");
-  $cab->execute([':g'=>$grupo]);
-  $cabecalhos = $cab->fetchAll();
-
-  // Compras (insumos)
-  $compras = $pdo->prepare("
-    SELECT insumo_nome, unidade, SUM(quantidade) AS qtd
-    FROM lc_compras_consolidadas
-    WHERE grupo_id = :g
-    GROUP BY insumo_nome, unidade
+} else {
+  $stmtItens = $pdo->prepare("
+    SELECT * FROM lc_compras_consolidadas
+    WHERE lista_id = :id
     ORDER BY insumo_nome
   ");
-  $compras->execute([':g'=>$grupo]);
-  $linhas_compras = $compras->fetchAll();
-
-  // Encomendas (por fornecedor e possivelmente por evento)
-  $encomendas = $pdo->prepare("
-    SELECT COALESCE(f.nome,'(Fornecedor)') AS fornecedor,
-           COALESCE(e.evento_label,'')    AS evento,
-           i.item_nome,
-           SUM(i.quantidade)              AS qtd,
-           COALESCE(i.unidade,'')         AS unidade
-    FROM lc_encomendas_itens i
-    LEFT JOIN fornecedores f ON f.id = i.fornecedor_id
-    LEFT JOIN lc_listas_eventos e ON e.id = i.lista_evento_id
-    WHERE i.grupo_id = :g
-    GROUP BY fornecedor, evento, item_nome, unidade
-    ORDER BY fornecedor, evento, item_nome
-  ");
-  $encomendas->execute([':g'=>$grupo]);
-  $linhas_encomendas = $encomendas->fetchAll();
-
-} catch (Throwable $e) {
-  $erro = $e->getMessage();
 }
+$stmtItens->execute([':id' => $id]);
+$itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
+
 ?>
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8">
-  <title>Grupo #<?=htmlspecialchars($grupo)?> – Detalhe</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lista #<?= (int)$id ?> | Painel Smile PRO</title>
+  <link rel="stylesheet" href="estilo.css">
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:16px;color:#0f172a}
-    h1{font-size:20px;margin:0 0 8px}
-    h2{font-size:16px;margin:20px 0 8px}
-    .muted{color:#64748b}
-    table{width:100%;border-collapse:collapse;margin-top:8px}
-    th,td{padding:8px;border-bottom:1px solid #e5e7eb;font-size:14px;vertical-align:top}
-    th{background:#f8fafc;text-align:left}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .badge{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #cbd5e1;font-size:12px}
-    a.btn{padding:6px 10px;border:1px solid #0ea5e9;border-radius:6px;text-decoration:none}
+    body { padding: 20px; font-family: Arial, sans-serif; }
+    h1,h2,h3 { margin-top: 20px; color:#004080; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th,td { border:1px solid #ccc; padding:6px 8px; text-align:left; }
+    th { background:#f2f6ff; }
+    .badge { padding:2px 6px; background:#eef; border:1px solid #ccd; border-radius:8px; font-size:12px; }
   </style>
 </head>
 <body>
-  <div class="row">
-    <h1>Grupo <span class="badge">#<?=htmlspecialchars($grupo)?></span></h1>
-    <a class="btn" href="lc_index.php">voltar</a>
-  </div>
+  <h1>Lista #<?= (int)$id ?> (<?= strtoupper($tipo) ?>)</h1>
 
-  <?php if(isset($erro)): ?>
-    <p style="color:#dc2626">Erro: <?=htmlspecialchars($erro)?></p>
-  <?php endif; ?>
+  <h3>Informações gerais</h3>
+  <table>
+    <tbody>
+      <tr><td><strong>Data gerada:</strong></td><td><?= h(dt($lista['criado_em'])) ?></td></tr>
+      <tr><td><strong>Espaço:</strong></td><td><?= h($lista['espaco_resumo'] ?: 'Múltiplos') ?></td></tr>
+      <tr><td><strong>Eventos:</strong></td><td><?= h($lista['resumo_eventos']) ?></td></tr>
+      <tr><td><strong>Criado por:</strong></td><td><?= h($lista['criado_por_nome'] ?: ('#'.$lista['criado_por'])) ?></td></tr>
+    </tbody>
+  </table>
 
-  <?php if(!empty($cabecalhos)): ?>
-    <h2>Resumo</h2>
+  <?php if ($eventos): ?>
+    <h3>Eventos vinculados</h3>
     <table>
-      <thead>
-        <tr><th>Tipo</th><th>Espaço</th><th>Eventos</th><th>Criado por</th><th>Data</th></tr>
-      </thead>
+      <thead><tr><th>#</th><th>Evento</th><th>Convidados</th><th>Data</th><th>Resumo</th></tr></thead>
       <tbody>
-        <?php foreach($cabecalhos as $r): ?>
+        <?php foreach ($eventos as $ev): ?>
           <tr>
-            <td><?=htmlspecialchars($r['tipo'])?></td>
-            <td><?=htmlspecialchars($r['espaco'])?></td>
-            <td><?=htmlspecialchars($r['eventos'])?></td>
-            <td><?=htmlspecialchars($r['criado_por'])?></td>
-            <td><span class="muted"><?=htmlspecialchars($r['dt'])?></span></td>
+            <td><?= (int)$ev['evento_id'] ?></td>
+            <td>Evento #<?= (int)$ev['evento_id'] ?></td>
+            <td><?= (int)$ev['convidados'] ?></td>
+            <td><?= h($ev['data_evento']) ?></td>
+            <td><?= h($ev['resumo']) ?></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   <?php endif; ?>
 
-  <h2>Lista de Compras (insumos)</h2>
+  <?php
+  // === Resumo financeiro e por convidado (on-the-fly) ===
+  // Soma custos em ambas as saídas:
+  $totCompras = 0; $totEncom = 0;
+
+  // compras
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(custo),0) FROM lc_compras_consolidadas WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totCompras = (float)$stTmp->fetchColumn();
+
+  // encomendas
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(custo),0) FROM lc_encomendas_itens WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totEncom = (float)$stTmp->fetchColumn();
+
+  $totGeral = $totCompras + $totEncom;
+
+  // total convidados (somando todos os eventos vinculados)
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM lc_listas_eventos WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totConvidados = (int)$stTmp->fetchColumn();
+
+  $custoPorConvidado = $totConvidados > 0 ? ($totGeral / $totConvidados) : 0;
+  ?>
+  <h3>Resumo financeiro</h3>
   <table>
-    <thead>
-      <tr><th>Insumo</th><th>Unidade</th><th>Quantidade</th></tr>
-    </thead>
     <tbody>
-      <?php if(empty($linhas_compras)): ?>
-        <tr><td colspan="3" class="muted">Sem itens de compras.</td></tr>
-      <?php else: foreach($linhas_compras as $c): ?>
-        <tr>
-          <td><?=htmlspecialchars($c['insumo_nome'])?></td>
-          <td><?=htmlspecialchars($c['unidade'])?></td>
-          <td><?=htmlspecialchars((string)$c['qtd'])?></td>
-        </tr>
-      <?php endforeach; endif; ?>
+      <tr><td>Total Compras</td><td>R$ <?= number_format($totCompras, 2, ',', '.') ?></td></tr>
+      <tr><td>Total Encomendas</td><td>R$ <?= number_format($totEncom, 2, ',', '.') ?></td></tr>
+      <tr><th>Total Geral</th><th>R$ <?= number_format($totGeral, 2, ',', '.') ?></th></tr>
+      <tr><td>Total de convidados</td><td><?= (int)$totConvidados ?></td></tr>
+      <tr><td><strong>Custo por convidado</strong></td><td><strong>R$ <?= number_format($custoPorConvidado, 2, ',', '.') ?></strong></td></tr>
     </tbody>
   </table>
 
-  <h2>Encomendas</h2>
-  <table>
-    <thead>
-      <tr><th>Fornecedor</th><th>Evento</th><th>Item</th><th>Unidade</th><th>Quantidade</th></tr>
-    </thead>
-    <tbody>
-      <?php if(empty($linhas_encomendas)): ?>
-        <tr><td colspan="5" class="muted">Sem itens de encomenda.</td></tr>
-      <?php else: foreach($linhas_encomendas as $e): ?>
-        <tr>
-          <td><?=htmlspecialchars($e['fornecedor'])?></td>
-          <td><?=htmlspecialchars($e['evento'])?></td>
-          <td><?=htmlspecialchars($e['item_nome'])?></td>
-          <td><?=htmlspecialchars($e['unidade'])?></td>
-          <td><?=htmlspecialchars((string)$e['qtd'])?></td>
-        </tr>
-      <?php endforeach; endif; ?>
-    </tbody>
-  </table>
+  <?php if ($tipo === 'compras'): ?>
+    <h3>Itens — Compras (internas)</h3>
+    <table>
+      <thead><tr><th>Insumo</th><th>Quantidade</th><th>Unidade</th><th>Custo</th></tr></thead>
+      <tbody>
+        <?php
+        $tot = 0;
+        foreach ($itens as $i):
+          $tot += (float)$i['custo'];
+        ?>
+          <tr>
+            <td><?= h($i['insumo_nome']) ?></td>
+            <td><?= number_format((float)$i['qtd'], 3, ',', '.') ?></td>
+            <td><?= h($i['unidade_simbolo']) ?></td>
+            <td>R$ <?= number_format((float)$i['custo'], 2, ',', '.') ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+      <tfoot>
+        <tr><th colspan="3" style="text-align:right">Total</th><th>R$ <?= number_format($tot, 2, ',', '.') ?></th></tr>
+      </tfoot>
+    </table>
+
+  <?php else: ?>
+    <h3>Itens — Encomendas (Fornecedor → Evento)</h3>
+    
+    <!-- Ações rápidas (geral) -->
+    <div style="margin:10px 0; display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="button" onclick="copyText(`<?= htmlspecialchars($txtAll, ENT_QUOTES, 'UTF-8') ?>`)">
+        Copiar texto (todos fornecedores)
+      </button>
+      <a href="<?= htmlspecialchars($waAll, ENT_QUOTES, 'UTF-8') ?>" target="_blank">
+        Enviar via WhatsApp (todos)
+      </a>
+    </div>
+    
+    <?php
+    $grp = [];
+    $tot = 0;
+    foreach ($itens as $r) {
+      $forn = $r['fornecedor_nome'] ?: 'Sem fornecedor';
+      $grp[$forn][$r['evento_id']][] = $r;
+      $tot += (float)$r['custo'];
+    }
+    ?>
+    
+    <?php
+    // === MONTA TEXTOS (WhatsApp) ===
+    $whatsAll = [];           // linhas gerais (todos os fornecedores)
+    $whatsByForn = [];        // texto por fornecedor
+
+    $headerTxt  = "Grupo Smile Eventos\n";
+    $headerTxt .= "Lista de Encomendas #{$lista['id']}\n";
+    $headerTxt .= "Gerada em: ".date('d/m/Y H:i', strtotime($lista['criado_em']))."\n";
+    $headerTxt .= "Espaço: ".($lista['espaco_resumo'] ?: 'Múltiplos')."\n";
+    $headerTxt .= "Eventos: ".$lista['resumo_eventos']."\n";
+
+    $whatsAll[] = $headerTxt;
+
+    foreach ($grp as $fornNome => $evs) {
+      $lines = [];
+      $lines[] = "Fornecedor: ".($fornNome ?: 'Sem fornecedor');
+
+      foreach ($evs as $eventoId => $rows) {
+        $lines[] = "- Evento #{$eventoId}";
+        foreach ($rows as $r) {
+          $q = number_format((float)$r['qtd'], 3, ',', '.');
+          $lines[] = "  • {$r['item_nome']} — {$q} {$r['unidade_simbolo']}";
+        }
+      }
+
+      $whatsByForn[$fornNome] = implode("\n", array_merge([$headerTxt], $lines));
+      $whatsAll[] = implode("\n", $lines);
+    }
+
+    // Texto "geral" (todos fornecedores) + URL encoded para link do WhatsApp
+    $txtAll = implode("\n\n", $whatsAll);
+    $waAll  = 'https://wa.me/?text='.urlencode($txtAll);
+
+    // Texto por fornecedor (URL encoded)
+    $waByForn = [];
+    foreach ($whatsByForn as $fn => $t) {
+      $waByForn[$fn] = 'https://wa.me/?text='.urlencode($t);
+    }
+    ?>
+    
+    <?php foreach ($grp as $fornNome => $evs): ?>
+      <h4>Fornecedor: <?= h($fornNome) ?></h4>
+      <?php
+      $waF = $waByForn[$fornNome] ?? '';
+      $txF = $whatsByForn[$fornNome] ?? '';
+      ?>
+      <div style="margin:6px 0; display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" onclick="copyText(`<?= htmlspecialchars($txF, ENT_QUOTES, 'UTF-8') ?>`)">
+          Copiar texto (<?= h($fornNome ?: 'Sem fornecedor') ?>)
+        </button>
+        <?php if ($waF): ?>
+          <a href="<?= htmlspecialchars($waF, ENT_QUOTES, 'UTF-8') ?>" target="_blank">
+            WhatsApp (<?= h($fornNome ?: 'Sem fornecedor') ?>)
+          </a>
+        <?php endif; ?>
+      </div>
+      <?php foreach ($evs as $eventoId => $rows): ?>
+        <h5>Evento #<?= (int)$eventoId ?></h5>
+        <table>
+          <thead><tr><th>Item</th><th>Qtd</th><th>Unidade</th><th>Custo</th></tr></thead>
+          <tbody>
+            <?php foreach ($rows as $r): ?>
+              <tr>
+                <td><?= h($r['item_nome']) ?></td>
+                <td>
+                  <?= number_format((float)$r['qtd'], 3, ',', '.') ?>
+                  <?php if (!empty($r['foi_arredondado'])): ?>
+                    <span class="badge" title="Quantidade arredondada para múltiplo de embalagem">arred.</span>
+                  <?php endif; ?>
+                </td>
+                <td><?= h($r['unidade_simbolo']) ?></td>
+                <td>R$ <?= number_format((float)$r['custo'], 2, ',', '.') ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+        <br>
+      <?php endforeach; ?>
+    <?php endforeach; ?>
+    <table>
+      <tfoot>
+        <tr><th style="text-align:right">Total</th><th>R$ <?= number_format($tot, 2, ',', '.') ?></th></tr>
+      </tfoot>
+    </table>
+  <?php endif; ?>
+
+<script>
+function copyText(t) {
+  if (!t) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(t).then(function(){
+      alert('Texto copiado para a área de transferência.');
+    }).catch(function(){
+      fallbackCopy(t);
+    });
+  } else {
+    fallbackCopy(t);
+  }
+}
+function fallbackCopy(t) {
+  const ta = document.createElement('textarea');
+  ta.value = t;
+  ta.style.position = 'fixed';
+  ta.style.left = '-1000px';
+  ta.style.top = '-1000px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); alert('Texto copiado.'); }
+  catch(e){ alert('Não foi possível copiar automaticamente.'); }
+  document.body.removeChild(ta);
+}
+</script>
+
 </body>
 </html>

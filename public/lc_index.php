@@ -135,6 +135,63 @@ $pages2 = (int)ceil(($total2 ?: 0) / $pp);
 // ========= Permissões basicas =========
 $isAdmin = !empty($_SESSION['perm_usuarios']) || !empty($_SESSION['perm_admin']) || !empty($_SESSION['is_admin']);
 
+// Paginação
+$per = 10;
+$pgC = max(1, (int)($_GET['pgC'] ?? 1)); // compras
+$pgE = max(1, (int)($_GET['pgE'] ?? 1)); // encomendas
+$offC = ($pgC-1)*$per;
+$offE = ($pgE-1)*$per;
+
+// Histórico — COMPRAS (listas que têm itens em lc_compras_consolidadas)
+$sqlCountC = "
+  SELECT COUNT(*) 
+  FROM lc_listas l 
+  WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+";
+$totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
+
+$sqlCompras = "
+  SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+         u.nome AS criado_por_nome
+  FROM lc_listas l
+  LEFT JOIN usuarios u ON u.id = l.criado_por
+  WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+  ORDER BY l.criado_em DESC, l.id DESC
+  LIMIT :per OFFSET :off
+";
+$stC = $pdo->prepare($sqlCompras);
+$stC->bindValue(':per', $per, PDO::PARAM_INT);
+$stC->bindValue(':off', $offC, PDO::PARAM_INT);
+$stC->execute();
+$rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
+
+// Histórico — ENCOMENDAS (listas que têm itens em lc_encomendas_itens)
+$sqlCountE = "
+  SELECT COUNT(*) 
+  FROM lc_listas l 
+  WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+";
+$totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
+
+$sqlEncom = "
+  SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+         u.nome AS criado_por_nome
+  FROM lc_listas l
+  LEFT JOIN usuarios u ON u.id = l.criado_por
+  WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+  ORDER BY l.criado_em DESC, l.id DESC
+  LIMIT :per OFFSET :off
+";
+$stE = $pdo->prepare($sqlEncom);
+$stE->bindValue(':per', $per, PDO::PARAM_INT);
+$stE->bindValue(':off', $offE, PDO::PARAM_INT);
+$stE->execute();
+$rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
+
+// Helpers
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
+
 // ========= UI =========
 ?>
 <!DOCTYPE html>
@@ -166,6 +223,107 @@ $isAdmin = !empty($_SESSION['perm_usuarios']) || !empty($_SESSION['perm_admin'])
       </div>
     </div>
 
+    <!-- Tabela 1: Últimas listas de COMPRAS -->
+    <h2>Últimas listas de compras</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:80px;">Nº</th>
+          <th>Data gerada</th>
+          <th>Espaço</th>
+          <th>Eventos (resumo)</th>
+          <th>Criado por</th>
+          <th style="width:220px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if ($rowsC): foreach ($rowsC as $r): ?>
+          <tr>
+            <td><?= (int)$r['id'] ?></td>
+            <td><?= h(dt($r['criado_em'])) ?></td>
+            <td><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></td>
+            <td><?= h($r['resumo_eventos']) ?></td>
+            <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
+            <td>
+              <!-- Ajuste os links conforme seus arquivos reais -->
+              <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank">Editar/Ver</a> |
+              <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank">PDF</a> |
+              <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')">Excluir</a>
+            </td>
+          </tr>
+        <?php endforeach; else: ?>
+          <tr><td colspan="6">Nenhuma lista de compras gerada ainda.</td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+
+    <!-- Paginação COMPRAS -->
+    <?php
+    $maxPgC = max(1, (int)ceil($totalC / $per));
+    if ($maxPgC > 1):
+    ?>
+      <div style="margin:8px 0;">
+        <?php for($i=1;$i<=$maxPgC;$i++): ?>
+          <?php if ($i == $pgC): ?>
+            <strong>[<?= $i ?>]</strong>
+          <?php else: ?>
+            <a href="?pgC=<?= $i ?>&pgE=<?= $pgE ?>">[<?= $i ?>]</a>
+          <?php endif; ?>
+        <?php endfor; ?>
+      </div>
+    <?php endif; ?>
+
+    <hr>
+
+    <!-- Tabela 2: Últimas listas de ENCOMENDAS -->
+    <h2>Últimas listas de encomendas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:80px;">Nº</th>
+          <th>Data gerada</th>
+          <th>Espaço</th>
+          <th>Eventos (resumo)</th>
+          <th>Criado por</th>
+          <th style="width:220px;">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php if ($rowsE): foreach ($rowsE as $r): ?>
+          <tr>
+            <td><?= (int)$r['id'] ?></td>
+            <td><?= h(dt($r['criado_em'])) ?></td>
+            <td><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></td>
+            <td><?= h($r['resumo_eventos']) ?></td>
+            <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
+            <td>
+              <!-- Ajuste os links conforme seus arquivos reais -->
+              <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank">Editar/Ver</a> |
+              <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank">PDF</a> |
+              <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')">Excluir</a>
+            </td>
+          </tr>
+        <?php endforeach; else: ?>
+          <tr><td colspan="6">Nenhuma lista de encomendas gerada ainda.</td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+
+    <!-- Paginação ENCOMENDAS -->
+    <?php
+    $maxPgE = max(1, (int)ceil($totalE / $per));
+    if ($maxPgE > 1):
+    ?>
+      <div style="margin:8px 0;">
+        <?php for($i=1;$i<=$maxPgE;$i++): ?>
+          <?php if ($i == $pgE): ?>
+            <strong>[<?= $i ?>]</strong>
+          <?php else: ?>
+            <a href="?pgC=<?= $pgC ?>&pgE=<?= $i ?>">[<?= $i ?>]</a>
+          <?php endif; ?>
+        <?php endfor; ?>
+      </div>
+    <?php endif; ?>
 
   <?php if ($db_error): ?>
     <div class="err"><?php echo h($db_error); ?></div>

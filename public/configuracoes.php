@@ -70,6 +70,8 @@ try {
     $unid   = (int)input('unidade_id');
     $preco  = (float)str_replace(',', '.', input('preco','0'));
     $fc     = (float)str_replace(',', '.', input('fator_correcao','1'));
+    $emb    = input('embalagem_multiplo');
+    $emb    = ($emb === '' ? null : (float)str_replace(',', '.', $emb));
     $tipo   = input('tipo_padrao','comprado'); // comprado | preparo | fixo
     $forn   = input('fornecedor_id'); // opcional (FK futura)
     $obs    = input('observacao');
@@ -82,28 +84,56 @@ try {
 
     if ($id === '') {
       $stmt = $pdo->prepare("
-        INSERT INTO lc_insumos (nome, unidade_id, preco, fator_correcao, tipo_padrao, fornecedor_id, observacao, ativo)
-        VALUES (:n,:u,:p,:fc,:t,:f,:o,:a)
+        INSERT INTO lc_insumos (nome, unidade_id, preco, fator_correcao, tipo_padrao, fornecedor_id, observacao, ativo, embalagem_multiplo)
+        VALUES (:n,:u,:p,:fc,:t,:f,:o,:a,:emb)
       ");
       $stmt->execute([
         ':n'=>$nome, ':u'=>$unid, ':p'=>$preco, ':fc'=>$fc, ':t'=>$tipo,
-        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo
+        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo, ':emb'=>$emb
       ]);
       $msg = 'Insumo criado.';
     } else {
       $stmt = $pdo->prepare("
         UPDATE lc_insumos SET
           nome=:n, unidade_id=:u, preco=:p, fator_correcao=:fc,
-          tipo_padrao=:t, fornecedor_id=:f, observacao=:o, ativo=:a
+          tipo_padrao=:t, fornecedor_id=:f, observacao=:o, ativo=:a, embalagem_multiplo=:emb
         WHERE id=:id
       ");
       $stmt->execute([
         ':n'=>$nome, ':u'=>$unid, ':p'=>$preco, ':fc'=>$fc, ':t'=>$tipo,
-        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo, ':id'=>$id
+        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo, ':emb'=>$emb, ':id'=>$id
       ]);
       $msg = 'Insumo atualizado.';
     }
     $tab = 'insumos';
+  }
+
+  // ITENS FIXOS
+  if (input('action') === 'save_item_fixo') {
+    $id   = input('id');
+    $ins  = (int)input('insumo_id');
+    $qtd  = (float)str_replace(',', '.', input('qtd','0'));
+    $unid = (int)input('unidade_id');
+    $obs  = input('observacao');
+    $ativo= bool01(input('ativo','1'));
+
+    if ($ins <= 0) throw new Exception('Selecione um insumo.');
+    if ($unid <= 0) throw new Exception('Selecione a unidade.');
+    if ($qtd <= 0) throw new Exception('Quantidade > 0 é obrigatória.');
+
+    if ($id === '') {
+      $stmt = $pdo->prepare("INSERT INTO lc_itens_fixos (insumo_id, qtd, unidade_id, observacao, ativo)
+                             VALUES (:i,:q,:u,:o,:a)");
+      $stmt->execute([':i'=>$ins, ':q'=>$qtd, ':u'=>$unid, ':o'=>$obs, ':a'=>$ativo]);
+      $msg = 'Item fixo criado.';
+    } else {
+      $stmt = $pdo->prepare("UPDATE lc_itens_fixos
+                             SET insumo_id=:i, qtd=:q, unidade_id=:u, observacao=:o, ativo=:a
+                             WHERE id=:id");
+      $stmt->execute([':i'=>$ins, ':q'=>$qtd, ':u'=>$unid, ':o'=>$obs, ':a'=>$ativo, ':id'=>$id]);
+      $msg = 'Item fixo atualizado.';
+    }
+    $tab = 'fixos';
   }
 
 } catch (Exception $e) {
@@ -119,6 +149,13 @@ $ins = $pdo->query("
   FROM lc_insumos i
   JOIN lc_unidades u ON u.id = i.unidade_id
   ORDER BY i.ativo DESC, i.nome ASC
+")->fetchAll(PDO::FETCH_ASSOC);
+$fixos = $pdo->query("
+  SELECT f.*, i.nome AS insumo_nome, u.simbolo AS unidade_simbolo
+  FROM lc_itens_fixos f
+  JOIN lc_insumos i ON i.id = f.insumo_id
+  JOIN lc_unidades u ON u.id = f.unidade_id
+  ORDER BY f.ativo DESC, i.nome ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -150,6 +187,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <a href="?tab=categorias" class="<?= $tab==='categorias'?'active':'' ?>">Categorias</a>
     <a href="?tab=unidades"   class="<?= $tab==='unidades'  ?'active':'' ?>">Unidades</a>
     <a href="?tab=insumos"    class="<?= $tab==='insumos'   ?'active':'' ?>">Insumos</a>
+    <a href="?tab=fixos" class="<?= $tab==='fixos'?'active':'' ?>">Itens Fixos</a>
   </div>
 
   <?php if ($msg): ?><div class="msg"><?=h($msg)?></div><?php endif; ?>
@@ -271,7 +309,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
       <table>
         <thead>
           <tr>
-            <th>#</th><th>Nome</th><th>Unid.</th><th>Preço</th><th>FC</th><th>Custo corrigido</th>
+            <th>#</th><th>Nome</th><th>Unid.</th><th>Preço</th><th>FC</th><th>Emb. (múltiplo)</th><th>Custo corrigido</th>
             <th>Tipo padrão</th><th>Fornecedor</th><th>Obs.</th><th>Ativo</th><th class="actions">Ação</th>
           </tr>
         </thead>
@@ -291,6 +329,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               </td>
               <td><input type="number" step="0.0001" name="preco" value="<?=h($i['preco'])?>" style="width:120px"></td>
               <td><input type="number" step="0.000001" name="fator_correcao" value="<?=h($i['fator_correcao'])?>" style="width:120px"></td>
+              <td><input type="number" step="0.000001" name="embalagem_multiplo" value="<?= h($i['embalagem_multiplo']) ?>" style="width:120px" placeholder="ex.: 50"></td>
               <td><span class="badge"><?= number_format($i['custo_corrigido'], 4, ',', '.') . ' / ' . h($i['simbolo']) ?></span></td>
               <td>
                 <select name="tipo_padrao">
@@ -326,6 +365,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             </td>
             <td><input type="number" step="0.0001" name="preco" placeholder="10.90" style="width:120px"></td>
             <td><input type="number" step="0.000001" name="fator_correcao" value="1.000000" style="width:120px"></td>
+            <td><input type="number" step="0.000001" name="embalagem_multiplo" placeholder="ex.: 50" style="width:120px"></td>
             <td><span class="badge">—</span></td>
             <td>
               <select name="tipo_padrao">
@@ -346,6 +386,86 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             </td>
           </tr>
 
+        </tbody>
+      </table>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($tab==='fixos'): ?>
+    <h2>Itens Fixos (1× por evento)</h2>
+    <form method="post">
+      <input type="hidden" name="action" value="save_item_fixo">
+      <input type="hidden" name="tab" value="fixos">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Insumo</th><th>Qtd</th><th>Unidade</th><th>Obs.</th><th>Ativo</th><th class="actions">Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($fixos as $f): ?>
+            <tr>
+              <td><?= (int)$f['id'] ?></td>
+              <td>
+                <select name="insumo_id" required>
+                  <?php foreach ($ins as $i2): ?>
+                    <option value="<?= $i2['id'] ?>" <?= ($f['insumo_id']==$i2['id']?'selected':'') ?>>
+                      <?= h($i2['nome']) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+              <td><input type="number" step="0.000001" name="qtd" value="<?= h($f['qtd']) ?>"></td>
+              <td>
+                <select name="unidade_id" required>
+                  <?php foreach ($uni as $u): ?>
+                    <option value="<?= $u['id'] ?>" <?= ($f['unidade_id']==$u['id']?'selected':'') ?>>
+                      <?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+              <td><input type="text" name="observacao" value="<?= h($f['observacao']) ?>"></td>
+              <td>
+                <select name="ativo">
+                  <option value="1" <?= $f['ativo']?'selected':'' ?>>Sim</option>
+                  <option value="0" <?= !$f['ativo']?'selected':'' ?>>Não</option>
+                </select>
+              </td>
+              <td class="actions">
+                <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                <button type="submit">Salvar</button>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+
+          <tr class="row-new">
+            <td>novo</td>
+            <td>
+              <select name="insumo_id" required>
+                <option value="">— selecione —</option>
+                <?php foreach ($ins as $i2): ?>
+                  <option value="<?= $i2['id'] ?>"><?= h($i2['nome']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
+            <td><input type="number" step="0.000001" name="qtd" placeholder="ex.: 1"></td>
+            <td>
+              <select name="unidade_id" required>
+                <?php foreach ($uni as $u): ?>
+                  <option value="<?= $u['id'] ?>"><?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)</option>
+                <?php endforeach; ?>
+              </select>
+            </td>
+            <td><input type="text" name="observacao" placeholder="(opcional)"></td>
+            <td>
+              <select name="ativo"><option value="1" selected>Sim</option><option value="0">Não</option></select>
+            </td>
+            <td class="actions">
+              <input type="hidden" name="id" value="">
+              <button type="submit">Adicionar</button>
+            </td>
+          </tr>
         </tbody>
       </table>
     </form>

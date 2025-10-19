@@ -5,9 +5,9 @@ session_start();
 if (!isset($pdo)) { die('Sem conexão.'); }
 
 // Função para arredondar por embalagem
-function round_pack(float $qtd, int $tamanhoEmbalagem = 1): int {
-  if ($tamanhoEmbalagem <= 1) return (int)ceil($qtd);
-  return (int)(ceil($qtd / $tamanhoEmbalagem) * $tamanhoEmbalagem);
+function round_pack(float $qtd, float $pack = 1.0): float {
+  if ($pack === null || $pack <= 1) return ceil($qtd); // default: arredonda pra cima em unidade
+  return ceil($qtd / $pack) * $pack;
 }
 
 // Carrega categorias
@@ -80,6 +80,181 @@ foreach ($eventosSelecionados as $ev) {
       $OUT_ENCOMENDAS[$k]['custo'] += (float)$row['custo'];
     }
   }
+
+  // === Itens FIXOS: 1x por evento ===
+  foreach ($ITENS_FIXOS as $fx) {
+    // Quantidade líquida em unidade da linha
+    $qtdLinha = (float)$fx['qtd'];
+
+    // Converter para a unidade do insumo
+    $qtdInsumo = lc_convert_to_insumo_unit_local($qtdLinha, (float)$fx['linha_fator'], (float)$fx['insumo_fator']);
+
+    // Aplicar custo (preço × FC do insumo)
+    $precoUsado = (float)$fx['custo_corrigido'];
+    $custo = $qtdInsumo * $precoUsado;
+
+    // Consolidar em COMPRAS (insumo na unidade do insumo)
+    $k = $fx['insumo_nome'].'|'.$fx['insumo_simbolo'];
+    if (!isset($OUT_COMPRAS[$k])) {
+      $OUT_COMPRAS[$k] = [
+        'insumo_nome'     => $fx['insumo_nome'],
+        'unidade_simbolo' => $fx['insumo_simbolo'],
+        'qtd'             => 0.0,
+        'custo'           => 0.0
+      ];
+    }
+    $OUT_COMPRAS[$k]['qtd']   += $qtdInsumo;
+    $OUT_COMPRAS[$k]['custo'] += $custo;
+  }
+}
+
+// mapa de múltiplos por nome do item (ajuste para ID se tiver)
+$MULTIPLOS = [];
+$stmt = $pdo->query("SELECT id, nome, embalagem_multiplo FROM lc_insumos WHERE ativo = true");
+foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+  if (!empty($r['embalagem_multiplo'])) {
+    $MULTIPLOS[ $r['nome'] ] = (float)$r['embalagem_multiplo'];
+  }
+}
+
+// Itens fixos ativos (1x por evento)
+$ITENS_FIXOS = $pdo->query("
+  SELECT f.*, i.nome AS insumo_nome, i.unidade_id AS insumo_unidade_id,
+         i.preco, i.fator_correcao, (i.preco * i.fator_correcao) AS custo_corrigido,
+         uLinha.simbolo AS linha_simbolo, uLinha.fator_base AS linha_fator,
+         uInsumo.simbolo AS insumo_simbolo, uInsumo.fator_base AS insumo_fator
+  FROM lc_itens_fixos f
+  JOIN lc_insumos i ON i.id = f.insumo_id
+  JOIN lc_unidades uLinha ON uLinha.id = f.unidade_id
+  JOIN lc_unidades uInsumo ON uInsumo.id = i.unidade_id
+  WHERE f.ativo = true AND i.ativo = true
+")->fetchAll(PDO::FETCH_ASSOC);
+
+// Função de conversão
+function lc_convert_to_insumo_unit_local(float $qtd, float $fatorLinha, float $fatorInsumo): float {
+  if ($fatorLinha <= 0 || $fatorInsumo <= 0) return 0.0;
+  return $qtd * ($fatorLinha / $fatorInsumo);
+}
+
+// === ARREDONDAMENTO DE ENCOMENDAS POR EMBALAGEM ===
+// além de arredondar qtd e reajustar custo, vamos marcar 'foi_arredondado'
+if (!empty($OUT_ENCOMENDAS)) {
+  foreach ($OUT_ENCOMENDAS as &$row) {
+    $nome  = (string)$row['insumo_nome'];
+    $pack  = $MULTIPLOS[$nome] ?? null;
+
+    // por padrão, não arredondado
+    $row['foi_arredondado'] = false;
+
+    if ($pack && $pack > 0) {
+      $qtdOld = (float)$row['qtd'];
+      $qtdNew = round_pack($qtdOld, (float)$pack);
+
+      if ($qtdNew > $qtdOld + 1e-9) {
+        $row['foi_arredondado'] = true;
+      }
+
+      $row['qtd'] = $qtdNew;
+
+      // custo proporcional pela mesma base unitária
+      $unit = $qtdOld > 0 ? ((float)$row['custo'] / $qtdOld) : 0;
+      $row['custo'] = $unit * (float)$row['qtd'];
+    }
+  }
+  unset($row);
+}
+
+// ==== SALVAR EM BANCO (BEGIN → INSERTS → COMMIT) ====
+
+// 1) Cabeçalho (lc_listas)
+$usuarioId = isset($_SESSION['usuario_id']) ? (int)$_SESSION['usuario_id'] : null;
+
+// montar resumos simples a partir dos eventos selecionados (ajuste aos seus campos reais)
+$nomesEspacos = [];
+$resumosEventos = [];
+foreach ($eventosSelecionados as $ev) {
+  if (!empty($ev['espaco'])) $nomesEspacos[] = trim($ev['espaco']);
+  $resumosEventos[] = trim(
+    ($ev['data'] ?? '') . ' ' . ($ev['hora'] ?? '') . ' ' . ($ev['titulo'] ?? ('Evento #'.$ev['id']))
+  );
+}
+$espacoResumo = 'Múltiplos';
+$unicos = array_values(array_unique(array_filter($nomesEspacos)));
+if (count($unicos) === 1) $espacoResumo = $unicos[0];
+
+$resumoEventosTxt = implode(" | ", array_slice($resumosEventos, 0, 6)); // resume primeiros 6
+
+try {
+  $pdo->beginTransaction();
+
+  // Cabeçalho único da geração
+  $st = $pdo->prepare("INSERT INTO lc_listas (tipo_lista, criado_por, resumo_eventos, espaco_resumo)
+                       VALUES ('compras', :u, :r, :e)
+                       RETURNING id");
+  $st->execute([
+    ':u' => $usuarioId,
+    ':r' => $resumoEventosTxt,
+    ':e' => $espacoResumo
+  ]);
+  $listaId = (int)$st->fetchColumn();
+
+  // 2) Vínculo dos eventos (lc_listas_eventos)
+  $stEv = $pdo->prepare("INSERT INTO lc_listas_eventos (lista_id, evento_id, convidados, data_evento, resumo)
+                         VALUES (:l,:ev,:c,:d,:res)");
+  foreach ($eventosSelecionados as $ev) {
+    $stEv->execute([
+      ':l'   => $listaId,
+      ':ev'  => (int)($ev['id'] ?? 0),
+      ':c'   => (int)($ev['convidados'] ?? 0),
+      ':d'   => !empty($ev['data']) ? $ev['data'] : null,
+      ':res' => trim(($ev['hora'] ?? '') . ' ' . ($ev['titulo'] ?? ''))
+    ]);
+  }
+
+  // 3) COMPRAS consolidadas
+  if (!empty($OUT_COMPRAS)) {
+    $stC = $pdo->prepare("INSERT INTO lc_compras_consolidadas (lista_id, insumo_nome, unidade_simbolo, qtd, custo)
+                          VALUES (:l,:n,:u,:q,:c)");
+    foreach ($OUT_COMPRAS as $row) {
+      $stC->execute([
+        ':l' => $listaId,
+        ':n' => (string)$row['insumo_nome'],
+        ':u' => (string)$row['unidade_simbolo'],
+        ':q' => (float)$row['qtd'],
+        ':c' => (float)$row['custo']
+      ]);
+    }
+  }
+
+  // 4) ENCOMENDAS (Fornecedor → Evento)
+  if (!empty($OUT_ENCOMENDAS)) {
+    $stE = $pdo->prepare("
+      INSERT INTO lc_encomendas_itens
+      (lista_id, fornecedor_id, evento_id, item_nome, unidade_simbolo, qtd, custo, foi_arredondado)
+      VALUES (:l,:f,:ev,:n,:u,:q,:c,:fa)
+    ");
+    foreach ($OUT_ENCOMENDAS as $row) {
+      $stE->execute([
+        ':l'  => $listaId,
+        ':f'  => isset($row['fornecedor_id']) ? (int)$row['fornecedor_id'] : null,
+        ':ev' => (int)$row['evento_id'],
+        ':n'  => (string)$row['insumo_nome'],
+        ':u'  => (string)$row['unidade_simbolo'],
+        ':q'  => (float)$row['qtd'],
+        ':c'  => (float)$row['custo'],
+        ':fa' => !empty($row['foi_arredondado'])
+      ]);
+    }
+  }
+
+  $pdo->commit();
+
+  // Feedback visual mínimo (mantenha seu layout)
+  echo '<div class="msg">Lista salva com sucesso. Nº ' . (int)$listaId . '</div>';
+
+} catch (Exception $e) {
+  if ($pdo->inTransaction()) $pdo->rollBack();
+  echo '<div class="err">Erro ao salvar a lista: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . '</div>';
 }
 
 // === PRÉVIA: COMPRAS (insumos internos + fixos) ===
@@ -188,6 +363,27 @@ foreach ($OUT_ENCOMENDAS as $k => $r) {
 <?php else: ?>
   <p>Nenhum item para Encomendas.</p>
 <?php endif; ?>
+
+<?php
+// === RESUMO GERAL ===
+$TOTAL_GERAL = $totalCompras + $totalEncomendas;
+?>
+
+<?php
+// === Custo por convidado (prévia) ===
+$totalConvidados = 0;
+foreach ($eventosSelecionados as $ev) {
+  $totalConvidados += (int)($ev['convidados'] ?? 0);
+}
+$custoPorConvidado = ($totalConvidados > 0) ? ($TOTAL_GERAL / $totalConvidados) : 0;
+?>
+<h2>Resumo por convidado</h2>
+<table>
+  <tbody>
+    <tr><td>Total de convidados</td><td><?= (int)$totalConvidados ?></td></tr>
+    <tr><td>Custo por convidado</td><td>R$ <?= number_format($custoPorConvidado, 2, ',', '.') ?></td></tr>
+  </tbody>
+</table>
 
 <?php
 // === RESUMO GERAL ===
