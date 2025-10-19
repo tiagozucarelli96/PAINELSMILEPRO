@@ -80,6 +80,7 @@ try {
       'horaevento'    => $e['horaevento'] ?? '',
       'nomeCliente'   => $e['nomeCliente'] ?? '',
       'nomeevento'    => $e['nomeevento'] ?? '',
+      'localevento'   => $e['localevento'] ?? '',
     ];
   }
 

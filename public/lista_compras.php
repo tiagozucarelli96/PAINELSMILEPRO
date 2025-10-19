@@ -1050,23 +1050,25 @@ function addEventoME(e){
       }
 
       const header = `
-        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
-          <div>Cliente</div><div>Evento</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
+        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px 120px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
+          <div>Cliente</div><div>Evento</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Local</div><div>Ação</div>
         </div>`;
 
       const rows = lista.map(raw => {
         const ev = mapEventoToForm(raw);
         const cliente = raw.nomeCliente ?? '';
         const evento = raw.nomeevento ?? '';
+        const local = raw.localevento ?? '';
         const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
         const payload = encodeURIComponent(JSON.stringify({ev}));
         return `
-          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
+          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px 120px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
             <div><strong>${cliente || '(sem cliente)'}</strong></div>
             <div>${evento || ''}</div>
             <div>${ev.convidados || ''}</div>
             <div>${dataBR || ''}</div>
             <div>${ev.hora || ''}</div>
+            <div>${local || ''}</div>
             <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
           </div>`;
       }).join('');
