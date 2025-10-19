@@ -2,7 +2,7 @@
 // test_me_api.php - Teste simples da API da ME Eventos
 header('Content-Type: application/json; charset=utf-8');
 
-$base = 'https://app2.meeventos.com.br';
+$base = 'https://app2.meeventos.com.br/lisbonbuffet';
 $key = '5qlrv-crt91-s0e0d-drri2-gxhlm'; // Chave de exemplo da documentação
 
 echo "Testando API da ME Eventos...\n";
