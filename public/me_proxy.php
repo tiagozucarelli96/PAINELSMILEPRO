@@ -7,6 +7,10 @@ try {
   $base = getenv('ME_BASE_URL') ?: 'https://app2.meeventos.com.br/lisbonbuffet';
   $key  = getenv('ME_API_KEY')  ?: '5qlrv-crt91-s0e0d-drri2-gxhlm'; // ajuste no .env se necessário
 
+  // Log de debug
+  error_log("ME Proxy Debug - Base URL: $base");
+  error_log("ME Proxy Debug - API Key: " . substr($key, 0, 10) . "...");
+
   if (!$base || !$key) throw new Exception('ME_BASE_URL/ME_API_KEY ausentes.');
 
   // filtros opcionais
@@ -22,6 +26,9 @@ try {
   if ($end !== '')   $params['end']    = $end;
   if ($params) $url .= '?'.http_build_query($params);
 
+  // Log de debug
+  error_log("ME Proxy Debug - URL final: $url");
+
   $ch = curl_init($url);
   curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
@@ -32,6 +39,10 @@ try {
   $err  = curl_error($ch);
   $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
   curl_close($ch);
+
+  // Log de debug
+  error_log("ME Proxy Debug - HTTP Code: $code");
+  error_log("ME Proxy Debug - Response: " . substr($resp, 0, 200) . "...");
 
   if ($err)  throw new Exception('Erro cURL: '.$err);
   if ($code < 200 || $code >= 300) throw new Exception('HTTP '.$code.' da Meeventos');

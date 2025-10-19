@@ -745,174 +745,6 @@ function addEventoME(e){
     }
   }
 </style>
-<!-- === BLOCO: Script ME (usa o proxy ?page=me_proxy) === -->
-<script>
-(function(){
-  const $ = s => document.querySelector(s);
-  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
-
-  console.log('Elementos encontrados:', {
-    modal: !!modal,
-    btnOpen: !!btnOpen,
-    btnClose: !!btnClose,
-    btnExec: !!btnExec,
-    box: !!box
-  });
-
-  // Teste de conectividade com me_proxy.php
-  fetch('./me_proxy.php')
-    .then(r => r.json())
-    .then(data => console.log('Teste de conectividade me_proxy.php:', data))
-    .catch(e => console.error('Erro ao testar me_proxy.php:', e));
-
-  const openModal  = () => { 
-    console.log('Abrindo modal ME');
-    modal.style.display = 'flex'; 
-  };
-  const closeModal = () => { 
-    console.log('Fechando modal ME');
-    modal.style.display = 'none'; 
-  };
-
-  if (btnOpen) {
-    btnOpen.addEventListener('click', openModal);
-    console.log('Evento de abertura do modal registrado');
-    
-    // Teste adicional - clique direto
-    btnOpen.addEventListener('click', function(e) {
-      console.log('Clique detectado no botão Buscar na ME');
-    });
-  } else {
-    console.error('Botão de abrir modal não encontrado!');
-  }
-  
-  if (btnClose) {
-    btnClose.addEventListener('click', closeModal);
-    console.log('Evento de fechamento do modal registrado');
-  } else {
-    console.error('Botão de fechar modal não encontrado!');
-  }
-
-  // MAPEAMENTO EXATO solicitado
-  function mapEventoToForm(raw){
-    const pad = s => (s||'').toString();
-    return {
-      espaco:     pad(raw.tipoEvento),                 // Espaço
-      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
-      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM) - corrigido para evitar erro
-      nome:       pad(raw.observacao||''),             // Evento
-      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
-      id:         pad(raw.id||'')
-    };
-  }
-
-  // Buscar no proxy
-  if (btnExec) {
-    btnExec.addEventListener('click', async ()=>{
-      console.log('Botão Buscar clicado');
-    const start = $('#me_start').value || '';
-    const end   = $('#me_end').value   || '';
-    const q     = $('#me_q').value     || '';
-
-    console.log('Parâmetros:', { start, end, q });
-
-    const params = new URLSearchParams();
-    if (start) params.set('start', start);
-    if (end)   params.set('end', end);
-    if (q)     params.set('q', q);  // Corrigido: era 'search', deve ser 'q'
-
-    const url = './me_proxy.php?' + params.toString();  // Mudado para caminho relativo
-    console.log('URL da requisição:', url);
-
-    box.innerHTML = '<div style="padding:12px">Buscando…</div>';
-    try {
-      console.log('Fazendo requisição para:', url);
-      const r = await fetch(url, { 
-        headers: { 'Accept': 'application/json' },
-        method: 'GET'
-      });
-      
-      console.log('Status da resposta:', r.status);
-      
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const j = await r.json();
-      
-      console.log('Resposta da API:', j);
-
-      // Verifica se houve erro na API
-      if (j.ok === false) {
-        throw new Error(j.error || 'Erro na API da ME Eventos');
-      }
-
-      const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
-      console.log('Lista de eventos:', lista);
-      
-      if (!lista.length) { 
-        box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; 
-        return; 
-      }
-
-      const header = `
-        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
-          <div>Observação (Cliente)</div><div>Tipo</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
-        </div>`;
-
-      const rows = lista.map(raw => {
-        const ev = mapEventoToForm(raw);
-        const cliente = raw.nomeCliente ?? raw.nomecliente ?? '';
-        const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
-        const payload = encodeURIComponent(JSON.stringify({ev}));
-        return `
-          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
-            <div><strong>${ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
-            <div>${ev.espaco || ''}</div>
-            <div>${ev.convidados || ''}</div>
-            <div>${dataBR || ''}</div>
-            <div>${ev.hora || ''}</div>
-            <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
-          </div>`;
-      }).join('');
-
-      box.innerHTML = header + rows;
-
-      // Seleciona evento -> preenche e trava
-      box.querySelectorAll('.me-usar').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const {ev} = JSON.parse(decodeURIComponent(btn.getAttribute('data-payload')));
-          const set = (id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v??''; el.readOnly=true; } };
-          set('evento_espaco', ev.espaco);
-          set('evento_convidados', ev.convidados);
-          set('evento_hora', ev.hora);
-          set('evento_nome', ev.nome);
-          set('evento_data', ev.data);
-          const hid = document.getElementById('evento_id_me'); if (hid) hid.value = ev.id || '';
-          closeModal();
-          document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
-        });
-      });
-
-    } catch (e) {
-      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
-    }
-    });
-    console.log('Evento de busca registrado');
-  } else {
-    console.error('Botão de executar busca não encontrado!');
-  }
-
-  // Impede submit sem evento da ME
-  (function(){
-    const form = document.querySelector('form');
-    if (!form) return;
-    form.addEventListener('submit', (ev)=>{
-      const hid = document.getElementById('evento_id_me');
-      if (!hid || !hid.value) {
-        ev.preventDefault();
-        alert('Selecione um evento pela ME antes de gerar a lista.');
-      }
-    });
-  })();
-})();
 </script>
 </head>
 <body class="panel">
@@ -1110,5 +942,174 @@ function addEventoME(e){
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
+
+  console.log('Elementos encontrados:', {
+    modal: !!modal,
+    btnOpen: !!btnOpen,
+    btnClose: !!btnClose,
+    btnExec: !!btnExec,
+    box: !!box
+  });
+
+  // Teste de conectividade com me_proxy.php
+  fetch('./me_proxy.php')
+    .then(r => r.json())
+    .then(data => console.log('Teste de conectividade me_proxy.php:', data))
+    .catch(e => console.error('Erro ao testar me_proxy.php:', e));
+
+  const openModal  = () => { 
+    console.log('Abrindo modal ME');
+    modal.style.display = 'flex'; 
+  };
+  const closeModal = () => { 
+    console.log('Fechando modal ME');
+    modal.style.display = 'none'; 
+  };
+
+  if (btnOpen) {
+    btnOpen.addEventListener('click', openModal);
+    console.log('Evento de abertura do modal registrado');
+    
+    // Teste adicional - clique direto
+    btnOpen.addEventListener('click', function(e) {
+      console.log('Clique detectado no botão Buscar na ME');
+    });
+  } else {
+    console.error('Botão de abrir modal não encontrado!');
+  }
+  
+  if (btnClose) {
+    btnClose.addEventListener('click', closeModal);
+    console.log('Evento de fechamento do modal registrado');
+  } else {
+    console.error('Botão de fechar modal não encontrado!');
+  }
+
+  // MAPEAMENTO EXATO solicitado
+  function mapEventoToForm(raw){
+    const pad = s => (s||'').toString();
+    return {
+      espaco:     pad(raw.tipoEvento),                 // Espaço
+      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
+      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM) - corrigido para evitar erro
+      nome:       pad(raw.observacao||''),             // Evento
+      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
+      id:         pad(raw.id||'')
+    };
+  }
+
+  // Buscar no proxy
+  if (btnExec) {
+    btnExec.addEventListener('click', async ()=>{
+      console.log('Botão Buscar clicado');
+    const start = $('#me_start').value || '';
+    const end   = $('#me_end').value   || '';
+    const q     = $('#me_q').value     || '';
+
+    console.log('Parâmetros:', { start, end, q });
+
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end)   params.set('end', end);
+    if (q)     params.set('q', q);  // Corrigido: era 'search', deve ser 'q'
+
+    const url = './me_proxy.php?' + params.toString();  // Mudado para caminho relativo
+    console.log('URL da requisição:', url);
+
+    box.innerHTML = '<div style="padding:12px">Buscando…</div>';
+    try {
+      console.log('Fazendo requisição para:', url);
+      const r = await fetch(url, { 
+        headers: { 'Accept': 'application/json' },
+        method: 'GET'
+      });
+      
+      console.log('Status da resposta:', r.status);
+      
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      
+      console.log('Resposta da API:', j);
+
+      // Verifica se houve erro na API
+      if (j.ok === false) {
+        throw new Error(j.error || 'Erro na API da ME Eventos');
+      }
+
+      const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
+      console.log('Lista de eventos:', lista);
+      
+      if (!lista.length) { 
+        box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; 
+        return; 
+      }
+
+      const header = `
+        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
+          <div>Observação (Cliente)</div><div>Tipo</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
+        </div>`;
+
+      const rows = lista.map(raw => {
+        const ev = mapEventoToForm(raw);
+        const cliente = raw.nomeCliente ?? raw.nomecliente ?? '';
+        const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
+        const payload = encodeURIComponent(JSON.stringify({ev}));
+        return `
+          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
+            <div><strong>${ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
+            <div>${ev.espaco || ''}</div>
+            <div>${ev.convidados || ''}</div>
+            <div>${dataBR || ''}</div>
+            <div>${ev.hora || ''}</div>
+            <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
+          </div>`;
+      }).join('');
+
+      box.innerHTML = header + rows;
+
+      // Seleciona evento -> preenche e trava
+      box.querySelectorAll('.me-usar').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const {ev} = JSON.parse(decodeURIComponent(btn.getAttribute('data-payload')));
+          const set = (id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v??''; el.readOnly=true; } };
+          set('evento_espaco', ev.espaco);
+          set('evento_convidados', ev.convidados);
+          set('evento_hora', ev.hora);
+          set('evento_nome', ev.nome);
+          set('evento_data', ev.data);
+          const hid = document.getElementById('evento_id_me'); if (hid) hid.value = ev.id || '';
+          closeModal();
+          document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
+        });
+      });
+
+    } catch (e) {
+      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
+    }
+    });
+    console.log('Evento de busca registrado');
+  } else {
+    console.error('Botão de executar busca não encontrado!');
+  }
+
+  // Impede submit sem evento da ME
+  (function(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('submit', (ev)=>{
+      const hid = document.getElementById('evento_id_me');
+      if (!hid || !hid.value) {
+        ev.preventDefault();
+        alert('Selecione um evento pela ME antes de gerar a lista.');
+      }
+    });
+  })();
+})();
+</script>
 </body>
 </html>
