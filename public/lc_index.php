@@ -142,51 +142,109 @@ $pgE = max(1, (int)($_GET['pgE'] ?? 1)); // encomendas
 $offC = ($pgC-1)*$per;
 $offE = ($pgE-1)*$per;
 
-// Histórico — COMPRAS (listas que têm itens em lc_compras_consolidadas)
-$sqlCountC = "
-  SELECT COUNT(*) 
-  FROM lc_listas l 
-  WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
-";
-$totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
+// Histórico — COMPRAS (verificar se tabela existe primeiro)
+$totalC = 0;
+$rowsC = [];
 
-$sqlCompras = "
-  SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-         u.nome AS criado_por_nome
-  FROM lc_listas l
-  LEFT JOIN usuarios u ON u.id = l.criado_por
-  WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
-  ORDER BY l.criado_em DESC, l.id DESC
-  LIMIT :per OFFSET :off
-";
-$stC = $pdo->prepare($sqlCompras);
-$stC->bindValue(':per', $per, PDO::PARAM_INT);
-$stC->bindValue(':off', $offC, PDO::PARAM_INT);
-$stC->execute();
-$rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
+try {
+  // Verificar se a tabela existe
+  $tableExists = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'lc_compras_consolidadas')")->fetchColumn();
+  
+  if ($tableExists) {
+    $sqlCountC = "
+      SELECT COUNT(*) 
+      FROM lc_listas l 
+      WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+    ";
+    $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
-// Histórico — ENCOMENDAS (listas que têm itens em lc_encomendas_itens)
-$sqlCountE = "
-  SELECT COUNT(*) 
-  FROM lc_listas l 
-  WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
-";
-$totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
+    $sqlCompras = "
+      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+             u.nome AS criado_por_nome
+      FROM lc_listas l
+      LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+      ORDER BY l.criado_em DESC, l.id DESC
+      LIMIT :per OFFSET :off
+    ";
+    $stC = $pdo->prepare($sqlCompras);
+    $stC->bindValue(':per', $per, PDO::PARAM_INT);
+    $stC->bindValue(':off', $offC, PDO::PARAM_INT);
+    $stC->execute();
+    $rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
+  }
+} catch (Exception $e) {
+  // Se houver erro, usar apenas lc_listas
+  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'compras'";
+  $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
-$sqlEncom = "
-  SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-         u.nome AS criado_por_nome
-  FROM lc_listas l
-  LEFT JOIN usuarios u ON u.id = l.criado_por
-  WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
-  ORDER BY l.criado_em DESC, l.id DESC
-  LIMIT :per OFFSET :off
-";
-$stE = $pdo->prepare($sqlEncom);
-$stE->bindValue(':per', $per, PDO::PARAM_INT);
-$stE->bindValue(':off', $offE, PDO::PARAM_INT);
-$stE->execute();
-$rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
+    $sqlCompras = "
+      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+             u.nome AS criado_por_nome
+      FROM lc_listas l
+      LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE l.tipo_lista = 'compras'
+      ORDER BY l.criado_em DESC, l.id DESC
+      LIMIT :per OFFSET :off
+    ";
+    $stC = $pdo->prepare($sqlCompras);
+    $stC->bindValue(':per', $per, PDO::PARAM_INT);
+    $stC->bindValue(':off', $offC, PDO::PARAM_INT);
+    $stC->execute();
+    $rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Histórico — ENCOMENDAS (verificar se tabela existe primeiro)
+$totalE = 0;
+$rowsE = [];
+
+try {
+  // Verificar se a tabela existe
+  $tableExists = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'lc_encomendas_itens')")->fetchColumn();
+  
+  if ($tableExists) {
+    $sqlCountE = "
+      SELECT COUNT(*) 
+      FROM lc_listas l 
+      WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+    ";
+    $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
+
+    $sqlEncom = "
+      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+             u.nome AS criado_por_nome
+      FROM lc_listas l
+      LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+      ORDER BY l.criado_em DESC, l.id DESC
+      LIMIT :per OFFSET :off
+    ";
+    $stE = $pdo->prepare($sqlEncom);
+    $stE->bindValue(':per', $per, PDO::PARAM_INT);
+    $stE->bindValue(':off', $offE, PDO::PARAM_INT);
+    $stE->execute();
+    $rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
+  }
+} catch (Exception $e) {
+  // Se houver erro, usar apenas lc_listas
+  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'encomendas'";
+  $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
+
+    $sqlEncom = "
+      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
+             u.nome AS criado_por_nome
+      FROM lc_listas l
+      LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE l.tipo_lista = 'encomendas'
+      ORDER BY l.criado_em DESC, l.id DESC
+      LIMIT :per OFFSET :off
+    ";
+    $stE = $pdo->prepare($sqlEncom);
+    $stE->bindValue(':per', $per, PDO::PARAM_INT);
+    $stE->bindValue(':off', $offE, PDO::PARAM_INT);
+    $stE->execute();
+    $rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
+}
 
 // Helpers
 function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
