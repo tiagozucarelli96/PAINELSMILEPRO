@@ -767,7 +767,7 @@ function addEventoME(e){
     return {
       espaco:     pad(raw.tipoEvento),                 // Espaço
       convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
-      hora:       pad(raw.horaevento).slice(0,5),      // Horário (HH:MM)
+      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM) - corrigido para evitar erro
       nome:       pad(raw.observacao||''),             // Evento
       data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
       id:         pad(raw.id||'')
@@ -786,17 +786,14 @@ function addEventoME(e){
     const params = new URLSearchParams();
     if (start) params.set('start', start);
     if (end)   params.set('end', end);
-    if (q)     params.set('search', q);
-    params.set('field_sort','id'); 
-    params.set('sort','desc');
-    params.set('page','1'); 
-    params.set('limit','50');
+    if (q)     params.set('q', q);  // Corrigido: era 'search', deve ser 'q'
 
     const url = '/me_proxy.php?' + params.toString();
     console.log('URL da requisição:', url);
 
     box.innerHTML = '<div style="padding:12px">Buscando…</div>';
     try {
+      console.log('Fazendo requisição para:', url);
       const r = await fetch(url, { 
         headers: { 'Accept': 'application/json' },
         method: 'GET'
@@ -808,6 +805,11 @@ function addEventoME(e){
       const j = await r.json();
       
       console.log('Resposta da API:', j);
+
+      // Verifica se houve erro na API
+      if (j.ok === false) {
+        throw new Error(j.error || 'Erro na API da ME Eventos');
+      }
 
       const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
       console.log('Lista de eventos:', lista);
