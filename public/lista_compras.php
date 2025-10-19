@@ -29,35 +29,6 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
 
 ?>
 
-<!-- === BLOCO: Cabeçalho + Botão Buscar na ME === -->
-<div class="lc-header-section">
-  <h2>Dados do Evento</h2>
-  <button type="button" id="btnBuscarME" class="btn">Buscar na ME</button>
-</div>
-
-<!-- === BLOCO: Campos do Evento (travados) === -->
-<div class="lc-event-fields">
-  <div class="field-group">
-    <label>Espaço</label>
-    <input id="evento_espaco" name="evento_espaco" class="input" required readonly>
-  </div>
-  <div class="field-group">
-    <label>Convidados</label>
-    <input id="evento_convidados" name="evento_convidados" type="number" min="0" class="input" required readonly>
-  </div>
-  <div class="field-group">
-    <label>Horário</label>
-    <input id="evento_hora" name="evento_hora" type="time" class="input" required readonly>
-  </div>
-  <div class="field-group">
-    <label>Evento</label>
-    <input id="evento_nome" name="evento_nome" class="input" required readonly>
-  </div>
-  <div class="field-group">
-    <label>Data</label>
-    <input id="evento_data" name="evento_data" type="date" class="input" required readonly>
-  </div>
-</div>
 
 <?php
 // ========= Rascunhos (tudo na mesma página) =========
@@ -436,17 +407,17 @@ function addEventoME(e){
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
-    padding: 16px;
-    background: #f8f9fa;
-    border-radius: 12px;
-    border: 1px solid #e9ecef;
+    margin-bottom: 20px;
+    padding: 0;
+    background: transparent;
+    border: none;
   }
 
   .lc-header-section h2 {
     margin: 0;
     color: var(--primary-blue);
-    font-size: 24px;
+    font-size: 20px;
+    font-weight: 700;
   }
 
   /* Campos do evento */
@@ -490,6 +461,7 @@ function addEventoME(e){
     padding: 24px;
     margin-bottom: 24px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    position: relative;
   }
 
   .lc-section h2 {
@@ -497,6 +469,17 @@ function addEventoME(e){
     color: var(--primary-blue);
     font-size: 20px;
     font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .lc-section h2::before {
+    content: '';
+    width: 4px;
+    height: 24px;
+    background: var(--primary-blue);
+    border-radius: 2px;
   }
 
   /* Estado vazio */
@@ -847,41 +830,39 @@ function addEventoME(e){
       </div>
     <?php endif; ?>
 
-    <!-- RASCUNHOS -->
+    <!-- RASCUNHOS (se houver) -->
+    <?php if ($RAS): ?>
     <div class="lc-section">
       <h2>📝 Rascunhos Salvos</h2>
-      <?php if (!$RAS): ?>
-        <div class="lc-empty-state"><em>Sem rascunhos salvos.</em></div>
-      <?php else: ?>
-        <div class="lc-table-container">
-          <table class="lc-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Atualizado</th>
-                <th>Eventos</th>
-                <th>Itens</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($RAS as $r): ?>
-              <tr>
-                <td><?= (int)$r['id'] ?></td>
-                <td><?= h($r['quando']) ?></td>
-                <td><?= (int)$r['qtd_ev'] ?></td>
-                <td><?= (int)$r['qtd_it'] ?></td>
-                <td class="lc-actions">
-                  <a class="btn btn--secondary" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
-                  <a class="btn btn--danger" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-      <?php endif; ?>
+      <div class="lc-table-container">
+        <table class="lc-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Atualizado</th>
+              <th>Eventos</th>
+              <th>Itens</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($RAS as $r): ?>
+            <tr>
+              <td><?= (int)$r['id'] ?></td>
+              <td><?= h($r['quando']) ?></td>
+              <td><?= (int)$r['qtd_ev'] ?></td>
+              <td><?= (int)$r['qtd_it'] ?></td>
+              <td class="lc-actions">
+                <a class="btn btn--secondary" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
+                <a class="btn btn--danger" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
     </div>
+    <?php endif; ?>
 
     <?php
     // Pré-carrega eventos/itens do rascunho se houver
@@ -892,16 +873,48 @@ function addEventoME(e){
     $draftIds = $RAS_PAYLOAD['payload']['itens_ids'] ?? [];
     $draftSet = array_flip(array_map('intval',$draftIds));
     ?>
-<input type="hidden" id="evento_id_me" name="evento_id_me" required>
+
+    <!-- FORMULÁRIO PRINCIPAL -->
     <form id="formLC" method="post">
+      <input type="hidden" id="evento_id_me" name="evento_id_me" required>
       <?php if ($RAS_PAYLOAD): ?>
         <input type="hidden" name="rascunho_id" value="<?= (int)$RAS_PAYLOAD['id'] ?>">
       <?php endif; ?>
       <input type="hidden" name="acao" id="acao" value="">
-    
 
+      <!-- 1. DADOS DO EVENTO -->
       <div class="lc-section">
-        <h2>Categorias e Itens</h2>
+        <div class="lc-header-section">
+          <h2>1. Dados do Evento</h2>
+          <button type="button" id="btnBuscarME" class="btn">Buscar na ME</button>
+        </div>
+        <div class="lc-event-fields">
+          <div class="field-group">
+            <label>Espaço</label>
+            <input id="evento_espaco" name="evento_espaco" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Convidados</label>
+            <input id="evento_convidados" name="evento_convidados" type="number" min="0" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Horário</label>
+            <input id="evento_hora" name="evento_hora" type="time" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Evento</label>
+            <input id="evento_nome" name="evento_nome" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Data</label>
+            <input id="evento_data" name="evento_data" type="date" class="input" required readonly>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. CATEGORIAS E ITENS -->
+      <div class="lc-section">
+        <h2>2. Categorias e Itens</h2>
         <div class="lc-categories-grid">
           <?php foreach ($cats as $c): ?>
             <div class="lc-category-card">
@@ -937,9 +950,10 @@ function addEventoME(e){
         </div>
       </div>
 
+      <!-- 3. FORNECEDORES -->
       <?php if ($forns): ?>
       <div class="lc-section">
-        <h2>Encomendas — Modo por Fornecedor</h2>
+        <h2>3. Encomendas — Modo por Fornecedor</h2>
         <div class="lc-suppliers-container">
           <?php foreach ($forns as $f): ?>
             <div class="lc-supplier-item">
@@ -957,6 +971,7 @@ function addEventoME(e){
       </div>
       <?php endif; ?>
 
+      <!-- 4. AÇÕES -->
       <div class="lc-actions-container">
         <button class="btn btn--secondary" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
         <button class="btn btn--primary" type="submit" onclick="document.getElementById('acao').value=''">Gerar (finalizar)</button>
