@@ -162,12 +162,11 @@ try {
     $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
-      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-             u.nome AS criado_por_nome
+      SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
+             l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
       FROM lc_listas l
-      LEFT JOIN usuarios u ON u.id = l.criado_por
       WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
-      ORDER BY l.criado_em DESC, l.id DESC
+      ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
     $stC = $pdo->prepare($sqlCompras);
@@ -182,12 +181,11 @@ try {
   $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
-      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-             u.nome AS criado_por_nome
+      SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
+             l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
       FROM lc_listas l
-      LEFT JOIN usuarios u ON u.id = l.criado_por
       WHERE l.tipo_lista = 'compras'
-      ORDER BY l.criado_em DESC, l.id DESC
+      ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
     $stC = $pdo->prepare($sqlCompras);
@@ -214,12 +212,11 @@ try {
     $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
-      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-             u.nome AS criado_por_nome
+      SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
+             l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
       FROM lc_listas l
-      LEFT JOIN usuarios u ON u.id = l.criado_por
       WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
-      ORDER BY l.criado_em DESC, l.id DESC
+      ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
     $stE = $pdo->prepare($sqlEncom);
@@ -234,12 +231,11 @@ try {
   $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
-      SELECT l.id, l.criado_em, l.espaco_resumo, l.resumo_eventos, l.criado_por,
-             u.nome AS criado_por_nome
+      SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
+             l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
       FROM lc_listas l
-      LEFT JOIN usuarios u ON u.id = l.criado_por
       WHERE l.tipo_lista = 'encomendas'
-      ORDER BY l.criado_em DESC, l.id DESC
+      ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
     $stE = $pdo->prepare($sqlEncom);
