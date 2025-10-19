@@ -30,18 +30,33 @@ function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terç
 ?>
 
 <!-- === BLOCO: Cabeçalho + Botão Buscar na ME === -->
-<div style="display:flex;gap:8px;align-items:center;margin:10px 0 6px;">
-  <strong>Dados do Evento</strong>
-  <button type="button" id="btnBuscarME" class="btn" style="padding:8px 12px;">Buscar na ME</button>
+<div class="lc-header-section">
+  <h2>Dados do Evento</h2>
+  <button type="button" id="btnBuscarME" class="btn">Buscar na ME</button>
 </div>
 
 <!-- === BLOCO: Campos do Evento (travados) === -->
-<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;">
-  <div><label>Espaço</label><input id="evento_espaco" name="evento_espaco" class="input-sm" required readonly></div>
-  <div><label>Convidados</label><input id="evento_convidados" name="evento_convidados" type="number" min="0" class="input-sm" required readonly></div>
-  <div><label>Horário</label><input id="evento_hora" name="evento_hora" type="time" class="input-sm" required readonly></div>
-  <div><label>Evento</label><input id="evento_nome" name="evento_nome" class="input-sm" required readonly></div>
-  <div><label>Data</label><input id="evento_data" name="evento_data" type="date" class="input-sm" required readonly></div>
+<div class="lc-event-fields">
+  <div class="field-group">
+    <label>Espaço</label>
+    <input id="evento_espaco" name="evento_espaco" class="input" required readonly>
+  </div>
+  <div class="field-group">
+    <label>Convidados</label>
+    <input id="evento_convidados" name="evento_convidados" type="number" min="0" class="input" required readonly>
+  </div>
+  <div class="field-group">
+    <label>Horário</label>
+    <input id="evento_hora" name="evento_hora" type="time" class="input" required readonly>
+  </div>
+  <div class="field-group">
+    <label>Evento</label>
+    <input id="evento_nome" name="evento_nome" class="input" required readonly>
+  </div>
+  <div class="field-group">
+    <label>Data</label>
+    <input id="evento_data" name="evento_data" type="date" class="input" required readonly>
+  </div>
 </div>
 
 <?php
@@ -404,56 +419,309 @@ function addEventoME(e){
 }
 </script>
     <style>
-  /* ====== Hotfix de layout – Lista de Compras ======
-     Objetivo: reservar espaço pro menu azul à esquerda
-     e criar 2 colunas: miolo (1fr) + painel direito (360px)
-  */
-
+  /* ====== Estilos para Lista de Compras ====== */
+  
   /* Garante cálculo correto de largura/padding */
   *, *::before, *::after { box-sizing: border-box; }
 
-  /* 1) Reserva espaço pro menu azul (ajuste a largura se o seu menu tiver outro tamanho) */
-  :root { --largura-menu: 180px; /* se o seu menu tiver 200px, mude aqui */ }
-
-/* Conteúdo principal não fica "por baixo" do menu fixo */
-  .page-content,
-  .content,
-  .main,
-  #conteudo,
-  .wrap,
-  .container,
-  .main-content { /* <--- A CLASSE DEVE ESTAR AQUI, SEPARADA POR VÍRGULA */
-    margin-left: var(--largura-menu);
-    padding: 12px 16px;
-    min-width: 0; /* evita esmagamento de grids */
+  /* Container principal */
+  .lc-main-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
   }
 
-  /* 2) Duas colunas: miolo + painel direito */
-  .lc-grid-fix {
+  /* Seção de cabeçalho */
+  .lc-header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+  }
+
+  .lc-header-section h2 {
+    margin: 0;
+    color: var(--primary-blue);
+    font-size: 24px;
+  }
+
+  /* Campos do evento */
+  .lc-event-fields {
     display: grid;
-    grid-template-columns: 1fr 360px; /* miolo / painel direito */
-    gap: 24px;
-    align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
 
-  /* Painel direito fica “grudado” no topo ao rolar */
-  .lc-aside-fix {
-    position: sticky;
-    top: 12px;
+  .field-group {
+    display: flex;
+    flex-direction: column;
   }
 
-  /* 3) Campos do topo (Espaço, Convidados, Horário, Evento, Data) em grid fluido */
-  .lc-filtros-topo {
+  .field-group label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .field-group input {
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #f8f9fa;
+  }
+
+  /* Seções */
+  .lc-section {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  .lc-section h2 {
+    margin: 0 0 20px 0;
+    color: var(--primary-blue);
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  /* Estado vazio */
+  .lc-empty-state {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 20px;
+  }
+
+  /* Tabela de rascunhos */
+  .lc-table-container {
+    overflow-x: auto;
+  }
+
+  .lc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+  }
+
+  .lc-table th,
+  .lc-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+  }
+
+  .lc-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .lc-actions {
+    white-space: nowrap;
+  }
+
+  .lc-actions .btn {
+    margin-right: 8px;
+  }
+
+  /* Grid de categorias */
+  .lc-categories-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(160px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 16px;
+  }
+
+  .lc-category-card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 16px;
+    background: #f8f9fa;
+  }
+
+  .lc-category-header {
     margin-bottom: 12px;
   }
 
-  /* 4) Responsivo: em telas menores, quebra as colunas */
-  @media (max-width: 1200px) {
-    .lc-grid-fix { grid-template-columns: 1fr; }
-    .lc-aside-fix { position: static; }
+  .lc-category-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .lc-category-checkbox input[type="checkbox"] {
+    margin-right: 8px;
+    transform: scale(1.2);
+  }
+
+  .lc-category-name {
+    font-size: 16px;
+  }
+
+  .lc-items-container {
+    display: none;
+    margin-top: 12px;
+  }
+
+  .lc-items-container.active {
+    display: block;
+  }
+
+  .lc-item {
+    margin-bottom: 8px;
+  }
+
+  .lc-item-checkbox {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: background-color 0.2s;
+  }
+
+  .lc-item-checkbox:hover {
+    background: #e9ecef;
+  }
+
+  .lc-item-checkbox input[type="checkbox"] {
+    margin-right: 8px;
+    margin-top: 2px;
+  }
+
+  .lc-item-name {
+    font-weight: 500;
+    color: #333;
+    margin-right: 8px;
+  }
+
+  .lc-item-meta {
+    color: #666;
+    font-size: 12px;
+  }
+
+  .lc-empty-items {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 16px;
+  }
+
+  /* Fornecedores */
+  .lc-suppliers-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .lc-supplier-item {
+    padding: 16px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+
+  .lc-supplier-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .lc-supplier-name {
+    font-weight: 600;
+    color: #333;
+    min-width: 120px;
+  }
+
+  .lc-supplier-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  /* Botões de ação */
+  .lc-actions-container {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 32px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+  }
+
+  /* Variantes de botões */
+  .btn--primary {
+    background: var(--primary-blue);
+    color: white;
+  }
+
+  .btn--secondary {
+    background: #6c757d;
+    color: white;
+  }
+
+  .btn--danger {
+    background: #dc3545;
+    color: white;
+  }
+
+  .btn--secondary:hover {
+    background: #5a6268;
+  }
+
+  .btn--danger:hover {
+    background: #c82333;
+  }
+
+  /* Responsivo */
+  @media (max-width: 768px) {
+    .lc-main-container {
+      padding: 16px;
+    }
+
+    .lc-header-section {
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+
+    .lc-event-fields {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-categories-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-suppliers-container {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-actions-container {
+      flex-direction: column;
+    }
   }
 </style>
 <!-- === BLOCO: Script ME (usa o proxy ?page=me_proxy) === -->
@@ -569,7 +837,7 @@ function addEventoME(e){
 <div class="main-content">
   <h1>Gerar Lista de Compras</h1>
 
-  <div class="form">
+  <div class="lc-main-container">
     <?php if (!empty($err)): ?><div class="alert err"><?=h($err)?></div><?php endif; ?>
     <?php if (isset($_GET['ok'])): ?>
       <div class="alert success">
@@ -580,28 +848,38 @@ function addEventoME(e){
     <?php endif; ?>
 
     <!-- RASCUNHOS -->
-    <div class="block">
-      <h2>📝 Rascunhos (seus)</h2>
+    <div class="lc-section">
+      <h2>📝 Rascunhos Salvos</h2>
       <?php if (!$RAS): ?>
-        <div><em>Sem rascunhos salvos.</em></div>
+        <div class="lc-empty-state"><em>Sem rascunhos salvos.</em></div>
       <?php else: ?>
-        <table class="table">
-          <thead><tr><th>#</th><th>Atualizado</th><th>Eventos</th><th>Itens</th><th>Ações</th></tr></thead>
-          <tbody>
-          <?php foreach ($RAS as $r): ?>
-            <tr>
-              <td><?= (int)$r['id'] ?></td>
-              <td><?= h($r['quando']) ?></td>
-              <td><?= (int)$r['qtd_ev'] ?></td>
-              <td><?= (int)$r['qtd_it'] ?></td>
-              <td>
-                <a class="btn gray" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
-                <a class="btn" style="background:#ff5a5a" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
+        <div class="lc-table-container">
+          <table class="lc-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Atualizado</th>
+                <th>Eventos</th>
+                <th>Itens</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($RAS as $r): ?>
+              <tr>
+                <td><?= (int)$r['id'] ?></td>
+                <td><?= h($r['quando']) ?></td>
+                <td><?= (int)$r['qtd_ev'] ?></td>
+                <td><?= (int)$r['qtd_it'] ?></td>
+                <td class="lc-actions">
+                  <a class="btn btn--secondary" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
+                  <a class="btn btn--danger" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
       <?php endif; ?>
     </div>
 
@@ -620,75 +898,69 @@ function addEventoME(e){
         <input type="hidden" name="rascunho_id" value="<?= (int)$RAS_PAYLOAD['id'] ?>">
       <?php endif; ?>
       <input type="hidden" name="acao" id="acao" value="">
-                <label class="small">Convidados</label>
-                <input class="input" type="number" name="eventos[<?= $i ?>][convidados]" min="0" value="<?= (int)($e['convidados'] ?? 0) ?>">
-              </div>
-              <div>
-                <label class="small">Horário</label>
-                <input class="input" name="eventos[<?= $i ?>][horario]" value="<?= h($e['horario'] ?? '') ?>">
-              </div>
-              <div>
-                <label class="small">Evento</label>
-                <input class="input" name="eventos[<?= $i ?>][evento]" value="<?= h($e['evento'] ?? '') ?>">
-              </div>
-              <div class="full">
-                <label class="small">Data</label>
-                <input class="input" type="date" name="eventos[<?= $i ?>][data]" value="<?= h($e['data'] ?? '') ?>">
-              </div>
-            </div>
     
 
-      <div class="block">
+      <div class="lc-section">
         <h2>Categorias e Itens</h2>
-        <?php foreach ($cats as $c): ?>
-          <div class="category">
-            <label>
-              <input type="checkbox" onclick="toggleCat(<?= (int)$c['id'] ?>)">
-              <?= h($c['nome']) ?>
-            </label>
-            <div class="items" id="items-<?= (int)$c['id'] ?>">
-              <?php foreach (($itensByCat[$c['id']] ?? []) as $it): ?>
-                <?php $checked = isset($draftSet[(int)$it['id']]) ? 'checked' : ''; ?>
-                <label style="display:block;margin:6px 0">
-                  <input type="checkbox" <?=$checked?> name="itens[<?= (int)$c['id'] ?>][]" value="<?= (int)$it['id'] ?>">
-                  <?= h($it['nome']) ?>
-                  <small>(
-                    <?= h($it['tipo']) ?>
-                    <?php
-                      if ($it['tipo']==='preparo'  && $it['ficha_id'])      echo ', ficha #'.(int)$it['ficha_id'];
-                      if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.(int)$it['fornecedor_id'];
-                    ?>
-                  )</small>
+        <div class="lc-categories-grid">
+          <?php foreach ($cats as $c): ?>
+            <div class="lc-category-card">
+              <div class="lc-category-header">
+                <label class="lc-category-checkbox">
+                  <input type="checkbox" onclick="toggleCat(<?= (int)$c['id'] ?>)">
+                  <span class="lc-category-name"><?= h($c['nome']) ?></span>
                 </label>
-              <?php endforeach; ?>
-              <?php if (empty($itensByCat[$c['id']])): ?>
-                <div><em>Nenhum item nesta categoria.</em></div>
-              <?php endif; ?>
+              </div>
+              <div class="lc-items-container" id="items-<?= (int)$c['id'] ?>">
+                <?php foreach (($itensByCat[$c['id']] ?? []) as $it): ?>
+                  <?php $checked = isset($draftSet[(int)$it['id']]) ? 'checked' : ''; ?>
+                  <div class="lc-item">
+                    <label class="lc-item-checkbox">
+                      <input type="checkbox" <?=$checked?> name="itens[<?= (int)$c['id'] ?>][]" value="<?= (int)$it['id'] ?>">
+                      <span class="lc-item-name"><?= h($it['nome']) ?></span>
+                      <small class="lc-item-meta">(
+                        <?= h($it['tipo']) ?>
+                        <?php
+                          if ($it['tipo']==='preparo'  && $it['ficha_id'])      echo ', ficha #'.(int)$it['ficha_id'];
+                          if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.(int)$it['fornecedor_id'];
+                        ?>
+                      )</small>
+                    </label>
+                  </div>
+                <?php endforeach; ?>
+                <?php if (empty($itensByCat[$c['id']])): ?>
+                  <div class="lc-empty-items"><em>Nenhum item nesta categoria.</em></div>
+                <?php endif; ?>
+              </div>
             </div>
-          </div>
-        <?php endforeach; ?>
+          <?php endforeach; ?>
+        </div>
       </div>
 
       <?php if ($forns): ?>
-      <div class="block">
+      <div class="lc-section">
         <h2>Encomendas — Modo por Fornecedor</h2>
-        <?php foreach ($forns as $f): ?>
-          <label style="display:block;margin:6px 0">
-            <?= h($f['nome']) ?>:
-            <select name="fornecedor_modo[<?= (int)$f['id'] ?>]" class="input" style="max-width:220px; display:inline-block">
-              <option value="">Padrão: <?= h($f['modo_padrao']) ?></option>
-              <option value="consolidado">Consolidado</option>
-              <option value="separado">Separado por evento</option>
-            </select>
-          </label>
-        <?php endforeach; ?>
+        <div class="lc-suppliers-container">
+          <?php foreach ($forns as $f): ?>
+            <div class="lc-supplier-item">
+              <label class="lc-supplier-label">
+                <span class="lc-supplier-name"><?= h($f['nome']) ?>:</span>
+                <select name="fornecedor_modo[<?= (int)$f['id'] ?>]" class="lc-supplier-select">
+                  <option value="">Padrão: <?= h($f['modo_padrao']) ?></option>
+                  <option value="consolidado">Consolidado</option>
+                  <option value="separado">Separado por evento</option>
+                </select>
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
       </div>
       <?php endif; ?>
 
-      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-        <button class="btn gray" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
-        <button class="btn" type="submit" onclick="document.getElementById('acao').value=''">Gerar (finalizar)</button>
-        <a class="btn gray" href="dashboard.php">Cancelar</a>
+      <div class="lc-actions-container">
+        <button class="btn btn--secondary" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
+        <button class="btn btn--primary" type="submit" onclick="document.getElementById('acao').value=''">Gerar (finalizar)</button>
+        <a class="btn btn--secondary" href="dashboard.php">Cancelar</a>
       </div>
     </form>
   </div>
