@@ -62,9 +62,15 @@ try {
   $data = json_decode($resp, true);
   if (!is_array($data)) throw new Exception('JSON inválido da Meeventos');
 
+  // Log de debug para ver a estrutura real
+  error_log("ME Proxy Debug - Estrutura da resposta: " . json_encode($data, JSON_PRETTY_PRINT));
+
+  // A API da ME Eventos retorna os dados diretamente no array, não em 'data'
+  $events = $data;
+  
   // mapeamento conforme API da ME Eventos - campos corretos da documentação
   $out = [];
-  foreach ($data as $e) {
+  foreach ($events as $e) {
     $out[] = [
       'id'            => $e['id'] ?? null,
       'observacao'    => $e['observacao'] ?? '',
