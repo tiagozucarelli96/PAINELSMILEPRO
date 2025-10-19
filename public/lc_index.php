@@ -189,7 +189,6 @@ $stE->execute();
 $rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
 
 // Helpers
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
 
 // ========= UI =========
