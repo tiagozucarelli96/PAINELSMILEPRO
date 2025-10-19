@@ -179,8 +179,8 @@ try {
     $rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Exception $e) {
-  // Se houver erro, usar apenas lc_listas
-  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'compras'";
+  // Se houver erro, usar apenas lc_listas (sem filtro por tipo_lista)
+  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l";
   $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
@@ -188,7 +188,6 @@ try {
              u.nome AS criado_por_nome
       FROM lc_listas l
       LEFT JOIN usuarios u ON u.id = l.criado_por
-      WHERE l.tipo_lista = 'compras'
       ORDER BY l.criado_em DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
@@ -231,8 +230,8 @@ try {
     $rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Exception $e) {
-  // Se houver erro, usar apenas lc_listas
-  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'encomendas'";
+  // Se houver erro, usar apenas lc_listas (sem filtro por tipo_lista)
+  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l";
   $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
@@ -240,7 +239,6 @@ try {
              u.nome AS criado_por_nome
       FROM lc_listas l
       LEFT JOIN usuarios u ON u.id = l.criado_por
-      WHERE l.tipo_lista = 'encomendas'
       ORDER BY l.criado_em DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
