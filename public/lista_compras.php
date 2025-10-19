@@ -990,14 +990,14 @@ function addEventoME(e){
     console.error('Botão de fechar modal não encontrado!');
   }
 
-  // MAPEAMENTO EXATO solicitado
+  // MAPEAMENTO conforme documentação da ME Eventos
   function mapEventoToForm(raw){
     const pad = s => (s||'').toString();
     return {
-      espaco:     pad(raw.tipoEvento),                 // Espaço
+      espaco:     pad(raw.tipoEvento),                 // Espaço (tipoEvento)
       convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
-      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM) - corrigido para evitar erro
-      nome:       pad(raw.observacao||''),             // Evento
+      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM)
+      nome:       pad(raw.nomeevento||''),             // Evento (nomeevento)
       data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
       id:         pad(raw.id||'')
     };
@@ -1056,12 +1056,13 @@ function addEventoME(e){
 
       const rows = lista.map(raw => {
         const ev = mapEventoToForm(raw);
-        const cliente = raw.nomeCliente ?? raw.nomecliente ?? '';
+        const cliente = raw.nomeCliente ?? '';
+        const observacao = raw.observacao ?? '';
         const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
         const payload = encodeURIComponent(JSON.stringify({ev}));
         return `
           <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
-            <div><strong>${ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
+            <div><strong>${observacao || ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
             <div>${ev.espaco || ''}</div>
             <div>${ev.convidados || ''}</div>
             <div>${dataBR || ''}</div>

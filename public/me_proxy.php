@@ -62,18 +62,18 @@ try {
   $data = json_decode($resp, true);
   if (!is_array($data)) throw new Exception('JSON inválido da Meeventos');
 
-  // mapeamento conforme API da ME Eventos
+  // mapeamento conforme API da ME Eventos - campos corretos da documentação
   $out = [];
   foreach ($data as $e) {
     $out[] = [
       'id'            => $e['id'] ?? null,
-      'observacao'    => $e['observacao'] ?? ($e['nome'] ?? 'Evento'),
-      'tipoEvento'    => $e['tipoEvento'] ?? ($e['tipo'] ?? ''),
+      'observacao'    => $e['observacao'] ?? '',
+      'tipoEvento'    => $e['tipoEvento'] ?? '',
       'convidados'    => $e['convidados'] ?? 0,
-      'dataevento'    => $e['dataevento'] ?? ($e['data'] ?? null),
-      'horaevento'    => $e['horaevento'] ?? ($e['hora'] ?? null),
-      'nomeCliente'   => $e['nomeCliente'] ?? ($e['cliente'] ?? ''),
-      'nomecliente'   => $e['nomecliente'] ?? ($e['cliente'] ?? ''),
+      'dataevento'    => $e['dataevento'] ?? '',
+      'horaevento'    => $e['horaevento'] ?? '',
+      'nomeCliente'   => $e['nomeCliente'] ?? '',
+      'nomeevento'    => $e['nomeevento'] ?? '',
     ];
   }
 
