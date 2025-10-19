@@ -85,7 +85,7 @@ try {
     if ($id === '') {
       $stmt = $pdo->prepare("
         INSERT INTO lc_insumos (nome, unidade, preco, fator_correcao, tipo_padrao, fornecedor_id, observacao, ativo, embalagem_multiplo)
-        VALUES (:n,:u,:p,:fc,:t,:f,:o,:a,:emb)
+        VALUES (:n, :u::integer, :p, :fc, :t, :f, :o, :a, :emb)
       ");
       $stmt->execute([
         ':n'=>$nome, ':u'=>$unid, ':p'=>$preco, ':fc'=>$fc, ':t'=>$tipo,
@@ -95,7 +95,7 @@ try {
     } else {
       $stmt = $pdo->prepare("
         UPDATE lc_insumos SET
-          nome=:n, unidade=:u, preco=:p, fator_correcao=:fc,
+          nome=:n, unidade=:u::integer, preco=:p, fator_correcao=:fc,
           tipo_padrao=:t, fornecedor_id=:f, observacao=:o, ativo=:a, embalagem_multiplo=:emb
         WHERE id=:id
       ");
@@ -147,7 +147,7 @@ $ins = $pdo->query("
   SELECT i.*, u.simbolo
   , ROUND(i.preco * i.fator_correcao, 4) AS custo_corrigido
   FROM lc_insumos i
-  JOIN lc_unidades u ON u.id = i.unidade
+  JOIN lc_unidades u ON u.id = i.unidade::integer
   ORDER BY i.ativo DESC, i.nome ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 $fixos = $pdo->query("
@@ -321,7 +321,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               <td>
                 <select name="unidade_id" required>
                   <?php foreach ($uni as $u): ?>
-                    <option value="<?=$u['id']?>" <?= ($i['unidade']==$u['id']?'selected':'')?>>
+                    <option value="<?=$u['id']?>" <?= ((int)$i['unidade']==$u['id']?'selected':'')?>>
                       <?=h($u['simbolo'])?> (<?=h($u['nome'])?>)
                     </option>
                   <?php endforeach; ?>

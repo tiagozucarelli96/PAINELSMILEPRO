@@ -43,6 +43,29 @@ try {
         echo "<p>📂 Categorias: {$cats} registros</p>";
     }
     
+    // Verificar estrutura da tabela lc_insumos
+    if (in_array('lc_insumos', $tables)) {
+        echo "<h3>🔍 Estrutura da tabela lc_insumos:</h3>";
+        $cols = $pdo->query("
+            SELECT column_name, data_type, is_nullable 
+            FROM information_schema.columns 
+            WHERE table_name = 'lc_insumos' 
+            AND column_name IN ('unidade', 'unidade_id')
+            ORDER BY ordinal_position
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($cols)) {
+            echo "<p>❌ Nenhuma coluna 'unidade' ou 'unidade_id' encontrada</p>";
+        } else {
+            echo "<table border='1' style='border-collapse: collapse; margin: 10px 0;'>";
+            echo "<tr><th>Coluna</th><th>Tipo</th><th>Nullable</th></tr>";
+            foreach ($cols as $col) {
+                echo "<tr><td>{$col['column_name']}</td><td>{$col['data_type']}</td><td>{$col['is_nullable']}</td></tr>";
+            }
+            echo "</table>";
+        }
+    }
+    
     echo "<div style='background: #d4edda; padding: 15px; border-radius: 5px; margin: 20px 0;'>";
     echo "<h3>🎉 SUCESSO!</h3>";
     echo "<p>As tabelas foram criadas com sucesso!</p>";
