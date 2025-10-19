@@ -4,7 +4,13 @@
 
 session_start();
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/lc_config_helper.php';
 require_once __DIR__ . '/fpdf/fpdf.php'; // use o FPDF que já está na pasta public/
+
+// Configurações
+$precQ = (int)lc_get_config($pdo, 'precisao_quantidade', 3);
+$precV = (int)lc_get_config($pdo, 'precisao_valor', 2);
+$showCPPdf = lc_get_config($pdo, 'mostrar_custo_pdf', '1') === '1';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras'; // compras|encomendas
@@ -111,9 +117,9 @@ if ($tipo === 'compras') {
   foreach ($itens as $i) {
     $totalGeral += (float)$i['custo'];
     $pdf->Cell(100,6,utf($i['insumo_nome']),1,0);
-    $pdf->Cell(25,6,number_format($i['qtd'],3,',','.'),1,0,'R');
+    $pdf->Cell(25,6,number_format($i['qtd'],$precQ,',','.'),1,0,'R');
     $pdf->Cell(25,6,utf($i['unidade_simbolo']),1,0,'C');
-    $pdf->Cell(35,6,'R$ '.number_format($i['custo'],2,',','.'),1,1,'R');
+    $pdf->Cell(35,6,'R$ '.number_format($i['custo'],$precV,',','.'),1,1,'R');
   }
 } else {
   // ENCOMENDAS — agrupadas por fornecedor → evento
@@ -142,17 +148,33 @@ if ($tipo === 'compras') {
       foreach ($rows as $r) {
         $totalGeral += (float)$r['custo'];
         $pdf->Cell(90,6,utf($r['item_nome']),1,0);
-        $pdf->Cell(25,6,number_format($r['qtd'],3,',','.'),1,0,'R');
+        $pdf->Cell(25,6,number_format($r['qtd'],$precQ,',','.'),1,0,'R');
         $pdf->Cell(25,6,utf($r['unidade_simbolo']),1,0,'C');
-        $pdf->Cell(35,6,'R$ '.number_format($r['custo'],2,',','.'),1,1,'R');
+        $pdf->Cell(35,6,'R$ '.number_format($r['custo'],$precV,',','.'),1,1,'R');
       }
     }
+  }
+}
+
+// --- Custo por Convidado (se habilitado) ---
+if ($showCPPdf) {
+  // Calcular total de convidados
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM lc_listas_eventos WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totConvidados = (int)$stTmp->fetchColumn();
+  
+  if ($totConvidados > 0) {
+    $custoPorConvidado = $totalGeral / $totConvidados;
+    br($pdf, 4);
+    $pdf->SetFont('Arial','',9);
+    $pdf->Cell(0,6,utf("Total de convidados: {$totConvidados}"),0,1,'R');
+    $pdf->Cell(0,6,utf('Custo por convidado: R$ '.number_format($custoPorConvidado,$precV,',','.')),0,1,'R');
   }
 }
 
 // --- Total Geral ---
 br($pdf, 6);
 $pdf->SetFont('Arial','B',10);
-$pdf->Cell(0,8,utf('Total geral: R$ '.number_format($totalGeral,2,',','.')),0,1,'R');
+$pdf->Cell(0,8,utf('Total geral: R$ '.number_format($totalGeral,$precV,',','.')),0,1,'R');
 
 $pdf->Output('I', "Lista_{$tipo}_{$id}.pdf");

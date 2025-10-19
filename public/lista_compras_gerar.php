@@ -4,6 +4,12 @@ session_start();
 @include_once __DIR__.'/conexao.php';
 if (!isset($pdo)) { die('Sem conexão.'); }
 
+// Configurações
+require_once __DIR__ . '/lc_config_helper.php';
+$precQ = (int)lc_get_config($pdo, 'precisao_quantidade', 3);
+$precV = (int)lc_get_config($pdo, 'precisao_valor', 2);
+$showCPP = lc_get_config($pdo, 'mostrar_custo_previa', '1') === '1';
+
 // Função para arredondar por embalagem
 function round_pack(float $qtd, float $pack = 1.0): float {
   if ($pack === null || $pack <= 1) return ceil($qtd); // default: arredonda pra cima em unidade
@@ -276,9 +282,9 @@ $totalCompras = 0.0;
       <?php $totalCompras += (float)$row['custo']; ?>
       <tr>
         <td><?= htmlspecialchars($row['insumo_nome']) ?></td>
-        <td><?= number_format((float)$row['qtd'], 3, ',', '.') ?></td>
+        <td><?= number_format((float)$row['qtd'], $precQ, ',', '.') ?></td>
         <td><?= htmlspecialchars($row['unidade_simbolo']) ?></td>
-        <td>R$ <?= number_format((float)$row['custo'], 2, ',', '.') ?></td>
+        <td>R$ <?= number_format((float)$row['custo'], $precV, ',', '.') ?></td>
       </tr>
     <?php endforeach; ?>
   <?php else: ?>
@@ -288,7 +294,7 @@ $totalCompras = 0.0;
   <tfoot>
     <tr>
       <th colspan="3" style="text-align:right">Total Compras</th>
-      <th>R$ <?= number_format($totalCompras, 2, ',', '.') ?></th>
+      <th>R$ <?= number_format($totalCompras, $precV, ',', '.') ?></th>
     </tr>
   </tfoot>
 </table>
@@ -343,7 +349,7 @@ foreach ($OUT_ENCOMENDAS as $k => $r) {
                 <?php endif; ?>
               </td>
               <td><?= htmlspecialchars($row['unidade_simbolo']) ?></td>
-              <td>R$ <?= number_format((float)$row['custo'], 2, ',', '.') ?></td>
+              <td>R$ <?= number_format((float)$row['custo'], $precV, ',', '.') ?></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
@@ -356,7 +362,7 @@ foreach ($OUT_ENCOMENDAS as $k => $r) {
     <tfoot>
       <tr>
         <th style="text-align:right">Total Encomendas</th>
-        <th>R$ <?= number_format($totalEncomendas, 2, ',', '.') ?></th>
+        <th>R$ <?= number_format($totalEncomendas, $precV, ',', '.') ?></th>
       </tr>
     </tfoot>
   </table>
@@ -369,6 +375,7 @@ foreach ($OUT_ENCOMENDAS as $k => $r) {
 $TOTAL_GERAL = $totalCompras + $totalEncomendas;
 ?>
 
+<?php if ($showCPP): ?>
 <?php
 // === Custo por convidado (prévia) ===
 $totalConvidados = 0;
@@ -381,9 +388,10 @@ $custoPorConvidado = ($totalConvidados > 0) ? ($TOTAL_GERAL / $totalConvidados) 
 <table>
   <tbody>
     <tr><td>Total de convidados</td><td><?= (int)$totalConvidados ?></td></tr>
-    <tr><td>Custo por convidado</td><td>R$ <?= number_format($custoPorConvidado, 2, ',', '.') ?></td></tr>
+    <tr><td>Custo por convidado</td><td>R$ <?= number_format($custoPorConvidado, $precV, ',', '.') ?></td></tr>
   </tbody>
 </table>
+<?php endif; ?>
 
 <?php
 // === RESUMO GERAL ===
@@ -392,9 +400,9 @@ $TOTAL_GERAL = $totalCompras + $totalEncomendas;
 <h2>Resumo Geral</h2>
 <table>
   <tbody>
-    <tr><td>Total Compras</td><td>R$ <?= number_format($totalCompras, 2, ',', '.') ?></td></tr>
-    <tr><td>Total Encomendas</td><td>R$ <?= number_format($totalEncomendas, 2, ',', '.') ?></td></tr>
-    <tr><th>Total Geral</th><th>R$ <?= number_format($TOTAL_GERAL, 2, ',', '.') ?></th></tr>
+    <tr><td>Total Compras</td><td>R$ <?= number_format($totalCompras, $precV, ',', '.') ?></td></tr>
+    <tr><td>Total Encomendas</td><td>R$ <?= number_format($totalEncomendas, $precV, ',', '.') ?></td></tr>
+    <tr><th>Total Geral</th><th>R$ <?= number_format($TOTAL_GERAL, $precV, ',', '.') ?></th></tr>
   </tbody>
 </table>
 
