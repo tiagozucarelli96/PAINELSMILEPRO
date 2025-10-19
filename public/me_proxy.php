@@ -4,7 +4,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
 try {
-  $base = getenv('ME_BASE_URL') ?: 'https://app2.meeventos.com.br/lisbonbuffet';
+  // Baseado na documentação da ME Eventos
+  $base = getenv('ME_BASE_URL') ?: 'https://app2.meeventos.com.br';
   $key  = getenv('ME_API_KEY')  ?: '5qlrv-crt91-s0e0d-drri2-gxhlm'; // ajuste no .env se necessário
 
   // Log de debug
@@ -18,7 +19,7 @@ try {
   $start = isset($_GET['start']) ? trim($_GET['start']) : '';
   $end   = isset($_GET['end'])   ? trim($_GET['end'])   : '';
 
-  // monta URL (ajuste se seu backend já enviar datas no fetch do modal)
+  // Monta URL conforme documentação da ME Eventos
   $url = rtrim($base, '/').'/api/v1/events';
   $params = [];
   if ($q !== '')     $params['search'] = $q;
@@ -33,7 +34,11 @@ try {
   curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 20,
-    CURLOPT_HTTPHEADER => ['Authorization: Bearer '.$key]
+    CURLOPT_HTTPHEADER => [
+      'Authorization: Bearer '.$key,
+      'Content-Type: application/json',
+      'Accept: application/json'
+    ]
   ]);
   $resp = curl_exec($ch);
   $err  = curl_error($ch);
@@ -45,7 +50,11 @@ try {
   error_log("ME Proxy Debug - Response: " . substr($resp, 0, 200) . "...");
 
   if ($err)  throw new Exception('Erro cURL: '.$err);
-  if ($code < 200 || $code >= 300) throw new Exception('HTTP '.$code.' da Meeventos');
+  if ($code < 200 || $code >= 300) {
+    // Log mais detalhado para debug
+    error_log("ME Proxy Debug - Erro HTTP $code - Response completa: " . $resp);
+    throw new Exception('HTTP '.$code.' da Meeventos - Verifique a API key e URL');
+  }
 
   // → padroniza retorno mínimo pro modal
   $data = json_decode($resp, true);
