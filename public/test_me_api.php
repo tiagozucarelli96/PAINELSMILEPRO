@@ -21,7 +21,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 10,
     CURLOPT_HTTPHEADER => [
-        'Authorization: Bearer ' . $key,
+        'Authorization: ' . $key,  // Removido "Bearer " conforme documentação
         'Content-Type: application/json',
         'Accept: application/json'
     ]
@@ -49,7 +49,7 @@ curl_setopt_array($ch2, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 10,
     CURLOPT_HTTPHEADER => [
-        'Authorization: Bearer ' . $key,
+        'Authorization: ' . $key,  // Removido "Bearer " conforme documentação
         'Content-Type: application/json',
         'Accept: application/json'
     ]
