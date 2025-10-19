@@ -1,111 +1,67 @@
 <?php
-// Script para verificar se as tabelas foram criadas com sucesso
-session_start(); // Iniciar sessão para evitar problemas
+// verify_tables.php
+// Verificação simples das tabelas criadas
+
 require_once __DIR__ . '/public/conexao.php';
 
-echo "<h1>🔍 Verificação das Tabelas do Banco de Dados</h1>";
+echo "<h1>🔍 Verificação das Tabelas</h1>";
+
+if (!isset($pdo) || !$pdo instanceof PDO) {
+    die("❌ Erro: Não foi possível conectar ao banco de dados.");
+}
+
+echo "✅ Conexão estabelecida!<br><br>";
+
+// Listar todas as tabelas lc_*
+$tables = $pdo->query("
+    SELECT table_name, 
+           (SELECT COUNT(*) FROM information_schema.columns 
+            WHERE table_name = t.table_name AND table_schema = 'public') as column_count
+    FROM information_schema.tables t
+    WHERE table_schema = 'public' 
+    AND table_name LIKE 'lc_%'
+    ORDER BY table_name
+")->fetchAll(PDO::FETCH_ASSOC);
+
+echo "<h2>📋 Tabelas encontradas (" . count($tables) . "):</h2>";
+echo "<table border='1' style='border-collapse: collapse;'>";
+echo "<tr><th>Tabela</th><th>Colunas</th></tr>";
+
+foreach ($tables as $table) {
+    echo "<tr>";
+    echo "<td>{$table['table_name']}</td>";
+    echo "<td>{$table['column_count']}</td>";
+    echo "</tr>";
+}
+echo "</table>";
+
+// Verificar dados iniciais
+echo "<h2>📊 Dados iniciais:</h2>";
+
+$unidades = $pdo->query("SELECT COUNT(*) FROM lc_unidades")->fetchColumn();
+$categorias = $pdo->query("SELECT COUNT(*) FROM lc_categorias")->fetchColumn();
+$configs = $pdo->query("SELECT COUNT(*) FROM lc_config")->fetchColumn();
+
+echo "Unidades: {$unidades}<br>";
+echo "Categorias: {$categorias}<br>";
+echo "Configurações: {$configs}<br>";
+
+// Testar algumas queries básicas
+echo "<h2>🧪 Teste de queries:</h2>";
 
 try {
-    // Listar todas as tabelas do sistema
-    $tables = $pdo->query("
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name LIKE 'lc_%'
-        ORDER BY table_name
-    ")->fetchAll(PDO::FETCH_COLUMN);
-
-    echo "<h2>📋 Tabelas encontradas:</h2>";
-    echo "<ul>";
+    $units = $pdo->query("SELECT simbolo, nome FROM lc_unidades ORDER BY simbolo LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
+    echo "✅ Unidades carregadas: " . count($units) . "<br>";
     
-    $expectedTables = [
-        'lc_categorias',
-        'lc_compras_consolidadas', 
-        'lc_config',
-        'lc_encomendas_itens',
-        'lc_insumos',
-        'lc_itens_fixos',
-        'lc_listas',
-        'lc_listas_eventos',
-        'lc_unidades'
-    ];
+    $cats = $pdo->query("SELECT nome FROM lc_categorias ORDER BY ordem")->fetchAll(PDO::FETCH_COLUMN);
+    echo "✅ Categorias carregadas: " . implode(', ', $cats) . "<br>";
     
-    $allFound = true;
-    
-    foreach ($expectedTables as $expected) {
-        if (in_array($expected, $tables)) {
-            echo "<li style='color: green;'>✅ <strong>{$expected}</strong> - OK</li>";
-        } else {
-            echo "<li style='color: red;'>❌ <strong>{$expected}</strong> - FALTANDO</li>";
-            $allFound = false;
-        }
-    }
-    
-    echo "</ul>";
-    
-    // Verificar configurações
-    echo "<h2>⚙️ Configurações do sistema:</h2>";
-    try {
-        $configs = $pdo->query("SELECT chave, valor FROM lc_config ORDER BY chave")->fetchAll(PDO::FETCH_KEY_PAIR);
-        echo "<ul>";
-        foreach ($configs as $key => $value) {
-            echo "<li><strong>{$key}:</strong> {$value}</li>";
-        }
-        echo "</ul>";
-    } catch (Exception $e) {
-        echo "<p style='color: red;'>❌ Erro ao verificar configurações: " . htmlspecialchars($e->getMessage()) . "</p>";
-    }
-    
-    // Verificar unidades
-    echo "<h2>📏 Unidades de medida:</h2>";
-    try {
-        $units = $pdo->query("SELECT simbolo, nome FROM lc_unidades ORDER BY simbolo")->fetchAll();
-        echo "<ul>";
-        foreach ($units as $unit) {
-            echo "<li><strong>{$unit['simbolo']}</strong> - {$unit['nome']}</li>";
-        }
-        echo "</ul>";
-    } catch (Exception $e) {
-        echo "<p style='color: red;'>❌ Erro ao verificar unidades: " . htmlspecialchars($e->getMessage()) . "</p>";
-    }
-    
-    // Verificar categorias
-    echo "<h2>📂 Categorias:</h2>";
-    try {
-        $cats = $pdo->query("SELECT nome FROM lc_categorias ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
-        echo "<ul>";
-        foreach ($cats as $cat) {
-            echo "<li>{$cat}</li>";
-        }
-        echo "</ul>";
-    } catch (Exception $e) {
-        echo "<p style='color: red;'>❌ Erro ao verificar categorias: " . htmlspecialchars($e->getMessage()) . "</p>";
-    }
-    
-    // Resultado final
-    if ($allFound) {
-        echo "<div style='background: #d4edda; border: 1px solid #c3e6cb; padding: 20px; border-radius: 8px; margin: 20px 0;'>";
-        echo "<h3 style='color: #155724; margin: 0 0 10px 0;'>🎉 SUCESSO! Todas as tabelas foram criadas!</h3>";
-        echo "<p style='margin: 0; color: #155724;'>O sistema está pronto para uso completo.</p>";
-        echo "</div>";
-        
-        echo "<h3>🚀 Próximos passos:</h3>";
-        echo "<ol>";
-        echo "<li><a href='public/lc_index.php' target='_blank'>Acessar Lista de Compras</a></li>";
-        echo "<li><a href='public/configuracoes.php' target='_blank'>Configurar Insumos e Categorias</a></li>";
-        echo "<li><a href='public/lc_config_avancadas.php' target='_blank'>Ajustar Configurações Avançadas</a></li>";
-        echo "</ol>";
-    } else {
-        echo "<div style='background: #f8d7da; border: 1px solid #f5c6cb; padding: 20px; border-radius: 8px; margin: 20px 0;'>";
-        echo "<h3 style='color: #721c24; margin: 0 0 10px 0;'>⚠️ ATENÇÃO: Algumas tabelas estão faltando</h3>";
-        echo "<p style='margin: 0; color: #721c24;'>Execute novamente o script create_tables.sql no TablePlus.</p>";
-        echo "</div>";
-    }
+    $configs = $pdo->query("SELECT chave, valor FROM lc_config ORDER BY chave LIMIT 5")->fetchAll(PDO::FETCH_KEY_PAIR);
+    echo "✅ Configurações carregadas: " . count($configs) . "<br>";
     
 } catch (Exception $e) {
-    echo "<div style='background: #f8d7da; border: 1px solid #f5c6cb; padding: 20px; border-radius: 8px; margin: 20px 0;'>";
-    echo "<h3 style='color: #721c24; margin: 0 0 10px 0;'>❌ Erro ao verificar</h3>";
-    echo "<p style='margin: 0; color: #721c24;'>" . htmlspecialchars($e->getMessage()) . "</p>";
-    echo "</div>";
+    echo "❌ Erro nas queries: " . $e->getMessage() . "<br>";
 }
+
+echo "<br><strong>✅ Verificação concluída!</strong>";
 ?>
