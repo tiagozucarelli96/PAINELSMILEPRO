@@ -328,35 +328,6 @@ async function abrirME(){
   const m=document.getElementById('modalME'); m.style.display='flex';
 }
 function fecharME(){ document.getElementById('modalME').style.display='none'; }
-async function buscarME(ev){
-  ev.preventDefault();
-  const form = ev.target;
-  const params = new URLSearchParams(new FormData(form));
-  const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true; btn.textContent = 'Buscando...';
-  try{
-    const r = await fetch('lista_compras.php?ajax=me_buscar&'+params.toString(), {headers:{'Accept':'application/json'}});
-    const j = await r.json();
-    const box = document.getElementById('meResultados');
-    box.innerHTML = '';
-    if(!j.ok){ box.innerHTML = '<div class="alert err">'+(j.error||'Erro')+'</div>'; return; }
-    if(!Array.isArray(j.events) || !j.events.length){ box.innerHTML = '<em>Sem eventos no período/termo informado.</em>'; return; }
-    j.events.forEach((e,i)=>{
-      const row = document.createElement('div');
-      row.className = 'block';
-      row.innerHTML = `
-        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-          <div>
-            <div><strong>${e.evento||'(sem título)'}</strong> <span class="badge">${e.data||''} ${e.horario||''}</span></div>
-            <div style="font-size:13px;color:#333">Espaço: ${e.espaco||''} • Convidados: ${e.convidados||0}</div>
-          </div>
-          <button type="button" class="btn" onclick='addEventoME(${JSON.stringify(e).replace(/'/g,"&#39;")})'>Adicionar</button>
-        </div>`;
-      box.appendChild(row);
-    });
-  }catch(err){ alert('Erro na busca: '+err); }
-  finally{ btn.disabled=false; btn.textContent='Buscar'; }
-}
 function addEventoME(e){
   // encontra próximo índice de evento na tela
   const wrap=document.getElementById('ev-wrap');
