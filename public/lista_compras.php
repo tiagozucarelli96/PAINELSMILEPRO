@@ -649,6 +649,69 @@ function addEventoME(e){
     background: #c82333;
   }
 
+  /* Modal da ME */
+  #modalME {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  #modalME .modal-content {
+    max-width: 980px;
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  .modal-filters {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .modal-filters > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .modal-filters label {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+  }
+
+  .modal-filters input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .modal-filters .search-field {
+    flex: 1;
+    min-width: 240px;
+  }
+
+  #me_results {
+    margin-top: 16px;
+    max-height: 400px;
+    overflow: auto;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background: #fff;
+  }
+
   /* Responsivo */
   @media (max-width: 768px) {
     .lc-main-container {
@@ -676,6 +739,14 @@ function addEventoME(e){
     .lc-actions-container {
       flex-direction: column;
     }
+
+    .modal-filters {
+      flex-direction: column;
+    }
+
+    .modal-filters .search-field {
+      min-width: auto;
+    }
   }
 </style>
 <!-- === BLOCO: Script ME (usa o proxy ?page=me_proxy) === -->
@@ -684,7 +755,7 @@ function addEventoME(e){
   const $ = s => document.querySelector(s);
   const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
 
-  const openModal  = () => { modal.style.display = 'block'; };
+  const openModal  = () => { modal.style.display = 'flex'; };
   const closeModal = () => { modal.style.display = 'none'; };
 
   btnOpen?.addEventListener('click', openModal);
@@ -705,27 +776,46 @@ function addEventoME(e){
 
   // Buscar no proxy
   btnExec?.addEventListener('click', async ()=>{
+    console.log('Botão Buscar clicado');
     const start = $('#me_start').value || '';
     const end   = $('#me_end').value   || '';
     const q     = $('#me_q').value     || '';
+
+    console.log('Parâmetros:', { start, end, q });
 
     const params = new URLSearchParams();
     if (start) params.set('start', start);
     if (end)   params.set('end', end);
     if (q)     params.set('search', q);
-    params.set('field_sort','id'); params.set('sort','desc');
-    params.set('page','1'); params.set('limit','50');
+    params.set('field_sort','id'); 
+    params.set('sort','desc');
+    params.set('page','1'); 
+    params.set('limit','50');
+
+    const url = '/me_proxy.php?' + params.toString();
+    console.log('URL da requisição:', url);
 
     box.innerHTML = '<div style="padding:12px">Buscando…</div>';
     try {
-      // Enquanto o atalho temporário existir no index.php, usamos ?page=me_proxy.
-      // Depois, você pode trocar por "/me_proxy.php?..." direto.
-      const r = await fetch('/me_proxy.php?' + params.toString(), { headers: { 'Accept': 'application/json' }});
+      const r = await fetch(url, { 
+        headers: { 'Accept': 'application/json' },
+        method: 'GET'
+      });
+      
+      console.log('Status da resposta:', r.status);
+      
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const j = await r.json();
+      
+      console.log('Resposta da API:', j);
 
       const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
-      if (!lista.length) { box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; return; }
+      console.log('Lista de eventos:', lista);
+      
+      if (!lista.length) { 
+        box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; 
+        return; 
+      }
 
       const header = `
         <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
@@ -955,16 +1045,30 @@ function addEventoME(e){
 
 </div>
     <!-- === BLOCO: Modal de Busca na ME === -->
-<div id="modalME" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;">
-  <div style="max-width:980px;margin:40px auto;background:#fff;border-radius:12px;padding:16px;">
-    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-      <div><label>Início</label><input type="date" id="me_start" class="input-sm" value="<?php echo date('Y-m-d'); ?>"></div>
-      <div><label>Fim</label><input type="date" id="me_end" class="input-sm" value="<?php echo date('Y-m-d', strtotime('+30 days')); ?>"></div>
-      <div style="flex:1;min-width:240px;"><label>Buscar</label><input type="text" id="me_q" class="input-sm" placeholder="cliente, observação, evento…"></div>
-      <button type="button" id="me_exec" class="btn">Buscar</button>
-      <button type="button" id="me_close" class="btn" style="background:#777;">Fechar</button>
+<div id="modalME">
+  <div class="modal-content">
+    <div class="modal-filters">
+      <div>
+        <label>Início</label>
+        <input type="date" id="me_start" value="<?php echo date('Y-m-d'); ?>">
+      </div>
+      <div>
+        <label>Fim</label>
+        <input type="date" id="me_end" value="<?php echo date('Y-m-d', strtotime('+30 days')); ?>">
+      </div>
+      <div class="search-field">
+        <label>Buscar</label>
+        <input type="text" id="me_q" placeholder="cliente, observação, evento…">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="me_exec" class="btn">Buscar</button>
+          <button type="button" id="me_close" class="btn btn--secondary">Fechar</button>
+        </div>
+      </div>
     </div>
-    <div id="me_results" style="margin-top:14px;max-height:460px;overflow:auto;border:1px solid #eee;border-radius:10px">
+    <div id="me_results">
       <div style="padding:12px;color:#666">Use os filtros e clique em Buscar.</div>
     </div>
   </div>
