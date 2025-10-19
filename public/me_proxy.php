@@ -37,7 +37,7 @@ try {
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 20,
     CURLOPT_HTTPHEADER => [
-      'Authorization: '.$key,  // Removido "Bearer " conforme documentação
+      'Authorization: '.$key,  // Conforme documentação oficial - SEM Bearer
       'Content-Type: application/json',
       'Accept: application/json'
     ]
