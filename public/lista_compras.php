@@ -1051,19 +1051,19 @@ function addEventoME(e){
 
       const header = `
         <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
-          <div>Observação (Cliente)</div><div>Tipo</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
+          <div>Cliente</div><div>Evento</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Ação</div>
         </div>`;
 
       const rows = lista.map(raw => {
         const ev = mapEventoToForm(raw);
         const cliente = raw.nomeCliente ?? '';
-        const observacao = raw.observacao ?? '';
+        const evento = raw.nomeevento ?? '';
         const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
         const payload = encodeURIComponent(JSON.stringify({ev}));
         return `
           <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
-            <div><strong>${observacao || ev.nome || '(sem observação)'}</strong><div style="font-size:12px;color:#666">${cliente}</div></div>
-            <div>${ev.espaco || ''}</div>
+            <div><strong>${cliente || '(sem cliente)'}</strong></div>
+            <div>${evento || ''}</div>
             <div>${ev.convidados || ''}</div>
             <div>${dataBR || ''}</div>
             <div>${ev.hora || ''}</div>
