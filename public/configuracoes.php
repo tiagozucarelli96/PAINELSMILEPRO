@@ -65,6 +65,18 @@ try {
 
   // INSUMOS
   if (input('action') === 'save_insumo') {
+    // Verificar se a tabela existe
+    $tableExists = $pdo->query("
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'lc_insumos'
+      )
+    ")->fetchColumn();
+    
+    if (!$tableExists) {
+      throw new Exception('Tabela lc_insumos não existe. Execute o script de criação de tabelas primeiro.');
+    }
+    
     $id     = input('id');
     $nome   = input('nome');
     $unid   = (int)input('unidade_id');
@@ -82,27 +94,51 @@ try {
     if ($preco < 0) throw new Exception('Preço não pode ser negativo.');
     if ($fc < 1) throw new Exception('Fator de correção (FC) deve ser >= 1,00.');
 
+    // Verificar quais colunas existem na tabela
+    $cols = $pdo->query("
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'lc_insumos'
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    
+    // Buscar símbolo da unidade para salvar em unidade_padrao
+    $unidadeSimbolo = '';
+    if ($unid > 0) {
+      $unidadeStmt = $pdo->prepare("SELECT simbolo FROM lc_unidades WHERE id = ?");
+      $unidadeStmt->execute([$unid]);
+      $unidadeSimbolo = $unidadeStmt->fetchColumn() ?: '';
+    }
+    
     if ($id === '') {
-      $stmt = $pdo->prepare("
-        INSERT INTO lc_insumos (nome, unidade, preco, fator_correcao, tipo_padrao, fornecedor_id, observacao, ativo, embalagem_multiplo)
-        VALUES (:n, :u::integer, :p, :fc, :t, :f, :o, :a, :emb)
-      ");
-      $stmt->execute([
-        ':n'=>$nome, ':u'=>$unid, ':p'=>$preco, ':fc'=>$fc, ':t'=>$tipo,
-        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo, ':emb'=>$emb
-      ]);
+      // INSERT - usar colunas corretas
+      $insertCols = ['nome', 'unidade_padrao', 'unidade'];
+      $insertVals = [':n', ':up', ':u'];
+      $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo];
+      
+      if (in_array('custo_unit', $cols)) { $insertCols[] = 'custo_unit'; $insertVals[] = ':p'; $params[':p'] = $preco; }
+      if (in_array('aquisicao', $cols)) { $insertCols[] = 'aquisicao'; $insertVals[] = ':aq'; $params[':aq'] = $tipo; }
+      if (in_array('fornecedor_id', $cols)) { $insertCols[] = 'fornecedor_id'; $insertVals[] = ':f'; $params[':f'] = ($forn === '' ? null : $forn); }
+      if (in_array('observacoes', $cols)) { $insertCols[] = 'observacoes'; $insertVals[] = ':o'; $params[':o'] = $obs; }
+      if (in_array('embalagem_multiplo', $cols)) { $insertCols[] = 'embalagem_multiplo'; $insertVals[] = ':emb'; $params[':emb'] = $emb; }
+      
+      $sql = "INSERT INTO lc_insumos (" . implode(',', $insertCols) . ") VALUES (" . implode(',', $insertVals) . ")";
+      $stmt = $pdo->prepare($sql);
+      $stmt->execute($params);
       $msg = 'Insumo criado.';
     } else {
-      $stmt = $pdo->prepare("
-        UPDATE lc_insumos SET
-          nome=:n, unidade=:u::integer, preco=:p, fator_correcao=:fc,
-          tipo_padrao=:t, fornecedor_id=:f, observacao=:o, ativo=:a, embalagem_multiplo=:emb
-        WHERE id=:id
-      ");
-      $stmt->execute([
-        ':n'=>$nome, ':u'=>$unid, ':p'=>$preco, ':fc'=>$fc, ':t'=>$tipo,
-        ':f'=>($forn === '' ? null : $forn), ':o'=>$obs, ':a'=>$ativo, ':emb'=>$emb, ':id'=>$id
-      ]);
+      // UPDATE - usar colunas corretas
+      $updateParts = ['nome=:n', 'unidade_padrao=:up', 'unidade=:u'];
+      $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo, ':id'=>$id];
+      
+      if (in_array('custo_unit', $cols)) { $updateParts[] = 'custo_unit=:p'; $params[':p'] = $preco; }
+      if (in_array('aquisicao', $cols)) { $updateParts[] = 'aquisicao=:aq'; $params[':aq'] = $tipo; }
+      if (in_array('fornecedor_id', $cols)) { $updateParts[] = 'fornecedor_id=:f'; $params[':f'] = ($forn === '' ? null : $forn); }
+      if (in_array('observacoes', $cols)) { $updateParts[] = 'observacoes=:o'; $params[':o'] = $obs; }
+      if (in_array('embalagem_multiplo', $cols)) { $updateParts[] = 'embalagem_multiplo=:emb'; $params[':emb'] = $emb; }
+      
+      $sql = "UPDATE lc_insumos SET " . implode(', ', $updateParts) . " WHERE id=:id";
+      $stmt = $pdo->prepare($sql);
+      $stmt->execute($params);
       $msg = 'Insumo atualizado.';
     }
     $tab = 'insumos';
@@ -110,6 +146,18 @@ try {
 
   // ITENS FIXOS
   if (input('action') === 'save_item_fixo') {
+    // Verificar se a tabela existe
+    $tableExists = $pdo->query("
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'lc_itens_fixos'
+      )
+    ")->fetchColumn();
+    
+    if (!$tableExists) {
+      throw new Exception('Tabela lc_itens_fixos não existe. Execute o script de criação de tabelas primeiro.');
+    }
+    
     $id   = input('id');
     $ins  = (int)input('insumo_id');
     $qtd  = (float)str_replace(',', '.', input('qtd','0'));
@@ -143,20 +191,52 @@ try {
 // --- LISTAGENS ---
 $cat = $pdo->query("SELECT * FROM lc_categorias ORDER BY ativo DESC, ordem ASC, nome ASC")->fetchAll(PDO::FETCH_ASSOC);
 $uni = $pdo->query("SELECT * FROM lc_unidades   ORDER BY ativo DESC, tipo ASC, nome ASC")->fetchAll(PDO::FETCH_ASSOC);
-$ins = $pdo->query("
-  SELECT i.*, u.simbolo
-  , ROUND(i.preco * i.fator_correcao, 4) AS custo_corrigido
-  FROM lc_insumos i
-  JOIN lc_unidades u ON u.id = i.unidade::integer
-  ORDER BY i.ativo DESC, i.nome ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-$fixos = $pdo->query("
-  SELECT f.*, i.nome AS insumo_nome, u.simbolo AS unidade_simbolo
-  FROM lc_itens_fixos f
-  JOIN lc_insumos i ON i.id = f.insumo_id
-  JOIN lc_unidades u ON u.id = f.unidade_id
-  ORDER BY f.ativo DESC, i.nome ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+// Tentar carregar insumos de forma segura
+$ins = [];
+try {
+    // Primeiro, verificar quais colunas existem
+    $cols = $pdo->query("
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'lc_insumos'
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (in_array('custo_unit', $cols)) {
+        // Estrutura com custo
+        $ins = $pdo->query("
+          SELECT i.*, u.simbolo
+          , i.custo_unit AS custo_corrigido
+          FROM lc_insumos i
+          LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+          ORDER BY i.nome ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Estrutura básica
+        $ins = $pdo->query("
+          SELECT i.*, u.simbolo
+          FROM lc_insumos i
+          LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+          ORDER BY i.nome ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $ins = $pdo->query("SELECT * FROM lc_insumos ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+}
+// Carregar itens fixos de forma segura
+$fixos = [];
+try {
+    $fixos = $pdo->query("
+      SELECT f.*, i.nome AS insumo_nome, u.simbolo AS unidade_simbolo
+      FROM lc_itens_fixos f
+      LEFT JOIN lc_insumos i ON i.id = f.insumo_id
+      LEFT JOIN lc_unidades u ON u.id = f.unidade_id
+      ORDER BY f.ativo DESC, i.nome ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $fixos = $pdo->query("SELECT * FROM lc_itens_fixos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+}
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
@@ -302,15 +382,15 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <?php endif; ?>
 
   <?php if ($tab==='insumos'): ?>
-    <h2>Insumos <span class="small">(Custo corrigido = Preço × FC)</span></h2>
+    <h2>Insumos <span class="small">(Estrutura: custo_unit, aquisição, embalagem_multiplo)</span></h2>
     <form method="post">
       <input type="hidden" name="action" value="save_insumo">
       <input type="hidden" name="tab" value="insumos">
       <table>
         <thead>
           <tr>
-            <th>#</th><th>Nome</th><th>Unid.</th><th>Preço</th><th>FC</th><th>Emb. (múltiplo)</th><th>Custo corrigido</th>
-            <th>Tipo padrão</th><th>Fornecedor</th><th>Obs.</th><th>Ativo</th><th class="actions">Ação</th>
+            <th>#</th><th>Nome</th><th>Unid.</th><th>Custo Unit.</th><th>FC</th><th>Emb. (múltiplo)</th><th>Custo</th>
+            <th>Aquisição</th><th>Fornecedor</th><th>Obs.</th><th>Ativo</th><th class="actions">Ação</th>
           </tr>
         </thead>
         <tbody>
@@ -321,29 +401,29 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               <td>
                 <select name="unidade_id" required>
                   <?php foreach ($uni as $u): ?>
-                    <option value="<?=$u['id']?>" <?= ((int)$i['unidade']==$u['id']?'selected':'')?>>
+                    <option value="<?=$u['id']?>" <?= ($i['unidade_padrao']==$u['simbolo']?'selected':'')?>>
                       <?=h($u['simbolo'])?> (<?=h($u['nome'])?>)
                     </option>
                   <?php endforeach; ?>
                 </select>
               </td>
-              <td><input type="number" step="0.0001" name="preco" value="<?=h($i['preco'])?>" style="width:120px"></td>
-              <td><input type="number" step="0.000001" name="fator_correcao" value="<?=h($i['fator_correcao'])?>" style="width:120px"></td>
-              <td><input type="number" step="0.000001" name="embalagem_multiplo" value="<?= h($i['embalagem_multiplo']) ?>" style="width:120px" placeholder="ex.: 50"></td>
-              <td><span class="badge"><?= number_format($i['custo_corrigido'], 4, ',', '.') . ' / ' . h($i['simbolo']) ?></span></td>
+              <td><input type="number" step="0.0001" name="preco" value="<?=h($i['custo_unit'] ?? '')?>" style="width:120px"></td>
+              <td><input type="number" step="0.000001" name="fator_correcao" value="1.000000" style="width:120px" disabled title="FC não disponível nesta estrutura"></td>
+              <td><input type="number" step="0.000001" name="embalagem_multiplo" value="<?= h($i['embalagem_multiplo'] ?? '') ?>" style="width:120px" placeholder="ex.: 50"></td>
+              <td><span class="badge"><?= number_format($i['custo_corrigido'] ?? 0, 4, ',', '.') . ' / ' . h($i['simbolo'] ?? '') ?></span></td>
               <td>
                 <select name="tipo_padrao">
-                  <?php foreach (['comprado','preparo','fixo'] as $t): ?>
-                    <option value="<?=$t?>" <?= $i['tipo_padrao']===$t?'selected':''?>><?=$t?></option>
+                  <?php foreach (['mercado','preparo','fixo'] as $t): ?>
+                    <option value="<?=$t?>" <?= ($i['aquisicao'] ?? '')===$t?'selected':''?>><?=$t?></option>
                   <?php endforeach; ?>
                 </select>
               </td>
-              <td><input type="text" name="fornecedor_id" value="<?=h($i['fornecedor_id'])?>" placeholder="(opcional)" style="width:110px"></td>
-              <td><input type="text" name="observacao" value="<?=h($i['observacao'])?>"></td>
+              <td><input type="text" name="fornecedor_id" value="<?=h($i['fornecedor_id'] ?? '')?>" placeholder="(opcional)" style="width:110px"></td>
+              <td><input type="text" name="observacao" value="<?=h($i['observacoes'] ?? '')?>"></td>
               <td>
                 <select name="ativo" style="width:90px">
-                  <option value="1" <?= $i['ativo']?'selected':''?>>Sim</option>
-                  <option value="0" <?= !$i['ativo']?'selected':''?>>Não</option>
+                  <option value="1" selected>Sim</option>
+                  <option value="0">Não</option>
                 </select>
               </td>
               <td class="actions">
@@ -364,12 +444,12 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               </select>
             </td>
             <td><input type="number" step="0.0001" name="preco" placeholder="10.90" style="width:120px"></td>
-            <td><input type="number" step="0.000001" name="fator_correcao" value="1.000000" style="width:120px"></td>
+            <td><input type="number" step="0.000001" name="fator_correcao" value="1.000000" style="width:120px" disabled title="FC não disponível nesta estrutura"></td>
             <td><input type="number" step="0.000001" name="embalagem_multiplo" placeholder="ex.: 50" style="width:120px"></td>
             <td><span class="badge">—</span></td>
             <td>
               <select name="tipo_padrao">
-                <option>comprado</option><option>preparo</option><option>fixo</option>
+                <option value="mercado" selected>mercado</option><option value="preparo">preparo</option><option value="fixo">fixo</option>
               </select>
             </td>
             <td><input type="text" name="fornecedor_id" placeholder="(opcional)" style="width:110px"></td>

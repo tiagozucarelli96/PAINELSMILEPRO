@@ -50,12 +50,11 @@ try {
             SELECT column_name, data_type, is_nullable 
             FROM information_schema.columns 
             WHERE table_name = 'lc_insumos' 
-            AND column_name IN ('unidade', 'unidade_id')
             ORDER BY ordinal_position
         ")->fetchAll(PDO::FETCH_ASSOC);
         
         if (empty($cols)) {
-            echo "<p>❌ Nenhuma coluna 'unidade' ou 'unidade_id' encontrada</p>";
+            echo "<p>❌ Tabela lc_insumos vazia ou não encontrada</p>";
         } else {
             echo "<table border='1' style='border-collapse: collapse; margin: 10px 0;'>";
             echo "<tr><th>Coluna</th><th>Tipo</th><th>Nullable</th></tr>";
