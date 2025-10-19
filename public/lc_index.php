@@ -257,6 +257,79 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
 <title>Lista de Compras — Histórico</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="estilo.css">
+<style>
+  .card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 20px 0;
+    padding: 20px;
+  }
+  
+  .table-wrap {
+    overflow-x: auto;
+  }
+  
+  .badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  
+  .btn-small {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 2px;
+    background: #f5f5f5;
+    color: #333;
+    text-decoration: none;
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+  }
+  
+  .btn-small:hover {
+    background: #e0e0e0;
+  }
+  
+  .btn-small.danger {
+    background: #ffebee;
+    color: #c62828;
+    border-color: #ffcdd2;
+  }
+  
+  .btn-small.danger:hover {
+    background: #ffcdd2;
+  }
+  
+  .actions {
+    white-space: nowrap;
+  }
+  
+  .text-center {
+    text-align: center;
+  }
+  
+  .alert {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 10px 0;
+  }
+  
+  .alert a {
+    color: #007bff;
+    text-decoration: none;
+  }
+  
+  .alert a:hover {
+    text-decoration: underline;
+  }
+</style>
 </head>
 <body class="panel has-sidebar">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
@@ -280,38 +353,43 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
     </div>
 
     <!-- Tabela 1: Últimas listas de COMPRAS -->
-    <h2>Últimas listas de compras</h2>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:80px;">Nº</th>
-          <th>Data gerada</th>
-          <th>Espaço</th>
-          <th>Eventos (resumo)</th>
-          <th>Criado por</th>
-          <th style="width:220px;">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if ($rowsC): foreach ($rowsC as $r): ?>
-          <tr>
-            <td><?= (int)$r['id'] ?></td>
-            <td><?= h(dt($r['criado_em'])) ?></td>
-            <td><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></td>
-            <td><?= h($r['resumo_eventos']) ?></td>
-            <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
-            <td>
-              <!-- Ajuste os links conforme seus arquivos reais -->
-              <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank">Editar/Ver</a> |
-              <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank">PDF</a> |
-              <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')">Excluir</a>
-            </td>
-          </tr>
-        <?php endforeach; else: ?>
-          <tr><td colspan="6">Nenhuma lista de compras gerada ainda.</td></tr>
-        <?php endif; ?>
-      </tbody>
-    </table>
+    <div class="card">
+      <h2>📋 Últimas listas de compras</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:80px;">Nº</th>
+              <th>Data gerada</th>
+              <th>Espaço</th>
+              <th>Eventos (resumo)</th>
+              <th>Criado por</th>
+              <th style="width:220px;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if ($rowsC): foreach ($rowsC as $r): ?>
+              <tr>
+                <td><strong>#<?= (int)$r['id'] ?></strong></td>
+                <td><?= h(dt($r['criado_em'])) ?></td>
+                <td><span class="badge"><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></span></td>
+                <td><?= h($r['resumo_eventos']) ?></td>
+                <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
+                <td class="actions">
+                  <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank" class="btn-small">👁️ Ver</a>
+                  <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=compras" target="_blank" class="btn-small">📄 PDF</a>
+                  <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')" class="btn-small danger">🗑️ Excluir</a>
+                </td>
+              </tr>
+            <?php endforeach; else: ?>
+              <tr><td colspan="6" class="text-center">
+                <div class="alert">Nenhuma lista de compras gerada ainda. <a href="lista_compras.php">Clique aqui para gerar uma nova lista</a>.</div>
+              </td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Paginação COMPRAS -->
     <?php
@@ -332,38 +410,43 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
     <hr>
 
     <!-- Tabela 2: Últimas listas de ENCOMENDAS -->
-    <h2>Últimas listas de encomendas</h2>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:80px;">Nº</th>
-          <th>Data gerada</th>
-          <th>Espaço</th>
-          <th>Eventos (resumo)</th>
-          <th>Criado por</th>
-          <th style="width:220px;">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if ($rowsE): foreach ($rowsE as $r): ?>
-          <tr>
-            <td><?= (int)$r['id'] ?></td>
-            <td><?= h(dt($r['criado_em'])) ?></td>
-            <td><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></td>
-            <td><?= h($r['resumo_eventos']) ?></td>
-            <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
-            <td>
-              <!-- Ajuste os links conforme seus arquivos reais -->
-              <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank">Editar/Ver</a> |
-              <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank">PDF</a> |
-              <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')">Excluir</a>
-            </td>
-          </tr>
-        <?php endforeach; else: ?>
-          <tr><td colspan="6">Nenhuma lista de encomendas gerada ainda.</td></tr>
-        <?php endif; ?>
-      </tbody>
-    </table>
+    <div class="card">
+      <h2>📦 Últimas listas de encomendas</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:80px;">Nº</th>
+              <th>Data gerada</th>
+              <th>Espaço</th>
+              <th>Eventos (resumo)</th>
+              <th>Criado por</th>
+              <th style="width:220px;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if ($rowsE): foreach ($rowsE as $r): ?>
+              <tr>
+                <td><strong>#<?= (int)$r['id'] ?></strong></td>
+                <td><?= h(dt($r['criado_em'])) ?></td>
+                <td><span class="badge"><?= h($r['espaco_resumo'] ?: 'Múltiplos') ?></span></td>
+                <td><?= h($r['resumo_eventos']) ?></td>
+                <td><?= h($r['criado_por_nome'] ?: ('#'.(int)$r['criado_por'])) ?></td>
+                <td class="actions">
+                  <a href="lc_ver.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank" class="btn-small">👁️ Ver</a>
+                  <a href="lc_pdf.php?id=<?= (int)$r['id'] ?>&tipo=encomendas" target="_blank" class="btn-small">📄 PDF</a>
+                  <a href="lc_excluir.php?id=<?= (int)$r['id'] ?>" onclick="return confirm('Enviar para lixeira?')" class="btn-small danger">🗑️ Excluir</a>
+                </td>
+              </tr>
+            <?php endforeach; else: ?>
+              <tr><td colspan="6" class="text-center">
+                <div class="alert">Nenhuma lista de encomendas gerada ainda. <a href="lista_compras.php">Clique aqui para gerar uma nova lista</a>.</div>
+              </td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Paginação ENCOMENDAS -->
     <?php
@@ -387,111 +470,6 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
     <div class="err"><?php echo h($erroQuery); ?></div>
   <?php endif; ?>
 
-    <!-- Compras -->
-    <div class="card">
-      <h2>Últimas listas de compras</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:70px;">Nº</th>
-              <th>Data gerada</th>
-              <th>Espaço</th>
-              <th>Eventos (resumo)</th>
-              <th>Criado por</th>
-              <th style="width:210px;">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php if (!$compras): ?>
-            <tr><td colspan="6">
-              <div class="alert">Nenhuma lista gerada ainda. Clique em <strong>Gerar Lista de Compras</strong> para começar.</div>
-            </td></tr>
-          <?php else: foreach ($compras as $r): ?>
-            <tr>
-              <td>#<?php echo (int)$r['grupo_id']; ?></td>
-              <td>
-                <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
-                <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
-              </td>
-              <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
-              <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
-              <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
-              <td class="actions">
-                <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
-                <a href="pdf_compras.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
-                <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
-              </td>
-            </tr>
-          <?php endforeach; endif; ?>
-          </tbody>
-        </table>
-      </div>
-      <?php if ($pages1 > 1): ?>
-        <div class="pagin">
-          <?php for ($i=1; $i<=$pages1; $i++): ?>
-            <?php if ($i === $p1): ?>
-              <span class="atual"><?php echo $i; ?></span>
-            <?php else: ?>
-              <a href="?p1=<?php echo $i; ?>&p2=<?php echo $p2; ?>"><?php echo $i; ?></a>
-            <?php endif; ?>
-          <?php endfor; ?>
-        </div>
-      <?php endif; ?>
-    </div>
-
-    <!-- Encomendas -->
-  <div class="card">
-    <h2>Últimas listas de encomendas</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:70px;">Nº</th>
-            <th>Data gerada</th>
-            <th>Espaço</th>
-            <th>Eventos (resumo)</th>
-            <th>Criado por</th>
-            <th style="width:210px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-        <?php if (!$encomendas): ?>
-          <tr><td colspan="6">
-            <div class="alert">Sem listas de encomendas ainda. Ao gerar uma lista, a saída é criada automaticamente.</div>
-          </td></tr>
-        <?php else: foreach ($encomendas as $r): ?>
-          <tr>
-            <td>#<?php echo (int)$r['grupo_id']; ?></td>
-            <td>
-              <?php echo h(fmtDataPt($r['data_gerada'] ?? '')); ?><br>
-              <span class="meta">ID interno: <?php echo (int)$r['grupo_id']; ?></span>
-            </td>
-            <td><span class="badge"><?php echo h($r['espaco_resumo'] ?? ''); ?></span></td>
-            <td><?php echo nl2br(h($r['resumo_eventos'] ?? '')); ?></td>
-            <td><?php echo h($r['criado_por'] ?? '—'); ?></td>
-            <td class="actions">
-              <a href="ver.php?g=<?php echo (int)$r['grupo_id']; ?>" target="_blank">Visualizar</a>
-              <a href="pdf_encomendas.php?grupo_id=<?php echo (int)$r['grupo_id']; ?>" target="_blank">PDF</a>
-              <button type="button" disabled title="Mover para lixeira (via Configurações)">Excluir</button>
-            </td>
-          </tr>
-        <?php endforeach; endif; ?>
-        </tbody>
-      </table>
-    </div>
-    <?php if ($pages2 > 1): ?>
-      <div class="pagin">
-        <?php for ($i=1; $i<=$pages2; $i++): ?>
-          <?php if ($i === $p2): ?>
-            <span class="atual"><?php echo $i; ?></span>
-          <?php else: ?>
-            <a href="?p1=<?php echo $p1; ?>&p2=<?php echo $i; ?>"><?php echo $i; ?></a>
-          <?php endif; ?>
-        <?php endfor; ?>
-      </div>
-    <?php endif; ?>
-  </div>
 
   <div class="meta">Dica: “Espaço” mostra a unidade consolidada; quando múltiplas, exibe <strong>Múltiplos</strong>.</div>
 </div>
