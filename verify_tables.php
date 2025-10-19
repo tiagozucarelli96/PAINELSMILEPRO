@@ -1,5 +1,6 @@
 <?php
 // Script para verificar se as tabelas foram criadas com sucesso
+session_start(); // Iniciar sessão para evitar problemas
 require_once __DIR__ . '/public/conexao.php';
 
 echo "<h1>🔍 Verificação das Tabelas do Banco de Dados</h1>";
