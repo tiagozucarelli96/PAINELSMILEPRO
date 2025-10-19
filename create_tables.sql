@@ -11,6 +11,15 @@ CREATE TABLE IF NOT EXISTS lc_listas (
     espaco_resumo VARCHAR(100)
 );
 
+-- Adicionar coluna tipo_lista se a tabela já existir sem ela
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'lc_listas' AND column_name = 'tipo_lista') THEN
+        ALTER TABLE lc_listas ADD COLUMN tipo_lista VARCHAR(20) NOT NULL DEFAULT 'compras';
+    END IF;
+END $$;
+
 -- 2. Tabela de eventos vinculados às listas
 CREATE TABLE IF NOT EXISTS lc_listas_eventos (
     id SERIAL PRIMARY KEY,

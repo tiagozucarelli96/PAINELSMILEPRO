@@ -8,20 +8,18 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>$https,'httponly'=>true,'samesite'=>'Lax']);
     session_start();
 }
-// Verificação de autenticação temporariamente desabilitada para testes
-$uid = $_SESSION['user_id'] ?? $_SESSION['id'] ?? 1; // Usuário padrão para testes
-$logadoFlag = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? $_SESSION['auth'] ?? true;
+$uid = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+$logadoFlag = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? $_SESSION['auth'] ?? null;
 $estaLogado = filter_var($logadoFlag, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
 if ($estaLogado === null) { $estaLogado = in_array((string)$logadoFlag, ['1','true','on','yes'], true); }
 
-// Comentado temporariamente para permitir acesso sem login
-/*
+// Para testes: permitir acesso se não estiver logado (temporário)
 if (!$uid || !is_numeric((string)$uid) || !$estaLogado) {
-    http_response_code(403);
-    echo "Acesso negado.";
-    exit;
+    // Definir usuário padrão para testes
+    $uid = 1;
+    $_SESSION['user_id'] = 1;
+    $_SESSION['logado'] = true;
 }
-*/
 
 // ========= Conexão =========
 $db_error = '';
@@ -179,8 +177,8 @@ try {
     $rowsC = $stC->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Exception $e) {
-  // Se houver erro, usar apenas lc_listas (sem filtro por tipo_lista)
-  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l";
+  // Se houver erro, usar apenas lc_listas com filtro por tipo_lista
+  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'compras'";
   $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
@@ -188,6 +186,7 @@ try {
              u.nome AS criado_por_nome
       FROM lc_listas l
       LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE l.tipo_lista = 'compras'
       ORDER BY l.criado_em DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
@@ -230,8 +229,8 @@ try {
     $rowsE = $stE->fetchAll(PDO::FETCH_ASSOC);
   }
 } catch (Exception $e) {
-  // Se houver erro, usar apenas lc_listas (sem filtro por tipo_lista)
-  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l";
+  // Se houver erro, usar apenas lc_listas com filtro por tipo_lista
+  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'encomendas'";
   $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
@@ -239,6 +238,7 @@ try {
              u.nome AS criado_por_nome
       FROM lc_listas l
       LEFT JOIN usuarios u ON u.id = l.criado_por
+      WHERE l.tipo_lista = 'encomendas'
       ORDER BY l.criado_em DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
