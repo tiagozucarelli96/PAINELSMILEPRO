@@ -39,6 +39,86 @@ try {
     $tab = 'categorias';
   }
 
+  // EXCLUIR CATEGORIA
+  if (input('action') === 'delete_categoria') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da categoria é obrigatório.');
+    
+    // Verificar se há insumos usando esta categoria
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE categoria_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta categoria pois há $count insumo(s) vinculado(s) a ela.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_categorias WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Categoria excluída.';
+    $tab = 'categorias';
+  }
+
+  // EXCLUIR INSUMO
+  if (input('action') === 'delete_insumo') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID do insumo é obrigatório.');
+    
+    // Verificar se há itens fixos usando este insumo
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_itens_fixos WHERE insumo_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count item(s) fixo(s) vinculado(s) a ele.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_insumos WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Insumo excluído.';
+    $tab = 'insumos';
+  }
+
+  // EXCLUIR UNIDADE
+  if (input('action') === 'delete_unidade') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da unidade é obrigatório.');
+    
+    // Verificar se há insumos usando esta unidade
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE unidade_id = ? OR unidade_padrao = (SELECT simbolo FROM lc_unidades WHERE id = ?)");
+    $check->execute([$id, $id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count insumo(s) vinculado(s) a ela.");
+    }
+    
+    // Verificar se há itens fixos usando esta unidade
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_itens_fixos WHERE unidade_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count2 item(s) fixo(s) vinculado(s) a ela.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_unidades WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Unidade excluída.';
+    $tab = 'unidades';
+  }
+
+  // EXCLUIR ITEM FIXO
+  if (input('action') === 'delete_item_fixo') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID do item fixo é obrigatório.');
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_itens_fixos WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Item fixo excluído.';
+    $tab = 'fixos';
+  }
+
   // UNIDADES
   if (input('action') === 'save_unidade') {
     $id    = input('id');
@@ -79,6 +159,7 @@ try {
     
     $id     = input('id');
     $nome   = input('nome');
+    $categoria = (int)input('categoria_id');
     $unid   = (int)input('unidade_id');
     $preco  = (float)str_replace(',', '.', input('preco','0'));
     $fc     = (float)str_replace(',', '.', input('fator_correcao','1'));
@@ -115,6 +196,7 @@ try {
       $insertVals = [':n', ':up', ':u'];
       $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo];
       
+      if (in_array('categoria_id', $cols)) { $insertCols[] = 'categoria_id'; $insertVals[] = ':cat'; $params[':cat'] = ($categoria > 0 ? $categoria : null); }
       if (in_array('custo_unit', $cols)) { $insertCols[] = 'custo_unit'; $insertVals[] = ':p'; $params[':p'] = $preco; }
       if (in_array('aquisicao', $cols)) { $insertCols[] = 'aquisicao'; $insertVals[] = ':aq'; $params[':aq'] = $tipo; }
       if (in_array('fornecedor_id', $cols)) { $insertCols[] = 'fornecedor_id'; $insertVals[] = ':f'; $params[':f'] = ($forn === '' ? null : $forn); }
@@ -130,6 +212,7 @@ try {
       $updateParts = ['nome=:n', 'unidade_padrao=:up', 'unidade=:u'];
       $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo, ':id'=>$id];
       
+      if (in_array('categoria_id', $cols)) { $updateParts[] = 'categoria_id=:cat'; $params[':cat'] = ($categoria > 0 ? $categoria : null); }
       if (in_array('custo_unit', $cols)) { $updateParts[] = 'custo_unit=:p'; $params[':p'] = $preco; }
       if (in_array('aquisicao', $cols)) { $updateParts[] = 'aquisicao=:aq'; $params[':aq'] = $tipo; }
       if (in_array('fornecedor_id', $cols)) { $updateParts[] = 'fornecedor_id=:f'; $params[':f'] = ($forn === '' ? null : $forn); }
@@ -204,19 +287,21 @@ try {
     if (in_array('custo_unit', $cols)) {
         // Estrutura com custo
         $ins = $pdo->query("
-          SELECT i.*, u.simbolo
+          SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
           , i.custo_unit AS custo_corrigido
           FROM lc_insumos i
           LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
-          ORDER BY i.nome ASC
+          LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+          ORDER BY c.nome ASC, i.nome ASC
         ")->fetchAll(PDO::FETCH_ASSOC);
     } else {
         // Estrutura básica
         $ins = $pdo->query("
-          SELECT i.*, u.simbolo
+          SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
           FROM lc_insumos i
           LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
-          ORDER BY i.nome ASC
+          LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+          ORDER BY c.nome ASC, i.nome ASC
         ")->fetchAll(PDO::FETCH_ASSOC);
     }
 } catch (Exception $e) {
@@ -282,8 +367,15 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <!-- Conteúdo Principal -->
   <main class="main-content">
     <div class="page-header">
-      <h1 class="page-title">Configurações</h1>
-      <p class="page-subtitle">Gerencie categorias, unidades, insumos e itens fixos do sistema</p>
+      <div class="flex items-center gap-4 mb-4">
+        <a href="lc_index.php" class="btn btn-outline">
+          <span>←</span> Voltar
+        </a>
+        <div>
+          <h1 class="page-title">Configurações</h1>
+          <p class="page-subtitle">Gerencie categorias, unidades, insumos e itens fixos do sistema</p>
+        </div>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -356,15 +448,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           </td>
                           <td>
                             <select name="ativo" class="form-select" style="width: 100px;">
-                              <option value="1" <?= $c['ativo']?'selected':''?>>✅ Ativa</option>
-                              <option value="0" <?= !$c['ativo']?'selected':''?>>❌ Inativa</option>
+                              <option value="1" <?= $c['ativo']?'selected':''?>>Ativa</option>
+                              <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
                             </select>
                           </td>
                           <td class="text-center">
-                            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                              <span>💾</span> Salvar
-                            </button>
+                            <div class="flex gap-2 justify-center">
+                              <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                              <button type="submit" class="btn btn-primary btn-sm">
+                                <span>💾</span> Salvar
+                              </button>
+                              <button type="submit" class="btn btn-outline btn-sm" 
+                                      onclick="return confirm('Tem certeza que deseja excluir esta categoria?')"
+                                      formaction="?action=delete_categoria&tab=categorias&id=<?= (int)$c['id'] ?>">
+                                <span>🗑️</span> Excluir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       <?php endforeach; ?>
@@ -384,8 +483,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         </td>
                         <td>
                           <select name="ativo" class="form-select" style="width: 100px;">
-                            <option value="1" selected>✅ Ativa</option>
-                            <option value="0">❌ Inativa</option>
+                            <option value="1" selected>Ativa</option>
+                            <option value="0">Inativa</option>
                           </select>
                         </td>
                         <td class="text-center">
@@ -468,15 +567,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           </td>
                           <td>
                             <select name="ativo" class="form-select" style="width: 100px;">
-                              <option value="1" <?= $u['ativo']?'selected':''?>>✅ Ativa</option>
-                              <option value="0" <?= !$u['ativo']?'selected':''?>>❌ Inativa</option>
+                              <option value="1" <?= $u['ativo']?'selected':''?>>Ativa</option>
+                              <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
                             </select>
                           </td>
                           <td class="text-center">
-                            <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                              <span>💾</span> Salvar
-                            </button>
+                            <div class="flex gap-2 justify-center">
+                              <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                              <button type="submit" class="btn btn-primary btn-sm">
+                                <span>💾</span> Salvar
+                              </button>
+                              <button type="submit" class="btn btn-outline btn-sm" 
+                                      onclick="return confirm('Tem certeza que deseja excluir esta unidade?')"
+                                      formaction="?action=delete_unidade&tab=unidades&id=<?= (int)$u['id'] ?>">
+                                <span>🗑️</span> Excluir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       <?php endforeach; ?>
@@ -512,8 +618,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         </td>
                         <td>
                           <select name="ativo" class="form-select" style="width: 100px;">
-                            <option value="1" selected>✅ Ativa</option>
-                            <option value="0">❌ Inativa</option>
+                            <option value="1" selected>Ativa</option>
+                            <option value="0">Inativa</option>
                           </select>
                         </td>
                         <td class="text-center">
@@ -542,11 +648,12 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 <input type="hidden" name="action" value="save_insumo">
                 <input type="hidden" name="tab" value="insumos">
                 
-                <div class="table-container" style="overflow-x: auto;">
-                  <table class="table" style="min-width: 1200px;">
+                <div class="table-container">
+                  <table class="table">
                     <thead>
                       <tr>
                         <th>ID</th>
+                        <th>Categoria</th>
                         <th>Nome do Insumo</th>
                         <th>Unidade</th>
                         <th>Custo Unit.</th>
@@ -565,6 +672,16 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         <tr class="animate-slide-in">
                           <td>
                             <span class="badge"><?= (int)$i['id'] ?></span>
+                          </td>
+                          <td>
+                            <select name="categoria_id" class="form-select" style="width: 120px;">
+                              <option value="">Sem categoria</option>
+                              <?php foreach ($cat as $c): ?>
+                                <option value="<?=$c['id']?>" <?= ($i['categoria_id'] ?? '')==$c['id']?'selected':''?>>
+                                  <?=h($c['nome'])?>
+                                </option>
+                              <?php endforeach; ?>
+                            </select>
                           </td>
                           <td>
                             <input type="text" name="nome" value="<?=h($i['nome'])?>" 
@@ -637,15 +754,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           </td>
                           <td>
                             <select name="ativo" class="form-select" style="width: 80px;">
-                              <option value="1" <?= ($i['ativo'] ?? 1) ? 'selected' : '' ?>>✅ Ativo</option>
-                              <option value="0" <?= !($i['ativo'] ?? 1) ? 'selected' : '' ?>>❌ Inativo</option>
+                              <option value="1" <?= ($i['ativo'] ?? 1) ? 'selected' : '' ?>>Ativo</option>
+                              <option value="0" <?= !($i['ativo'] ?? 1) ? 'selected' : '' ?>>Inativo</option>
                             </select>
                           </td>
                           <td class="text-center">
-                            <input type="hidden" name="id" value="<?= (int)$i['id'] ?>">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                              <span>💾</span> Salvar
-                            </button>
+                            <div class="flex gap-2 justify-center">
+                              <input type="hidden" name="id" value="<?= (int)$i['id'] ?>">
+                              <button type="submit" class="btn btn-primary btn-sm">
+                                <span>💾</span> Salvar
+                              </button>
+                              <button type="submit" class="btn btn-outline btn-sm" 
+                                      onclick="return confirm('Tem certeza que deseja excluir este insumo?')"
+                                      formaction="?action=delete_insumo&tab=insumos&id=<?= (int)$i['id'] ?>">
+                                <span>🗑️</span> Excluir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       <?php endforeach; ?>
@@ -653,6 +777,14 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                       <tr class="row-new animate-fade-in">
                         <td>
                           <span class="badge badge-success">NOVO</span>
+                        </td>
+                        <td>
+                          <select name="categoria_id" class="form-select" style="width: 120px;">
+                            <option value="">Sem categoria</option>
+                            <?php foreach ($cat as $c): ?>
+                              <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
+                            <?php endforeach; ?>
+                          </select>
                         </td>
                         <td>
                           <input type="text" name="nome" placeholder="Ex: Peito de frango" 
@@ -711,8 +843,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         </td>
                         <td>
                           <select name="ativo" class="form-select" style="width: 80px;">
-                            <option value="1" selected>✅ Ativo</option>
-                            <option value="0">❌ Inativo</option>
+                            <option value="1" selected>Ativo</option>
+                            <option value="0">Inativo</option>
                           </select>
                         </td>
                         <td class="text-center">
@@ -795,15 +927,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           </td>
                           <td>
                             <select name="ativo" class="form-select" style="width: 100px;">
-                              <option value="1" <?= $f['ativo']?'selected':'' ?>>✅ Ativo</option>
-                              <option value="0" <?= !$f['ativo']?'selected':'' ?>>❌ Inativo</option>
+                              <option value="1" <?= $f['ativo']?'selected':'' ?>>Ativo</option>
+                              <option value="0" <?= !$f['ativo']?'selected':'' ?>>Inativo</option>
                             </select>
                           </td>
                           <td class="text-center">
-                            <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
-                            <button type="submit" class="btn btn-primary btn-sm">
-                              <span>💾</span> Salvar
-                            </button>
+                            <div class="flex gap-2 justify-center">
+                              <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                              <button type="submit" class="btn btn-primary btn-sm">
+                                <span>💾</span> Salvar
+                              </button>
+                              <button type="submit" class="btn btn-outline btn-sm" 
+                                      onclick="return confirm('Tem certeza que deseja excluir este item fixo?')"
+                                      formaction="?action=delete_item_fixo&tab=fixos&id=<?= (int)$f['id'] ?>">
+                                <span>🗑️</span> Excluir
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       <?php endforeach; ?>
@@ -842,8 +981,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         </td>
                         <td>
                           <select name="ativo" class="form-select" style="width: 100px;">
-                            <option value="1" selected>✅ Ativo</option>
-                            <option value="0">❌ Inativo</option>
+                            <option value="1" selected>Ativo</option>
+                            <option value="0">Inativo</option>
                           </select>
                         </td>
                         <td class="text-center">

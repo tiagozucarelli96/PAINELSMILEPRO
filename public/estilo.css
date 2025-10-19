@@ -107,76 +107,67 @@ body {
 
 /* ========== SIDEBAR ========== */
 .sidebar {
-  width: 280px;
-  background: linear-gradient(135deg, var(--primary-900) 0%, var(--primary-700) 100%);
-  color: white;
+  width: 220px;
+  background-color: var(--primary-blue);
+  padding: var(--spacing-lg);
+  height: 100vh;
   position: fixed;
   top: 0;
   left: 0;
-  height: 100vh;
-  overflow-y: auto;
-  z-index: 1000;
-  box-shadow: var(--shadow-xl);
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  z-index: 100;
+  visibility: visible !important;
 }
 
 .sidebar-header {
-  padding: var(--space-6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: var(--spacing-xl);
 }
 
 .sidebar-logo {
-  width: 100%;
-  max-width: 180px;
+  max-width: 150px;
+  max-height: 72px;
+  width: auto;
   height: auto;
-  filter: brightness(0) invert(1);
-}
-
-.sidebar-nav {
-  padding: var(--space-4);
-}
-
-.nav-item {
   display: block;
-  padding: var(--space-3) var(--space-4);
-  color: rgba(255, 255, 255, 0.8);
+  margin: 10px auto;
+  /* Removido o filter: invert(1) para manter a logo original */
+}
+
+.sidebar nav {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar nav a {
   text-decoration: none;
-  border-radius: var(--radius);
-  margin-bottom: var(--space-1);
-  transition: var(--transition);
-  font-weight: 500;
-  position: relative;
-}
-
-.nav-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  transform: translateX(4px);
-}
-
-.nav-item.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: white;
+  color: var(--white);
   font-weight: 600;
+  margin: var(--spacing-xs) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-xs);
+  border-radius: var(--border-radius-small);
+  border-bottom: 3px solid var(--primary-blue-light);
+  transition: background 0.2s, border-bottom 0.2s, color 0.2s;
 }
 
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 20px;
-  background: white;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+.sidebar nav a:hover,
+.sidebar nav a:focus {
+  background-color: var(--primary-blue-dark);
+  border-bottom: 3px solid var(--white);
+  color: var(--white);
 }
 
 /* ========== CONTEÚDO PRINCIPAL ========== */
 .main-content {
+  margin-left: 240px !important;
+  padding: var(--spacing-xxl);
   flex: 1;
-  margin-left: 280px;
-  padding: var(--space-8);
-  min-height: 100vh;
+  min-width: 0; /* Evita overflow horizontal */
 }
 
 /* ========== HEADER ========== */

@@ -343,11 +343,17 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
         <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
       </div>
       <div class="top-buttons">
-        <a class="btn" href="lista_compras.php">Gerar Lista de Compras</a>
+        <a class="btn btn-primary btn-lg" href="lista_compras.php">
+          <span>📝</span> Gerar Lista de Compras
+        </a>
         <?php if ($isAdmin): ?>
-          <a class="btn secondary" href="configuracoes.php">Configurações</a>
+          <a class="btn btn-outline btn-lg" href="configuracoes.php">
+            <span>⚙️</span> Configurações
+          </a>
         <?php else: ?>
-          <a class="btn secondary" style="pointer-events:none;opacity:.6">Configurações</a>
+          <a class="btn btn-outline btn-lg" style="pointer-events:none;opacity:.6">
+            <span>⚙️</span> Configurações
+          </a>
         <?php endif; ?>
       </div>
     </div>
