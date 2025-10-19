@@ -4,9 +4,11 @@ header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
 try {
-  // Baseado na documentação da ME Eventos e teste do suporte
-  $base = getenv('ME_BASE_URL') ?: 'https://app2.meeventos.com.br/lisbonbuffet';
-  $key  = getenv('ME_API_KEY')  ?: '5qlrv-crt91-s0e0d-drri2-gxhlm'; // ajuste no .env se necessário
+  // Carrega configurações da ME Eventos
+  require_once __DIR__ . '/me_config.php';
+  
+  $base = getenv('ME_BASE_URL') ?: ME_BASE_URL;
+  $key  = getenv('ME_API_KEY')  ?: ME_API_KEY;
 
   // Log de debug
   error_log("ME Proxy Debug - Base URL: $base");
