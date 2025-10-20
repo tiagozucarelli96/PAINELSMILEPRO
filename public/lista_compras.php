@@ -333,12 +333,20 @@ let rascunhoEventos = [];
 
 function adicionarEvento() {
   const eventoId = document.getElementById('evento_id_me')?.value;
-  const eventoNome = document.getElementById('evento_nome_me')?.value;
-  const eventoData = document.getElementById('evento_data_me')?.value;
-  const eventoConvidados = document.getElementById('evento_convidados_me')?.value;
+  const eventoNome = document.getElementById('evento_nome')?.value;
+  const eventoData = document.getElementById('evento_data')?.value;
+  const eventoConvidados = document.getElementById('evento_convidados')?.value;
+  
+  // Debug: mostrar valores dos campos
+  console.log('Debug - Valores dos campos:', {
+    eventoId: eventoId,
+    eventoNome: eventoNome,
+    eventoData: eventoData,
+    eventoConvidados: eventoConvidados
+  });
   
   if (!eventoId || !eventoNome) {
-    alert('Selecione um evento da ME antes de adicionar ao rascunho.');
+    alert(`Selecione um evento da ME antes de adicionar ao rascunho.\n\nDebug:\n- ID: ${eventoId || 'VAZIO'}\n- Nome: ${eventoNome || 'VAZIO'}`);
     return;
   }
   
@@ -352,7 +360,15 @@ function adicionarEvento() {
   const itensSelecionados = [];
   const checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
   
-  checkboxes.forEach(checkbox => {
+  console.log('Debug - Checkboxes encontrados:', checkboxes.length);
+  
+  checkboxes.forEach((checkbox, index) => {
+    console.log(`Checkbox ${index}:`, {
+      value: checkbox.value,
+      dataset: checkbox.dataset,
+      quantidade: checkbox.dataset.quantidade || 1
+    });
+    
     const quantidade = parseFloat(checkbox.dataset.quantidade || 1);
     if (quantidade > 0) {
       itensSelecionados.push({
@@ -363,6 +379,8 @@ function adicionarEvento() {
       });
     }
   });
+  
+  console.log('Debug - Itens selecionados:', itensSelecionados);
   
   if (itensSelecionados.length === 0) {
     alert('Selecione pelo menos um item para adicionar ao rascunho.');
