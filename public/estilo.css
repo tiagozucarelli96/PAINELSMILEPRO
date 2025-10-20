@@ -536,6 +536,56 @@ body {
 .w-full { width: 100%; }
 .h-full { height: 100%; }
 
+/* Grid */
+.grid { display: grid; }
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: auto;
+}
+
+/* Badge variants */
+.badge-info {
+  background: var(--info-light);
+  color: #155e75;
+  border-color: #a5f3fc;
+}
+
+.badge-success {
+  background: var(--success-light);
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+.badge-error {
+  background: var(--error-light);
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
 /* ========== RESPONSIVIDADE ========== */
 @media (max-width: 1024px) {
   .sidebar {

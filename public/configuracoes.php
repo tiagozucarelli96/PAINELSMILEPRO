@@ -189,7 +189,7 @@ try {
       $unidadeStmt->execute([$unid]);
       $unidadeSimbolo = $unidadeStmt->fetchColumn() ?: '';
     }
-    
+
     if ($id === '') {
       // INSERT - usar colunas corretas
       $insertCols = ['nome', 'unidade_padrao', 'unidade'];
@@ -296,9 +296,9 @@ try {
         ")->fetchAll(PDO::FETCH_ASSOC);
     } else {
         // Estrutura básica
-        $ins = $pdo->query("
+$ins = $pdo->query("
           SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
-          FROM lc_insumos i
+  FROM lc_insumos i
           LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
           LEFT JOIN lc_categorias c ON c.id = i.categoria_id
           ORDER BY c.nome ASC, i.nome ASC
@@ -317,7 +317,7 @@ try {
       LEFT JOIN lc_insumos i ON i.id = f.insumo_id
       LEFT JOIN lc_unidades u ON u.id = f.unidade_id
       ORDER BY f.ativo DESC, i.nome ASC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Se der erro, carregar sem JOIN
     $fixos = $pdo->query("SELECT * FROM lc_itens_fixos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -380,7 +380,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
     <!-- Tabs -->
     <div class="tabs-container">
-      <div class="tabs">
+  <div class="tabs">
         <a href="?tab=categorias" class="tab <?= $tab==='categorias'?'active':'' ?>">
           <span>📂</span> Categorias
         </a>
@@ -393,8 +393,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         <a href="?tab=fixos" class="tab <?= $tab==='fixos'?'active':'' ?>">
           <span>📌</span> Itens Fixos
         </a>
-      </div>
-      
+  </div>
+
       <div class="tab-content">
         <!-- Mensagens -->
         <?php if ($msg): ?>
@@ -408,7 +408,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
           </div>
         <?php endif; ?>
 
-        <?php if ($tab==='categorias'): ?>
+  <?php if ($tab==='categorias'): ?>
           <div class="card">
             <div class="card-header">
               <h2 class="card-title">📂 Categorias</h2>
@@ -416,12 +416,12 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             </div>
             <div class="card-body">
               <form method="post" class="animate-fade-in">
-                <input type="hidden" name="action" value="save_categoria">
-                <input type="hidden" name="tab" value="categorias">
+      <input type="hidden" name="action" value="save_categoria">
+      <input type="hidden" name="tab" value="categorias">
                 
                 <div class="table-container">
                   <table class="table">
-                    <thead>
+        <thead>
                       <tr>
                         <th>ID</th>
                         <th>Nome da Categoria</th>
@@ -429,9 +429,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         <th>Status</th>
                         <th class="text-center">Ação</th>
                       </tr>
-                    </thead>
-                    <tbody>
-                      <?php foreach ($cat as $c): ?>
+        </thead>
+        <tbody>
+          <?php foreach ($cat as $c): ?>
                         <tr class="animate-slide-in">
                           <td>
                             <span class="badge"><?= (int)$c['id'] ?></span>
@@ -450,11 +450,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <select name="ativo" class="form-select" style="width: 100px;">
                               <option value="1" <?= $c['ativo']?'selected':''?>>Ativa</option>
                               <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
-                            </select>
-                          </td>
+                </select>
+              </td>
                           <td class="text-center">
                             <div class="flex gap-2 justify-center">
-                              <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
                               <button type="submit" class="btn btn-primary btn-sm">
                                 <span>💾</span> Salvar
                               </button>
@@ -464,9 +464,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <span>🗑️</span> Excluir
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      <?php endforeach; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
                       
                       <tr class="row-new animate-fade-in">
                         <td>
@@ -485,24 +485,24 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           <select name="ativo" class="form-select" style="width: 100px;">
                             <option value="1" selected>Ativa</option>
                             <option value="0">Inativa</option>
-                          </select>
-                        </td>
+              </select>
+            </td>
                         <td class="text-center">
-                          <input type="hidden" name="id" value="">
+              <input type="hidden" name="id" value="">
                           <button type="submit" class="btn btn-success btn-sm">
                             <span>➕</span> Adicionar
                           </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
                 </div>
-              </form>
+    </form>
             </div>
           </div>
-        <?php endif; ?>
+  <?php endif; ?>
 
-        <?php if ($tab==='unidades'): ?>
+  <?php if ($tab==='unidades'): ?>
           <div class="card">
             <div class="card-header">
               <h2 class="card-title">📏 Unidades de Medida</h2>
@@ -510,12 +510,12 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             </div>
             <div class="card-body">
               <form method="post" class="animate-fade-in">
-                <input type="hidden" name="action" value="save_unidade">
-                <input type="hidden" name="tab" value="unidades">
+      <input type="hidden" name="action" value="save_unidade">
+      <input type="hidden" name="tab" value="unidades">
                 
                 <div class="table-container">
                   <table class="table">
-                    <thead>
+        <thead>
                       <tr>
                         <th>ID</th>
                         <th>Nome</th>
@@ -525,9 +525,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         <th>Status</th>
                         <th class="text-center">Ação</th>
                       </tr>
-                    </thead>
-                    <tbody>
-                      <?php foreach ($uni as $u): ?>
+        </thead>
+        <tbody>
+          <?php foreach ($uni as $u): ?>
                         <tr class="animate-slide-in">
                           <td>
                             <span class="badge"><?= (int)$u['id'] ?></span>
@@ -547,17 +547,17 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <select name="tipo" class="form-select" style="width: 120px;">
                               <?php 
                               $tipos = [
-                                'massa' => '⚖️ Massa',
-                                'volume' => '📦 Volume', 
-                                'unidade' => '🔢 Unidade',
-                                'embalagem' => '📦 Embalagem',
-                                'outro' => '❓ Outro'
+                                'massa' => 'Massa',
+                                'volume' => 'Volume', 
+                                'unidade' => 'Unidade',
+                                'embalagem' => 'Embalagem',
+                                'outro' => 'Outro'
                               ];
                               foreach ($tipos as $t => $label): ?>
                                 <option value="<?=$t?>" <?= $u['tipo']===$t?'selected':''?>><?=$label?></option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
+                  <?php endforeach; ?>
+                </select>
+              </td>
                           <td>
                             <input type="number" step="0.000001" name="fator_base" 
                                    value="<?=h($u['fator_base'])?>" 
@@ -569,11 +569,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <select name="ativo" class="form-select" style="width: 100px;">
                               <option value="1" <?= $u['ativo']?'selected':''?>>Ativa</option>
                               <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
-                            </select>
-                          </td>
+                </select>
+              </td>
                           <td class="text-center">
                             <div class="flex gap-2 justify-center">
-                              <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                               <button type="submit" class="btn btn-primary btn-sm">
                                 <span>💾</span> Salvar
                               </button>
@@ -583,9 +583,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <span>🗑️</span> Excluir
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      <?php endforeach; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
                       
                       <tr class="row-new animate-fade-in">
                         <td>
@@ -602,13 +602,13 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         </td>
                         <td>
                           <select name="tipo" class="form-select" style="width: 120px;">
-                            <option value="massa">⚖️ Massa</option>
-                            <option value="volume">📦 Volume</option>
-                            <option value="unidade">🔢 Unidade</option>
-                            <option value="embalagem">📦 Embalagem</option>
-                            <option value="outro">❓ Outro</option>
-                          </select>
-                        </td>
+                            <option value="massa">Massa</option>
+                            <option value="volume">Volume</option>
+                            <option value="unidade">Unidade</option>
+                            <option value="embalagem">Embalagem</option>
+                            <option value="outro">Outro</option>
+              </select>
+            </td>
                         <td>
                           <input type="number" step="0.000001" name="fator_base" 
                                  value="1.000000" 
@@ -620,246 +620,236 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           <select name="ativo" class="form-select" style="width: 100px;">
                             <option value="1" selected>Ativa</option>
                             <option value="0">Inativa</option>
-                          </select>
-                        </td>
+              </select>
+            </td>
                         <td class="text-center">
-                          <input type="hidden" name="id" value="">
+              <input type="hidden" name="id" value="">
                           <button type="submit" class="btn btn-success btn-sm">
                             <span>➕</span> Adicionar
                           </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
                 </div>
-              </form>
+    </form>
             </div>
           </div>
-        <?php endif; ?>
+  <?php endif; ?>
 
-        <?php if ($tab==='insumos'): ?>
+  <?php if ($tab==='insumos'): ?>
           <div class="card">
             <div class="card-header">
-              <h2 class="card-title">🥘 Insumos</h2>
-              <p class="text-sm text-gray-600">Gerencie ingredientes, preços e informações de aquisição</p>
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">🥘 Insumos</h2>
+                  <p class="text-sm text-gray-600">Gerencie ingredientes, preços e informações de aquisição</p>
+                </div>
+                <button onclick="openInsumoModal()" class="btn btn-success">
+                  <span>➕</span> Novo Insumo
+                </button>
+              </div>
             </div>
             <div class="card-body">
-              <form method="post" class="animate-fade-in">
-                <input type="hidden" name="action" value="save_insumo">
-                <input type="hidden" name="tab" value="insumos">
-                
-                <div class="table-container">
-                  <table class="table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>Categoria</th>
-                        <th>Nome do Insumo</th>
-                        <th>Unidade</th>
-                        <th>Custo Unit.</th>
-                        <th>FC</th>
-                        <th>Embalagem</th>
-                        <th>Custo Final</th>
-                        <th>Aquisição</th>
-                        <th>Fornecedor</th>
-                        <th>Observações</th>
-                        <th>Status</th>
-                        <th class="text-center">Ação</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <?php foreach ($ins as $i): ?>
-                        <tr class="animate-slide-in">
-                          <td>
-                            <span class="badge"><?= (int)$i['id'] ?></span>
-                          </td>
-                          <td>
-                            <select name="categoria_id" class="form-select" style="width: 120px;">
-                              <option value="">Sem categoria</option>
-                              <?php foreach ($cat as $c): ?>
-                                <option value="<?=$c['id']?>" <?= ($i['categoria_id'] ?? '')==$c['id']?'selected':''?>>
-                                  <?=h($c['nome'])?>
-                                </option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
-                          <td>
-                            <input type="text" name="nome" value="<?=h($i['nome'])?>" 
-                                   class="form-input" required 
-                                   placeholder="Ex: Peito de frango"
-                                   style="min-width: 150px;">
-                          </td>
-                          <td>
-                            <select name="unidade_id" required class="form-select" style="width: 120px;">
-                              <?php foreach ($uni as $u): ?>
-                                <option value="<?=$u['id']?>" <?= ($i['unidade_padrao']==$u['simbolo']?'selected':'')?>>
-                                  <?=h($u['simbolo'])?> (<?=h($u['nome'])?>)
-                                </option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
-                          <td>
-                            <input type="number" step="0.0001" name="preco" 
-                                   value="<?=h($i['custo_unit'] ?? '')?>" 
-                                   class="form-input" 
-                                   style="width: 100px; text-align: center;"
-                                   placeholder="0.00">
-                          </td>
-                          <td>
-                            <input type="number" step="0.000001" name="fator_correcao" 
-                                   value="1.000000" 
-                                   class="form-input" 
-                                   style="width: 100px; text-align: center;"
-                                   disabled 
-                                   title="FC não disponível nesta estrutura">
-                          </td>
-                          <td>
-                            <input type="number" step="0.000001" name="embalagem_multiplo" 
-                                   value="<?= h($i['embalagem_multiplo'] ?? '') ?>" 
-                                   class="form-input" 
-                                   style="width: 100px; text-align: center;"
-                                   placeholder="ex: 50">
-                          </td>
-                          <td>
-                            <span class="badge badge-info">
-                              <?= number_format($i['custo_corrigido'] ?? 0, 4, ',', '.') . ' / ' . h($i['simbolo'] ?? '') ?>
-                            </span>
-                          </td>
-                          <td>
-                            <select name="tipo_padrao" class="form-select" style="width: 100px;">
-                              <?php 
-                              $tipos = [
-                                'mercado' => '🛒 Mercado',
-                                'preparo' => '👨‍🍳 Preparo', 
-                                'fixo' => '📌 Fixo'
-                              ];
-                              foreach ($tipos as $t => $label): ?>
-                                <option value="<?=$t?>" <?= ($i['aquisicao'] ?? '')===$t?'selected':''?>><?=$label?></option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
-                          <td>
-                            <input type="text" name="fornecedor_id" 
-                                   value="<?=h($i['fornecedor_id'] ?? '')?>" 
-                                   class="form-input" 
-                                   placeholder="ID Fornecedor"
-                                   style="width: 100px; text-align: center;">
-                          </td>
-                          <td>
-                            <input type="text" name="observacao" 
-                                   value="<?=h($i['observacoes'] ?? '')?>" 
-                                   class="form-input" 
-                                   placeholder="Observações"
-                                   style="min-width: 120px;">
-                          </td>
-                          <td>
-                            <select name="ativo" class="form-select" style="width: 80px;">
-                              <option value="1" <?= ($i['ativo'] ?? 1) ? 'selected' : '' ?>>Ativo</option>
-                              <option value="0" <?= !($i['ativo'] ?? 1) ? 'selected' : '' ?>>Inativo</option>
-                            </select>
-                          </td>
-                          <td class="text-center">
-                            <div class="flex gap-2 justify-center">
-                              <input type="hidden" name="id" value="<?= (int)$i['id'] ?>">
-                              <button type="submit" class="btn btn-primary btn-sm">
-                                <span>💾</span> Salvar
-                              </button>
-                              <button type="submit" class="btn btn-outline btn-sm" 
-                                      onclick="return confirm('Tem certeza que deseja excluir este insumo?')"
-                                      formaction="?action=delete_insumo&tab=insumos&id=<?= (int)$i['id'] ?>">
-                                <span>🗑️</span> Excluir
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      <?php endforeach; ?>
-
-                      <tr class="row-new animate-fade-in">
+              <div class="table-container">
+                <table class="table">
+        <thead>
+          <tr>
+                      <th>ID</th>
+                      <th>Categoria</th>
+                      <th>Nome do Insumo</th>
+                      <th>Unidade</th>
+                      <th>Custo Unit.</th>
+                      <th>Custo Final</th>
+                      <th>Aquisição</th>
+                      <th>Status</th>
+                      <th class="text-center">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($ins as $i): ?>
+                      <tr class="animate-slide-in">
+                        <td><span class="badge"><?= (int)$i['id'] ?></span></td>
                         <td>
-                          <span class="badge badge-success">NOVO</span>
+                          <span class="badge badge-info">
+                            <?= h($i['categoria_nome'] ?? 'Sem categoria') ?>
+                          </span>
+                        </td>
+                        <td><strong><?= h($i['nome']) ?></strong></td>
+                        <td><?= h($i['simbolo'] ?? '—') ?></td>
+                        <td class="text-right">R$ <?= number_format($i['custo_unit'] ?? 0, 2, ',', '.') ?></td>
+                        <td class="text-right">
+                          <span class="badge badge-info">
+                            R$ <?= number_format($i['custo_corrigido'] ?? 0, 4, ',', '.') ?>
+                          </span>
                         </td>
                         <td>
-                          <select name="categoria_id" class="form-select" style="width: 120px;">
-                            <option value="">Sem categoria</option>
-                            <?php foreach ($cat as $c): ?>
-                              <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
-                            <?php endforeach; ?>
-                          </select>
+                          <span class="badge">
+                            <?= ucfirst($i['aquisicao'] ?? 'Mercado') ?>
+                          </span>
                         </td>
                         <td>
-                          <input type="text" name="nome" placeholder="Ex: Peito de frango" 
-                                 class="form-input" required 
-                                 style="min-width: 150px;">
-                        </td>
-                        <td>
-                          <select name="unidade_id" required class="form-select" style="width: 120px;">
-                            <option value="">Selecione...</option>
-                            <?php foreach ($uni as $u): ?>
-                              <option value="<?=$u['id']?>"><?=h($u['simbolo'])?> (<?=h($u['nome'])?>)</option>
-                            <?php endforeach; ?>
-                          </select>
-                        </td>
-                        <td>
-                          <input type="number" step="0.0001" name="preco" 
-                                 placeholder="10.90" 
-                                 class="form-input" 
-                                 style="width: 100px; text-align: center;">
-                        </td>
-                        <td>
-                          <input type="number" step="0.000001" name="fator_correcao" 
-                                 value="1.000000" 
-                                 class="form-input" 
-                                 style="width: 100px; text-align: center;"
-                                 disabled 
-                                 title="FC não disponível nesta estrutura">
-                        </td>
-                        <td>
-                          <input type="number" step="0.000001" name="embalagem_multiplo" 
-                                 placeholder="ex: 50" 
-                                 class="form-input" 
-                                 style="width: 100px; text-align: center;">
-                        </td>
-                        <td>
-                          <span class="badge">—</span>
-                        </td>
-                        <td>
-                          <select name="tipo_padrao" class="form-select" style="width: 100px;">
-                            <option value="mercado" selected>🛒 Mercado</option>
-                            <option value="preparo">👨‍🍳 Preparo</option>
-                            <option value="fixo">📌 Fixo</option>
-                          </select>
-                        </td>
-                        <td>
-                          <input type="text" name="fornecedor_id" 
-                                 placeholder="ID Fornecedor" 
-                                 class="form-input" 
-                                 style="width: 100px; text-align: center;">
-                        </td>
-                        <td>
-                          <input type="text" name="observacao" 
-                                 placeholder="Ex: marca preferida" 
-                                 class="form-input" 
-                                 style="min-width: 120px;">
-                        </td>
-                        <td>
-                          <select name="ativo" class="form-select" style="width: 80px;">
-                            <option value="1" selected>Ativo</option>
-                            <option value="0">Inativo</option>
-                          </select>
+                          <span class="badge <?= ($i['ativo'] ?? 1) ? 'badge-success' : 'badge-error' ?>">
+                            <?= ($i['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?>
+                          </span>
                         </td>
                         <td class="text-center">
-                          <input type="hidden" name="id" value="">
-                          <button type="submit" class="btn btn-success btn-sm">
-                            <span>➕</span> Adicionar
-                          </button>
+                          <div class="flex gap-2 justify-center">
+                            <button onclick="editInsumo(<?= htmlspecialchars(json_encode($i)) ?>)" 
+                                    class="btn btn-primary btn-sm">
+                              <span>✏️</span> Editar
+                            </button>
+                            <button onclick="deleteInsumo(<?= (int)$i['id'] ?>)" 
+                                    class="btn btn-outline btn-sm">
+                              <span>🗑️</span> Excluir
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </form>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
+
+          <!-- Modal para Editar/Criar Insumo -->
+          <div id="insumoModal" class="modal-overlay" style="display: none;">
+            <div class="modal">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title" id="modalTitle">Novo Insumo</h3>
+                  <button onclick="closeInsumoModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body">
+                  <form id="insumoForm" method="post">
+                    <input type="hidden" name="action" value="save_insumo">
+                    <input type="hidden" name="tab" value="insumos">
+                    <input type="hidden" name="id" id="insumoId" value="">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                      <div class="form-group">
+                        <label class="form-label">Categoria</label>
+                        <select name="categoria_id" id="categoriaId" class="form-select">
+                          <option value="">Sem categoria</option>
+                          <?php foreach ($cat as $c): ?>
+                            <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Nome do Insumo *</label>
+                        <input type="text" name="nome" id="insumoNome" class="form-input" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Unidade *</label>
+                        <select name="unidade_id" id="unidadeId" class="form-select" required>
+                          <option value="">Selecione...</option>
+                          <?php foreach ($uni as $u): ?>
+                            <option value="<?=$u['id']?>"><?=h($u['simbolo'])?> (<?=h($u['nome'])?>)</option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Custo Unitário</label>
+                        <input type="number" step="0.0001" name="preco" id="insumoPreco" 
+                               class="form-input" placeholder="0.00">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Embalagem (múltiplo)</label>
+                        <input type="number" step="0.000001" name="embalagem_multiplo" id="embalagemMultiplo" 
+                               class="form-input" placeholder="ex: 50">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Tipo de Aquisição</label>
+                        <select name="tipo_padrao" id="tipoPadrao" class="form-select">
+                          <option value="mercado">Mercado</option>
+                          <option value="preparo">Preparo</option>
+                          <option value="fixo">Fixo</option>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">ID Fornecedor</label>
+                        <input type="text" name="fornecedor_id" id="fornecedorId" 
+                               class="form-input" placeholder="ID Fornecedor">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="ativo" id="insumoAtivo" class="form-select">
+                          <option value="1">Ativo</option>
+                          <option value="0">Inativo</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label class="form-label">Observações</label>
+                      <textarea name="observacao" id="insumoObservacao" class="form-input" 
+                                rows="3" placeholder="Observações opcionais"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-2 justify-end mt-4">
+                      <button type="button" onclick="closeInsumoModal()" class="btn btn-outline">
+                        Cancelar
+                      </button>
+                      <button type="submit" class="btn btn-primary">
+                        <span>💾</span> Salvar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+          function openInsumoModal() {
+            document.getElementById('modalTitle').textContent = 'Novo Insumo';
+            document.getElementById('insumoForm').reset();
+            document.getElementById('insumoId').value = '';
+            document.getElementById('insumoModal').style.display = 'flex';
+          }
+          
+          function editInsumo(insumo) {
+            document.getElementById('modalTitle').textContent = 'Editar Insumo';
+            document.getElementById('insumoId').value = insumo.id;
+            document.getElementById('categoriaId').value = insumo.categoria_id || '';
+            document.getElementById('insumoNome').value = insumo.nome || '';
+            document.getElementById('unidadeId').value = insumo.unidade_id || '';
+            document.getElementById('insumoPreco').value = insumo.custo_unit || '';
+            document.getElementById('embalagemMultiplo').value = insumo.embalagem_multiplo || '';
+            document.getElementById('tipoPadrao').value = insumo.aquisicao || 'mercado';
+            document.getElementById('fornecedorId').value = insumo.fornecedor_id || '';
+            document.getElementById('insumoAtivo').value = insumo.ativo || '1';
+            document.getElementById('insumoObservacao').value = insumo.observacoes || '';
+            document.getElementById('insumoModal').style.display = 'flex';
+          }
+          
+          function closeInsumoModal() {
+            document.getElementById('insumoModal').style.display = 'none';
+          }
+          
+          function deleteInsumo(id) {
+            if (confirm('Tem certeza que deseja excluir este insumo?')) {
+              const form = document.createElement('form');
+              form.method = 'post';
+              form.innerHTML = `
+                <input type="hidden" name="action" value="delete_insumo">
+                <input type="hidden" name="tab" value="insumos">
+                <input type="hidden" name="id" value="${id}">
+              `;
+              document.body.appendChild(form);
+              form.submit();
+            }
+          }
+          </script>
         <?php endif; ?>
 
         <?php if ($tab==='fixos'): ?>
@@ -897,10 +887,10 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                               <?php foreach ($ins as $i2): ?>
                                 <option value="<?= $i2['id'] ?>" <?= ($f['insumo_id']==$i2['id']?'selected':'') ?>>
                                   <?= h($i2['nome']) ?>
-                                </option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
                           <td>
                             <input type="number" step="0.000001" name="qtd" 
                                    value="<?= h($f['qtd']) ?>" 
@@ -915,9 +905,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <option value="<?= $u['id'] ?>" <?= ($f['unidade_id']==$u['id']?'selected':'') ?>>
                                   <?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)
                                 </option>
-                              <?php endforeach; ?>
-                            </select>
-                          </td>
+                  <?php endforeach; ?>
+                </select>
+              </td>
                           <td>
                             <input type="text" name="observacao" 
                                    value="<?= h($f['observacao']) ?>" 
@@ -929,8 +919,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <select name="ativo" class="form-select" style="width: 100px;">
                               <option value="1" <?= $f['ativo']?'selected':'' ?>>Ativo</option>
                               <option value="0" <?= !$f['ativo']?'selected':'' ?>>Inativo</option>
-                            </select>
-                          </td>
+                </select>
+              </td>
                           <td class="text-center">
                             <div class="flex gap-2 justify-center">
                               <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
@@ -943,9 +933,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <span>🗑️</span> Excluir
                               </button>
                             </div>
-                          </td>
-                        </tr>
-                      <?php endforeach; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
 
                       <tr class="row-new animate-fade-in">
                         <td>
@@ -956,9 +946,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <option value="">— Selecione um insumo —</option>
                             <?php foreach ($ins as $i2): ?>
                               <option value="<?= $i2['id'] ?>"><?= h($i2['nome']) ?></option>
-                            <?php endforeach; ?>
-                          </select>
-                        </td>
+                <?php endforeach; ?>
+              </select>
+            </td>
                         <td>
                           <input type="number" step="0.000001" name="qtd" 
                                  placeholder="1.000" 
@@ -971,8 +961,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                             <?php foreach ($uni as $u): ?>
                               <option value="<?= $u['id'] ?>"><?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)</option>
                             <?php endforeach; ?>
-                          </select>
-                        </td>
+              </select>
+            </td>
                         <td>
                           <input type="text" name="observacao" 
                                  placeholder="Observações opcionais" 
@@ -983,22 +973,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           <select name="ativo" class="form-select" style="width: 100px;">
                             <option value="1" selected>Ativo</option>
                             <option value="0">Inativo</option>
-                          </select>
-                        </td>
+              </select>
+            </td>
                         <td class="text-center">
-                          <input type="hidden" name="id" value="">
+              <input type="hidden" name="id" value="">
                           <button type="submit" class="btn btn-success btn-sm">
                             <span>➕</span> Adicionar
                           </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
                 </div>
-              </form>
+    </form>
             </div>
           </div>
-        <?php endif; ?>
+  <?php endif; ?>
       </div>
     </div>
   </main>
