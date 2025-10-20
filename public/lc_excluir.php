@@ -19,8 +19,8 @@ try {
         exit;
     }
     
-    // Excluir eventos vinculados primeiro
-    $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = ?")->execute([$id]);
+    // Excluir eventos vinculados primeiro (desabilitado - nenhuma lista criada)
+    // $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = ?")->execute([$id]);
     
     // Excluir itens de compras consolidadas
     $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_compras_consolidadas WHERE lista_id = ?")->execute([$id]);

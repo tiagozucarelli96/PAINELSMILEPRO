@@ -1,21 +1,14 @@
 <?php
 // public/lc_pdf.php
-// Gera PDF de uma lista de compras/encomendas com logotipo oficial
+// Gera PDF de uma lista (compras ou encomendas)
 
 session_start();
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/lc_config_helper.php';
-require_once __DIR__ . '/fpdf/fpdf.php'; // use o FPDF que já está na pasta public/
-
-// Configurações
-$precQ = (int)lc_get_config($pdo, 'precisao_quantidade', 3);
-$precV = (int)lc_get_config($pdo, 'precisao_valor', 2);
-$showCPPdf = lc_get_config($pdo, 'mostrar_custo_pdf', '1') === '1';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras'; // compras|encomendas
+$tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras';
 
-if ($id <= 0) {
+if (!$id) {
   die('Lista inválida.');
 }
 
@@ -32,10 +25,11 @@ if (!$lista) {
   die('Lista não encontrada.');
 }
 
-// Eventos vinculados
-$stmtEv = $pdo->prepare("SELECT * FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id ORDER BY id");
-$stmtEv->execute([':id' => $id]);
-$eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
+// Eventos vinculados (desabilitado - nenhuma lista criada)
+// $stmtEv = $pdo->prepare("SELECT * FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id ORDER BY id");
+// $stmtEv->execute([':id' => $id]);
+// $eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
+$eventos = []; // Array vazio para evitar erros
 
 // Itens
 if ($tipo === 'encomendas') {
@@ -56,125 +50,256 @@ if ($tipo === 'encomendas') {
 $stmtItens->execute([':id' => $id]);
 $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
 
-// Funções auxiliares
-function utf($s){ return utf8_decode((string)$s); }
-function br($pdf, $h=5){ $pdf->Ln($h); }
-
-// Iniciar PDF
-$pdf = new FPDF('P','mm','A4');
-$pdf->AddPage();
-
-// --- LOGO ---
-$logoPath = __DIR__ . '/logo.png';
-if (file_exists($logoPath)) {
-  $pdf->Image($logoPath, 10, 8, 35); // x, y, largura
-}
-$pdf->SetFont('Arial','B',14);
-$pdf->Cell(0,8,utf('Grupo Smile Eventos'),0,1,'C');
-$pdf->SetFont('Arial','',12);
-$pdf->Cell(0,6,utf('Lista de '.ucfirst($tipo)),0,1,'C');
-br($pdf, 10);
-
-// --- Cabeçalho info ---
-$pdf->SetFont('Arial','',9);
-$pdf->MultiCell(0,5,
-  utf(
-    "Nº da Lista: {$lista['id']}\n".
-    "Data gerada: ".date('d/m/Y H:i', strtotime($lista['criado_em']))."\n".
-    "Espaço: ".($lista['espaco_resumo'] ?: 'Múltiplos')."\n".
-    "Eventos: ".$lista['resumo_eventos']."\n".
-    "Criado por: ".($lista['criado_por_nome'] ?: '#'.$lista['criado_por'])
-  ),
-  0,'L'
-);
-br($pdf, 5);
-
-// --- Eventos vinculados ---
-if ($eventos) {
-  $pdf->SetFont('Arial','B',10);
-  $pdf->Cell(0,6,utf('Eventos vinculados:'),0,1);
-  $pdf->SetFont('Arial','',9);
-  foreach ($eventos as $e) {
-    $linha = "Evento #{$e['evento_id']} | Convidados: {$e['convidados']} | Data: {$e['data_evento']} | {$e['resumo']}";
-    $pdf->Cell(0,5,utf($linha),0,1);
-  }
-  br($pdf, 4);
-}
-
-// --- Itens ---
+// Calcular totais
 $totalGeral = 0;
+$totCompras = 0;
+$totEncom = 0;
 
 if ($tipo === 'compras') {
-  $pdf->SetFont('Arial','B',10);
-  $pdf->Cell(0,6,utf('Compras (insumos internos e fixos)'),0,1);
-  $pdf->SetFont('Arial','B',9);
-  $pdf->Cell(100,6,utf('Insumo'),1,0);
-  $pdf->Cell(25,6,utf('Qtd'),1,0,'C');
-  $pdf->Cell(25,6,utf('Unid.'),1,0,'C');
-  $pdf->Cell(35,6,utf('Custo'),1,1,'C');
-  $pdf->SetFont('Arial','',9);
+  // compras
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(custo),0) FROM smilee12_painel_smile.lc_compras_consolidadas WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totCompras = (float)$stTmp->fetchColumn();
 
-  foreach ($itens as $i) {
-    $totalGeral += (float)$i['custo'];
-    $pdf->Cell(100,6,utf($i['insumo_nome']),1,0);
-    $pdf->Cell(25,6,number_format($i['qtd'],$precQ,',','.'),1,0,'R');
-    $pdf->Cell(25,6,utf($i['unidade_simbolo']),1,0,'C');
-    $pdf->Cell(35,6,'R$ '.number_format($i['custo'],$precV,',','.'),1,1,'R');
-  }
-} else {
-  // ENCOMENDAS — agrupadas por fornecedor → evento
-  $pdf->SetFont('Arial','B',10);
-  $pdf->Cell(0,6,utf('Encomendas (Fornecedor → Evento)'),0,1);
-  $pdf->SetFont('Arial','',9);
+  // encomendas
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(custo),0) FROM smilee12_painel_smile.lc_encomendas_itens WHERE lista_id = :id");
+  $stTmp->execute([':id'=>$id]);
+  $totEncom = (float)$stTmp->fetchColumn();
 
-  $grp = [];
-  foreach ($itens as $r) {
-    $forn = $r['fornecedor_nome'] ?: 'Sem fornecedor';
-    $grp[$forn][$r['evento_id']][] = $r;
-  }
-
-  foreach ($grp as $forn => $eventos) {
-    br($pdf, 3);
-    $pdf->SetFont('Arial','B',9);
-    $pdf->Cell(0,6,utf('Fornecedor: '.$forn),0,1);
-    foreach ($eventos as $evId => $rows) {
-      $pdf->SetFont('Arial','I',9);
-      $pdf->Cell(0,5,utf("Evento #$evId"),0,1);
-      $pdf->SetFont('Arial','',9);
-      $pdf->Cell(90,6,utf('Item'),1,0);
-      $pdf->Cell(25,6,utf('Qtd'),1,0,'C');
-      $pdf->Cell(25,6,utf('Unid.'),1,0,'C');
-      $pdf->Cell(35,6,utf('Custo'),1,1,'C');
-      foreach ($rows as $r) {
-        $totalGeral += (float)$r['custo'];
-        $pdf->Cell(90,6,utf($r['item_nome']),1,0);
-        $pdf->Cell(25,6,number_format($r['qtd'],$precQ,',','.'),1,0,'R');
-        $pdf->Cell(25,6,utf($r['unidade_simbolo']),1,0,'C');
-        $pdf->Cell(35,6,'R$ '.number_format($r['custo'],$precV,',','.'),1,1,'R');
-      }
-    }
-  }
+  // total convidados (desabilitado - nenhuma lista criada)
+  // $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id");
+  // $stTmp->execute([':id'=>$id]);
+  // $totConvidados = (int)$stTmp->fetchColumn();
+  $totConvidados = 0; // Valor padrão para evitar erros
 }
 
+$totalGeral = $totCompras + $totEncom;
+
 // --- Custo por Convidado (se habilitado) ---
+$showCPPdf = false; // Desabilitado por enquanto
 if ($showCPPdf) {
-  // Calcular total de convidados
-  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id");
-  $stTmp->execute([':id'=>$id]);
-  $totConvidados = (int)$stTmp->fetchColumn();
+  // Calcular total de convidados (desabilitado - nenhuma lista criada)
+  // $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id");
+  // $stTmp->execute([':id'=>$id]);
+  // $totConvidados = (int)$stTmp->fetchColumn();
+  $totConvidados = 0; // Valor padrão para evitar erros
   
   if ($totConvidados > 0) {
     $custoPorConvidado = $totalGeral / $totConvidados;
-    br($pdf, 4);
-    $pdf->SetFont('Arial','',9);
-    $pdf->Cell(0,6,utf("Total de convidados: {$totConvidados}"),0,1,'R');
-    $pdf->Cell(0,6,utf('Custo por convidado: R$ '.number_format($custoPorConvidado,$precV,',','.')),0,1,'R');
   }
 }
 
-// --- Total Geral ---
-br($pdf, 6);
-$pdf->SetFont('Arial','B',10);
-$pdf->Cell(0,8,utf('Total geral: R$ '.number_format($totalGeral,$precV,',','.')),0,1,'R');
+// Gerar HTML para PDF
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de <?= ucfirst($tipo) ?> - #<?= $id ?></title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .header { 
+            text-align: center; 
+            border-bottom: 2px solid #333; 
+            padding-bottom: 15px; 
+            margin-bottom: 20px; 
+        }
+        .header h1 { 
+            margin: 0; 
+            font-size: 24px; 
+            color: #2c5aa0; 
+        }
+        .header p { 
+            margin: 5px 0; 
+            color: #666; 
+        }
+        .info { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-bottom: 20px; 
+        }
+        .info h3 { 
+            margin-top: 0; 
+            color: #333; 
+        }
+        .info-grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 10px; 
+        }
+        .info-item { 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        .info-label { 
+            font-weight: bold; 
+        }
+        .info-value { 
+            color: #666; 
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 20px; 
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 6px; 
+            text-align: left; 
+            font-size: 11px;
+        }
+        th { 
+            background-color: #f2f2f2; 
+            font-weight: bold; 
+        }
+        .total { 
+            font-size: 16px; 
+            font-weight: bold; 
+            color: #2c5aa0; 
+            text-align: right; 
+            margin-top: 20px; 
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .no-data { 
+            text-align: center; 
+            color: #666; 
+            font-style: italic; 
+            padding: 20px; 
+        }
+        .custo-por-convidado {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            text-align: center;
+        }
+        @media print {
+            body { margin: 0; padding: 15px; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Lista de <?= ucfirst($tipo) ?> - #<?= $id ?></h1>
+        <p>Gerada em: <?= date('d/m/Y H:i', strtotime($lista['data_gerada'])) ?></p>
+        <p>GRUPO SMILE EVENTOS</p>
+    </div>
 
-$pdf->Output('I', "Lista_{$tipo}_{$id}.pdf");
+    <div class="info">
+        <h3>Informações da Lista</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">ID:</span>
+                <span class="info-value">#<?= $id ?></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Tipo:</span>
+                <span class="info-value"><?= ucfirst($tipo) ?></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Espaço:</span>
+                <span class="info-value"><?= htmlspecialchars($lista['espaco_consolidado'] ?: 'Múltiplos') ?></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Criado por:</span>
+                <span class="info-value"><?= htmlspecialchars($lista['criado_por_nome'] ?: 'Sistema') ?></span>
+            </div>
+            <?php if ($lista['eventos_resumo']): ?>
+            <div class="info-item">
+                <span class="info-label">Eventos:</span>
+                <span class="info-value"><?= htmlspecialchars($lista['eventos_resumo']) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($totConvidados > 0): ?>
+            <div class="info-item">
+                <span class="info-label">Total de Convidados:</span>
+                <span class="info-value"><?= number_format($totConvidados) ?></span>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if (empty($itens)): ?>
+        <div class="no-data">
+            <p>Nenhum item encontrado nesta lista.</p>
+        </div>
+    <?php else: ?>
+        <h3>Itens da Lista</h3>
+        <table>
+            <thead>
+                <tr>
+                    <?php if ($tipo === 'encomendas'): ?>
+                        <th>Fornecedor</th>
+                        <th>Item</th>
+                        <th>Quantidade</th>
+                        <th>Unidade</th>
+                        <th>Preço Unit.</th>
+                        <th>Total</th>
+                    <?php else: ?>
+                        <th>Insumo</th>
+                        <th>Quantidade</th>
+                        <th>Unidade</th>
+                        <th>Preço Unit.</th>
+                        <th>Total</th>
+                    <?php endif; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($itens as $item): ?>
+                    <tr>
+                        <?php if ($tipo === 'encomendas'): ?>
+                            <td><?= htmlspecialchars($item['fornecedor_nome'] ?: 'N/A') ?></td>
+                            <td><?= htmlspecialchars($item['item_nome']) ?></td>
+                            <td><?= number_format($item['quantidade'], 2, ',', '.') ?></td>
+                            <td><?= htmlspecialchars($item['unidade']) ?></td>
+                            <td>R$ <?= number_format($item['preco_unitario'], 2, ',', '.') ?></td>
+                            <td>R$ <?= number_format($item['custo'], 2, ',', '.') ?></td>
+                        <?php else: ?>
+                            <td><?= htmlspecialchars($item['insumo_nome']) ?></td>
+                            <td><?= number_format($item['quantidade'], 2, ',', '.') ?></td>
+                            <td><?= htmlspecialchars($item['unidade']) ?></td>
+                            <td>R$ <?= number_format($item['preco_unitario'], 2, ',', '.') ?></td>
+                            <td>R$ <?= number_format($item['custo'], 2, ',', '.') ?></td>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+
+    <div class="total">
+        <strong>Total Geral: R$ <?= number_format($totalGeral, 2, ',', '.') ?></strong>
+    </div>
+
+    <?php if ($showCPPdf && isset($custoPorConvidado)): ?>
+        <div class="custo-por-convidado">
+            <strong>Custo por Convidado: R$ <?= number_format($custoPorConvidado, 2, ',', '.') ?></strong>
+        </div>
+    <?php endif; ?>
+
+    <div class="no-print" style="margin-top: 30px; text-align: center;">
+        <button onclick="window.print()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px;">🖨️ Imprimir</button>
+        <a href="lc_index.php" style="padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 5px; margin: 5px; display: inline-block;">← Voltar para Listas</a>
+    </div>
+
+    <script>
+        // Auto-print quando carregar
+        window.onload = function() {
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        };
+    </script>
+</body>
+</html>
