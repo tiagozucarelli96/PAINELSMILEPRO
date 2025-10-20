@@ -327,6 +327,135 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
 <script>
 function toggleCat(id){ const el=document.getElementById('items-'+id); if(el) el.classList.toggle('active'); }
 function salvarRascunho(){ document.getElementById('acao').value='salvar_rascunho'; document.getElementById('formLC').submit(); }
+
+// Sistema de Rascunho de Múltiplos Eventos
+let rascunhoEventos = [];
+
+function adicionarEvento() {
+  const eventoId = document.getElementById('evento_id_me')?.value;
+  const eventoNome = document.getElementById('evento_nome_me')?.value;
+  const eventoData = document.getElementById('evento_data_me')?.value;
+  const eventoConvidados = document.getElementById('evento_convidados_me')?.value;
+  
+  if (!eventoId || !eventoNome) {
+    alert('Selecione um evento da ME antes de adicionar ao rascunho.');
+    return;
+  }
+  
+  // Verificar se evento já foi adicionado
+  if (rascunhoEventos.find(e => e.id === eventoId)) {
+    alert('Este evento já foi adicionado ao rascunho.');
+    return;
+  }
+  
+  // Coletar itens selecionados
+  const itensSelecionados = [];
+  const checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+  
+  checkboxes.forEach(checkbox => {
+    const quantidade = parseFloat(checkbox.dataset.quantidade || 1);
+    if (quantidade > 0) {
+      itensSelecionados.push({
+        id: checkbox.value,
+        nome: checkbox.dataset.nome || 'Item',
+        quantidade: quantidade,
+        tipo: checkbox.dataset.tipo || 'insumo'
+      });
+    }
+  });
+  
+  if (itensSelecionados.length === 0) {
+    alert('Selecione pelo menos um item para adicionar ao rascunho.');
+    return;
+  }
+  
+  // Adicionar evento ao rascunho
+  rascunhoEventos.push({
+    id: eventoId,
+    nome: eventoNome,
+    data: eventoData,
+    convidados: eventoConvidados,
+    itens: itensSelecionados
+  });
+  
+  // Atualizar interface
+  atualizarRascunho();
+  
+  // Limpar seleção atual
+  checkboxes.forEach(cb => cb.checked = false);
+  
+  alert(`Evento "${eventoNome}" adicionado ao rascunho!`);
+}
+
+function atualizarRascunho() {
+  const container = document.getElementById('rascunhoContainer');
+  const eventosDiv = document.getElementById('eventosRascunho');
+  
+  if (rascunhoEventos.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+  
+  let html = '';
+  rascunhoEventos.forEach((evento, index) => {
+    html += `
+      <div class="evento-rascunho-card">
+        <div class="evento-info">
+          <h4 class="evento-nome">${evento.nome}</h4>
+          <p class="evento-detalhes">
+            📅 ${evento.data} | 👥 ${evento.convidados} convidados | 📦 ${evento.itens.length} itens
+          </p>
+        </div>
+        <div class="evento-actions">
+          <button type="button" class="btn btn--secondary btn-sm" onclick="removerEvento(${index})">
+            ❌ Remover
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  eventosDiv.innerHTML = html;
+}
+
+function removerEvento(index) {
+  if (confirm('Tem certeza que deseja remover este evento do rascunho?')) {
+    rascunhoEventos.splice(index, 1);
+    atualizarRascunho();
+  }
+}
+
+function limparRascunho() {
+  if (confirm('Tem certeza que deseja limpar todo o rascunho?')) {
+    rascunhoEventos = [];
+    atualizarRascunho();
+  }
+}
+
+function gerarListaFinal() {
+  if (rascunhoEventos.length === 0) {
+    alert('Adicione pelo menos um evento ao rascunho antes de gerar a lista.');
+    return;
+  }
+  
+  // Aqui você pode implementar a lógica de geração da lista final
+  // Por enquanto, vamos apenas mostrar o resumo
+  let resumo = 'Lista de Compras Gerada:\n\n';
+  rascunhoEventos.forEach(evento => {
+    resumo += `📅 ${evento.nome} (${evento.data})\n`;
+    evento.itens.forEach(item => {
+      resumo += `  - ${item.nome}: ${item.quantidade}\n`;
+    });
+    resumo += '\n';
+  });
+  
+  alert(resumo);
+  
+  // Aqui você pode redirecionar para uma página de resultado ou salvar no banco
+  console.log('Eventos no rascunho:', rascunhoEventos);
+}
 function addEventoME(e){
   // encontra próximo índice de evento na tela
   const wrap=document.getElementById('ev-wrap');
@@ -644,6 +773,64 @@ function addEventoME(e){
     background: #5a6268;
   }
 
+  /* Rascunho de Eventos */
+  .lc-rascunho-container {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .lc-rascunho-container h3 {
+    color: #92400e;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .eventos-rascunho {
+    margin-bottom: 1rem;
+  }
+
+  .evento-rascunho-card {
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .evento-info {
+    flex: 1;
+  }
+
+  .evento-nome {
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .evento-detalhes {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0.25rem 0 0 0;
+  }
+
+  .evento-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .rascunho-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+
   .btn--danger:hover {
     background: #c82333;
   }
@@ -906,10 +1093,22 @@ function addEventoME(e){
       </div>
       <?php endif; ?>
 
-      <!-- 4. AÇÕES -->
+      <!-- 4. RASCUNHO DE EVENTOS -->
+      <div class="lc-rascunho-container" id="rascunhoContainer" style="display: none;">
+        <h3>📝 Rascunho da Lista</h3>
+        <div id="eventosRascunho" class="eventos-rascunho">
+          <!-- Eventos adicionados aparecerão aqui -->
+        </div>
+        <div class="rascunho-actions">
+          <button type="button" class="btn btn--secondary" onclick="limparRascunho()">🗑️ Limpar Rascunho</button>
+          <button type="button" class="btn btn--primary" onclick="gerarListaFinal()">📋 Gerar Lista Final</button>
+        </div>
+      </div>
+
+      <!-- 5. AÇÕES -->
       <div class="lc-actions-container">
+        <button class="btn btn--secondary" type="button" onclick="adicionarEvento()">➕ Adicionar Evento ao Rascunho</button>
         <button class="btn btn--secondary" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
-        <button class="btn btn--primary" type="submit" onclick="document.getElementById('acao').value=''">Gerar (finalizar)</button>
         <a class="btn btn--secondary" href="dashboard.php">Cancelar</a>
       </div>
     </form>
