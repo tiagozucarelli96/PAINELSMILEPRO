@@ -49,13 +49,12 @@ try {
     $componentes->execute([$receita_id]);
     $componentes = $componentes->fetchAll(PDO::FETCH_ASSOC);
     
-    // Carregar insumos para adicionar
+    // Carregar insumos para adicionar (sem verificar coluna ativo)
     $insumos = $pdo->query("
         SELECT i.*, u.simbolo, c.nome AS categoria_nome
         FROM lc_insumos i
         LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
         LEFT JOIN lc_categorias c ON c.id = i.categoria_id
-        WHERE (i.ativo = true OR i.ativo IS NULL)
         ORDER BY c.nome, i.nome
     ")->fetchAll(PDO::FETCH_ASSOC);
     

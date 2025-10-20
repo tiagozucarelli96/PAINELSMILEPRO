@@ -91,6 +91,15 @@ try {
       throw new Exception("Não é possível excluir este insumo pois há $count2 componente(s) de receita vinculado(s) a ele.");
     }
     
+    // Verificar se há componentes de ficha usando este insumo (tabela antiga)
+    $check3 = $pdo->prepare("SELECT COUNT(*) FROM lc_ficha_componentes WHERE insumo_id = ?");
+    $check3->execute([$id]);
+    $count3 = $check3->fetchColumn();
+    
+    if ($count3 > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count3 componente(s) de ficha vinculado(s) a ele.");
+    }
+    
     $stmt = $pdo->prepare("DELETE FROM lc_insumos WHERE id = ?");
     $stmt->execute([$id]);
     $msg = 'Insumo excluído.';
