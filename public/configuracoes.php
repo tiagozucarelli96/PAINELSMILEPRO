@@ -121,7 +121,7 @@ try {
     }
     
     // Verificar se há itens fixos usando esta unidade
-    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_itens_fixos WHERE unidade_id = ?");
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_itens_fixos WHERE unidade_id = ?");
     $check2->execute([$id]);
     $count2 = $check2->fetchColumn();
     
@@ -130,7 +130,7 @@ try {
     }
     
     // Verificar se há componentes de receita usando esta unidade
-    $check3 = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE unidade_id = ?");
+    $check3 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_receita_componentes WHERE unidade_id = ?");
     $check3->execute([$id]);
     $count3 = $check3->fetchColumn();
     
@@ -138,7 +138,16 @@ try {
       throw new Exception("Não é possível excluir esta unidade pois há $count3 componente(s) de receita vinculado(s) a ela.");
     }
     
-    $stmt = $pdo->prepare("DELETE FROM lc_unidades WHERE id = ?");
+    // Verificar se há componentes de ficha usando esta unidade (tabela antiga)
+    $check4 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_ficha_componentes WHERE unidade_id = ?");
+    $check4->execute([$id]);
+    $count4 = $check4->fetchColumn();
+    
+    if ($count4 > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count4 componente(s) de ficha vinculado(s) a ela.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_unidades WHERE id = ?");
     $stmt->execute([$id]);
     $msg = 'Unidade excluída.';
     $tab = 'unidades';

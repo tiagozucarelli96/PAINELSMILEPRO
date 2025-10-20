@@ -39,6 +39,18 @@ try {
             if (!$insumo_id) throw new Exception('Insumo é obrigatório.');
             if ($quantidade <= 0) throw new Exception('Quantidade deve ser maior que zero.');
             
+            // Validar se a unidade existe (se foi selecionada)
+            if ($unidade_id > 0) {
+                $unidade_check = $pdo->prepare("SELECT id FROM smilee12_painel_smile.lc_unidades WHERE id = ?");
+                $unidade_check->execute([$unidade_id]);
+                if (!$unidade_check->fetchColumn()) {
+                    throw new Exception('Unidade selecionada não existe.');
+                }
+            } else {
+                // Se não foi selecionada unidade, usar NULL
+                $unidade_id = null;
+            }
+            
             // Buscar custo unitário do insumo
             $insumo = $pdo->prepare("SELECT custo_unit FROM smilee12_painel_smile.lc_insumos WHERE id = ?");
             $insumo->execute([$insumo_id]);
