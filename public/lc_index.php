@@ -97,7 +97,7 @@ if ($pdo) {
                COALESCE(l.eventos_resumo, '')              AS resumo_eventos,
                l.data_gerada,
                COALESCE(l.criado_por_nome, '—')            AS criado_por
-        FROM lc_listas l
+        FROM smilee12_painel_smile.lc_listas l
         WHERE l.tipo = :tipo
         ORDER BY l.data_gerada DESC, l.grupo_id DESC
         LIMIT :limit OFFSET :offset
@@ -117,7 +117,7 @@ if ($pdo) {
         $encomendas = $stmt2->fetchAll();
 
         // Totais p/ paginação
-        $sqlCount = "SELECT COUNT(*)::int FROM lc_listas WHERE tipo = :tipo";
+        $sqlCount = "SELECT COUNT(*)::int FROM smilee12_painel_smile.lc_listas WHERE tipo = :tipo";
         $c1 = $pdo->prepare($sqlCount);
         $c1->bindValue(':tipo', 'compras', PDO::PARAM_STR);
         $c1->execute();
@@ -156,16 +156,16 @@ try {
   if ($tableExists) {
     $sqlCountC = "
       SELECT COUNT(*) 
-      FROM lc_listas l 
-      WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+      FROM smilee12_painel_smile.lc_listas l 
+      WHERE EXISTS (SELECT 1 FROM smilee12_painel_smile.lc_compras_consolidadas c WHERE c.lista_id = l.id)
     ";
     $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
       SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
              l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
-      FROM lc_listas l
-      WHERE EXISTS (SELECT 1 FROM lc_compras_consolidadas c WHERE c.lista_id = l.id)
+      FROM smilee12_painel_smile.lc_listas l
+      WHERE EXISTS (SELECT 1 FROM smilee12_painel_smile.lc_compras_consolidadas c WHERE c.lista_id = l.id)
       ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
@@ -177,13 +177,13 @@ try {
   }
 } catch (Exception $e) {
   // Se houver erro, usar apenas lc_listas com filtro por tipo_lista
-  $sqlCountC = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'compras'";
+  $sqlCountC = "SELECT COUNT(*) FROM smilee12_painel_smile.lc_listas l WHERE l.tipo_lista = 'compras'";
   $totalC = (int)$pdo->query($sqlCountC)->fetchColumn();
 
     $sqlCompras = "
       SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
              l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
-      FROM lc_listas l
+      FROM smilee12_painel_smile.lc_listas l
       WHERE l.tipo_lista = 'compras'
       ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
@@ -206,16 +206,16 @@ try {
   if ($tableExists) {
     $sqlCountE = "
       SELECT COUNT(*) 
-      FROM lc_listas l 
-      WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+      FROM smilee12_painel_smile.lc_listas l 
+      WHERE EXISTS (SELECT 1 FROM smilee12_painel_smile.lc_encomendas_itens e WHERE e.lista_id = l.id)
     ";
     $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
       SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
              l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
-      FROM lc_listas l
-      WHERE EXISTS (SELECT 1 FROM lc_encomendas_itens e WHERE e.lista_id = l.id)
+      FROM smilee12_painel_smile.lc_listas l
+      WHERE EXISTS (SELECT 1 FROM smilee12_painel_smile.lc_encomendas_itens e WHERE e.lista_id = l.id)
       ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
     ";
@@ -227,13 +227,13 @@ try {
   }
 } catch (Exception $e) {
   // Se houver erro, usar apenas lc_listas com filtro por tipo_lista
-  $sqlCountE = "SELECT COUNT(*) FROM lc_listas l WHERE l.tipo_lista = 'encomendas'";
+  $sqlCountE = "SELECT COUNT(*) FROM smilee12_painel_smile.lc_listas l WHERE l.tipo_lista = 'encomendas'";
   $totalE = (int)$pdo->query($sqlCountE)->fetchColumn();
 
     $sqlEncom = "
       SELECT l.id, l.data_gerada AS criado_em, l.espaco_consolidado AS espaco_resumo, 
              l.eventos_resumo AS resumo_eventos, l.criado_por, l.criado_por_nome
-      FROM lc_listas l
+      FROM smilee12_painel_smile.lc_listas l
       WHERE l.tipo_lista = 'encomendas'
       ORDER BY l.data_gerada DESC, l.id DESC
       LIMIT :per OFFSET :off
@@ -335,6 +335,19 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
   <div class="container">
+
+    <!-- Mensagens de Sucesso/Erro -->
+    <?php if (isset($_GET['sucesso'])): ?>
+      <div class="alert alert-success" style="background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 12px; border-radius: 4px; margin: 10px 0;">
+        <span>✅</span> <?= htmlspecialchars($_GET['sucesso']) ?>
+      </div>
+    <?php endif; ?>
+    
+    <?php if (isset($_GET['erro'])): ?>
+      <div class="alert alert-error" style="background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 12px; border-radius: 4px; margin: 10px 0;">
+        <span>❌</span> <?= htmlspecialchars($_GET['erro']) ?>
+      </div>
+    <?php endif; ?>
 
     <!-- INÍCIO CONTEÚDO -->
     <div class="topbar">

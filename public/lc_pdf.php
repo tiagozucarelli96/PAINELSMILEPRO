@@ -22,8 +22,8 @@ if ($id <= 0) {
 // Cabeçalho
 $stmt = $pdo->prepare("
   SELECT l.*, u.nome AS criado_por_nome
-  FROM lc_listas l
-  LEFT JOIN usuarios u ON u.id = l.criado_por
+  FROM smilee12_painel_smile.lc_listas l
+  LEFT JOIN smilee12_painel_smile.usuarios u ON u.id = l.criado_por
   WHERE l.id = :id
 ");
 $stmt->execute([':id' => $id]);
@@ -33,7 +33,7 @@ if (!$lista) {
 }
 
 // Eventos vinculados
-$stmtEv = $pdo->prepare("SELECT * FROM lc_listas_eventos WHERE lista_id = :id ORDER BY id");
+$stmtEv = $pdo->prepare("SELECT * FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id ORDER BY id");
 $stmtEv->execute([':id' => $id]);
 $eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
 
@@ -41,14 +41,14 @@ $eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
 if ($tipo === 'encomendas') {
   $stmtItens = $pdo->prepare("
     SELECT e.*, f.nome AS fornecedor_nome
-    FROM lc_encomendas_itens e
-    LEFT JOIN fornecedores f ON f.id = e.fornecedor_id
+    FROM smilee12_painel_smile.lc_encomendas_itens e
+    LEFT JOIN smilee12_painel_smile.fornecedores f ON f.id = e.fornecedor_id
     WHERE e.lista_id = :id
     ORDER BY f.nome NULLS LAST, e.evento_id, e.item_nome
   ");
 } else {
   $stmtItens = $pdo->prepare("
-    SELECT * FROM lc_compras_consolidadas
+    SELECT * FROM smilee12_painel_smile.lc_compras_consolidadas
     WHERE lista_id = :id
     ORDER BY insumo_nome
   ");
@@ -159,7 +159,7 @@ if ($tipo === 'compras') {
 // --- Custo por Convidado (se habilitado) ---
 if ($showCPPdf) {
   // Calcular total de convidados
-  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM lc_listas_eventos WHERE lista_id = :id");
+  $stTmp = $pdo->prepare("SELECT COALESCE(SUM(convidados),0) FROM smilee12_painel_smile.lc_listas_eventos WHERE lista_id = :id");
   $stTmp->execute([':id'=>$id]);
   $totConvidados = (int)$stTmp->fetchColumn();
   
