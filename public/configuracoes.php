@@ -510,8 +510,15 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <?php if ($tab==='categorias'): ?>
           <div class="card">
             <div class="card-header">
-              <h2 class="card-title">📂 Categorias</h2>
-              <p class="text-sm text-gray-600">Organize seus produtos por categorias para facilitar a gestão</p>
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">📂 Categorias</h2>
+                  <p class="text-sm text-gray-600">Organize seus produtos por categorias para facilitar a gestão</p>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="openCategoriaModal()">
+                  <span>➕</span> Novo
+                </button>
+              </div>
             </div>
             <div class="card-body">
                 <div class="table-container">
@@ -572,47 +579,20 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     </form>
             </div>
           </div>
-    <!-- Formulário para adicionar nova categoria -->
-    <div class="mt-6 p-4 bg-gray-50 rounded-lg">
-      <h3 class="text-lg font-semibold mb-4">➕ Adicionar Nova Categoria</h3>
-      <form method="post" class="flex gap-4 items-end">
-        <input type="hidden" name="action" value="save_categoria">
-        <input type="hidden" name="tab" value="categorias">
-        <input type="hidden" name="id" value="">
-        
-        <div class="flex-1">
-          <label class="form-label">Nome da Categoria *</label>
-          <input type="text" name="nome" placeholder="Digite o nome da nova categoria" 
-                 class="form-input" required>
-        </div>
-        
-        <div style="width: 100px;">
-          <label class="form-label">Ordem</label>
-          <input type="number" name="ordem" value="0" 
-                 class="form-input" style="text-align: center;"
-                 min="0" max="999">
-        </div>
-        
-        <div style="width: 120px;">
-          <label class="form-label">Status</label>
-          <select name="ativo" class="form-select">
-            <option value="1" selected>Ativa</option>
-            <option value="0">Inativa</option>
-          </select>
-        </div>
-        
-        <button type="submit" class="btn btn-success">
-          <span>➕</span> Adicionar
-        </button>
-      </form>
-    </div>
   <?php endif; ?>
 
   <?php if ($tab==='unidades'): ?>
           <div class="card">
             <div class="card-header">
-              <h2 class="card-title">📏 Unidades de Medida</h2>
-              <p class="text-sm text-gray-600">Configure unidades para conversões automáticas via fator base</p>
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">📏 Unidades de Medida</h2>
+                  <p class="text-sm text-gray-600">Configure unidades para conversões automáticas via fator base</p>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="openUnidadeModal()">
+                  <span>➕</span> Novo
+                </button>
+              </div>
             </div>
             <div class="card-body">
               <form method="post" class="animate-fade-in">
@@ -701,62 +681,6 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 </div>
     </form>
     
-    <!-- Formulário para adicionar nova unidade -->
-    <div class="mt-6 p-4 bg-gray-50 rounded-lg">
-      <h3 class="text-lg font-semibold mb-4">➕ Adicionar Nova Unidade</h3>
-      <form method="post" class="grid grid-cols-6 gap-4 items-end">
-        <input type="hidden" name="action" value="save_unidade">
-        <input type="hidden" name="tab" value="unidades">
-        <input type="hidden" name="id" value="">
-        
-        <div>
-          <label class="form-label">Nome *</label>
-          <input type="text" name="nome" placeholder="Ex: Quilograma" 
-                 class="form-input" required>
-        </div>
-        
-        <div>
-          <label class="form-label">Símbolo *</label>
-          <input type="text" name="simbolo" placeholder="kg" 
-                 class="form-input" required 
-                 style="text-align: center;">
-        </div>
-        
-        <div>
-          <label class="form-label">Tipo</label>
-          <select name="tipo" class="form-select">
-            <option value="massa" selected>Massa</option>
-            <option value="volume">Volume</option>
-            <option value="unidade">Unidade</option>
-            <option value="embalagem">Embalagem</option>
-            <option value="outro">Outro</option>
-          </select>
-        </div>
-        
-        <div>
-          <label class="form-label">Fator Base</label>
-          <input type="number" step="0.000001" name="fator_base" 
-                 value="1.000000" 
-                 class="form-input" 
-                 style="text-align: center;"
-                 min="0.000001" max="999999.999999">
-        </div>
-        
-        <div>
-          <label class="form-label">Status</label>
-          <select name="ativo" class="form-select">
-            <option value="1" selected>Ativa</option>
-            <option value="0">Inativa</option>
-          </select>
-        </div>
-        
-        <div>
-          <button type="submit" class="btn btn-success w-full">
-            <span>➕</span> Adicionar
-          </button>
-        </div>
-      </form>
-    </div>
             </div>
           </div>
   <?php endif; ?>
@@ -1379,7 +1303,153 @@ function deleteUnidade(id) {
     form.submit();
   }
 }
+
+// Funções para Categorias
+function openCategoriaModal() {
+  document.getElementById('categoriaModalTitle').textContent = 'Nova Categoria';
+  document.getElementById('categoriaForm').reset();
+  document.getElementById('categoriaId').value = '';
+  document.getElementById('categoriaModal').style.display = 'flex';
+}
+
+function closeCategoriaModal() {
+  document.getElementById('categoriaModal').style.display = 'none';
+}
+
+// Funções para Unidades
+function openUnidadeModal() {
+  document.getElementById('unidadeModalTitle').textContent = 'Nova Unidade';
+  document.getElementById('unidadeForm').reset();
+  document.getElementById('unidadeId').value = '';
+  document.getElementById('unidadeModal').style.display = 'flex';
+}
+
+function closeUnidadeModal() {
+  document.getElementById('unidadeModal').style.display = 'none';
+}
 </script>
+
+<!-- Modal para Editar/Criar Categoria -->
+<div id="categoriaModal" class="modal-overlay" style="display: none;">
+  <div class="modal">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title" id="categoriaModalTitle">Nova Categoria</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeCategoriaModal()">
+          <span>✕</span>
+        </button>
+      </div>
+      <div class="card-body">
+        <form method="post" id="categoriaForm">
+          <input type="hidden" name="action" value="save_categoria">
+          <input type="hidden" name="tab" value="categorias">
+          <input type="hidden" name="id" id="categoriaId" value="">
+          
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="form-label">Nome da Categoria *</label>
+              <input type="text" name="nome" id="categoriaNome" class="form-input" required 
+                     placeholder="Digite o nome da categoria">
+            </div>
+            
+            <div>
+              <label class="form-label">Ordem</label>
+              <input type="number" name="ordem" id="categoriaOrdem" class="form-input" 
+                     min="0" max="999" value="0">
+            </div>
+            
+            <div>
+              <label class="form-label">Status</label>
+              <select name="ativo" id="categoriaAtivo" class="form-select">
+                <option value="1" selected>Ativa</option>
+                <option value="0">Inativa</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="flex justify-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline" onclick="closeCategoriaModal()">
+              <span>❌</span> Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <span>💾</span> Salvar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Editar/Criar Unidade -->
+<div id="unidadeModal" class="modal-overlay" style="display: none;">
+  <div class="modal">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title" id="unidadeModalTitle">Nova Unidade</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeUnidadeModal()">
+          <span>✕</span>
+        </button>
+      </div>
+      <div class="card-body">
+        <form method="post" id="unidadeForm">
+          <input type="hidden" name="action" value="save_unidade">
+          <input type="hidden" name="tab" value="unidades">
+          <input type="hidden" name="id" id="unidadeId" value="">
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Nome *</label>
+              <input type="text" name="nome" id="unidadeNome" class="form-input" required 
+                     placeholder="Ex: Quilograma">
+            </div>
+            
+            <div>
+              <label class="form-label">Símbolo *</label>
+              <input type="text" name="simbolo" id="unidadeSimbolo" class="form-input" required 
+                     placeholder="kg" style="text-align: center;">
+            </div>
+            
+            <div>
+              <label class="form-label">Tipo</label>
+              <select name="tipo" id="unidadeTipo" class="form-select">
+                <option value="massa" selected>Massa</option>
+                <option value="volume">Volume</option>
+                <option value="unidade">Unidade</option>
+                <option value="embalagem">Embalagem</option>
+                <option value="outro">Outro</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="form-label">Fator Base</label>
+              <input type="number" step="0.000001" name="fator_base" id="unidadeFatorBase" 
+                     class="form-input" min="0.000001" max="999999.999999" 
+                     value="1.000000" style="text-align: center;">
+            </div>
+            
+            <div>
+              <label class="form-label">Status</label>
+              <select name="ativo" id="unidadeAtivo" class="form-select">
+                <option value="1" selected>Ativa</option>
+                <option value="0">Inativa</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="flex justify-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline" onclick="closeUnidadeModal()">
+              <span>❌</span> Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <span>💾</span> Salvar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
