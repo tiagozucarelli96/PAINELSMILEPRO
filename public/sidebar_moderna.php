@@ -1,6 +1,5 @@
 <?php
-// sidebar.php — Sidebar moderna para o sistema
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+// Sidebar moderna para o sistema
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 ?>
 
@@ -21,38 +20,45 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
 
   <!-- Navegação -->
   <nav class="sidebar-nav">
-    <a href="index.php?page=dashboard" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'dashboard' ? 'active' : '' ?>">
-      <span class="nav-item-icon">🏠</span>
+    <a href="dashboard.php" class="nav-item <?= $current_page === 'dashboard' ? 'active' : '' ?>">
+      <span class="nav-item-icon">📊</span>
       <span class="nav-item-text">Dashboard</span>
     </a>
 
-    <?php if (!empty($_SESSION['perm_tarefas'])): ?>
-      <a href="index.php?page=tarefas" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'tarefas' ? 'active' : '' ?>">
-        <span class="nav-item-icon">📋</span>
-        <span class="nav-item-text">Tarefas</span>
-      </a>
-    <?php endif; ?>
+    <a href="tarefas.php" class="nav-item <?= $current_page === 'tarefas' ? 'active' : '' ?>">
+      <span class="nav-item-icon">📋</span>
+      <span class="nav-item-text">Tarefas</span>
+    </a>
 
-    <?php if (!empty($_SESSION['perm_lista'])): ?>
-      <a href="index.php?page=lista" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'lista' ? 'active' : '' ?>">
-        <span class="nav-item-icon">🛒</span>
-        <span class="nav-item-text">Lista de Compras</span>
-      </a>
-    <?php endif; ?>
+    <a href="lc_index.php" class="nav-item <?= $current_page === 'lc_index' ? 'active' : '' ?>">
+      <span class="nav-item-icon">🛒</span>
+      <span class="nav-item-text">Lista de Compras</span>
+    </a>
 
-    <?php if (!empty($_SESSION['perm_demandas'])): ?>
-      <a href="index.php?page=pagamentos" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'pagamentos' ? 'active' : '' ?>">
-        <span class="nav-item-icon">💳</span>
-        <span class="nav-item-text">Solicitar Pagamento</span>
-      </a>
-    <?php endif; ?>
+    <a href="pagamentos.php" class="nav-item <?= $current_page === 'pagamentos' ? 'active' : '' ?>">
+      <span class="nav-item-icon">💳</span>
+      <span class="nav-item-text">Solicitar Pagamento</span>
+    </a>
 
-    <?php if (!empty($_SESSION['perm_portao'])): ?>
-      <a href="index.php?page=portao" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'portao' ? 'active' : '' ?>">
-        <span class="nav-item-icon">🚪</span>
-        <span class="nav-item-text">Portão</span>
-      </a>
-    <?php endif; ?>
+    <a href="portao.php" class="nav-item <?= $current_page === 'portao' ? 'active' : '' ?>">
+      <span class="nav-item-icon">🚪</span>
+      <span class="nav-item-text">Portão</span>
+    </a>
+
+    <a href="configuracoes.php" class="nav-item <?= $current_page === 'configuracoes' ? 'active' : '' ?>">
+      <span class="nav-item-icon">⚙️</span>
+      <span class="nav-item-text">Configurações</span>
+    </a>
+
+    <a href="usuarios.php" class="nav-item <?= $current_page === 'usuarios' ? 'active' : '' ?>">
+      <span class="nav-item-icon">👥</span>
+      <span class="nav-item-text">Usuários</span>
+    </a>
+
+    <a href="historico.php" class="nav-item <?= $current_page === 'historico' ? 'active' : '' ?>">
+      <span class="nav-item-icon">📈</span>
+      <span class="nav-item-text">Histórico</span>
+    </a>
   </nav>
 
   <!-- Footer da Sidebar -->
@@ -63,7 +69,7 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
       </div>
       <div>
         <div class="font-semibold"><?= htmlspecialchars($_SESSION['usuario'] ?? 'Usuário') ?></div>
-        <div class="text-xs opacity-75">Usuário</div>
+        <div class="text-xs opacity-75">Administrador</div>
       </div>
     </div>
     

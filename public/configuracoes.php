@@ -337,32 +337,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="main-layout">
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="sidebar-header">
-      <img src="logo.png" alt="Painel Smile PRO" class="sidebar-logo">
-    </div>
-    <nav class="sidebar-nav">
-      <a href="dashboard.php" class="nav-item">
-        <span>📊</span> Dashboard
-      </a>
-      <a href="configuracoes.php" class="nav-item active">
-        <span>⚙️</span> Configurações
-      </a>
-      <a href="lista_compras.php" class="nav-item">
-        <span>📝</span> Lista de Compras
-      </a>
-      <a href="lc_index.php" class="nav-item">
-        <span>📋</span> Histórico
-      </a>
-      <a href="usuarios.php" class="nav-item">
-        <span>👥</span> Usuários
-      </a>
-      <a href="logout.php" class="nav-item">
-        <span>🚪</span> Sair
-      </a>
-    </nav>
-  </aside>
+  <!-- Sidebar Moderna -->
+  <?php include 'sidebar_moderna.php'; ?>
 
   <!-- Conteúdo Principal -->
   <main class="main-content">
