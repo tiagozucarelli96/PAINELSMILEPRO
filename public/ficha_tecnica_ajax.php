@@ -396,13 +396,8 @@ function addComponente(event) {
   })
   .then(response => response.text())
   .then(html => {
-    // Atualizar apenas o conteúdo da ficha técnica
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const newContent = doc.querySelector('.card-body');
-    if (newContent) {
-      document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
-    }
+    // Atualizar todo o conteúdo da ficha técnica
+    document.getElementById('fichaTecnicaContent').innerHTML = html;
   })
   .catch(error => {
     console.error('Erro:', error);
@@ -421,13 +416,8 @@ function updateComponente(event) {
   })
   .then(response => response.text())
   .then(html => {
-    // Atualizar apenas o conteúdo da ficha técnica
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const newContent = doc.querySelector('.card-body');
-    if (newContent) {
-      document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
-    }
+    // Atualizar todo o conteúdo da ficha técnica
+    document.getElementById('fichaTecnicaContent').innerHTML = html;
     closeComponenteModal();
   })
   .catch(error => {
@@ -459,13 +449,8 @@ function deleteComponente(id) {
     })
     .then(response => response.text())
     .then(html => {
-      // Atualizar apenas o conteúdo da ficha técnica
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const newContent = doc.querySelector('.card-body');
-      if (newContent) {
-        document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
-      }
+      // Atualizar todo o conteúdo da ficha técnica
+      document.getElementById('fichaTecnicaContent').innerHTML = html;
     })
     .catch(error => {
       console.error('Erro:', error);

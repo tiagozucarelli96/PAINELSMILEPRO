@@ -551,21 +551,16 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                               <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
                 </select>
               </td>
+              <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
                           <td class="text-center">
                             <div class="flex gap-2 justify-center">
-                <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
                               <button type="submit" class="btn btn-primary btn-sm">
                                 <span>💾</span> Salvar
                               </button>
-                              <form method="post" style="display: inline;">
-                                <input type="hidden" name="action" value="delete_categoria">
-                                <input type="hidden" name="tab" value="categorias">
-                                <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                                <button type="submit" class="btn btn-outline btn-sm" 
-                                        onclick="return confirm('Tem certeza que deseja excluir esta categoria?')">
-                                  <span>🗑️</span> Excluir
-                                </button>
-                              </form>
+                              <button type="button" class="btn btn-outline btn-sm" 
+                                      onclick="deleteCategoria(<?= (int)$c['id'] ?>)">
+                                <span>🗑️</span> Excluir
+                              </button>
                             </div>
               </td>
             </tr>
@@ -674,21 +669,16 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                               <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
                 </select>
               </td>
+              <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                           <td class="text-center">
                             <div class="flex gap-2 justify-center">
-                <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
                               <button type="submit" class="btn btn-primary btn-sm">
                                 <span>💾</span> Salvar
                               </button>
-                              <form method="post" style="display: inline;">
-                                <input type="hidden" name="action" value="delete_unidade">
-                                <input type="hidden" name="tab" value="unidades">
-                                <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                                <button type="submit" class="btn btn-outline btn-sm" 
-                                        onclick="return confirm('Tem certeza que deseja excluir esta unidade?')">
-                                  <span>🗑️</span> Excluir
-                                </button>
-                              </form>
+                              <button type="button" class="btn btn-outline btn-sm" 
+                                      onclick="deleteUnidade(<?= (int)$u['id'] ?>)">
+                                <span>🗑️</span> Excluir
+                              </button>
                             </div>
               </td>
             </tr>
@@ -1331,5 +1321,38 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
       </div>
     </div>
   </main>
+
+<script>
+// Função para excluir categoria
+function deleteCategoria(id) {
+  if (confirm('Tem certeza que deseja excluir esta categoria?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+      <input type="hidden" name="action" value="delete_categoria">
+      <input type="hidden" name="tab" value="categorias">
+      <input type="hidden" name="id" value="${id}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+  }
+}
+
+// Função para excluir unidade
+function deleteUnidade(id) {
+  if (confirm('Tem certeza que deseja excluir esta unidade?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+      <input type="hidden" name="action" value="delete_unidade">
+      <input type="hidden" name="tab" value="unidades">
+      <input type="hidden" name="id" value="${id}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+  }
+}
+</script>
+
 </body>
 </html>
