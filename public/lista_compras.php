@@ -98,8 +98,122 @@ $forns = $pdo->query("SELECT id, nome, modo_padrao::text AS modo_padrao FROM for
 
 $err = '';
 
+// ========= POST (Gerar Lista Final do Rascunho) =========
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_lista_final') {
+    try {
+        $eventosRascunho = json_decode($_POST['eventos_rascunho'] ?? '[]', true);
+        
+        if (empty($eventosRascunho)) {
+            throw new Exception('Nenhum evento no rascunho para gerar lista.');
+        }
+        
+        // Consolidar itens de todos os eventos
+        $itensConsolidados = [];
+        $eventosIds = [];
+        
+        foreach ($eventosRascunho as $evento) {
+            $eventosIds[] = $evento['id'];
+            
+            foreach ($evento['itens'] as $item) {
+                $key = $item['tipo'] . '_' . $item['id'];
+                
+                if (!isset($itensConsolidados[$key])) {
+                    $itensConsolidados[$key] = [
+                        'tipo' => $item['tipo'],
+                        'id' => $item['id'],
+                        'nome' => $item['nome'],
+                        'quantidade_total' => 0,
+                        'eventos' => []
+                    ];
+                }
+                
+                $itensConsolidados[$key]['quantidade_total'] += $item['quantidade'];
+                $itensConsolidados[$key]['eventos'][] = [
+                    'evento_id' => $evento['id'],
+                    'evento_nome' => $evento['nome'],
+                    'quantidade' => $item['quantidade']
+                ];
+            }
+        }
+        
+        // Criar lista principal
+        $stmt = $pdo->prepare("
+            INSERT INTO lc_listas (grupo_id, tipo, data_gerada, espaco_consolidado, eventos_resumo, criado_por, criado_por_nome, tipo_lista, criado_em, resumo_eventos, espaco_resumo)
+            VALUES (1, 'compra', NOW(), 'Múltiplos Eventos', :eventos_resumo, :criado_por, :criado_por_nome, 'gerada', NOW(), :resumo_eventos, 'Múltiplos Eventos')
+            RETURNING id
+        ");
+        
+        $eventosResumo = implode(', ', array_column($eventosRascunho, 'nome'));
+        $resumoEventos = json_encode($eventosRascunho, JSON_UNESCAPED_UNICODE);
+        
+        $stmt->execute([
+            ':eventos_resumo' => $eventosResumo,
+            ':criado_por' => $uid,
+            ':criado_por_nome' => $usuarioNome,
+            ':resumo_eventos' => $resumoEventos
+        ]);
+        
+        $listaId = $stmt->fetchColumn();
+        
+        // Criar eventos da lista
+        foreach ($eventosRascunho as $evento) {
+            $stmt = $pdo->prepare("
+                INSERT INTO lc_listas_eventos (lista_id, grupo_id, espaco, convidados, horario, evento, data, dia_semana)
+                VALUES (:lista_id, 1, 'Múltiplos', :convidados, '', :evento, :data, '')
+            ");
+            $stmt->execute([
+                ':lista_id' => $listaId,
+                ':convidados' => $evento['convidados'],
+                ':evento' => $evento['nome'],
+                ':data' => $evento['data']
+            ]);
+        }
+        
+        // Criar itens consolidados
+        foreach ($itensConsolidados as $item) {
+            if ($item['tipo'] === 'insumo') {
+                // Buscar dados do insumo
+                $stmt = $pdo->prepare("
+                    SELECT i.*, u.simbolo, c.nome as categoria_nome
+                    FROM lc_insumos i
+                    LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+                    LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+                    WHERE i.id = ?
+                ");
+                $stmt->execute([$item['id']]);
+                $insumo = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($insumo) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO lc_compras_consolidadas (lista_id, grupo_id, insumo_id, nome_insumo, unidade, quantidade, custo_unitario, categoria)
+                        VALUES (:lista_id, 1, :insumo_id, :nome_insumo, :unidade, :quantidade, :custo_unitario, :categoria)
+                    ");
+                    $stmt->execute([
+                        ':lista_id' => $listaId,
+                        ':insumo_id' => $insumo['id'],
+                        ':nome_insumo' => $insumo['nome'],
+                        ':unidade' => $insumo['unidade_padrao'] ?: $insumo['unidade'],
+                        ':quantidade' => $item['quantidade_total'],
+                        ':custo_unitario' => $insumo['custo_unit'] ?: 0,
+                        ':categoria' => $insumo['categoria_nome'] ?: 'Sem Categoria'
+                    ]);
+                }
+            }
+        }
+        
+        // Limpar rascunho da sessão
+        unset($_SESSION['rascunho_lista']);
+        
+        header('Location: lc_index.php?sucesso=' . urlencode('Lista de compras gerada com sucesso! ID: ' . $listaId));
+        exit;
+        
+    } catch (Exception $e) {
+        $err = 'Erro ao gerar lista: ' . $e->getMessage();
+    }
+}
+
 // ========= POST (Finalizar = gerar listas) =========
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar_rascunho')) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar_rascunho' && ($_POST['acao'] ?? '') !== 'gerar_lista_final')) {
     try {
         // Eventos
         $evs = $_POST['eventos'] ?? [];
@@ -458,21 +572,32 @@ function gerarListaFinal() {
     return;
   }
   
-  // Aqui você pode implementar a lógica de geração da lista final
-  // Por enquanto, vamos apenas mostrar o resumo
-  let resumo = 'Lista de Compras Gerada:\n\n';
-  rascunhoEventos.forEach(evento => {
-    resumo += `📅 ${evento.nome} (${evento.data})\n`;
-    evento.itens.forEach(item => {
-      resumo += `  - ${item.nome}: ${item.quantidade}\n`;
-    });
-    resumo += '\n';
-  });
+  if (!confirm(`Gerar lista final com ${rascunhoEventos.length} evento(s)?`)) {
+    return;
+  }
   
-  alert(resumo);
+  // Criar formulário para enviar dados
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '';
   
-  // Aqui você pode redirecionar para uma página de resultado ou salvar no banco
-  console.log('Eventos no rascunho:', rascunhoEventos);
+  // Adicionar campo de ação
+  const acaoInput = document.createElement('input');
+  acaoInput.type = 'hidden';
+  acaoInput.name = 'acao';
+  acaoInput.value = 'gerar_lista_final';
+  form.appendChild(acaoInput);
+  
+  // Adicionar dados dos eventos
+  const eventosInput = document.createElement('input');
+  eventosInput.type = 'hidden';
+  eventosInput.name = 'eventos_rascunho';
+  eventosInput.value = JSON.stringify(rascunhoEventos);
+  form.appendChild(eventosInput);
+  
+  // Adicionar ao DOM e enviar
+  document.body.appendChild(form);
+  form.submit();
 }
 function addEventoME(e){
   // encontra próximo índice de evento na tela
@@ -853,6 +978,21 @@ function addEventoME(e){
     background: #c82333;
   }
 
+  .btn--success {
+    background: #28a745;
+    color: white;
+  }
+
+  .btn--success:hover {
+    background: #218838;
+  }
+
+  .btn--lg {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
   /* Modal da ME */
   #modalME {
     display: none;
@@ -1119,7 +1259,9 @@ function addEventoME(e){
         </div>
         <div class="rascunho-actions">
           <button type="button" class="btn btn--secondary" onclick="limparRascunho()">🗑️ Limpar Rascunho</button>
-          <button type="button" class="btn btn--primary" onclick="gerarListaFinal()">📋 Gerar Lista Final</button>
+          <button type="button" class="btn btn--success btn--lg" onclick="gerarListaFinal()">
+            <span>📋</span> Gerar Lista Final
+          </button>
         </div>
       </div>
 
