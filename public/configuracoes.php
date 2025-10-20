@@ -514,10 +514,6 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               <p class="text-sm text-gray-600">Organize seus produtos por categorias para facilitar a gestão</p>
             </div>
             <div class="card-body">
-              <form method="post" class="animate-fade-in">
-      <input type="hidden" name="action" value="save_categoria">
-      <input type="hidden" name="tab" value="categorias">
-                
                 <div class="table-container">
                   <table class="table">
         <thead>
@@ -531,38 +527,42 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </thead>
         <tbody>
           <?php foreach ($cat as $c): ?>
-                        <tr class="animate-slide-in">
-                          <td>
-                            <span class="badge"><?= (int)$c['id'] ?></span>
-                          </td>
-                          <td>
-                            <input type="text" name="nome" value="<?=h($c['nome'])?>" 
-                                   class="form-input" required 
-                                   placeholder="Nome da categoria">
-                          </td>
-                          <td>
-                            <input type="number" name="ordem" value="<?= (int)$c['ordem'] ?>" 
-                                   class="form-input" style="width: 80px; text-align: center;"
-                                   min="0" max="999">
-                          </td>
-                          <td>
-                            <select name="ativo" class="form-select" style="width: 100px;">
-                              <option value="1" <?= $c['ativo']?'selected':''?>>Ativa</option>
-                              <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
+            <tr class="animate-slide-in">
+              <td>
+                <span class="badge"><?= (int)$c['id'] ?></span>
+              </td>
+              <td>
+                <form method="post" style="display: inline;">
+                  <input type="hidden" name="action" value="save_categoria">
+                  <input type="hidden" name="tab" value="categorias">
+                  <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                  <input type="text" name="nome" value="<?=h($c['nome'])?>" 
+                         class="form-input" required 
+                         placeholder="Nome da categoria">
+              </td>
+              <td>
+                <input type="number" name="ordem" value="<?= (int)$c['ordem'] ?>" 
+                       class="form-input" style="width: 80px; text-align: center;"
+                       min="0" max="999">
+              </td>
+              <td>
+                <select name="ativo" class="form-select" style="width: 100px;">
+                  <option value="1" <?= $c['ativo']?'selected':''?>>Ativa</option>
+                  <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
                 </select>
               </td>
-              <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                          <td class="text-center">
-                            <div class="flex gap-2 justify-center">
-                              <button type="submit" class="btn btn-primary btn-sm">
-                                <span>💾</span> Salvar
-                              </button>
-                              <button type="button" class="btn btn-outline btn-sm" 
-                                      onclick="deleteCategoria(<?= (int)$c['id'] ?>)">
-                                <span>🗑️</span> Excluir
-                              </button>
-                            </div>
+              <td class="text-center">
+                <div class="flex gap-2 justify-center">
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <span>💾</span> Salvar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" 
+                          onclick="deleteCategoria(<?= (int)$c['id'] ?>)">
+                    <span>🗑️</span> Excluir
+                  </button>
+                </div>
               </td>
+            </form>
             </tr>
           <?php endforeach; ?>
                       
@@ -572,6 +572,40 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     </form>
             </div>
           </div>
+    <!-- Formulário para adicionar nova categoria -->
+    <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+      <h3 class="text-lg font-semibold mb-4">➕ Adicionar Nova Categoria</h3>
+      <form method="post" class="flex gap-4 items-end">
+        <input type="hidden" name="action" value="save_categoria">
+        <input type="hidden" name="tab" value="categorias">
+        <input type="hidden" name="id" value="">
+        
+        <div class="flex-1">
+          <label class="form-label">Nome da Categoria *</label>
+          <input type="text" name="nome" placeholder="Digite o nome da nova categoria" 
+                 class="form-input" required>
+        </div>
+        
+        <div style="width: 100px;">
+          <label class="form-label">Ordem</label>
+          <input type="number" name="ordem" value="0" 
+                 class="form-input" style="text-align: center;"
+                 min="0" max="999">
+        </div>
+        
+        <div style="width: 120px;">
+          <label class="form-label">Status</label>
+          <select name="ativo" class="form-select">
+            <option value="1" selected>Ativa</option>
+            <option value="0">Inativa</option>
+          </select>
+        </div>
+        
+        <button type="submit" class="btn btn-success">
+          <span>➕</span> Adicionar
+        </button>
+      </form>
+    </div>
   <?php endif; ?>
 
   <?php if ($tab==='unidades'): ?>
@@ -600,110 +634,129 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </thead>
         <tbody>
           <?php foreach ($uni as $u): ?>
-                        <tr class="animate-slide-in">
-                          <td>
-                            <span class="badge"><?= (int)$u['id'] ?></span>
-                          </td>
-                          <td>
-                            <input type="text" name="nome" value="<?=h($u['nome'])?>" 
-                                   class="form-input" required 
-                                   placeholder="Ex: Quilograma">
-                          </td>
-                          <td>
-                            <input type="text" name="simbolo" value="<?=h($u['simbolo'])?>" 
-                                   class="form-input" required 
-                                   style="width: 80px; text-align: center;"
-                                   placeholder="kg">
-                          </td>
-                          <td>
-                            <select name="tipo" class="form-select" style="width: 120px;">
-                              <?php 
-                              $tipos = [
-                                'massa' => 'Massa',
-                                'volume' => 'Volume', 
-                                'unidade' => 'Unidade',
-                                'embalagem' => 'Embalagem',
-                                'outro' => 'Outro'
-                              ];
-                              foreach ($tipos as $t => $label): ?>
-                                <option value="<?=$t?>" <?= $u['tipo']===$t?'selected':''?>><?=$label?></option>
+            <tr class="animate-slide-in">
+              <td>
+                <span class="badge"><?= (int)$u['id'] ?></span>
+              </td>
+              <td>
+                <form method="post" style="display: inline;">
+                  <input type="hidden" name="action" value="save_unidade">
+                  <input type="hidden" name="tab" value="unidades">
+                  <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                  <input type="text" name="nome" value="<?=h($u['nome'])?>" 
+                         class="form-input" required 
+                         placeholder="Ex: Quilograma">
+              </td>
+              <td>
+                <input type="text" name="simbolo" value="<?=h($u['simbolo'])?>" 
+                       class="form-input" required 
+                       style="width: 80px; text-align: center;"
+                       placeholder="kg">
+              </td>
+              <td>
+                <select name="tipo" class="form-select" style="width: 120px;">
+                  <?php 
+                  $tipos = [
+                    'massa' => 'Massa',
+                    'volume' => 'Volume', 
+                    'unidade' => 'Unidade',
+                    'embalagem' => 'Embalagem',
+                    'outro' => 'Outro'
+                  ];
+                  foreach ($tipos as $t => $label): ?>
+                    <option value="<?=$t?>" <?= $u['tipo']===$t?'selected':''?>><?=$label?></option>
                   <?php endforeach; ?>
                 </select>
               </td>
-                          <td>
-                            <input type="number" step="0.000001" name="fator_base" 
-                                   value="<?=h($u['fator_base'])?>" 
-                                   class="form-input" 
-                                   style="width: 120px; text-align: center;"
-                                   min="0.000001" max="999999.999999">
-                          </td>
-                          <td>
-                            <select name="ativo" class="form-select" style="width: 100px;">
-                              <option value="1" <?= $u['ativo']?'selected':''?>>Ativa</option>
-                              <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
+              <td>
+                <input type="number" step="0.000001" name="fator_base" 
+                       value="<?=h($u['fator_base'])?>" 
+                       class="form-input" 
+                       style="width: 120px; text-align: center;"
+                       min="0.000001" max="999999.999999">
+              </td>
+              <td>
+                <select name="ativo" class="form-select" style="width: 100px;">
+                  <option value="1" <?= $u['ativo']?'selected':''?>>Ativa</option>
+                  <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
                 </select>
               </td>
-              <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-                          <td class="text-center">
-                            <div class="flex gap-2 justify-center">
-                              <button type="submit" class="btn btn-primary btn-sm">
-                                <span>💾</span> Salvar
-                              </button>
-                              <button type="button" class="btn btn-outline btn-sm" 
-                                      onclick="deleteUnidade(<?= (int)$u['id'] ?>)">
-                                <span>🗑️</span> Excluir
-                              </button>
-                            </div>
+              <td class="text-center">
+                <div class="flex gap-2 justify-center">
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <span>💾</span> Salvar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" 
+                          onclick="deleteUnidade(<?= (int)$u['id'] ?>)">
+                    <span>🗑️</span> Excluir
+                  </button>
+                </div>
               </td>
+            </form>
             </tr>
           <?php endforeach; ?>
                       
-                      <tr class="row-new animate-fade-in">
-                        <td>
-                          <span class="badge badge-success">NOVO</span>
-                        </td>
-                        <td>
-                          <input type="text" name="nome" placeholder="Ex: Quilograma" 
-                                 class="form-input" required>
-                        </td>
-                        <td>
-                          <input type="text" name="simbolo" placeholder="kg" 
-                                 class="form-input" required 
-                                 style="width: 80px; text-align: center;">
-                        </td>
-                        <td>
-                          <select name="tipo" class="form-select" style="width: 120px;">
-                            <option value="massa">Massa</option>
-                            <option value="volume">Volume</option>
-                            <option value="unidade">Unidade</option>
-                            <option value="embalagem">Embalagem</option>
-                            <option value="outro">Outro</option>
-              </select>
-            </td>
-                        <td>
-                          <input type="number" step="0.000001" name="fator_base" 
-                                 value="1.000000" 
-                                 class="form-input" 
-                                 style="width: 120px; text-align: center;"
-                                 min="0.000001" max="999999.999999">
-                        </td>
-                        <td>
-                          <select name="ativo" class="form-select" style="width: 100px;">
-                            <option value="1" selected>Ativa</option>
-                            <option value="0">Inativa</option>
-              </select>
-            </td>
-                        <td class="text-center">
-              <input type="hidden" name="id" value="">
-                          <button type="submit" class="btn btn-success btn-sm">
-                            <span>➕</span> Adicionar
-                          </button>
-            </td>
-          </tr>
         </tbody>
       </table>
                 </div>
     </form>
+    
+    <!-- Formulário para adicionar nova unidade -->
+    <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+      <h3 class="text-lg font-semibold mb-4">➕ Adicionar Nova Unidade</h3>
+      <form method="post" class="grid grid-cols-6 gap-4 items-end">
+        <input type="hidden" name="action" value="save_unidade">
+        <input type="hidden" name="tab" value="unidades">
+        <input type="hidden" name="id" value="">
+        
+        <div>
+          <label class="form-label">Nome *</label>
+          <input type="text" name="nome" placeholder="Ex: Quilograma" 
+                 class="form-input" required>
+        </div>
+        
+        <div>
+          <label class="form-label">Símbolo *</label>
+          <input type="text" name="simbolo" placeholder="kg" 
+                 class="form-input" required 
+                 style="text-align: center;">
+        </div>
+        
+        <div>
+          <label class="form-label">Tipo</label>
+          <select name="tipo" class="form-select">
+            <option value="massa" selected>Massa</option>
+            <option value="volume">Volume</option>
+            <option value="unidade">Unidade</option>
+            <option value="embalagem">Embalagem</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        
+        <div>
+          <label class="form-label">Fator Base</label>
+          <input type="number" step="0.000001" name="fator_base" 
+                 value="1.000000" 
+                 class="form-input" 
+                 style="text-align: center;"
+                 min="0.000001" max="999999.999999">
+        </div>
+        
+        <div>
+          <label class="form-label">Status</label>
+          <select name="ativo" class="form-select">
+            <option value="1" selected>Ativa</option>
+            <option value="0">Inativa</option>
+          </select>
+        </div>
+        
+        <div>
+          <button type="submit" class="btn btn-success w-full">
+            <span>➕</span> Adicionar
+          </button>
+        </div>
+      </form>
+    </div>
             </div>
           </div>
   <?php endif; ?>
@@ -893,7 +946,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             document.getElementById('insumoId').value = insumo.id;
             document.getElementById('categoriaId').value = insumo.categoria_id || '';
             document.getElementById('insumoNome').value = insumo.nome || '';
-            document.getElementById('unidadeId').value = insumo.unidade_id || '';
+            document.getElementById('unidadeId').value = insumo.unidade || '';
             document.getElementById('insumoPreco').value = insumo.custo_unit || '';
             document.getElementById('embalagemMultiplo').value = insumo.embalagem_multiplo || '';
             document.getElementById('tipoPadrao').value = insumo.aquisicao || 'mercado';
