@@ -396,10 +396,17 @@ function addComponente(event) {
   })
   .then(response => response.text())
   .then(html => {
-    document.getElementById('fichaTecnicaContent').innerHTML = html;
+    // Atualizar apenas o conteúdo da ficha técnica
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const newContent = doc.querySelector('.card-body');
+    if (newContent) {
+      document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
+    }
   })
   .catch(error => {
     console.error('Erro:', error);
+    alert('Erro ao adicionar componente: ' + error.message);
   });
 }
 
@@ -414,11 +421,18 @@ function updateComponente(event) {
   })
   .then(response => response.text())
   .then(html => {
-    document.getElementById('fichaTecnicaContent').innerHTML = html;
+    // Atualizar apenas o conteúdo da ficha técnica
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const newContent = doc.querySelector('.card-body');
+    if (newContent) {
+      document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
+    }
     closeComponenteModal();
   })
   .catch(error => {
     console.error('Erro:', error);
+    alert('Erro ao atualizar componente: ' + error.message);
   });
 }
 
@@ -445,10 +459,17 @@ function deleteComponente(id) {
     })
     .then(response => response.text())
     .then(html => {
-      document.getElementById('fichaTecnicaContent').innerHTML = html;
+      // Atualizar apenas o conteúdo da ficha técnica
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newContent = doc.querySelector('.card-body');
+      if (newContent) {
+        document.getElementById('fichaTecnicaContent').innerHTML = newContent.innerHTML;
+      }
     })
     .catch(error => {
       console.error('Erro:', error);
+      alert('Erro ao remover componente: ' + error.message);
     });
   }
 }
