@@ -112,7 +112,7 @@ try {
     if ($id === '') throw new Exception('ID da unidade é obrigatório.');
     
     // Verificar se há insumos usando esta unidade
-    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE unidade_padrao = (SELECT simbolo FROM lc_unidades WHERE id = ?)");
+    $check = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_insumos WHERE unidade_padrao = (SELECT simbolo FROM smilee12_painel_smile.lc_unidades WHERE id = ?)");
     $check->execute([$id]);
     $count = $check->fetchColumn();
     
@@ -967,10 +967,10 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                     class="btn btn-primary btn-sm">
                               <span>✏️</span> Editar
                             </button>
-                            <button onclick="openFichaTecnicaModal(<?= (int)$r['id'] ?>)" 
-                                    class="btn btn-info btn-sm">
+                            <a href="ficha_tecnica_simple.php?id=<?= $r['id'] ?>" 
+                               class="btn btn-info btn-sm" target="_blank">
                               <span>📋</span> Ficha Técnica
-                            </button>
+                            </a>
                             <button onclick="deleteReceita(<?= (int)$r['id'] ?>)" 
                                     class="btn btn-outline btn-sm">
                               <span>🗑️</span> Excluir
