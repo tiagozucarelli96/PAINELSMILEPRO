@@ -133,7 +133,7 @@ body {
   height: auto;
   display: block;
   margin: 0 auto;
-  filter: brightness(0) invert(1);
+  /* Removido o filter para manter a logo original sem efeitos */
   transition: transform 0.3s ease;
 }
 

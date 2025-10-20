@@ -119,6 +119,76 @@ try {
     $tab = 'fixos';
   }
 
+  // SALVAR RECEITA
+  if (input('action') === 'save_receita') {
+    $id = input('id');
+    $nome = input('nome');
+    $descricao = input('descricao');
+    $rendimento = (int)input('rendimento', 1);
+    $quantia_por_pessoa = (float)str_replace(',', '.', input('quantia_por_pessoa', '1'));
+    $categoria_id = input('categoria_id');
+    $ativo = bool01(input('ativo', '1'));
+
+    if ($nome === '') throw new Exception('Nome da receita é obrigatório.');
+    if ($rendimento < 1) throw new Exception('Rendimento deve ser maior que zero.');
+    if ($quantia_por_pessoa <= 0) throw new Exception('Quantia por pessoa deve ser maior que zero.');
+
+    if ($id === '') {
+      // INSERT
+      $stmt = $pdo->prepare("
+        INSERT INTO lc_receitas (nome, descricao, rendimento, quantia_por_pessoa, categoria_id, ativo)
+        VALUES (:n, :d, :r, :q, :c, :a)
+      ");
+      $stmt->execute([
+        ':n' => $nome,
+        ':d' => $descricao,
+        ':r' => $rendimento,
+        ':q' => $quantia_por_pessoa,
+        ':c' => ($categoria_id === '' ? null : $categoria_id),
+        ':a' => $ativo
+      ]);
+      $msg = 'Receita criada.';
+    } else {
+      // UPDATE
+      $stmt = $pdo->prepare("
+        UPDATE lc_receitas 
+        SET nome=:n, descricao=:d, rendimento=:r, quantia_por_pessoa=:q, categoria_id=:c, ativo=:a
+        WHERE id=:id
+      ");
+      $stmt->execute([
+        ':n' => $nome,
+        ':d' => $descricao,
+        ':r' => $rendimento,
+        ':q' => $quantia_por_pessoa,
+        ':c' => ($categoria_id === '' ? null : $categoria_id),
+        ':a' => $ativo,
+        ':id' => $id
+      ]);
+      $msg = 'Receita atualizada.';
+    }
+    $tab = 'receitas';
+  }
+
+  // EXCLUIR RECEITA
+  if (input('action') === 'delete_receita') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da receita é obrigatório.');
+    
+    // Verificar se há componentes usando esta receita
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE receita_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta receita pois há $count componente(s) vinculado(s) a ela.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_receitas WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Receita excluída.';
+    $tab = 'receitas';
+  }
+
   // UNIDADES
   if (input('action') === 'save_unidade') {
     $id    = input('id');
@@ -317,10 +387,24 @@ try {
       LEFT JOIN lc_insumos i ON i.id = f.insumo_id
       LEFT JOIN lc_unidades u ON u.id = f.unidade_id
       ORDER BY f.ativo DESC, i.nome ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+    ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Se der erro, carregar sem JOIN
     $fixos = $pdo->query("SELECT * FROM lc_itens_fixos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Carregar receitas
+$receitas = [];
+try {
+    $receitas = $pdo->query("
+      SELECT r.*, c.nome AS categoria_nome
+      FROM lc_receitas r
+      LEFT JOIN lc_categorias c ON c.id = r.categoria_id
+      ORDER BY r.ativo DESC, r.nome ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $receitas = $pdo->query("SELECT * FROM lc_receitas ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -365,6 +449,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         </a>
         <a href="?tab=insumos" class="tab <?= $tab==='insumos'?'active':'' ?>">
           <span>🥘</span> Insumos
+        </a>
+        <a href="?tab=receitas" class="tab <?= $tab==='receitas'?'active':'' ?>">
+          <span>👨‍🍳</span> Receitas
         </a>
         <a href="?tab=fixos" class="tab <?= $tab==='fixos'?'active':'' ?>">
           <span>📌</span> Itens Fixos
@@ -819,6 +906,206 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
               form.innerHTML = `
                 <input type="hidden" name="action" value="delete_insumo">
                 <input type="hidden" name="tab" value="insumos">
+                <input type="hidden" name="id" value="${id}">
+              `;
+              document.body.appendChild(form);
+              form.submit();
+            }
+          }
+          </script>
+        <?php endif; ?>
+
+        <?php if ($tab==='receitas'): ?>
+          <div class="card">
+            <div class="card-header">
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">👨‍🍳 Receitas</h2>
+                  <p class="text-sm text-gray-600">Gerencie receitas e fichas técnicas do sistema</p>
+                </div>
+                <button onclick="openReceitaModal()" class="btn btn-success">
+                  <span>➕</span> Nova Receita
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Categoria</th>
+                      <th>Nome da Receita</th>
+                      <th>Rendimento</th>
+                      <th>Por Pessoa</th>
+                      <th>Custo Total</th>
+                      <th>Status</th>
+                      <th class="text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php foreach ($receitas as $r): ?>
+                      <tr class="animate-slide-in">
+                        <td><span class="badge"><?= (int)$r['id'] ?></span></td>
+                        <td>
+                          <span class="badge badge-info">
+                            <?= h($r['categoria_nome'] ?? 'Sem categoria') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <div>
+                            <strong><?= h($r['nome']) ?></strong>
+                            <?php if ($r['descricao']): ?>
+                              <div class="text-sm text-gray-600"><?= h($r['descricao']) ?></div>
+                            <?php endif; ?>
+                          </div>
+                        </td>
+                        <td class="text-center">
+                          <span class="badge"><?= (int)$r['rendimento'] ?> porções</span>
+                        </td>
+                        <td class="text-center">
+                          <span class="badge"><?= number_format($r['quantia_por_pessoa'], 3, ',', '.') ?></span>
+                        </td>
+                        <td class="text-right">
+                          <span class="badge badge-success">
+                            R$ <?= number_format($r['custo_total'], 4, ',', '.') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= $r['ativo'] ? 'badge-success' : 'badge-error' ?>">
+                            <?= $r['ativo'] ? 'Ativa' : 'Inativa' ?>
+                          </span>
+                        </td>
+                        <td class="text-center">
+                          <div class="flex gap-2 justify-center">
+                            <button onclick="editReceita(<?= htmlspecialchars(json_encode($r)) ?>)" 
+                                    class="btn btn-primary btn-sm">
+                              <span>✏️</span> Editar
+                            </button>
+                            <button onclick="openFichaTecnica(<?= (int)$r['id'] ?>)" 
+                                    class="btn btn-info btn-sm">
+                              <span>📋</span> Ficha Técnica
+                            </button>
+                            <button onclick="deleteReceita(<?= (int)$r['id'] ?>)" 
+                                    class="btn btn-outline btn-sm">
+                              <span>🗑️</span> Excluir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal para Editar/Criar Receita -->
+          <div id="receitaModal" class="modal-overlay" style="display: none;">
+            <div class="modal">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title" id="receitaModalTitle">Nova Receita</h3>
+                  <button onclick="closeReceitaModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body">
+                  <form id="receitaForm" method="post">
+                    <input type="hidden" name="action" value="save_receita">
+                    <input type="hidden" name="tab" value="receitas">
+                    <input type="hidden" name="id" id="receitaId" value="">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                      <div class="form-group">
+                        <label class="form-label">Categoria</label>
+                        <select name="categoria_id" id="receitaCategoriaId" class="form-select">
+                          <option value="">Sem categoria</option>
+                          <?php foreach ($cat as $c): ?>
+                            <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Nome da Receita *</label>
+                        <input type="text" name="nome" id="receitaNome" class="form-input" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Rendimento (porções) *</label>
+                        <input type="number" name="rendimento" id="receitaRendimento" 
+                               class="form-input" min="1" value="1" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Quantia por Pessoa *</label>
+                        <input type="number" step="0.001" name="quantia_por_pessoa" id="receitaQuantiaPessoa" 
+                               class="form-input" min="0.001" value="1.000" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="ativo" id="receitaAtivo" class="form-select">
+                          <option value="1">Ativa</option>
+                          <option value="0">Inativa</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label class="form-label">Descrição</label>
+                      <textarea name="descricao" id="receitaDescricao" class="form-input" 
+                                rows="3" placeholder="Descrição da receita (opcional)"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-2 justify-end mt-4">
+                      <button type="button" onclick="closeReceitaModal()" class="btn btn-outline">
+                        Cancelar
+                      </button>
+                      <button type="submit" class="btn btn-primary">
+                        <span>💾</span> Salvar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+          function openReceitaModal() {
+            document.getElementById('receitaModalTitle').textContent = 'Nova Receita';
+            document.getElementById('receitaForm').reset();
+            document.getElementById('receitaId').value = '';
+            document.getElementById('receitaModal').style.display = 'flex';
+          }
+          
+          function editReceita(receita) {
+            document.getElementById('receitaModalTitle').textContent = 'Editar Receita';
+            document.getElementById('receitaId').value = receita.id;
+            document.getElementById('receitaCategoriaId').value = receita.categoria_id || '';
+            document.getElementById('receitaNome').value = receita.nome || '';
+            document.getElementById('receitaRendimento').value = receita.rendimento || 1;
+            document.getElementById('receitaQuantiaPessoa').value = receita.quantia_por_pessoa || 1;
+            document.getElementById('receitaAtivo').value = receita.ativo || '1';
+            document.getElementById('receitaDescricao').value = receita.descricao || '';
+            document.getElementById('receitaModal').style.display = 'flex';
+          }
+          
+          function closeReceitaModal() {
+            document.getElementById('receitaModal').style.display = 'none';
+          }
+          
+          function openFichaTecnica(receitaId) {
+            window.open('ficha_tecnica.php?id=' + receitaId, '_blank');
+          }
+          
+          function deleteReceita(id) {
+            if (confirm('Tem certeza que deseja excluir esta receita?')) {
+              const form = document.createElement('form');
+              form.method = 'post';
+              form.innerHTML = `
+                <input type="hidden" name="action" value="delete_receita">
+                <input type="hidden" name="tab" value="receitas">
                 <input type="hidden" name="id" value="${id}">
               `;
               document.body.appendChild(form);

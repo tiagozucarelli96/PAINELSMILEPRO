@@ -59,11 +59,11 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
   <div class="sidebar-footer">
     <div class="user-info">
       <div class="user-avatar">
-        <?= strtoupper(substr($_SESSION['usuario'] ?? 'U', 0, 1)) ?>
+        <?= strtoupper(substr($_SESSION['usuario'] ?? $_SESSION['nome'] ?? 'U', 0, 1)) ?>
       </div>
       <div>
-        <div class="font-semibold"><?= htmlspecialchars($_SESSION['usuario'] ?? 'Usuário') ?></div>
-        <div class="text-xs opacity-75">Usuário</div>
+        <div class="font-semibold"><?= htmlspecialchars($_SESSION['usuario'] ?? $_SESSION['nome'] ?? 'Usuário') ?></div>
+        <div class="text-xs opacity-75"><?= htmlspecialchars($_SESSION['cargo'] ?? 'Usuário') ?></div>
       </div>
     </div>
     
