@@ -53,6 +53,15 @@ try {
       throw new Exception("Não é possível excluir esta categoria pois há $count insumo(s) vinculado(s) a ela.");
     }
     
+    // Verificar se há receitas usando esta categoria
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_receitas WHERE categoria_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir esta categoria pois há $count2 receita(s) vinculada(s) a ela.");
+    }
+    
     $stmt = $pdo->prepare("DELETE FROM lc_categorias WHERE id = ?");
     $stmt->execute([$id]);
     $msg = 'Categoria excluída.';
@@ -71,6 +80,15 @@ try {
     
     if ($count > 0) {
       throw new Exception("Não é possível excluir este insumo pois há $count item(s) fixo(s) vinculado(s) a ele.");
+    }
+    
+    // Verificar se há componentes de receita usando este insumo
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE insumo_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count2 componente(s) de receita vinculado(s) a ele.");
     }
     
     $stmt = $pdo->prepare("DELETE FROM lc_insumos WHERE id = ?");
@@ -100,6 +118,15 @@ try {
     
     if ($count2 > 0) {
       throw new Exception("Não é possível excluir esta unidade pois há $count2 item(s) fixo(s) vinculado(s) a ela.");
+    }
+    
+    // Verificar se há componentes de receita usando esta unidade
+    $check3 = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE unidade_id = ?");
+    $check3->execute([$id]);
+    $count3 = $check3->fetchColumn();
+    
+    if ($count3 > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count3 componente(s) de receita vinculado(s) a ela.");
     }
     
     $stmt = $pdo->prepare("DELETE FROM lc_unidades WHERE id = ?");
@@ -218,8 +245,8 @@ try {
     // Verificar se a tabela existe
     $tableExists = $pdo->query("
       SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = 'lc_insumos'
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'smilee12_painel_smile' AND table_name = 'lc_insumos'
       )
     ")->fetchColumn();
     
@@ -982,7 +1009,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                     class="btn btn-primary btn-sm">
                               <span>✏️</span> Editar
                             </button>
-                            <button onclick="openFichaTecnica(<?= (int)$r['id'] ?>)" 
+                            <button onclick="openFichaTecnicaModal(<?= (int)$r['id'] ?>)" 
                                     class="btn btn-info btn-sm">
                               <span>📋</span> Ficha Técnica
                             </button>
@@ -1095,8 +1122,22 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             document.getElementById('receitaModal').style.display = 'none';
           }
           
-          function openFichaTecnica(receitaId) {
-            window.open('ficha_tecnica.php?id=' + receitaId, '_blank');
+          function openFichaTecnicaModal(receitaId) {
+            // Carregar conteúdo da ficha técnica via AJAX
+            fetch('ficha_tecnica_ajax.php?id=' + receitaId)
+              .then(response => response.text())
+              .then(html => {
+                document.getElementById('fichaTecnicaContent').innerHTML = html;
+                document.getElementById('fichaTecnicaModal').style.display = 'flex';
+              })
+              .catch(error => {
+                console.error('Erro ao carregar ficha técnica:', error);
+                alert('Erro ao carregar ficha técnica');
+              });
+          }
+          
+          function closeFichaTecnicaModal() {
+            document.getElementById('fichaTecnicaModal').style.display = 'none';
           }
           
           function deleteReceita(id) {
@@ -1113,6 +1154,24 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             }
           }
           </script>
+
+          <!-- Modal da Ficha Técnica -->
+          <div id="fichaTecnicaModal" class="modal-overlay" style="display: none;">
+            <div class="modal" style="max-width: 1200px; width: 95%;">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">📋 Ficha Técnica</h3>
+                  <button onclick="closeFichaTecnicaModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body" id="fichaTecnicaContent">
+                  <div class="text-center py-8">
+                    <span class="text-4xl">⏳</span>
+                    <p class="mt-2">Carregando ficha técnica...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         <?php endif; ?>
 
         <?php if ($tab==='fixos'): ?>

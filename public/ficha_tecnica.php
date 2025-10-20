@@ -54,7 +54,7 @@ try {
         FROM lc_insumos i
         LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
         LEFT JOIN lc_categorias c ON c.id = i.categoria_id
-        WHERE i.ativo = true
+        WHERE (i.ativo = true OR i.ativo IS NULL)
         ORDER BY c.nome, i.nome
     ")->fetchAll(PDO::FETCH_ASSOC);
     
@@ -206,7 +206,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
           <div>
             <label class="form-label">Custo Total</label>
             <div class="text-lg font-bold text-green-600">
-              R$ <?=number_format($receita['custo_total'], 4, ',', '.')?>
+              R$ <?=number_format((float)$receita['custo_total'], 4, ',', '.')?>
             </div>
           </div>
         </div>
