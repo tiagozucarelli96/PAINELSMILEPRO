@@ -194,6 +194,7 @@ try {
     $quantia_por_pessoa = (float)str_replace(',', '.', input('quantia_por_pessoa', '1'));
     $categoria_id = input('categoria_id');
     $ativo = bool01(input('ativo', '1'));
+    $visivel = bool01(input('visivel', '1'));
 
     if ($nome === '') throw new Exception('Nome da receita é obrigatório.');
     if ($rendimento < 1) throw new Exception('Rendimento deve ser maior que zero.');
@@ -202,8 +203,8 @@ try {
     if ($id === '') {
       // INSERT
       $stmt = $pdo->prepare("
-        INSERT INTO lc_receitas (nome, descricao, rendimento, quantia_por_pessoa, categoria_id, ativo)
-        VALUES (:n, :d, :r, :q, :c, :a)
+        INSERT INTO lc_receitas (nome, descricao, rendimento, quantia_por_pessoa, categoria_id, ativo, visivel)
+        VALUES (:n, :d, :r, :q, :c, :a, :v)
       ");
       $stmt->execute([
         ':n' => $nome,
@@ -211,14 +212,15 @@ try {
         ':r' => $rendimento,
         ':q' => $quantia_por_pessoa,
         ':c' => ($categoria_id === '' ? null : $categoria_id),
-        ':a' => $ativo
+        ':a' => $ativo,
+        ':v' => $visivel
       ]);
       $msg = 'Receita criada.';
     } else {
       // UPDATE
       $stmt = $pdo->prepare("
         UPDATE lc_receitas 
-        SET nome=:n, descricao=:d, rendimento=:r, quantia_por_pessoa=:q, categoria_id=:c, ativo=:a
+        SET nome=:n, descricao=:d, rendimento=:r, quantia_por_pessoa=:q, categoria_id=:c, ativo=:a, visivel=:v
         WHERE id=:id
       ");
       $stmt->execute([
@@ -228,6 +230,7 @@ try {
         ':q' => $quantia_por_pessoa,
         ':c' => ($categoria_id === '' ? null : $categoria_id),
         ':a' => $ativo,
+        ':v' => $visivel,
         ':id' => $id
       ]);
       $msg = 'Receita atualizada.';
@@ -305,6 +308,7 @@ try {
     $forn   = input('fornecedor_id'); // opcional (FK futura)
     $obs    = input('observacao');
     $ativo  = bool01(input('ativo','1'));
+    $visivel = bool01(input('visivel','1'));
 
     if ($nome === '') throw new Exception('Nome do insumo é obrigatório.');
     if ($unid <= 0) throw new Exception('Unidade é obrigatória.');
@@ -338,6 +342,7 @@ try {
       if (in_array('fornecedor_id', $cols)) { $insertCols[] = 'fornecedor_id'; $insertVals[] = ':f'; $params[':f'] = ($forn === '' ? null : $forn); }
       if (in_array('observacoes', $cols)) { $insertCols[] = 'observacoes'; $insertVals[] = ':o'; $params[':o'] = $obs; }
       if (in_array('embalagem_multiplo', $cols)) { $insertCols[] = 'embalagem_multiplo'; $insertVals[] = ':emb'; $params[':emb'] = $emb; }
+      if (in_array('visivel', $cols)) { $insertCols[] = 'visivel'; $insertVals[] = ':vis'; $params[':vis'] = $visivel; }
       
       $sql = "INSERT INTO lc_insumos (" . implode(',', $insertCols) . ") VALUES (" . implode(',', $insertVals) . ")";
       $stmt = $pdo->prepare($sql);
@@ -354,6 +359,7 @@ try {
       if (in_array('fornecedor_id', $cols)) { $updateParts[] = 'fornecedor_id=:f'; $params[':f'] = ($forn === '' ? null : $forn); }
       if (in_array('observacoes', $cols)) { $updateParts[] = 'observacoes=:o'; $params[':o'] = $obs; }
       if (in_array('embalagem_multiplo', $cols)) { $updateParts[] = 'embalagem_multiplo=:emb'; $params[':emb'] = $emb; }
+      if (in_array('visivel', $cols)) { $updateParts[] = 'visivel=:vis'; $params[':vis'] = $visivel; }
       
       $sql = "UPDATE lc_insumos SET " . implode(', ', $updateParts) . " WHERE id=:id";
       $stmt = $pdo->prepare($sql);
@@ -424,7 +430,7 @@ try {
         // Estrutura com custo
         $ins = $pdo->query("
           SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
-          , i.custo_unit AS custo_corrigido
+          , i.custo_unit AS custo_corrigido, COALESCE(i.visivel, true) AS visivel
           FROM lc_insumos i
           LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
           LEFT JOIN lc_categorias c ON c.id = i.categoria_id
@@ -432,9 +438,10 @@ try {
         ")->fetchAll(PDO::FETCH_ASSOC);
     } else {
         // Estrutura básica
-$ins = $pdo->query("
+        $ins = $pdo->query("
           SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
-  FROM lc_insumos i
+          , COALESCE(i.visivel, true) AS visivel
+          FROM lc_insumos i
           LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
           LEFT JOIN lc_categorias c ON c.id = i.categoria_id
           ORDER BY c.nome ASC, i.nome ASC
@@ -442,7 +449,7 @@ $ins = $pdo->query("
     }
 } catch (Exception $e) {
     // Se der erro, carregar sem JOIN
-    $ins = $pdo->query("SELECT * FROM lc_insumos ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $ins = $pdo->query("SELECT *, COALESCE(visivel, true) AS visivel FROM lc_insumos ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 // Carregar itens fixos de forma segura
 $fixos = [];
@@ -463,14 +470,14 @@ try {
 $receitas = [];
 try {
     $receitas = $pdo->query("
-      SELECT r.*, c.nome AS categoria_nome
+      SELECT r.*, c.nome AS categoria_nome, COALESCE(r.visivel, true) AS visivel
       FROM lc_receitas r
       LEFT JOIN lc_categorias c ON c.id = r.categoria_id
       ORDER BY r.ativo DESC, r.nome ASC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Se der erro, carregar sem JOIN
-    $receitas = $pdo->query("SELECT * FROM lc_receitas ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $receitas = $pdo->query("SELECT *, COALESCE(visivel, true) AS visivel FROM lc_receitas ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -741,6 +748,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                       <th>Custo Final</th>
                       <th>Aquisição</th>
                       <th>Status</th>
+                      <th>Visível</th>
                       <th class="text-center">Ações</th>
           </tr>
         </thead>
@@ -769,6 +777,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         <td>
                           <span class="badge <?= ($i['ativo'] ?? 1) ? 'badge-success' : 'badge-error' ?>">
                             <?= ($i['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= ($i['visivel'] ?? true) ? 'badge-info' : 'badge-warning' ?>">
+                            <?= ($i['visivel'] ?? true) ? '👁️ Sim' : '🙈 Não' ?>
                           </span>
                         </td>
                         <td class="text-center">
@@ -865,6 +878,20 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           <option value="0">Inativo</option>
                         </select>
                       </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Visibilidade</label>
+                        <div class="flex items-center gap-2">
+                          <input type="checkbox" name="visivel" id="insumoVisivel" value="1" 
+                                 class="form-checkbox" checked>
+                          <label for="insumoVisivel" class="text-sm">
+                            👁️ Visível na lista de compras
+                          </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                          Desmarque para itens que ficam "nos bastidores" (ex: sal da batata)
+                        </p>
+                      </div>
                     </div>
                     
                     <div class="form-group">
@@ -906,6 +933,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             document.getElementById('tipoPadrao').value = insumo.aquisicao || 'mercado';
             document.getElementById('fornecedorId').value = insumo.fornecedor_id || '';
             document.getElementById('insumoAtivo').value = insumo.ativo || '1';
+            document.getElementById('insumoVisivel').checked = (insumo.visivel !== '0' && insumo.visivel !== 0 && insumo.visivel !== false);
             document.getElementById('insumoObservacao').value = insumo.observacoes || '';
             document.getElementById('insumoModal').style.display = 'flex';
           }
@@ -955,6 +983,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                       <th>Por Pessoa</th>
                       <th>Custo Total</th>
                       <th>Status</th>
+                      <th>Visível</th>
                       <th class="text-center">Ações</th>
                     </tr>
                   </thead>
@@ -989,6 +1018,11 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                         <td>
                           <span class="badge <?= $r['ativo'] ? 'badge-success' : 'badge-error' ?>">
                             <?= $r['ativo'] ? 'Ativa' : 'Inativa' ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= ($r['visivel'] ?? true) ? 'badge-info' : 'badge-warning' ?>">
+                            <?= ($r['visivel'] ?? true) ? '👁️ Sim' : '🙈 Não' ?>
                           </span>
                         </td>
                         <td class="text-center">
@@ -1064,6 +1098,20 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                           <option value="0">Inativa</option>
                         </select>
                       </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Visibilidade</label>
+                        <div class="flex items-center gap-2">
+                          <input type="checkbox" name="visivel" id="receitaVisivel" value="1" 
+                                 class="form-checkbox" checked>
+                          <label for="receitaVisivel" class="text-sm">
+                            👁️ Visível na lista de compras
+                          </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                          Desmarque para receitas que ficam "nos bastidores" (ex: molhos, temperos)
+                        </p>
+                      </div>
                     </div>
                     
                     <div class="form-group">
@@ -1102,6 +1150,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             document.getElementById('receitaRendimento').value = receita.rendimento || 1;
             document.getElementById('receitaQuantiaPessoa').value = receita.quantia_por_pessoa || 1;
             document.getElementById('receitaAtivo').value = receita.ativo || '1';
+            document.getElementById('receitaVisivel').checked = (receita.visivel !== '0' && receita.visivel !== 0 && receita.visivel !== false);
             document.getElementById('receitaDescricao').value = receita.descricao || '';
             document.getElementById('receitaModal').style.display = 'flex';
           }
