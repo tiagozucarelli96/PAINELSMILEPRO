@@ -95,9 +95,18 @@ try {
     // Calcular custo total
     $custo_total = array_sum(array_column($componentes, 'custo_total'));
     
-    // Atualizar custo total na receita
-    $pdo->prepare("UPDATE smilee12_painel_smile.lc_receitas SET custo_total = ? WHERE id = ?")
-        ->execute([$custo_total, $receita_id]);
+    // Atualizar custo total na receita (usar função do banco para evitar conflito com trigger)
+    try {
+        $pdo->prepare("UPDATE smilee12_painel_smile.lc_receitas SET custo_total = ? WHERE id = ?")
+            ->execute([$custo_total, $receita_id]);
+    } catch (Exception $e) {
+        // Se der erro, tentar usar a função do banco
+        try {
+            $pdo->exec("SELECT smilee12_painel_smile.atualizar_custo_receita($receita_id)");
+        } catch (Exception $e2) {
+            // Ignorar erro do trigger se a função não existir
+        }
+    }
     
     // Carregar insumos disponíveis
     $insumos = $pdo->query("

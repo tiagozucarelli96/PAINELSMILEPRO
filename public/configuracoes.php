@@ -139,12 +139,33 @@ try {
     }
     
     // Verificar se há componentes de ficha usando esta unidade (tabela antiga)
-    $check4 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_ficha_componentes WHERE unidade_id = ?");
-    $check4->execute([$id]);
-    $count4 = $check4->fetchColumn();
+    // Primeiro verificar se a tabela existe e tem a coluna unidade_id
+    $table_exists = $pdo->query("
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = 'smilee12_painel_smile' AND table_name = 'lc_ficha_componentes'
+        )
+    ")->fetchColumn();
     
-    if ($count4 > 0) {
-      throw new Exception("Não é possível excluir esta unidade pois há $count4 componente(s) de ficha vinculado(s) a ela.");
+    if ($table_exists) {
+        $column_exists = $pdo->query("
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_schema = 'smilee12_painel_smile' 
+                AND table_name = 'lc_ficha_componentes' 
+                AND column_name = 'unidade_id'
+            )
+        ")->fetchColumn();
+        
+        if ($column_exists) {
+            $check4 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_ficha_componentes WHERE unidade_id = ?");
+            $check4->execute([$id]);
+            $count4 = $check4->fetchColumn();
+            
+            if ($count4 > 0) {
+                throw new Exception("Não é possível excluir esta unidade pois há $count4 componente(s) de ficha vinculado(s) a ela.");
+            }
+        }
     }
     
     $stmt = $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_unidades WHERE id = ?");
