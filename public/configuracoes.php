@@ -112,8 +112,8 @@ try {
     if ($id === '') throw new Exception('ID da unidade é obrigatório.');
     
     // Verificar se há insumos usando esta unidade
-    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE unidade_id = ? OR unidade_padrao = (SELECT simbolo FROM lc_unidades WHERE id = ?)");
-    $check->execute([$id, $id]);
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE unidade_padrao = (SELECT simbolo FROM lc_unidades WHERE id = ?)");
+    $check->execute([$id]);
     $count = $check->fetchColumn();
     
     if ($count > 0) {
@@ -566,32 +566,6 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             </tr>
           <?php endforeach; ?>
                       
-                      <tr class="row-new animate-fade-in">
-                        <td>
-                          <span class="badge badge-success">NOVO</span>
-                        </td>
-                        <td>
-                          <input type="text" name="nome" placeholder="Digite o nome da nova categoria" 
-                                 class="form-input" required>
-                        </td>
-                        <td>
-                          <input type="number" name="ordem" value="0" 
-                                 class="form-input" style="width: 80px; text-align: center;"
-                                 min="0" max="999">
-                        </td>
-                        <td>
-                          <select name="ativo" class="form-select" style="width: 100px;">
-                            <option value="1" selected>Ativa</option>
-                            <option value="0">Inativa</option>
-              </select>
-            </td>
-                        <td class="text-center">
-              <input type="hidden" name="id" value="">
-                          <button type="submit" class="btn btn-success btn-sm">
-                            <span>➕</span> Adicionar
-                          </button>
-            </td>
-          </tr>
         </tbody>
       </table>
                 </div>
