@@ -422,12 +422,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar
 .block{border:1px dashed #dbe6ff;border-radius:10px;padding:12px;margin-top:12px}
 h2{margin:10px 0}
 label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
-.input{width:100%;padding:10px;border:1px solid #cfe0ff;border-radius:8px}
+.input{
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.input:focus{
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+.input:read-only{
+  background: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+}
 .category{margin-bottom:10px}
 .items{display:none;margin-top:8px;padding-left:12px}
 .items.active{display:block}
-.btn{background:#004aad;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
-.btn.gray{background:#e9efff;color:#004aad}
+.btn{
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn:hover{
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+.btn:active{
+  transform: translateY(0);
+}
+.btn.gray{
+  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+  box-shadow: 0 4px 14px rgba(108, 117, 125, 0.3);
+}
+.btn.gray:hover{
+  background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+  box-shadow: 0 8px 25px rgba(108, 117, 125, 0.4);
+}
 .alert{padding:10px;border-radius:8px;margin-bottom:10px}
 .alert.err{background:#ffeded;border:1px solid #ffb3b3;color:#8a0c0c}
 .alert.success{background:#edffed;border:1px solid #b3ffb3;color:#0c8a0c}
@@ -639,9 +689,12 @@ function addEventoME(e){
 
   /* Container principal */
   .lc-main-container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 24px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* Seção de cabeçalho */
@@ -698,30 +751,51 @@ function addEventoME(e){
   /* Seções */
   .lc-section {
     background: #fff;
-    border-radius: 12px;
+    border-radius: 16px;
     border: 1px solid #e9ecef;
-    padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
     position: relative;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .lc-section:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
   }
 
   .lc-section h2 {
-    margin: 0 0 20px 0;
-    color: var(--primary-blue);
-    font-size: 20px;
+    margin: 0 0 24px 0;
+    color: #2c3e50;
+    font-size: 24px;
     font-weight: 700;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+    position: relative;
   }
 
   .lc-section h2::before {
     content: '';
-    width: 4px;
-    height: 24px;
-    background: var(--primary-blue);
+    width: 6px;
+    height: 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  }
+
+  .lc-section h2::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 2px;
+    opacity: 0.6;
   }
 
   /* Estado vazio */
@@ -767,16 +841,61 @@ function addEventoME(e){
   /* Grid de categorias */
   .lc-categories-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 20px;
-    margin-top: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+  }
+
+  /* Responsividade */
+  @media (max-width: 768px) {
+    .lc-main-container {
+      padding: 16px;
+    }
+    
+    .lc-section {
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .lc-categories-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .btn {
+      padding: 10px 16px;
+      font-size: 13px;
+    }
   }
 
   .lc-category-card {
     border: 1px solid #e9ecef;
-    border-radius: 8px;
-    padding: 16px;
-    background: #f8f9fa;
+    border-radius: 16px;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .lc-category-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+
+  .lc-category-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
   }
 
   .lc-category-header {
@@ -792,8 +911,10 @@ function addEventoME(e){
   }
 
   .lc-category-checkbox input[type="checkbox"] {
-    margin-right: 8px;
-    transform: scale(1.2);
+    margin-right: 12px;
+    transform: scale(1.3);
+    accent-color: #667eea;
+    cursor: pointer;
   }
 
   .lc-category-name {
@@ -817,18 +938,32 @@ function addEventoME(e){
     display: flex;
     align-items: flex-start;
     cursor: pointer;
-    padding: 8px;
-    border-radius: 6px;
-    transition: background-color 0.2s;
+    padding: 12px;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    background: #f8f9fa;
+    margin-bottom: 8px;
   }
 
   .lc-item-checkbox:hover {
     background: #e9ecef;
+    border-color: #667eea;
+    transform: translateX(4px);
   }
 
   .lc-item-checkbox input[type="checkbox"] {
-    margin-right: 8px;
+    margin-right: 12px;
     margin-top: 2px;
+    transform: scale(1.2);
+    accent-color: #667eea;
+    cursor: pointer;
+  }
+
+  .lc-item-checkbox:has(input:checked) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
   }
 
   .lc-item-name {
