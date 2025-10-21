@@ -376,11 +376,21 @@ try {
         <?php endif; ?>
 
         <?php if (!empty($_SESSION['perm_lista'])): ?>
-          <a class="action-card" href="lc_index.php">
+          <a class="action-card" href="lista_compras.php">
             <div class="action-icon">🛒</div>
             <div class="action-content">
-              <h3 class="action-title">Lista de Compras</h3>
-              <p class="action-description">Gere listas inteligentes por evento com base nas suas receitas.</p>
+              <h3 class="action-title">Gerar Lista de Compras</h3>
+              <p class="action-description">Crie listas inteligentes por evento com base nas suas receitas.</p>
+            </div>
+          </a>
+        <?php endif; ?>
+
+        <?php if (!empty($_SESSION['perm_lista'])): ?>
+          <a class="action-card" href="lc_index.php">
+            <div class="action-icon">📋</div>
+            <div class="action-content">
+              <h3 class="action-title">Histórico de Listas</h3>
+              <p class="action-description">Visualize e gerencie todas as listas de compras e encomendas geradas.</p>
             </div>
           </a>
         <?php endif; ?>
@@ -464,6 +474,15 @@ try {
             </div>
           </a>
         <?php endif; ?>
+
+        <!-- Novo módulo de estoque -->
+        <a class="action-card" href="estoque_contagens.php">
+          <div class="action-icon">📊</div>
+          <div class="action-content">
+            <h3 class="action-title">Controle de Estoque</h3>
+            <p class="action-description">Contagens, alertas de ruptura e sugestões automáticas de compra.</p>
+          </div>
+        </a>
 
         <?php if (!empty($_SESSION['perm_dados_contrato'])): ?>
           <a class="action-card" href="index.php?page=dados_contrato">
