@@ -206,6 +206,7 @@ if ($insumo_id) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kardex - Histórico de Movimentos</title>
     <link rel="stylesheet" href="estilo.css">
+    <link rel="stylesheet" href="css/smile-ui.css">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -717,24 +718,25 @@ if ($insumo_id) {
     </style>
 </head>
 <body>
-    <div class="kardex-container">
+    <div class="smile-container">
         <!-- Header -->
-        <div class="kardex-header">
-            <h1>📒 Kardex - Histórico de Movimentos</h1>
-            <p>Histórico cronológico de movimentos de estoque com saldo acumulado</p>
-        </div>
+        <div class="smile-card">
+            <div class="smile-card-header">
+                <h1>📒 Kardex - Histórico de Movimentos</h1>
+                <p>Histórico cronológico de movimentos de estoque com saldo acumulado</p>
+            </div>
         
-        <!-- Alertas -->
-        <?php if (isset($sucesso)): ?>
-            <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
-        <?php endif; ?>
-        
-        <?php if (isset($erro)): ?>
-            <div class="alert alert-danger"><?= htmlspecialchars($erro) ?></div>
-        <?php endif; ?>
-        
-        <!-- Filtros -->
-        <div class="filtros-section">
+            <!-- Alertas -->
+            <?php if (isset($sucesso)): ?>
+                <div class="smile-alert smile-alert-success"><?= htmlspecialchars($sucesso) ?></div>
+            <?php endif; ?>
+            
+            <?php if (isset($erro)): ?>
+                <div class="smile-alert smile-alert-danger"><?= htmlspecialchars($erro) ?></div>
+            <?php endif; ?>
+            
+            <!-- Filtros -->
+            <div class="smile-card-body">
             <h2>🔍 Filtros</h2>
             <form method="GET" action="">
                 <div class="filtros-grid">
@@ -825,7 +827,7 @@ if ($insumo_id) {
                 </div>
                 <?php endif; ?>
                 
-                <button type="submit" class="btn-filtrar">🔍 Filtrar Movimentos</button>
+                <button type="submit" class="smile-btn smile-btn-primary">🔍 Filtrar Movimentos</button>
             </form>
         </div>
         
@@ -877,13 +879,13 @@ if ($insumo_id) {
                 <h3>📋 Movimentos do Período</h3>
                 <div>
                     <?php if (lc_can_edit_contagem()): ?>
-                    <button onclick="abrirModalAjuste()" class="btn-ajuste">+ Adicionar Ajuste</button>
+                    <button onclick="abrirModalAjuste()" class="smile-btn smile-btn-success">+ Adicionar Ajuste</button>
                     <?php endif; ?>
-                    <button onclick="exportarCSV()" class="btn-secondary">📊 Exportar CSV</button>
+                    <button onclick="exportarCSV()" class="smile-btn smile-btn-secondary">📊 Exportar CSV</button>
                 </div>
             </div>
             
-            <table class="kardex-table">
+            <table class="smile-table">
                 <thead>
                     <tr>
                         <th>Data/Hora</th>
@@ -973,32 +975,32 @@ if ($insumo_id) {
         <?php endif; ?>
         
         <!-- Modal de Ajuste -->
-        <div id="modalAjuste" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
+        <div id="modalAjuste" class="smile-modal">
+            <div class="smile-modal-content">
+                <div class="smile-modal-header">
                     <h3>Adicionar Ajuste de Estoque</h3>
-                    <span class="close" onclick="fecharModalAjuste()">&times;</span>
+                    <span class="smile-close" onclick="fecharModalAjuste()">&times;</span>
                 </div>
                 <form method="POST" action="">
                     <input type="hidden" name="acao" value="adicionar_ajuste">
                     <input type="hidden" name="insumo_id" value="<?= $insumo_id ?>">
                     
-                    <div class="form-group">
+                    <div class="smile-form-group">
                         <label for="tipo_ajuste">Tipo de Ajuste</label>
-                        <select name="tipo_ajuste" id="tipo_ajuste" required>
+                        <select name="tipo_ajuste" id="tipo_ajuste" class="smile-form-control" required>
                             <option value="entrada">Entrada</option>
                             <option value="saida">Saída</option>
                         </select>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="smile-form-group">
                         <label for="quantidade">Quantidade</label>
-                        <input type="number" name="quantidade" id="quantidade" step="0.001" required>
+                        <input type="number" name="quantidade" id="quantidade" step="0.001" class="smile-form-control" required>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="smile-form-group">
                         <label for="unidade">Unidade</label>
-                        <select name="unidade" id="unidade" required>
+                        <select name="unidade" id="unidade" class="smile-form-control" required>
                             <option value="un">Unidade</option>
                             <option value="kg">Quilograma</option>
                             <option value="g">Grama</option>
@@ -1007,19 +1009,19 @@ if ($insumo_id) {
                         </select>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="smile-form-group">
                         <label for="motivo">Motivo</label>
-                        <input type="text" name="motivo" id="motivo" value="Ajuste manual" required>
+                        <input type="text" name="motivo" id="motivo" value="Ajuste manual" class="smile-form-control" required>
                     </div>
                     
-                    <div class="form-group">
+                    <div class="smile-form-group">
                         <label for="observacao">Observação</label>
-                        <textarea name="observacao" id="observacao" rows="3"></textarea>
+                        <textarea name="observacao" id="observacao" rows="3" class="smile-form-control"></textarea>
                     </div>
                     
                     <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button type="button" class="btn-secondary" onclick="fecharModalAjuste()">Cancelar</button>
-                        <button type="submit" class="btn-primary">Adicionar Ajuste</button>
+                        <button type="button" class="smile-btn smile-btn-secondary" onclick="fecharModalAjuste()">Cancelar</button>
+                        <button type="submit" class="smile-btn smile-btn-primary">Adicionar Ajuste</button>
                     </div>
                 </form>
             </div>

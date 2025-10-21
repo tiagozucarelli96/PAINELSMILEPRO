@@ -5,16 +5,17 @@
 :root {
     --smile-blue: #1e40af;
     --smile-blue-light: #3b82f6;
+    --smile-blue-lighter: #60a5fa;
     --smile-blue-dark: #1e3a8a;
-    --smile-gold: #d97706;
-    --smile-gold-light: #f59e0b;
-    --smile-gold-dark: #b45309;
+    --smile-blue-darker: #1e3a8a;
+    --smile-cyan: #06b6d4;
+    --smile-cyan-light: #22d3ee;
     --smile-gray: #64748b;
     --smile-gray-light: #94a3b8;
     --smile-gray-dark: #475569;
     --smile-success: #059669;
     --smile-danger: #dc2626;
-    --smile-warning: #d97706;
+    --smile-warning: #f59e0b;
     --smile-info: #0ea5e9;
 }
 
@@ -51,7 +52,7 @@ body {
 }
 
 .smile-card-header {
-    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-blue-light) 50%, var(--smile-cyan) 100%);
     color: white;
     padding: 30px;
     position: relative;
@@ -123,7 +124,7 @@ body {
 }
 
 .smile-btn-primary {
-    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-blue-light) 100%);
     color: white;
     box-shadow: 0 4px 15px rgba(30, 64, 175, 0.2);
 }
@@ -229,7 +230,7 @@ body {
 }
 
 .smile-table th {
-    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-blue-light) 50%, var(--smile-cyan) 100%);
     color: white;
     padding: 18px 15px;
     text-align: left;

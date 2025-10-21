@@ -380,6 +380,70 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
       </div>
     </div>
 
+    <!-- Mensagens de Sucesso/Erro -->
+    <?php if (isset($_GET['sucesso']) && $_GET['sucesso'] === 'fornecedor_cadastrado'): ?>
+        <div style="background: #d1fae5; color: #065f46; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #6ee7b7;">
+            ✅ Fornecedor cadastrado com sucesso!
+        </div>
+    <?php endif; ?>
+    
+    <?php if (isset($_GET['erro'])): ?>
+        <div style="background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #f87171;">
+            ❌ Erro: <?= htmlspecialchars($_GET['erro']) ?>
+        </div>
+    <?php endif; ?>
+
+    <!-- Seção de Fornecedores -->
+    <div class="card">
+      <h2>🏢 Cadastro de Fornecedores</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <div>
+          <h3>📝 Novo Fornecedor</h3>
+          <form method="POST" action="fornecedor_cadastro.php" style="display: flex; flex-direction: column; gap: 10px;">
+            <input type="text" name="nome" placeholder="Nome do fornecedor" required style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <input type="text" name="cnpj" placeholder="CNPJ (opcional)" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <input type="text" name="telefone" placeholder="Telefone" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <input type="email" name="email" placeholder="E-mail" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <input type="text" name="contato_responsavel" placeholder="Contato responsável" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+            <textarea name="endereco" placeholder="Endereço completo" rows="3" style="padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+            <button type="submit" class="btn btn-primary" style="padding: 10px 20px; background: #1e40af; color: white; border: none; border-radius: 5px; cursor: pointer;">
+              ➕ Cadastrar Fornecedor
+            </button>
+          </form>
+        </div>
+        <div>
+          <h3>📋 Fornecedores Cadastrados</h3>
+          <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px;">
+            <?php
+            try {
+                $stmt = $pdo->query("SELECT id, nome, telefone, email, contato_responsavel FROM fornecedores WHERE ativo = true ORDER BY nome");
+                $fornecedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (empty($fornecedores)) {
+                    echo "<p style='color: #666; text-align: center; padding: 20px;'>Nenhum fornecedor cadastrado</p>";
+                } else {
+                    foreach ($fornecedores as $fornecedor) {
+                        echo "<div style='padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;'>";
+                        echo "<div>";
+                        echo "<strong>" . htmlspecialchars($fornecedor['nome']) . "</strong><br>";
+                        echo "<small style='color: #666;'>" . htmlspecialchars($fornecedor['telefone']) . " • " . htmlspecialchars($fornecedor['email']) . "</small>";
+                        echo "</div>";
+                        echo "<div style='display: flex; gap: 5px;'>";
+                        echo "<a href='fornecedor_editar.php?id=" . $fornecedor['id'] . "' style='padding: 5px 10px; background: #3b82f6; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;'>✏️</a>";
+                        echo "<a href='fornecedor_excluir.php?id=" . $fornecedor['id'] . "' style='padding: 5px 10px; background: #dc2626; color: white; text-decoration: none; border-radius: 3px; font-size: 12px;' onclick='return confirm(\"Tem certeza?\")'>🗑️</a>";
+                        echo "</div>";
+                        echo "</div>";
+                    }
+                }
+            } catch (Exception $e) {
+                echo "<p style='color: red;'>Erro ao carregar fornecedores: " . htmlspecialchars($e->getMessage()) . "</p>";
+            }
+            ?>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Tabela 1: Últimas listas de COMPRAS -->
     <div class="card">
       <h2>📋 Últimas listas de compras</h2>
