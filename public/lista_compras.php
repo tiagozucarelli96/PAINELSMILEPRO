@@ -112,7 +112,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_l
         $eventosIds = [];
         
         foreach ($eventosRascunho as $evento) {
-            $eventosIds[] = $evento['id'];
+            // Garantir que o ID seja um inteiro válido
+            $eventoId = (int)($evento['id'] ?? 0);
+            if ($eventoId <= 0) {
+                throw new Exception('ID de evento inválido: ' . ($evento['id'] ?? 'nulo'));
+            }
+            $eventosIds[] = $eventoId;
             
             foreach ($evento['itens'] as $item) {
                 $key = $item['tipo'] . '_' . $item['id'];
@@ -129,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_l
                 
                 $itensConsolidados[$key]['quantidade_total'] += $item['quantidade'];
                 $itensConsolidados[$key]['eventos'][] = [
-                    'evento_id' => $evento['id'],
+                    'evento_id' => $eventoId,
                     'evento_nome' => $evento['nome'],
                     'quantidade' => $item['quantidade']
                 ];
@@ -1447,7 +1452,11 @@ function addEventoME(e){
           set('evento_hora', ev.hora);
           set('evento_nome', ev.nome);
           set('evento_data', ev.data);
-          const hid = document.getElementById('evento_id_me'); if (hid) hid.value = ev.id || '';
+          const hid = document.getElementById('evento_id_me'); 
+          if (hid) {
+            const eventId = parseInt(ev.id) || 0;
+            hid.value = eventId > 0 ? eventId : '';
+          }
           closeModal();
           document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
         });
