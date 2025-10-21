@@ -24,7 +24,7 @@ require_once __DIR__ . '/conexao.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Incluir lc_calc.php =========
-require_once __DIR__ . '/../lc_calc.php';
+require_once __DIR__ . '/lc_calc.php';
 
 // ========= Util =========
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
