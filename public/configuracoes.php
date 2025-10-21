@@ -1,641 +1,1534 @@
 <?php
-// configuracoes.php — Painel de Configuração (CRUD completo)
-// Requisitos: conexao.php expõe $pdo (PDO MySQL)
+// public/configuracoes.php
+// Painel Smile PRO - Configurações base: Categorias, Unidades, Insumos
+// Usa PDO (PostgreSQL) via conexao.php
 
-ini_set('display_errors', 1);
-error_reporting(E_ALL & ~E_NOTICE);
+session_start();
+require_once __DIR__ . '/conexao.php'; // deve expor $pdo (PDO)
 
-@include_once __DIR__ . '/conexao.php';
-if (!isset($pdo)) { http_response_code(500); echo 'Sem conexão com o banco.'; exit; }
-
-// AJAX: não vazar warnings na saída JSON
-$IS_AJAX = isset($_GET['action']) && $_GET['action'] !== '';
-if ($IS_AJAX) { ini_set('display_errors', 0); error_reporting(0); }
-
-function json_out($arr){ while(ob_get_level()) @ob_end_clean(); header('Content-Type: application/json; charset=utf-8'); echo json_encode($arr, JSON_UNESCAPED_UNICODE); exit; }
-function to_utf8($s){ if (!mb_detect_encoding($s,'UTF-8',true)) $s=mb_convert_encoding($s,'UTF-8'); return $s; }
-function norm($s){ $s=to_utf8($s); $s=str_replace("\r","\n",$s); $s=preg_replace("/[ \t]+/u"," ",$s); $s=preg_replace("/\n{2,}/u","\n",$s); return trim($s); }
-
-// ---------- LOAD STATE ----------
-function load_state(PDO $pdo){
-  $cats = $pdo->query("SELECT id,nome,slug,ativa,regra_json FROM categorias ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
-  foreach($cats as &$c){
-    $rule = $c['regra_json'] ? json_decode($c['regra_json'], true) : [];
-    $c['metric'] = $rule['metric'] ?? null;
-    $c['per_person'] = $rule['per_person'] ?? null;
-    $c['base_people'] = $rule['base_people'] ?? 100;
-    $c['distribute'] = $rule['distribute'] ?? null;
-  }
-
-  $insumos = $pdo->query("SELECT id,nome,unidade,embalagem_qtd,arredondamento FROM insumos ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
-
-  $itens = $pdo->query("SELECT id,categoria_id,nome,unidade_saida,tipo_saida,ativo,regra_json FROM itens ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
-  foreach($itens as &$i){
-    $rule = $i['regra_json'] ? json_decode($i['regra_json'], true) : [];
-    $i['metric'] = $rule['metric'] ?? null;
-    $i['base_people'] = $rule['base_people'] ?? 100;
-  }
-
-  $alias = $pdo->query("SELECT a.id,a.item_id,i.nome AS item_nome,a.termo FROM item_alias a JOIN itens i ON i.id=a.item_id ORDER BY i.nome, a.termo")->fetchAll(PDO::FETCH_ASSOC);
-
-  $comp = $pdo->query("SELECT c.id,c.item_id,i.nome AS item_nome,c.insumo_id,s.nome AS insumo_nome,c.qtd_por_base,c.unidade
-                       FROM item_composicao c
-                       JOIN itens i ON i.id=c.item_id
-                       JOIN insumos s ON s.id=c.insumo_id
-                       ORDER BY i.nome, s.nome")->fetchAll(PDO::FETCH_ASSOC);
-
-  $parser = $pdo->query("SELECT p.id,p.categoria_id,c.nome AS categoria_nome,p.termo
-                         FROM parser_chaves p
-                         JOIN categorias c ON c.id=p.categoria_id
-                         ORDER BY c.nome,p.termo")->fetchAll(PDO::FETCH_ASSOC);
-
-  return ['cats'=>$cats,'insumos'=>$insumos,'itens'=>$itens,'alias'=>$alias,'comp'=>$comp,'parser'=>$parser];
+function input($key, $default = '') {
+  return isset($_POST[$key]) ? trim($_POST[$key]) : $default;
 }
 
-// ---------- Parser de teste ----------
-function is_marked_line($line){ return (bool)preg_match('/^\s*(\[\s*x\s*\]|\(\s*x\s*\)|x|X|✓|✔|\*|-)\s+/u',$line); }
+function bool01($v) { return ($v === '1' || $v === 1 || $v === true || $v === 'true') ? 1 : 0; }
 
-function cfg_for_parser(PDO $pdo){
-  // categorias com chaves
-  $cats = [];
-  $st=$pdo->query("SELECT id,slug FROM categorias WHERE ativa=1");
-  foreach($st as $r){ $cats[$r['id']] = ['slug'=>$r['slug'],'keys'=>[],'rule'=>[]]; }
+// --- AÇÕES ---
+$tab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_POST['tab']) ? $_POST['tab'] : 'categorias');
+$msg = '';
+$err = '';
 
-  $st=$pdo->query("SELECT categoria_id, termo FROM parser_chaves");
-  foreach($st as $r){ if(isset($cats[$r['categoria_id']])) $cats[$r['categoria_id']]['keys'][] = mb_strtolower(trim($r['termo'])); }
+try {
+  // CATEGORIAS
+  if (input('action') === 'save_categoria') {
+    $id    = input('id');
+    $nome  = input('nome');
+    $ordem = (int)input('ordem', 0);
+    $ativo = bool01(input('ativo','1'));
 
-  // aliases
-  $alias = [];
-  $st=$pdo->query("SELECT a.termo, a.item_id, i.categoria_id FROM item_alias a JOIN itens i ON i.id=a.item_id");
-  foreach($st as $r){ $alias[mb_strtolower(trim($r['termo']))] = ['item_id'=>intval($r['item_id']),'categoria_id'=>intval($r['categoria_id'])]; }
+    if ($nome === '') throw new Exception('Nome da categoria é obrigatório.');
 
-  return ['cats'=>$cats,'alias'=>$alias];
-}
-
-function parse_text_demo($text, $cfg){
-  $lines = preg_split('/\n/u', $text);
-  $blocks = []; $items=[];
-  foreach($lines as $raw){
-    $l=trim($raw); if($l==='') continue;
-    $lower=mb_strtolower($l);
-    if (preg_match('/\bdoce|doces\b/u',$lower)) continue;
-    $clean = preg_replace('/^\s*(\[\s*x\s*\]|\(\s*x\s*\)|x|X|✓|✔|\*|-)\s*/u','',$l);
-
-    // item por alias
-    foreach($cfg['alias'] as $term=>$hit){
-      if (mb_strpos($lower,$term)!==false){ $items[]=['item_id'=>$hit['item_id']]; continue 2; }
+    if ($id === '') {
+      $stmt = $pdo->prepare("INSERT INTO lc_categorias (nome, ordem, ativo) VALUES (:n,:o,:a)");
+      $stmt->execute([':n'=>$nome, ':o'=>$ordem, ':a'=>$ativo]);
+      $msg = 'Categoria criada.';
+    } else {
+      $stmt = $pdo->prepare("UPDATE lc_categorias SET nome=:n, ordem=:o, ativo=:a WHERE id=:id");
+      $stmt->execute([':n'=>$nome, ':o'=>$ordem, ':a'=>$ativo, ':id'=>$id]);
+      $msg = 'Categoria atualizada.';
     }
-    // categoria por chave
-    $placed=null;
-    foreach($cfg['cats'] as $cid=>$c){
-      foreach($c['keys'] as $k){ if(mb_strpos($lower,$k)!==false){ $placed=$cid; break; } }
-      if($placed) break;
+    $tab = 'categorias';
+  }
+
+  // EXCLUIR CATEGORIA
+  if (input('action') === 'delete_categoria') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da categoria é obrigatório.');
+    
+    // Verificar se há insumos usando esta categoria
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_insumos WHERE categoria_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta categoria pois há $count insumo(s) vinculado(s) a ela.");
     }
-    if($placed){
-      if(!isset($blocks[$placed])) $blocks[$placed]=[];
-      $blocks[$placed][] = $clean;
+    
+    // Verificar se há receitas usando esta categoria
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_receitas WHERE categoria_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir esta categoria pois há $count2 receita(s) vinculada(s) a ela.");
     }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_categorias WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Categoria excluída.';
+    $tab = 'categorias';
   }
-  return [$blocks,$items];
-}
 
-// ---------- ENDPOINTS ----------
-$action = $_GET['action'] ?? null;
-
-if ($action === 'state') {
-  json_out(['ok'=>true] + load_state($pdo));
-}
-
-if ($action === 'save_categoria' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p = json_decode(file_get_contents('php://input'), true);
-  $id = intval($p['id'] ?? 0);
-  $nome = trim($p['nome'] ?? '');
-  $slug = trim($p['slug'] ?? '');
-  $ativa = intval($p['ativa'] ?? 1);
-  $metric = $p['metric'] ?? null;
-  $per = isset($p['per_person']) && $p['per_person']!=='' ? floatval($p['per_person']) : null;
-  $base = isset($p['base_people']) && $p['base_people']!=='' ? floatval($p['base_people']) : null;
-  $dis = isset($p['distribute']) ? (bool)$p['distribute'] : null;
-
-  $rule = [];
-  if ($metric) $rule['metric']=$metric;
-  if ($per!==null) $rule['per_person']=$per;
-  if ($base!==null) $rule['base_people']=$base;
-  if ($dis!==null) $rule['distribute']=$dis;
-
-  if ($id>0){
-    $st=$pdo->prepare("UPDATE categorias SET nome=?, slug=?, ativa=?, regra_json=? WHERE id=?");
-    $st->execute([$nome,$slug,$ativa, $rule?json_encode($rule):null, $id]);
-  } else {
-    $st=$pdo->prepare("INSERT INTO categorias (nome,slug,ativa,regra_json) VALUES (?,?,?,?)");
-    $st->execute([$nome,$slug,$ativa, $rule?json_encode($rule):null]);
+  // EXCLUIR INSUMO
+  if (input('action') === 'delete_insumo') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID do insumo é obrigatório.');
+    
+    // Verificar se há itens fixos usando este insumo
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_itens_fixos WHERE insumo_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count item(s) fixo(s) vinculado(s) a ele.");
+    }
+    
+    // Verificar se há componentes de receita usando este insumo
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE insumo_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count2 componente(s) de receita vinculado(s) a ele.");
+    }
+    
+    // Verificar se há componentes de ficha usando este insumo (tabela antiga)
+    $check3 = $pdo->prepare("SELECT COUNT(*) FROM lc_ficha_componentes WHERE insumo_id = ?");
+    $check3->execute([$id]);
+    $count3 = $check3->fetchColumn();
+    
+    if ($count3 > 0) {
+      throw new Exception("Não é possível excluir este insumo pois há $count3 componente(s) de ficha vinculado(s) a ele.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_insumos WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Insumo excluído.';
+    $tab = 'insumos';
   }
-  json_out(['ok'=>true] + load_state($pdo));
-}
 
-if ($action === 'del_categoria' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM categorias WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
-}
-
-if ($action === 'save_insumo' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $nome=trim($p['nome']??'');
-  $un=trim($p['unidade']??'');
-  $pack = ($p['embalagem_qtd']===''||$p['embalagem_qtd']===null)? null : floatval($p['embalagem_qtd']);
-  $round = $p['arredondamento'] ?? 'cima';
-
-  if ($id>0){
-    $st=$pdo->prepare("UPDATE insumos SET nome=?, unidade=?, embalagem_qtd=?, arredondamento=? WHERE id=?");
-    $st->execute([$nome,$un,$pack,$round,$id]);
-  } else {
-    $st=$pdo->prepare("INSERT INTO insumos (nome,unidade,embalagem_qtd,arredondamento) VALUES (?,?,?,?)");
-    $st->execute([$nome,$un,$pack,$round]);
+  // EXCLUIR UNIDADE
+  if (input('action') === 'delete_unidade') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da unidade é obrigatório.');
+    
+    // Verificar se há insumos usando esta unidade
+    $check = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_insumos WHERE unidade_padrao = (SELECT simbolo FROM smilee12_painel_smile.lc_unidades WHERE id = ?)");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count insumo(s) vinculado(s) a ela.");
+    }
+    
+    // Verificar se há itens fixos usando esta unidade
+    $check2 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_itens_fixos WHERE unidade_id = ?");
+    $check2->execute([$id]);
+    $count2 = $check2->fetchColumn();
+    
+    if ($count2 > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count2 item(s) fixo(s) vinculado(s) a ela.");
+    }
+    
+    // Verificar se há componentes de receita usando esta unidade
+    $check3 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_receita_componentes WHERE unidade_id = ?");
+    $check3->execute([$id]);
+    $count3 = $check3->fetchColumn();
+    
+    if ($count3 > 0) {
+      throw new Exception("Não é possível excluir esta unidade pois há $count3 componente(s) de receita vinculado(s) a ela.");
+    }
+    
+    // Verificar se há componentes de ficha usando esta unidade (tabela antiga)
+    // Primeiro verificar se a tabela existe e tem a coluna unidade_id
+    $table_exists = $pdo->query("
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = 'smilee12_painel_smile' AND table_name = 'lc_ficha_componentes'
+        )
+    ")->fetchColumn();
+    
+    if ($table_exists) {
+        $column_exists = $pdo->query("
+            SELECT EXISTS (
+                SELECT FROM information_schema.columns
+                WHERE table_schema = 'smilee12_painel_smile' 
+                AND table_name = 'lc_ficha_componentes' 
+                AND column_name = 'unidade_id'
+            )
+        ")->fetchColumn();
+        
+        if ($column_exists) {
+            $check4 = $pdo->prepare("SELECT COUNT(*) FROM smilee12_painel_smile.lc_ficha_componentes WHERE unidade_id = ?");
+            $check4->execute([$id]);
+            $count4 = $check4->fetchColumn();
+            
+            if ($count4 > 0) {
+                throw new Exception("Não é possível excluir esta unidade pois há $count4 componente(s) de ficha vinculado(s) a ela.");
+            }
+        }
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM smilee12_painel_smile.lc_unidades WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Unidade excluída.';
+    $tab = 'unidades';
   }
-  json_out(['ok'=>true] + load_state($pdo));
-}
 
-if ($action === 'del_insumo' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM insumos WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
-}
-
-if ($action === 'save_item' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $cat=intval($p['categoria_id']??0);
-  $nome=trim($p['nome']??'');
-  $metric=$p['metric']??null; $base = ($p['base_people']===''?null:floatval($p['base_people']));
-  $rule=[]; if($metric) $rule['metric']=$metric; if($base!==null) $rule['base_people']=$base;
-
-  if ($id>0){
-    $st=$pdo->prepare("UPDATE itens SET categoria_id=?, nome=?, regra_json=? WHERE id=?");
-    $st->execute([$cat,$nome, $rule?json_encode($rule):null, $id]);
-  } else {
-    $st=$pdo->prepare("INSERT INTO itens (categoria_id,nome,regra_json) VALUES (?,?,?)");
-    $st->execute([$cat,$nome, $rule?json_encode($rule):null]);
+  // EXCLUIR ITEM FIXO
+  if (input('action') === 'delete_item_fixo') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID do item fixo é obrigatório.');
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_itens_fixos WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Item fixo excluído.';
+    $tab = 'fixos';
   }
-  json_out(['ok'=>true] + load_state($pdo));
-}
 
-if ($action === 'del_item' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM itens WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
-}
+  // SALVAR RECEITA
+  if (input('action') === 'save_receita') {
+    $id = input('id');
+    $nome = input('nome');
+    $descricao = input('descricao');
+    $rendimento = (int)input('rendimento', 1);
+    $quantia_por_pessoa = (float)str_replace(',', '.', input('quantia_por_pessoa', '1'));
+    $categoria_id = input('categoria_id');
+    $ativo = bool01(input('ativo', '1'));
+    $visivel = bool01(input('visivel', '1'));
 
-if ($action === 'add_alias' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $item=intval($p['item_id']??0);
-  $termo=trim($p['termo']??'');
-  if($termo!==''){
-    $st=$pdo->prepare("INSERT INTO item_alias (item_id,termo) VALUES (?,?)");
-    $st->execute([$item,$termo]);
+    if ($nome === '') throw new Exception('Nome da receita é obrigatório.');
+    if ($rendimento < 1) throw new Exception('Rendimento deve ser maior que zero.');
+    if ($quantia_por_pessoa <= 0) throw new Exception('Quantia por pessoa deve ser maior que zero.');
+
+    if ($id === '') {
+      // INSERT
+      $stmt = $pdo->prepare("
+        INSERT INTO lc_receitas (nome, descricao, rendimento, quantia_por_pessoa, categoria_id, ativo, visivel)
+        VALUES (:n, :d, :r, :q, :c, :a, :v)
+      ");
+      $stmt->execute([
+        ':n' => $nome,
+        ':d' => $descricao,
+        ':r' => $rendimento,
+        ':q' => $quantia_por_pessoa,
+        ':c' => ($categoria_id === '' ? null : $categoria_id),
+        ':a' => $ativo,
+        ':v' => $visivel
+      ]);
+      $msg = 'Receita criada.';
+    } else {
+      // UPDATE
+      $stmt = $pdo->prepare("
+        UPDATE lc_receitas 
+        SET nome=:n, descricao=:d, rendimento=:r, quantia_por_pessoa=:q, categoria_id=:c, ativo=:a, visivel=:v
+        WHERE id=:id
+      ");
+      $stmt->execute([
+        ':n' => $nome,
+        ':d' => $descricao,
+        ':r' => $rendimento,
+        ':q' => $quantia_por_pessoa,
+        ':c' => ($categoria_id === '' ? null : $categoria_id),
+        ':a' => $ativo,
+        ':v' => $visivel,
+        ':id' => $id
+      ]);
+      $msg = 'Receita atualizada.';
+    }
+    $tab = 'receitas';
   }
-  json_out(['ok'=>true] + load_state($pdo));
-}
 
-if ($action === 'del_alias' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM item_alias WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
-}
-
-if ($action === 'add_comp' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $item=intval($p['item_id']??0);
-  $ins=intval($p['insumo_id']??0);
-  $q = floatval($p['qtd_por_base']??0);
-  $un= trim($p['unidade']??'');
-  if($item>0 && $ins>0 && $q>0 && $un!==''){
-    $st=$pdo->prepare("INSERT INTO item_composicao (item_id,insumo_id,qtd_por_base,unidade) VALUES (?,?,?,?)");
-    $st->execute([$item,$ins,$q,$un]);
+  // EXCLUIR RECEITA
+  if (input('action') === 'delete_receita') {
+    $id = input('id');
+    if ($id === '') throw new Exception('ID da receita é obrigatório.');
+    
+    // Verificar se há componentes usando esta receita
+    $check = $pdo->prepare("SELECT COUNT(*) FROM lc_receita_componentes WHERE receita_id = ?");
+    $check->execute([$id]);
+    $count = $check->fetchColumn();
+    
+    if ($count > 0) {
+      throw new Exception("Não é possível excluir esta receita pois há $count componente(s) vinculado(s) a ela.");
+    }
+    
+    $stmt = $pdo->prepare("DELETE FROM lc_receitas WHERE id = ?");
+    $stmt->execute([$id]);
+    $msg = 'Receita excluída.';
+    $tab = 'receitas';
   }
-  json_out(['ok'=>true] + load_state($pdo));
-}
 
-if ($action === 'del_comp' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM item_composicao WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
-}
+  // UNIDADES
+  if (input('action') === 'save_unidade') {
+    $id    = input('id');
+    $nome  = input('nome');
+    $simb  = input('simbolo');
+    $tipo  = input('tipo');
+    $fator = (float)input('fator_base', '1');
+    $ativo = bool01(input('ativo','1'));
 
-if ($action === 'add_parser' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $cid=intval($p['categoria_id']??0);
-  $termo=trim($p['termo']??'');
-  if($cid>0 && $termo!==''){
-    $st=$pdo->prepare("INSERT INTO parser_chaves (categoria_id,termo) VALUES (?,?)");
-    $st->execute([$cid,$termo]);
+    if ($nome === '' || $simb === '' || $tipo === '') throw new Exception('Preencha nome, símbolo e tipo.');
+    if ($fator <= 0) throw new Exception('Fator base deve ser > 0.');
+
+    if ($id === '') {
+      $stmt = $pdo->prepare("INSERT INTO lc_unidades (nome, simbolo, tipo, fator_base, ativo) VALUES (:n,:s,:t,:f,:a)");
+      $stmt->execute([':n'=>$nome, ':s'=>$simb, ':t'=>$tipo, ':f'=>$fator, ':a'=>$ativo]);
+      $msg = 'Unidade criada.';
+    } else {
+      $stmt = $pdo->prepare("UPDATE lc_unidades SET nome=:n, simbolo=:s, tipo=:t, fator_base=:f, ativo=:a WHERE id=:id");
+      $stmt->execute([':n'=>$nome, ':s'=>$simb, ':t'=>$tipo, ':f'=>$fator, ':a'=>$ativo, ':id'=>$id]);
+      $msg = 'Unidade atualizada.';
+    }
+    $tab = 'unidades';
   }
-  json_out(['ok'=>true] + load_state($pdo));
+
+  // INSUMOS
+  if (input('action') === 'save_insumo') {
+    // Verificar se a tabela existe
+    $tableExists = $pdo->query("
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'smilee12_painel_smile' AND table_name = 'lc_insumos'
+      )
+    ")->fetchColumn();
+    
+    if (!$tableExists) {
+      throw new Exception('Tabela lc_insumos não existe. Execute o script de criação de tabelas primeiro.');
+    }
+    
+    $id     = input('id');
+    $nome   = input('nome');
+    $categoria = (int)input('categoria_id');
+    $unid   = (int)input('unidade_id');
+    $preco  = (float)str_replace(',', '.', input('preco','0'));
+    $fc     = (float)str_replace(',', '.', input('fator_correcao','1'));
+    $emb    = input('embalagem_multiplo');
+    $emb    = ($emb === '' ? null : (float)str_replace(',', '.', $emb));
+    $tipo   = input('tipo_padrao','comprado'); // comprado | preparo | fixo
+    $forn   = input('fornecedor_id'); // opcional (FK futura)
+    $obs    = input('observacao');
+    $ativo  = bool01(input('ativo','1'));
+    $visivel = bool01(input('visivel','1'));
+
+    if ($nome === '') throw new Exception('Nome do insumo é obrigatório.');
+    if ($unid <= 0) throw new Exception('Unidade é obrigatória.');
+    if ($preco < 0) throw new Exception('Preço não pode ser negativo.');
+    if ($fc < 1) throw new Exception('Fator de correção (FC) deve ser >= 1,00.');
+
+    // Verificar quais colunas existem na tabela
+    $cols = $pdo->query("
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'lc_insumos'
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    
+    // Buscar símbolo da unidade para salvar em unidade_padrao
+    $unidadeSimbolo = '';
+    if ($unid > 0) {
+      $unidadeStmt = $pdo->prepare("SELECT simbolo FROM lc_unidades WHERE id = ?");
+      $unidadeStmt->execute([$unid]);
+      $unidadeSimbolo = $unidadeStmt->fetchColumn() ?: '';
+    }
+
+    if ($id === '') {
+      // INSERT - usar colunas corretas
+      $insertCols = ['nome', 'unidade_padrao', 'unidade'];
+      $insertVals = [':n', ':up', ':u'];
+      $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo];
+      
+      if (in_array('categoria_id', $cols)) { $insertCols[] = 'categoria_id'; $insertVals[] = ':cat'; $params[':cat'] = ($categoria > 0 ? $categoria : null); }
+      if (in_array('custo_unit', $cols)) { $insertCols[] = 'custo_unit'; $insertVals[] = ':p'; $params[':p'] = $preco; }
+      if (in_array('aquisicao', $cols)) { $insertCols[] = 'aquisicao'; $insertVals[] = ':aq'; $params[':aq'] = $tipo; }
+      if (in_array('fornecedor_id', $cols)) { $insertCols[] = 'fornecedor_id'; $insertVals[] = ':f'; $params[':f'] = ($forn === '' ? null : $forn); }
+      if (in_array('observacoes', $cols)) { $insertCols[] = 'observacoes'; $insertVals[] = ':o'; $params[':o'] = $obs; }
+      if (in_array('embalagem_multiplo', $cols)) { $insertCols[] = 'embalagem_multiplo'; $insertVals[] = ':emb'; $params[':emb'] = $emb; }
+      if (in_array('visivel', $cols)) { $insertCols[] = 'visivel'; $insertVals[] = ':vis'; $params[':vis'] = $visivel; }
+      
+      $sql = "INSERT INTO lc_insumos (" . implode(',', $insertCols) . ") VALUES (" . implode(',', $insertVals) . ")";
+      $stmt = $pdo->prepare($sql);
+      $stmt->execute($params);
+      $msg = 'Insumo criado.';
+    } else {
+      // UPDATE - usar colunas corretas
+      $updateParts = ['nome=:n', 'unidade_padrao=:up', 'unidade=:u'];
+      $params = [':n'=>$nome, ':up'=>$unidadeSimbolo, ':u'=>$unidadeSimbolo, ':id'=>$id];
+      
+      if (in_array('categoria_id', $cols)) { $updateParts[] = 'categoria_id=:cat'; $params[':cat'] = ($categoria > 0 ? $categoria : null); }
+      if (in_array('custo_unit', $cols)) { $updateParts[] = 'custo_unit=:p'; $params[':p'] = $preco; }
+      if (in_array('aquisicao', $cols)) { $updateParts[] = 'aquisicao=:aq'; $params[':aq'] = $tipo; }
+      if (in_array('fornecedor_id', $cols)) { $updateParts[] = 'fornecedor_id=:f'; $params[':f'] = ($forn === '' ? null : $forn); }
+      if (in_array('observacoes', $cols)) { $updateParts[] = 'observacoes=:o'; $params[':o'] = $obs; }
+      if (in_array('embalagem_multiplo', $cols)) { $updateParts[] = 'embalagem_multiplo=:emb'; $params[':emb'] = $emb; }
+      if (in_array('visivel', $cols)) { $updateParts[] = 'visivel=:vis'; $params[':vis'] = $visivel; }
+      
+      $sql = "UPDATE lc_insumos SET " . implode(', ', $updateParts) . " WHERE id=:id";
+      $stmt = $pdo->prepare($sql);
+      $stmt->execute($params);
+      $msg = 'Insumo atualizado.';
+    }
+    $tab = 'insumos';
+  }
+
+  // ITENS FIXOS
+  if (input('action') === 'save_item_fixo') {
+    // Verificar se a tabela existe
+    $tableExists = $pdo->query("
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'lc_itens_fixos'
+      )
+    ")->fetchColumn();
+    
+    if (!$tableExists) {
+      throw new Exception('Tabela lc_itens_fixos não existe. Execute o script de criação de tabelas primeiro.');
+    }
+    
+    $id   = input('id');
+    $ins  = (int)input('insumo_id');
+    $qtd  = (float)str_replace(',', '.', input('qtd','0'));
+    $unid = (int)input('unidade_id');
+    $obs  = input('observacao');
+    $ativo= bool01(input('ativo','1'));
+
+    if ($ins <= 0) throw new Exception('Selecione um insumo.');
+    if ($unid <= 0) throw new Exception('Selecione a unidade.');
+    if ($qtd <= 0) throw new Exception('Quantidade > 0 é obrigatória.');
+
+    if ($id === '') {
+      $stmt = $pdo->prepare("INSERT INTO lc_itens_fixos (insumo_id, qtd, unidade_id, observacao, ativo)
+                             VALUES (:i,:q,:u,:o,:a)");
+      $stmt->execute([':i'=>$ins, ':q'=>$qtd, ':u'=>$unid, ':o'=>$obs, ':a'=>$ativo]);
+      $msg = 'Item fixo criado.';
+    } else {
+      $stmt = $pdo->prepare("UPDATE lc_itens_fixos
+                             SET insumo_id=:i, qtd=:q, unidade_id=:u, observacao=:o, ativo=:a
+                             WHERE id=:id");
+      $stmt->execute([':i'=>$ins, ':q'=>$qtd, ':u'=>$unid, ':o'=>$obs, ':a'=>$ativo, ':id'=>$id]);
+      $msg = 'Item fixo atualizado.';
+    }
+    $tab = 'fixos';
+  }
+
+} catch (Exception $e) {
+  $err = $e->getMessage();
 }
 
-if ($action === 'del_parser' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $id=intval($p['id']??0);
-  $st=$pdo->prepare("DELETE FROM parser_chaves WHERE id=?");
-  $st->execute([$id]);
-  json_out(['ok'=>true] + load_state($pdo));
+// --- LISTAGENS ---
+$cat = $pdo->query("SELECT * FROM lc_categorias ORDER BY ativo DESC, ordem ASC, nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+$uni = $pdo->query("SELECT * FROM lc_unidades   ORDER BY ativo DESC, tipo ASC, nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+// Tentar carregar insumos de forma segura
+$ins = [];
+try {
+    // Primeiro, verificar quais colunas existem
+    $cols = $pdo->query("
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'lc_insumos'
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    
+    if (in_array('custo_unit', $cols)) {
+        // Estrutura com custo
+        $ins = $pdo->query("
+          SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
+          , i.custo_unit AS custo_corrigido, COALESCE(i.visivel, true) AS visivel
+          FROM lc_insumos i
+          LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+          LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+          ORDER BY c.nome ASC, i.nome ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Estrutura básica
+        $ins = $pdo->query("
+          SELECT i.*, u.simbolo, c.nome AS categoria_nome, c.id AS categoria_id
+          , COALESCE(i.visivel, true) AS visivel
+          FROM lc_insumos i
+          LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+          LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+          ORDER BY c.nome ASC, i.nome ASC
+        ")->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $ins = $pdo->query("SELECT *, COALESCE(visivel, true) AS visivel FROM lc_insumos ORDER BY nome ASC")->fetchAll(PDO::FETCH_ASSOC);
+}
+// Carregar itens fixos de forma segura
+$fixos = [];
+try {
+    $fixos = $pdo->query("
+      SELECT f.*, i.nome AS insumo_nome, u.simbolo AS unidade_simbolo
+      FROM lc_itens_fixos f
+      LEFT JOIN lc_insumos i ON i.id = f.insumo_id
+      LEFT JOIN lc_unidades u ON u.id = f.unidade_id
+      ORDER BY f.ativo DESC, i.nome ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $fixos = $pdo->query("SELECT * FROM lc_itens_fixos ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 
-if ($action === 'test_parser' && $_SERVER['REQUEST_METHOD']==='POST') {
-  $p=json_decode(file_get_contents('php://input'),true);
-  $text = norm($p['texto'] ?? '');
-  $cfg = cfg_for_parser($pdo);
-  [$blocks,$items] = parse_text_demo($text, $cfg);
-  json_out(['ok'=>true,'blocks'=>$blocks,'items'=>$items,'cfg'=>$cfg]);
+// Carregar receitas
+$receitas = [];
+try {
+    $receitas = $pdo->query("
+      SELECT r.*, c.nome AS categoria_nome, COALESCE(r.visivel, true) AS visivel
+      FROM lc_receitas r
+      LEFT JOIN lc_categorias c ON c.id = r.categoria_id
+      ORDER BY r.ativo DESC, r.nome ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Se der erro, carregar sem JOIN
+    $receitas = $pdo->query("SELECT *, COALESCE(visivel, true) AS visivel FROM lc_receitas ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// ---------- HTML ----------
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!doctype html>
+<html lang="pt-br">
 <head>
-<meta charset="utf-8">
-<title>Configurações</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="estilo.css">
-<style>
-.cfg *{box-sizing:border-box}
-.cfg .wrap{max-width:1200px;margin:0 auto}
-.cfg .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.cfg .card{background:#fff;border:1px solid #e6ecff;border-radius:12px;padding:16px;margin:12px 0}
-.cfg .h{color:#004aad;margin:6px 0}
-.cfg .btn{background:#004aad;color:#fff;border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-.cfg .btn-alt{background:#e9efff;color:#004aad;border:none;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}
-.cfg input[type="text"],.cfg input[type="number"],.cfg select,.cfg textarea{padding:8px;border:1px solid #cfd8ea;border-radius:10px;font-size:14px}
-.cfg table{width:100%;border-collapse:collapse}
-.cfg th,.cfg td{border-bottom:1px solid #eef2ff;padding:6px 8px;text-align:left;vertical-align:top}
-.cfg .tabs{display:flex;gap:6px;margin:8px 0}
-.cfg .tab{padding:8px 12px;border-radius:10px;border:1px solid #e6ecff;cursor:pointer}
-.cfg .tab.active{background:#004aad;color:#fff;border-color:#004aad}
-.cfg .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.cfg .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-.cfg .sm{font-size:12px;color:#567}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurações | Painel Smile PRO</title>
+  <link rel="stylesheet" href="estilo.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
-<?php include __DIR__ . '/sidebar.php'; ?>
-<main class="main-content cfg">
-  <div class="wrap">
-    <h1 class="h">Configurações</h1>
+<body class="main-layout">
+  <!-- Sidebar Moderna -->
+  <?php include 'sidebar_moderna.php'; ?>
 
-    <div class="tabs">
-      <div class="tab active" data-t="cat">Categorias</div>
-      <div class="tab" data-t="item">Itens</div>
-      <div class="tab" data-t="insumo">Insumos</div>
-      <div class="tab" data-t="comp">Composição</div>
-      <div class="tab" data-t="alias">Sinônimos</div>
-      <div class="tab" data-t="parser">Chaves do Parser</div>
-      <div class="tab" data-t="teste">Teste rápido</div>
+  <!-- Conteúdo Principal -->
+  <main class="main-content">
+    <div class="page-header">
+      <div class="flex items-center gap-4 mb-4">
+        <a href="lc_index.php" class="btn btn-outline">
+          <span>←</span> Voltar
+        </a>
+        <div>
+          <h1 class="page-title">Configurações</h1>
+          <p class="page-subtitle">Gerencie categorias, unidades, insumos e itens fixos do sistema</p>
+        </div>
+      </div>
     </div>
 
-    <!-- Categorias -->
-    <section id="p-cat" class="card">
-      <h2 class="h">Categorias</h2>
-      <div class="sm">Ex.: “Salgados Assados” com <b>per_person</b> configurável.</div>
-      <table id="tbl-cat">
-        <thead><tr>
-          <th>Nome</th><th>Slug</th><th>Ativa</th>
-          <th>metric</th><th>per_person</th><th>base_people</th><th>distribute</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="addCat()">+ Categoria</button></div>
-    </section>
-
-    <!-- Itens -->
-    <section id="p-item" class="card" style="display:none">
-      <h2 class="h">Itens</h2>
-      <table id="tbl-item">
-        <thead><tr>
-          <th>Nome</th><th>Categoria</th><th>metric</th><th>base_people</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="addItem()">+ Item</button></div>
-    </section>
-
-    <!-- Insumos -->
-    <section id="p-insumo" class="card" style="display:none">
-      <h2 class="h">Insumos</h2>
-      <table id="tbl-ins">
-        <thead><tr>
-          <th>Nome</th><th>Unidade</th><th>Embalagem</th><th>Arredondamento</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="addIns()">+ Insumo</button></div>
-    </section>
-
-    <!-- Composição -->
-    <section id="p-comp" class="card" style="display:none">
-      <h2 class="h">Composição dos Itens (escala por base)</h2>
-      <div class="grid-2">
-        <div>
-          <label>Item</label>
-          <select id="comp_item"></select>
-        </div>
-        <div class="sm">Dica: para “Mini batata” e “Mini wrap”, use base_people=100 no item.</div>
-      </div>
-      <table id="tbl-comp" style="margin-top:10px">
-        <thead><tr><th>Insumo</th><th>Qtd por base</th><th>Unidade</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-      <div class="grid-3" style="margin-top:8px">
-        <div><label>Insumo</label><select id="comp_ins"></select></div>
-        <div><label>Qtd por base</label><input id="comp_q" type="number" step="0.01"></div>
-        <div><label>Unidade</label><input id="comp_un" type="text" placeholder="kg, pacote, pé..."></div>
-      </div>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="saveComp()">Adicionar</button></div>
-    </section>
-
-    <!-- Aliases -->
-    <section id="p-alias" class="card" style="display:none">
-      <h2 class="h">Sinônimos de Itens (para leitura do PDF)</h2>
-      <div class="grid-2">
-        <div><label>Item</label><select id="al_item"></select></div>
-        <div><label>Termo</label><input id="al_termo" type="text" placeholder="ex.: mini batata"></div>
-      </div>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="saveAlias()">Adicionar</button></div>
-      <table id="tbl-alias" style="margin-top:10px">
-        <thead><tr><th>Item</th><th>Termo</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
-
-    <!-- Parser -->
-    <section id="p-parser" class="card" style="display:none">
-      <h2 class="h">Chaves do Parser por Categoria</h2>
-      <div class="grid-2">
-        <div><label>Categoria</label><select id="ps_cat"></select></div>
-        <div><label>Termo</label><input id="ps_termo" type="text" placeholder="ex.: assados"></div>
-      </div>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="saveParser()">Adicionar</button></div>
-      <table id="tbl-parser" style="margin-top:10px">
-        <thead><tr><th>Categoria</th><th>Termo</th><th></th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </section>
-
-    <!-- Teste rápido -->
-    <section id="p-teste" class="card" style="display:none">
-      <h2 class="h">Teste rápido do Parser</h2>
-      <textarea id="tx_teste" placeholder="Cole aqui um trecho do resumo do evento" style="width:100%;min-height:120px"></textarea>
-      <div class="row" style="margin-top:8px"><button class="btn" onclick="runTest()">Analisar</button></div>
-      <pre id="test_out" class="sm" style="white-space:pre-wrap;margin-top:8px"></pre>
-    </section>
-
+    <!-- Tabs -->
+    <div class="tabs-container">
+  <div class="tabs">
+        <a href="?tab=categorias" class="tab <?= $tab==='categorias'?'active':'' ?>">
+          <span>📂</span> Categorias
+        </a>
+        <a href="?tab=unidades" class="tab <?= $tab==='unidades'?'active':'' ?>">
+          <span>📏</span> Unidades
+        </a>
+        <a href="?tab=insumos" class="tab <?= $tab==='insumos'?'active':'' ?>">
+          <span>🥘</span> Insumos
+        </a>
+        <a href="?tab=receitas" class="tab <?= $tab==='receitas'?'active':'' ?>">
+          <span>👨‍🍳</span> Receitas
+        </a>
+        <a href="?tab=fixos" class="tab <?= $tab==='fixos'?'active':'' ?>">
+          <span>📌</span> Itens Fixos
+        </a>
   </div>
-</main>
+
+      <div class="tab-content">
+        <!-- Mensagens -->
+        <?php if ($msg): ?>
+          <div class="alert alert-success animate-fade-in">
+            <span>✅</span> <?=h($msg)?>
+          </div>
+        <?php endif; ?>
+        <?php if ($err): ?>
+          <div class="alert alert-error animate-fade-in">
+            <span>❌</span> <?=h($err)?>
+          </div>
+        <?php endif; ?>
+
+  <?php if ($tab==='categorias'): ?>
+          <div class="card">
+            <div class="card-header">
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">📂 Categorias</h2>
+                  <p class="text-sm text-gray-600">Organize seus produtos por categorias para facilitar a gestão</p>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="openCategoriaModal()">
+                  <span>➕</span> Novo
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+                <div class="table-container">
+                  <table class="table">
+        <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Nome da Categoria</th>
+                        <th>Ordem</th>
+                        <th>Status</th>
+                        <th class="text-center">Ação</th>
+                      </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($cat as $c): ?>
+            <tr class="animate-slide-in">
+              <td>
+                <span class="badge"><?= (int)$c['id'] ?></span>
+              </td>
+              <td>
+                <form method="post" style="display: inline;">
+                  <input type="hidden" name="action" value="save_categoria">
+                  <input type="hidden" name="tab" value="categorias">
+                  <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                  <input type="text" name="nome" value="<?=h($c['nome'])?>" 
+                         class="form-input" required 
+                         placeholder="Nome da categoria">
+              </td>
+              <td>
+                <input type="number" name="ordem" value="<?= (int)$c['ordem'] ?>" 
+                       class="form-input" style="width: 80px; text-align: center;"
+                       min="0" max="999">
+              </td>
+              <td>
+                <select name="ativo" class="form-select" style="width: 100px;">
+                  <option value="1" <?= $c['ativo']?'selected':''?>>Ativa</option>
+                  <option value="0" <?= !$c['ativo']?'selected':''?>>Inativa</option>
+                </select>
+              </td>
+              <td class="text-center">
+                <div class="flex gap-2 justify-center">
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <span>💾</span> Salvar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" 
+                          onclick="deleteCategoria(<?= (int)$c['id'] ?>)">
+                    <span>🗑️</span> Excluir
+                  </button>
+                </div>
+              </td>
+            </form>
+            </tr>
+          <?php endforeach; ?>
+                      
+        </tbody>
+      </table>
+                </div>
+    </form>
+            </div>
+          </div>
+  <?php endif; ?>
+
+  <?php if ($tab==='unidades'): ?>
+          <div class="card">
+            <div class="card-header">
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">📏 Unidades de Medida</h2>
+                  <p class="text-sm text-gray-600">Configure unidades para conversões automáticas via fator base</p>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="openUnidadeModal()">
+                  <span>➕</span> Novo
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <form method="post" class="animate-fade-in">
+      <input type="hidden" name="action" value="save_unidade">
+      <input type="hidden" name="tab" value="unidades">
+                
+                <div class="table-container">
+                  <table class="table">
+        <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Nome</th>
+                        <th>Símbolo</th>
+                        <th>Tipo</th>
+                        <th>Fator Base</th>
+                        <th>Status</th>
+                        <th class="text-center">Ação</th>
+                      </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($uni as $u): ?>
+            <tr class="animate-slide-in">
+              <td>
+                <span class="badge"><?= (int)$u['id'] ?></span>
+              </td>
+              <td>
+                <form method="post" style="display: inline;">
+                  <input type="hidden" name="action" value="save_unidade">
+                  <input type="hidden" name="tab" value="unidades">
+                  <input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+                  <input type="text" name="nome" value="<?=h($u['nome'])?>" 
+                         class="form-input" required 
+                         placeholder="Ex: Quilograma">
+              </td>
+              <td>
+                <input type="text" name="simbolo" value="<?=h($u['simbolo'])?>" 
+                       class="form-input" required 
+                       style="width: 80px; text-align: center;"
+                       placeholder="kg">
+              </td>
+              <td>
+                <select name="tipo" class="form-select" style="width: 120px;">
+                  <?php 
+                  $tipos = [
+                    'massa' => 'Massa',
+                    'volume' => 'Volume', 
+                    'unidade' => 'Unidade',
+                    'embalagem' => 'Embalagem',
+                    'outro' => 'Outro'
+                  ];
+                  foreach ($tipos as $t => $label): ?>
+                    <option value="<?=$t?>" <?= $u['tipo']===$t?'selected':''?>><?=$label?></option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+              <td>
+                <input type="number" step="0.000001" name="fator_base" 
+                       value="<?=h($u['fator_base'])?>" 
+                       class="form-input" 
+                       style="width: 120px; text-align: center;"
+                       min="0.000001" max="999999.999999">
+              </td>
+              <td>
+                <select name="ativo" class="form-select" style="width: 100px;">
+                  <option value="1" <?= $u['ativo']?'selected':''?>>Ativa</option>
+                  <option value="0" <?= !$u['ativo']?'selected':''?>>Inativa</option>
+                </select>
+              </td>
+              <td class="text-center">
+                <div class="flex gap-2 justify-center">
+                  <button type="submit" class="btn btn-primary btn-sm">
+                    <span>💾</span> Salvar
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" 
+                          onclick="deleteUnidade(<?= (int)$u['id'] ?>)">
+                    <span>🗑️</span> Excluir
+                  </button>
+                </div>
+              </td>
+            </form>
+            </tr>
+          <?php endforeach; ?>
+                      
+        </tbody>
+      </table>
+                </div>
+    </form>
+    
+            </div>
+          </div>
+  <?php endif; ?>
+
+  <?php if ($tab==='insumos'): ?>
+          <div class="card">
+            <div class="card-header">
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">🥘 Insumos</h2>
+                  <p class="text-sm text-gray-600">Gerencie ingredientes, preços e informações de aquisição</p>
+                </div>
+                <button onclick="openInsumoModal()" class="btn btn-success">
+                  <span>➕</span> Novo Insumo
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="table">
+        <thead>
+          <tr>
+                      <th>ID</th>
+                      <th>Categoria</th>
+                      <th>Nome do Insumo</th>
+                      <th>Unidade</th>
+                      <th>Custo Unit.</th>
+                      <th>Custo Final</th>
+                      <th>Aquisição</th>
+                      <th>Status</th>
+                      <th>Visível</th>
+                      <th class="text-center">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($ins as $i): ?>
+                      <tr class="animate-slide-in">
+                        <td><span class="badge"><?= (int)$i['id'] ?></span></td>
+                        <td>
+                          <span class="badge badge-info">
+                            <?= h($i['categoria_nome'] ?? 'Sem categoria') ?>
+                          </span>
+                        </td>
+                        <td><strong><?= h($i['nome']) ?></strong></td>
+                        <td><?= h($i['simbolo'] ?? '—') ?></td>
+                        <td class="text-right">R$ <?= number_format($i['custo_unit'] ?? 0, 2, ',', '.') ?></td>
+                        <td class="text-right">
+                          <span class="badge badge-info">
+                            R$ <?= number_format($i['custo_corrigido'] ?? 0, 4, ',', '.') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge">
+                            <?= ucfirst($i['aquisicao'] ?? 'Mercado') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= ($i['ativo'] ?? 1) ? 'badge-success' : 'badge-error' ?>">
+                            <?= ($i['ativo'] ?? 1) ? 'Ativo' : 'Inativo' ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= ($i['visivel'] ?? true) ? 'badge-info' : 'badge-warning' ?>">
+                            <?= ($i['visivel'] ?? true) ? '👁️ Sim' : '🙈 Não' ?>
+                          </span>
+                        </td>
+                        <td class="text-center">
+                          <div class="flex gap-2 justify-center">
+                            <button onclick="editInsumo(<?= htmlspecialchars(json_encode($i)) ?>)" 
+                                    class="btn btn-primary btn-sm">
+                              <span>✏️</span> Editar
+                            </button>
+                            <button onclick="deleteInsumo(<?= (int)$i['id'] ?>)" 
+                                    class="btn btn-outline btn-sm">
+                              <span>🗑️</span> Excluir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal para Editar/Criar Insumo -->
+          <div id="insumoModal" class="modal-overlay" style="display: none;">
+            <div class="modal">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title" id="modalTitle">Novo Insumo</h3>
+                  <button onclick="closeInsumoModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body">
+                  <form id="insumoForm" method="post">
+                    <input type="hidden" name="action" value="save_insumo">
+                    <input type="hidden" name="tab" value="insumos">
+                    <input type="hidden" name="id" id="insumoId" value="">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                      <div class="form-group">
+                        <label class="form-label">Categoria</label>
+                        <select name="categoria_id" id="categoriaId" class="form-select">
+                          <option value="">Sem categoria</option>
+                          <?php foreach ($cat as $c): ?>
+                            <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Nome do Insumo *</label>
+                        <input type="text" name="nome" id="insumoNome" class="form-input" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Unidade *</label>
+                        <select name="unidade_id" id="unidadeId" class="form-select" required>
+                          <option value="">Selecione...</option>
+                          <?php foreach ($uni as $u): ?>
+                            <option value="<?=$u['id']?>"><?=h($u['simbolo'])?> (<?=h($u['nome'])?>)</option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Custo Unitário</label>
+                        <input type="number" step="0.0001" name="preco" id="insumoPreco" 
+                               class="form-input" placeholder="0.00">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Embalagem (múltiplo)</label>
+                        <input type="number" step="0.000001" name="embalagem_multiplo" id="embalagemMultiplo" 
+                               class="form-input" placeholder="ex: 50">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Tipo de Aquisição</label>
+                        <select name="tipo_padrao" id="tipoPadrao" class="form-select">
+                          <option value="mercado">Mercado</option>
+                          <option value="preparo">Preparo</option>
+                          <option value="fixo">Fixo</option>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">ID Fornecedor</label>
+                        <input type="text" name="fornecedor_id" id="fornecedorId" 
+                               class="form-input" placeholder="ID Fornecedor">
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="ativo" id="insumoAtivo" class="form-select">
+                          <option value="1">Ativo</option>
+                          <option value="0">Inativo</option>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Visibilidade</label>
+                        <div class="flex items-center gap-2">
+                          <input type="checkbox" name="visivel" id="insumoVisivel" value="1" 
+                                 class="form-checkbox" checked>
+                          <label for="insumoVisivel" class="text-sm">
+                            👁️ Visível na lista de compras
+                          </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                          Desmarque para itens que ficam "nos bastidores" (ex: sal da batata)
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label class="form-label">Observações</label>
+                      <textarea name="observacao" id="insumoObservacao" class="form-input" 
+                                rows="3" placeholder="Observações opcionais"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-2 justify-end mt-4">
+                      <button type="button" onclick="closeInsumoModal()" class="btn btn-outline">
+                        Cancelar
+                      </button>
+                      <button type="submit" class="btn btn-primary">
+                        <span>💾</span> Salvar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+          function openInsumoModal() {
+            document.getElementById('modalTitle').textContent = 'Novo Insumo';
+            document.getElementById('insumoForm').reset();
+            document.getElementById('insumoId').value = '';
+            document.getElementById('insumoModal').style.display = 'flex';
+          }
+          
+          function editInsumo(insumo) {
+            document.getElementById('modalTitle').textContent = 'Editar Insumo';
+            document.getElementById('insumoId').value = insumo.id;
+            document.getElementById('categoriaId').value = insumo.categoria_id || '';
+            document.getElementById('insumoNome').value = insumo.nome || '';
+            document.getElementById('unidadeId').value = insumo.unidade || '';
+            document.getElementById('insumoPreco').value = insumo.custo_unit || '';
+            document.getElementById('embalagemMultiplo').value = insumo.embalagem_multiplo || '';
+            document.getElementById('tipoPadrao').value = insumo.aquisicao || 'mercado';
+            document.getElementById('fornecedorId').value = insumo.fornecedor_id || '';
+            document.getElementById('insumoAtivo').value = insumo.ativo || '1';
+            document.getElementById('insumoVisivel').checked = (insumo.visivel !== '0' && insumo.visivel !== 0 && insumo.visivel !== false);
+            document.getElementById('insumoObservacao').value = insumo.observacoes || '';
+            document.getElementById('insumoModal').style.display = 'flex';
+          }
+          
+          function closeInsumoModal() {
+            document.getElementById('insumoModal').style.display = 'none';
+          }
+          
+          function deleteInsumo(id) {
+            if (confirm('Tem certeza que deseja excluir este insumo?')) {
+              const form = document.createElement('form');
+              form.method = 'post';
+              form.innerHTML = `
+                <input type="hidden" name="action" value="delete_insumo">
+                <input type="hidden" name="tab" value="insumos">
+                <input type="hidden" name="id" value="${id}">
+              `;
+              document.body.appendChild(form);
+              form.submit();
+            }
+          }
+          </script>
+        <?php endif; ?>
+
+        <?php if ($tab==='receitas'): ?>
+          <div class="card">
+            <div class="card-header">
+              <div class="flex justify-between items-center">
+                <div>
+                  <h2 class="card-title">👨‍🍳 Receitas</h2>
+                  <p class="text-sm text-gray-600">Gerencie receitas e fichas técnicas do sistema</p>
+                </div>
+                <button onclick="openReceitaModal()" class="btn btn-success">
+                  <span>➕</span> Nova Receita
+                </button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Categoria</th>
+                      <th>Nome da Receita</th>
+                      <th>Rendimento</th>
+                      <th>Por Pessoa</th>
+                      <th>Custo Total</th>
+                      <th>Status</th>
+                      <th>Visível</th>
+                      <th class="text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php foreach ($receitas as $r): ?>
+                      <tr class="animate-slide-in">
+                        <td><span class="badge"><?= (int)$r['id'] ?></span></td>
+                        <td>
+                          <span class="badge badge-info">
+                            <?= h($r['categoria_nome'] ?? 'Sem categoria') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <div>
+                            <strong><?= h($r['nome']) ?></strong>
+                            <?php if ($r['descricao']): ?>
+                              <div class="text-sm text-gray-600"><?= h($r['descricao']) ?></div>
+                            <?php endif; ?>
+                          </div>
+                        </td>
+                        <td class="text-center">
+                          <span class="badge"><?= (int)$r['rendimento'] ?> porções</span>
+                        </td>
+                        <td class="text-center">
+                          <span class="badge"><?= number_format($r['quantia_por_pessoa'], 3, ',', '.') ?></span>
+                        </td>
+                        <td class="text-right">
+                          <span class="badge badge-success">
+                            R$ <?= number_format($r['custo_total'], 4, ',', '.') ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= $r['ativo'] ? 'badge-success' : 'badge-error' ?>">
+                            <?= $r['ativo'] ? 'Ativa' : 'Inativa' ?>
+                          </span>
+                        </td>
+                        <td>
+                          <span class="badge <?= ($r['visivel'] ?? true) ? 'badge-info' : 'badge-warning' ?>">
+                            <?= ($r['visivel'] ?? true) ? '👁️ Sim' : '🙈 Não' ?>
+                          </span>
+                        </td>
+                        <td class="text-center">
+                          <div class="flex gap-2 justify-center">
+                            <button onclick="editReceita(<?= htmlspecialchars(json_encode($r)) ?>)" 
+                                    class="btn btn-primary btn-sm">
+                              <span>✏️</span> Editar
+                            </button>
+                            <a href="ficha_tecnica_simple.php?id=<?= $r['id'] ?>" 
+                               class="btn btn-info btn-sm" target="_blank">
+                              <span>📋</span> Ficha Técnica
+                            </a>
+                            <button onclick="deleteReceita(<?= (int)$r['id'] ?>)" 
+                                    class="btn btn-outline btn-sm">
+                              <span>🗑️</span> Excluir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal para Editar/Criar Receita -->
+          <div id="receitaModal" class="modal-overlay" style="display: none;">
+            <div class="modal">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title" id="receitaModalTitle">Nova Receita</h3>
+                  <button onclick="closeReceitaModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body">
+                  <form id="receitaForm" method="post">
+                    <input type="hidden" name="action" value="save_receita">
+                    <input type="hidden" name="tab" value="receitas">
+                    <input type="hidden" name="id" id="receitaId" value="">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                      <div class="form-group">
+                        <label class="form-label">Categoria</label>
+                        <select name="categoria_id" id="receitaCategoriaId" class="form-select">
+                          <option value="">Sem categoria</option>
+                          <?php foreach ($cat as $c): ?>
+                            <option value="<?=$c['id']?>"><?=h($c['nome'])?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Nome da Receita *</label>
+                        <input type="text" name="nome" id="receitaNome" class="form-input" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Rendimento (porções) *</label>
+                        <input type="number" name="rendimento" id="receitaRendimento" 
+                               class="form-input" min="1" value="1" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Quantia por Pessoa *</label>
+                        <input type="number" step="0.001" name="quantia_por_pessoa" id="receitaQuantiaPessoa" 
+                               class="form-input" min="0.001" value="1.000" required>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="ativo" id="receitaAtivo" class="form-select">
+                          <option value="1">Ativa</option>
+                          <option value="0">Inativa</option>
+                        </select>
+                      </div>
+                      
+                      <div class="form-group">
+                        <label class="form-label">Visibilidade</label>
+                        <div class="flex items-center gap-2">
+                          <input type="checkbox" name="visivel" id="receitaVisivel" value="1" 
+                                 class="form-checkbox" checked>
+                          <label for="receitaVisivel" class="text-sm">
+                            👁️ Visível na lista de compras
+                          </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">
+                          Desmarque para receitas que ficam "nos bastidores" (ex: molhos, temperos)
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label class="form-label">Descrição</label>
+                      <textarea name="descricao" id="receitaDescricao" class="form-input" 
+                                rows="3" placeholder="Descrição da receita (opcional)"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-2 justify-end mt-4">
+                      <button type="button" onclick="closeReceitaModal()" class="btn btn-outline">
+                        Cancelar
+                      </button>
+                      <button type="submit" class="btn btn-primary">
+                        <span>💾</span> Salvar
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+          function openReceitaModal() {
+            document.getElementById('receitaModalTitle').textContent = 'Nova Receita';
+            document.getElementById('receitaForm').reset();
+            document.getElementById('receitaId').value = '';
+            document.getElementById('receitaModal').style.display = 'flex';
+          }
+          
+          function editReceita(receita) {
+            document.getElementById('receitaModalTitle').textContent = 'Editar Receita';
+            document.getElementById('receitaId').value = receita.id;
+            document.getElementById('receitaCategoriaId').value = receita.categoria_id || '';
+            document.getElementById('receitaNome').value = receita.nome || '';
+            document.getElementById('receitaRendimento').value = receita.rendimento || 1;
+            document.getElementById('receitaQuantiaPessoa').value = receita.quantia_por_pessoa || 1;
+            document.getElementById('receitaAtivo').value = receita.ativo || '1';
+            document.getElementById('receitaVisivel').checked = (receita.visivel !== '0' && receita.visivel !== 0 && receita.visivel !== false);
+            document.getElementById('receitaDescricao').value = receita.descricao || '';
+            document.getElementById('receitaModal').style.display = 'flex';
+          }
+          
+          function closeReceitaModal() {
+            document.getElementById('receitaModal').style.display = 'none';
+          }
+          
+          function openFichaTecnicaModal(receitaId) {
+            // Carregar conteúdo da ficha técnica via AJAX
+            fetch('ficha_tecnica_ajax.php?id=' + receitaId)
+              .then(response => response.text())
+              .then(html => {
+                document.getElementById('fichaTecnicaContent').innerHTML = html;
+                document.getElementById('fichaTecnicaModal').style.display = 'flex';
+              })
+              .catch(error => {
+                console.error('Erro ao carregar ficha técnica:', error);
+                alert('Erro ao carregar ficha técnica');
+              });
+          }
+          
+          function closeFichaTecnicaModal() {
+            document.getElementById('fichaTecnicaModal').style.display = 'none';
+          }
+          
+          function deleteReceita(id) {
+            if (confirm('Tem certeza que deseja excluir esta receita?')) {
+              const form = document.createElement('form');
+              form.method = 'post';
+              form.innerHTML = `
+                <input type="hidden" name="action" value="delete_receita">
+                <input type="hidden" name="tab" value="receitas">
+                <input type="hidden" name="id" value="${id}">
+              `;
+              document.body.appendChild(form);
+              form.submit();
+            }
+          }
+          </script>
+
+          <!-- Modal da Ficha Técnica -->
+          <div id="fichaTecnicaModal" class="modal-overlay" style="display: none;">
+            <div class="modal" style="max-width: 1200px; width: 95%;">
+              <div class="card">
+                <div class="card-header">
+                  <h3 class="card-title">📋 Ficha Técnica</h3>
+                  <button onclick="closeFichaTecnicaModal()" class="btn btn-outline btn-sm">✕</button>
+                </div>
+                <div class="card-body" id="fichaTecnicaContent">
+                  <div class="text-center py-8">
+                    <span class="text-4xl">⏳</span>
+                    <p class="mt-2">Carregando ficha técnica...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if ($tab==='fixos'): ?>
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">📌 Itens Fixos</h2>
+              <p class="text-sm text-gray-600">Itens que são incluídos automaticamente em cada evento (1× por evento)</p>
+            </div>
+            <div class="card-body">
+              <form method="post" class="animate-fade-in">
+                <input type="hidden" name="action" value="save_item_fixo">
+                <input type="hidden" name="tab" value="fixos">
+                
+                <div class="table-container">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Insumo</th>
+                        <th>Quantidade</th>
+                        <th>Unidade</th>
+                        <th>Observações</th>
+                        <th>Status</th>
+                        <th class="text-center">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <?php foreach ($fixos as $f): ?>
+                        <tr class="animate-slide-in">
+                          <td>
+                            <span class="badge"><?= (int)$f['id'] ?></span>
+                          </td>
+                          <td>
+                            <select name="insumo_id" required class="form-select" style="min-width: 200px;">
+                              <?php foreach ($ins as $i2): ?>
+                                <option value="<?= $i2['id'] ?>" <?= ($f['insumo_id']==$i2['id']?'selected':'') ?>>
+                                  <?= h($i2['nome']) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+                          <td>
+                            <input type="number" step="0.000001" name="qtd" 
+                                   value="<?= h($f['qtd']) ?>" 
+                                   class="form-input" 
+                                   style="width: 100px; text-align: center;"
+                                   min="0.000001" max="999999.999999"
+                                   placeholder="1.000">
+                          </td>
+                          <td>
+                            <select name="unidade_id" required class="form-select" style="width: 120px;">
+                              <?php foreach ($uni as $u): ?>
+                                <option value="<?= $u['id'] ?>" <?= ($f['unidade_id']==$u['id']?'selected':'') ?>>
+                                  <?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)
+                                </option>
+                  <?php endforeach; ?>
+                </select>
+              </td>
+                          <td>
+                            <input type="text" name="observacao" 
+                                   value="<?= h($f['observacao']) ?>" 
+                                   class="form-input" 
+                                   placeholder="Observações opcionais"
+                                   style="min-width: 150px;">
+                          </td>
+                          <td>
+                            <select name="ativo" class="form-select" style="width: 100px;">
+                              <option value="1" <?= $f['ativo']?'selected':'' ?>>Ativo</option>
+                              <option value="0" <?= !$f['ativo']?'selected':'' ?>>Inativo</option>
+                </select>
+              </td>
+                          <td class="text-center">
+                            <div class="flex gap-2 justify-center">
+                              <input type="hidden" name="id" value="<?= (int)$f['id'] ?>">
+                              <button type="submit" class="btn btn-primary btn-sm">
+                                <span>💾</span> Salvar
+                              </button>
+                              <button type="submit" class="btn btn-outline btn-sm" 
+                                      onclick="return confirm('Tem certeza que deseja excluir este item fixo?')"
+                                      formaction="?action=delete_item_fixo&tab=fixos&id=<?= (int)$f['id'] ?>">
+                                <span>🗑️</span> Excluir
+                              </button>
+                            </div>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+
+                      <tr class="row-new animate-fade-in">
+                        <td>
+                          <span class="badge badge-success">NOVO</span>
+                        </td>
+                        <td>
+                          <select name="insumo_id" required class="form-select" style="min-width: 200px;">
+                            <option value="">— Selecione um insumo —</option>
+                            <?php foreach ($ins as $i2): ?>
+                              <option value="<?= $i2['id'] ?>"><?= h($i2['nome']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
+                        <td>
+                          <input type="number" step="0.000001" name="qtd" 
+                                 placeholder="1.000" 
+                                 class="form-input" 
+                                 style="width: 100px; text-align: center;"
+                                 min="0.000001" max="999999.999999">
+                        </td>
+                        <td>
+                          <select name="unidade_id" required class="form-select" style="width: 120px;">
+                            <?php foreach ($uni as $u): ?>
+                              <option value="<?= $u['id'] ?>"><?= h($u['simbolo']) ?> (<?= h($u['nome']) ?>)</option>
+                            <?php endforeach; ?>
+              </select>
+            </td>
+                        <td>
+                          <input type="text" name="observacao" 
+                                 placeholder="Observações opcionais" 
+                                 class="form-input" 
+                                 style="min-width: 150px;">
+                        </td>
+                        <td>
+                          <select name="ativo" class="form-select" style="width: 100px;">
+                            <option value="1" selected>Ativo</option>
+                            <option value="0">Inativo</option>
+              </select>
+            </td>
+                        <td class="text-center">
+              <input type="hidden" name="id" value="">
+                          <button type="submit" class="btn btn-success btn-sm">
+                            <span>➕</span> Adicionar
+                          </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+                </div>
+    </form>
+            </div>
+          </div>
+  <?php endif; ?>
+      </div>
+    </div>
+  </main>
 
 <script>
-const $ = s=>document.querySelector(s);
-const $$ = s=>Array.from(document.querySelectorAll(s));
-const api = (a,body)=>fetch('?action='+a,{method:'POST',body:body?JSON.stringify(body):null}).then(r=>r.json());
-
-let ST={cats:[],itens:[],insumos:[],alias:[],comp:[],parser:[]};
-
-function refresh(){
-  fetch('?action=state').then(r=>r.json()).then(s=>{
-    ST=s;
-    renderCats(); renderItens(); renderInsumos(); renderAlias(); renderComp(); renderParser();
-    fillSelects();
-  });
+// Função para excluir categoria
+function deleteCategoria(id) {
+  if (confirm('Tem certeza que deseja excluir esta categoria?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+      <input type="hidden" name="action" value="delete_categoria">
+      <input type="hidden" name="tab" value="categorias">
+      <input type="hidden" name="id" value="${id}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+  }
 }
 
-function fillSelects(){
-  const optCat = ST.cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
-  $$('#tbl-item select.catSel').forEach(sel=>{ sel.innerHTML=optCat; sel.value = sel.dataset.v||''; });
-  $('#comp_item').innerHTML = ST.itens.map(i=>`<option value="${i.id}">${i.nome}</option>`).join('');
-  $('#al_item').innerHTML = ST.itens.map(i=>`<option value="${i.id}">${i.nome}</option>`).join('');
-  $('#ps_cat').innerHTML = ST.cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
-  $('#comp_ins').innerHTML = ST.insumos.map(s=>`<option value="${s.id}">${s.nome}</option>`).join('');
-  // load comp table for first item
-  compChange();
+// Função para excluir unidade
+function deleteUnidade(id) {
+  if (confirm('Tem certeza que deseja excluir esta unidade?')) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `
+      <input type="hidden" name="action" value="delete_unidade">
+      <input type="hidden" name="tab" value="unidades">
+      <input type="hidden" name="id" value="${id}">
+    `;
+    document.body.appendChild(form);
+    form.submit();
+  }
 }
 
-function renderCats(){
-  const tb = $('#tbl-cat tbody'); if(!tb) return;
-  tb.innerHTML = ST.cats.map(c=>`
-    <tr>
-      <td><input type="text" value="${escapeHtml(c.nome)}" data-id="${c.id}" class="c-nome"></td>
-      <td><input type="text" value="${escapeHtml(c.slug)}" data-id="${c.id}" class="c-slug"></td>
-      <td><select data-id="${c.id}" class="c-ativa"><option value="1"${c.ativa==1?' selected':''}>Sim</option><option value="0"${c.ativa==0?' selected':''}>Não</option></select></td>
-      <td>
-        <select data-id="${c.id}" class="c-metric">
-          ${opt('','')} ${opt('un','un')} ${opt('kg','kg')} ${opt('escala_base','escala_base')} ${opt('evento','evento')}
-        </select>
-      </td>
-      <td><input type="number" step="0.01" value="${c.per_person??''}" data-id="${c.id}" class="c-per"></td>
-      <td><input type="number" step="1" value="${c.base_people??''}" data-id="${c.id}" class="c-base"></td>
-      <td>
-        <select data-id="${c.id}" class="c-dis">
-          ${boolOpt(c.distribute)}
-        </select>
-      </td>
-      <td>
-        <button class="btn" onclick="saveCat(${c.id})">Salvar</button>
-        <button class="btn-alt" onclick="delCat(${c.id})">Excluir</button>
-      </td>
-    </tr>
-  `).join('');
-  // set selected metric
-  $$('#tbl-cat .c-metric').forEach(sel=>{ const id=sel.dataset.id; const cat=ST.cats.find(x=>x.id==id); sel.value=cat.metric||''; });
-}
-function addCat(){
-  const novo={nome:'Nova categoria',slug:'',ativa:1,metric:'',per_person:'',base_people:'',distribute:''};
-  api('save_categoria',novo).then(()=>refresh());
-}
-function saveCat(id){
-  const row = $(`#tbl-cat tbody tr td .btn[onclick="saveCat(${id})"]`).closest('tr');
-  const payload={
-    id,
-    nome: row.querySelector('.c-nome').value.trim(),
-    slug: row.querySelector('.c-slug').value.trim(),
-    ativa: parseInt(row.querySelector('.c-ativa').value,10),
-    metric: row.querySelector('.c-metric').value || null,
-    per_person: row.querySelector('.c-per').value,
-    base_people: row.querySelector('.c-base').value,
-    distribute: row.querySelector('.c-dis').value===''? null : (row.querySelector('.c-dis').value==='1')
-  };
-  api('save_categoria',payload).then(()=>refresh());
-}
-function delCat(id){ if(confirm('Excluir categoria? Itens desta categoria podem ser removidos.')) api('del_categoria',{id}).then(()=>refresh()); }
-
-function renderItens(){
-  const tb=$('#tbl-item tbody'); if(!tb) return;
-  tb.innerHTML = ST.itens.map(i=>`
-    <tr>
-      <td><input type="text" value="${escapeHtml(i.nome)}" data-id="${i.id}" class="i-nome"></td>
-      <td><select class="catSel" data-v="${i.categoria_id}"></select></td>
-      <td>
-        <select data-id="${i.id}" class="i-metric">
-          ${opt('','')} ${opt('un','un')} ${opt('kg','kg')} ${opt('escala_base','escala_base')} ${opt('evento','evento')}
-        </select>
-      </td>
-      <td><input type="number" step="1" value="${i.base_people??''}" data-id="${i.id}" class="i-base"></td>
-      <td>
-        <button class="btn" onclick="saveItem(${i.id})">Salvar</button>
-        <button class="btn-alt" onclick="delItem(${i.id})">Excluir</button>
-      </td>
-    </tr>
-  `).join('');
-  $$('#tbl-item .i-metric').forEach(sel=>{ const id=sel.dataset.id; const it=ST.itens.find(x=>x.id==id); sel.value=it.metric||''; });
-}
-function addItem(){
-  const firstCat = ST.cats[0]?.id || 0;
-  const novo={categoria_id:firstCat,nome:'Novo item',metric:'',base_people:''};
-  api('save_item',novo).then(()=>refresh());
-}
-function saveItem(id){
-  const row = $(`#tbl-item tbody tr td .btn[onclick="saveItem(${id})"]`).closest('tr');
-  const payload={
-    id,
-    nome: row.querySelector('.i-nome').value.trim(),
-    categoria_id: parseInt(row.querySelector('select.catSel').value,10),
-    metric: row.querySelector('.i-metric').value || null,
-    base_people: row.querySelector('.i-base').value
-  };
-  api('save_item',payload).then(()=>refresh());
-}
-function delItem(id){ if(confirm('Excluir item e sua composição?')) api('del_item',{id}).then(()=>refresh()); }
-
-function renderInsumos(){
-  const tb=$('#tbl-ins tbody'); if(!tb) return;
-  tb.innerHTML = ST.insumos.map(s=>`
-    <tr>
-      <td><input type="text" value="${escapeHtml(s.nome)}" data-id="${s.id}" class="s-nome"></td>
-      <td><input type="text" value="${escapeHtml(s.unidade)}" data-id="${s.id}" class="s-un"></td>
-      <td><input type="number" step="0.01" value="${s.embalagem_qtd??''}" data-id="${s.id}" class="s-pack"></td>
-      <td>
-        <select data-id="${s.id}" class="s-round">
-          ${sel(s.arredondamento,['cima','normal','nenhum'])}
-        </select>
-      </td>
-      <td>
-        <button class="btn" onclick="saveIns(${s.id})">Salvar</button>
-        <button class="btn-alt" onclick="delIns(${s.id})">Excluir</button>
-      </td>
-    </tr>
-  `).join('');
-}
-function addIns(){ api('save_insumo',{nome:'Novo insumo',unidade:'un',embalagem_qtd:'',arredondamento:'cima'}).then(()=>refresh()); }
-function saveIns(id){
-  const row = $(`#tbl-ins tbody tr td .btn[onclick="saveIns(${id})"]`).closest('tr');
-  const payload={
-    id,
-    nome: row.querySelector('.s-nome').value.trim(),
-    unidade: row.querySelector('.s-un').value.trim(),
-    embalagem_qtd: row.querySelector('.s-pack').value,
-    arredondamento: row.querySelector('.s-round').value
-  };
-  api('save_insumo',payload).then(()=>refresh());
-}
-function delIns(id){ if(confirm('Excluir insumo?')) api('del_insumo',{id}).then(()=>refresh()); }
-
-function renderAlias(){
-  const tb=$('#tbl-alias tbody'); if(!tb) return;
-  tb.innerHTML = ST.alias.map(a=>`
-    <tr><td>${escapeHtml(a.item_nome)}</td><td>${escapeHtml(a.termo)}</td>
-      <td><button class="btn-alt" onclick="delAlias(${a.id})">Excluir</button></td></tr>
-  `).join('');
-}
-function saveAlias(){
-  const payload={ item_id: parseInt($('#al_item').value,10), termo: $('#al_termo').value.trim() };
-  if(!payload.termo) return alert('Informe o termo.');
-  api('add_alias',payload).then(()=>{ $('#al_termo').value=''; refresh(); });
-}
-function delAlias(id){ api('del_alias',{id}).then(()=>refresh()); }
-
-function renderComp(){
-  // tabela depende do item selecionado
-  compChange();
-}
-function compChange(){
-  const iid = parseInt($('#comp_item').value||'0',10);
-  const tb=$('#tbl-comp tbody'); if(!tb) return;
-  const rows = ST.comp.filter(c=>c.item_id==iid).map(c=>`
-    <tr><td>${escapeHtml(c.insumo_nome)}</td><td>${c.qtd_por_base}</td><td>${escapeHtml(c.unidade)}</td>
-      <td><button class="btn-alt" onclick="delComp(${c.id})">Excluir</button></td></tr>
-  `).join('');
-  tb.innerHTML = rows || '<tr><td colspan="4" class="sm">Sem composição cadastrada.</td></tr>';
-}
-function saveComp(){
-  const payload={
-    item_id: parseInt($('#comp_item').value,10),
-    insumo_id: parseInt($('#comp_ins').value,10),
-    qtd_por_base: parseFloat($('#comp_q').value||'0'),
-    unidade: $('#comp_un').value.trim()
-  };
-  if(!payload.item_id || !payload.insumo_id || !payload.qtd_por_base || !payload.unidade){ return alert('Preencha todos os campos.'); }
-  api('add_comp',payload).then(()=>{ $('#comp_q').value=''; $('#comp_un').value=''; refresh(); });
-}
-function delComp(id){ api('del_comp',{id}).then(()=>refresh()); }
-
-function renderParser(){
-  const tb=$('#tbl-parser tbody'); if(!tb) return;
-  tb.innerHTML = ST.parser.map(p=>`
-    <tr><td>${escapeHtml(p.categoria_nome)}</td><td>${escapeHtml(p.termo)}</td>
-      <td><button class="btn-alt" onclick="delParser(${p.id})">Excluir</button></td></tr>
-  `).join('');
-}
-function saveParser(){
-  const payload={ categoria_id: parseInt($('#ps_cat').value,10), termo: $('#ps_termo').value.trim() };
-  if(!payload.termo) return alert('Informe o termo.');
-  api('add_parser',payload).then(()=>{ $('#ps_termo').value=''; refresh(); });
-}
-function delParser(id){ api('del_parser',{id}).then(()=>refresh()); }
-
-// Teste rápido
-function runTest(){
-  const texto = $('#tx_teste').value || '';
-  fetch('?action=test_parser',{method:'POST',body:JSON.stringify({texto})})
-    .then(r=>r.json()).then(j=>{
-      const mapCat = Object.fromEntries(ST.cats.map(c=>[c.id,c.nome]));
-      let out='Itens reconhecidos por sinônimo: '+ (j.items?.length||0)+'\n';
-      out += '\nBlocos por categoria:\n';
-      for (const cid in j.blocks){
-        out += '- '+ (mapCat[cid]||('cat '+cid)) +':\n  • '+ (j.blocks[cid].join('\n  • ')||'—') + '\n';
-      }
-      $('#test_out').textContent = out;
-    });
+// Funções para Categorias
+function openCategoriaModal() {
+  document.getElementById('categoriaModalTitle').textContent = 'Nova Categoria';
+  document.getElementById('categoriaForm').reset();
+  document.getElementById('categoriaId').value = '';
+  document.getElementById('categoriaModal').style.display = 'flex';
 }
 
-// helpers
-function escapeHtml(x){ return (x||'').replace(/[&<>"]/g,s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s])); }
-function opt(v,t){ return `<option value="${v}">${t}</option>`; }
-function sel(cur, arr){ return arr.map(v=>`<option value="${v}"${cur===v?' selected':''}>${v}</option>`).join(''); }
-function boolOpt(val){ return `<option value=""${val===null?' selected':''}></option><option value="1"${val===true?' selected':''}>true</option><option value="0"${val===false?' selected':''}>false</option>`; }
+function closeCategoriaModal() {
+  document.getElementById('categoriaModal').style.display = 'none';
+}
 
-// Tabs
-$$('.tab').forEach(t=>t.onclick=()=>{
-  $$('.tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  const want=t.dataset.t;
-  ['cat','item','insumo','comp','alias','parser','teste'].forEach(k=>$('#p-'+k).style.display = (k===want)?'block':'none');
-  if (want==='comp') compChange();
-});
+// Funções para Unidades
+function openUnidadeModal() {
+  document.getElementById('unidadeModalTitle').textContent = 'Nova Unidade';
+  document.getElementById('unidadeForm').reset();
+  document.getElementById('unidadeId').value = '';
+  document.getElementById('unidadeModal').style.display = 'flex';
+}
 
-document.addEventListener('change', e=>{
-  if (e.target && e.target.id==='comp_item') compChange();
-});
-
-refresh();
+function closeUnidadeModal() {
+  document.getElementById('unidadeModal').style.display = 'none';
+}
 </script>
+
+<!-- Modal para Editar/Criar Categoria -->
+<div id="categoriaModal" class="modal-overlay" style="display: none;">
+  <div class="modal">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title" id="categoriaModalTitle">Nova Categoria</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeCategoriaModal()">
+          <span>✕</span>
+        </button>
+      </div>
+      <div class="card-body">
+        <form method="post" id="categoriaForm">
+          <input type="hidden" name="action" value="save_categoria">
+          <input type="hidden" name="tab" value="categorias">
+          <input type="hidden" name="id" id="categoriaId" value="">
+          
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="form-label">Nome da Categoria *</label>
+              <input type="text" name="nome" id="categoriaNome" class="form-input" required 
+                     placeholder="Digite o nome da categoria">
+            </div>
+            
+            <div>
+              <label class="form-label">Ordem</label>
+              <input type="number" name="ordem" id="categoriaOrdem" class="form-input" 
+                     min="0" max="999" value="0">
+            </div>
+            
+            <div>
+              <label class="form-label">Status</label>
+              <select name="ativo" id="categoriaAtivo" class="form-select">
+                <option value="1" selected>Ativa</option>
+                <option value="0">Inativa</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="flex justify-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline" onclick="closeCategoriaModal()">
+              <span>❌</span> Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <span>💾</span> Salvar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para Editar/Criar Unidade -->
+<div id="unidadeModal" class="modal-overlay" style="display: none;">
+  <div class="modal">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title" id="unidadeModalTitle">Nova Unidade</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeUnidadeModal()">
+          <span>✕</span>
+        </button>
+      </div>
+      <div class="card-body">
+        <form method="post" id="unidadeForm">
+          <input type="hidden" name="action" value="save_unidade">
+          <input type="hidden" name="tab" value="unidades">
+          <input type="hidden" name="id" id="unidadeId" value="">
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Nome *</label>
+              <input type="text" name="nome" id="unidadeNome" class="form-input" required 
+                     placeholder="Ex: Quilograma">
+            </div>
+            
+            <div>
+              <label class="form-label">Símbolo *</label>
+              <input type="text" name="simbolo" id="unidadeSimbolo" class="form-input" required 
+                     placeholder="kg" style="text-align: center;">
+            </div>
+            
+            <div>
+              <label class="form-label">Tipo</label>
+              <select name="tipo" id="unidadeTipo" class="form-select">
+                <option value="massa" selected>Massa</option>
+                <option value="volume">Volume</option>
+                <option value="unidade">Unidade</option>
+                <option value="embalagem">Embalagem</option>
+                <option value="outro">Outro</option>
+              </select>
+            </div>
+            
+            <div>
+              <label class="form-label">Fator Base</label>
+              <input type="number" step="0.000001" name="fator_base" id="unidadeFatorBase" 
+                     class="form-input" min="0.000001" max="999999.999999" 
+                     value="1.000000" style="text-align: center;">
+            </div>
+            
+            <div>
+              <label class="form-label">Status</label>
+              <select name="ativo" id="unidadeAtivo" class="form-select">
+                <option value="1" selected>Ativa</option>
+                <option value="0">Inativa</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="flex justify-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline" onclick="closeUnidadeModal()">
+              <span>❌</span> Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <span>💾</span> Salvar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -23,65 +23,12 @@ $usuarioNome = (string)($_SESSION['user_name'] ?? ($_SESSION['nome'] ?? ''));
 require_once __DIR__ . '/conexao.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
+// ========= Incluir lc_calc.php =========
+require_once __DIR__ . '/lc_calc.php';
+
 // ========= Util =========
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
-
-// ========= Integração ME Eventos (AJAX) =========
-// GET ?ajax=me_buscar&start=YYYY-MM-DD&end=YYYY-MM-DD&search=...&page=1&limit=50
-if (($_GET['ajax'] ?? '') === 'me_buscar') {
-    header('Content-Type: application/json; charset=utf-8');
-    $ME_BASE = getenv('ME_BASE_URL') ?: '';
-    $ME_KEY  = getenv('ME_API_KEY')   ?: '';
-    if (!$ME_BASE || !$ME_KEY) {
-        echo json_encode(['ok'=>false, 'error'=>'Configuração ausente: defina ME_BASE_URL e ME_API_KEY.']); exit;
-    }
-    $qs = [
-        'start' => $_GET['start'] ?? '',
-        'end'   => $_GET['end']   ?? '',
-        'search'=> $_GET['search']?? '',
-        'page'  => $_GET['page']  ?? '1',
-        'limit' => $_GET['limit'] ?? '50',
-        // você pode acrescentar field_sort/sort se desejar
-    ];
-    // monta URL
-    $url = rtrim($ME_BASE,'/').'/api/v1/events';
-    $sep = '?';
-    foreach ($qs as $k=>$v){ if ($v !== '') { $url .= $sep.urlencode($k).'='.urlencode($v); $sep='&'; } }
-
-    // chama API
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER     => ['Authorization: Bearer '.$ME_KEY, 'Accept: application/json'],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
-    ]);
-    $resp = curl_exec($ch);
-    $err  = curl_error($ch);
-    $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($err || !$resp || $http >= 400) {
-        echo json_encode(['ok'=>false, 'error'=>"Erro na API ($http): ".($err ?: $resp)]); exit;
-    }
-    $json = json_decode($resp, true);
-    // A doc informa que a listagem vem em "data" e paginação em "pagination"
-    // Campos de interesse: dataevento, horaevento, localevento, nomeevento, convidados
-    $rows = $json['data'] ?? $json ?? [];
-    $out  = [];
-    foreach ($rows as $e) {
-        $out[] = [
-            'espaco'     => (string)($e['localevento'] ?? ''),
-            'convidados' => (int)($e['convidados'] ?? 0),
-            'horario'    => (string)($e['horaevento'] ?? ''),
-            'evento'     => (string)($e['nomeevento'] ?? ''),
-            'data'       => substr((string)($e['dataevento'] ?? ''), 0, 10),
-        ];
-    }
-    echo json_encode(['ok'=>true, 'events'=>$out, 'pagination'=>$json['pagination'] ?? null], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
 CREATE TABLE IF NOT EXISTS lc_rascunhos (
@@ -146,8 +93,131 @@ $forns = $pdo->query("SELECT id, nome, modo_padrao::text AS modo_padrao FROM for
 
 $err = '';
 
+// ========= POST (Gerar Lista Final do Rascunho) =========
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_lista_final') {
+    try {
+        $eventosRascunho = json_decode($_POST['eventos_rascunho'] ?? '[]', true);
+        
+        if (empty($eventosRascunho)) {
+            throw new Exception('Nenhum evento no rascunho para gerar lista.');
+        }
+        
+        // Consolidar itens de todos os eventos
+        $itensConsolidados = [];
+        $eventosIds = [];
+        
+        foreach ($eventosRascunho as $evento) {
+            // Garantir que o ID seja um inteiro válido
+            $eventoIdRaw = $evento['id'] ?? '';
+            $eventoId = (int)$eventoIdRaw;
+            
+            // Verificar se o valor original era "on" ou inválido
+            if ($eventoIdRaw === 'on' || $eventoIdRaw === '' || $eventoId <= 0) {
+                throw new Exception('ID de evento inválido: "' . $eventoIdRaw . '". Selecione um evento válido da ME.');
+            }
+            
+            $eventosIds[] = $eventoId;
+            
+            foreach ($evento['itens'] as $item) {
+                $key = $item['tipo'] . '_' . $item['id'];
+                
+                if (!isset($itensConsolidados[$key])) {
+                    $itensConsolidados[$key] = [
+                        'tipo' => $item['tipo'],
+                        'id' => $item['id'],
+                        'nome' => $item['nome'],
+                        'quantidade_total' => 0,
+                        'eventos' => []
+                    ];
+                }
+                
+                $itensConsolidados[$key]['quantidade_total'] += $item['quantidade'];
+                $itensConsolidados[$key]['eventos'][] = [
+                    'evento_id' => $eventoId,
+                    'evento_nome' => $evento['nome'],
+                    'quantidade' => $item['quantidade']
+                ];
+            }
+        }
+        
+        // Criar lista principal
+        $stmt = $pdo->prepare("
+            INSERT INTO lc_listas (grupo_id, tipo, data_gerada, espaco_consolidado, eventos_resumo, criado_por, criado_por_nome, tipo_lista, criado_em, resumo_eventos, espaco_resumo)
+            VALUES (1, 'compras', NOW(), 'Múltiplos Eventos', :eventos_resumo, :criado_por, :criado_por_nome, 'compras', NOW(), :resumo_eventos, 'Múltiplos Eventos')
+            RETURNING id
+        ");
+        
+        $eventosResumo = implode(', ', array_column($eventosRascunho, 'nome'));
+        $resumoEventos = json_encode($eventosRascunho, JSON_UNESCAPED_UNICODE);
+        
+        $stmt->execute([
+            ':eventos_resumo' => $eventosResumo,
+            ':criado_por' => $uid,
+            ':criado_por_nome' => $usuarioNome,
+            ':resumo_eventos' => $resumoEventos
+        ]);
+        
+        $listaId = $stmt->fetchColumn();
+        
+        // Criar eventos da lista
+        foreach ($eventosRascunho as $evento) {
+            $stmt = $pdo->prepare("
+                INSERT INTO lc_listas_eventos (lista_id, grupo_id, espaco, convidados, horario, evento, data, dia_semana)
+                VALUES (:lista_id, 1, 'Múltiplos', :convidados, '', :evento, :data, '')
+            ");
+            $stmt->execute([
+                ':lista_id' => $listaId,
+                ':convidados' => $evento['convidados'],
+                ':evento' => $evento['nome'],
+                ':data' => $evento['data']
+            ]);
+        }
+        
+        // Criar itens consolidados
+        foreach ($itensConsolidados as $item) {
+            if ($item['tipo'] === 'insumo') {
+                // Buscar dados do insumo
+                $stmt = $pdo->prepare("
+                    SELECT i.*, u.simbolo, c.nome as categoria_nome
+                    FROM lc_insumos i
+                    LEFT JOIN lc_unidades u ON u.simbolo = i.unidade_padrao
+                    LEFT JOIN lc_categorias c ON c.id = i.categoria_id
+                    WHERE i.id = ?
+                ");
+                $stmt->execute([$item['id']]);
+                $insumo = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($insumo) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO lc_compras_consolidadas (lista_id, grupo_id, insumo_id, nome_insumo, unidade, quantidade, custo_unitario, categoria)
+                        VALUES (:lista_id, 1, :insumo_id, :nome_insumo, :unidade, :quantidade, :custo_unitario, :categoria)
+                    ");
+                    $stmt->execute([
+                        ':lista_id' => $listaId,
+                        ':insumo_id' => $insumo['id'],
+                        ':nome_insumo' => $insumo['nome'],
+                        ':unidade' => $insumo['unidade_padrao'] ?: $insumo['unidade'],
+                        ':quantidade' => $item['quantidade_total'],
+                        ':custo_unitario' => $insumo['custo_unit'] ?: 0,
+                        ':categoria' => $insumo['categoria_nome'] ?: 'Sem Categoria'
+                    ]);
+                }
+            }
+        }
+        
+        // Limpar rascunho da sessão
+        unset($_SESSION['rascunho_lista']);
+        
+        header('Location: lc_index.php?sucesso=' . urlencode('Lista de compras gerada com sucesso! ID: ' . $listaId));
+        exit;
+        
+    } catch (Exception $e) {
+        $err = 'Erro ao gerar lista: ' . $e->getMessage();
+    }
+}
+
 // ========= POST (Finalizar = gerar listas) =========
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar_rascunho')) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar_rascunho' && ($_POST['acao'] ?? '') !== 'gerar_lista_final')) {
     try {
         // Eventos
         $evs = $_POST['eventos'] ?? [];
@@ -356,12 +426,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar
 .block{border:1px dashed #dbe6ff;border-radius:10px;padding:12px;margin-top:12px}
 h2{margin:10px 0}
 label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
-.input{width:100%;padding:10px;border:1px solid #cfe0ff;border-radius:8px}
+.input{
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.input:focus{
+  outline: none;
+  border-color: #1e3a8a;
+  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+  transform: translateY(-1px);
+}
+.input:read-only{
+  background: #f8f9fa;
+  color: #6c757d;
+  cursor: not-allowed;
+}
 .category{margin-bottom:10px}
 .items{display:none;margin-top:8px;padding-left:12px}
 .items.active{display:block}
-.btn{background:#004aad;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
-.btn.gray{background:#e9efff;color:#004aad}
+  .btn{
+  background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(30, 58, 138, 0.3);
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn:hover{
+  background: linear-gradient(135deg, #1e40af 0%, #ea580c 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(30, 58, 138, 0.4);
+}
+.btn:active{
+  transform: translateY(0);
+}
+.btn.gray{
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  box-shadow: 0 4px 14px rgba(107, 114, 128, 0.3);
+}
+.btn.gray:hover{
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+  box-shadow: 0 8px 25px rgba(107, 114, 128, 0.4);
+}
 .alert{padding:10px;border-radius:8px;margin-bottom:10px}
 .alert.err{background:#ffeded;border:1px solid #ffb3b3;color:#8a0c0c}
 .alert.success{background:#edffed;border:1px solid #b3ffb3;color:#0c8a0c}
@@ -375,38 +495,170 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
 <script>
 function toggleCat(id){ const el=document.getElementById('items-'+id); if(el) el.classList.toggle('active'); }
 function salvarRascunho(){ document.getElementById('acao').value='salvar_rascunho'; document.getElementById('formLC').submit(); }
-async function abrirME(){
-  const m=document.getElementById('modalME'); m.style.display='flex';
-}
-function fecharME(){ document.getElementById('modalME').style.display='none'; }
-async function buscarME(ev){
-  ev.preventDefault();
-  const form = ev.target;
-  const params = new URLSearchParams(new FormData(form));
-  const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true; btn.textContent = 'Buscando...';
-  try{
-    const r = await fetch('lista_compras.php?ajax=me_buscar&'+params.toString(), {headers:{'Accept':'application/json'}});
-    const j = await r.json();
-    const box = document.getElementById('meResultados');
-    box.innerHTML = '';
-    if(!j.ok){ box.innerHTML = '<div class="alert err">'+(j.error||'Erro')+'</div>'; return; }
-    if(!Array.isArray(j.events) || !j.events.length){ box.innerHTML = '<em>Sem eventos no período/termo informado.</em>'; return; }
-    j.events.forEach((e,i)=>{
-      const row = document.createElement('div');
-      row.className = 'block';
-      row.innerHTML = `
-        <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-          <div>
-            <div><strong>${e.evento||'(sem título)'}</strong> <span class="badge">${e.data||''} ${e.horario||''}</span></div>
-            <div style="font-size:13px;color:#333">Espaço: ${e.espaco||''} • Convidados: ${e.convidados||0}</div>
-          </div>
-          <button type="button" class="btn" onclick='addEventoME(${JSON.stringify(e).replace(/'/g,"&#39;")})'>Adicionar</button>
-        </div>`;
-      box.appendChild(row);
+
+// Sistema de Rascunho de Múltiplos Eventos
+let rascunhoEventos = [];
+
+function adicionarEvento() {
+  const eventoIdRaw = document.getElementById('evento_id_me')?.value;
+  const eventoNome = document.getElementById('evento_nome')?.value;
+  const eventoData = document.getElementById('evento_data')?.value;
+  const eventoConvidados = document.getElementById('evento_convidados')?.value;
+  
+  // Validar e converter ID do evento para inteiro
+  const eventoId = parseInt(eventoIdRaw) || 0;
+  if (eventoId <= 0) {
+    alert('ID de evento inválido. Selecione um evento válido da ME.');
+    return;
+  }
+  
+  // Debug: mostrar valores dos campos
+  console.log('Debug - Valores dos campos:', {
+    eventoId: eventoId,
+    eventoNome: eventoNome,
+    eventoData: eventoData,
+    eventoConvidados: eventoConvidados
+  });
+  
+  if (!eventoId || !eventoNome) {
+    alert(`Selecione um evento da ME antes de adicionar ao rascunho.\n\nDebug:\n- ID: ${eventoId || 'VAZIO'}\n- Nome: ${eventoNome || 'VAZIO'}`);
+    return;
+  }
+  
+  // Verificar se evento já foi adicionado
+  if (rascunhoEventos.find(e => e.id === eventoId)) {
+    alert('Este evento já foi adicionado ao rascunho.');
+    return;
+  }
+  
+  // Coletar itens selecionados
+  const itensSelecionados = [];
+  const checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+  
+  console.log('Debug - Checkboxes encontrados:', checkboxes.length);
+  
+  checkboxes.forEach((checkbox, index) => {
+    console.log(`Checkbox ${index}:`, {
+      value: checkbox.value,
+      dataset: checkbox.dataset,
+      quantidade: checkbox.dataset.quantidade || 1
     });
-  }catch(err){ alert('Erro na busca: '+err); }
-  finally{ btn.disabled=false; btn.textContent='Buscar'; }
+    
+    const quantidade = parseFloat(checkbox.dataset.quantidade || 1);
+    if (quantidade > 0) {
+      itensSelecionados.push({
+        id: checkbox.value,
+        nome: checkbox.dataset.nome || 'Item',
+        quantidade: quantidade,
+        tipo: checkbox.dataset.tipo || 'insumo'
+      });
+    }
+  });
+  
+  console.log('Debug - Itens selecionados:', itensSelecionados);
+  
+  if (itensSelecionados.length === 0) {
+    alert('Selecione pelo menos um item para adicionar ao rascunho.');
+    return;
+  }
+  
+  // Adicionar evento ao rascunho
+  rascunhoEventos.push({
+    id: eventoId,
+    nome: eventoNome,
+    data: eventoData,
+    convidados: eventoConvidados,
+    itens: itensSelecionados
+  });
+  
+  // Atualizar interface
+  atualizarRascunho();
+  
+  // Limpar seleção atual
+  checkboxes.forEach(cb => cb.checked = false);
+  
+  alert(`Evento "${eventoNome}" adicionado ao rascunho!`);
+}
+
+function atualizarRascunho() {
+  const container = document.getElementById('rascunhoContainer');
+  const eventosDiv = document.getElementById('eventosRascunho');
+  
+  if (rascunhoEventos.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+  
+  let html = '';
+  rascunhoEventos.forEach((evento, index) => {
+    html += `
+      <div class="evento-rascunho-card">
+        <div class="evento-info">
+          <h4 class="evento-nome">${evento.nome}</h4>
+          <p class="evento-detalhes">
+            📅 ${evento.data} | 👥 ${evento.convidados} convidados | 📦 ${evento.itens.length} itens
+          </p>
+        </div>
+        <div class="evento-actions">
+          <button type="button" class="btn btn--secondary btn-sm" onclick="removerEvento(${index})">
+            ❌ Remover
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  eventosDiv.innerHTML = html;
+}
+
+function removerEvento(index) {
+  if (confirm('Tem certeza que deseja remover este evento do rascunho?')) {
+    rascunhoEventos.splice(index, 1);
+    atualizarRascunho();
+  }
+}
+
+function limparRascunho() {
+  if (confirm('Tem certeza que deseja limpar todo o rascunho?')) {
+    rascunhoEventos = [];
+    atualizarRascunho();
+  }
+}
+
+function gerarListaFinal() {
+  if (rascunhoEventos.length === 0) {
+    alert('Adicione pelo menos um evento ao rascunho antes de gerar a lista.');
+    return;
+  }
+  
+  if (!confirm(`Gerar lista final com ${rascunhoEventos.length} evento(s)?`)) {
+    return;
+  }
+  
+  // Criar formulário para enviar dados
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '';
+  
+  // Adicionar campo de ação
+  const acaoInput = document.createElement('input');
+  acaoInput.type = 'hidden';
+  acaoInput.name = 'acao';
+  acaoInput.value = 'gerar_lista_final';
+  form.appendChild(acaoInput);
+  
+  // Adicionar dados dos eventos
+  const eventosInput = document.createElement('input');
+  eventosInput.type = 'hidden';
+  eventosInput.name = 'eventos_rascunho';
+  eventosInput.value = JSON.stringify(rascunhoEventos);
+  form.appendChild(eventosInput);
+  
+  // Adicionar ao DOM e enviar
+  document.body.appendChild(form);
+  form.submit();
 }
 function addEventoME(e){
   // encontra próximo índice de evento na tela
@@ -440,13 +692,561 @@ function addEventoME(e){
   fecharME();
 }
 </script>
+    <style>
+  /* ====== Estilos para Lista de Compras ====== */
+  
+  /* Garante cálculo correto de largura/padding */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  /* Container principal */
+  .lc-main-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Seção de cabeçalho */
+  .lc-header-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 0;
+    background: transparent;
+    border: none;
+  }
+
+  .lc-header-section h2 {
+    margin: 0;
+    color: var(--primary-blue);
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  /* Campos do evento */
+  .lc-event-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+    padding: 20px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .field-group label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .field-group input {
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    background: #f8f9fa;
+  }
+
+  /* Seções */
+  .lc-section {
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #e9ecef;
+    padding: 32px;
+    margin-bottom: 32px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    position: relative;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+  }
+
+  .lc-section:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+  }
+
+  .lc-section h2 {
+    margin: 0 0 24px 0;
+    color: #2c3e50;
+    font-size: 24px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+  }
+
+  .lc-section h2::before {
+    content: '';
+    width: 6px;
+    height: 32px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(30, 58, 138, 0.3);
+  }
+
+  .lc-section h2::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    border-radius: 2px;
+    opacity: 0.6;
+  }
+
+  /* Estado vazio */
+  .lc-empty-state {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 20px;
+  }
+
+  /* Tabela de rascunhos */
+  .lc-table-container {
+    overflow-x: auto;
+  }
+
+  .lc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+  }
+
+  .lc-table th,
+  .lc-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+  }
+
+  .lc-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .lc-actions {
+    white-space: nowrap;
+  }
+
+  .lc-actions .btn {
+    margin-right: 8px;
+  }
+
+  /* Grid de categorias */
+  .lc-categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+  }
+
+  /* Responsividade */
+  @media (max-width: 768px) {
+    .lc-main-container {
+      padding: 16px;
+    }
+    
+    .lc-section {
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .lc-categories-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .btn {
+      padding: 10px 16px;
+      font-size: 13px;
+    }
+  }
+
+  .lc-category-card {
+    border: 1px solid #e9ecef;
+    border-radius: 16px;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .lc-category-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+  }
+
+  .lc-category-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  }
+
+  .lc-category-header {
+    margin-bottom: 12px;
+  }
+
+  .lc-category-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .lc-category-checkbox input[type="checkbox"] {
+    margin-right: 12px;
+    transform: scale(1.3);
+    accent-color: #1e3a8a;
+    cursor: pointer;
+  }
+
+  .lc-category-name {
+    font-size: 16px;
+  }
+
+  .lc-items-container {
+    display: none;
+    margin-top: 12px;
+  }
+
+  .lc-items-container.active {
+    display: block;
+  }
+
+  .lc-item {
+    margin-bottom: 8px;
+  }
+
+  .lc-item-checkbox {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    padding: 12px;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    background: #f8f9fa;
+    margin-bottom: 8px;
+  }
+
+  .lc-item-checkbox:hover {
+    background: #e9ecef;
+    border-color: #1e3a8a;
+    transform: translateX(4px);
+  }
+
+  .lc-item-checkbox input[type="checkbox"] {
+    margin-right: 12px;
+    margin-top: 2px;
+    transform: scale(1.2);
+    accent-color: #1e3a8a;
+    cursor: pointer;
+  }
+
+  .lc-item-checkbox:has(input:checked) {
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    color: white;
+    border-color: #1e3a8a;
+  }
+
+  .lc-item-name {
+    font-weight: 500;
+    color: #333;
+    margin-right: 8px;
+  }
+
+  .lc-item-meta {
+    color: #666;
+    font-size: 12px;
+  }
+
+  .lc-empty-items {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 16px;
+  }
+
+  /* Fornecedores */
+  .lc-suppliers-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .lc-supplier-item {
+    padding: 16px;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #f8f9fa;
+  }
+
+  .lc-supplier-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .lc-supplier-name {
+    font-weight: 600;
+    color: #333;
+    min-width: 120px;
+  }
+
+  .lc-supplier-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+  }
+
+  /* Botões de ação */
+  .lc-actions-container {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 32px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    border: 1px solid #e9ecef;
+  }
+
+  /* Variantes de botões */
+  .btn--primary {
+    background: var(--primary-blue);
+    color: white;
+  }
+
+  .btn--secondary {
+    background: #6c757d;
+    color: white;
+  }
+
+  .btn--danger {
+    background: #dc3545;
+    color: white;
+  }
+
+  .btn--secondary:hover {
+    background: #5a6268;
+  }
+
+  /* Rascunho de Eventos */
+  .lc-rascunho-container {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 2px solid #f59e0b;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+
+  .lc-rascunho-container h3 {
+    color: #92400e;
+    margin: 0 0 1rem 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+
+  .eventos-rascunho {
+    margin-bottom: 1rem;
+  }
+
+  .evento-rascunho-card {
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .evento-info {
+    flex: 1;
+  }
+
+  .evento-nome {
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .evento-detalhes {
+    font-size: 0.875rem;
+    color: #6b7280;
+    margin: 0.25rem 0 0 0;
+  }
+
+  .evento-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .rascunho-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+  }
+
+  .btn--danger:hover {
+    background: #c82333;
+  }
+
+  .btn--success {
+    background: #28a745;
+    color: white;
+  }
+
+  .btn--success:hover {
+    background: #218838;
+  }
+
+  .btn--lg {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  /* Modal da ME */
+  #modalME {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  #modalME .modal-content {
+    max-width: 980px;
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+
+  .modal-filters {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .modal-filters > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .modal-filters label {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+  }
+
+  .modal-filters input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+
+  .modal-filters .search-field {
+    flex: 1;
+    min-width: 240px;
+  }
+
+  #me_results {
+    margin-top: 16px;
+    max-height: 400px;
+    overflow: auto;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  /* Responsivo */
+  @media (max-width: 768px) {
+    .lc-main-container {
+      padding: 16px;
+    }
+
+    .lc-header-section {
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+
+    .lc-event-fields {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-categories-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-suppliers-container {
+      grid-template-columns: 1fr;
+    }
+
+    .lc-actions-container {
+      flex-direction: column;
+    }
+
+    .modal-filters {
+      flex-direction: column;
+    }
+
+    .modal-filters .search-field {
+      min-width: auto;
+    }
+  }
+</style>
+</script>
 </head>
 <body class="panel">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
   <h1>Gerar Lista de Compras</h1>
 
-  <div class="form">
+  <div class="lc-main-container">
     <?php if (!empty($err)): ?><div class="alert err"><?=h($err)?></div><?php endif; ?>
     <?php if (isset($_GET['ok'])): ?>
       <div class="alert success">
@@ -456,14 +1256,21 @@ function addEventoME(e){
       </div>
     <?php endif; ?>
 
-    <!-- RASCUNHOS -->
-    <div class="block">
-      <h2>📝 Rascunhos (seus)</h2>
-      <?php if (!$RAS): ?>
-        <div><em>Sem rascunhos salvos.</em></div>
-      <?php else: ?>
-        <table class="table">
-          <thead><tr><th>#</th><th>Atualizado</th><th>Eventos</th><th>Itens</th><th>Ações</th></tr></thead>
+    <!-- RASCUNHOS (se houver) -->
+    <?php if ($RAS): ?>
+    <div class="lc-section">
+      <h2>📝 Rascunhos Salvos</h2>
+      <div class="lc-table-container">
+        <table class="lc-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Atualizado</th>
+              <th>Eventos</th>
+              <th>Itens</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
           <tbody>
           <?php foreach ($RAS as $r): ?>
             <tr>
@@ -471,18 +1278,17 @@ function addEventoME(e){
               <td><?= h($r['quando']) ?></td>
               <td><?= (int)$r['qtd_ev'] ?></td>
               <td><?= (int)$r['qtd_it'] ?></td>
-              <td>
-                <a class="btn gray" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
-                <a class="btn" style="background:#ff5a5a" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
+              <td class="lc-actions">
+                <a class="btn btn--secondary" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
+                <a class="btn btn--danger" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
               </td>
             </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
-      <?php endif; ?>
+      </div>
     </div>
-
-    <?php
+    <?php endif; ?>
     // Pré-carrega eventos/itens do rascunho se houver
     $evDraft = $RAS_PAYLOAD['payload']['eventos'] ?? [];
     if (!$evDraft) {
@@ -492,138 +1298,331 @@ function addEventoME(e){
     $draftSet = array_flip(array_map('intval',$draftIds));
     ?>
 
+    <!-- FORMULÁRIO PRINCIPAL -->
     <form id="formLC" method="post">
+      <input type="hidden" id="evento_id_me" name="evento_id_me" required>
       <?php if ($RAS_PAYLOAD): ?>
         <input type="hidden" name="rascunho_id" value="<?= (int)$RAS_PAYLOAD['id'] ?>">
       <?php endif; ?>
       <input type="hidden" name="acao" id="acao" value="">
 
-      <div class="block">
-        <h2 style="display:flex;align-items:center;gap:8px">
-          Eventos
-          <button class="btn gray" type="button" onclick="abrirME()">Buscar na ME Eventos</button>
-        </h2>
-        <div id="ev-wrap">
-          <?php foreach ($evDraft as $i=>$e): ?>
-            <div class="grid ev-row">
-              <div>
-                <label class="small">Espaço</label>
-                <input class="input" name="eventos[<?= $i ?>][espaco]" required value="<?= h($e['espaco'] ?? '') ?>">
+      <!-- 1. DADOS DO EVENTO -->
+      <div class="lc-section">
+        <div class="lc-header-section">
+          <h2>1. Dados do Evento</h2>
+          <button type="button" id="btnBuscarME" class="btn">Buscar na ME</button>
+        </div>
+        <div class="lc-event-fields">
+          <div class="field-group">
+            <label>Espaço</label>
+            <input id="evento_espaco" name="evento_espaco" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Convidados</label>
+            <input id="evento_convidados" name="evento_convidados" type="number" min="0" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Horário</label>
+            <input id="evento_hora" name="evento_hora" type="time" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Evento</label>
+            <input id="evento_nome" name="evento_nome" class="input" required readonly>
+          </div>
+          <div class="field-group">
+            <label>Data</label>
+            <input id="evento_data" name="evento_data" type="date" class="input" required readonly>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. CATEGORIAS E ITENS -->
+      <div class="lc-section">
+        <h2>2. Categorias e Itens</h2>
+        <div class="lc-categories-grid">
+          <?php foreach ($cats as $c): ?>
+            <div class="lc-category-card">
+              <div class="lc-category-header">
+                <label class="lc-category-checkbox">
+                  <input type="checkbox" onclick="toggleCat(<?= (int)$c['id'] ?>)">
+                  <span class="lc-category-name"><?= h($c['nome']) ?></span>
+                </label>
               </div>
-              <div>
-                <label class="small">Convidados</label>
-                <input class="input" type="number" name="eventos[<?= $i ?>][convidados]" min="0" value="<?= (int)($e['convidados'] ?? 0) ?>">
-              </div>
-              <div>
-                <label class="small">Horário</label>
-                <input class="input" name="eventos[<?= $i ?>][horario]" value="<?= h($e['horario'] ?? '') ?>">
-              </div>
-              <div>
-                <label class="small">Evento</label>
-                <input class="input" name="eventos[<?= $i ?>][evento]" value="<?= h($e['evento'] ?? '') ?>">
-              </div>
-              <div class="full">
-                <label class="small">Data</label>
-                <input class="input" type="date" name="eventos[<?= $i ?>][data]" value="<?= h($e['data'] ?? '') ?>">
+              <div class="lc-items-container" id="items-<?= (int)$c['id'] ?>">
+                <?php foreach (($itensByCat[$c['id']] ?? []) as $it): ?>
+                  <?php $checked = isset($draftSet[(int)$it['id']]) ? 'checked' : ''; ?>
+                  <div class="lc-item">
+                    <label class="lc-item-checkbox">
+                      <input type="checkbox" <?=$checked?> name="itens[<?= (int)$c['id'] ?>][]" value="<?= (int)$it['id'] ?>">
+                      <span class="lc-item-name"><?= h($it['nome']) ?></span>
+                      <small class="lc-item-meta">(
+                        <?= h($it['tipo']) ?>
+                        <?php
+                          if ($it['tipo']==='preparo'  && $it['ficha_id'])      echo ', ficha #'.(int)$it['ficha_id'];
+                          if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.(int)$it['fornecedor_id'];
+                        ?>
+                      )</small>
+                    </label>
+                  </div>
+                <?php endforeach; ?>
+                <?php if (empty($itensByCat[$c['id']])): ?>
+                  <div class="lc-empty-items"><em>Nenhum item nesta categoria.</em></div>
+                <?php endif; ?>
               </div>
             </div>
           <?php endforeach; ?>
         </div>
       </div>
 
-      <div class="block">
-        <h2>Categorias e Itens</h2>
-        <?php foreach ($cats as $c): ?>
-          <div class="category">
-            <label>
-              <input type="checkbox" onclick="toggleCat(<?= (int)$c['id'] ?>)">
-              <?= h($c['nome']) ?>
-            </label>
-            <div class="items" id="items-<?= (int)$c['id'] ?>">
-              <?php foreach (($itensByCat[$c['id']] ?? []) as $it): ?>
-                <?php $checked = isset($draftSet[(int)$it['id']]) ? 'checked' : ''; ?>
-                <label style="display:block;margin:6px 0">
-                  <input type="checkbox" <?=$checked?> name="itens[<?= (int)$c['id'] ?>][]" value="<?= (int)$it['id'] ?>">
-                  <?= h($it['nome']) ?>
-                  <small>(
-                    <?= h($it['tipo']) ?>
-                    <?php
-                      if ($it['tipo']==='preparo'  && $it['ficha_id'])      echo ', ficha #'.(int)$it['ficha_id'];
-                      if ($it['tipo']==='comprado' && $it['fornecedor_id']) echo ', forn #'.(int)$it['fornecedor_id'];
-                    ?>
-                  )</small>
-                </label>
-              <?php endforeach; ?>
-              <?php if (empty($itensByCat[$c['id']])): ?>
-                <div><em>Nenhum item nesta categoria.</em></div>
-              <?php endif; ?>
-            </div>
-          </div>
-        <?php endforeach; ?>
-      </div>
-
+      <!-- 3. FORNECEDORES -->
       <?php if ($forns): ?>
-      <div class="block">
-        <h2>Encomendas — Modo por Fornecedor</h2>
-        <?php foreach ($forns as $f): ?>
-          <label style="display:block;margin:6px 0">
-            <?= h($f['nome']) ?>:
-            <select name="fornecedor_modo[<?= (int)$f['id'] ?>]" class="input" style="max-width:220px; display:inline-block">
-              <option value="">Padrão: <?= h($f['modo_padrao']) ?></option>
-              <option value="consolidado">Consolidado</option>
-              <option value="separado">Separado por evento</option>
-            </select>
-          </label>
-        <?php endforeach; ?>
+      <div class="lc-section">
+        <h2>3. Encomendas — Modo por Fornecedor</h2>
+        <div class="lc-suppliers-container">
+          <?php foreach ($forns as $f): ?>
+            <div class="lc-supplier-item">
+              <label class="lc-supplier-label">
+                <span class="lc-supplier-name"><?= h($f['nome']) ?>:</span>
+                <select name="fornecedor_modo[<?= (int)$f['id'] ?>]" class="lc-supplier-select">
+                  <option value="">Padrão: <?= h($f['modo_padrao']) ?></option>
+                  <option value="consolidado">Consolidado</option>
+                  <option value="separado">Separado por evento</option>
+                </select>
+              </label>
+            </div>
+          <?php endforeach; ?>
+        </div>
       </div>
       <?php endif; ?>
 
-      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap">
-        <button class="btn gray" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
-        <button class="btn" type="submit" onclick="document.getElementById('acao').value=''">Gerar (finalizar)</button>
-        <a class="btn gray" href="dashboard.php">Cancelar</a>
+      <!-- 4. RASCUNHO DE EVENTOS -->
+      <div class="lc-rascunho-container" id="rascunhoContainer" style="display: none;">
+        <h3>📝 Rascunho da Lista</h3>
+        <div id="eventosRascunho" class="eventos-rascunho">
+          <!-- Eventos adicionados aparecerão aqui -->
+        </div>
+        <div class="rascunho-actions">
+          <button type="button" class="btn btn--secondary" onclick="limparRascunho()">🗑️ Limpar Rascunho</button>
+          <button type="button" class="btn btn--success btn--lg" onclick="gerarListaFinal()">
+            <span>📋</span> Gerar Lista Final
+          </button>
+        </div>
+      </div>
+
+      <!-- 5. AÇÕES -->
+      <div class="lc-actions-container">
+        <button class="btn btn--secondary" type="button" onclick="adicionarEvento()">➕ Adicionar Evento ao Rascunho</button>
+        <button class="btn btn--secondary" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
+        <a class="btn btn--secondary" href="dashboard.php">Cancelar</a>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Modal ME -->
-<div class="modal" id="modalME">
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <h3>Buscar eventos na ME</h3>
-      <button class="btn gray" type="button" onclick="fecharME()">Fechar</button>
+<!-- === BLOCO: Modal de Busca na ME === -->
+<div id="modalME">
+  <div class="modal-content">
+    <div class="modal-filters">
+      <div>
+        <label>Início</label>
+        <input type="date" id="me_start" value="<?php echo date('Y-m-d'); ?>">
+      </div>
+      <div>
+        <label>Fim</label>
+        <input type="date" id="me_end" value="<?php echo date('Y-m-d', strtotime('+30 days')); ?>">
+      </div>
+      <div class="search-field">
+        <label>Buscar</label>
+        <input type="text" id="me_q" placeholder="cliente, observação, evento…">
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="me_exec" class="btn">Buscar</button>
+          <button type="button" id="me_close" class="btn btn--secondary">Fechar</button>
+        </div>
+      </div>
     </div>
-    <form onsubmit="buscarME(event)" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px">
-      <div>
-        <label class="small">Início</label>
-        <input class="input" type="date" name="start" required>
-      </div>
-      <div>
-        <label class="small">Fim</label>
-        <input class="input" type="date" name="end" required>
-      </div>
-      <div style="flex:1;min-width:220px">
-        <label class="small">Buscar (nome/cliente/obs)</label>
-        <input class="input" type="text" name="search" placeholder="Ex: Ouro, aniversário, cliente...">
-      </div>
-      <div>
-        <label class="small">Página</label>
-        <input class="input" type="number" name="page" value="1" min="1">
-      </div>
-      <div>
-        <label class="small">Limite</label>
-        <input class="input" type="number" name="limit" value="50" min="1" max="200">
-      </div>
-      <div style="align-self:end">
-        <button class="btn" type="submit">Buscar</button>
-      </div>
-    </form>
-    <div id="meResultados"></div>
-    <div style="margin-top:8px;font-size:12px;color:#666">
-      Dica: Informe um intervalo curto (ex.: fim de semana) para carregar mais rápido.
+    <div id="me_results">
+      <div style="padding:12px;color:#666">Use os filtros e clique em Buscar.</div>
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  const $ = s => document.querySelector(s);
+  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
+
+  console.log('Elementos encontrados:', {
+    modal: !!modal,
+    btnOpen: !!btnOpen,
+    btnClose: !!btnClose,
+    btnExec: !!btnExec,
+    box: !!box
+  });
+
+  // Teste de conectividade com me_proxy.php
+  fetch('./me_proxy.php')
+    .then(r => r.json())
+    .then(data => console.log('Teste de conectividade me_proxy.php:', data))
+    .catch(e => console.error('Erro ao testar me_proxy.php:', e));
+
+  const openModal  = () => { 
+    console.log('Abrindo modal ME');
+    modal.style.display = 'flex'; 
+  };
+  const closeModal = () => { 
+    console.log('Fechando modal ME');
+    modal.style.display = 'none'; 
+  };
+
+  if (btnOpen) {
+    btnOpen.addEventListener('click', openModal);
+    console.log('Evento de abertura do modal registrado');
+    
+    // Teste adicional - clique direto
+    btnOpen.addEventListener('click', function(e) {
+      console.log('Clique detectado no botão Buscar na ME');
+    });
+  } else {
+    console.error('Botão de abrir modal não encontrado!');
+  }
+  
+  if (btnClose) {
+    btnClose.addEventListener('click', closeModal);
+    console.log('Evento de fechamento do modal registrado');
+  } else {
+    console.error('Botão de fechar modal não encontrado!');
+  }
+
+  // MAPEAMENTO conforme documentação da ME Eventos
+  function mapEventoToForm(raw){
+    const pad = s => (s||'').toString();
+    return {
+      espaco:     pad(raw.tipoEvento),                 // Espaço (tipoEvento)
+      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
+      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM)
+      nome:       pad(raw.nomeevento||''),             // Evento (nomeevento)
+      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
+      id:         pad(raw.id||'')
+    };
+  }
+
+  // Buscar no proxy
+  if (btnExec) {
+    btnExec.addEventListener('click', async ()=>{
+      console.log('Botão Buscar clicado');
+    const start = $('#me_start').value || '';
+    const end   = $('#me_end').value   || '';
+    const q     = $('#me_q').value     || '';
+
+    console.log('Parâmetros:', { start, end, q });
+
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end)   params.set('end', end);
+    if (q)     params.set('q', q);  // Corrigido: era 'search', deve ser 'q'
+
+    const url = './me_proxy.php?' + params.toString();  // Mudado para caminho relativo
+    console.log('URL da requisição:', url);
+
+    box.innerHTML = '<div style="padding:12px">Buscando…</div>';
+    try {
+      console.log('Fazendo requisição para:', url);
+      const r = await fetch(url, { 
+        headers: { 'Accept': 'application/json' },
+        method: 'GET'
+      });
+      
+      console.log('Status da resposta:', r.status);
+      
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      
+      console.log('Resposta da API:', j);
+
+      // Verifica se houve erro na API
+      if (j.ok === false) {
+        throw new Error(j.error || 'Erro na API da ME Eventos');
+      }
+
+      const lista = Array.isArray(j?.data) ? j.data : (Array.isArray(j) ? j : []);
+      console.log('Lista de eventos:', lista);
+      
+      if (!lista.length) { 
+        box.innerHTML = '<div style="padding:12px">Nenhum evento encontrado.</div>'; 
+        return; 
+      }
+
+      const header = `
+        <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px 120px;gap:8px;padding:10px 12px;background:#f6f9ff;border-bottom:1px solid #eaeaea;font-weight:600;">
+          <div>Cliente</div><div>Evento</div><div>Convid.</div><div>Data</div><div>Hora</div><div>Local</div><div>Ação</div>
+        </div>`;
+
+      const rows = lista.map(raw => {
+        const ev = mapEventoToForm(raw);
+        const cliente = raw.nomeCliente ?? '';
+        const evento = raw.nomeevento ?? '';
+        const local = raw.localevento ?? '';
+        const dataBR  = ev.data ? ev.data.split('-').reverse().join('/') : '';
+        const payload = encodeURIComponent(JSON.stringify({ev}));
+        return `
+          <div style="display:grid;grid-template-columns:1fr 140px 90px 120px 110px 96px 120px;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0;">
+            <div><strong>${cliente || '(sem cliente)'}</strong></div>
+            <div>${evento || ''}</div>
+            <div>${ev.convidados || ''}</div>
+            <div>${dataBR || ''}</div>
+            <div>${ev.hora || ''}</div>
+            <div>${local || ''}</div>
+            <div><button type="button" class="btn me-usar" data-payload="${payload}">Usar</button></div>
+          </div>`;
+      }).join('');
+
+      box.innerHTML = header + rows;
+
+      // Seleciona evento -> preenche e trava
+      box.querySelectorAll('.me-usar').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const {ev} = JSON.parse(decodeURIComponent(btn.getAttribute('data-payload')));
+          const set = (id,v)=>{ const el=document.getElementById(id); if(el){ el.value=v??''; el.readOnly=true; } };
+          set('evento_espaco', ev.espaco);
+          set('evento_convidados', ev.convidados);
+          set('evento_hora', ev.hora);
+          set('evento_nome', ev.nome);
+          set('evento_data', ev.data);
+          const hid = document.getElementById('evento_id_me'); 
+          if (hid) {
+            const eventId = parseInt(ev.id) || 0;
+            hid.value = eventId > 0 ? eventId : '';
+          }
+          closeModal();
+          document.getElementById('evento_espaco')?.scrollIntoView({behavior:'smooth', block:'center'});
+        });
+      });
+
+    } catch (e) {
+      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
+    }
+    });
+    console.log('Evento de busca registrado');
+  } else {
+    console.error('Botão de executar busca não encontrado!');
+  }
+
+  // Impede submit sem evento da ME
+  (function(){
+    const form = document.querySelector('form');
+    if (!form) return;
+    form.addEventListener('submit', (ev)=>{
+      const hid = document.getElementById('evento_id_me');
+      if (!hid || !hid.value) {
+        ev.preventDefault();
+        alert('Selecione um evento pela ME antes de gerar a lista.');
+      }
+    });
+  })();
+})();
+</script>
 </body>
 </html>
