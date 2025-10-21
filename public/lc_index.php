@@ -359,6 +359,9 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
         <a class="btn btn-primary btn-lg" href="lista_compras.php">
           <span>📝</span> Gerar Lista de Compras
         </a>
+        <a class="btn btn-outline btn-lg" href="estoque_contagens.php">
+          <span>📦</span> Estoque
+        </a>
         <?php if ($isAdmin): ?>
           <a class="btn btn-outline btn-lg" href="configuracoes.php">
             <span>⚙️</span> Configurações
