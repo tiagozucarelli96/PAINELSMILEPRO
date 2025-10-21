@@ -29,11 +29,6 @@ require_once __DIR__ . '/lc_calc.php';
 // ========= Util =========
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
-
-?>
-
-
-<?php
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
 CREATE TABLE IF NOT EXISTS lc_rascunhos (
@@ -1147,9 +1142,7 @@ function addEventoME(e){
         </table>
       </div>
     </div>
-    <?php endif; ?>
-
-    <?php
+    <?php endif; <?php
     // Pré-carrega eventos/itens do rascunho se houver
     $evDraft = $RAS_PAYLOAD['payload']['eventos'] ?? [];
     if (!$evDraft) {
