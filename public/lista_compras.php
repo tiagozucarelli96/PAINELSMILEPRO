@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_l
         // Criar lista principal
         $stmt = $pdo->prepare("
             INSERT INTO lc_listas (grupo_id, tipo, data_gerada, espaco_consolidado, eventos_resumo, criado_por, criado_por_nome, tipo_lista, criado_em, resumo_eventos, espaco_resumo)
-            VALUES (1, 'compra', NOW(), 'Múltiplos Eventos', :eventos_resumo, :criado_por, :criado_por_nome, 'gerada', NOW(), :resumo_eventos, 'Múltiplos Eventos')
+            VALUES (1, 'compras', NOW(), 'Múltiplos Eventos', :eventos_resumo, :criado_por, :criado_por_nome, 'compras', NOW(), :resumo_eventos, 'Múltiplos Eventos')
             RETURNING id
         ");
         
