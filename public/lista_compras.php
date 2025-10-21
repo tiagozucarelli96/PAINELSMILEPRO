@@ -1142,7 +1142,7 @@ function addEventoME(e){
         </table>
       </div>
     </div>
-    <?php endif; <?php
+    <?php endif; ?>
     // Pré-carrega eventos/itens do rascunho se houver
     $evDraft = $RAS_PAYLOAD['payload']['eventos'] ?? [];
     if (!$evDraft) {
