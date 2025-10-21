@@ -387,10 +387,10 @@ try {
 
         <?php if (!empty($_SESSION['perm_lista'])): ?>
           <a class="action-card" href="lc_index.php">
-            <div class="action-icon">📋</div>
+            <div class="action-icon">🛒</div>
             <div class="action-content">
-              <h3 class="action-title">Histórico de Listas</h3>
-              <p class="action-description">Visualize e gerencie todas as listas de compras e encomendas geradas.</p>
+              <h3 class="action-title">Gestão de Compras</h3>
+              <p class="action-description">Gerar listas de compras, gerenciar encomendas e controlar estoque.</p>
             </div>
           </a>
         <?php endif; ?>
@@ -475,14 +475,6 @@ try {
           </a>
         <?php endif; ?>
 
-        <!-- Novo módulo de estoque -->
-        <a class="action-card" href="estoque_contagens.php">
-          <div class="action-icon">📊</div>
-          <div class="action-content">
-            <h3 class="action-title">Controle de Estoque</h3>
-            <p class="action-description">Contagens, alertas de ruptura e sugestões automáticas de compra.</p>
-          </div>
-        </a>
 
         <?php if (!empty($_SESSION['perm_dados_contrato'])): ?>
           <a class="action-card" href="index.php?page=dados_contrato">

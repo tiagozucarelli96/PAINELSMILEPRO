@@ -352,15 +352,21 @@ function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
     <!-- INÍCIO CONTEÚDO -->
     <div class="topbar">
       <div class="grow">
-        <h1 style="margin:0;font-size:22px;">Lista de Compras — Histórico</h1>
-        <div class="meta">Gere novas listas e consulte as últimas compras/encomendas.</div>
+        <h1 style="margin:0;font-size:22px;">Gestão de Compras</h1>
+        <div class="meta">Gerar listas de compras, controlar estoque e consultar histórico de movimentações.</div>
       </div>
       <div class="top-buttons">
         <a class="btn btn-primary btn-lg" href="lista_compras.php">
           <span>📝</span> Gerar Lista de Compras
         </a>
         <a class="btn btn-outline btn-lg" href="estoque_contagens.php">
-          <span>📦</span> Estoque
+          <span>📊</span> Controle de Estoque
+        </a>
+        <a class="btn btn-outline btn-lg" href="estoque_kardex.php">
+          <span>📒</span> Kardex
+        </a>
+        <a class="btn btn-outline btn-lg" href="historico.php">
+          <span>📋</span> Histórico
         </a>
         <?php if ($isAdmin): ?>
           <a class="btn btn-outline btn-lg" href="configuracoes.php">
