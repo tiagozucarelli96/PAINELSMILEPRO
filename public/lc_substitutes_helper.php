@@ -44,8 +44,8 @@ function lc_adicionar_substituto(PDO $pdo, array $dados): int {
     
     $stmt = $pdo->prepare("
         INSERT INTO lc_insumos_substitutos 
-        (insumo_principal_id, insumo_substituto_id, equivalencia, prioridade, observacao, ativo, criado_por)
-        VALUES (:principal_id, :substituto_id, :equivalencia, :prioridade, :observacao, :ativo, :criado_por)
+        (insumo_principal_id, insumo_substituto_id, equivalencia, prioridade, observacao, ativo)
+        VALUES (:principal_id, :substituto_id, :equivalencia, :prioridade, :observacao, :ativo)
     ");
     
     $stmt->execute([
@@ -54,8 +54,7 @@ function lc_adicionar_substituto(PDO $pdo, array $dados): int {
         ':equivalencia' => $dados['equivalencia'],
         ':prioridade' => $dados['prioridade'],
         ':observacao' => $dados['observacao'] ?? null,
-        ':ativo' => $dados['ativo'] ?? true,
-        ':criado_por' => $_SESSION['usuario_id'] ?? 1
+        ':ativo' => $dados['ativo'] ?? true
     ]);
     
     return (int)$pdo->lastInsertId();

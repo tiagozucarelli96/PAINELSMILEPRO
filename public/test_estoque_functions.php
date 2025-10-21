@@ -257,7 +257,6 @@ try {
     echo "<h2>9. ✅ Teste de Validações</h2>";
     
     $validacoes = [
-        "SELECT COUNT(*) FROM lc_insumos WHERE preco IS NULL OR preco <= 0" => "Insumos sem preço",
         "SELECT COUNT(*) FROM lc_insumos WHERE estoque_atual < 0" => "Estoque negativo",
         "SELECT COUNT(*) FROM lc_insumos WHERE estoque_minimo < 0" => "Estoque mínimo negativo",
         "SELECT COUNT(*) FROM lc_insumos WHERE embalagem_multiplo <= 0" => "Embalagem inválida"

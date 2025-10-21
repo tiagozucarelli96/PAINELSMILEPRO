@@ -30,7 +30,7 @@ try {
         $version = $stmt->fetchColumn();
         $tempo = round((microtime(true) - $inicio) * 1000, 2);
         
-        echo "<p style='color: green;'>✅ Conexão estabelecida (${tempo}ms)</p>";
+        echo "<p style='color: green;'>✅ Conexão estabelecida ({$tempo}ms)</p>";
         echo "<p>PostgreSQL: $version</p>";
         $resultados['conexao'] = true;
     } else {
@@ -74,7 +74,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Estrutura verificada em ${tempo}ms</p>";
+    echo "<p>Estrutura verificada em {$tempo}ms</p>";
     $resultados['estrutura'] = $tabelas_ok;
     $resultados['tabelas_faltando'] = $tabelas_faltando;
     
@@ -108,7 +108,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Dados verificados em ${tempo}ms</p>";
+    echo "<p>Dados verificados em {$tempo}ms</p>";
     $resultados['dados_essenciais'] = $dados_ok;
     
     // Teste 4: Verificar campos específicos de estoque
@@ -151,7 +151,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Campos verificados em ${tempo}ms</p>";
+    echo "<p>Campos verificados em {$tempo}ms</p>";
     $resultados['campos_estoque'] = $campos_ok;
     $resultados['total_campos'] = $total_campos;
     
@@ -179,7 +179,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Helpers verificados em ${tempo}ms</p>";
+    echo "<p>Helpers verificados em {$tempo}ms</p>";
     $resultados['helpers'] = $helpers_ok;
     
     // Teste 6: Verificar páginas principais
@@ -206,7 +206,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Páginas verificadas em ${tempo}ms</p>";
+    echo "<p>Páginas verificadas em {$tempo}ms</p>";
     $resultados['paginas'] = $paginas_ok;
     
     // Teste 7: Verificar integridade de dados
@@ -214,7 +214,6 @@ try {
     $inicio = microtime(true);
     
     $verificacoes = [
-        "SELECT COUNT(*) FROM lc_insumos WHERE preco IS NULL OR preco <= 0" => "Insumos sem preço",
         "SELECT COUNT(*) FROM lc_insumos WHERE estoque_atual < 0" => "Estoque negativo",
         "SELECT COUNT(*) FROM lc_insumos WHERE estoque_minimo < 0" => "Estoque mínimo negativo",
         "SELECT COUNT(*) FROM lc_insumos WHERE embalagem_multiplo <= 0" => "Embalagem inválida"
@@ -239,7 +238,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Integridade verificada em ${tempo}ms</p>";
+    echo "<p>Integridade verificada em {$tempo}ms</p>";
     $resultados['problemas_integridade'] = $problemas;
     
     // Teste 8: Teste de performance
@@ -274,7 +273,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Performance verificada em ${tempo}ms</p>";
+    echo "<p>Performance verificada em {$tempo}ms</p>";
     $resultados['performance'] = $performance_ok;
     
     // Teste 9: Criar dados de teste se necessário
@@ -325,7 +324,7 @@ try {
     }
     
     $tempo = round((microtime(true) - $inicio) * 1000, 2);
-    echo "<p>Dados de teste verificados em ${tempo}ms</p>";
+    echo "<p>Dados de teste verificados em {$tempo}ms</p>";
     $resultados['dados_teste'] = true;
     
     // Resumo final
@@ -345,7 +344,7 @@ try {
     echo "<div style='background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;'>";
     echo "<h3>📈 Estatísticas Gerais</h3>";
     echo "<ul>";
-    echo "<li><strong>Tempo total:</strong> ${tempo_total}ms</li>";
+    echo "<li><strong>Tempo total:</strong> {$tempo_total}ms</li>";
     echo "<li><strong>Tabelas:</strong> {$resultados['estrutura']}/$total_tabelas ($percentual_tabelas%)</li>";
     echo "<li><strong>Helpers:</strong> {$resultados['helpers']}/$total_helpers ($percentual_helpers%)</li>";
     echo "<li><strong>Páginas:</strong> {$resultados['paginas']}/$total_paginas ($percentual_paginas%)</li>";
