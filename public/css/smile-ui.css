@@ -1,0 +1,543 @@
+/* Smile UI - Padrão Visual do Grupo Smile Eventos */
+/* Cores baseadas no logo: Azul escuro (#1e40af) e Dourado (#d97706) */
+
+/* ===== VARIÁVEIS CSS ===== */
+:root {
+    --smile-blue: #1e40af;
+    --smile-blue-light: #3b82f6;
+    --smile-blue-dark: #1e3a8a;
+    --smile-gold: #d97706;
+    --smile-gold-light: #f59e0b;
+    --smile-gold-dark: #b45309;
+    --smile-gray: #64748b;
+    --smile-gray-light: #94a3b8;
+    --smile-gray-dark: #475569;
+    --smile-success: #059669;
+    --smile-danger: #dc2626;
+    --smile-warning: #d97706;
+    --smile-info: #0ea5e9;
+}
+
+/* ===== RESET E BASE ===== */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    margin: 0;
+    padding: 0;
+    color: #1e293b;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ===== CONTAINERS ===== */
+.smile-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    min-height: 100vh;
+}
+
+.smile-card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid rgba(30, 64, 175, 0.1);
+    overflow: hidden;
+    margin-bottom: 30px;
+}
+
+.smile-card-header {
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    color: white;
+    padding: 30px;
+    position: relative;
+    overflow: hidden;
+}
+
+.smile-card-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.smile-card-header h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+    z-index: 1;
+}
+
+.smile-card-header p {
+    margin: 10px 0 0 0;
+    font-size: 1.1rem;
+    opacity: 0.95;
+    position: relative;
+    z-index: 1;
+}
+
+.smile-card-body {
+    padding: 30px;
+}
+
+/* ===== BOTÕES ===== */
+.smile-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+}
+
+.smile-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s;
+}
+
+.smile-btn:hover::before {
+    left: 100%;
+}
+
+.smile-btn-primary {
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(30, 64, 175, 0.2);
+}
+
+.smile-btn-primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(30, 64, 175, 0.3);
+}
+
+.smile-btn-secondary {
+    background: linear-gradient(135deg, var(--smile-gray) 0%, var(--smile-gray-dark) 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(100, 116, 139, 0.2);
+}
+
+.smile-btn-secondary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(100, 116, 139, 0.3);
+}
+
+.smile-btn-success {
+    background: linear-gradient(135deg, var(--smile-success) 0%, #10b981 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(5, 150, 105, 0.2);
+}
+
+.smile-btn-success:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(5, 150, 105, 0.3);
+}
+
+.smile-btn-danger {
+    background: linear-gradient(135deg, var(--smile-danger) 0%, #ef4444 100%);
+    color: white;
+    box-shadow: 0 4px 15px rgba(220, 38, 38, 0.2);
+}
+
+.smile-btn-danger:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(220, 38, 38, 0.3);
+}
+
+.smile-btn-outline {
+    background: transparent;
+    color: var(--smile-blue);
+    border: 2px solid var(--smile-blue);
+}
+
+.smile-btn-outline:hover {
+    background: var(--smile-blue);
+    color: white;
+    transform: translateY(-2px);
+}
+
+/* ===== FORMULÁRIOS ===== */
+.smile-form-group {
+    margin-bottom: 20px;
+}
+
+.smile-form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--smile-blue);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.smile-form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    background: white;
+    color: #1e293b;
+}
+
+.smile-form-control:focus {
+    border-color: var(--smile-blue);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+    outline: none;
+}
+
+.smile-form-control:hover {
+    border-color: var(--smile-blue-light);
+}
+
+.smile-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+/* ===== TABELAS ===== */
+.smile-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.smile-table th {
+    background: linear-gradient(135deg, var(--smile-blue) 0%, var(--smile-gold) 100%);
+    color: white;
+    padding: 18px 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: none;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.smile-table td {
+    padding: 15px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: middle;
+}
+
+.smile-table tr:hover {
+    background: #f8fafc;
+}
+
+.smile-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* ===== BADGES E TAGS ===== */
+.smile-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.smile-badge-success {
+    background: rgba(5, 150, 105, 0.1);
+    color: var(--smile-success);
+}
+
+.smile-badge-danger {
+    background: rgba(220, 38, 38, 0.1);
+    color: var(--smile-danger);
+}
+
+.smile-badge-warning {
+    background: rgba(217, 119, 6, 0.1);
+    color: var(--smile-warning);
+}
+
+.smile-badge-info {
+    background: rgba(30, 64, 175, 0.1);
+    color: var(--smile-blue);
+}
+
+.smile-badge-primary {
+    background: rgba(30, 64, 175, 0.1);
+    color: var(--smile-blue);
+}
+
+/* ===== ALERTAS ===== */
+.smile-alert {
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 25px;
+    font-weight: 500;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.smile-alert-success {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+}
+
+.smile-alert-danger {
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    color: #991b1b;
+    border: 1px solid #f87171;
+}
+
+.smile-alert-warning {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #92400e;
+    border: 1px solid #fbbf24;
+}
+
+.smile-alert-info {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    color: #1e40af;
+    border: 1px solid #60a5fa;
+}
+
+/* ===== MODAIS ===== */
+.smile-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+}
+
+.smile-modal-content {
+    background: white;
+    margin: 5% auto;
+    padding: 30px;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    border: 1px solid rgba(30, 64, 175, 0.1);
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.smile-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.smile-modal-header h3 {
+    margin: 0;
+    color: var(--smile-blue);
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+.smile-close {
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--smile-gray);
+    transition: color 0.3s ease;
+}
+
+.smile-close:hover {
+    color: var(--smile-danger);
+}
+
+/* ===== GRIDS E LAYOUTS ===== */
+.smile-grid {
+    display: grid;
+    gap: 20px;
+}
+
+.smile-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.smile-grid-3 {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.smile-grid-4 {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* ===== CARDS DE RESUMO ===== */
+.smile-summary-card {
+    text-align: center;
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border: 1px solid rgba(30, 64, 175, 0.1);
+    transition: all 0.3s ease;
+}
+
+.smile-summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.smile-summary-card .label {
+    font-size: 0.8rem;
+    color: var(--smile-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.smile-summary-card .value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--smile-blue);
+    margin-top: 5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* ===== PAGINAÇÃO ===== */
+.smile-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 30px 0;
+}
+
+.smile-pagination button,
+.smile-pagination a {
+    padding: 10px 15px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--smile-gray);
+    transition: all 0.3s ease;
+}
+
+.smile-pagination button:hover,
+.smile-pagination a:hover {
+    background: #f8fafc;
+    border-color: var(--smile-blue);
+    color: var(--smile-blue);
+}
+
+.smile-pagination button.active,
+.smile-pagination a.active {
+    background: var(--smile-blue);
+    color: white;
+    border-color: var(--smile-blue);
+}
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 768px) {
+    .smile-container {
+        padding: 15px;
+    }
+    
+    .smile-card-header h1 {
+        font-size: 2rem;
+    }
+    
+    .smile-card-body {
+        padding: 20px;
+    }
+    
+    .smile-form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .smile-grid-2,
+    .smile-grid-3,
+    .smile-grid-4 {
+        grid-template-columns: 1fr;
+    }
+    
+    .smile-table {
+        font-size: 0.9rem;
+    }
+    
+    .smile-table th,
+    .smile-table td {
+        padding: 10px 8px;
+    }
+}
+
+/* ===== UTILITÁRIOS ===== */
+.smile-text-center { text-align: center; }
+.smile-text-left { text-align: left; }
+.smile-text-right { text-align: right; }
+
+.smile-mb-0 { margin-bottom: 0; }
+.smile-mb-1 { margin-bottom: 10px; }
+.smile-mb-2 { margin-bottom: 20px; }
+.smile-mb-3 { margin-bottom: 30px; }
+
+.smile-mt-0 { margin-top: 0; }
+.smile-mt-1 { margin-top: 10px; }
+.smile-mt-2 { margin-top: 20px; }
+.smile-mt-3 { margin-top: 30px; }
+
+.smile-p-0 { padding: 0; }
+.smile-p-1 { padding: 10px; }
+.smile-p-2 { padding: 20px; }
+.smile-p-3 { padding: 30px; }
+
+.smile-hidden { display: none; }
+.smile-visible { display: block; }
+
+.smile-flex { display: flex; }
+.smile-flex-center { display: flex; align-items: center; justify-content: center; }
+.smile-flex-between { display: flex; align-items: center; justify-content: space-between; }
+.smile-flex-column { display: flex; flex-direction: column; }
+
+.smile-gap-1 { gap: 10px; }
+.smile-gap-2 { gap: 20px; }
+.smile-gap-3 { gap: 30px; }

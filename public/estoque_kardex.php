@@ -207,28 +207,78 @@ if ($insumo_id) {
     <title>Kardex - Histórico de Movimentos</title>
     <link rel="stylesheet" href="estilo.css">
     <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            margin: 0;
+            padding: 0;
+            color: #1e293b;
+            line-height: 1.6;
+        }
+        
         .kardex-container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            background: #f8f9fa;
             min-height: 100vh;
         }
         
         .kardex-header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
             color: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 25px rgba(30, 64, 175, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .kardex-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        
+        .kardex-header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .kardex-header p {
+            margin: 10px 0 0 0;
+            font-size: 1.1rem;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
         }
         
         .filtros-section {
             background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid rgba(30, 64, 175, 0.1);
+        }
+        
+        .filtros-section h2 {
+            color: #1e40af;
+            margin: 0 0 25px 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .filtros-grid {
@@ -251,16 +301,25 @@ if ($insumo_id) {
         
         .filtro-group input,
         .filtro-group select {
-            padding: 10px;
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
             font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+            color: #1e293b;
         }
         
         .filtro-group input:focus,
         .filtro-group select:focus {
-            border-color: #1e3a8a;
-            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+            border-color: #1e40af;
+            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+            outline: none;
+        }
+        
+        .filtro-group input:hover,
+        .filtro-group select:hover {
+            border-color: #3b82f6;
         }
         
         .tipos-movimento {
@@ -277,30 +336,68 @@ if ($insumo_id) {
         }
         
         .tipo-checkbox input[type="checkbox"] {
-            accent-color: #1e3a8a;
+            accent-color: #1e40af;
+            transform: scale(1.2);
+            margin-right: 8px;
+        }
+        
+        .tipo-checkbox label {
+            cursor: pointer;
+            font-weight: 500;
+            color: #374151;
+            transition: color 0.3s ease;
+        }
+        
+        .tipo-checkbox:hover label {
+            color: #1e40af;
         }
         
         .btn-filtrar {
-            background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 14px 28px;
+            border-radius: 12px;
             font-weight: 600;
+            font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-filtrar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .btn-filtrar:hover::before {
+            left: 100%;
         }
         
         .btn-filtrar:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(30, 64, 175, 0.3);
+        }
+        
+        .btn-filtrar:active {
+            transform: translateY(-1px);
         }
         
         .kardex-grid {
             background: white;
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            border: 1px solid rgba(30, 64, 175, 0.1);
+            margin-bottom: 30px;
         }
         
         .kardex-table {
@@ -309,15 +406,19 @@ if ($insumo_id) {
         }
         
         .kardex-table th {
-            background: #f8f9fa;
-            padding: 15px;
+            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
+            color: white;
+            padding: 18px 15px;
             text-align: left;
             font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #e1e5e9;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: none;
             position: sticky;
             top: 0;
             z-index: 10;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .kardex-table td {
@@ -329,21 +430,68 @@ if ($insumo_id) {
             background: #f8f9fa;
         }
         
-        .tipo-entrada { color: #28a745; font-weight: 600; }
-        .tipo-saida { color: #dc3545; font-weight: 600; }
-        .tipo-ajuste { color: #ffc107; font-weight: 600; }
-        .tipo-perda { color: #fd7e14; font-weight: 600; }
-        .tipo-devolucao { color: #17a2b8; font-weight: 600; }
+        .tipo-entrada { 
+            color: #059669; 
+            font-weight: 600; 
+            background: rgba(5, 150, 105, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .tipo-saida { 
+            color: #dc2626; 
+            font-weight: 600; 
+            background: rgba(220, 38, 38, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .tipo-ajuste { 
+            color: #d97706; 
+            font-weight: 600; 
+            background: rgba(217, 119, 6, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .tipo-perda { 
+            color: #ea580c; 
+            font-weight: 600; 
+            background: rgba(234, 88, 12, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+        .tipo-devolucao { 
+            color: #1e40af; 
+            font-weight: 600; 
+            background: rgba(30, 64, 175, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
         
         .saldo-positivo { color: #28a745; font-weight: 600; }
         .saldo-negativo { color: #dc3545; font-weight: 600; }
         .saldo-zero { color: #6c757d; font-weight: 600; }
         
         .resumo-section {
-            background: #e7f3ff;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            padding: 30px;
+            border-radius: 16px;
+            margin: 30px 0;
+            border: 1px solid rgba(30, 64, 175, 0.2);
+            box-shadow: 0 4px 20px rgba(30, 64, 175, 0.1);
+        }
+        
+        .resumo-section h3 {
+            color: #1e40af;
+            margin: 0 0 25px 0;
+            font-size: 1.4rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .resumo-grid {
@@ -354,20 +502,34 @@ if ($insumo_id) {
         
         .resumo-item {
             text-align: center;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border: 1px solid rgba(30, 64, 175, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .resumo-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         
         .resumo-item .label {
-            font-size: 12px;
-            color: #666;
+            font-size: 0.8rem;
+            color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 8px;
         }
         
         .resumo-item .value {
-            font-size: 24px;
+            font-size: 1.8rem;
             font-weight: 700;
-            color: #1e3a8a;
+            color: #1e40af;
             margin-top: 5px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
         .paginacao {
@@ -397,17 +559,22 @@ if ($insumo_id) {
         }
         
         .btn-ajuste {
-            background: #28a745;
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
             color: white;
             border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
             cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
         }
         
         .btn-ajuste:hover {
-            background: #218838;
+            background: linear-gradient(135deg, #047857 0%, #059669 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
         }
         
         .modal {
@@ -424,10 +591,12 @@ if ($insumo_id) {
         .modal-content {
             background: white;
             margin: 5% auto;
-            padding: 20px;
-            border-radius: 12px;
+            padding: 30px;
+            border-radius: 16px;
             width: 90%;
             max-width: 500px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+            border: 1px solid rgba(30, 64, 175, 0.1);
         }
         
         .modal-header {
@@ -471,41 +640,59 @@ if ($insumo_id) {
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 14px 28px;
+            border-radius: 10px;
             font-weight: 600;
+            font-size: 1rem;
             cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.2);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.3);
         }
         
         .btn-secondary {
-            background: #6c757d;
+            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            padding: 14px 28px;
+            border-radius: 10px;
             font-weight: 600;
+            font-size: 1rem;
             cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(100, 116, 139, 0.2);
+        }
+        
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(100, 116, 139, 0.3);
         }
         
         .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            color: #065f46;
+            border: 1px solid #6ee7b7;
         }
         
         .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            color: #991b1b;
+            border: 1px solid #f87171;
         }
         
         .tooltip {
