@@ -108,10 +108,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_l
         
         foreach ($eventosRascunho as $evento) {
             // Garantir que o ID seja um inteiro válido
-            $eventoId = (int)($evento['id'] ?? 0);
-            if ($eventoId <= 0) {
-                throw new Exception('ID de evento inválido: ' . ($evento['id'] ?? 'nulo'));
+            $eventoIdRaw = $evento['id'] ?? '';
+            $eventoId = (int)$eventoIdRaw;
+            
+            // Verificar se o valor original era "on" ou inválido
+            if ($eventoIdRaw === 'on' || $eventoIdRaw === '' || $eventoId <= 0) {
+                throw new Exception('ID de evento inválido: "' . $eventoIdRaw . '". Selecione um evento válido da ME.');
             }
+            
             $eventosIds[] = $eventoId;
             
             foreach ($evento['itens'] as $item) {
@@ -434,8 +438,8 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
 }
 .input:focus{
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: #1e3a8a;
+  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
   transform: translateY(-1px);
 }
 .input:read-only{
@@ -446,8 +450,8 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
 .category{margin-bottom:10px}
 .items{display:none;margin-top:8px;padding-left:12px}
 .items.active{display:block}
-.btn{
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  .btn{
+  background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -455,7 +459,7 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 14px rgba(30, 58, 138, 0.3);
   position: relative;
   overflow: hidden;
   display: inline-flex;
@@ -463,20 +467,20 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
   gap: 8px;
 }
 .btn:hover{
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #1e40af 0%, #ea580c 100%);
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 8px 25px rgba(30, 58, 138, 0.4);
 }
 .btn:active{
   transform: translateY(0);
 }
 .btn.gray{
-  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
-  box-shadow: 0 4px 14px rgba(108, 117, 125, 0.3);
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+  box-shadow: 0 4px 14px rgba(107, 114, 128, 0.3);
 }
 .btn.gray:hover{
-  background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
-  box-shadow: 0 8px 25px rgba(108, 117, 125, 0.4);
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+  box-shadow: 0 8px 25px rgba(107, 114, 128, 0.4);
 }
 .alert{padding:10px;border-radius:8px;margin-bottom:10px}
 .alert.err{background:#ffeded;border:1px solid #ffb3b3;color:#8a0c0c}
@@ -496,10 +500,17 @@ function salvarRascunho(){ document.getElementById('acao').value='salvar_rascunh
 let rascunhoEventos = [];
 
 function adicionarEvento() {
-  const eventoId = document.getElementById('evento_id_me')?.value;
+  const eventoIdRaw = document.getElementById('evento_id_me')?.value;
   const eventoNome = document.getElementById('evento_nome')?.value;
   const eventoData = document.getElementById('evento_data')?.value;
   const eventoConvidados = document.getElementById('evento_convidados')?.value;
+  
+  // Validar e converter ID do evento para inteiro
+  const eventoId = parseInt(eventoIdRaw) || 0;
+  if (eventoId <= 0) {
+    alert('ID de evento inválido. Selecione um evento válido da ME.');
+    return;
+  }
   
   // Debug: mostrar valores dos campos
   console.log('Debug - Valores dos campos:', {
@@ -781,9 +792,9 @@ function addEventoME(e){
     content: '';
     width: 6px;
     height: 32px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
     border-radius: 3px;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 2px 8px rgba(30, 58, 138, 0.3);
   }
 
   .lc-section h2::after {
@@ -793,7 +804,7 @@ function addEventoME(e){
     left: 0;
     width: 60px;
     height: 3px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
     border-radius: 2px;
     opacity: 0.6;
   }
@@ -890,7 +901,7 @@ function addEventoME(e){
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
   }
 
   .lc-category-card:hover {
@@ -913,7 +924,7 @@ function addEventoME(e){
   .lc-category-checkbox input[type="checkbox"] {
     margin-right: 12px;
     transform: scale(1.3);
-    accent-color: #667eea;
+    accent-color: #1e3a8a;
     cursor: pointer;
   }
 
@@ -948,7 +959,7 @@ function addEventoME(e){
 
   .lc-item-checkbox:hover {
     background: #e9ecef;
-    border-color: #667eea;
+    border-color: #1e3a8a;
     transform: translateX(4px);
   }
 
@@ -956,14 +967,14 @@ function addEventoME(e){
     margin-right: 12px;
     margin-top: 2px;
     transform: scale(1.2);
-    accent-color: #667eea;
+    accent-color: #1e3a8a;
     cursor: pointer;
   }
 
   .lc-item-checkbox:has(input:checked) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
     color: white;
-    border-color: #667eea;
+    border-color: #1e3a8a;
   }
 
   .lc-item-name {
