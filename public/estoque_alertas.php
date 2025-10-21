@@ -8,6 +8,7 @@ require_once __DIR__ . '/lc_calc.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/me_api_helper.php';
+require_once __DIR__ . '/lc_substitutes_helper.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -39,6 +40,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             // Calcular sugestões
             $dados_sugestao = calcularSugestoesME($pdo, $insumos_selecionados, $parametros);
+            
+        } elseif ($acao === 'aplicar_substituto') {
+            // Aplicar substituto
+            $insumo_principal_id = (int)($_POST['insumo_principal_id'] ?? 0);
+            $insumo_substituto_id = (int)($_POST['insumo_substituto_id'] ?? 0);
+            $percentual_cobertura = (float)($_POST['percentual_cobertura'] ?? 100.0);
+            
+            if ($insumo_principal_id <= 0 || $insumo_substituto_id <= 0) {
+                throw new Exception('IDs de insumos inválidos.');
+            }
+            
+            if ($percentual_cobertura <= 0 || $percentual_cobertura > 100) {
+                throw new Exception('Percentual de cobertura deve estar entre 0% e 100%.');
+            }
+            
+            // Buscar dados do substituto
+            $substituto = lc_buscar_substitutos($pdo, $insumo_principal_id);
+            $substituto_escolhido = null;
+            
+            foreach ($substituto as $sub) {
+                if ($sub['insumo_substituto_id'] == $insumo_substituto_id) {
+                    $substituto_escolhido = $sub;
+                    break;
+                }
+            }
+            
+            if (!$substituto_escolhido) {
+                throw new Exception('Substituto não encontrado ou não aprovado.');
+            }
+            
+            // Retornar dados do substituto para o JavaScript
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'substituto' => $substituto_escolhido,
+                'percentual_cobertura' => $percentual_cobertura
+            ]);
+            exit;
             
         } elseif ($acao === 'salvar_rascunho') {
             // Salvar como rascunho
@@ -594,6 +633,52 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
                     </div>
                 </div>
                 
+                <!-- Submodal de Substitutos -->
+                <div id="submodalSubstitutos" class="submodal" style="display: none;">
+                    <div class="submodal-content">
+                        <div class="submodal-header">
+                            <h3>🔄 Sugerir Substituto</h3>
+                            <span class="close" onclick="fecharSubmodalSubstitutos()">&times;</span>
+                        </div>
+                        
+                        <div class="submodal-body">
+                            <div id="substitutoInfo">
+                                <!-- Informações do insumo principal -->
+                            </div>
+                            
+                            <div class="substitutos-list">
+                                <h4>Substitutos Aprovados</h4>
+                                <div id="listaSubstitutos">
+                                    <!-- Lista de substitutos disponíveis -->
+                                </div>
+                            </div>
+                            
+                            <div class="cobertura-section">
+                                <h4>% de Cobertura</h4>
+                                <div class="slider-container">
+                                    <input type="range" id="percentualCobertura" min="1" max="100" value="100" 
+                                           oninput="atualizarPercentual(this.value)">
+                                    <span id="percentualDisplay">100%</span>
+                                </div>
+                                <small>Defina quanto do insumo principal será coberto por este substituto</small>
+                            </div>
+                            
+                            <div id="previaSubstituto" style="display: none;">
+                                <h4>Prévia do Substituto</h4>
+                                <div id="dadosPreviaSubstituto">
+                                    <!-- Dados da prévia -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="submodal-footer">
+                            <button type="button" class="btn btn-secondary" onclick="fecharSubmodalSubstitutos()">Cancelar</button>
+                            <button type="button" class="btn btn-primary" id="btnAplicarSubstituto" onclick="aplicarSubstituto()" disabled>Aplicar Substituto</button>
+                        </div>
+                    </div>
+                </div>
+                </div>
+                
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="fecharModalSugestao()">Cancelar</button>
                     <button type="button" class="btn btn-primary" onclick="calcularSugestao()">🧮 Calcular</button>
@@ -788,11 +873,194 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
             background: #f8d7da;
             color: #721c24;
         }
+        
+        /* Estilos para submodal de substitutos */
+        .submodal {
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        
+        .submodal-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 0;
+            border: none;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        
+        .submodal-header {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .submodal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        
+        .submodal-body {
+            padding: 20px;
+        }
+        
+        .submodal-footer {
+            padding: 15px;
+            border-top: 1px solid #eee;
+            text-align: right;
+            background: #f8f9fa;
+            border-radius: 0 0 8px 8px;
+        }
+        
+        .substitutos-list {
+            margin-bottom: 20px;
+        }
+        
+        .substituto-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .substituto-item:hover {
+            background: #f8f9fa;
+            border-color: #28a745;
+        }
+        
+        .substituto-item.selected {
+            background: #e7f3ff;
+            border-color: #1e3a8a;
+        }
+        
+        .substituto-item input[type="radio"] {
+            margin-right: 10px;
+        }
+        
+        .substituto-info {
+            flex: 1;
+        }
+        
+        .substituto-name {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .substituto-details {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+        
+        .cobertura-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .slider-container input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+        }
+        
+        .slider-container input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #28a745;
+            cursor: pointer;
+        }
+        
+        .slider-container span {
+            font-weight: bold;
+            color: #28a745;
+            min-width: 40px;
+        }
+        
+        .previa-substituto {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .previa-substituto h5 {
+            margin: 0 0 10px 0;
+            color: #1e3a8a;
+        }
+        
+        .previa-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        
+        .previa-label {
+            font-weight: 500;
+            color: #666;
+        }
+        
+        .previa-value {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .btn-substituto {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        
+        .btn-substituto:hover {
+            background: #218838;
+        }
+        
+        .btn-substituto:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
     </style>
 
     <script>
         let insumosDisponiveis = <?= json_encode($insumos_criticos) ?>;
         let sugestoesCalculadas = null;
+        let substitutosDisponiveis = {};
+        let insumoPrincipalAtual = null;
+        let substitutoSelecionado = null;
         
         function abrirModalSugestao(insumosIds) {
             document.getElementById('modalSugestao').style.display = 'block';
@@ -886,6 +1154,7 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
                         totalCusto += custo;
                         
                         sugestoes.push({
+                            insumo_id: id,
                             insumo_nome: insumo.nome,
                             unidade: insumo.unidade_simbolo,
                             saldo_atual: parseFloat(insumo.estoque_atual),
@@ -895,7 +1164,8 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
                             sugerido: sugerido,
                             fornecedor: insumo.fornecedor_nome || '(Definir)',
                             custo: custo,
-                            tem_preco: insumo.preco && insumo.preco > 0
+                            tem_preco: insumo.preco && insumo.preco > 0,
+                            is_substituto: false
                         });
                     }
                 }
@@ -904,47 +1174,7 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
             sugestoesCalculadas = sugestoes;
             
             // Mostrar prévia
-            const previaContent = document.getElementById('previaContent');
-            previaContent.innerHTML = `
-                <table class="preview-table">
-                    <thead>
-                        <tr>
-                            <th>Insumo</th>
-                            <th>Saldo</th>
-                            <th>Demanda</th>
-                            <th>Segurança</th>
-                            <th>Necessário</th>
-                            <th>Sugerido</th>
-                            <th>Unidade</th>
-                            <th>Fornecedor</th>
-                            ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? '<th>Custo Est.</th>' : ''}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${sugestoes.map(s => `
-                            <tr>
-                                <td><strong>${s.insumo_nome}</strong></td>
-                                <td>${s.saldo_atual.toFixed(2)}</td>
-                                <td>${s.demanda.toFixed(2)}</td>
-                                <td>${s.seguranca.toFixed(2)}</td>
-                                <td>${s.necessidade.toFixed(2)}</td>
-                                <td><strong>${s.sugerido}</strong></td>
-                                <td>${s.unidade}</td>
-                                <td>${s.fornecedor} ${s.fornecedor === '(Definir)' ? '<span class="badge badge-warning">Atenção</span>' : ''}</td>
-                                ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? `
-                                    <td>${s.tem_preco ? '<strong>R$ ' + s.custo.toFixed(2) + '</strong>' : '<span class="badge badge-danger">Sem preço</span>'}</td>
-                                ` : ''}
-                            </tr>
-                        `).join('')}
-                        ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? `
-                            <tr class="total-row">
-                                <td colspan="8"><strong>Total Estimado</strong></td>
-                                <td><strong>R$ ${totalCusto.toFixed(2)}</strong></td>
-                            </tr>
-                        ` : ''}
-                    </tbody>
-                </table>
-            `;
+            atualizarPreviaComSubstitutos();
             
             document.getElementById('previaSection').style.display = 'block';
             document.getElementById('btnSalvar').style.display = 'inline-block';
@@ -986,11 +1216,313 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
             });
         }
         
+        // Funções para substitutos
+        function abrirSubmodalSubstitutos(insumoId) {
+            insumoPrincipalAtual = insumoId;
+            document.getElementById('submodalSubstitutos').style.display = 'block';
+            
+            // Buscar substitutos para este insumo
+            buscarSubstitutos(insumoId);
+        }
+        
+        function fecharSubmodalSubstitutos() {
+            document.getElementById('submodalSubstitutos').style.display = 'none';
+            insumoPrincipalAtual = null;
+            substitutoSelecionado = null;
+        }
+        
+        function buscarSubstitutos(insumoId) {
+            // Simular busca de substitutos (em produção, seria via AJAX)
+            const substitutos = [
+                {
+                    id: 1,
+                    nome: 'Leite Integral 1L',
+                    unidade: 'L',
+                    preco: 4.50,
+                    fator_correcao: 1.0,
+                    embalagem_multiplo: 12,
+                    fornecedor: 'Fornecedor A',
+                    equivalencia: 1.0,
+                    prioridade: 1,
+                    observacao: 'Substituto direto'
+                },
+                {
+                    id: 2,
+                    nome: 'Leite Desnatado 1L',
+                    unidade: 'L',
+                    preco: 4.20,
+                    fator_correcao: 1.0,
+                    embalagem_multiplo: 12,
+                    fornecedor: 'Fornecedor B',
+                    equivalencia: 1.0,
+                    prioridade: 2,
+                    observacao: 'Substituto alternativo'
+                }
+            ];
+            
+            substitutosDisponiveis[insumoId] = substitutos;
+            renderizarSubstitutos(substitutos);
+        }
+        
+        function renderizarSubstitutos(substitutos) {
+            const lista = document.getElementById('listaSubstitutos');
+            lista.innerHTML = '';
+            
+            if (substitutos.length === 0) {
+                lista.innerHTML = '<p style="text-align: center; color: #666;">Nenhum substituto aprovado para este insumo.</p>';
+                return;
+            }
+            
+            substitutos.forEach(substituto => {
+                const item = document.createElement('div');
+                item.className = 'substituto-item';
+                item.onclick = () => selecionarSubstituto(substituto);
+                item.innerHTML = `
+                    <input type="radio" name="substituto" value="${substituto.id}">
+                    <div class="substituto-info">
+                        <div class="substituto-name">${substituto.nome}</div>
+                        <div class="substituto-details">
+                            Unidade: ${substituto.unidade} | 
+                            Preço: R$ ${substituto.preco.toFixed(2)} | 
+                            Equivalência: ${substituto.equivalencia} | 
+                            Fornecedor: ${substituto.fornecedor}
+                            ${substituto.observacao ? '<br>Obs: ' + substituto.observacao : ''}
+                        </div>
+                    </div>
+                `;
+                lista.appendChild(item);
+            });
+        }
+        
+        function selecionarSubstituto(substituto) {
+            substitutoSelecionado = substituto;
+            
+            // Atualizar seleção visual
+            document.querySelectorAll('.substituto-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+            
+            // Mostrar prévia
+            mostrarPreviaSubstituto(substituto);
+            
+            // Habilitar botão de aplicar
+            document.getElementById('btnAplicarSubstituto').disabled = false;
+        }
+        
+        function mostrarPreviaSubstituto(substituto) {
+            const percentual = document.getElementById('percentualCobertura').value;
+            const insumoPrincipal = insumosDisponiveis.find(i => i.id == insumoPrincipalAtual);
+            
+            if (!insumoPrincipal) return;
+            
+            // Calcular necessidades
+            const necessidadePrincipal = parseFloat(insumoPrincipal.estoque_atual) || 0;
+            const necessidadeParcial = necessidadePrincipal * (percentual / 100);
+            const necessidadeSubstituto = necessidadeParcial * substituto.equivalencia;
+            
+            // Aplicar arredondamento por embalagem
+            let sugerido = necessidadeSubstituto;
+            if (substituto.embalagem_multiplo > 0) {
+                sugerido = Math.ceil(necessidadeSubstituto / substituto.embalagem_multiplo) * substituto.embalagem_multiplo;
+            } else {
+                sugerido = Math.ceil(necessidadeSubstituto * 100) / 100;
+            }
+            
+            // Calcular custo
+            const custoUnitario = substituto.preco * substituto.fator_correcao;
+            const custoTotal = sugerido * custoUnitario;
+            
+            // Mostrar prévia
+            document.getElementById('previaSubstituto').style.display = 'block';
+            document.getElementById('dadosPreviaSubstituto').innerHTML = `
+                <div class="previa-substituto">
+                    <h5>Prévia do Substituto</h5>
+                    <div class="previa-row">
+                        <span class="previa-label">Insumo Principal:</span>
+                        <span class="previa-value">${insumoPrincipal.nome}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Necessidade Principal:</span>
+                        <span class="previa-value">${necessidadePrincipal.toFixed(2)} ${insumoPrincipal.unidade_simbolo}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">% Cobertura:</span>
+                        <span class="previa-value">${percentual}%</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Necessidade Parcial:</span>
+                        <span class="previa-value">${necessidadeParcial.toFixed(2)} ${insumoPrincipal.unidade_simbolo}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Equivalência:</span>
+                        <span class="previa-value">${substituto.equivalencia}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Necessidade Substituto:</span>
+                        <span class="previa-value">${necessidadeSubstituto.toFixed(2)} ${substituto.unidade}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Sugerido (com pack):</span>
+                        <span class="previa-value"><strong>${sugerido.toFixed(2)} ${substituto.unidade}</strong></span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Custo Unitário:</span>
+                        <span class="previa-value">R$ ${custoUnitario.toFixed(2)}</span>
+                    </div>
+                    <div class="previa-row">
+                        <span class="previa-label">Custo Total:</span>
+                        <span class="previa-value"><strong>R$ ${custoTotal.toFixed(2)}</strong></span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function atualizarPercentual(valor) {
+            document.getElementById('percentualDisplay').textContent = valor + '%';
+            
+            if (substitutoSelecionado) {
+                mostrarPreviaSubstituto(substitutoSelecionado);
+            }
+        }
+        
+        function aplicarSubstituto() {
+            if (!substitutoSelecionado || !insumoPrincipalAtual) {
+                alert('Selecione um substituto primeiro.');
+                return;
+            }
+            
+            const percentual = document.getElementById('percentualCobertura').value;
+            
+            // Simular aplicação do substituto
+            const insumoPrincipal = insumosDisponiveis.find(i => i.id == insumoPrincipalAtual);
+            const substituto = substitutoSelecionado;
+            
+            // Calcular necessidades
+            const necessidadePrincipal = parseFloat(insumoPrincipal.estoque_atual) || 0;
+            const necessidadeParcial = necessidadePrincipal * (percentual / 100);
+            const necessidadeSubstituto = necessidadeParcial * substituto.equivalencia;
+            
+            // Aplicar arredondamento por embalagem
+            let sugerido = necessidadeSubstituto;
+            if (substituto.embalagem_multiplo > 0) {
+                sugerido = Math.ceil(necessidadeSubstituto / substituto.embalagem_multiplo) * substituto.embalagem_multiplo;
+            } else {
+                sugerido = Math.ceil(necessidadeSubstituto * 100) / 100;
+            }
+            
+            // Calcular custo
+            const custoUnitario = substituto.preco * substituto.fator_correcao;
+            const custoTotal = sugerido * custoUnitario;
+            
+            // Adicionar à prévia
+            const novaSugestao = {
+                insumo_id: substituto.id,
+                insumo_nome: substituto.nome,
+                unidade: substituto.unidade,
+                fornecedor_id: null,
+                fornecedor_nome: substituto.fornecedor,
+                saldo_atual: 0,
+                demanda: necessidadeSubstituto,
+                seguranca: 0,
+                necessidade: necessidadeSubstituto,
+                sugerido: sugerido,
+                custo_unitario: custoUnitario,
+                custo_total: custoTotal,
+                tem_preco: custoUnitario > 0,
+                is_substituto: true,
+                substituto_de: insumoPrincipal.nome,
+                percentual_cobertura: percentual,
+                equivalencia: substituto.equivalencia
+            };
+            
+            if (!sugestoesCalculadas) {
+                sugestoesCalculadas = [];
+            }
+            
+            // Remover sugestão anterior do mesmo substituto se existir
+            sugestoesCalculadas = sugestoesCalculadas.filter(s => !(s.is_substituto && s.insumo_id === substituto.id));
+            
+            // Adicionar nova sugestão
+            sugestoesCalculadas.push(novaSugestao);
+            
+            // Atualizar prévia
+            atualizarPreviaComSubstitutos();
+            
+            // Fechar submodal
+            fecharSubmodalSubstitutos();
+            
+            // Mostrar mensagem de sucesso
+            alert('Substituto aplicado com sucesso!');
+        }
+        
+        function atualizarPreviaComSubstitutos() {
+            if (!sugestoesCalculadas || sugestoesCalculadas.length === 0) return;
+            
+            const previaContent = document.getElementById('previaContent');
+            let totalCusto = 0;
+            
+            sugestoesCalculadas.forEach(s => totalCusto += s.custo_total);
+            
+            previaContent.innerHTML = `
+                <table class="preview-table">
+                    <thead>
+                        <tr>
+                            <th>Insumo</th>
+                            <th>Saldo</th>
+                            <th>Demanda</th>
+                            <th>Segurança</th>
+                            <th>Necessário</th>
+                            <th>Sugerido</th>
+                            <th>Unidade</th>
+                            <th>Fornecedor</th>
+                            ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? '<th>Custo Est.</th>' : ''}
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${sugestoesCalculadas.map(s => `
+                            <tr ${s.is_substituto ? 'style="background: #e7f3ff;"' : ''}>
+                                <td>
+                                    <strong>${s.insumo_nome}</strong>
+                                    ${s.is_substituto ? '<br><small style="color: #28a745;">🔄 Substituto de: ' + s.substituto_de + '</small>' : ''}
+                                </td>
+                                <td>${s.saldo_atual.toFixed(2)}</td>
+                                <td>${s.demanda.toFixed(2)}</td>
+                                <td>${s.seguranca.toFixed(2)}</td>
+                                <td>${s.necessidade.toFixed(2)}</td>
+                                <td><strong>${s.sugerido.toFixed(2)}</strong></td>
+                                <td>${s.unidade}</td>
+                                <td>${s.fornecedor_nome} ${s.fornecedor_nome === '(Definir)' ? '<span class="badge badge-warning">Atenção</span>' : ''}</td>
+                                ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? `
+                                    <td>${s.tem_preco ? '<strong>R$ ' + s.custo_total.toFixed(2) + '</strong>' : '<span class="badge badge-danger">Sem preço</span>'}</td>
+                                ` : ''}
+                                <td>
+                                    ${!s.is_substituto ? `<button class="btn-substituto" onclick="abrirSubmodalSubstitutos(${s.insumo_id})">🔄 Substituto</button>` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                        ${<?= lc_can_view_stock_value() ? 'true' : 'false' ?> ? `
+                            <tr class="total-row">
+                                <td colspan="8"><strong>Total Estimado</strong></td>
+                                <td><strong>R$ ${totalCusto.toFixed(2)}</strong></td>
+                                <td></td>
+                            </tr>
+                        ` : ''}
+                    </tbody>
+                </table>
+            `;
+        }
+        
         // Fechar modal ao clicar fora
         window.onclick = function(event) {
             const modal = document.getElementById('modalSugestao');
+            const submodal = document.getElementById('submodalSubstitutos');
+            
             if (event.target === modal) {
                 fecharModalSugestao();
+            } else if (event.target === submodal) {
+                fecharSubmodalSubstitutos();
             }
         }
     </script>
