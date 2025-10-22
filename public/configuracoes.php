@@ -384,6 +384,62 @@ try {
                 </div>
             </div>
             
+            <!-- Seção de RH -->
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-icon">👥</div>
+                    <div>
+                        <h2 class="section-title">RH</h2>
+                        <p class="section-description">Gestão de recursos humanos</p>
+                    </div>
+                </div>
+                <div class="section-actions">
+                    <a href="rh_dashboard.php" class="action-btn">
+                        <span class="action-btn-icon">📊</span>
+                        <span class="action-btn-text">Dashboard RH</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                    <a href="rh_colaboradores.php" class="action-btn">
+                        <span class="action-btn-icon">👤</span>
+                        <span class="action-btn-text">Colaboradores</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                    <a href="rh_holerite_upload.php" class="action-btn">
+                        <span class="action-btn-icon">💰</span>
+                        <span class="action-btn-text">Lançar Holerites</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Seção de Contabilidade -->
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-icon">📑</div>
+                    <div>
+                        <h2 class="section-title">Contabilidade</h2>
+                        <p class="section-description">Gestão de documentos e boletos</p>
+                    </div>
+                </div>
+                <div class="section-actions">
+                    <a href="contab_dashboard.php" class="action-btn">
+                        <span class="action-btn-icon">📊</span>
+                        <span class="action-btn-text">Dashboard Contábil</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                    <a href="contab_documentos.php" class="action-btn">
+                        <span class="action-btn-icon">📄</span>
+                        <span class="action-btn-text">Documentos</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                    <a href="contab_link.php" class="action-btn">
+                        <span class="action-btn-icon">🔗</span>
+                        <span class="action-btn-text">Portal Contábil</span>
+                        <span class="action-btn-arrow">→</span>
+                    </a>
+                </div>
+            </div>
+            
             <!-- Seção de Estoque -->
             <div class="section-card">
                 <div class="section-header">
