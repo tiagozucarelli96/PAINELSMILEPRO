@@ -187,6 +187,8 @@ function dt($s, $fmt='d/m/Y H:i') { return $s ? date($fmt, strtotime($s)) : ''; 
             <div>
                 <a href="estoque_alertas.php" class="btn btn-danger" style="margin-right: 10px;">🚨 Alertas de Ruptura</a>
                 <a href="estoque_desvios.php" class="btn btn-secondary" style="margin-right: 10px;">📊 Relatório de Desvios</a>
+                <a href="config_insumos.php" class="btn btn-outline" style="margin-right: 10px;">📦 Configurar Insumos</a>
+                <a href="lc_index.php" class="btn btn-outline" style="margin-right: 10px;">🏠 Voltar</a>
                 <?php if (lc_can_create_contagem()): ?>
                     <a href="estoque_contar.php" class="btn btn-primary">Nova Contagem</a>
                 <?php endif; ?>

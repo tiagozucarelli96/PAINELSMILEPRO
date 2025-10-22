@@ -5,6 +5,7 @@
 session_start();
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
+require_once __DIR__ . '/lc_anexos_helper.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -84,6 +85,22 @@ if ($solicitacao) {
         $timeline = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         // Timeline pode não existir ainda
+    }
+}
+
+// Buscar anexos
+$anexos = [];
+$anexos_comprovantes = [];
+if ($solicitacao) {
+    try {
+        $anexos_manager = new LcAnexosManager($pdo);
+        $anexos = $anexos_manager->buscarAnexos($solicitacao_id, false); // Apenas anexos normais
+        $anexos_comprovantes = $anexos_manager->buscarAnexos($solicitacao_id, true); // Incluir comprovantes
+        $anexos_comprovantes = array_filter($anexos_comprovantes, function($anexo) {
+            return $anexo['eh_comprovante'] == true;
+        });
+    } catch (Exception $e) {
+        error_log("Erro ao buscar anexos: " . $e->getMessage());
     }
 }
 
@@ -281,6 +298,82 @@ function getEventIcon($tipo) {
             color: #64748b;
         }
         
+        /* Estilos para anexos */
+        .anexos-section {
+            margin-bottom: 30px;
+        }
+        
+        .anexos-section h4 {
+            color: #374151;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .anexos-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .anexo-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .anexo-card:hover {
+            border-color: #1e40af;
+            box-shadow: 0 2px 8px rgba(30, 64, 175, 0.1);
+        }
+        
+        .anexo-card.comprovante {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+        
+        .anexo-card.comprovante:hover {
+            border-color: #059669;
+            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+        }
+        
+        .anexo-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        
+        .anexo-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .anexo-nome {
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 4px;
+            word-break: break-word;
+        }
+        
+        .anexo-meta {
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        .anexo-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        
+        .smile-btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        
         .actions-section {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
@@ -470,6 +563,124 @@ function getEventIcon($tipo) {
                             <div class="detail-section full-width">
                                 <h3>💰 Observação do Pagamento</h3>
                                 <p style="color: #64748b; line-height: 1.6;"><?= nl2br(htmlspecialchars($solicitacao['observacao_pagamento'])) ?></p>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <!-- Seção de Anexos -->
+                        <?php if (!empty($anexos) || !empty($anexos_comprovantes)): ?>
+                            <div class="detail-section full-width">
+                                <h3>📎 Anexos</h3>
+                                
+                                <?php if (!empty($anexos)): ?>
+                                    <div class="anexos-section">
+                                        <h4>Anexos da Solicitação</h4>
+                                        <div class="anexos-grid">
+                                            <?php foreach ($anexos as $anexo): ?>
+                                                <div class="anexo-card">
+                                                    <div class="anexo-icon">
+                                                        <?php
+                                                        $ext = strtolower(pathinfo($anexo['nome_original'], PATHINFO_EXTENSION));
+                                                        switch ($ext) {
+                                                            case 'pdf': echo '📄'; break;
+                                                            case 'jpg':
+                                                            case 'jpeg': echo '🖼️'; break;
+                                                            case 'png': echo '🖼️'; break;
+                                                            default: echo '📎';
+                                                        }
+                                                        ?>
+                                                    </div>
+                                                    <div class="anexo-info">
+                                                        <div class="anexo-nome"><?= htmlspecialchars($anexo['nome_original']) ?></div>
+                                                        <div class="anexo-meta">
+                                                            <?= $anexo['tamanho_formatado'] ?> • 
+                                                            <?= date('d/m/Y H:i', strtotime($anexo['criado_em'])) ?>
+                                                            <?php if ($anexo['autor_nome']): ?>
+                                                                • por <?= htmlspecialchars($anexo['autor_nome']) ?>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                    <div class="anexo-actions">
+                                                        <a href="download_anexo.php?id=<?= $anexo['id'] ?>" 
+                                                           class="smile-btn smile-btn-sm smile-btn-primary">
+                                                            📥 Baixar
+                                                        </a>
+                                                        <?php if (in_array($perfil, ['ADM', 'FIN']) || 
+                                                                  ($solicitacao['status'] === 'aguardando' && $anexo['autor_id'] == ($_SESSION['usuario_id'] ?? 0))): ?>
+                                                            <a href="remover_anexo.php?id=<?= $anexo['id'] ?>&solicitacao=<?= $solicitacao_id ?>" 
+                                                               class="smile-btn smile-btn-sm smile-btn-danger"
+                                                               onclick="return confirm('Remover este anexo?')">
+                                                                🗑️ Remover
+                                                            </a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                                
+                                <?php if (!empty($anexos_comprovantes)): ?>
+                                    <div class="anexos-section">
+                                        <h4>Comprovantes do Financeiro</h4>
+                                        <div class="anexos-grid">
+                                            <?php foreach ($anexos_comprovantes as $anexo): ?>
+                                                <div class="anexo-card comprovante">
+                                                    <div class="anexo-icon">
+                                                        <?php
+                                                        $ext = strtolower(pathinfo($anexo['nome_original'], PATHINFO_EXTENSION));
+                                                        switch ($ext) {
+                                                            case 'pdf': echo '📄'; break;
+                                                            case 'jpg':
+                                                            case 'jpeg': echo '🖼️'; break;
+                                                            case 'png': echo '🖼️'; break;
+                                                            default: echo '📎';
+                                                        }
+                                                        ?>
+                                                    </div>
+                                                    <div class="anexo-info">
+                                                        <div class="anexo-nome"><?= htmlspecialchars($anexo['nome_original']) ?></div>
+                                                        <div class="anexo-meta">
+                                                            <?= $anexo['tamanho_formatado'] ?> • 
+                                                            <?= date('d/m/Y H:i', strtotime($anexo['criado_em'])) ?>
+                                                            <?php if ($anexo['autor_nome']): ?>
+                                                                • por <?= htmlspecialchars($anexo['autor_nome']) ?>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </div>
+                                                    <div class="anexo-actions">
+                                                        <a href="download_anexo.php?id=<?= $anexo['id'] ?>" 
+                                                           class="smile-btn smile-btn-sm smile-btn-primary">
+                                                            📥 Baixar
+                                                        </a>
+                                                        <?php if (in_array($perfil, ['ADM', 'FIN'])): ?>
+                                                            <a href="remover_anexo.php?id=<?= $anexo['id'] ?>&solicitacao=<?= $solicitacao_id ?>" 
+                                                               class="smile-btn smile-btn-sm smile-btn-danger"
+                                                               onclick="return confirm('Remover este comprovante?')">
+                                                                🗑️ Remover
+                                                            </a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                                
+                                <?php if (in_array($perfil, ['ADM', 'FIN'])): ?>
+                                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                                        <h4>Adicionar Comprovante</h4>
+                                        <form method="POST" action="adicionar_comprovante.php" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: end;">
+                                            <input type="hidden" name="solicitacao_id" value="<?= $solicitacao_id ?>">
+                                            <div style="flex: 1;">
+                                                <input type="file" name="comprovante" accept=".pdf,.jpg,.jpeg,.png" 
+                                                       class="smile-form-control" required>
+                                            </div>
+                                            <button type="submit" class="smile-btn smile-btn-primary">
+                                                📎 Anexar Comprovante
+                                            </button>
+                                        </form>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
                     </div>

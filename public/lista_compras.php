@@ -1244,7 +1244,17 @@ function addEventoME(e){
 <body class="panel">
 <?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
 <div class="main-content">
-  <h1>Gerar Lista de Compras</h1>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h1 style="margin: 0;">Gerar Lista de Compras</h1>
+    <div style="display: flex; gap: 10px;">
+      <a href="fornecedores.php" class="btn btn-outline" style="display: flex; align-items: center; gap: 5px;">
+        <span>🏢</span> Cadastrar Fornecedor
+      </a>
+      <a href="lc_index.php" class="btn btn-outline" style="display: flex; align-items: center; gap: 5px;">
+        <span>🏠</span> Voltar
+      </a>
+    </div>
+  </div>
 
   <div class="lc-main-container">
     <?php if (!empty($err)): ?><div class="alert err"><?=h($err)?></div><?php endif; ?>

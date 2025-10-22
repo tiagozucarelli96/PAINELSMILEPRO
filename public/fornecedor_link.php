@@ -4,6 +4,7 @@
 
 session_start();
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/lc_anexos_helper.php';
 
 $token = $_GET['t'] ?? '';
 $sucesso = $_GET['sucesso'] ?? null;
@@ -81,12 +82,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $fornecedor) {
         
         $solicitacao_id = $pdo->lastInsertId();
         
+        // Processar anexos se houver
+        $anexos_manager = new LcAnexosManager($pdo);
+        $anexos_processados = 0;
+        
+        if (isset($_FILES['anexos']) && is_array($_FILES['anexos']['name'])) {
+            for ($i = 0; $i < count($_FILES['anexos']['name']); $i++) {
+                if ($_FILES['anexos']['error'][$i] === UPLOAD_ERR_OK) {
+                    $arquivo = [
+                        'name' => $_FILES['anexos']['name'][$i],
+                        'type' => $_FILES['anexos']['type'][$i],
+                        'tmp_name' => $_FILES['anexos']['tmp_name'][$i],
+                        'error' => $_FILES['anexos']['error'][$i],
+                        'size' => $_FILES['anexos']['size'][$i]
+                    ];
+                    
+                    $resultado = $anexos_manager->fazerUpload(
+                        $arquivo, 
+                        $solicitacao_id, 
+                        null, 
+                        'portal', 
+                        $ip
+                    );
+                    
+                    if ($resultado['sucesso']) {
+                        $anexos_processados++;
+                    }
+                }
+            }
+        }
+        
         // Criar evento na timeline
+        $mensagem_timeline = 'Solicitação criada via portal do fornecedor';
+        if ($anexos_processados > 0) {
+            $mensagem_timeline .= " com {$anexos_processados} anexo(s)";
+        }
+        
         $stmt = $pdo->prepare("
             INSERT INTO lc_timeline_pagamentos (solicitacao_id, tipo_evento, mensagem)
-            VALUES (?, 'criacao', 'Solicitação criada via portal do fornecedor')
+            VALUES (?, 'criacao', ?)
         ");
-        $stmt->execute([$solicitacao_id]);
+        $stmt->execute([$solicitacao_id, $mensagem_timeline]);
         
         header('Location: fornecedor_link.php?t=' . urlencode($token) . '&sucesso=solicitacao_enviada&id=' . $solicitacao_id);
         exit;
@@ -223,6 +259,116 @@ function maskPix($pix_chave, $pix_tipo) {
             color: #64748b;
             margin: 5px 0;
         }
+        
+        /* Estilos para anexos */
+        .anexos-container {
+            margin-top: 10px;
+        }
+        
+        .anexos-dropzone {
+            border: 2px dashed #d1d5db;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            background: #f9fafb;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .anexos-dropzone:hover {
+            border-color: #1e40af;
+            background: #f0f9ff;
+        }
+        
+        .anexos-dropzone.dragover {
+            border-color: #1e40af;
+            background: #dbeafe;
+        }
+        
+        .dropzone-content {
+            pointer-events: none;
+        }
+        
+        .dropzone-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .dropzone-info {
+            font-size: 14px;
+            color: #64748b;
+            margin-top: 5px;
+        }
+        
+        .anexos-lista {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .anexos-lista h4 {
+            margin: 0 0 15px 0;
+            color: #374151;
+            font-size: 16px;
+        }
+        
+        .anexo-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .anexo-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .anexo-icon {
+            font-size: 20px;
+        }
+        
+        .anexo-detalhes {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .anexo-nome {
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .anexo-tamanho {
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        .anexo-remover {
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .anexo-remover:hover {
+            background: #b91c1c;
+        }
+        
+        .anexo-erro {
+            color: #dc2626;
+            font-size: 12px;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -303,6 +449,27 @@ function maskPix($pix_chave, $pix_tipo) {
                                       placeholder="Descreva o motivo do pagamento, referência, entrega, etc."></textarea>
                         </div>
                         
+                        <!-- Seção de Anexos -->
+                        <div class="smile-form-group">
+                            <label>Anexos (opcional)</label>
+                            <div class="anexos-container">
+                                <div class="anexos-dropzone" id="anexos-dropzone">
+                                    <div class="dropzone-content">
+                                        <div class="dropzone-icon">📎</div>
+                                        <p>Arraste arquivos aqui ou clique para selecionar</p>
+                                        <p class="dropzone-info">PDF, JPG, PNG. Máx 10 MB cada, até 5 arquivos</p>
+                                    </div>
+                                    <input type="file" name="anexos[]" id="anexos-input" multiple 
+                                           accept=".pdf,.jpg,.jpeg,.png" style="display: none;">
+                                </div>
+                                
+                                <div class="anexos-lista" id="anexos-lista" style="display: none;">
+                                    <h4>Arquivos selecionados:</h4>
+                                    <div class="anexos-items" id="anexos-items"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div style="display: flex; gap: 15px; justify-content: center; margin-top: 30px;">
                             <button type="submit" class="smile-btn smile-btn-primary" style="padding: 15px 30px; font-size: 16px;">
                                 💰 Enviar Solicitação
@@ -353,6 +520,124 @@ function maskPix($pix_chave, $pix_tipo) {
                 e.target.style.backgroundColor = '';
             }
         });
+        
+        // Sistema de anexos
+        const anexosSelecionados = [];
+        const maxAnexos = 5;
+        const maxTamanho = 10 * 1024 * 1024; // 10 MB
+        const maxTamanhoTotal = 25 * 1024 * 1024; // 25 MB
+        
+        const dropzone = document.getElementById('anexos-dropzone');
+        const inputFile = document.getElementById('anexos-input');
+        const listaAnexos = document.getElementById('anexos-lista');
+        const itemsAnexos = document.getElementById('anexos-items');
+        
+        // Configurar dropzone
+        dropzone.addEventListener('click', () => inputFile.click());
+        dropzone.addEventListener('dragover', handleDragOver);
+        dropzone.addEventListener('dragleave', handleDragLeave);
+        dropzone.addEventListener('drop', handleDrop);
+        
+        inputFile.addEventListener('change', handleFileSelect);
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        }
+        
+        function handleDragLeave(e) {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            processarArquivos(files);
+        }
+        
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            processarArquivos(files);
+        }
+        
+        function processarArquivos(files) {
+            files.forEach(file => {
+                if (anexosSelecionados.length >= maxAnexos) {
+                    alert('Limite de 5 anexos atingido');
+                    return;
+                }
+                
+                if (file.size > maxTamanho) {
+                    alert(`Arquivo ${file.name} excede 10 MB`);
+                    return;
+                }
+                
+                const tamanhoTotal = anexosSelecionados.reduce((sum, anexo) => sum + anexo.size, 0);
+                if (tamanhoTotal + file.size > maxTamanhoTotal) {
+                    alert('Limite de 25 MB total atingido');
+                    return;
+                }
+                
+                const extensao = file.name.split('.').pop().toLowerCase();
+                if (!['pdf', 'jpg', 'jpeg', 'png'].includes(extensao)) {
+                    alert(`Tipo não permitido: ${file.name}. Use PDF/JPG/PNG`);
+                    return;
+                }
+                
+                anexosSelecionados.push(file);
+                renderizarAnexos();
+            });
+        }
+        
+        function renderizarAnexos() {
+            if (anexosSelecionados.length === 0) {
+                listaAnexos.style.display = 'none';
+                return;
+            }
+            
+            listaAnexos.style.display = 'block';
+            itemsAnexos.innerHTML = '';
+            
+            anexosSelecionados.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'anexo-item';
+                item.innerHTML = `
+                    <div class="anexo-info">
+                        <div class="anexo-icon">${getFileIcon(file.name)}</div>
+                        <div class="anexo-detalhes">
+                            <div class="anexo-nome">${file.name}</div>
+                            <div class="anexo-tamanho">${formatFileSize(file.size)}</div>
+                        </div>
+                    </div>
+                    <button type="button" class="anexo-remover" onclick="removerAnexo(${index})">Remover</button>
+                `;
+                itemsAnexos.appendChild(item);
+            });
+        }
+        
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            switch (ext) {
+                case 'pdf': return '📄';
+                case 'jpg':
+                case 'jpeg': return '🖼️';
+                case 'png': return '🖼️';
+                default: return '📎';
+            }
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+        
+        function removerAnexo(index) {
+            anexosSelecionados.splice(index, 1);
+            renderizarAnexos();
+        }
         
         // Validação do formulário
         document.querySelector('form').addEventListener('submit', function(e) {

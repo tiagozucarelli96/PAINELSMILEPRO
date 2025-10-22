@@ -365,8 +365,23 @@ function getStatusText($status) {
     <div class="smile-container">
         <div class="smile-card">
             <div class="smile-card-header">
-                <h1>💰 Painel Financeiro</h1>
-                <p>Gerencie todas as solicitações de pagamento do sistema</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h1>💰 Painel Financeiro</h1>
+                        <p>Gerencie todas as solicitações de pagamento do sistema</p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <a href="fornecedores.php" class="smile-btn smile-btn-outline" style="display: flex; align-items: center; gap: 5px;">
+                            <span>🏢</span> Fornecedores
+                        </a>
+                        <a href="freelancers.php" class="smile-btn smile-btn-outline" style="display: flex; align-items: center; gap: 5px;">
+                            <span>👨‍💼</span> Freelancers
+                        </a>
+                        <a href="lc_index.php" class="smile-btn smile-btn-outline" style="display: flex; align-items: center; gap: 5px;">
+                            <span>🏠</span> Voltar
+                        </a>
+                    </div>
+                </div>
             </div>
             
             <div class="smile-card-body">

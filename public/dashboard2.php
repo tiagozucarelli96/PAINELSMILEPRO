@@ -376,10 +376,10 @@ try {
         <?php endif; ?>
 
         <?php if (!empty($_SESSION['perm_lista'])): ?>
-          <a class="action-card" href="lista_compras.php">
+          <a class="action-card" href="lc_index.php">
             <div class="action-icon">🛒</div>
             <div class="action-content">
-              <h3 class="action-title">Gerar Lista de Compras</h3>
+              <h3 class="action-title">Compras</h3>
               <p class="action-description">Crie listas inteligentes por evento com base nas suas receitas.</p>
             </div>
           </a>
