@@ -111,6 +111,35 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
       </a>
     </div>
 
+    <!-- Comercial -->
+    <?php if (lc_can_access_comercial()): ?>
+      <div class="nav-section">
+        <div class="nav-section-title">💼 Comercial</div>
+        <a href="comercial_degustacoes.php" class="nav-item <?= $current_page === 'comercial_degustacoes' ? 'active' : '' ?>">
+          <span class="nav-item-icon">🍽️</span>
+          <span class="nav-item-text">Degustações</span>
+        </a>
+        <a href="comercial_degustacao_editar.php" class="nav-item <?= $current_page === 'comercial_degustacao_editar' ? 'active' : '' ?>">
+          <span class="nav-item-icon">➕</span>
+          <span class="nav-item-text">Nova Degustação</span>
+        </a>
+        <a href="comercial_degust_inscricoes.php" class="nav-item <?= $current_page === 'comercial_degust_inscricoes' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📋</span>
+          <span class="nav-item-text">Inscritos (todas)</span>
+        </a>
+        <a href="dados_contrato.php" class="nav-item <?= $current_page === 'dados_contrato' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📄</span>
+          <span class="nav-item-text">Dados para Contrato</span>
+        </a>
+        <?php if (lc_can_view_conversao()): ?>
+        <a href="comercial_clientes.php" class="nav-item <?= $current_page === 'comercial_clientes' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📊</span>
+          <span class="nav-item-text">Conversão</span>
+        </a>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+
     <!-- Administração -->
     <?php if (lc_is_admin()): ?>
       <div class="nav-section">

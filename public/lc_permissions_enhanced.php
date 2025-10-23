@@ -36,11 +36,11 @@ function lc_can_access_module(string $module): bool {
     
     // Mapeamento de módulos por perfil
     $module_permissions = [
-        'ADM' => ['usuarios', 'pagamentos', 'tarefas', 'demandas', 'portao', 'banco_smile', 'banco_smile_admin', 'notas_fiscais', 'estoque_logistico', 'dados_contrato', 'uso_fiorino', 'rh', 'contabilidade', 'estoque', 'configuracoes'],
-        'FINANCEIRO' => ['pagamentos', 'rh', 'contabilidade', 'banco_smile', 'notas_fiscais'],
-        'GERENTE' => ['tarefas', 'demandas', 'pagamentos', 'rh'],
-        'OPER' => ['tarefas', 'demandas', 'estoque'],
-        'CONSULTA' => []
+        'ADM' => ['usuarios', 'pagamentos', 'tarefas', 'demandas', 'portao', 'banco_smile', 'banco_smile_admin', 'notas_fiscais', 'estoque_logistico', 'dados_contrato', 'uso_fiorino', 'rh', 'contabilidade', 'estoque', 'configuracoes', 'comercial'],
+        'FINANCEIRO' => ['pagamentos', 'rh', 'contabilidade', 'banco_smile', 'notas_fiscais', 'comercial'],
+        'GERENTE' => ['tarefas', 'demandas', 'pagamentos', 'rh', 'comercial'],
+        'OPER' => ['tarefas', 'demandas', 'estoque', 'comercial'],
+        'CONSULTA' => ['comercial']
     ];
     
     return in_array($module, $module_permissions[$profile] ?? []);
@@ -97,6 +97,41 @@ function lc_can_access_estoque(): bool {
 }
 
 /**
+ * Verifica se o usuário pode acessar Comercial
+ * @return bool
+ */
+function lc_can_access_comercial(): bool {
+    return lc_can_access_module('comercial');
+}
+
+/**
+ * Verifica se o usuário pode editar degustações
+ * @return bool
+ */
+function lc_can_edit_degustacoes(): bool {
+    $profile = lc_get_user_profile();
+    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE']);
+}
+
+/**
+ * Verifica se o usuário pode gerenciar inscritos
+ * @return bool
+ */
+function lc_can_manage_inscritos(): bool {
+    $profile = lc_get_user_profile();
+    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE', 'OPER']);
+}
+
+/**
+ * Verifica se o usuário pode ver conversão
+ * @return bool
+ */
+function lc_can_view_conversao(): bool {
+    $profile = lc_get_user_profile();
+    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE']);
+}
+
+/**
  * Obtém mensagem de erro baseada no perfil
  * @param string $action Ação que foi negada
  * @return string Mensagem de erro
@@ -115,6 +150,14 @@ function lc_get_permission_message(string $action): string {
             return "Apenas administradores e operadores podem acessar Estoque. Seu perfil: $profile";
         case 'configuracoes':
             return "Apenas administradores podem acessar Configurações. Seu perfil: $profile";
+        case 'comercial':
+            return "Acesso ao módulo Comercial negado. Seu perfil: $profile";
+        case 'degustacoes_editar':
+            return "Apenas administradores, financeiro e gerentes podem editar degustações. Seu perfil: $profile";
+        case 'inscritos_manage':
+            return "Apenas administradores, financeiro, gerentes e operadores podem gerenciar inscritos. Seu perfil: $profile";
+        case 'conversao_view':
+            return "Apenas administradores, financeiro e gerentes podem ver conversão. Seu perfil: $profile";
         default:
             return "Acesso negado. Seu perfil: $profile";
     }

@@ -5,6 +5,7 @@
 session_start();
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
+require_once __DIR__ . '/comercial_email_helper.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -42,6 +43,57 @@ try {
     $stmt = $pdo->query("SELECT COUNT(*) FROM lc_freelancers WHERE ativo = true");
     $stats['freelancers'] = $stmt->fetchColumn();
     
+} catch (Exception $e) {
+    // Usar valores padrão
+}
+
+// Processar configurações de e-mail
+$email_success = '';
+$email_error = '';
+
+if ($_POST && isset($_POST['action']) && $_POST['action'] === 'save_email_config') {
+    try {
+        $emailHelper = new ComercialEmailHelper();
+        $result = $emailHelper->updateSmtpConfig([
+            ':smtp_host' => $_POST['smtp_host'],
+            ':smtp_port' => (int)$_POST['smtp_port'],
+            ':smtp_username' => $_POST['smtp_username'],
+            ':smtp_password' => $_POST['smtp_password'],
+            ':from_name' => $_POST['from_name'],
+            ':from_email' => $_POST['from_email'],
+            ':reply_to' => $_POST['reply_to']
+        ]);
+        
+        if ($result) {
+            $email_success = "Configurações de e-mail atualizadas com sucesso!";
+        } else {
+            $email_error = "Erro ao atualizar configurações de e-mail.";
+        }
+    } catch (Exception $e) {
+        $email_error = "Erro: " . $e->getMessage();
+    }
+}
+
+if ($_POST && isset($_POST['action']) && $_POST['action'] === 'test_email') {
+    try {
+        $emailHelper = new ComercialEmailHelper();
+        $result = $emailHelper->testEmail($_POST['test_email']);
+        
+        if ($result) {
+            $email_success = "E-mail de teste enviado com sucesso!";
+        } else {
+            $email_error = "Erro ao enviar e-mail de teste.";
+        }
+    } catch (Exception $e) {
+        $email_error = "Erro: " . $e->getMessage();
+    }
+}
+
+// Buscar configuração atual de e-mail
+$email_config = null;
+try {
+    $stmt = $pdo->query("SELECT * FROM comercial_email_config WHERE ativo = TRUE ORDER BY criado_em DESC LIMIT 1");
+    $email_config = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Usar valores padrão
 }
@@ -410,6 +462,108 @@ try {
                         <span class="action-btn-arrow">→</span>
                     </a>
                 </div>
+            </div>
+            
+            <!-- Seção de E-mail -->
+            <div class="section-card">
+                <div class="section-header">
+                    <div class="section-icon">📧</div>
+                    <div>
+                        <h2 class="section-title">Sistema de E-mail</h2>
+                        <p class="section-description">Configurar SMTP para envio de e-mails</p>
+                    </div>
+                </div>
+                
+                <!-- Mensagens -->
+                <?php if ($email_success): ?>
+                    <div style="background: #d1fae5; color: #065f46; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #a7f3d0;">
+                        ✅ <?= h($email_success) ?>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if ($email_error): ?>
+                    <div style="background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #fca5a5;">
+                        ❌ <?= h($email_error) ?>
+                    </div>
+                <?php endif; ?>
+                
+                <!-- Formulário de Configuração SMTP -->
+                <form method="POST" style="margin-bottom: 20px;">
+                    <input type="hidden" name="action" value="save_email_config">
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">SMTP Host</label>
+                            <input type="text" name="smtp_host" value="<?= h($email_config['smtp_host'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="mail.exemplo.com" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">SMTP Port</label>
+                            <input type="number" name="smtp_port" value="<?= h($email_config['smtp_port'] ?? '587') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="587" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">SMTP Username</label>
+                            <input type="text" name="smtp_username" value="<?= h($email_config['smtp_username'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="contato@exemplo.com" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">SMTP Password</label>
+                            <input type="password" name="smtp_password" value="<?= h($email_config['smtp_password'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="Senha do e-mail" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">From Name</label>
+                            <input type="text" name="from_name" value="<?= h($email_config['from_name'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="GRUPO Smile EVENTOS" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">From Email</label>
+                            <input type="email" name="from_email" value="<?= h($email_config['from_email'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="contato@exemplo.com" required>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">Reply-To (opcional)</label>
+                            <input type="email" name="reply_to" value="<?= h($email_config['reply_to'] ?? '') ?>" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="noreply@exemplo.com">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                        💾 Salvar Configurações
+                    </button>
+                </form>
+                
+                <!-- Teste de E-mail -->
+                <form method="POST" style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <input type="hidden" name="action" value="test_email">
+                    
+                    <h4 style="margin: 0 0 15px 0; color: #374151;">🧪 Teste de E-mail</h4>
+                    <div style="display: flex; gap: 10px; align-items: end;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-weight: 600; margin-bottom: 5px;">E-mail para teste</label>
+                            <input type="email" name="test_email" 
+                                   style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" 
+                                   placeholder="seu-email@exemplo.com" required>
+                        </div>
+                        <button type="submit" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            📧 Enviar Teste
+                        </button>
+                    </div>
+                </form>
             </div>
             
             <!-- Seção de Contabilidade -->
