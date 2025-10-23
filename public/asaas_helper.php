@@ -6,9 +6,10 @@ class AsaasHelper {
     private $webhook_url;
     
     public function __construct() {
-        $this->api_key = 'aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmYyZDZiYzYwLTE4MDYtNGExYy05ODg1LTdmYWQ5OTRkZGI0MDo6JGFhY2hfMTY3YzU2YzctOGM0MS00MDczLWJkNTQtNTBmMTcyNjkwNjdh';
-        $this->base_url = 'https://www.asaas.com/api/v3';
-        $this->webhook_url = 'https://seudominio.com/public/asaas_webhook.php'; // Substitua pelo seu domínio
+        require_once __DIR__ . '/config_env.php';
+        $this->api_key = ASAAS_API_KEY;
+        $this->base_url = ASAAS_BASE_URL;
+        $this->webhook_url = WEBHOOK_URL;
     }
     
     /**

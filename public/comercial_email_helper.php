@@ -12,8 +12,22 @@ class ComercialEmailHelper {
     }
     
     private function loadSmtpConfig() {
-        $stmt = $this->pdo->query("SELECT * FROM comercial_email_config WHERE ativo = TRUE ORDER BY criado_em DESC LIMIT 1");
-        $this->smtp_config = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Primeiro tenta carregar das variáveis de ambiente
+        if (getenv('SMTP_HOST')) {
+            $this->smtp_config = [
+                'smtp_host' => getenv('SMTP_HOST'),
+                'smtp_port' => getenv('SMTP_PORT') ?: 587,
+                'smtp_username' => getenv('SMTP_USERNAME'),
+                'smtp_password' => getenv('SMTP_PASSWORD'),
+                'from_name' => getenv('SMTP_FROM_NAME') ?: 'GRUPO Smile EVENTOS',
+                'from_email' => getenv('SMTP_FROM_EMAIL'),
+                'reply_to' => getenv('SMTP_REPLY_TO')
+            ];
+        } else {
+            // Fallback para configuração no banco
+            $stmt = $this->pdo->query("SELECT * FROM comercial_email_config WHERE ativo = TRUE ORDER BY criado_em DESC LIMIT 1");
+            $this->smtp_config = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
     }
     
     public function sendEmail($to, $subject, $body, $isHtml = true) {
