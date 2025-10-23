@@ -50,12 +50,12 @@ if ($page === '' || $page === null) {
 
 /* rotas permitidas */
 $routes = [
-  'dashboard'           => 'dashboard_unified.php',
+  'dashboard'           => 'dashboard2.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'pagamentos'          => 'pagamentos.php',
   'admin_pagamentos'    => 'admin_pagamentos.php',
-  'usuarios'            => 'usuarios_moderno.php',
+  'usuarios'            => 'usuarios.php',
   'portao'              => 'portao.php',
   'banco_smile'         => 'banco_smile.php',
   'banco_smile_admin'   => 'banco_smile_admin.php',

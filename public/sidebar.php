@@ -1,6 +1,7 @@
 <?php
 // sidebar.php — Sidebar moderna para o sistema
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/lc_permissions_enhanced.php';
 $current_page = basename($_SERVER['PHP_SELF'], '.php');
 ?>
 
@@ -53,6 +54,77 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
         <span class="nav-item-text">Portão</span>
       </a>
     <?php endif; ?>
+
+    <!-- Novos Módulos -->
+    <?php if (lc_can_access_estoque()): ?>
+      <div class="nav-section">
+        <div class="nav-section-title">📦 Gestão de Estoque</div>
+        <a href="estoque_contagens.php" class="nav-item <?= $current_page === 'estoque_contagens' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📦</span>
+          <span class="nav-item-text">Controle de Estoque</span>
+        </a>
+        <a href="estoque_kardex.php" class="nav-item <?= $current_page === 'estoque_kardex' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📈</span>
+          <span class="nav-item-text">Kardex</span>
+        </a>
+        <a href="estoque_alertas.php" class="nav-item <?= $current_page === 'estoque_alertas' ? 'active' : '' ?>">
+          <span class="nav-item-icon">🚨</span>
+          <span class="nav-item-text">Alertas de Ruptura</span>
+        </a>
+      </div>
+    <?php endif; ?>
+
+    <?php if (lc_can_access_rh()): ?>
+      <div class="nav-section">
+        <div class="nav-section-title">👥 Recursos Humanos</div>
+        <a href="rh_dashboard.php" class="nav-item <?= $current_page === 'rh_dashboard' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📊</span>
+          <span class="nav-item-text">Dashboard RH</span>
+        </a>
+        <a href="rh_holerites.php" class="nav-item <?= $current_page === 'rh_holerites' ? 'active' : '' ?>">
+          <span class="nav-item-icon">💰</span>
+          <span class="nav-item-text">Holerites</span>
+        </a>
+      </div>
+    <?php endif; ?>
+
+    <?php if (lc_can_access_contabilidade()): ?>
+      <div class="nav-section">
+        <div class="nav-section-title">💰 Contabilidade</div>
+        <a href="contab_dashboard.php" class="nav-item <?= $current_page === 'contab_dashboard' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📊</span>
+          <span class="nav-item-text">Dashboard Contábil</span>
+        </a>
+        <a href="contab_documentos.php" class="nav-item <?= $current_page === 'contab_documentos' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📄</span>
+          <span class="nav-item-text">Documentos</span>
+        </a>
+      </div>
+    <?php endif; ?>
+
+    <!-- Fornecedores -->
+    <div class="nav-section">
+      <div class="nav-section-title">🏢 Fornecedores</div>
+      <a href="fornecedores.php" class="nav-item <?= $current_page === 'fornecedores' ? 'active' : '' ?>">
+        <span class="nav-item-icon">🏢</span>
+        <span class="nav-item-text">Cadastro de Fornecedores</span>
+      </a>
+    </div>
+
+    <!-- Administração -->
+    <?php if (lc_is_admin()): ?>
+      <div class="nav-section">
+        <div class="nav-section-title">🔧 Administração</div>
+        <a href="index.php?page=usuarios" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'usuarios' ? 'active' : '' ?>">
+          <span class="nav-item-icon">👥</span>
+          <span class="nav-item-text">Usuários</span>
+        </a>
+        <a href="configuracoes.php" class="nav-item <?= $current_page === 'configuracoes' ? 'active' : '' ?>">
+          <span class="nav-item-icon">⚙️</span>
+          <span class="nav-item-text">Configurações</span>
+        </a>
+      </div>
+    <?php endif; ?>
   </nav>
 
   <!-- Footer da Sidebar -->
@@ -101,3 +173,25 @@ window.addEventListener('resize', () => {
   }
 });
 </script>
+
+<style>
+/* Estilos para seções da sidebar */
+.nav-section {
+  margin-bottom: 20px;
+}
+
+.nav-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  padding: 0 16px;
+}
+
+.nav-section .nav-item {
+  margin-left: 8px;
+  padding-left: 24px;
+}
+</style>

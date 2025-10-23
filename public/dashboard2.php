@@ -2,6 +2,7 @@
 // public/dashboard2.php — Dashboard moderna com KPIs e métricas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/lc_permissions_enhanced.php';
 if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
@@ -34,6 +35,42 @@ try {
     ")->fetchColumn();
     $stats['custo_medio'] = $custo_medio ? number_format($custo_medio, 2, ',', '.') : '0,00';
     
+    // Métricas dos novos módulos
+    $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
+    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
+    
+    // Métricas de pagamentos
+    if (lc_can_access_module('pagamentos')) {
+        $stats['solicitacoes_pendentes'] = $pdo->query("
+            SELECT COUNT(*) FROM pagamentos_solicitacoes 
+            WHERE status = 'aguardando_analise'
+        ")->fetchColumn();
+    }
+    
+    // Métricas de estoque
+    if (lc_can_access_estoque()) {
+        $stats['contagens_abertas'] = $pdo->query("
+            SELECT COUNT(*) FROM estoque_contagens 
+            WHERE status = 'aberta'
+        ")->fetchColumn();
+    }
+    
+    // Métricas de RH
+    if (lc_can_access_rh()) {
+        $stats['holerites_mes'] = $pdo->query("
+            SELECT COUNT(*) FROM rh_holerites 
+            WHERE mes_competencia = DATE_FORMAT(NOW(), '%Y-%m')
+        ")->fetchColumn();
+    }
+    
+    // Métricas de Contabilidade
+    if (lc_can_access_contabilidade()) {
+        $stats['documentos_pendentes'] = $pdo->query("
+            SELECT COUNT(*) FROM contab_documentos 
+            WHERE status = 'pendente'
+        ")->fetchColumn();
+    }
+    
 } catch (Exception $e) {
     // Se der erro, usar valores padrão
     $stats = [
@@ -42,7 +79,13 @@ try {
         'receitas' => 0,
         'unidades' => 0,
         'receitas_recentes' => 0,
-        'custo_medio' => '0,00'
+        'custo_medio' => '0,00',
+        'usuarios' => 0,
+        'fornecedores' => 0,
+        'solicitacoes_pendentes' => 0,
+        'contagens_abertas' => 0,
+        'holerites_mes' => 0,
+        'documentos_pendentes' => 0
     ];
 }
 ?>
@@ -358,6 +401,69 @@ try {
           <div class="kpi-value">100%</div>
           <div class="kpi-label">Sistema Operacional</div>
         </div>
+
+        <!-- Novos Cards dos Módulos -->
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <div class="kpi-icon">👥</div>
+            <div class="kpi-change positive">Ativos</div>
+          </div>
+          <div class="kpi-value"><?= $stats['usuarios'] ?></div>
+          <div class="kpi-label">Usuários</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <div class="kpi-icon">🏢</div>
+            <div class="kpi-change positive">Cadastrados</div>
+          </div>
+          <div class="kpi-value"><?= $stats['fornecedores'] ?></div>
+          <div class="kpi-label">Fornecedores</div>
+        </div>
+
+        <?php if (lc_can_access_module('pagamentos') && $stats['solicitacoes_pendentes'] > 0): ?>
+        <div class="kpi-card" style="border-color: #f59e0b;">
+          <div class="kpi-header">
+            <div class="kpi-icon">💳</div>
+            <div class="kpi-change" style="background: #fef3c7; color: #92400e;">Pendentes</div>
+          </div>
+          <div class="kpi-value"><?= $stats['solicitacoes_pendentes'] ?></div>
+          <div class="kpi-label">Solicitações de Pagamento</div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (lc_can_access_estoque() && $stats['contagens_abertas'] > 0): ?>
+        <div class="kpi-card" style="border-color: #ea580c;">
+          <div class="kpi-header">
+            <div class="kpi-icon">📦</div>
+            <div class="kpi-change" style="background: #fed7aa; color: #c2410c;">Em Andamento</div>
+          </div>
+          <div class="kpi-value"><?= $stats['contagens_abertas'] ?></div>
+          <div class="kpi-label">Contagens de Estoque</div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (lc_can_access_rh()): ?>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <div class="kpi-icon">💰</div>
+            <div class="kpi-change positive">Este Mês</div>
+          </div>
+          <div class="kpi-value"><?= $stats['holerites_mes'] ?></div>
+          <div class="kpi-label">Holerites</div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (lc_can_access_contabilidade()): ?>
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <div class="kpi-icon">📄</div>
+            <div class="kpi-change" style="background: #fef2f2; color: #dc2626;">Pendentes</div>
+          </div>
+          <div class="kpi-value"><?= $stats['documentos_pendentes'] ?></div>
+          <div class="kpi-label">Documentos Contábeis</div>
+        </div>
+        <?php endif; ?>
       </div>
     </div>
 
