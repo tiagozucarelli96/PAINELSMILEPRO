@@ -310,7 +310,7 @@ class DemandasHelper {
     private function enviarEmailNotificacao($usuario_id, $titulo, $mensagem) {
         // Buscar preferências do usuário
         $stmt = $this->pdo->prepare("
-            SELECT u.email, dpn.notificacao_email 
+            SELECT u.email, u.nome, dpn.notificacao_email 
             FROM usuarios u
             LEFT JOIN demandas_preferencias_notificacao dpn ON u.id = dpn.usuario_id
             WHERE u.id = ?
@@ -318,10 +318,21 @@ class DemandasHelper {
         $stmt->execute([$usuario_id]);
         $preferencias = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($preferencias && $preferencias['notificacao_email']) {
-            // Implementar envio de e-mail via SMTP
-            // Por enquanto, apenas log
-            error_log("E-mail para {$preferencias['email']}: {$titulo} - {$mensagem}");
+        if ($preferencias && $preferencias['notificacao_email'] && $preferencias['email']) {
+            // Usar EmailHelper para enviar e-mail
+            require_once __DIR__ . '/email_helper.php';
+            $emailHelper = new EmailHelper();
+            
+            $resultado = $emailHelper->enviarNotificacao(
+                $preferencias['email'],
+                $preferencias['nome'],
+                $titulo,
+                $mensagem
+            );
+            
+            if (!$resultado['success']) {
+                error_log("Erro ao enviar e-mail para {$preferencias['email']}: " . $resultado['error']);
+            }
         }
     }
     
