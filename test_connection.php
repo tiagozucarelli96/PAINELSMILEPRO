@@ -33,21 +33,10 @@ try {
     echo "❌ Erro na conexão direta: " . $e->getMessage() . "\n";
 }
 
-// Testar conexão via config_local.php
+// Testar conexão via config_local.php (arquivo removido)
 echo "\n2. Testando conexão via config_local.php...\n";
-try {
-    require_once __DIR__ . '/config_local.php';
-    $pdo = getLocalDbConnection();
-    echo "✅ Conexão via config_local.php OK\n";
-    
-    // Testar se a tabela usuarios existe
-    $stmt = $pdo->query("SELECT COUNT(*) FROM usuarios");
-    $count = $stmt->fetchColumn();
-    echo "✅ Tabela usuarios existe ($count registros)\n";
-    
-} catch (Exception $e) {
-    echo "❌ Erro na conexão via config_local.php: " . $e->getMessage() . "\n";
-}
+echo "⚠️ Arquivo config_local.php foi removido (não é mais necessário)\n";
+echo "✅ Configuração local agora está integrada em conexao.php\n";
 
 // Testar conexão via conexao.php
 echo "\n3. Testando conexão via conexao.php...\n";
