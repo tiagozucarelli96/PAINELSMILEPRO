@@ -1,16 +1,32 @@
 <?php
+/**
+ * conexao.php — Conexão com banco de dados
+ */
+
 // Verificar se estamos em ambiente local
 if (!getenv("DATABASE_URL") || getenv("DATABASE_URL") === "") {
-    // Usar configuração local
-    require_once __DIR__ . "/../config_local.php";
-    $pdo = getLocalDbConnection();
-    $GLOBALS["pdo"] = $pdo;
-    return;
+    // Configuração local simples
+    $host = 'localhost';
+    $port = '5432';
+    $dbname = 'painel_smile';
+    $user = 'tiagozucarelli';
+    $password = '';
+    
+    try {
+        $dsn = "pgsql:host=$host;port=$port;dbname=$dbname;sslmode=disable";
+        $pdo = new PDO($dsn, $user, $password, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+        $GLOBALS['pdo'] = $pdo;
+        return;
+    } catch (Exception $e) {
+        error_log("Erro de conexão local: " . $e->getMessage());
+        die("Erro de conexão com banco de dados local: " . $e->getMessage());
+    }
 }
 
-<?php
-declare(strict_types=1);
-
+// Se chegou aqui, usar configuração de produção (Railway)
 $debug = getenv('APP_DEBUG') === '1';
 ini_set('display_errors', $debug ? '1' : '0');
 ini_set('display_startup_errors', $debug ? '1' : '0');
@@ -22,7 +38,7 @@ $pdo = null;
 $db_error = '';
 
 try {
-    $dbUrl = getenv('DATABASE_URL'); // ex.: postgres://user:pass@host:port/db?sslmode=require
+    $dbUrl = getenv('DATABASE_URL');
     if (!$dbUrl) {
         throw new RuntimeException('DATABASE_URL não definido nas variáveis do serviço Web.');
     }
@@ -76,3 +92,6 @@ try {
         exit;
     }
 }
+
+$GLOBALS['pdo'] = $pdo;
+?>
