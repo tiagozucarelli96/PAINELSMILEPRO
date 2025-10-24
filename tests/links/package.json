@@ -7,6 +7,7 @@
     "links:crawl": "node crawler.js",
     "links:install": "npm install",
     "links:demo": "node demo.js",
+    "links:ci": "node ci.js",
     "links:clean": "rm -rf report.html report.json logs/"
   },
   "dependencies": {
