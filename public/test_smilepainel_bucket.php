@@ -25,8 +25,8 @@ function testSmilepainelBucket() {
     echo "<p><strong>Access Key:</strong> " . $config['access_key'] . "</p>";
     echo "<p><strong>Secret Key:</strong> " . $config['secret_key'] . "</p>";
     echo "<p><strong>Bucket:</strong> " . $config['bucket'] . "</p>";
-    echo "<p><strong>Region:</strong> " . $config['region'] . "</p>";
-    echo "<p><strong>Endpoint:</strong> " . $config['endpoint'] . "</p>";
+    echo "<p><strong>Region:</strong> " . $config['region'] . " <strong>(Sua região)</strong></p>";
+    echo "<p><strong>Endpoint:</strong> " . $config['endpoint'] . " <strong>(Sua região)</strong></p>";
     echo "<p><strong>Configurado:</strong> " . ($config['configured'] ? '✅ Sim' : '❌ Não') . "</p>";
     echo "</div>";
     
