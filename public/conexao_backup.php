@@ -1,6 +1,6 @@
 <?php
 /**
- * conexao_corrigida.php — Conexão com banco de dados CORRIGIDA
+ * conexao.php — Conexão com banco de dados
  */
 
 // Verificar se estamos em ambiente local
@@ -66,8 +66,8 @@ try {
         $sslmode = 'require';
     }
 
-    // DSN final com search_path forçado
-    $dsn = 'pgsql:host='.$host.';port='.$port.';dbname='.$name.';sslmode='.$sslmode.";options='-c client_encoding=UTF8 -c search_path=smilee12_painel_smile,public'";
+    // DSN final
+    $dsn = 'pgsql:host='.$host.';port='.$port.';dbname='.$name.';sslmode='.$sslmode.";options='-c client_encoding=UTF8'";
 
     // Conexão
     $pdo = new PDO($dsn, $user, $pass, array(
@@ -77,14 +77,24 @@ try {
     
     // Forçar search_path imediatamente após conexão
     $pdo->exec('SET search_path TO smilee12_painel_smile, public');
+
+    // Ajusta o search_path para o schema importado
+    $schema = getenv('DB_SCHEMA');
+    if (!$schema) { $schema = 'smilee12_painel_smile'; }
+    $schema = preg_replace('/[^a-zA-Z0-9_]/', '', $schema);
+    if ($schema && $schema !== 'public') {
+        $pdo->exec('SET search_path TO '.$schema.', public');
+    }
     
-    // Verificar se o search_path foi aplicado corretamente
+    // Forçar search_path para produção
+    $pdo->exec('SET search_path TO smilee12_painel_smile, public');
+    
+    // Verificar se o search_path foi aplicado
     $stmt = $pdo->query("SHOW search_path");
     $current_path = $stmt->fetchColumn();
-    
     if (strpos($current_path, 'smilee12_painel_smile') === false) {
-        // Se não funcionou, tentar novamente com comando mais específico
-        $pdo->exec('SET search_path = smilee12_painel_smile, public');
+        // Se não funcionou, tentar novamente
+        $pdo->exec('SET search_path TO smilee12_painel_smile, public');
     }
 
 } catch (Throwable $e) {
