@@ -111,6 +111,31 @@ $current_page = basename($_SERVER['PHP_SELF'], '.php');
       </a>
     </div>
 
+    <!-- Agenda -->
+    <?php 
+    require_once __DIR__ . '/agenda_helper.php';
+    $agenda = new AgendaHelper();
+    if ($agenda->canAccessAgenda($_SESSION['user_id'] ?? 1)): 
+    ?>
+      <div class="nav-section">
+        <div class="nav-section-title">📅 Agenda</div>
+        <a href="index.php?page=agenda" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'agenda' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📅</span>
+          <span class="nav-item-text">Agenda Interna</span>
+        </a>
+        <a href="index.php?page=agenda_config" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'agenda_config' ? 'active' : '' ?>">
+          <span class="nav-item-icon">⚙️</span>
+          <span class="nav-item-text">Configurações</span>
+        </a>
+        <?php if ($agenda->canViewReports($_SESSION['user_id'] ?? 1)): ?>
+        <a href="index.php?page=agenda_relatorios" class="nav-item <?= $current_page === 'index' && ($_GET['page'] ?? '') === 'agenda_relatorios' ? 'active' : '' ?>">
+          <span class="nav-item-icon">📊</span>
+          <span class="nav-item-text">Relatórios</span>
+        </a>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+
     <!-- Comercial -->
     <?php if (lc_can_access_comercial()): ?>
       <div class="nav-section">
