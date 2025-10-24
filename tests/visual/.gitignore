@@ -1,0 +1,28 @@
+# Arquivos gerados pelos testes visuais
+screens/
+diff/
+logs/
+report.html
+log.json
+
+# Dependências
+node_modules/
+package-lock.json
+
+# Arquivos temporários
+*.tmp
+*.log
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Arquivos de backup
+*.bak
+*.backup

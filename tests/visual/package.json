@@ -1,0 +1,30 @@
+{
+  "name": "painel-smile-visual-tests",
+  "version": "1.0.0",
+  "description": "Validação visual e responsiva do Painel Smile PRO",
+  "main": "runner.js",
+  "scripts": {
+    "visual:test": "node run-tests.js",
+    "visual:quick": "node quick-test.js",
+    "visual:demo": "node demo.js",
+    "visual:ci": "node ci.js",
+    "visual:update-baseline": "node run-tests.js --update-baseline",
+    "visual:routes": "node run-tests.js --routes=tests/visual/routes.txt",
+    "visual:install": "npm install",
+    "visual:clean": "rm -rf screens diff logs report.html log.json"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.40.0",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0",
+    "fs-extra": "^11.1.1",
+    "path": "^0.12.7",
+    "url": "^0.11.3"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

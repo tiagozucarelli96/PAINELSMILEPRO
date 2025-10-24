@@ -1,0 +1,70 @@
+# Rotas prioritárias para validação visual
+# Formato: um arquivo por linha, comentários com #
+
+# Páginas principais
+index.php
+dashboard.php
+sistema_unificado.php
+
+# Módulo de usuários
+usuarios.php
+
+# Módulo de eventos
+eventos.php
+
+# Módulo de fornecedores
+fornecedores.php
+fornecedor_editar.php
+fornecedor_ver.php
+
+# Módulo de estoque
+estoque_contagens.php
+estoque_contar.php
+estoque_kardex.php
+estoque_alertas.php
+estoque_desvios.php
+
+# Módulo de compras
+lc_index.php
+lista_compras.php
+historico.php
+
+# Módulo financeiro
+pagamentos_painel.php
+pagamentos_minhas.php
+pagamentos_solicitar.php
+pagamentos_ver.php
+
+# Módulo de demandas
+demandas_quadros.php
+demandas_minhas.php
+demandas_produtividade.php
+
+# Módulo de agenda
+agenda.php
+agenda_meus.php
+agenda_relatorios.php
+
+# Módulo comercial
+comercial_degustacoes.php
+comercial_degustacao_editar.php
+comercial_degust_inscritos.php
+comercial_degust_inscricoes.php
+comercial_clientes.php
+
+# Módulo RH
+rh_funcionarios.php
+rh_departamentos.php
+rh_ferias.php
+
+# Módulo contabilidade
+contab_transacoes.php
+contab_contas.php
+contab_relatorios.php
+
+# Configurações
+configuracoes.php
+
+# Sistema de verificação
+verificacao_geral.php
+executar_analise_completa.php

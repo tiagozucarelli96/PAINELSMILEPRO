@@ -1,0 +1,27 @@
+{
+  "name": "painel-smile-links-crawler",
+  "version": "1.0.0",
+  "description": "Crawler de links internos do Painel Smile PRO",
+  "main": "crawler.js",
+  "scripts": {
+    "links:crawl": "node crawler.js",
+    "links:install": "npm install",
+    "links:demo": "node demo.js",
+    "links:clean": "rm -rf report.html report.json logs/"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "fs-extra": "^11.1.1",
+    "url": "^0.11.3",
+    "path": "^0.12.7",
+    "colors": "^1.4.0",
+    "cli-progress": "^3.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
