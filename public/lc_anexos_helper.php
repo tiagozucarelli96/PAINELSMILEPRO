@@ -1,6 +1,7 @@
 <?php
 // lc_anexos_helper.php
 // Helper para gerenciar anexos de solicitações de pagamento
+require_once __DIR__ . '/magalu_storage_helper.php';
 
 /**
  * Configurações do sistema de anexos
@@ -29,10 +30,12 @@ class LcAnexosConfig {
 class LcAnexosManager {
     private $pdo;
     private $config;
+    private $magalu;
     
     public function __construct(PDO $pdo) {
         $this->pdo = $pdo;
         $this->config = new LcAnexosConfig();
+        $this->magalu = new MagaluStorageHelper();
     }
     
     /**
