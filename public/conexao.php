@@ -1,4 +1,14 @@
 <?php
+// Verificar se estamos em ambiente local
+if (!getenv("DATABASE_URL") || getenv("DATABASE_URL") === "") {
+    // Usar configuração local
+    require_once __DIR__ . "/../config_local.php";
+    $pdo = getLocalDbConnection();
+    $GLOBALS["pdo"] = $pdo;
+    return;
+}
+
+<?php
 declare(strict_types=1);
 
 $debug = getenv('APP_DEBUG') === '1';

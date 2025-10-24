@@ -1,28 +1,26 @@
 <?php
 /**
- * fix_db_terminal.php — Corrigir banco via terminal
- * Execute: php fix_db_terminal.php
+ * fix_db_simple.php — Corrigir banco de forma simples
+ * Execute: php fix_db_simple.php
  */
-
-// Verificar se está sendo executado via terminal
-if (isset($_SERVER['HTTP_HOST'])) {
-    die("Este script deve ser executado via terminal: php fix_db_terminal.php");
-}
 
 echo "🔧 Corrigindo Problemas de Banco de Dados\n";
 echo "==========================================\n\n";
 
-// Incluir conexão
-require_once __DIR__ . '/public/conexao.php';
+// Configurações de banco (ajuste conforme necessário)
+$host = 'localhost';
+$port = '5432';
+$dbname = 'painel_smile'; // ou o nome do seu banco
+$user = 'postgres'; // ou seu usuário
+$password = ''; // sua senha
 
 try {
-    // Verificar se a conexão existe
-    if (!isset($GLOBALS['pdo']) || $GLOBALS['pdo'] === null) {
-        throw new Exception("Conexão com banco de dados não encontrada. Verifique o arquivo public/conexao.php");
-    }
-    
-    $pdo = $GLOBALS['pdo'];
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Tentar conectar com diferentes configurações
+    $dsn = "pgsql:host=$host;port=$port;dbname=$dbname";
+    $pdo = new PDO($dsn, $user, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]);
     
     echo "✅ Conexão com banco estabelecida\n\n";
     
@@ -151,6 +149,10 @@ try {
     
 } catch (Exception $e) {
     echo "❌ Erro fatal: " . $e->getMessage() . "\n";
-    echo "Verifique se o banco de dados está configurado corretamente.\n";
+    echo "\n💡 Dicas para resolver:\n";
+    echo "1. Verifique se o PostgreSQL está rodando\n";
+    echo "2. Verifique as credenciais de banco no arquivo\n";
+    echo "3. Verifique se o banco de dados existe\n";
+    echo "4. Tente executar: sudo service postgresql start\n";
 }
 ?>
