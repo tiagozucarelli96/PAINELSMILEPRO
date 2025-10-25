@@ -4,6 +4,7 @@ declare(strict_types=1);
 // Versão: 2025-09-03 (rascunho in-page + integração ME Eventos)
 
 ini_set('display_errors','1'); error_reporting(E_ALL);
+require_once __DIR__ . '/sidebar_integration.php';
 
 // ========= Sessão / Auth =========
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? null) == 443);
@@ -18,6 +19,15 @@ if ($estaLogado === null) { $estaLogado = in_array((string)$logadoFlag, ['1','tr
 if (!$uid || !is_numeric($uid) || !$estaLogado) { http_response_code(403); echo "Acesso negado. Faça login para continuar."; exit; }
 $uid = (int)$uid;
 $usuarioNome = (string)($_SESSION['user_name'] ?? ($_SESSION['nome'] ?? ''));
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Lista de Compras');
+addBreadcrumb([
+    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
+    ['title' => 'Compras'],
+    ['title' => 'Lista de Compras']
+]);
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
@@ -1791,5 +1801,6 @@ function addEventoME(e){
   })();
 })();
 </script>
+<?php endSidebar(); ?>
 </body>
 </html>

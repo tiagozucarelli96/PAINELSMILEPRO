@@ -3,6 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
 // Verificar permissões
 if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
@@ -10,6 +11,15 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
     echo "Acesso negado."; 
     exit;
 }
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Usuários');
+addBreadcrumb([
+    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
+    ['title' => 'RH'],
+    ['title' => 'Usuários']
+]);
 
 // Processar ações
 $action = $_POST['action'] ?? '';
@@ -141,8 +151,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Usuários - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<link rel="stylesheet" href="estilo.css">
+<style>
         .users-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -491,9 +501,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     </style>
 </head>
 <body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
+<?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
     
-    <div class="main-content">
+<div class="main-content">
         <div class="users-container">
             <!-- Header -->
             <div class="page-header">
@@ -704,7 +714,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
                                 <label for="<?= $perm ?>"><?= $label ?></label>
                             </div>
-                        <?php endforeach; ?>
+      <?php endforeach; ?>
                     </div>
                 </div>
                 
@@ -714,7 +724,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 </div>
             </form>
         </div>
-    </div>
+</div>
     
     <script>
         // Abrir modal
@@ -814,5 +824,6 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             e.stopPropagation();
         });
     </script>
+<?php endSidebar(); ?>
 </body>
 </html>

@@ -6,6 +6,16 @@
 if (!isset($_SESSION) || ($_SESSION['logado'] ?? 0) != 1) { header('Location: login.php'); exit; }
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { die('<p>Erro de conexão com o banco.</p>'); }
+require_once __DIR__ . '/sidebar_integration.php';
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Pagamentos');
+addBreadcrumb([
+    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
+    ['title' => 'Financeiro'],
+    ['title' => 'Pagamentos']
+]);
 
 /*
   Se ainda não tiver esses campos/valores, rode no MySQL:
@@ -379,3 +389,4 @@ document.getElementById('formPag').addEventListener('submit', ()=>{
   if ($doc) $doc.value = $doc.value.replace(/\D/g,'');
 });
 </script>
+<?php endSidebar(); ?>

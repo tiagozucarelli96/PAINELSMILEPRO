@@ -3,6 +3,7 @@
 session_start();
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
 // Verificar permissões
 $agenda = new AgendaHelper();
@@ -12,6 +13,14 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
     header('Location: index.php?page=dashboard');
     exit;
 }
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Agenda');
+addBreadcrumb([
+    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
+    ['title' => 'Agenda']
+]);
 
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
@@ -1103,5 +1112,6 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             }
         });
     </script>
+<?php endSidebar(); ?>
 </body>
 </html>
