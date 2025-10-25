@@ -853,7 +853,16 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                 return;
             }
             
+            // Calcular duração em minutos
             const duracao = Math.round((new Date(fim) - new Date(inicio)) / (1000 * 60));
+            
+            // Mostrar loading
+            const suggestBtn = document.querySelector('button[onclick="suggestTime()"]');
+            if (suggestBtn) {
+                const originalText = suggestBtn.innerHTML;
+                suggestBtn.innerHTML = '⏳ Buscando...';
+                suggestBtn.disabled = true;
+            }
             
             fetch('agenda.php', {
                 method: 'POST',
@@ -862,17 +871,73 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                 },
                 body: `acao=sugerir_horario&responsavel_id=${responsavel}&espaco_id=${espaco}&duracao=${duracao}`
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro na requisição: ' + response.status);
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.success) {
+                if (data.success && data.sugestao) {
                     const sugestao = data.sugestao;
-                    document.getElementById('suggestionDetails').innerHTML = `
-                        <strong>Próximo horário livre:</strong><br>
-                        ${new Date(sugestao.inicio).toLocaleString('pt-BR')} - ${new Date(sugestao.fim).toLocaleString('pt-BR')}
-                    `;
-                    document.getElementById('suggestionBox').style.display = 'block';
+                    
+                    // Aplicar sugestão diretamente nos campos
+                    document.getElementById('inicio').value = formatDateTimeLocal(new Date(sugestao.inicio));
+                    document.getElementById('fim').value = formatDateTimeLocal(new Date(sugestao.fim));
+                    
+                    // Mostrar feedback
+                    showSuggestionFeedback('Horário sugerido aplicado com sucesso!');
+                } else {
+                    showSuggestionFeedback('Nenhum horário livre encontrado para os próximos 7 dias.');
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao sugerir horário:', error);
+                showSuggestionFeedback('Erro ao buscar horários disponíveis.');
+            })
+            .finally(() => {
+                // Restaurar botão
+                if (suggestBtn) {
+                    suggestBtn.innerHTML = '🕐 Sugerir Horário';
+                    suggestBtn.disabled = false;
                 }
             });
+        }
+        
+        // Mostrar feedback da sugestão
+        function showSuggestionFeedback(message) {
+            // Remover feedback anterior
+            const existingFeedback = document.getElementById('suggestionFeedback');
+            if (existingFeedback) {
+                existingFeedback.remove();
+            }
+            
+            // Criar novo feedback
+            const feedback = document.createElement('div');
+            feedback.id = 'suggestionFeedback';
+            feedback.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #10b981;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 1001;
+                font-size: 14px;
+                font-weight: 500;
+            `;
+            feedback.textContent = message;
+            
+            document.body.appendChild(feedback);
+            
+            // Remover após 3 segundos
+            setTimeout(() => {
+                if (feedback.parentNode) {
+                    feedback.remove();
+                }
+            }, 3000);
         }
         
         // Aplicar sugestão
@@ -933,18 +998,47 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             const eventoId = formData.get('evento_id');
             const acao = eventoId ? 'atualizar_evento' : 'criar_evento';
             
+            // Adicionar ação
             formData.append('acao', acao);
+            
+            // Mostrar loading
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '⏳ Salvando...';
+            submitBtn.disabled = true;
             
             fetch('agenda.php', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Erro na requisição: ' + response.status);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log('Resposta do servidor:', data);
+                
                 if (data.success) {
-                    calendar.refetchEvents();
-                    closeEventModal();
+                    // Sucesso
+                    submitBtn.innerHTML = '✅ Salvo!';
+                    setTimeout(() => {
+                        if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
+                            calendar.refetchEvents();
+                        }
+                        closeEventModal();
+                    }, 1000);
                 } else {
+                    // Erro
+                    console.error('Erro ao salvar:', data.message || 'Erro desconhecido');
+                    submitBtn.innerHTML = '❌ Erro';
+                    alert('Erro ao salvar: ' + (data.message || 'Erro desconhecido'));
+                    setTimeout(() => {
+                        submitBtn.innerHTML = originalText;
+                        submitBtn.disabled = false;
+                    }, 2000);
+                    
                     if (data.conflito) {
                         // Mostrar conflito
                         document.getElementById('conflictDetails').innerHTML = `
@@ -961,6 +1055,15 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                         alert('Erro: ' + data.error);
                     }
                 }
+            })
+            .catch(error => {
+                console.error('Erro na requisição:', error);
+                submitBtn.innerHTML = '❌ Erro de Rede';
+                alert('Erro de conexão: ' + error.message);
+                setTimeout(() => {
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                }, 2000);
             });
         });
         
