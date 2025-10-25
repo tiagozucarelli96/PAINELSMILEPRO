@@ -5,6 +5,14 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/demandas_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 
+// Função temporária para verificar acesso a demandas
+if (!function_exists('lc_can_access_demandas')) {
+    function lc_can_access_demandas(): bool {
+        $perfil = $_SESSION['perfil'] ?? 'ADM';
+        return in_array($perfil, ['ADM', 'OPER']);
+    }
+}
+
 // Verificar permissões
 if (!lc_can_access_demandas()) {
     header('Location: index.php?page=dashboard');
