@@ -11,7 +11,7 @@ if (!lc_can_view_conversao()) {
 }
 
 // Filtros
-$event_filter = (int)($_GET['event_id'] ?? 0);
+$degustacao_filter = (int)($_GET['degustacao_id'] ?? 0);
 $fechou_filter = $_GET['fechou_contrato'] ?? '';
 $pago_filter = $_GET['pago'] ?? '';
 $search = trim($_GET['search'] ?? '');
@@ -21,9 +21,9 @@ $data_fim = $_GET['data_fim'] ?? '';
 $where = [];
 $params = [];
 
-if ($event_filter) {
-    $where[] = 'i.event_id = :event_id';
-    $params[':event_id'] = $event_filter;
+if ($degustacao_filter) {
+    $where[] = 'i.degustacao_id = :degustacao_id';
+    $params[':degustacao_id'] = $degustacao_filter;
 }
 
 if ($fechou_filter) {
@@ -66,7 +66,7 @@ $sql = "SELECT i.*, d.nome as degustacao_nome, d.data as degustacao_data, d.loca
                     WHEN i.pagamento_status = 'expirado' THEN 'Expirado' 
                     ELSE 'N/A' END as pagamento_text
         FROM comercial_inscricoes i
-        LEFT JOIN comercial_degustacoes d ON d.id = i.event_id";
+        LEFT JOIN comercial_degustacoes d ON d.id = i.degustacao_id";
 
 if ($where) {
     $sql .= " WHERE " . implode(' AND ', $where);
@@ -93,7 +93,7 @@ $taxa_conversao = $total_inscricoes > 0 ? ($fechou_contrato / $total_inscricoes)
 // Estatísticas por degustação
 $stats_por_degustacao = [];
 foreach ($degustacoes as $degustacao) {
-    $inscricoes_degustacao = array_filter($inscricoes, fn($i) => $i['event_id'] == $degustacao['id']);
+    $inscricoes_degustacao = array_filter($inscricoes, fn($i) => $i['degustacao_id'] == $degustacao['id']);
     $total_deg = count($inscricoes_degustacao);
     $fechou_deg = count(array_filter($inscricoes_degustacao, fn($i) => $i['fechou_contrato'] === 'sim'));
     $taxa_deg = $total_deg > 0 ? ($fechou_deg / $total_deg) * 100 : 0;
@@ -669,10 +669,10 @@ function getStatusBadge($status) {
                     <div class="filters-grid">
                         <div class="form-group">
                             <label class="form-label">Degustação</label>
-                            <select name="event_id" class="form-select">
+                            <select name="degustacao_id" class="form-select">
                                 <option value="">Todas as degustações</option>
                                 <?php foreach ($degustacoes as $degustacao): ?>
-                                    <option value="<?= $degustacao['id'] ?>" <?= $event_filter == $degustacao['id'] ? 'selected' : '' ?>>
+                                    <option value="<?= $degustacao['id'] ?>" <?= $degustacao_filter == $degustacao['id'] ? 'selected' : '' ?>>
                                         <?= h($degustacao['nome']) ?> - <?= date('d/m/Y', strtotime($degustacao['data'])) ?>
                                     </option>
                                 <?php endforeach; ?>
