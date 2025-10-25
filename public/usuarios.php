@@ -744,9 +744,46 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         
         // Carregar dados do usuário
         function loadUserData(userId) {
-            // Aqui você implementaria a busca dos dados do usuário via AJAX
-            // Por enquanto, vamos simular
-            console.log('Carregando dados do usuário:', userId);
+            if (userId > 0) {
+                // Buscar dados do usuário via AJAX
+                fetch('?action=get_user&id=' + userId)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Preencher formulário com dados do usuário
+                            document.getElementById('userId').value = data.user.id;
+                            document.querySelector('input[name="nome"]').value = data.user.nome || '';
+                            document.querySelector('input[name="login"]').value = data.user.login || '';
+                            document.querySelector('input[name="email"]').value = data.user.email || '';
+                            document.querySelector('input[name="cargo"]').value = data.user.cargo || '';
+                            document.querySelector('input[name="cpf"]').value = data.user.cpf || '';
+                            document.querySelector('input[name="admissao_data"]').value = data.user.admissao_data || '';
+                            document.querySelector('input[name="salario_base"]').value = data.user.salario_base || '';
+                            document.querySelector('input[name="pix_tipo"]').value = data.user.pix_tipo || '';
+                            document.querySelector('input[name="pix_chave"]').value = data.user.pix_chave || '';
+                            document.querySelector('select[name="status_empregado"]').value = data.user.status_empregado || 'ativo';
+                            
+                            // Preencher permissões
+                            Object.keys(data.user).forEach(key => {
+                                if (key.startsWith('perm_')) {
+                                    const checkbox = document.querySelector('input[name="' + key + '"]');
+                                    if (checkbox) {
+                                        checkbox.checked = data.user[key] == 1;
+                                    }
+                                }
+                            });
+                        } else {
+                            console.error('Erro ao carregar usuário:', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro na requisição:', error);
+                    });
+            } else {
+                // Limpar formulário para novo usuário
+                document.getElementById('userForm').reset();
+                document.getElementById('userId').value = '0';
+            }
         }
         
         // Pesquisar usuários
@@ -765,11 +802,16 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             }
         }
         
-        // Fechar modal ao clicar fora
+        // Fechar modal ao clicar fora (apenas no fundo, não no conteúdo)
         document.getElementById('userModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeModal();
             }
+        });
+        
+        // Prevenir fechamento do modal ao clicar no conteúdo
+        document.querySelector('.modal-content').addEventListener('click', function(e) {
+            e.stopPropagation();
         });
     </script>
 </body>
