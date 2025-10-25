@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 $competencia,
                 $_POST['valor_' . $colaborador_id] ?? null,
                 $_POST['obs_' . $colaborador_id] ?? null,
-                $_SESSION['usuario_id']
+                $_SESSION['user_id']
             ]);
             
             $holerite_id = $pdo->lastInsertId();

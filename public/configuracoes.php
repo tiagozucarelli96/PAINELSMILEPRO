@@ -400,7 +400,7 @@ try {
                         <span class="action-btn-text">Permissões</span>
                         <span class="action-btn-arrow">→</span>
                     </a>
-                    <a href="perfis.php" class="action-btn">
+                    <a href="usuarios.php" class="action-btn">
                         <span class="action-btn-icon">👔</span>
                         <span class="action-btn-text">Perfis</span>
                         <span class="action-btn-arrow">→</span>
