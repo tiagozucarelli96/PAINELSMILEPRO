@@ -111,7 +111,7 @@ if ($tab === 'compras') {
         SUM(ei.quantidade)::numeric(12,3) AS quantidade
       FROM lc_encomendas_itens ei
       LEFT JOIN fornecedores f ON f.id = ei.fornecedor_id
-      LEFT JOIN lc_insumos i   ON i.id = ei.insumo_id
+      LEFT JOIN lc_insumos i   ON i.id = ei.item_id
       WHERE ei.grupo_id = :g
       GROUP BY fornecedor_nome, evento_label, nome_item, ei.unidade
       ORDER BY fornecedor_nome, evento_label, nome_item
