@@ -1,23 +1,22 @@
 <?php
-// contab_gerar_link.php - Gerar link para portal de contabilidade
-session_start();
+// contab_gerar_link.php — Gerar links para portal contábil
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/lc_permissions_enhanced.php';
 
-// Verificar permissões
-if (!lc_can_access_module('contabilidade')) {
-    header('Location: index.php?page=dashboard&erro=permissao_negada');
+// Verificar permissões (apenas ADM)
+if (!isset($_SESSION['perfil']) || $_SESSION['perfil'] !== 'ADM') {
+    header('Location: index.php?page=dashboard');
     exit;
 }
 
-$sucesso = $_GET['sucesso'] ?? null;
-$erro = $_GET['erro'] ?? null;
+$sucesso = '';
+$erro = '';
 
-// Processar geração de link
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Processar criação de novo token
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['criar_token'])) {
     try {
-        $descricao = trim($_POST['descricao'] ?? '');
-        $limite_diario = intval($_POST['limite_diario'] ?? 10);
+        $descricao = trim($_POST['descricao']);
+        $limite_diario = (int)($_POST['limite_diario'] ?? 50);
         
         if (empty($descricao)) {
             throw new Exception('Descrição é obrigatória');
@@ -26,16 +25,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Gerar token único
         $token = bin2hex(random_bytes(32));
         
-        // Inserir token no banco
-        $stmt = $pdo->prepare("INSERT INTO contab_tokens (token, descricao, ativo, limite_diario) VALUES (?, ?, TRUE, ?)");
+        $stmt = $pdo->prepare("
+            INSERT INTO contab_tokens (token, descricao, ativo, limite_diario) 
+            VALUES (?, ?, TRUE, ?)
+        ");
         $stmt->execute([$token, $descricao, $limite_diario]);
         
-        $link = "https://painelsmilepro-production.up.railway.app/contab_link.php?t=" . $token;
-        
-        $sucesso = "Link gerado com sucesso!";
+        $sucesso = "Token criado com sucesso!";
         
     } catch (Exception $e) {
-        $erro = "Erro ao gerar link: " . $e->getMessage();
+        $erro = "Erro ao criar token: " . $e->getMessage();
+    }
+}
+
+// Processar ativação/desativação
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_token'])) {
+    try {
+        $token_id = (int)$_POST['token_id'];
+        $ativo = $_POST['ativo'] === 'true';
+        
+        $stmt = $pdo->prepare("UPDATE contab_tokens SET ativo = ? WHERE id = ?");
+        $stmt->execute([$ativo, $token_id]);
+        
+        $sucesso = "Token " . ($ativo ? "ativado" : "desativado") . " com sucesso!";
+        
+    } catch (Exception $e) {
+        $erro = "Erro ao alterar status: " . $e->getMessage();
     }
 }
 
@@ -47,37 +62,44 @@ try {
 } catch (Exception $e) {
     $erro = "Erro ao buscar tokens: " . $e->getMessage();
 }
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerar Link - Portal Contabilidade</title>
-    <link rel="stylesheet" href="estilo.css">
+    <title>Gerar Links - Portal Contábil</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            margin: 0;
-            padding: 20px;
+            color: #333;
         }
         
         .container {
             max-width: 1200px;
             margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border-radius: 20px;
             padding: 30px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-        
-        .header {
-            text-align: center;
             margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
         }
         
         .title {
@@ -92,12 +114,34 @@ try {
             color: #6b7280;
         }
         
-        .form-section {
-            background: white;
-            border-radius: 16px;
+        .main-content {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
             padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             margin-bottom: 30px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
+        .form-section {
+            margin-bottom: 40px;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
         }
         
         .form-group {
@@ -106,12 +150,13 @@ try {
         
         .form-label {
             display: block;
+            margin-bottom: 8px;
             font-weight: 600;
             color: #374151;
-            margin-bottom: 8px;
+            font-size: 14px;
         }
         
-        .form-input {
+        .form-input, .form-select {
             width: 100%;
             padding: 12px 16px;
             border: 2px solid #e5e7eb;
@@ -120,29 +165,26 @@ try {
             transition: all 0.3s ease;
         }
         
-        .form-input:focus {
+        .form-input:focus, .form-select:focus {
             outline: none;
             border-color: #3b82f6;
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        
         .btn-primary {
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             color: white;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+            border: none;
+            padding: 12px 25px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            text-decoration: none;
         }
         
         .btn-primary:hover {
@@ -151,20 +193,116 @@ try {
         }
         
         .btn-secondary {
-            background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+            background: #6b7280;
             color: white;
-            box-shadow: 0 4px 15px rgba(107, 114, 128, 0.3);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
         }
         
         .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(107, 114, 128, 0.4);
+            background: #4b5563;
+        }
+        
+        .btn-success {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-success:hover {
+            background: #047857;
+        }
+        
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th {
+            background: #f8f9fa;
+            color: #555;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+            color: #444;
+        }
+        
+        .table tbody tr:hover {
+            background: #f8fafc;
+        }
+        
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-ativo {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-inativo {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .token-link {
+            font-family: monospace;
+            background: #f1f5f9;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            word-break: break-all;
         }
         
         .alert {
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
+            font-size: 14px;
         }
         
         .alert-success {
@@ -179,141 +317,178 @@ try {
             border: 1px solid #fca5a5;
         }
         
-        .tokens-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+        .actions {
+            display: flex;
+            gap: 8px;
         }
         
-        .tokens-table th,
-        .tokens-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        
-        .tokens-table th {
-            background: #f8fafc;
-            font-weight: 600;
-            color: #374151;
-        }
-        
-        .token-link {
-            font-family: monospace;
-            background: #f1f5f9;
-            padding: 4px 8px;
+        .copy-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 6px 12px;
             border-radius: 4px;
+            cursor: pointer;
             font-size: 12px;
-            word-break: break-all;
+            transition: background-color 0.2s ease;
         }
         
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
+        .copy-btn:hover {
+            background: #2563eb;
         }
         
-        .status-ativo {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .status-inativo {
-            background: #fee2e2;
-            color: #991b1b;
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .table-container {
+                overflow-x: auto;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1 class="title">🔗 Gerar Link - Portal Contabilidade</h1>
-            <p class="subtitle">Crie links seguros para fornecedores enviarem documentos</p>
+            <h1 class="title">🔗 Gerar Links - Portal Contábil</h1>
+            <p class="subtitle">Crie e gerencie tokens de acesso para o portal contábil</p>
         </div>
         
-        <?php if ($sucesso): ?>
-        <div class="alert alert-success">
-            ✅ <?= htmlspecialchars($sucesso) ?>
-        </div>
-        <?php endif; ?>
-        
-        <?php if ($erro): ?>
-        <div class="alert alert-error">
-            ❌ <?= htmlspecialchars($erro) ?>
-        </div>
-        <?php endif; ?>
-        
-        <div class="form-section">
-            <h2>📝 Criar Novo Link</h2>
-            <form method="POST">
-                <div class="form-group">
-                    <label class="form-label" for="descricao">Descrição do Link</label>
-                    <input type="text" id="descricao" name="descricao" class="form-input" 
-                           placeholder="Ex: Link para fornecedores enviarem documentos de janeiro" required>
+        <div class="main-content">
+            <?php if ($sucesso): ?>
+                <div class="alert alert-success">
+                    <strong>✅ Sucesso!</strong> <?= h($sucesso) ?>
                 </div>
-                
-                <div class="form-group">
-                    <label class="form-label" for="limite_diario">Limite Diário de Envios</label>
-                    <input type="number" id="limite_diario" name="limite_diario" class="form-input" 
-                           value="10" min="1" max="100">
-                </div>
-                
-                <button type="submit" class="btn btn-primary">
-                    🔗 Gerar Link
-                </button>
-            </form>
-        </div>
-        
-        <div class="form-section">
-            <h2>📋 Links Existentes</h2>
-            <?php if (empty($tokens)): ?>
-                <p>Nenhum link criado ainda.</p>
-            <?php else: ?>
-                <table class="tokens-table">
-                    <thead>
-                        <tr>
-                            <th>Descrição</th>
-                            <th>Link</th>
-                            <th>Status</th>
-                            <th>Limite Diário</th>
-                            <th>Criado em</th>
-                            <th>Último Uso</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($tokens as $token): ?>
-                        <tr>
-                            <td><?= htmlspecialchars($token['descricao']) ?></td>
-                            <td>
-                                <div class="token-link">
-                                    <a href="contab_link.php?t=<?= htmlspecialchars($token['token']) ?>" target="_blank">
-                                        contab_link.php?t=<?= htmlspecialchars($token['token']) ?>
-                                    </a>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="status-badge <?= $token['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
-                                    <?= $token['ativo'] ? 'Ativo' : 'Inativo' ?>
-                                </span>
-                            </td>
-                            <td><?= $token['limite_diario'] ?></td>
-                            <td><?= date('d/m/Y H:i', strtotime($token['criado_em'])) ?></td>
-                            <td>
-                                <?= $token['ultimo_uso'] ? date('d/m/Y H:i', strtotime($token['ultimo_uso'])) : 'Nunca' ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
             <?php endif; ?>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px;">
-            <a href="index.php?page=dashboard" class="btn btn-secondary">
-                ← Voltar ao Dashboard
-            </a>
+            
+            <?php if ($erro): ?>
+                <div class="alert alert-error">
+                    <strong>❌ Erro!</strong> <?= h($erro) ?>
+                </div>
+            <?php endif; ?>
+            
+            <div class="form-section">
+                <h2 class="section-title">
+                    <span>➕</span>
+                    Criar Novo Token
+                </h2>
+                
+                <form method="POST">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="descricao">Descrição *</label>
+                            <input type="text" id="descricao" name="descricao" class="form-input" 
+                                   placeholder="Ex: Token para cliente XYZ" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="limite_diario">Limite Diário</label>
+                            <input type="number" id="limite_diario" name="limite_diario" class="form-input" 
+                                   value="50" min="1" max="1000">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" name="criar_token" class="btn-primary">
+                        <span>🔑</span>
+                        Criar Token
+                    </button>
+                </form>
+            </div>
+            
+            <div class="form-section">
+                <h2 class="section-title">
+                    <span>📋</span>
+                    Tokens Existentes
+                </h2>
+                
+                <?php if (empty($tokens)): ?>
+                    <div style="text-align: center; padding: 40px; color: #6b7280;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">🔑</div>
+                        <h3>Nenhum token encontrado</h3>
+                        <p>Crie seu primeiro token para começar a usar o portal contábil.</p>
+                    </div>
+                <?php else: ?>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descrição</th>
+                                    <th>Token</th>
+                                    <th>Status</th>
+                                    <th>Limite Diário</th>
+                                    <th>Criado em</th>
+                                    <th>Último Uso</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($tokens as $token): ?>
+                                    <tr>
+                                        <td><?= h($token['id']) ?></td>
+                                        <td><?= h($token['descricao']) ?></td>
+                                        <td>
+                                            <div class="token-link">
+                                                <?= h(substr($token['token'], 0, 20)) ?>...
+                                                <button class="copy-btn" onclick="copyToken('<?= h($token['token']) ?>')">
+                                                    📋
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?= $token['ativo'] ? 'ativo' : 'inativo' ?>">
+                                                <?= $token['ativo'] ? 'Ativo' : 'Inativo' ?>
+                                            </span>
+                                        </td>
+                                        <td><?= h($token['limite_diario']) ?></td>
+                                        <td><?= date('d/m/Y H:i', strtotime($token['criado_em'])) ?></td>
+                                        <td>
+                                            <?= $token['ultimo_uso'] ? date('d/m/Y H:i', strtotime($token['ultimo_uso'])) : 'Nunca' ?>
+                                        </td>
+                                        <td>
+                                            <div class="actions">
+                                                <a href="contab_link.php?t=<?= h($token['token']) ?>" 
+                                                   target="_blank" class="btn-secondary" style="text-decoration: none;">
+                                                    🔗 Testar
+                                                </a>
+                                                
+                                                <form method="POST" style="display: inline;">
+                                                    <input type="hidden" name="token_id" value="<?= $token['id'] ?>">
+                                                    <input type="hidden" name="ativo" value="<?= $token['ativo'] ? 'false' : 'true' ?>">
+                                                    <button type="submit" name="toggle_token" 
+                                                            class="<?= $token['ativo'] ? 'btn-danger' : 'btn-success' ?>">
+                                                        <?= $token['ativo'] ? '❌' : '✅' ?>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
+    
+    <script>
+        function copyToken(token) {
+            const fullUrl = window.location.origin + '/contab_link.php?t=' + token;
+            navigator.clipboard.writeText(fullUrl).then(() => {
+                alert('Link copiado para a área de transferência!');
+            }).catch(() => {
+                // Fallback para navegadores mais antigos
+                const textArea = document.createElement('textarea');
+                textArea.value = fullUrl;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Link copiado para a área de transferência!');
+            });
+        }
+    </script>
 </body>
 </html>

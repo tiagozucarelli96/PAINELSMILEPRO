@@ -325,12 +325,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $token_valido) {
         </div>
         
         <?php if (!$token_valido): ?>
-        <!-- Token inválido -->
+        <!-- Token inválido ou ausente -->
         <div class="error-box">
             <div class="error-title">❌ Portal Inválido</div>
             <div class="error-text">
-                O link de acesso é inválido ou foi desativado. 
-                Entre em contato com o administrador do sistema.
+                <?php if (empty($token)): ?>
+                    <strong>Token não fornecido.</strong><br>
+                    Acesse o portal através do link correto fornecido pelo administrador.<br><br>
+                    <strong>Link de teste:</strong><br>
+                    <a href="?t=teste123456789" style="color: #1e40af; text-decoration: underline;">
+                        https://painelsmilepro-production.up.railway.app/contab_link.php?t=teste123456789
+                    </a>
+                <?php else: ?>
+                    O link de acesso é inválido ou foi desativado. 
+                    Entre em contato com o administrador do sistema.
+                <?php endif; ?>
             </div>
         </div>
         <?php else: ?>
