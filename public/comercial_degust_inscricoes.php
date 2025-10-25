@@ -61,7 +61,7 @@ $sql = "SELECT i.*, d.nome as degustacao_nome, d.data as degustacao_data, d.loca
                     WHEN i.pagamento_status = 'expirado' THEN 'Expirado' 
                     ELSE 'N/A' END as pagamento_text
         FROM comercial_inscricoes i
-        LEFT JOIN comercial_degustacoes d ON d.id = i.event_id";
+        LEFT JOIN comercial_degustacoes d ON d.id = i.degustacao_id";
 
 if ($where) {
     $sql .= " WHERE " . implode(' AND ', $where);

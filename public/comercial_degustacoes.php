@@ -12,33 +12,33 @@ if (!lc_can_access_comercial()) {
 
 // Processar ações
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$event_id = (int)($_POST['event_id'] ?? $_GET['id'] ?? 0);
+$degustacao_id = (int)($_POST['degustacao_id'] ?? $_GET['id'] ?? 0);
 
-if ($action === 'publicar' && $event_id > 0) {
+if ($action === 'publicar' && $degustacao_id > 0) {
     try {
         $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado' WHERE id = :id");
-        $stmt->execute([':id' => $event_id]);
+        $stmt->execute([':id' => $degustacao_id]);
         $success_message = "Degustação publicada com sucesso!";
     } catch (Exception $e) {
         $error_message = "Erro ao publicar: " . $e->getMessage();
     }
 }
 
-if ($action === 'encerrar' && $event_id > 0) {
+if ($action === 'encerrar' && $degustacao_id > 0) {
     try {
         $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'encerrado' WHERE id = :id");
-        $stmt->execute([':id' => $event_id]);
+        $stmt->execute([':id' => $degustacao_id]);
         $success_message = "Degustação encerrada com sucesso!";
     } catch (Exception $e) {
         $error_message = "Erro ao encerrar: " . $e->getMessage();
     }
 }
 
-if ($action === 'duplicar' && $event_id > 0) {
+if ($action === 'duplicar' && $degustacao_id > 0) {
     try {
         // Buscar dados da degustação original
         $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
-        $stmt->execute([':id' => $event_id]);
+        $stmt->execute([':id' => $degustacao_id]);
         $original = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($original) {
@@ -75,18 +75,18 @@ if ($action === 'duplicar' && $event_id > 0) {
     }
 }
 
-if ($action === 'apagar' && $event_id > 0) {
+if ($action === 'apagar' && $degustacao_id > 0) {
     try {
         // Verificar se tem inscrições
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE event_id = :id");
-        $stmt->execute([':id' => $event_id]);
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id");
+        $stmt->execute([':id' => $degustacao_id]);
         $inscricoes_count = $stmt->fetchColumn();
         
         if ($inscricoes_count > 0) {
             $error_message = "Não é possível apagar degustação com inscrições. As inscrições serão preservadas.";
         } else {
             $stmt = $pdo->prepare("DELETE FROM comercial_degustacoes WHERE id = :id");
-            $stmt->execute([':id' => $event_id]);
+            $stmt->execute([':id' => $degustacao_id]);
             $success_message = "Degustação apagada com sucesso!";
         }
     } catch (Exception $e) {
@@ -464,7 +464,7 @@ function getStatusBadge($status) {
                             <?php endif; ?>
                             
                             <?php if (lc_can_manage_inscritos()): ?>
-                            <a href="comercial_degust_inscritos.php?event_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
+                            <a href="comercial_degust_inscritos.php?degustacao_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
                                 👥 Inscritos
                             </a>
                             <?php endif; ?>
@@ -477,26 +477,26 @@ function getStatusBadge($status) {
                                 <?php if ($degustacao['status'] === 'rascunho'): ?>
                                 <form method="POST" style="display: inline;">
                                     <input type="hidden" name="action" value="publicar">
-                                    <input type="hidden" name="event_id" value="<?= $degustacao['id'] ?>">
+                                    <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-success">📢 Publicar</button>
                                 </form>
                                 <?php elseif ($degustacao['status'] === 'publicado'): ?>
                                 <form method="POST" style="display: inline;">
                                     <input type="hidden" name="action" value="encerrar">
-                                    <input type="hidden" name="event_id" value="<?= $degustacao['id'] ?>">
+                                    <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-warning">🔒 Encerrar</button>
                                 </form>
                                 <?php endif; ?>
                                 
                                 <form method="POST" style="display: inline;">
                                     <input type="hidden" name="action" value="duplicar">
-                                    <input type="hidden" name="event_id" value="<?= $degustacao['id'] ?>">
+                                    <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-secondary">📋 Duplicar</button>
                                 </form>
                                 
                                 <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja apagar esta degustação?')">
                                     <input type="hidden" name="action" value="apagar">
-                                    <input type="hidden" name="event_id" value="<?= $degustacao['id'] ?>">
+                                    <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-danger">🗑️ Apagar</button>
                                 </form>
                             <?php endif; ?>
