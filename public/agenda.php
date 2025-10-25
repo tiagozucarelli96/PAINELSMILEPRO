@@ -257,6 +257,7 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             color: #374151;
         }
 
+        /* Modal Styles Modernos */
         .modal {
             display: none;
             position: fixed;
@@ -265,43 +266,73 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             top: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.6);
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
             align-items: center;
             justify-content: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            opacity: 1;
         }
 
         .modal-content {
-            background-color: #fefefe;
-            margin: auto;
-            padding: 30px;
-            border-radius: 12px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
             width: 90%;
-            max-width: 600px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            max-width: 700px;
+            max-height: 90vh;
+            overflow-y: auto;
             position: relative;
-            animation: fadeIn 0.3s ease-out;
+            transform: scale(0.9) translateY(20px);
+            transition: all 0.3s ease;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
+        .modal.active .modal-content {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 25px 30px;
+            border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .close-button {
-            color: #aaa;
-            position: absolute;
-            top: 15px;
-            right: 25px;
+            background: none;
+            border: none;
+            color: white;
             font-size: 30px;
-            font-weight: bold;
             cursor: pointer;
-            transition: color 0.3s ease;
+            transition: opacity 0.2s ease;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
         }
 
-        .close-button:hover,
-        .close-button:focus {
-            color: #333;
-            text-decoration: none;
+        .close-button:hover {
+            opacity: 0.7;
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .form-group {
@@ -517,8 +548,15 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
     <!-- Modal de Evento -->
     <div id="eventModal" class="modal">
         <div class="modal-content">
-            <span class="close-button" onclick="closeEventModal()">&times;</span>
-            <h2 id="modalTitle">Novo Evento</h2>
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">
+                    <span id="modalIcon">📅</span>
+                    <span id="modalTitleText">Novo Evento</span>
+                </h2>
+                <button class="close-button" onclick="closeEventModal()">&times;</button>
+            </div>
+            
+            <div class="modal-body">
             
             <form id="eventForm">
                 <input type="hidden" id="eventId" name="evento_id">
@@ -631,6 +669,7 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                     </button>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 
@@ -754,12 +793,12 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                 forceBtn.style.display = 'none';
             }
             
-            modal.style.display = 'flex';
+            modal.classList.add('active');
         }
         
         // Fechar modal
         function closeEventModal() {
-            document.getElementById('eventModal').style.display = 'none';
+            document.getElementById('eventModal').classList.remove('active');
         }
         
         // Formatar data para input datetime-local
@@ -926,12 +965,16 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
         });
         
         // Fechar modal ao clicar fora
-        window.onclick = function(event) {
-            const modal = document.getElementById('eventModal');
-            if (event.target === modal) {
+        document.getElementById('eventModal').addEventListener('click', function(e) {
+            if (e.target === this) {
                 closeEventModal();
             }
-        }
+        });
+        
+        // Prevenir fechamento ao clicar no conteúdo
+        document.querySelector('.modal-content').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
         
         // Atalhos de teclado
         document.addEventListener('keydown', function(e) {
