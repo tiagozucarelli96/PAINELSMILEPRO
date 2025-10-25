@@ -18,6 +18,17 @@ function lc_get_user_perfil(): string {
 }
 
 /**
+ * Verifica se o usuário pode acessar o módulo de demandas
+ * @return bool True se pode acessar
+ */
+function lc_can_access_demandas(): bool {
+    $perfil = lc_get_user_perfil();
+    
+    // ADM e OPER podem acessar demandas
+    return in_array($perfil, ['ADM', 'OPER']);
+}
+
+/**
  * Verifica se o usuário pode fechar contagens
  * @return bool
  */
