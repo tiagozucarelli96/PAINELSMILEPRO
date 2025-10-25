@@ -113,8 +113,8 @@ if ($status_filter) {
 
 $sql = "SELECT d.*, 
                u.nome as criado_por_nome,
-               (SELECT COUNT(*) FROM comercial_inscricoes WHERE event_id = d.id AND status = 'confirmado') as inscritos_confirmados,
-               (SELECT COUNT(*) FROM comercial_inscricoes WHERE event_id = d.id AND status = 'lista_espera') as lista_espera_count
+                   (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id AND status = 'confirmado') as inscritos_confirmados,
+                   (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id AND status = 'lista_espera') as lista_espera_count
         FROM comercial_degustacoes d
         LEFT JOIN usuarios u ON u.id = d.criado_por";
 
