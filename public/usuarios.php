@@ -5,15 +5,49 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Verificar permissões
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
+if (empty($_SESSION['logado'])) {
     http_response_code(403); 
-    echo "Acesso negado."; 
+    echo "Acesso negado - não logado."; 
+    exit;
+}
+
+// Verificar se tem permissão de usuários ou é ADM
+$can_access = false;
+if (isset($_SESSION['perm_usuarios']) && $_SESSION['perm_usuarios'] == 1) {
+    $can_access = true;
+} elseif (isset($_SESSION['perfil']) && $_SESSION['perfil'] === 'ADM') {
+    $can_access = true;
+}
+
+if (!$can_access) {
+    http_response_code(403); 
+    echo "Acesso negado - sem permissão de usuários."; 
     exit;
 }
 
 // Processar ações
-$action = $_POST['action'] ?? '';
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
+
+// Endpoint AJAX para buscar dados do usuário
+if ($action === 'get_user' && $user_id > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = :id");
+        $stmt->execute([':id' => $user_id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user) {
+            // Remover senha dos dados retornados
+            unset($user['senha']);
+            echo json_encode(['success' => true, 'user' => $user]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Usuário não encontrado']);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Erro ao buscar usuário: ' . $e->getMessage()]);
+    }
+    exit;
+  }
 
 if ($action === 'save') {
     try {
@@ -141,8 +175,8 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Usuários - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<link rel="stylesheet" href="estilo.css">
+<style>
         .users-container {
             max-width: 1200px;
             margin: 0 auto;
@@ -491,9 +525,9 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
     </style>
 </head>
 <body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
+<?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
     
-    <div class="main-content">
+<div class="main-content">
         <div class="users-container">
             <!-- Header -->
             <div class="page-header">
@@ -704,7 +738,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                                 <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
                                 <label for="<?= $perm ?>"><?= $label ?></label>
                             </div>
-                        <?php endforeach; ?>
+      <?php endforeach; ?>
                     </div>
                 </div>
                 
@@ -714,7 +748,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
                 </div>
             </form>
         </div>
-    </div>
+</div>
     
     <script>
         // Abrir modal
@@ -744,9 +778,46 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         
         // Carregar dados do usuário
         function loadUserData(userId) {
-            // Aqui você implementaria a busca dos dados do usuário via AJAX
-            // Por enquanto, vamos simular
-            console.log('Carregando dados do usuário:', userId);
+            if (userId > 0) {
+                // Buscar dados do usuário via AJAX
+                fetch('?action=get_user&id=' + userId)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Preencher formulário com dados do usuário
+                            document.getElementById('userId').value = data.user.id;
+                            document.querySelector('input[name="nome"]').value = data.user.nome || '';
+                            document.querySelector('input[name="login"]').value = data.user.login || '';
+                            document.querySelector('input[name="email"]').value = data.user.email || '';
+                            document.querySelector('input[name="cargo"]').value = data.user.cargo || '';
+                            document.querySelector('input[name="cpf"]').value = data.user.cpf || '';
+                            document.querySelector('input[name="admissao_data"]').value = data.user.admissao_data || '';
+                            document.querySelector('input[name="salario_base"]').value = data.user.salario_base || '';
+                            document.querySelector('input[name="pix_tipo"]').value = data.user.pix_tipo || '';
+                            document.querySelector('input[name="pix_chave"]').value = data.user.pix_chave || '';
+                            document.querySelector('select[name="status_empregado"]').value = data.user.status_empregado || 'ativo';
+                            
+                            // Preencher permissões
+                            Object.keys(data.user).forEach(key => {
+                                if (key.startsWith('perm_')) {
+                                    const checkbox = document.querySelector('input[name="' + key + '"]');
+                                    if (checkbox) {
+                                        checkbox.checked = data.user[key] == 1;
+                                    }
+                                }
+                            });
+                        } else {
+                            console.error('Erro ao carregar usuário:', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro na requisição:', error);
+                    });
+            } else {
+                // Limpar formulário para novo usuário
+                document.getElementById('userForm').reset();
+                document.getElementById('userId').value = '0';
+            }
         }
         
         // Pesquisar usuários
