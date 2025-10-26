@@ -32,9 +32,14 @@ if ($current_page === 'dashboard') {
         $me_eventos_token = getenv('ME_EVENTOS_API_TOKEN');
         
         if ($me_eventos_token) {
+            // Debug: mostrar se token está sendo encontrado
+            error_log("ME Eventos Token encontrado: " . substr($me_eventos_token, 0, 10) . "...");
+            
             // Buscar eventos do mês atual
             $current_month = date('Y-m');
             $me_api_url = $me_eventos_url . "/api/eventos?mes=" . $current_month;
+            
+            error_log("Fazendo requisição para: " . $me_api_url);
             
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $me_api_url);
@@ -51,9 +56,11 @@ if ($current_page === 'dashboard') {
             
             if ($http_code === 200 && $response) {
                 $eventos_data = json_decode($response, true);
+                error_log("Resposta ME Eventos: " . json_encode($eventos_data));
                 $stats['contratos_mes'] = $eventos_data['contratos_fechados'] ?? 0;
                 $stats['vendas_mes'] = $eventos_data['valor_total_vendas'] ?? 0;
             } else {
+                error_log("Erro na API ME Eventos - HTTP Code: " . $http_code . " Response: " . $response);
                 // Fallback para dados locais se API falhar
                 $stmt = $pdo->prepare("
                     SELECT COUNT(*) as total 
