@@ -50,14 +50,19 @@ if ($page === '' || $page === null) {
 
 /* rotas permitidas */
 $routes = [
-  'dashboard'           => 'sidebar_funcional.php',
+  'dashboard'           => 'sidebar_simples.php',
+  'comercial'           => 'comercial.php',
+  'logistico'           => 'logistico.php',
+  'configuracoes'       => 'configuracoes.php',
+  'cadastros'           => 'cadastros.php',
+  'financeiro'          => 'financeiro.php',
+  'administrativo'      => 'administrativo.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'lc_index'            => 'lc_index.php',
   'pagamentos'          => 'pagamentos.php',
   'admin_pagamentos'    => 'admin_pagamentos.php',
   'usuarios'            => 'usuarios.php',
-  'configuracoes'       => 'configuracoes.php',
   'config_fornecedores' => 'config_fornecedores.php',
   'config_insumos'      => 'config_insumos.php',
   'comercial_degustacoes' => 'comercial_degustacoes.php',
@@ -77,6 +82,10 @@ $routes = [
   'agenda_relatorios'   => 'agenda_relatorios.php',
   'demandas'            => 'demandas.php',
   'webhook_me_eventos' => 'webhook_me_eventos.php',
+  'contab_link'         => 'contab_link.php',
+  'contab_gerar_link'   => 'contab_gerar_link.php',
+  'config_categorias'   => 'config_categorias.php',
+  'verificacao_completa_erros' => 'verificacao_completa_erros.php',
 ];
 
 /* exige login */
