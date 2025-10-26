@@ -3,7 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
-require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/sidebar_unified.php';
 
 // Verificar permissões
 if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
@@ -11,15 +11,6 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
     echo "Acesso negado."; 
     exit;
 }
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Usuários');
-addBreadcrumb([
-    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
-    ['title' => 'RH'],
-    ['title' => 'Usuários']
-]);
 
 // Processar ações
 $action = $_POST['action'] ?? '';
