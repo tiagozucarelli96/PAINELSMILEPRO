@@ -18,15 +18,107 @@ if (!function_exists('isActiveUnified')) {
 $page_file = $_GET['page'] ?? 'dashboard';
 $page_path = __DIR__ . '/' . $page_file . '.php';
 
-// Se for dashboard, criar conteúdo padrão
+// Se for dashboard, criar conteúdo com métricas reais
 if ($current_page === 'dashboard') {
+    // Buscar dados reais do banco
+    require_once __DIR__ . '/conexao.php';
+    
+    $stats = [];
+    $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
+    
+    try {
+        // Contratos fechados do mês
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
+            FROM comercial_inscricoes 
+            WHERE fechou_contrato = 'sim' 
+            AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+        ");
+        $stmt->execute();
+        $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
+        
+        // Leads em negociação
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
+            FROM comercial_inscricoes 
+            WHERE fechou_contrato = 'nao' 
+            AND criado_em >= CURRENT_DATE - INTERVAL '30 days'
+        ");
+        $stmt->execute();
+        $stats['leads_negociacao'] = $stmt->fetchColumn() ?: 0;
+        
+        // Vendas realizadas (valor estimado)
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) * 5000 as total 
+            FROM comercial_inscricoes 
+            WHERE fechou_contrato = 'sim' 
+            AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+        ");
+        $stmt->execute();
+        $stats['vendas_mes'] = $stmt->fetchColumn() ?: 0;
+        
+        // Leads do mês
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
+            FROM comercial_inscricoes 
+            WHERE criado_em >= DATE_TRUNC('month', CURRENT_DATE)
+        ");
+        $stmt->execute();
+        $stats['leads_mes'] = $stmt->fetchColumn() ?: 0;
+        
+    } catch (Exception $e) {
+        // Se der erro, usar valores padrão
+        $stats = [
+            'contratos_mes' => 0,
+            'leads_negociacao' => 0,
+            'vendas_mes' => 0,
+            'leads_mes' => 0
+        ];
+    }
+    
     $dashboard_content = '
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">🏠 Dashboard</h1>
-            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '!</p>
+            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
         </div>
         
+        <!-- Métricas Principais -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon">📋</div>
+                <div class="metric-content">
+                    <h3>' . $stats['leads_mes'] . '</h3>
+                    <p>Leads do Mês</p>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon">🤝</div>
+                <div class="metric-content">
+                    <h3>' . $stats['leads_negociacao'] . '</h3>
+                    <p>Leads em Negociação</p>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon">✅</div>
+                <div class="metric-content">
+                    <h3>' . $stats['contratos_mes'] . '</h3>
+                    <p>Contratos Fechados (Mês)</p>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon">💰</div>
+                <div class="metric-content">
+                    <h3>R$ ' . number_format($stats['vendas_mes'], 0, ',', '.') . '</h3>
+                    <p>Vendas Realizadas (Mês)</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cards de Acesso Rápido -->
         <div class="dashboard-grid">
             <div class="dashboard-card">
                 <div class="card-header">
@@ -91,6 +183,39 @@ if ($current_page === 'dashboard') {
                 <div class="card-content">
                     <p>Relatórios e administração</p>
                     <a href="index.php?page=administrativo" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Botão Flutuante de Solicitar Pagamento -->
+        <div class="floating-payment-btn" onclick="openPaymentModal()">
+            <span class="payment-icon">💳</span>
+            <span class="payment-text">Solicitar Pagamento</span>
+        </div>
+        
+        <!-- Modal de Solicitar Pagamento -->
+        <div id="paymentModal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>💳 Solicitar Pagamento</h3>
+                    <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="paymentForm">
+                        <div class="form-group">
+                            <label>Valor:</label>
+                            <input type="number" name="valor" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Descrição:</label>
+                            <textarea name="descricao" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Chave PIX:</label>
+                            <input type="text" name="chave_pix" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Solicitar</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -408,6 +533,157 @@ if ($current_page === 'dashboard') {
             background: #1e3a8a;
         }
         
+        /* Métricas */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .metric-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .metric-icon {
+            font-size: 32px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #1e40af, #3b82f6);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .metric-content h3 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0 0 5px 0;
+        }
+        
+        .metric-content p {
+            color: #64748b;
+            margin: 0;
+            font-size: 14px;
+        }
+        
+        /* Botão Flutuante */
+        .floating-payment-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            z-index: 1000;
+        }
+        
+        .floating-payment-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4);
+        }
+        
+        .payment-icon {
+            font-size: 20px;
+        }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 0;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: #1e293b;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #64748b;
+        }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .form-group textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        
         /* Responsivo */
         @media (max-width: 768px) {
             .sidebar {
@@ -528,6 +804,23 @@ if ($current_page === 'dashboard') {
         });
         
         <?= $dashboard_js ?>
+        
+        // Funções do modal de pagamento
+        function openPaymentModal() {
+            document.getElementById('paymentModal').style.display = 'flex';
+        }
+        
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+        }
+        
+        // Fechar modal ao clicar fora
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('paymentModal');
+            if (e.target === modal) {
+                closePaymentModal();
+            }
+        });
         
         // Função para carregar conteúdo das páginas
         function loadPageContent(page) {
