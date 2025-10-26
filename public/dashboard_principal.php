@@ -131,12 +131,13 @@ for ($i = 11; $i >= 0; $i--) {
 ?>
 
 <style>
-/* Dashboard Principal - Estilo ME Eventos */
-.dashboard-container {
-    padding: 20px;
-    max-width: 1400px;
-    margin: 0 auto;
-}
+        /* Dashboard Principal - Cores do Sistema Smile */
+        .dashboard-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #f8fafc;
+        }
 
 /* Filtros */
 .dashboard-filters {
@@ -182,14 +183,14 @@ for ($i = 11; $i >= 0; $i--) {
     margin-bottom: 30px;
 }
 
-.dashboard-card {
-    background: white;
-    padding: 24px;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    border-left: 4px solid #3b82f6;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
+        .dashboard-card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #1e3a8a;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
 
 .dashboard-card:hover {
     transform: translateY(-2px);
@@ -203,17 +204,17 @@ for ($i = 11; $i >= 0; $i--) {
     margin-bottom: 16px;
 }
 
-.card-icon {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    color: white;
-}
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #1e3a8a, #1e40af);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+        }
 
 .card-period {
     background: #f1f5f9;

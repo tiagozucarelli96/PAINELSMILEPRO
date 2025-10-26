@@ -73,7 +73,7 @@ function isSubmenuOpen($pages) {
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: linear-gradient(180deg, #1e40af 0%, #1e3a8a 100%);
+            background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
             color: white;
             position: fixed;
             height: 100vh;
@@ -255,39 +255,6 @@ function isSubmenuOpen($pages) {
             font-size: 12px;
         }
         
-        /* Footer */
-        .sidebar-footer {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .footer-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        .footer-button {
-            background: rgba(34, 197, 94, 0.2);
-            color: #22c55e;
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            padding: 8px 12px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-size: 12px;
-            font-weight: 500;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .footer-button:hover {
-            background: rgba(34, 197, 94, 0.3);
-            color: white;
-        }
         
         /* Main Content */
         .main-content {
@@ -324,7 +291,7 @@ function isSubmenuOpen($pages) {
                 <div class="user-info">
                     <div class="user-avatar"><?= strtoupper(substr($user_nome, 0, 2)) ?></div>
                     <div class="user-name"><?= htmlspecialchars($user_nome) ?></div>
-                    <div class="user-plan">ENTERPRISE</div>
+                    <div class="user-plan">ADMINISTRADOR</div>
                 </div>
             </div>
             
@@ -500,13 +467,6 @@ function isSubmenuOpen($pages) {
                 <?php endif; ?>
             </div>
             
-            <div class="sidebar-footer">
-                <div class="footer-buttons">
-                    <a href="#" class="footer-button">MePages</a>
-                    <a href="#" class="footer-button">MeShop</a>
-                    <a href="#" class="footer-button">Loja de APPs</a>
-                </div>
-            </div>
         </div>
         
         <div class="main-content">
