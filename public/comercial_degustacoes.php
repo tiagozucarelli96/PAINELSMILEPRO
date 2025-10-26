@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_unified.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
+require_once __DIR__ . '/helpers.php';
 
 // Verificar permissões
 if (!lc_can_access_comercial()) {
@@ -129,7 +130,6 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function getStatusBadge($status) {
     $badges = [
         'rascunho' => '<span class="badge badge-warning">Rascunho</span>',

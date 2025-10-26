@@ -366,6 +366,5 @@ try {
 </style>
 
 <?php
-// Finalizar sidebar
-endSidebar();
+// Página finalizada - sidebar já está incluída no sidebar_unified.php
 ?>

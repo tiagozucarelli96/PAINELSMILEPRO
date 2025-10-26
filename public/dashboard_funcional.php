@@ -11,7 +11,8 @@ if (!isset($_SESSION['logado'])) {
 }
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/helpers.php';
 
 // Iniciar sidebar
 includeSidebar();
