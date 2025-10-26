@@ -27,53 +27,29 @@ if ($current_page === 'dashboard') {
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
     
     try {
-        // Contratos fechados do mês - via ME Eventos API
-        $me_eventos_url = getenv('ME_EVENTOS_API_URL') ?: 'https://api.meeventos.com.br';
-        $me_eventos_token = getenv('ME_EVENTOS_API_TOKEN');
+        // Contratos fechados do mês - via dados do webhook ME Eventos
+        $current_month = date('Y-m');
         
-        if ($me_eventos_token) {
-            // Debug: mostrar se token está sendo encontrado
-            error_log("ME Eventos Token encontrado: " . substr($me_eventos_token, 0, 10) . "...");
-            
-            // Buscar eventos do mês atual
-            $current_month = date('Y-m');
-            $me_api_url = $me_eventos_url . "/api/eventos?mes=" . $current_month;
-            
-            error_log("Fazendo requisição para: " . $me_api_url);
-            
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $me_api_url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Authorization: Bearer ' . $me_eventos_token,
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            
-            $response = curl_exec($ch);
-            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($http_code === 200 && $response) {
-                $eventos_data = json_decode($response, true);
-                error_log("Resposta ME Eventos: " . json_encode($eventos_data));
-                $stats['contratos_mes'] = $eventos_data['contratos_fechados'] ?? 0;
-                $stats['vendas_mes'] = $eventos_data['valor_total_vendas'] ?? 0;
-            } else {
-                error_log("Erro na API ME Eventos - HTTP Code: " . $http_code . " Response: " . $response);
-                // Fallback para dados locais se API falhar
-                $stmt = $pdo->prepare("
-                    SELECT COUNT(*) as total 
-                    FROM comercial_inscricoes 
-                    WHERE fechou_contrato = 'sim' 
-                    AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
-                ");
-                $stmt->execute();
-                $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
-                $stats['vendas_mes'] = $stats['contratos_mes'] * 5000; // Valor estimado
-            }
-        } else {
-            // Sem token ME Eventos, usar dados locais
+        // Buscar eventos criados no mês atual via webhook
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(*) as total_eventos,
+                COUNT(CASE WHEN webhook_tipo = 'created' THEN 1 END) as eventos_criados,
+                COUNT(CASE WHEN status = 'fechado' OR status = 'concluido' THEN 1 END) as contratos_fechados,
+                COALESCE(SUM(valor), 0) as valor_total_vendas
+            FROM me_eventos_webhook 
+            WHERE DATE_TRUNC('month', recebido_em) = DATE_TRUNC('month', CURRENT_DATE)
+            AND webhook_tipo IN ('created', 'updated')
+        ");
+        $stmt->execute();
+        $webhook_stats = $stmt->fetch();
+        
+        $stats['contratos_mes'] = $webhook_stats['contratos_fechados'] ?: 0;
+        $stats['vendas_mes'] = $webhook_stats['valor_total_vendas'] ?: 0;
+        $stats['eventos_criados'] = $webhook_stats['eventos_criados'] ?: 0;
+        
+        // Se não houver dados do webhook, usar dados locais como fallback
+        if ($stats['contratos_mes'] == 0 && $stats['eventos_criados'] == 0) {
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) as total 
                 FROM comercial_inscricoes 
@@ -132,10 +108,10 @@ if ($current_page === 'dashboard') {
             </div>
             
             <div class="metric-card">
-                <div class="metric-icon">🤝</div>
+                <div class="metric-icon">🎉</div>
                 <div class="metric-content">
-                    <h3>' . $stats['leads_negociacao'] . '</h3>
-                    <p>Leads em Negociação</p>
+                    <h3>' . ($stats['eventos_criados'] ?? 0) . '</h3>
+                    <p>Eventos Criados (Mês)</p>
                 </div>
             </div>
             
