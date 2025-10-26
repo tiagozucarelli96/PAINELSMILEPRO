@@ -51,12 +51,12 @@ if ($page === '' || $page === null) {
 /* rotas permitidas */
 $routes = [
   'dashboard'           => 'sidebar_unified.php',
-  'comercial'           => 'comercial.php',
-  'logistico'           => 'logistico.php',
-  'configuracoes'       => 'configuracoes_nova.php',
-  'cadastros'           => 'cadastros.php',
-  'financeiro'          => 'financeiro.php',
-  'administrativo'      => 'administrativo.php',
+  'comercial'           => 'comercial_degustacoes.php',
+  'logistico'           => 'lc_index.php',
+  'configuracoes'       => 'configuracoes.php',
+  'cadastros'           => 'usuarios.php',
+  'financeiro'          => 'pagamentos.php',
+  'administrativo'      => 'config_insumos.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'lista_compras'       => 'lista_compras.php',
