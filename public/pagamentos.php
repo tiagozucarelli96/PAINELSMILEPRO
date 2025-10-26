@@ -3,10 +3,13 @@
 // (Deixe o session_start() no index.php. Se abrir este arquivo isolado, descomente abaixo.)
 // session_start();
 
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
 if (!isset($_SESSION) || ($_SESSION['logado'] ?? 0) != 1) { header('Location: login.php'); exit; }
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { die('<p>Erro de conexão com o banco.</p>'); }
 require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/helpers.php';
 
 /*
   Se ainda não tiver esses campos/valores, rode no MySQL:
