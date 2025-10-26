@@ -305,6 +305,5 @@ $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
 <?php
-// Finalizar sidebar
-endSidebar();
+// Página finalizada - sidebar já está incluída no sidebar_unified.php
 ?>

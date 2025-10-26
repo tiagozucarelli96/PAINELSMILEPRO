@@ -244,4 +244,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php endSidebar(); ?>
+<?php
+// Página finalizada - sidebar já está incluída no sidebar_unified.php
+?>

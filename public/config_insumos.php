@@ -328,4 +328,6 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
 
 </div>
 
-<?php endSidebar(); ?>
+<?php
+// Página finalizada - sidebar já está incluída no sidebar_unified.php
+?>

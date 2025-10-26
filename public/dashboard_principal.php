@@ -936,4 +936,6 @@ document.getElementById('paymentModal').addEventListener('click', function(e) {
 });
 </script>
 
-<?php endSidebar(); ?>
+<?php
+// Página finalizada - sidebar já está incluída no sidebar_unified.php
+?>
