@@ -333,9 +333,9 @@ if (!function_exists('isActiveSimples')) {
             // Mostrar loading
             pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #64748b;"><div style="font-size: 24px; margin-bottom: 20px;">⏳</div><div>Carregando...</div></div>';
             
-        // Se for dashboard, carregar dashboard_robusto.php diretamente
+        // Se for dashboard, carregar dashboard_conversoes.php diretamente
         if (page === 'dashboard') {
-            fetch('dashboard_robusto.php')
+            fetch('dashboard_conversoes.php')
                     .then(response => response.text())
                     .then(html => {
                         // Extrair apenas o conteúdo da página (sem sidebar duplicada)
