@@ -93,6 +93,7 @@ $routes = [
   'fix_old_sidebars' => 'fix_old_sidebars.php',
   'diagnostic_completo' => 'diagnostic_completo.php',
   'fix_all_pages' => 'fix_all_pages.php',
+  'fix_critical_issues' => 'fix_critical_issues.php',
 ];
 
 /* exige login */
