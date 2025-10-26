@@ -26,18 +26,22 @@ $critical_fixes = [
 $fixed_count = 0;
 
 foreach ($critical_fixes as $file => $description) {
-    echo "<h2>🔍 Corrigindo: $file</h2>";
-    echo "<p><strong>Problema:</strong> $description</p>";
+    $file_path = __DIR__ . '/' . $file;
+    $file_name = basename($file);
     
-    if (!file_exists($file)) {
+    echo "<h2>🔍 Corrigindo: $file_name</h2>";
+    echo "<p><strong>Problema:</strong> $description</p>";
+    echo "<p><strong>Caminho:</strong> $file_path</p>";
+    
+    if (!file_exists($file_path)) {
         echo "<div style='background:#ffebee;padding:10px;border-radius:4px;margin:10px 0;'>";
-        echo "<strong>❌ Arquivo não encontrado: $file</strong>";
+        echo "<strong>❌ Arquivo não encontrado: $file_path</strong>";
         echo "</div>";
         continue;
     }
     
     try {
-        $content = file_get_contents($file);
+        $content = file_get_contents($file_path);
         $original_content = $content;
         $changes = [];
         
@@ -155,7 +159,7 @@ foreach ($critical_fixes as $file => $description) {
         
         // Salvar apenas se houve mudanças
         if ($content !== $original_content) {
-            file_put_contents($file, $content);
+            file_put_contents($file_path, $content);
             $fixed_count++;
             
             echo "<div style='background:#e8f5e8;padding:10px;border-radius:4px;margin:10px 0;'>";
