@@ -53,23 +53,23 @@ if ($action === 'duplicar' && $degustacao_id > 0) {
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
-                ':nome' => $original['nome'] . ' (Cópia)',
-                ':data' => $original['data'],
-                ':hora_inicio' => $original['hora_inicio'],
-                ':hora_fim' => $original['hora_fim'],
-                ':local' => $original['local'],
-                ':capacidade' => $original['capacidade'],
-                ':data_limite' => $original['data_limite'],
-                ':lista_espera' => $original['lista_espera'],
-                ':preco_casamento' => $original['preco_casamento'],
-                ':incluidos_casamento' => $original['incluidos_casamento'],
-                ':preco_15anos' => $original['preco_15anos'],
-                ':incluidos_15anos' => $original['incluidos_15anos'],
-                ':preco_extra' => $original['preco_extra'],
-                ':instrutivo_html' => $original['instrutivo_html'],
-                ':email_confirmacao_html' => $original['email_confirmacao_html'],
-                ':msg_sucesso_html' => $original['msg_sucesso_html'],
-                ':campos_json' => $original['campos_json'],
+                ':nome' => ($original['nome'] ?? '') . ' (Cópia)',
+                ':data' => $original['data'] ?? null,
+                ':hora_inicio' => $original['hora_inicio'] ?? null,
+                ':hora_fim' => $original['hora_fim'] ?? null,
+                ':local' => $original['local'] ?? null,
+                ':capacidade' => $original['capacidade'] ?? 0,
+                ':data_limite' => $original['data_limite'] ?? null,
+                ':lista_espera' => $original['lista_espera'] ?? false,
+                ':preco_casamento' => $original['preco_casamento'] ?? 0.00,
+                ':incluidos_casamento' => $original['incluidos_casamento'] ?? null,
+                ':preco_15anos' => $original['preco_15anos'] ?? 0.00,
+                ':incluidos_15anos' => $original['incluidos_15anos'] ?? null,
+                ':preco_extra' => $original['preco_extra'] ?? 0.00,
+                ':instrutivo_html' => $original['instrutivo_html'] ?? null,
+                ':email_confirmacao_html' => $original['email_confirmacao_html'] ?? null,
+                ':msg_sucesso_html' => $original['msg_sucesso_html'] ?? null,
+                ':campos_json' => $original['campos_json'] ?? null,
                 ':criado_por' => $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 1
             ]);
             
@@ -202,7 +202,13 @@ function getStatusBadge($status) {
                             </div>
                             <div class="detail-row">
                                 <span class="detail-label">🕐 Horário:</span>
-                                <span class="detail-value"><?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?></span>
+                                <span class="detail-value">
+                                    <?php if (!empty($degustacao['hora_inicio']) && !empty($degustacao['hora_fim'])): ?>
+                                        <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?>
+                                    <?php else: ?>
+                                        Não definido
+                                    <?php endif; ?>
+                                </span>
                             </div>
                             <div class="detail-row">
                                 <span class="detail-label">📍 Local:</span>
@@ -210,7 +216,13 @@ function getStatusBadge($status) {
                             </div>
                             <div class="detail-row">
                                 <span class="detail-label">📅 Data limite:</span>
-                                <span class="detail-value"><?= date('d/m/Y', strtotime($degustacao['data_limite'])) ?></span>
+                                <span class="detail-value">
+                                    <?php if (!empty($degustacao['data_limite'])): ?>
+                                        <?= date('d/m/Y', strtotime($degustacao['data_limite'])) ?>
+                                    <?php else: ?>
+                                        Não definida
+                                    <?php endif; ?>
+                                </span>
                             </div>
                         </div>
                         
