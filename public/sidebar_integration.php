@@ -10,6 +10,9 @@ function includeSidebar() {
     
     define('SIDEBAR_INCLUDED', true);
     
+    // Incluir a sidebar macro
+    include __DIR__ . '/sidebar_macro.php';
+    
     // Capturar o conteúdo da página
     ob_start();
 }

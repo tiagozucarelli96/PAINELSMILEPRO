@@ -50,7 +50,7 @@ if ($page === '' || $page === null) {
 
 /* rotas permitidas */
 $routes = [
-  'dashboard'           => 'dashboard_agenda.php',
+  'dashboard'           => 'dashboard_principal.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'lc_index'            => 'lc_index.php',
@@ -75,6 +75,7 @@ $routes = [
   'agenda'              => 'agenda.php',
   'agenda_config'       => 'agenda_config.php',
   'agenda_relatorios'   => 'agenda_relatorios.php',
+  'demandas'            => 'demandas.php',
 ];
 
 /* exige login */
