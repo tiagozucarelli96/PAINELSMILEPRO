@@ -20,17 +20,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Configurar integrações externas</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">📧</div>
                     <div class="item-text">E-mail SMTP</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('webhook_me_eventos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=webhook_me_eventos'">
                     <div class="item-icon">🔗</div>
                     <div class="item-text">ME Eventos</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">💰</div>
                     <div class="item-text">ASAAS PIX</div>
                     <div class="item-arrow">→</div>
@@ -46,17 +46,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Monitoramento do sistema</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('verificacao_completa_erros')">
+                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
                     <div class="item-icon">🔍</div>
                     <div class="item-text">Verificação Completa</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('verificacao_completa_erros')">
+                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Logs do Sistema</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('verificacao_completa_erros')">
+                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
                     <div class="item-icon">🛠️</div>
                     <div class="item-text">Manutenção</div>
                     <div class="item-arrow">→</div>
@@ -72,17 +72,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Configurações básicas</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🏢</div>
                     <div class="item-text">Empresa</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🎨</div>
                     <div class="item-text">Aparência</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🔒</div>
                     <div class="item-text">Segurança</div>
                     <div class="item-arrow">→</div>
@@ -98,17 +98,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de dados</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">💾</div>
                     <div class="item-text">Backup Manual</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🔄</div>
                     <div class="item-text">Restaurar</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">📅</div>
                     <div class="item-text">Backup Automático</div>
                     <div class="item-arrow">→</div>
@@ -239,26 +239,4 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 }
 </style>
 
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>
+

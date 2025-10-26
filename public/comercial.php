@@ -20,17 +20,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gerenciar contratos e clientes</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('comercial_degustacoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degustacoes'">
                     <div class="item-icon">📄</div>
                     <div class="item-text">Degustações</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_clientes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_clientes'">
                     <div class="item-icon">👥</div>
                     <div class="item-text">Clientes</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_degust_inscricoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degust_inscricoes'">
                     <div class="item-icon">📝</div>
                     <div class="item-text">Inscrições</div>
                     <div class="item-arrow">→</div>
@@ -46,17 +46,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de comunicação</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('comercial_degust_inscricoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degust_inscricoes'">
                     <div class="item-icon">📧</div>
                     <div class="item-text">E-mails</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_degustacoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degustacoes'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Propostas</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_clientes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_clientes'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Relatórios</div>
                     <div class="item-arrow">→</div>
@@ -72,17 +72,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Métricas e análises</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('comercial_clientes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_clientes'">
                     <div class="item-icon">📈</div>
                     <div class="item-text">Vendas</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_degustacoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degustacoes'">
                     <div class="item-icon">🎯</div>
                     <div class="item-text">Conversões</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('comercial_degust_inscricoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=comercial_degust_inscricoes'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Leads</div>
                     <div class="item-arrow">→</div>
@@ -212,27 +212,3 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
     }
 }
 </style>
-
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>

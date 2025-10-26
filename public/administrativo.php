@@ -20,17 +20,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gerenciar equipe e permissões</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">👤</div>
                     <div class="item-text">Usuários</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">🔒</div>
                     <div class="item-text">Permissões</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">👔</div>
                     <div class="item-text">Perfis</div>
                     <div class="item-arrow">→</div>
@@ -46,17 +46,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de colaboradores</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">👥</div>
                     <div class="item-text">Lista de Colaboradores</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Cadastros</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Relatórios</div>
                     <div class="item-arrow">→</div>
@@ -72,17 +72,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Configurações e metas</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">⚙️</div>
                     <div class="item-text">Configurações</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🎯</div>
                     <div class="item-text">Metas</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('verificacao_completa_erros')">
+                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
                     <div class="item-icon">🔧</div>
                     <div class="item-text">Manutenção</div>
                     <div class="item-arrow">→</div>
@@ -98,17 +98,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de agenda e operações</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('agenda')">
+                <div class="card-item" onclick="window.location.href='index.php?page=agenda'">
                     <div class="item-icon">📅</div>
                     <div class="item-text">Agenda Geral</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('demandas')">
+                <div class="card-item" onclick="window.location.href='index.php?page=demandas'">
                     <div class="item-icon">⚡</div>
                     <div class="item-text">Demandas</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('agenda_config')">
+                <div class="card-item" onclick="window.location.href='index.php?page=agenda_config'">
                     <div class="item-icon">✅</div>
                     <div class="item-text">Checklist</div>
                     <div class="item-arrow">→</div>
@@ -239,26 +239,4 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 }
 </style>
 
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>
+

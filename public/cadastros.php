@@ -20,17 +20,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gerenciar usuários e permissões</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">👤</div>
                     <div class="item-text">Usuários</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">🔒</div>
                     <div class="item-text">Permissões</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('usuarios')">
+                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
                     <div class="item-icon">👔</div>
                     <div class="item-text">Perfis</div>
                     <div class="item-arrow">→</div>
@@ -46,22 +46,22 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Categorias, insumos e unidades</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('config_categorias')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_categorias'">
                     <div class="item-icon">📁</div>
                     <div class="item-text">Categorias</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_insumos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_insumos'">
                     <div class="item-icon">📦</div>
                     <div class="item-text">Insumos</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_insumos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_insumos'">
                     <div class="item-icon">📏</div>
                     <div class="item-text">Unidades</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_fornecedores')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_fornecedores'">
                     <div class="item-icon">🏢</div>
                     <div class="item-text">Fornecedores</div>
                     <div class="item-arrow">→</div>
@@ -77,17 +77,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Configurações gerais</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🔧</div>
                     <div class="item-text">Configurações</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('verificacao_completa_erros')">
+                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
                     <div class="item-icon">🔍</div>
                     <div class="item-text">Diagnóstico</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('configuracoes')">
+                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
                     <div class="item-icon">🔗</div>
                     <div class="item-text">Integrações</div>
                     <div class="item-arrow">→</div>
@@ -217,27 +217,3 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
     }
 }
 </style>
-
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>

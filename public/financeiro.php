@@ -20,22 +20,22 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de pagamentos</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
                     <div class="item-icon">💸</div>
                     <div class="item-text">Solicitar Pagamento</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('admin_pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Painel Financeiro</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
                     <div class="item-icon">👥</div>
                     <div class="item-text">Freelancers</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_fornecedores')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_fornecedores'">
                     <div class="item-icon">🏢</div>
                     <div class="item-text">Fornecedores</div>
                     <div class="item-arrow">→</div>
@@ -51,17 +51,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão contábil</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('contab_link')">
+                <div class="card-item" onclick="window.location.href='index.php?page=contab_link'">
                     <div class="item-icon">📄</div>
                     <div class="item-text">Portal Contábil</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('contab_gerar_link')">
+                <div class="card-item" onclick="window.location.href='index.php?page=contab_gerar_link'">
                     <div class="item-icon">🔗</div>
                     <div class="item-text">Gerar Links</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('notas_fiscais')">
+                <div class="card-item" onclick="window.location.href='index.php?page=notas_fiscais'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Notas Fiscais</div>
                     <div class="item-arrow">→</div>
@@ -77,17 +77,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Análises e relatórios</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('admin_pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Relatórios</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
                     <div class="item-icon">💰</div>
                     <div class="item-text">Fluxo de Caixa</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('admin_pagamentos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Extratos</div>
                     <div class="item-arrow">→</div>
@@ -218,26 +218,4 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 }
 </style>
 
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>
+

@@ -20,17 +20,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de compras e pedidos</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('lc_index')">
+                <div class="card-item" onclick="window.location.href='index.php?page=lc_index'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Lista de Compras</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('lista_compras')">
+                <div class="card-item" onclick="window.location.href='index.php?page=lista_compras'">
                     <div class="item-icon">🛍️</div>
                     <div class="item-text">Gerar Lista</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('ver')">
+                <div class="card-item" onclick="window.location.href='index.php?page=ver'">
                     <div class="item-icon">📄</div>
                     <div class="item-text">Encomendas</div>
                     <div class="item-arrow">→</div>
@@ -46,17 +46,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Controle de estoque</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('estoque_logistico')">
+                <div class="card-item" onclick="window.location.href='index.php?page=estoque_logistico'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Estoque Logístico</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_insumos')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_insumos'">
                     <div class="item-icon">📝</div>
                     <div class="item-text">Insumos</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_categorias')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_categorias'">
                     <div class="item-icon">📁</div>
                     <div class="item-text">Categorias</div>
                     <div class="item-arrow">→</div>
@@ -72,17 +72,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Organização por eventos</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('ver')">
+                <div class="card-item" onclick="window.location.href='index.php?page=ver'">
                     <div class="item-icon">📄</div>
                     <div class="item-text">Ver Encomendas</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('lista_compras')">
+                <div class="card-item" onclick="window.location.href='index.php?page=lista_compras'">
                     <div class="item-icon">📋</div>
                     <div class="item-text">Lista Consolidada</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('lc_index')">
+                <div class="card-item" onclick="window.location.href='index.php?page=lc_index'">
                     <div class="item-icon">📊</div>
                     <div class="item-text">Relatórios</div>
                     <div class="item-arrow">→</div>
@@ -98,17 +98,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Gestão de notas fiscais</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="loadSubPage('notas_fiscais')">
+                <div class="card-item" onclick="window.location.href='index.php?page=notas_fiscais'">
                     <div class="item-icon">📄</div>
                     <div class="item-text">Notas Fiscais</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('config_fornecedores')">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_fornecedores'">
                     <div class="item-icon">🏢</div>
                     <div class="item-text">Fornecedores</div>
                     <div class="item-arrow">→</div>
                 </div>
-                <div class="card-item" onclick="loadSubPage('estoque_logistico')">
+                <div class="card-item" onclick="window.location.href='index.php?page=estoque_logistico'">
                     <div class="item-icon">📦</div>
                     <div class="item-text">Entrada Estoque</div>
                     <div class="item-arrow">→</div>
@@ -238,27 +238,3 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
     }
 }
 </style>
-
-<script>
-function loadSubPage(page) {
-    // Fazer requisição para a sub-página
-    fetch(`index.php?page=${page}`)
-        .then(response => response.text())
-        .then(html => {
-            // Extrair apenas o conteúdo da página
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const content = doc.querySelector('#pageContent') || doc.body;
-            
-            if (content) {
-                document.getElementById('pageContent').innerHTML = content.innerHTML;
-            } else {
-                document.getElementById('pageContent').innerHTML = html;
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar página:', error);
-            document.getElementById('pageContent').innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-        });
-}
-</script>
