@@ -129,15 +129,6 @@ $sql .= " ORDER BY d.data DESC, d.created_at DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-function getStatusBadge($status) {
-    $badges = [
-        'rascunho' => '<span class="badge badge-warning">Rascunho</span>',
-        'publicado' => '<span class="badge badge-success">Publicado</span>',
-        'encerrado' => '<span class="badge badge-secondary">Encerrado</span>'
-    ];
-    return $badges[$status] ?? '<span class="badge badge-secondary">' . $status . '</span>';
-}
 ?>
 
 <div class="page-container">

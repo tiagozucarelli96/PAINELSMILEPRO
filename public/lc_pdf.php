@@ -2,7 +2,7 @@
 // public/lc_pdf.php
 // Gera PDF de uma lista (compras ou encomendas)
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;

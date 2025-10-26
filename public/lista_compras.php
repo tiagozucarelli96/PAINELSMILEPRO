@@ -22,13 +22,14 @@ $usuarioNome = (string)($_SESSION['user_name'] ?? ($_SESSION['nome'] ?? ''));
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/helpers.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Incluir lc_calc.php =========
 require_once __DIR__ . '/lc_calc.php';
 
 // ========= Util =========
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("

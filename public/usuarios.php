@@ -132,8 +132,6 @@ if ($user_id > 0) {
     $stmt->execute([':id' => $user_id]);
     $usuario_edit = $stmt->fetch(PDO::FETCH_ASSOC);
 }
-
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 
 <style>

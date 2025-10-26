@@ -2,7 +2,7 @@
 // estoque_kardex.php
 // Módulo de Kardex - Histórico cronológico de movimentos de estoque
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/lc_units_helper.php';
