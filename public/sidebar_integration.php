@@ -26,17 +26,11 @@ function endSidebar() {
     // Obter o conteúdo da página
     $pageContent = ob_get_clean();
     
-    // Sidebar já foi incluída no includeSidebar()
-    
-    // Inserir o conteúdo da página no main-content
-    echo '<script>
-        document.addEventListener("DOMContentLoaded", function() {
-            const mainContent = document.getElementById("mainContent");
-            if (mainContent) {
-                mainContent.innerHTML = `' . addslashes($pageContent) . '`;
-            }
-        });
-    </script>';
+    // Inserir o conteúdo da página diretamente no main-content
+    echo '<div id="mainContent">' . $pageContent . '</div>';
+    echo '</div>'; // Fechar main-content
+    echo '</div>'; // Fechar app-container
+    echo '</body></html>';
 }
 
 // Função para incluir CSS adicional da página

@@ -78,18 +78,10 @@ $routes = [
   'demandas'            => 'demandas.php',
 ];
 
-/* exige login - com fallback para teste */
+/* exige login */
 if (empty($_SESSION['logado'])) {
-  // Para teste do dashboard, criar sessão temporária
-  if ($page === 'dashboard') {
-    $_SESSION['logado'] = 1;
-    $_SESSION['nome'] = 'Tiago';
-    $_SESSION['perfil'] = 'ADM';
-    $_SESSION['user_id'] = 1;
-  } else {
-    header('Location: login.php');
-    exit;
-  }
+  header('Location: login.php');
+  exit;
 }
 
 /* >>> popula as permissões da sessão sem mexer no login */
