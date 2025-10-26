@@ -337,6 +337,80 @@ if ($current_page === 'dashboard') {
             pageContent.innerHTML = `$logistico_content`;
         }
     });";
+} elseif ($current_page === 'configuracoes') {
+    // Conteúdo da página Configurações
+    $configuracoes_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">⚙️ Configurações</h1>
+            <p class="page-subtitle">Configurações do sistema</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>👥 Usuários</h3>
+                    <span class="card-icon">👥</span>
+                </div>
+                <div class="card-content">
+                    <p>Gerenciar usuários e permissões</p>
+                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🏢 Fornecedores</h3>
+                    <span class="card-icon">🏢</span>
+                </div>
+                <div class="card-content">
+                    <p>Cadastro e gestão de fornecedores</p>
+                    <a href="index.php?page=config_fornecedores" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📦 Insumos</h3>
+                    <span class="card-icon">📦</span>
+                </div>
+                <div class="card-content">
+                    <p>Configurar insumos e categorias</p>
+                    <a href="index.php?page=config_insumos" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📋 Categorias</h3>
+                    <span class="card-icon">📋</span>
+                </div>
+                <div class="card-content">
+                    <p>Organizar categorias de produtos</p>
+                    <a href="index.php?page=config_categorias" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🔧 Sistema</h3>
+                    <span class="card-icon">🔧</span>
+                </div>
+                <div class="card-content">
+                    <p>Configurações gerais do sistema</p>
+                    <a href="index.php?page=configuracoes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$configuracoes_content`;
+        }
+    });";
 } else {
     // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
@@ -909,8 +983,8 @@ if ($current_page === 'dashboard') {
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
             
-            // Se for dashboard, comercial ou logistico, não fazer AJAX - usar conteúdo já inserido
-            if (['dashboard', 'comercial', 'logistico'].includes(currentPage)) {
+            // Se for dashboard, comercial, logistico ou configuracoes, não fazer AJAX - usar conteúdo já inserido
+            if (['dashboard', 'comercial', 'logistico', 'configuracoes'].includes(currentPage)) {
                 // Conteúdo já está carregado via PHP, não fazer nada
                 return;
             }
