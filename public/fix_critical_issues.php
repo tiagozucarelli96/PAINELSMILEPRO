@@ -26,14 +26,14 @@ $critical_fixes = [
 $fixed_count = 0;
 
 foreach ($critical_fixes as $file => $description) {
-    $file_path = __DIR__ . '/' . $file;
+    $file_path = realpath(__DIR__ . '/' . $file);
     $file_name = basename($file);
     
     echo "<h2>🔍 Corrigindo: $file_name</h2>";
     echo "<p><strong>Problema:</strong> $description</p>";
     echo "<p><strong>Caminho:</strong> $file_path</p>";
     
-    if (!file_exists($file_path)) {
+    if (!$file_path || !file_exists($file_path)) {
         echo "<div style='background:#ffebee;padding:10px;border-radius:4px;margin:10px 0;'>";
         echo "<strong>❌ Arquivo não encontrado: $file_path</strong>";
         echo "</div>";
