@@ -27,7 +27,7 @@ echo "<h1>🔍 DIAGNÓSTICO EXTREMAMENTE MINUCIOSO DO SISTEMA</h1>";
 echo "<div class='section'>";
 echo "<h2>1. 📋 VERIFICAÇÃO DE ROTAS (index.php)</h2>";
 
-$index_content = file_get_contents('index.php');
+$index_content = file_get_contents(__DIR__ . '/index.php');
 preg_match_all("/'([^']+)'\s*=>\s*'([^']+)'/", $index_content, $matches);
 $routes = array_combine($matches[1], $matches[2]);
 
@@ -46,13 +46,14 @@ echo "</table></div>";
 echo "<div class='section'>";
 echo "<h2>2. 📁 VERIFICAÇÃO DE TODAS AS PÁGINAS PHP</h2>";
 
-$php_files = glob('*.php');
+$php_files = glob(__DIR__ . '/*.php');
 $problematic_files = [];
 
 echo "<table><tr><th>Arquivo</th><th>Sintaxe</th><th>HTML Completo</th><th>Sidebar Antiga</th><th>Sidebar Nova</th><th>Status</th></tr>";
 
 foreach ($php_files as $file) {
-    if ($file === 'index.php' || $file === 'diagnostic_completo.php') continue;
+    $filename = basename($file);
+    if ($filename === 'index.php' || $filename === 'diagnostic_completo.php') continue;
     
     $content = file_get_contents($file);
     
@@ -77,23 +78,23 @@ foreach ($php_files as $file) {
     if (!$syntax_ok) {
         $status = "❌ SINTAXE";
         $status_class = "error";
-        $problematic_files[] = $file;
+        $problematic_files[] = $filename;
     } elseif ($has_html && !$has_new_sidebar) {
         $status = "⚠️ HTML COMPLETO";
         $status_class = "warning";
-        $problematic_files[] = $file;
+        $problematic_files[] = $filename;
     } elseif ($has_old_sidebar) {
         $status = "⚠️ SIDEBAR ANTIGA";
         $status_class = "warning";
-        $problematic_files[] = $file;
+        $problematic_files[] = $filename;
     } elseif (!$has_new_sidebar && !$has_html) {
         $status = "⚠️ SEM SIDEBAR";
         $status_class = "warning";
-        $problematic_files[] = $file;
+        $problematic_files[] = $filename;
     }
     
     echo "<tr>";
-    echo "<td>$file</td>";
+    echo "<td>$filename</td>";
     echo "<td>" . ($syntax_ok ? "✅" : "❌") . "</td>";
     echo "<td>" . ($has_html ? "⚠️" : "✅") . "</td>";
     echo "<td>" . ($has_old_sidebar ? "❌" : "✅") . "</td>";
@@ -124,14 +125,15 @@ $critical_pages = [
 echo "<table><tr><th>Página</th><th>Arquivo</th><th>Carregamento</th><th>Conteúdo</th><th>Sidebar</th><th>Status</th></tr>";
 
 foreach ($critical_pages as $page => $file) {
-    if (!file_exists($file)) {
+    $file_path = __DIR__ . '/' . $file;
+    if (!file_exists($file_path)) {
         echo "<tr><td>$page</td><td>$file</td><td>❌</td><td>❌</td><td>❌</td><td class='error'>ARQUIVO FALTANDO</td></tr>";
         continue;
     }
     
     try {
         ob_start();
-        include $file;
+        include $file_path;
         $content = ob_get_clean();
         
         $loads = !empty($content);
@@ -175,12 +177,12 @@ echo "<div class='section'>";
 echo "<h2>4. 🎨 VERIFICAÇÃO DE ARQUIVOS DE SIDEBAR</h2>";
 
 $sidebar_files = [
-    'sidebar.php' => 'Sidebar Antiga',
-    'sidebar_moderna.php' => 'Sidebar Moderna',
-    'sidebar_macro.php' => 'Sidebar Macro',
-    'sidebar_simples.php' => 'Sidebar Simples',
+    '../sidebar.php' => 'Sidebar Antiga',
+    '../sidebar_moderna.php' => 'Sidebar Moderna',
+    '../sidebar_macro.php' => 'Sidebar Macro',
+    '../sidebar_simples.php' => 'Sidebar Simples',
     'sidebar_integration.php' => 'Sidebar Integration',
-    'sidebar_funcional.php' => 'Sidebar Funcional'
+    '../sidebar_funcional.php' => 'Sidebar Funcional'
 ];
 
 echo "<table><tr><th>Arquivo</th><th>Descrição</th><th>Existe?</th><th>Sintaxe</th><th>Status</th></tr>";
