@@ -26,12 +26,12 @@ function processarWebhook($data) {
     global $pdo;
     
     try {
-        // Validar dados obrigatórios
-        if (empty($data['evento_id']) || empty($data['webhook_tipo'])) {
+        // Validar dados obrigatórios - estrutura correta da ME Eventos
+        if (empty($data['id']) || empty($data['action'])) {
             throw new Exception('Dados obrigatórios ausentes');
         }
         
-        // Preparar dados para inserção
+        // Preparar dados para inserção - estrutura correta da ME Eventos
         $stmt = $pdo->prepare("
             INSERT INTO me_eventos_webhook (
                 evento_id, nome, data_evento, status, tipo_evento, 
@@ -52,20 +52,31 @@ function processarWebhook($data) {
                 processado = FALSE
         ");
         
+        // Mapear dados da ME Eventos para nossa estrutura
+        $evento_id = $data['id'];
+        $webhook_tipo = $data['action']; // 'created', 'updated', 'deleted'
+        $nome = $data['name'] ?? $data['title'] ?? 'Evento sem nome';
+        $data_evento = $data['date'] ?? $data['event_date'] ?? null;
+        $status = $data['status'] ?? ($webhook_tipo === 'deleted' ? 'excluido' : 'ativo');
+        $tipo_evento = $data['type'] ?? $data['event_type'] ?? 'evento';
+        $cliente_nome = $data['client_name'] ?? $data['customer_name'] ?? null;
+        $cliente_email = $data['client_email'] ?? $data['customer_email'] ?? null;
+        $valor = $data['value'] ?? $data['price'] ?? $data['amount'] ?? 0.00;
+        
         $stmt->execute([
-            ':evento_id' => $data['evento_id'],
-            ':nome' => $data['nome'] ?? 'Evento sem nome',
-            ':data_evento' => $data['data_evento'] ?? null,
-            ':status' => $data['status'] ?? 'ativo',
-            ':tipo_evento' => $data['tipo_evento'] ?? 'evento',
-            ':cliente_nome' => $data['cliente_nome'] ?? null,
-            ':cliente_email' => $data['cliente_email'] ?? null,
-            ':valor' => $data['valor'] ?? 0.00,
-            ':webhook_tipo' => $data['webhook_tipo'],
+            ':evento_id' => $evento_id,
+            ':nome' => $nome,
+            ':data_evento' => $data_evento,
+            ':status' => $status,
+            ':tipo_evento' => $tipo_evento,
+            ':cliente_nome' => $cliente_nome,
+            ':cliente_email' => $cliente_email,
+            ':valor' => $valor,
+            ':webhook_tipo' => $webhook_tipo,
             ':webhook_data' => json_encode($data)
         ]);
         
-        logWebhook("Webhook processado com sucesso: {$data['webhook_tipo']} - {$data['evento_id']}");
+        logWebhook("Webhook processado com sucesso: {$webhook_tipo} - {$evento_id}");
         return true;
         
     } catch (Exception $e) {
@@ -122,8 +133,8 @@ if (processarWebhook($data)) {
     echo json_encode([
         'status' => 'sucesso',
         'mensagem' => 'Webhook processado com sucesso',
-        'evento_id' => $data['evento_id'] ?? null,
-        'webhook_tipo' => $data['webhook_tipo'] ?? null
+        'evento_id' => $data['id'] ?? null,
+        'webhook_tipo' => $data['action'] ?? null
     ]);
 } else {
     http_response_code(500);

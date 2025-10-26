@@ -12,48 +12,48 @@ smile-token-2025
 
 ## 📋 **TIPOS DE WEBHOOK SUPORTADOS:**
 
-### 1. **Evento Criado** (`evento_criado`)
+### 1. **Evento Criado** (`created`)
 ```json
 {
-  "evento_id": "12345",
-  "nome": "Casamento João e Maria",
-  "data_evento": "2025-06-15",
+  "id": "12345",
+  "action": "created",
+  "name": "Casamento João e Maria",
+  "date": "2025-06-15",
   "status": "ativo",
-  "tipo_evento": "casamento",
-  "cliente_nome": "João Silva",
-  "cliente_email": "joao@email.com",
-  "valor": 15000.00,
-  "webhook_tipo": "evento_criado"
+  "type": "casamento",
+  "client_name": "João Silva",
+  "client_email": "joao@email.com",
+  "value": 15000.00
 }
 ```
 
-### 2. **Evento Atualizado** (`evento_atualizado`)
+### 2. **Evento Atualizado** (`updated`)
 ```json
 {
-  "evento_id": "12345",
-  "nome": "Casamento João e Maria - Atualizado",
-  "data_evento": "2025-06-20",
+  "id": "12345",
+  "action": "updated",
+  "name": "Casamento João e Maria - Atualizado",
+  "date": "2025-06-20",
   "status": "ativo",
-  "tipo_evento": "casamento",
-  "cliente_nome": "João Silva",
-  "cliente_email": "joao@email.com",
-  "valor": 18000.00,
-  "webhook_tipo": "evento_atualizado"
+  "type": "casamento",
+  "client_name": "João Silva",
+  "client_email": "joao@email.com",
+  "value": 18000.00
 }
 ```
 
-### 3. **Evento Excluído** (`evento_excluido`)
+### 3. **Evento Excluído** (`deleted`)
 ```json
 {
-  "evento_id": "12345",
-  "nome": "Casamento João e Maria",
-  "data_evento": "2025-06-15",
+  "id": "12345",
+  "action": "deleted",
+  "name": "Casamento João e Maria",
+  "date": "2025-06-15",
   "status": "excluido",
-  "tipo_evento": "casamento",
-  "cliente_nome": "João Silva",
-  "cliente_email": "joao@email.com",
-  "valor": 15000.00,
-  "webhook_tipo": "evento_excluido"
+  "type": "casamento",
+  "client_name": "João Silva",
+  "client_email": "joao@email.com",
+  "value": 15000.00
 }
 ```
 
@@ -77,13 +77,13 @@ X-Token: smile-token-2025
 ## 📊 **IMPACTO NO DASHBOARD:**
 
 ### **Eventos Ativos:**
-- ✅ **Evento Criado:** +1 evento ativo
-- ✅ **Evento Atualizado:** Mantém contagem
-- ❌ **Evento Excluído:** -1 evento ativo
+- ✅ **Evento Criado (`created`):** +1 evento ativo
+- ✅ **Evento Atualizado (`updated`):** Mantém contagem
+- ❌ **Evento Excluído (`deleted`):** -1 evento ativo
 
 ### **Contratos Fechados:**
-- ✅ **Evento Criado:** +1 contrato fechado
-- ❌ **Evento Excluído:** -1 contrato fechado
+- ✅ **Evento Criado (`created`):** +1 contrato fechado
+- ❌ **Evento Excluído (`deleted`):** -1 contrato fechado
 
 ### **Leads e Vendas:**
 - 📈 **Leads Total:** Contagem de eventos criados
@@ -130,15 +130,15 @@ curl -X POST https://painelsmilepro-production.up.railway.app/webhook_me_eventos
   -H "Content-Type: application/json" \
   -H "Authorization: smile-token-2025" \
   -d '{
-    "evento_id": "teste123",
-    "nome": "Evento de Teste",
-    "data_evento": "2025-06-15",
+    "id": "teste123",
+    "action": "created",
+    "name": "Evento de Teste",
+    "date": "2025-06-15",
     "status": "ativo",
-    "tipo_evento": "teste",
-    "cliente_nome": "Cliente Teste",
-    "cliente_email": "teste@email.com",
-    "valor": 1000.00,
-    "webhook_tipo": "evento_criado"
+    "type": "teste",
+    "client_name": "Cliente Teste",
+    "client_email": "teste@email.com",
+    "value": 1000.00
   }'
 ```
 
@@ -150,7 +150,7 @@ curl -X POST https://painelsmilepro-production.up.railway.app/webhook_me_eventos
   "status": "sucesso",
   "mensagem": "Webhook processado com sucesso",
   "evento_id": "12345",
-  "webhook_tipo": "evento_criado"
+  "webhook_tipo": "created"
 }
 ```
 

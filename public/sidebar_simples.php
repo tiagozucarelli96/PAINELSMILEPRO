@@ -296,25 +296,47 @@ if (!function_exists('isActiveSimples')) {
             // Mostrar loading
             pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #64748b;"><div style="font-size: 24px; margin-bottom: 20px;">⏳</div><div>Carregando...</div></div>';
             
-            // Fazer requisição para a página
-            fetch(`index.php?page=${page}`)
-                .then(response => response.text())
-                .then(html => {
-                    // Extrair apenas o conteúdo da página (sem sidebar duplicada)
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const content = doc.querySelector('#pageContent') || doc.body;
-                    
-                    if (content) {
-                        pageContent.innerHTML = content.innerHTML;
-                    } else {
-                        pageContent.innerHTML = html;
-                    }
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar página:', error);
-                    pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
-                });
+            // Se for dashboard, carregar dashboard_simples.php diretamente
+            if (page === 'dashboard') {
+                fetch('dashboard_simples.php')
+                    .then(response => response.text())
+                    .then(html => {
+                        // Extrair apenas o conteúdo da página (sem sidebar duplicada)
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const content = doc.querySelector('.dashboard-container') || doc.body;
+                        
+                        if (content) {
+                            pageContent.innerHTML = content.innerHTML;
+                        } else {
+                            pageContent.innerHTML = html;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao carregar dashboard:', error);
+                        pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar dashboard</div></div>';
+                    });
+            } else {
+                // Para outras páginas, usar o sistema de roteamento normal
+                fetch(`index.php?page=${page}`)
+                    .then(response => response.text())
+                    .then(html => {
+                        // Extrair apenas o conteúdo da página (sem sidebar duplicada)
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const content = doc.querySelector('#pageContent') || doc.body;
+                        
+                        if (content) {
+                            pageContent.innerHTML = content.innerHTML;
+                        } else {
+                            pageContent.innerHTML = html;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao carregar página:', error);
+                        pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #dc2626;"><div style="font-size: 24px; margin-bottom: 20px;">❌</div><div>Erro ao carregar página</div></div>';
+                    });
+            }
         }
         
         // Adicionar event listeners para os links da sidebar
