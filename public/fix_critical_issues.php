@@ -12,15 +12,15 @@ $_SESSION['perfil'] = 'ADM';
 $_SESSION['perm_usuarios'] = 1;
 
 $critical_fixes = [
-    'pagamentos.php' => 'Corrigir sidebar antiga e tela branca',
-    'lista_compras.php' => 'Corrigir sidebar antiga',
-    'ver.php' => 'Corrigir sidebar antiga',
-    'estoque_logistico.php' => 'Corrigir sidebar antiga',
-    'config_insumos.php' => 'Corrigir sidebar antiga',
-    'comercial_degustacoes.php' => 'Corrigir sidebar antiga',
-    'comercial_clientes.php' => 'Corrigir sidebar antiga',
-    'usuarios.php' => 'Corrigir sidebar antiga',
-    'dashboard_simples.php' => 'Corrigir dashboard quebrado'
+    '../pagamentos.php' => 'Corrigir sidebar antiga e tela branca',
+    '../lista_compras.php' => 'Corrigir sidebar antiga',
+    '../ver.php' => 'Corrigir sidebar antiga',
+    '../estoque_logistico.php' => 'Corrigir sidebar antiga',
+    '../config_insumos.php' => 'Corrigir sidebar antiga',
+    '../comercial_degustacoes.php' => 'Corrigir sidebar antiga',
+    '../comercial_clientes.php' => 'Corrigir sidebar antiga',
+    '../usuarios.php' => 'Corrigir sidebar antiga',
+    '../dashboard_simples.php' => 'Corrigir dashboard quebrado'
 ];
 
 $fixed_count = 0;
