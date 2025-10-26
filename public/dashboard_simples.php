@@ -6,8 +6,13 @@ require_once __DIR__ . '/conexao.php';
 
 // Buscar métricas básicas
 $stats = [];
+$usuarios_com_email = [];
 try {
     $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
+    
+    // Buscar usuários com email para exibir no dashboard
+    $stmt = $pdo->query("SELECT nome, email FROM usuarios WHERE ativo = true AND email IS NOT NULL AND email != '' ORDER BY nome LIMIT 10");
+    $usuarios_com_email = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Buscar eventos da ME Eventos (webhooks)
     $mes_atual = date('Y-m');
@@ -33,6 +38,7 @@ try {
     $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
 } catch (Exception $e) {
     $stats = ['usuarios' => 0, 'eventos' => 0, 'fornecedores' => 0, 'insumos' => 0, 'contratos_fechados' => 0, 'leads_total' => 0, 'leads_negociacao' => 0, 'vendas_realizadas' => 0];
+    $usuarios_com_email = [];
 }
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
@@ -336,6 +342,25 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                         </div>
                     </div>
                 </div>
+
+                <!-- Usuários com Email -->
+                <?php if (!empty($usuarios_com_email)): ?>
+                <div class="dashboard-card">
+                    <h3 style="color: #1e3a8a; margin-bottom: 20px; font-size: 1.5em;">📧 Usuários com Email</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                        <?php foreach ($usuarios_com_email as $usuario): ?>
+                        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border-left: 4px solid #1e3a8a;">
+                            <div style="font-weight: 600; color: #1e3a8a; margin-bottom: 5px;">
+                                <?= htmlspecialchars($usuario['nome']) ?>
+                            </div>
+                            <div style="color: #64748b; font-size: 14px;">
+                                📧 <?= htmlspecialchars($usuario['email']) ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
