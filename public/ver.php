@@ -19,11 +19,11 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) {
     http_response_code(403);
     echo "Acesso negado. Faça login para continuar.";
     exit;
+}
 
 // Iniciar sidebar
 includeSidebar();
 setPageTitle('Ver');
-}
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';

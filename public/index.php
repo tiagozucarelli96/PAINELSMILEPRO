@@ -59,6 +59,7 @@ $routes = [
   'administrativo'      => 'administrativo.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
+  'lista_compras'       => 'lista_compras.php',
   'lc_index'            => 'lc_index.php',
   'pagamentos'          => 'pagamentos.php',
   'admin_pagamentos'    => 'admin_pagamentos.php',
