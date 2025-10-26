@@ -4,11 +4,19 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
+require_once __DIR__ . '/sidebar_integration.php';
 if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
 $usuario_id = $_SESSION['user_id'] ?? 1;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Dashboard');
+addBreadcrumb([
+    ['title' => 'Dashboard']
+]);
 
 // Buscar métricas do banco de dados
 $stats = [];
@@ -523,43 +531,44 @@ if ($agenda->canAccessAgenda($usuario_id)) {
     <div class="quick-actions">
       <h2 class="quick-actions-title">🚀 Ações Rápidas</h2>
       <div class="quick-actions-grid">
-        <a href="lista_compras.php" class="quick-action">
+        <a href="index.php?page=lista" class="quick-action">
           <span class="quick-action-icon">🛒</span>
           <span>Gerar Lista de Compras</span>
         </a>
         
         <?php if ($agenda->canAccessAgenda($usuario_id)): ?>
-        <a href="agenda.php" class="quick-action">
+        <a href="index.php?page=agenda" class="quick-action">
           <span class="quick-action-icon">📅</span>
           <span>Agenda Interna</span>
         </a>
         <?php endif; ?>
         
-        <a href="lc_index.php" class="quick-action">
+        <a href="index.php?page=lc_index" class="quick-action">
           <span class="quick-action-icon">📋</span>
           <span>Gestão de Compras</span>
         </a>
         
         <?php if (lc_can_access_estoque()): ?>
-        <a href="estoque_contagens.php" class="quick-action">
+        <a href="index.php?page=estoque_logistico" class="quick-action">
           <span class="quick-action-icon">📦</span>
           <span>Controle de Estoque</span>
         </a>
         <?php endif; ?>
         
         <?php if (lc_can_access_module('pagamentos')): ?>
-        <a href="pagamentos_solicitar.php" class="quick-action">
+        <a href="index.php?page=pagamentos" class="quick-action">
           <span class="quick-action-icon">💰</span>
           <span>Solicitar Pagamento</span>
         </a>
         <?php endif; ?>
         
-        <a href="usuarios.php" class="quick-action">
+        <a href="index.php?page=usuarios" class="quick-action">
           <span class="quick-action-icon">👥</span>
           <span>Gerenciar Usuários</span>
         </a>
       </div>
     </div>
   </div>
+<?php endSidebar(); ?>
 </body>
 </html>
