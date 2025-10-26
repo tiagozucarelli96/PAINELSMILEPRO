@@ -236,7 +236,7 @@ if (!function_exists('isActiveSimples')) {
             </div>
             
     <div class="sidebar-controls">
-        <button class="sidebar-btn" onclick="toggleSidebar()" id="toggleBtn">☰ Esconder</button>
+        <button class="sidebar-btn" onclick="goBack()">← Voltar</button>
     </div>
             
             <nav class="sidebar-nav">
@@ -313,6 +313,15 @@ if (!function_exists('isActiveSimples')) {
                 toggleBtn.innerHTML = '☰ Mostrar';
                 toggleBtn.classList.add('hidden');
                 floatingToggle.style.display = 'block';
+            }
+        }
+        
+        // Função para voltar
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                loadPageContent('dashboard');
             }
         }
         
