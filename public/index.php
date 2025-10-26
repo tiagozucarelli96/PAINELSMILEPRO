@@ -91,6 +91,8 @@ $routes = [
   'test_pages' => 'test_pages.php',
   'diagnostic_pages' => 'diagnostic_pages.php',
   'fix_old_sidebars' => 'fix_old_sidebars.php',
+  'diagnostic_completo' => 'diagnostic_completo.php',
+  'fix_all_pages' => 'fix_all_pages.php',
 ];
 
 /* exige login */
