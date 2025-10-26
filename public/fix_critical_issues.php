@@ -26,16 +26,34 @@ $critical_fixes = [
 $fixed_count = 0;
 
 foreach ($critical_fixes as $file => $description) {
-    $file_path = realpath(__DIR__ . '/../' . $file);
     $file_name = basename($file);
+    
+    // Tentar diferentes caminhos
+    $possible_paths = [
+        __DIR__ . '/../' . $file,
+        dirname(__DIR__) . '/' . $file,
+        '../' . $file,
+        $file
+    ];
+    
+    $file_path = null;
+    foreach ($possible_paths as $path) {
+        if (file_exists($path)) {
+            $file_path = $path;
+            break;
+        }
+    }
     
     echo "<h2>🔍 Corrigindo: $file_name</h2>";
     echo "<p><strong>Problema:</strong> $description</p>";
-    echo "<p><strong>Caminho:</strong> $file_path</p>";
+    echo "<p><strong>Caminho encontrado:</strong> $file_path</p>";
     
-    if (!$file_path || !file_exists($file_path)) {
+    if (!$file_path) {
         echo "<div style='background:#ffebee;padding:10px;border-radius:4px;margin:10px 0;'>";
-        echo "<strong>❌ Arquivo não encontrado: $file_path</strong>";
+        echo "<strong>❌ Arquivo não encontrado em nenhum dos caminhos:</strong><br>";
+        foreach ($possible_paths as $path) {
+            echo "• $path<br>";
+        }
         echo "</div>";
         continue;
     }
