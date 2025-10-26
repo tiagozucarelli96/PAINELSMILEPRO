@@ -122,7 +122,7 @@ if ($where) {
     $sql .= " WHERE " . implode(" AND ", $where);
 }
 
-$sql .= " ORDER BY d.data DESC, d.criado_em DESC";
+$sql .= " ORDER BY d.data DESC, d.created_at DESC";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
