@@ -80,11 +80,49 @@ if ($current_page === 'dashboard') {
         ];
     }
     
+    // Buscar agenda do dia atual
+    $agenda_hoje = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT ae.id, ae.titulo, ae.data_inicio, ae.data_fim, ae.tipo, ae.cor, ae.observacoes,
+                   u.nome as responsavel_nome
+            FROM agenda_eventos ae
+            LEFT JOIN usuarios u ON u.id = ae.usuario_id
+            WHERE DATE(ae.data_inicio) = CURRENT_DATE
+            ORDER BY ae.data_inicio ASC
+            LIMIT 10
+        ");
+        $stmt->execute();
+        $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $agenda_hoje = [];
+    }
+    
+    // Buscar demandas do dia atual
+    $demandas_hoje = [];
+    try {
+        $stmt = $pdo->prepare("
+            SELECT dc.id, dc.titulo, dc.descricao, dc.prazo, dc.status,
+                   dq.nome as quadro_nome, u.nome as responsavel_nome
+            FROM demandas_cartoes dc
+            LEFT JOIN demandas_quadros dq ON dq.id = dc.quadro_id
+            LEFT JOIN usuarios u ON u.id = dc.responsavel_id
+            WHERE DATE(dc.prazo) = CURRENT_DATE
+            AND dc.status NOT IN ('concluido', 'arquivado')
+            ORDER BY dc.prazo ASC
+            LIMIT 10
+        ");
+        $stmt->execute();
+        $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $demandas_hoje = [];
+    }
+    
     $dashboard_content = '
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">🏠 Dashboard</h1>
-            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '!</p>
+            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
         </div>
         
         <!-- Métricas Principais -->
@@ -122,72 +160,61 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
         
-        <!-- Cards de Acesso Rápido -->
-        <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Comercial</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Gestão de degustações e conversões</p>
-                    <a href="index.php?page=comercial_degustacoes" class="btn-primary">Acessar</a>
-                </div>
+        <!-- Agenda do Dia -->
+        <div class="dashboard-section">
+            <div class="section-header">
+                <h2>📅 Agenda do Dia</h2>
+                <span class="section-badge">' . count($agenda_hoje) . ' eventos</span>
             </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📦 Logístico</h3>
-                    <span class="card-icon">📦</span>
-                </div>
-                <div class="card-content">
-                    <p>Controle de estoque e compras</p>
-                    <a href="index.php?page=lc_index" class="btn-primary">Acessar</a>
-                </div>
+            <div class="agenda-list">
+                ' . (empty($agenda_hoje) ? 
+                    '<div class="empty-state">
+                        <div class="empty-icon">📅</div>
+                        <p>Nenhum evento agendado para hoje</p>
+                    </div>' : 
+                    implode('', array_map(function($evento) {
+                        $hora = date('H:i', strtotime($evento['data_inicio']));
+                        $tipo_icon = $evento['tipo'] === 'visita' ? '🏠' : ($evento['tipo'] === 'bloqueio' ? '🚫' : '📅');
+                        return '
+                        <div class="agenda-item">
+                            <div class="agenda-time">' . $hora . '</div>
+                            <div class="agenda-content">
+                                <div class="agenda-title">' . $tipo_icon . ' ' . htmlspecialchars($evento['titulo']) . '</div>
+                                <div class="agenda-meta">' . htmlspecialchars($evento['responsavel_nome'] ?? 'Sem responsável') . '</div>
+                            </div>
+                        </div>';
+                    }, $agenda_hoje))
+                ) . '
             </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>⚙️ Configurações</h3>
-                    <span class="card-icon">⚙️</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurações do sistema</p>
-                    <a href="index.php?page=configuracoes" class="btn-primary">Acessar</a>
-                </div>
+        </div>
+        
+        <!-- Demandas do Dia -->
+        <div class="dashboard-section">
+            <div class="section-header">
+                <h2>📋 Demandas do Dia</h2>
+                <span class="section-badge">' . count($demandas_hoje) . ' tarefas</span>
             </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📝 Cadastros</h3>
-                    <span class="card-icon">📝</span>
-                </div>
-                <div class="card-content">
-                    <p>Gestão de usuários e fornecedores</p>
-                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>💰 Financeiro</h3>
-                    <span class="card-icon">💰</span>
-                </div>
-                <div class="card-content">
-                    <p>Pagamentos e solicitações</p>
-                    <a href="index.php?page=pagamentos" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>👥 Administrativo</h3>
-                    <span class="card-icon">👥</span>
-                </div>
-                <div class="card-content">
-                    <p>Relatórios e administração</p>
-                    <a href="index.php?page=administrativo" class="btn-primary">Acessar</a>
-                </div>
+            <div class="demandas-list">
+                ' . (empty($demandas_hoje) ? 
+                    '<div class="empty-state">
+                        <div class="empty-icon">📋</div>
+                        <p>Nenhuma demanda para hoje</p>
+                    </div>' : 
+                    implode('', array_map(function($demanda) {
+                        $status_color = $demanda['status'] === 'concluido' ? '#10b981' : 
+                                     ($demanda['status'] === 'em_andamento' ? '#f59e0b' : '#6b7280');
+                        $status_icon = $demanda['status'] === 'concluido' ? '✅' : 
+                                     ($demanda['status'] === 'em_andamento' ? '🔄' : '⏳');
+                        return '
+                        <div class="demanda-item">
+                            <div class="demanda-status" style="background-color: ' . $status_color . '">' . $status_icon . '</div>
+                            <div class="demanda-content">
+                                <div class="demanda-title">' . htmlspecialchars($demanda['titulo']) . '</div>
+                                <div class="demanda-meta">' . htmlspecialchars($demanda['quadro_nome'] ?? 'Sem quadro') . ' • ' . htmlspecialchars($demanda['responsavel_nome'] ?? 'Sem responsável') . '</div>
+                            </div>
+                        </div>';
+                    }, $demandas_hoje))
+                ) . '
             </div>
         </div>
         
@@ -409,6 +436,184 @@ if ($current_page === 'dashboard') {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
             pageContent.innerHTML = `$configuracoes_content`;
+        }
+    });";
+} elseif ($current_page === 'cadastros') {
+    // Conteúdo da página Cadastros
+    $cadastros_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">📝 Cadastros</h1>
+            <p class="page-subtitle">Gestão de usuários e fornecedores</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>👥 Usuários</h3>
+                    <span class="card-icon">👥</span>
+                </div>
+                <div class="card-content">
+                    <p>Gerenciar usuários e permissões</p>
+                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🏢 Fornecedores</h3>
+                    <span class="card-icon">🏢</span>
+                </div>
+                <div class="card-content">
+                    <p>Cadastro e gestão de fornecedores</p>
+                    <a href="index.php?page=config_fornecedores" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📦 Insumos</h3>
+                    <span class="card-icon">📦</span>
+                </div>
+                <div class="card-content">
+                    <p>Configurar insumos e categorias</p>
+                    <a href="index.php?page=config_insumos" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📋 Categorias</h3>
+                    <span class="card-icon">📋</span>
+                </div>
+                <div class="card-content">
+                    <p>Organizar categorias de produtos</p>
+                    <a href="index.php?page=config_categorias" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$cadastros_content`;
+        }
+    });";
+} elseif ($current_page === 'financeiro') {
+    // Conteúdo da página Financeiro
+    $financeiro_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">💰 Financeiro</h1>
+            <p class="page-subtitle">Pagamentos e solicitações</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>💳 Solicitações</h3>
+                    <span class="card-icon">💳</span>
+                </div>
+                <div class="card-content">
+                    <p>Gerenciar solicitações de pagamento</p>
+                    <a href="index.php?page=pagamentos" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📊 Relatórios</h3>
+                    <span class="card-icon">📊</span>
+                </div>
+                <div class="card-content">
+                    <p>Relatórios financeiros e análises</p>
+                    <a href="index.php?page=relatorios_financeiros" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🏦 Contas</h3>
+                    <span class="card-icon">🏦</span>
+                </div>
+                <div class="card-content">
+                    <p>Gestão de contas bancárias</p>
+                    <a href="index.php?page=contas_bancarias" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$financeiro_content`;
+        }
+    });";
+} elseif ($current_page === 'administrativo') {
+    // Conteúdo da página Administrativo
+    $administrativo_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">👥 Administrativo</h1>
+            <p class="page-subtitle">Relatórios e administração</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📊 Relatórios</h3>
+                    <span class="card-icon">📊</span>
+                </div>
+                <div class="card-content">
+                    <p>Relatórios gerenciais e análises</p>
+                    <a href="index.php?page=relatorios" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🔍 Auditoria</h3>
+                    <span class="card-icon">🔍</span>
+                </div>
+                <div class="card-content">
+                    <p>Logs e auditoria do sistema</p>
+                    <a href="index.php?page=auditoria" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>⚙️ Manutenção</h3>
+                    <span class="card-icon">⚙️</span>
+                </div>
+                <div class="card-content">
+                    <p>Manutenção e backup do sistema</p>
+                    <a href="index.php?page=manutencao" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📈 Estatísticas</h3>
+                    <span class="card-icon">📈</span>
+                </div>
+                <div class="card-content">
+                    <p>Estatísticas e métricas do sistema</p>
+                    <a href="index.php?page=estatisticas" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$administrativo_content`;
         }
     });";
 } else {
@@ -764,6 +969,157 @@ if ($current_page === 'dashboard') {
             font-size: 14px;
         }
         
+        /* Seções da Dashboard */
+        .dashboard-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        
+        .section-header h2 {
+            margin: 0;
+            color: #1e293b;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .section-badge {
+            background: #3b82f6;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        /* Lista de Agenda */
+        .agenda-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .agenda-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+            transition: all 0.2s ease;
+        }
+        
+        .agenda-item:hover {
+            background: #f1f5f9;
+            transform: translateX(2px);
+        }
+        
+        .agenda-time {
+            background: #1e40af;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .agenda-content {
+            flex: 1;
+        }
+        
+        .agenda-title {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+        
+        .agenda-meta {
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        /* Lista de Demandas */
+        .demandas-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .demanda-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #6b7280;
+            transition: all 0.2s ease;
+        }
+        
+        .demanda-item:hover {
+            background: #f1f5f9;
+            transform: translateX(2px);
+        }
+        
+        .demanda-status {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: white;
+        }
+        
+        .demanda-content {
+            flex: 1;
+        }
+        
+        .demanda-title {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 4px;
+        }
+        
+        .demanda-meta {
+            font-size: 12px;
+            color: #64748b;
+        }
+        
+        /* Estado Vazio */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #64748b;
+        }
+        
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+        
+        .empty-state p {
+            margin: 0;
+            font-size: 14px;
+        }
+        
         /* Botão Flutuante */
         .floating-payment-btn {
             position: fixed;
@@ -983,8 +1339,8 @@ if ($current_page === 'dashboard') {
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
             
-            // Se for dashboard, comercial, logistico ou configuracoes, não fazer AJAX - usar conteúdo já inserido
-            if (['dashboard', 'comercial', 'logistico', 'configuracoes'].includes(currentPage)) {
+            // Se for dashboard, comercial, logistico, configuracoes, cadastros, financeiro ou administrativo, não fazer AJAX - usar conteúdo já inserido
+            if (['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'].includes(currentPage)) {
                 // Conteúdo já está carregado via PHP, não fazer nada
                 return;
             }
