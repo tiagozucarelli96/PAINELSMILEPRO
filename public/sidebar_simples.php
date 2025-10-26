@@ -116,9 +116,17 @@ if (!function_exists('isActiveSimples')) {
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
         }
         
         .sidebar-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .sidebar-btn.hidden {
             background: rgba(255, 255, 255, 0.2);
         }
         
@@ -179,11 +187,19 @@ if (!function_exists('isActiveSimples')) {
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 10px;
-            border-radius: 6px;
+            padding: 12px 16px;
+            border-radius: 8px;
             cursor: pointer;
-            display: none;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(30, 58, 138, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-toggle:hover {
+            background: #1e40af;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(30, 58, 138, 0.4);
         }
         
         /* Responsivo */
@@ -221,7 +237,7 @@ if (!function_exists('isActiveSimples')) {
             
             <div class="sidebar-controls">
                 <button class="sidebar-btn" onclick="goBack()">← Voltar</button>
-                <button class="sidebar-btn" onclick="toggleSidebar()">👁️ Esconder</button>
+                <button class="sidebar-btn" onclick="toggleSidebar()" id="toggleBtn">☰ Esconder</button>
             </div>
             
             <nav class="sidebar-nav">
@@ -263,6 +279,11 @@ if (!function_exists('isActiveSimples')) {
         </div>
         
         <div class="main-content" id="mainContent">
+            <!-- Botão toggle flutuante quando sidebar está escondida -->
+            <button class="sidebar-toggle" id="floatingToggle" onclick="toggleSidebar()" style="display: none;">
+                ☰ Mostrar Sidebar
+            </button>
+            
             <div id="pageContent">
                 <!-- Conteúdo da página será inserido aqui -->
             </div>
@@ -274,9 +295,26 @@ if (!function_exists('isActiveSimples')) {
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const floatingToggle = document.getElementById('floatingToggle');
             
-            sidebar.classList.toggle('collapsed');
-            mainContent.classList.toggle('expanded');
+            const isCollapsed = sidebar.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                // Mostrar sidebar
+                sidebar.classList.remove('collapsed');
+                mainContent.classList.remove('expanded');
+                toggleBtn.innerHTML = '☰ Esconder';
+                toggleBtn.classList.remove('hidden');
+                floatingToggle.style.display = 'none';
+            } else {
+                // Esconder sidebar
+                sidebar.classList.add('collapsed');
+                mainContent.classList.add('expanded');
+                toggleBtn.innerHTML = '☰ Mostrar';
+                toggleBtn.classList.add('hidden');
+                floatingToggle.style.display = 'block';
+            }
         }
         
         // Função para voltar
