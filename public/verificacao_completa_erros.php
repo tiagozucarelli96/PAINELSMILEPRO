@@ -69,17 +69,17 @@ foreach ($colunas_verificar as $tabela => $colunas) {
 // Verificar funções
 echo "<h2>⚙️ Verificação de Funções</h2>";
 $funcoes_verificar = [
-    'obter_proximos_eventos',
-    'obter_eventos_hoje', 
-    'obter_eventos_semana',
-    'verificar_conflito_agenda',
-    'lc_gerar_token_publico',
-    'contab_verificar_rate_limit'
+    'obter_proximos_eventos' => 'SELECT obter_proximos_eventos(1, 24)',
+    'obter_eventos_hoje' => 'SELECT COUNT(*) FROM obter_eventos_hoje(1, 24)', 
+    'obter_eventos_semana' => 'SELECT COUNT(*) FROM obter_eventos_semana(1, 7)',
+    'verificar_conflito_agenda' => 'SELECT verificar_conflito_agenda(1, NOW(), NOW() + INTERVAL \'1 hour\', NULL)',
+    'lc_gerar_token_publico' => 'SELECT lc_gerar_token_publico()',
+    'contab_verificar_rate_limit' => 'SELECT contab_verificar_rate_limit(\'teste123456789\', 50)'
 ];
 
-foreach ($funcoes_verificar as $funcao) {
+foreach ($funcoes_verificar as $funcao => $query) {
     try {
-        $stmt = $pdo->query("SELECT $funcao(1, 1)");
+        $stmt = $pdo->query($query);
         echo "<p class='ok'>✅ Função $funcao: OK</p>";
     } catch (Exception $e) {
         echo "<p class='erro'>❌ Função $funcao: " . $e->getMessage() . "</p>";
