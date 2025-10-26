@@ -15,15 +15,19 @@ function hasPermission($permission) {
 }
 
 // Função para determinar se item está ativo
-function isActive($page) {
-    $current_page = $_GET['page'] ?? 'dashboard';
-    return $current_page === $page ? 'active' : '';
+if (!function_exists('isActive')) {
+    function isActive($page) {
+        $current_page = $_GET['page'] ?? 'dashboard';
+        return $current_page === $page ? 'active' : '';
+    }
 }
 
 // Função para determinar se submenu está aberto
-function isSubmenuOpen($pages) {
-    $current_page = $_GET['page'] ?? 'dashboard';
-    return in_array($current_page, $pages) ? 'open' : '';
+if (!function_exists('isSubmenuOpen')) {
+    function isSubmenuOpen($pages) {
+        $current_page = $_GET['page'] ?? 'dashboard';
+        return in_array($current_page, $pages) ? 'open' : '';
+    }
 }
 ?>
 <!DOCTYPE html>
