@@ -18,7 +18,7 @@ if (!function_exists('isActiveUnified')) {
 $page_file = $_GET['page'] ?? 'dashboard';
 $page_path = __DIR__ . '/' . $page_file . '.php';
 
-// Se for dashboard, criar conteúdo com métricas reais
+// Se for dashboard, comercial ou logistico, criar conteúdo diretamente
 if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
@@ -231,6 +231,110 @@ if ($current_page === 'dashboard') {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
             pageContent.innerHTML = `$dashboard_content`;
+        }
+    });";
+} elseif ($current_page === 'comercial') {
+    // Conteúdo da página Comercial
+    $comercial_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">📋 Comercial</h1>
+            <p class="page-subtitle">Gestão de degustações e conversões</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🎉 Degustações</h3>
+                    <span class="card-icon">🎉</span>
+                </div>
+                <div class="card-content">
+                    <p>Gerenciar degustações e eventos</p>
+                    <a href="index.php?page=comercial_degustacoes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>👥 Inscritos</h3>
+                    <span class="card-icon">👥</span>
+                </div>
+                <div class="card-content">
+                    <p>Visualizar inscrições e participantes</p>
+                    <a href="index.php?page=comercial_degust_inscricoes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📊 Clientes</h3>
+                    <span class="card-icon">📊</span>
+                </div>
+                <div class="card-content">
+                    <p>Funil de conversão e clientes</p>
+                    <a href="index.php?page=comercial_clientes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$comercial_content`;
+        }
+    });";
+} elseif ($current_page === 'logistico') {
+    // Conteúdo da página Logístico
+    $logistico_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">📦 Logístico</h1>
+            <p class="page-subtitle">Controle de estoque e compras</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📋 Lista de Compras</h3>
+                    <span class="card-icon">📋</span>
+                </div>
+                <div class="card-content">
+                    <p>Gerar e gerenciar listas de compras</p>
+                    <a href="index.php?page=lc_index" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📦 Estoque</h3>
+                    <span class="card-icon">📦</span>
+                </div>
+                <div class="card-content">
+                    <p>Controle de estoque logístico</p>
+                    <a href="index.php?page=estoque_logistico" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>🔍 Ver Encomendas</h3>
+                    <span class="card-icon">🔍</span>
+                </div>
+                <div class="card-content">
+                    <p>Visualizar detalhes das encomendas</p>
+                    <a href="index.php?page=ver" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
+    
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$logistico_content`;
         }
     });";
 } else {
@@ -805,9 +909,9 @@ if ($current_page === 'dashboard') {
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
             
-            // Se for dashboard, não fazer AJAX - usar conteúdo já inserido
-            if (currentPage === 'dashboard') {
-                // Dashboard já está carregado via PHP, não fazer nada
+            // Se for dashboard, comercial ou logistico, não fazer AJAX - usar conteúdo já inserido
+            if (['dashboard', 'comercial', 'logistico'].includes(currentPage)) {
+                // Conteúdo já está carregado via PHP, não fazer nada
                 return;
             }
             
