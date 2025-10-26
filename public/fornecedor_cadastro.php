@@ -2,8 +2,9 @@
 // fornecedor_cadastro.php
 // Processar cadastro de fornecedores
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Verificar se é POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

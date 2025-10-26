@@ -2,6 +2,7 @@
 // comercial_degustacao_editar.php — Editor de degustações com Form Builder
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Verificar permissões
@@ -137,7 +138,7 @@ if ($is_edit && $degustacao) {
     $token_publico = $degustacao['token_publico'];
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 
 <!DOCTYPE html>

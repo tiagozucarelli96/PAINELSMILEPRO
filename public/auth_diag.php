@@ -2,6 +2,7 @@
 declare(strict_types=1);
 ini_set('display_errors','1'); error_reporting(EALL);
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 header('Content-Type: text/plain; charset=utf-8');
 
 $info = $pdo->query("select current_database() db, current_schema() sch, current_schemas(true) schs")->fetch();

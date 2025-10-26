@@ -3,6 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<h2>🔍 Teste de Conexão Dashboard</h2>";
 

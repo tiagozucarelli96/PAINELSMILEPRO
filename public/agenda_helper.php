@@ -1,6 +1,7 @@
 <?php
 // agenda_helper.php — Helper principal do sistema de agenda interna
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/email_helper.php';
 
 class AgendaHelper {

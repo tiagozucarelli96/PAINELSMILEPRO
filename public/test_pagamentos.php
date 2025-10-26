@@ -1,7 +1,8 @@
 <?php
 // test_pagamentos.php - Teste da página de pagamentos
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Simular sessão de admin
 $_SESSION['logado'] = 1;

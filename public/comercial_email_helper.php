@@ -1,6 +1,7 @@
 <?php
 // comercial_email_helper.php — Helper para envio de e-mails SMTP
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class ComercialEmailHelper {
     private $pdo;

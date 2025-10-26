@@ -1,6 +1,6 @@
 <?php
 // admin_pagamentos.php – Gestão/Exportação PagFor + contadores
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) { header('Location: login.php'); exit; }
 if (($_SESSION['perm_financeiro_admin'] ?? 0) != 1) { http_response_code(403); echo '<h1>Acesso negado</h1>'; exit; }
 

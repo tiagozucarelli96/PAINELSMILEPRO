@@ -2,6 +2,7 @@
 // comercial_degust_inscritos.php — Lista de inscritos de uma degustação específica
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Verificar permissões
@@ -107,15 +108,8 @@ $stats = [
     'compareceram' => count(array_filter($inscricoes, fn($i) => $i['compareceu'] ?? false))
 ];
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
-function getStatusBadge($status) {
-    $badges = [
-        'confirmado' => '<span class="badge badge-success">Confirmado</span>',
-        'lista_espera' => '<span class="badge badge-warning">Lista de Espera</span>',
-        'cancelado' => '<span class="badge badge-danger">Cancelado</span>'
-    ];
-    return $badges[$status] ?? '<span class="badge badge-secondary">' . $status . '</span>';
-}
+
+
 ?>
 
 <!DOCTYPE html>

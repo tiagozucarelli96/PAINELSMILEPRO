@@ -2,8 +2,9 @@
 // estoque_desvios.php
 // Relatório de Desvios Previsto × Real
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_calc.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_config_helper.php';
@@ -234,7 +235,7 @@ function calcular_desvios(PDO $pdo, int $contagem_anterior_id, int $contagem_atu
     return $resultado;
 }
 
-function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 
 <!DOCTYPE html>

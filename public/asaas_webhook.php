@@ -1,6 +1,7 @@
 <?php
 // asaas_webhook.php — Webhook para receber notificações do ASAAS
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Log do webhook para debug
 function logWebhook($data) {

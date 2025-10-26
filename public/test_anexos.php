@@ -2,8 +2,9 @@
 // test_anexos.php
 // Teste completo do sistema de anexos
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_anexos_helper.php';
 
 echo "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'><title>Teste Sistema de Anexos</title>";

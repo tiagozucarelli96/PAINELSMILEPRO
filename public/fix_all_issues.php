@@ -2,8 +2,9 @@
 // fix_all_issues.php
 // Script para corrigir todos os problemas identificados
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<h1>🔧 Correção de Problemas do Sistema</h1>";
 echo "<p>Executando correções para resolver todos os problemas identificados...</p>";

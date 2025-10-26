@@ -2,12 +2,13 @@
 // dashboard_agenda.php — Dashboard com Agenda do Dia
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/sidebar_integration.php';
 if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';
 $usuario_id = $_SESSION['user_id'] ?? 1;
 

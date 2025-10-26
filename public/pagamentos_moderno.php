@@ -2,6 +2,7 @@
 // pagamentos_moderno.php — Interface moderna para pagamentos
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 if (!isset($_SESSION) || ($_SESSION['logado'] ?? 0) != 1) { 
     header('Location: login.php'); 
@@ -13,7 +14,7 @@ $_SESSION['logado'] = 1;
 $_SESSION['user_id'] = 1;
 $_SESSION['perfil'] = 'ADM';
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 
 // Processar ações
 $action = $_POST['action'] ?? $_GET['action'] ?? '';

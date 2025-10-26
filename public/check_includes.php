@@ -8,6 +8,7 @@ echo "<h1>🔍 Verificação de Includes</h1>";
 echo "<h3>1. Testando conexão com banco:</h3>";
 try {
     require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
     if (isset($pdo) && $pdo instanceof PDO) {
         echo "✅ Conexão com banco: OK<br>";
     } else {

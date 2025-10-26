@@ -2,8 +2,9 @@
 // rh_colaboradores.php
 // Lista de colaboradores (usuários do sistema)
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 
 // Verificar permissões

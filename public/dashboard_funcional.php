@@ -12,7 +12,7 @@ if (!isset($_SESSION['logado'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Iniciar sidebar
 includeSidebar();

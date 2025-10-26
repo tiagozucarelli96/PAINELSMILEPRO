@@ -1,6 +1,7 @@
 <?php
 // verificar_includes.php — Verificação completa de includes e caminhos
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class VerificadorIncludes {
     private $pdo;

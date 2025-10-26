@@ -2,8 +2,9 @@
 // remover_anexo.php
 // Remover anexo de uma solicitação
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/lc_anexos_helper.php';
 

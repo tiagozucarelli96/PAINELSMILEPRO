@@ -1,6 +1,7 @@
 <?php
 // comercial_check_payment.php — Verificar status do pagamento
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/asaas_helper.php';
 
 $payment_id = $_GET['payment_id'] ?? '';

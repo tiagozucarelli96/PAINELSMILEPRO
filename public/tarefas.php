@@ -10,7 +10,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 ini_set('display_errors', '0'); // loga mas não mostra
 // ini_set('log_errors', '1'); // opcional: ligar logs
 
-require_once __DIR__ . '/conexao.php'; // $pdo
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php'; // $pdo
 
 
 // ---- Helpers ----

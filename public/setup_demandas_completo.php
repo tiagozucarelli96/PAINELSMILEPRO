@@ -1,6 +1,7 @@
 <?php
 // setup_demandas_completo.php — Configuração completa do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function setupDemandasCompleto() {
     echo "<h1>🚀 Configuração Completa do Sistema de Demandas</h1>";

@@ -2,8 +2,9 @@
 // test_me_integration.php
 // Script de teste para integração com ME Eventos
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/me_api_helper.php';
 require_once __DIR__ . '/lc_calc.php';
 

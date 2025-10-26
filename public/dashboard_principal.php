@@ -5,7 +5,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 if (is_file(__DIR__ . '/permissoes_boot.php')) { require_once __DIR__ . '/permissoes_boot.php'; }
 
 $nomeUser = isset($_SESSION['nome']) ? $_SESSION['nome'] : 'Usuário';

@@ -2,7 +2,7 @@
 // index_moderno.php — Index com sidebar moderna integrada
 declare(strict_types=1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 /* ===== ATALHO TEMPORÁRIO (REMOVER APÓS O TESTE) ===== */
 if (

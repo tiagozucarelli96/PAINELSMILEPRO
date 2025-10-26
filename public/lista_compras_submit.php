@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__.'/conexao.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit('Método inválido'); }

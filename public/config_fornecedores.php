@@ -13,7 +13,7 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1 || empty($_SESSION['
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { echo "Falha na conexão."; exit; }
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 
 $action = $_GET['action'] ?? '';
 $id     = isset($_GET['id']) ? (int)$_GET['id'] : 0;

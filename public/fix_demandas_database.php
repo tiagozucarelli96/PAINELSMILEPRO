@@ -1,6 +1,7 @@
 <?php
 // fix_demandas_database.php — Corrigir problemas do banco de dados do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function fixDemandasDatabase() {
     echo "<h1>🔧 Correção do Banco de Dados - Sistema de Demandas</h1>";

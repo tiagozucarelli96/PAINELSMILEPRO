@@ -1,9 +1,10 @@
 <?php
 // gerar_lista_compras.php - Módulo de geração de listas de compras
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
-function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 
 // Processar formulário
 $msg = '';

@@ -1,6 +1,7 @@
 <?php
 // demandas_helper.php — Helper principal do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/magalu_integration_helper.php';
 
 class DemandasHelper {

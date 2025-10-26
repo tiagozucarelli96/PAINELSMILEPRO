@@ -1,6 +1,7 @@
 <?php
 // setup_agenda_final.php — Configuração final completa da agenda
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function setupAgendaFinal() {
     echo "<h1>🚀 Configuração Final Completa da Agenda</h1>";

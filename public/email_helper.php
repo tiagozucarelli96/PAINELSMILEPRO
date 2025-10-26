@@ -1,6 +1,7 @@
 <?php
 // email_helper.php — Helper para envio de e-mails do sistema
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class EmailHelper {
     private $pdo;

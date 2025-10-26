@@ -24,7 +24,7 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) {
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Helpers =========

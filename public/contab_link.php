@@ -2,8 +2,9 @@
 // contab_link.php
 // Portal público da contabilidade
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 $token = $_GET['t'] ?? '';
 $erro = '';

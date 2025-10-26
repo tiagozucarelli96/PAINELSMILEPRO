@@ -2,8 +2,9 @@
 // pagamentos_minhas.php
 // Lista de solicitações do usuário logado
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 
 // Verificar permissões

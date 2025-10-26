@@ -1,6 +1,7 @@
 <?php
 // sistema_unificado.php — Sistema unificado com dashboard e sidebar integrados
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/registrar_acesso.php';
 
 class SistemaUnificado {

@@ -1,6 +1,6 @@
 <?php
 // lista_compras_lixeira.php — Lixeira e restauração das listas (admin)
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 ini_set('display_errors', 1); error_reporting(E_ALL);
 
 // Restrito a admin/gestão
@@ -13,7 +13,7 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1 || empty($_SESSION['
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { echo "Falha na conexão."; exit; }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function dt($s){ return $s ? date('d/m/Y H:i', strtotime($s)) : ''; }
 
 $msg=''; $err='';

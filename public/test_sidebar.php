@@ -1,5 +1,5 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 // Simula um usuário logado para teste
 $_SESSION['logado'] = true;
 $_SESSION['user_id'] = 1;

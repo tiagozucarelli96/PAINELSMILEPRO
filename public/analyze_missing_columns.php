@@ -2,8 +2,9 @@
 // analyze_missing_columns.php
 // Análise completa de colunas referenciadas mas não existentes
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<h1>🔍 Análise de Colunas Referenciadas vs Existentes</h1>";
 echo "<p>Identificando todas as colunas que são referenciadas no código mas não existem no banco...</p>";

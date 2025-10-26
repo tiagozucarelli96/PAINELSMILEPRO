@@ -1,6 +1,7 @@
 <?php
 // registrar_acesso.php — Sistema de registro de acesso e inteligência de uso
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class RegistroAcesso {
     private $pdo;

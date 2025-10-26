@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (empty($_SESSION['logado']) || empty($_SESSION['id'])) { return; }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function truthy($v): bool {
   if (is_bool($v)) return $v;

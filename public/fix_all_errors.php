@@ -51,8 +51,8 @@ foreach ($files_to_fix as $file) {
     }
     
     // 2. Remover declarações duplicadas da função h()
-    if (strpos($content, 'function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, \'UTF-8\'); }') !== false) {
-        $content = str_replace('function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, \'UTF-8\'); }', '', $content);
+    if (strpos($content, '') !== false) {
+        $content = str_replace('', '', $content);
         echo "✅ Removida função h() duplicada em: $file\n";
         $errors_fixed++;
     }
@@ -72,7 +72,7 @@ foreach ($files_to_fix as $file) {
         }
         
         if ($insert_position > 0) {
-            array_splice($lines, $insert_position, 0, "require_once __DIR__ . '/helpers.php';");
+            array_splice($lines, $insert_position, 0, "require_once __DIR__ . '/core/helpers.php';");
             $content = implode("\n", $lines);
             echo "✅ Adicionado helpers.php em: $file\n";
             $errors_fixed++;
@@ -116,10 +116,7 @@ foreach ($all_php_files as $file) {
         $remaining_issues++;
     }
     
-    if (strpos($content, 'function h($s){ return htmlspecialchars') !== false) {
-        echo "⚠️  Ainda tem função h() duplicada: $file\n";
-        $remaining_issues++;
-    }
+    if (strpos($content, '
     
     if (strpos($content, 'endSidebar();') !== false) {
         echo "⚠️  Ainda tem endSidebar(): $file\n";

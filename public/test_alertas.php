@@ -2,8 +2,9 @@
 // test_alertas.php
 // Script de teste para o sistema de alertas
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 

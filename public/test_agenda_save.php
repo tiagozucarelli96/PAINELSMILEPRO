@@ -2,6 +2,7 @@
 // test_agenda_save.php — Teste de salvamento da agenda
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 
 // Simular sessão de admin

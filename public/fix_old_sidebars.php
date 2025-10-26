@@ -95,8 +95,10 @@ foreach ($pages_to_check as $page) {
         // Adicionar sidebar_integration se não existir
         if (strpos($new_content, 'sidebar_integration.php') === false) {
             $new_content = str_replace(
-                "require_once __DIR__ . '/conexao.php';",
-                "require_once __DIR__ . '/conexao.php';\nrequire_once __DIR__ . '/sidebar_integration.php';",
+                "require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';",
+                "require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';\nrequire_once __DIR__ . '/sidebar_integration.php';",
                 $new_content
             );
         }

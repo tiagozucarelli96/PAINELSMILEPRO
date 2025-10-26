@@ -2,6 +2,7 @@
 // modal_usuarios_moderno.php — Modal moderno para usuários
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Simular sessão de admin
@@ -10,7 +11,7 @@ $_SESSION['user_id'] = 1;
 $_SESSION['perfil'] = 'ADM';
 $_SESSION['perm_usuarios'] = 1;
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 
 // Processar ações AJAX
 $action = $_POST['action'] ?? $_GET['action'] ?? '';

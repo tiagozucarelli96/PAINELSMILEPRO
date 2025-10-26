@@ -1,6 +1,7 @@
 <?php
 // setup_email_agenda.php — Configuração do e-mail para a agenda
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function setupEmailAgenda() {
     echo "<h1>📧 Configuração do E-mail para Agenda</h1>";

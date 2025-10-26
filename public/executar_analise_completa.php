@@ -1,6 +1,7 @@
 <?php
 // executar_analise_completa.php — Execução da análise técnica completa
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class AnaliseCompleta {
     private $pdo;

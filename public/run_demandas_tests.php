@@ -1,6 +1,7 @@
 <?php
 // run_demandas_tests.php — Executar todos os testes do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function runDemandasTests() {
     echo "<h1>🧪 Executando Todos os Testes - Sistema de Demandas</h1>";

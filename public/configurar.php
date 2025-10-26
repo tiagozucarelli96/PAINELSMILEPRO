@@ -16,10 +16,11 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) { http_response_code(403); echo 
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Helpers =========
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function qs(array $extra=[]): string { $base = $_GET; foreach ($extra as $k=>$v){ if($v===null) unset($base[$k]); else $base[$k]=$v; } return http_build_query($base); }
 function post($k,$d=''){ return $_POST[$k] ?? $d; }
 

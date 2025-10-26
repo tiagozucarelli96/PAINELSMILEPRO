@@ -106,6 +106,7 @@ if (!validarToken($token)) {
 // Conectar ao banco de dados
 try {
     require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode(['erro' => 'Erro de conexão com banco de dados']);

@@ -1,6 +1,7 @@
 <?php
 // config_demandas_permissions.php — Configurar permissões do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function configDemandasPermissions() {
     echo "<h1>🔐 Configuração de Permissões - Sistema de Demandas</h1>";

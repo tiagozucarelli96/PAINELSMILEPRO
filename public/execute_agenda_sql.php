@@ -1,6 +1,7 @@
 <?php
 // execute_agenda_sql.php — Executar SQL da agenda corretamente
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function executeAgendaSQL() {
     echo "<h1>🗄️ Executando SQL do Sistema de Agenda</h1>";

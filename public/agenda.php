@@ -1,10 +1,10 @@
 <?php
 // agenda.php — Sistema de Agenda Interna
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Verificar permissões
 $agenda = new AgendaHelper();

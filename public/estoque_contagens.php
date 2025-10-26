@@ -4,6 +4,7 @@
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 
@@ -74,7 +75,7 @@ $stmt_count->execute($params);
 $total_registros = (int)$stmt_count->fetchColumn();
 $total_paginas = ceil($total_registros / $limite);
 
-function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function dt($s, $fmt='d/m/Y H:i') { return $s ? date($fmt, strtotime($s)) : ''; }
 ?>
 

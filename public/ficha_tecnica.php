@@ -140,7 +140,7 @@ try {
     $err = $e->getMessage();
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 <!doctype html>
 <html lang="pt-br">

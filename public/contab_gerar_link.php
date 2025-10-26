@@ -2,6 +2,7 @@
 // contab_gerar_link.php — Gerar links para portal contábil
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Verificar permissões (apenas ADM)
 if (!isset($_SESSION['perfil']) || $_SESSION['perfil'] !== 'ADM') {
@@ -63,7 +64,7 @@ try {
     $erro = "Erro ao buscar tokens: " . $e->getMessage();
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

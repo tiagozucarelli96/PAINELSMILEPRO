@@ -9,7 +9,7 @@ if (!isset($_SESSION) || ($_SESSION['logado'] ?? 0) != 1) { header('Location: lo
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { die('<p>Erro de conexão com o banco.</p>'); }
 require_once __DIR__ . '/sidebar_unified.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 
 /*
   Se ainda não tiver esses campos/valores, rode no MySQL:

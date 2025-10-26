@@ -4,6 +4,7 @@
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras';

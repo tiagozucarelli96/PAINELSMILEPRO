@@ -1,6 +1,7 @@
 <?php
 // agenda_ics.php — Exportação ICS para sincronização de calendário
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 
 // Obter parâmetros

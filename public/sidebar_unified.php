@@ -324,17 +324,6 @@ if ($current_page === 'dashboard') {
                     <a href="index.php?page=comercial_degust_inscritos" class="btn-primary">Acessar</a>
                 </div>
             </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>💳 Pagamentos</h3>
-                    <span class="card-icon">💳</span>
-                </div>
-                <div class="card-content">
-                    <p>Gestão de pagamentos ASAAS</p>
-                    <a href="index.php?page=comercial_pagamento" class="btn-primary">Acessar</a>
-                </div>
-            </div>
         </div>
     </div>';
     
@@ -769,28 +758,6 @@ if ($current_page === 'dashboard') {
                 <div class="card-content">
                     <p>Logs e auditoria do sistema</p>
                     <a href="index.php?page=verificacao_completa_erros" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>⚙️ Manutenção</h3>
-                    <span class="card-icon">⚙️</span>
-                </div>
-                <div class="card-content">
-                    <p>Manutenção e backup do sistema</p>
-                    <a href="index.php?page=optimize_system" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📈 Estatísticas</h3>
-                    <span class="card-icon">📈</span>
-                </div>
-                <div class="card-content">
-                    <p>Estatísticas e métricas do sistema</p>
-                    <a href="index.php?page=sistema_unificado" class="btn-primary">Acessar</a>
                 </div>
             </div>
             
@@ -1494,6 +1461,16 @@ if ($current_page === 'dashboard') {
                 <a href="index.php?page=dashboard" class="nav-item <?= isActiveUnified('dashboard') ?>">
                     <span class="nav-item-icon">🏠</span>
                     Dashboard
+                </a>
+                
+                <a href="index.php?page=agenda" class="nav-item <?= isActiveUnified('agenda') ?>">
+                    <span class="nav-item-icon">📅</span>
+                    Agenda
+                </a>
+                
+                <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
+                    <span class="nav-item-icon">📝</span>
+                    Demandas
                 </a>
                 
                 <a href="index.php?page=comercial" class="nav-item <?= isActiveUnified('comercial') ?>">

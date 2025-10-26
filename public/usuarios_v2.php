@@ -2,8 +2,9 @@
 // usuarios_v2.php
 // Página de usuários com modal moderno e integração RH
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
     http_response_code(403);

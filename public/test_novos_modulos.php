@@ -2,8 +2,9 @@
 // test_novos_modulos.php
 // Teste completo dos módulos RH e Contabilidade
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<h1>🧪 Teste dos Novos Módulos - RH e Contabilidade</h1>";
 echo "<hr>";

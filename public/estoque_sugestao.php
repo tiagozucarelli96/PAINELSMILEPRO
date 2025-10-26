@@ -2,8 +2,9 @@
 // estoque_sugestao.php
 // Modal de sugestão de compra para insumos críticos
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_calc.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
@@ -275,7 +276,7 @@ function criarListaSugestao(PDO $pdo, array $sugestoes, array $parametros): int 
     return $lista_id;
 }
 
-function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 
 <!DOCTYPE html>

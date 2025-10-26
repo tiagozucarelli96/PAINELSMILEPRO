@@ -59,6 +59,7 @@ function me_buscar_eventos_locais(array $datas): array {
     
     if (!$pdo) {
         require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
     }
     
     $placeholders = str_repeat('?,', count($datas) - 1) . '?';
@@ -154,6 +155,7 @@ function me_sincronizar_evento(array $evento_api): int {
     
     if (!$pdo) {
         require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
     }
     
     try {
@@ -209,6 +211,7 @@ function me_sincronizar_cardapio(int $evento_id, array $cardapio): void {
     
     if (!$pdo) {
         require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
     }
     
     try {
@@ -260,6 +263,7 @@ function me_criar_ficha_basica(string $nome_ficha): int {
     
     if (!$pdo) {
         require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
     }
     
     try {

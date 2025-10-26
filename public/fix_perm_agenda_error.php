@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class PermAgendaErrorFixer {
     private $pdo;

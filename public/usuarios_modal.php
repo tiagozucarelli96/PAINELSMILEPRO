@@ -2,8 +2,9 @@
 // usuarios_modal.php
 // Modal moderno para cadastro/edição de usuários com integração RH
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 
 // Verificar permissões

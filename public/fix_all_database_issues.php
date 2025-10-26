@@ -1,6 +1,7 @@
 <?php
 // fix_all_database_issues.php — Corrigir todos os problemas do banco de dados
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function fixAllDatabaseIssues() {
     echo "<h1>🔧 Correção Completa do Banco de Dados</h1>";

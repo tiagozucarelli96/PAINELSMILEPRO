@@ -1,6 +1,7 @@
 <?php
 // execute_demandas_sql.php — Executar SQL completo do sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function executeDemandasSQL() {
     echo "<h1>🗄️ Executando SQL do Sistema de Demandas</h1>";

@@ -1,6 +1,7 @@
 <?php
 // setup_email_completo.php — Configuração completa do sistema de e-mail
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function setupEmailCompleto() {
     echo "<h1>📧 Configuração Completa do Sistema de E-mail</h1>";

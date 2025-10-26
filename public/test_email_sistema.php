@@ -153,6 +153,7 @@ function testarEmailSistema() {
     
     try {
         require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
         $pdo = $GLOBALS['pdo'];
         
         $stmt = $pdo->query("

@@ -23,10 +23,11 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) {
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Helpers =========
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function brDate(string $isoTs): string {
     // aceita timestamptz/texto 'YYYY-MM-DD ...'
     if (!$isoTs) return '';

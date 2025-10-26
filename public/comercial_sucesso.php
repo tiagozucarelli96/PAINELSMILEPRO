@@ -2,6 +2,7 @@
 // comercial_sucesso.php — Página de confirmação de pagamento
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/comercial_email_helper.php';
 
 $inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
@@ -36,7 +37,7 @@ if ($inscricao['pagamento_status'] === 'pago') {
     }
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 
 <!DOCTYPE html>

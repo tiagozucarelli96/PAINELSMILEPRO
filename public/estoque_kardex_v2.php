@@ -2,8 +2,9 @@
 // estoque_kardex_v2.php
 // Módulo de Kardex com novo padrão visual Smile UI
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/lc_units_helper.php';
 

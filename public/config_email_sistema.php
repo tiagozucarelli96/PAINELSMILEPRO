@@ -1,6 +1,7 @@
 <?php
 // config_email_sistema.php — Configurar e-mail padrão do sistema
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function configurarEmailSistema() {
     echo "<h1>📧 Configuração do E-mail Padrão do Sistema</h1>";

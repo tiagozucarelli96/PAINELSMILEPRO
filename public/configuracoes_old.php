@@ -3,8 +3,9 @@
 // Painel Smile PRO - Configurações base: Categorias, Unidades, Insumos
 // Usa PDO (PostgreSQL) via conexao.php
 
-session_start();
-require_once __DIR__ . '/conexao.php'; // deve expor $pdo (PDO)
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php'; // deve expor $pdo (PDO)
 
 function input($key, $default = '') {
   return isset($_POST[$key]) ? trim($_POST[$key]) : $default;
@@ -480,7 +481,7 @@ try {
     $receitas = $pdo->query("SELECT *, COALESCE(visivel, true) AS visivel FROM lc_receitas ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 <!doctype html>
 <html lang="pt-br">

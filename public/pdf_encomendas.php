@@ -2,7 +2,7 @@
 // pdf_encomendas.php — Visualização/geração de PDF da LISTA DE ENCOMENDAS (por grupo)
 // Tenta usar Dompdf se disponível. Se não, exibe HTML imprimível.
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 ini_set('display_errors', 1); error_reporting(E_ALL);
 
 if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
@@ -14,7 +14,7 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { echo "Falha na conexão."; exit; }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function dt($s, $fmt='d/m/Y H:i'){ return $s ? date($fmt, strtotime($s)) : ''; }
 
 $grupo_id = isset($_GET['grupo_id']) ? (int)$_GET['grupo_id'] : 0;

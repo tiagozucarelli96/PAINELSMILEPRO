@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_unified.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
-require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Verificar permissões
 if (!lc_can_view_conversao()) {
@@ -144,14 +144,7 @@ setPageTitle('Comercial clientes');
     }
 }
 
-function getStatusBadge($status) {
-    $badges = [
-        'confirmado' => '<span class="badge badge-success">Confirmado</span>',
-        'lista_espera' => '<span class="badge badge-warning">Lista de Espera</span>',
-        'cancelado' => '<span class="badge badge-danger">Cancelado</span>'
-    ];
-    return $badges[$status] ?? '<span class="badge badge-secondary">' . $status . '</span>';
-}
+
 ?>
 
 <div class="page-container">

@@ -1,6 +1,7 @@
 <?php
 // corrigir_automaticamente.php — Correções automáticas do sistema
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class CorrecoesAutomaticas {
     private $pdo;
@@ -391,6 +392,7 @@ class CorrecoesAutomaticas {
         $conteudo = "<?php
 // {$descricao}
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/auth.php';
 
 // Verificar autenticação
@@ -479,6 +481,7 @@ if (!isset(\$_SESSION['usuario_id'])) {
         $conteudo = "<?php
 // Dashboard principal
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/auth.php';
 
 // Verificar autenticação

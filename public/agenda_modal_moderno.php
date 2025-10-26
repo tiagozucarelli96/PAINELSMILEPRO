@@ -2,6 +2,7 @@
 // agenda_modal_moderno.php — Modal moderno para agenda
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 
 // Simular sessão de admin
@@ -26,7 +27,7 @@ try {
     error_log("Erro ao buscar dados: " . $e->getMessage());
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">

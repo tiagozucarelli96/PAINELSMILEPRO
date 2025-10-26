@@ -1,6 +1,7 @@
 <?php
 // setup_demandas.php — Script para configurar o sistema de demandas
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 function setupDemandasSystem() {
     echo "<h1>🔧 Configuração do Sistema de Demandas</h1>";

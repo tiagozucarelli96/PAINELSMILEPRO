@@ -2,8 +2,9 @@
 // analise_permissoes.php
 // Análise completa do sistema de permissões
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<h1>🔍 Análise Completa do Sistema de Permissões</h1>";
 echo "<hr>";

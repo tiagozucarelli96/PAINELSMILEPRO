@@ -97,10 +97,13 @@ foreach ($critical_fixes as $file => $description) {
         
         // 3. Adicionar sidebar_integration se não existir
         if (strpos($content, 'sidebar_integration.php') === false) {
-            if (strpos($content, "require_once __DIR__ . '/conexao.php';") !== false) {
+            if (strpos($content, "require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';") !== false) {
                 $content = str_replace(
-                    "require_once __DIR__ . '/conexao.php';",
-                    "require_once __DIR__ . '/conexao.php';\nrequire_once __DIR__ . '/sidebar_integration.php';",
+                    "require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';",
+                    "require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';\nrequire_once __DIR__ . '/sidebar_integration.php';",
                     $content
                 );
                 $changes[] = "Adicionado sidebar_integration.php";

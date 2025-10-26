@@ -2,10 +2,11 @@
 // public/fichas_tecnicas.php
 // Cadastro de Fichas Técnicas (preparos) + componentes com custo (Preço × FC) e "Preço na ficha" opcional.
 
-session_start();
-require_once __DIR__ . '/conexao.php'; // $pdo
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php'; // $pdo
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 function post($k, $d=null){ return isset($_POST[$k]) ? $_POST[$k] : $d; }
 function valnum($v,$def=0){ $v=str_replace(',','.',$v); return is_numeric($v)?(float)$v:$def; }
 

@@ -2,8 +2,9 @@
 // test_reorganizacao.php
 // Teste da reorganização do sistema
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 echo "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'><title>Teste Reorganização</title>";
 echo "<style>body{font-family: sans-serif; margin: 20px; background-color: #f4f7f6; color: #333;}";

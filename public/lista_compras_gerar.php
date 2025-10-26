@@ -1,6 +1,6 @@
 <?php
 // lista_compras_gerar.php (esqueleto)
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 @include_once __DIR__.'/conexao.php';
 if (!isset($pdo)) { die('Sem conexão.'); }
 

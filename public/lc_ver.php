@@ -2,8 +2,9 @@
 // public/lc_ver.php
 // Visualiza uma lista gerada (compras ou encomendas)
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'compras'; // compras|encomendas
@@ -53,7 +54,7 @@ if ($tipo === 'encomendas') {
 $stmtItens->execute([':id' => $id]);
 $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 
 // Calcular totais
 $totalGeral = 0;

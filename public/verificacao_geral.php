@@ -1,6 +1,7 @@
 <?php
 // verificacao_geral.php — Análise técnica completa do Painel Smile PRO
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 class VerificacaoGeral {
     private $pdo;

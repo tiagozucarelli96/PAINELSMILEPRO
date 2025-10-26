@@ -2,6 +2,7 @@
 // comercial_degust_public.php — Página pública de inscrição
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/asaas_helper.php';
 
 $token = $_GET['t'] ?? '';
@@ -182,7 +183,7 @@ if ($_POST && !$inscricoes_encerradas) {
     }
 }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
 ?>
 
 <!DOCTYPE html>

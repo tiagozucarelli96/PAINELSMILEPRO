@@ -62,6 +62,7 @@ if (!isset($_SERVER['HTTP_HOST'])) {
             
             // Incluir conexão
             require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
             
             if (!isset($GLOBALS['pdo']) || !$GLOBALS['pdo']) {
                 throw new Exception("Conexão com banco não estabelecida");
