@@ -21,18 +21,10 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) {
     exit;
 }
 
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Ver');
-
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_integration.php';
-if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit;
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Ver'); }
+require_once __DIR__ . '/sidebar_unified.php';
+if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Helpers =========
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }

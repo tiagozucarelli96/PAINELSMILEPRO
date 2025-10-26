@@ -14,11 +14,7 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1 || empty($_SESSION['
 
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { echo "Falha na conexão."; exit; }
-require_once __DIR__ . '/sidebar_integration.php';
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Configuração de Insumos');
+require_once __DIR__ . '/sidebar_unified.php';
 
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
