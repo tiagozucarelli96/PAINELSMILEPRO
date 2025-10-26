@@ -235,10 +235,9 @@ if (!function_exists('isActiveSimples')) {
                 </div>
             </div>
             
-            <div class="sidebar-controls">
-                <button class="sidebar-btn" onclick="goBack()">← Voltar</button>
-                <button class="sidebar-btn" onclick="toggleSidebar()" id="toggleBtn">☰ Esconder</button>
-            </div>
+    <div class="sidebar-controls">
+        <button class="sidebar-btn" onclick="toggleSidebar()" id="toggleBtn">☰ Esconder</button>
+    </div>
             
             <nav class="sidebar-nav">
                 <a href="#" class="nav-item active" data-page="dashboard">
@@ -314,15 +313,6 @@ if (!function_exists('isActiveSimples')) {
                 toggleBtn.innerHTML = '☰ Mostrar';
                 toggleBtn.classList.add('hidden');
                 floatingToggle.style.display = 'block';
-            }
-        }
-        
-        // Função para voltar
-        function goBack() {
-            if (window.history.length > 1) {
-                window.history.back();
-            } else {
-                loadPageContent('dashboard');
             }
         }
         
