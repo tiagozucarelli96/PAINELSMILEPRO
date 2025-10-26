@@ -230,18 +230,18 @@ $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         
                         <div class="card-actions">
                             <?php if (lc_can_edit_degustacoes()): ?>
-                            <a href="comercial_degustacao_editar.php?id=<?= $degustacao['id'] ?>" class="btn-sm btn-edit">
+                            <a href="index.php?page=comercial_degustacao_editar&id=<?= $degustacao['id'] ?>" class="btn-sm btn-edit">
                                 ✏️ Editar
                             </a>
                             <?php endif; ?>
                             
                             <?php if (lc_can_manage_inscritos()): ?>
-                            <a href="comercial_degust_inscritos.php?degustacao_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
+                            <a href="index.php?page=comercial_degust_inscritos&degustacao_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
                                 👥 Inscritos
                             </a>
                             <?php endif; ?>
                             
-                            <a href="comercial_degust_public.php?t=<?= $degustacao['token_publico'] ?>" class="btn-sm btn-secondary" target="_blank">
+                            <a href="index.php?page=comercial_degust_public&t=<?= $degustacao['token_publico'] ?>" class="btn-sm btn-secondary" target="_blank">
                                 🔗 Link Público
                             </a>
                             

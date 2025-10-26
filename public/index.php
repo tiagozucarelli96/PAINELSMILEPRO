@@ -68,6 +68,7 @@ $routes = [
   'config_insumos'      => 'config_insumos.php',
   'comercial_degustacoes' => 'comercial_degustacoes.php',
   'comercial_degust_inscritos' => 'comercial_degust_inscritos.php',
+  'comercial_degust_inscricoes' => 'comercial_degust_inscricoes.php',
   'comercial_degustacao_editar' => 'comercial_degustacao_editar.php',
   'comercial_degust_public' => 'comercial_degust_public.php',
   'comercial_pagamento' => 'comercial_pagamento.php',

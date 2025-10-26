@@ -8,13 +8,9 @@ require_once __DIR__ . '/helpers.php';
 
 // Verificar permissões
 if (!lc_can_manage_inscritos()) {
-    header('Location: dashboard.php?error=permission_denied');
+    header('Location: index.php?page=dashboard&error=permission_denied');
     exit;
 }
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Inscrições');
 
 // Filtros
 $event_filter = (int)($_GET['event_id'] ?? 0);
