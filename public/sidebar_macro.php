@@ -32,13 +32,13 @@ function canAccessArea($area) {
 }
 
 // Função para determinar se item está ativo
-function isActive($page) {
+function isActiveMacroMacro($page) {
     $current_page = $_GET['page'] ?? 'dashboard';
     return $current_page === $page ? 'active' : '';
 }
 
 // Função para determinar se submenu está aberto
-function isSubmenuOpen($pages) {
+function isSubmenuOpenMacroMacro($pages) {
     $current_page = $_GET['page'] ?? 'dashboard';
     return in_array($current_page, $pages) ? 'open' : '';
 }
@@ -300,7 +300,7 @@ function isSubmenuOpen($pages) {
                 <?php if (canAccessArea('comercial')): ?>
                 <div class="menu-group">
                     <div class="menu-group-title">Comercial</div>
-                    <div class="menu-item <?= isSubmenuOpen(['comercial_clientes', 'comercial_degustacoes', 'comercial_degust_inscricoes']) ? 'open' : '' ?>">
+                    <div class="menu-item <?= isSubmenuOpenMacroMacro(['comercial_clientes', 'comercial_degustacoes', 'comercial_degust_inscricoes']) ? 'open' : '' ?>">
                         <a href="#" class="menu-link" onclick="toggleSubmenu(this)">
                             <span class="menu-icon">📊</span>
                             <span class="menu-text">Contratos & Clientes</span>
@@ -308,19 +308,19 @@ function isSubmenuOpen($pages) {
                         </a>
                         <div class="submenu">
                             <div class="submenu-item">
-                                <a href="index.php?page=comercial_clientes" class="submenu-link <?= isActive('comercial_clientes') ?>">
+                                <a href="index.php?page=comercial_clientes" class="submenu-link <?= isActiveMacroMacro('comercial_clientes') ?>">
                                     <span class="submenu-icon">👥</span>
                                     <span>Clientes</span>
                                 </a>
                             </div>
                             <div class="submenu-item">
-                                <a href="index.php?page=comercial_degustacoes" class="submenu-link <?= isActive('comercial_degustacoes') ?>">
+                                <a href="index.php?page=comercial_degustacoes" class="submenu-link <?= isActiveMacroMacro('comercial_degustacoes') ?>">
                                     <span class="submenu-icon">🍰</span>
                                     <span>Degustações</span>
                                 </a>
                             </div>
                             <div class="submenu-item">
-                                <a href="index.php?page=comercial_degust_inscricoes" class="submenu-link <?= isActive('comercial_degust_inscricoes') ?>">
+                                <a href="index.php?page=comercial_degust_inscricoes" class="submenu-link <?= isActiveMacroMacro('comercial_degust_inscricoes') ?>">
                                     <span class="submenu-icon">📝</span>
                                     <span>Inscrições</span>
                                 </a>
@@ -347,7 +347,7 @@ function isSubmenuOpen($pages) {
                 <div class="menu-group">
                     <div class="menu-group-title">Agenda</div>
                     <div class="menu-item">
-                        <a href="index.php?page=agenda" class="menu-link <?= isActive('agenda') ?>">
+                        <a href="index.php?page=agenda" class="menu-link <?= isActiveMacro('agenda') ?>">
                             <span class="menu-icon">📅</span>
                             <span class="menu-text">Agenda Geral</span>
                         </a>
@@ -365,7 +365,7 @@ function isSubmenuOpen($pages) {
                         </a>
                     </div>
                     <div class="menu-item">
-                        <a href="index.php?page=demandas" class="menu-link <?= isActive('demandas') ?>">
+                        <a href="index.php?page=demandas" class="menu-link <?= isActiveMacro('demandas') ?>">
                             <span class="menu-icon">📋</span>
                             <span class="menu-text">Demandas Operacionais</span>
                         </a>
@@ -378,7 +378,7 @@ function isSubmenuOpen($pages) {
                 <div class="menu-group">
                     <div class="menu-group-title">Administrativo</div>
                     <div class="menu-item">
-                        <a href="index.php?page=usuarios" class="menu-link <?= isActive('usuarios') ?>">
+                        <a href="index.php?page=usuarios" class="menu-link <?= isActiveMacro('usuarios') ?>">
                             <span class="menu-icon">👥</span>
                             <span class="menu-text">Equipe & Permissões</span>
                         </a>
@@ -390,7 +390,7 @@ function isSubmenuOpen($pages) {
                         </a>
                     </div>
                     <div class="menu-item">
-                        <a href="index.php?page=pagamentos" class="menu-link <?= isActive('pagamentos') ?>">
+                        <a href="index.php?page=pagamentos" class="menu-link <?= isActiveMacro('pagamentos') ?>">
                             <span class="menu-icon">💰</span>
                             <span class="menu-text">Pagamentos</span>
                         </a>
@@ -402,7 +402,7 @@ function isSubmenuOpen($pages) {
                         </a>
                     </div>
                     <div class="menu-item">
-                        <a href="index.php?page=config_fornecedores" class="menu-link <?= isActive('config_fornecedores') ?>">
+                        <a href="index.php?page=config_fornecedores" class="menu-link <?= isActiveMacro('config_fornecedores') ?>">
                             <span class="menu-icon">🏢</span>
                             <span class="menu-text">Fornecedores</span>
                         </a>
@@ -421,13 +421,13 @@ function isSubmenuOpen($pages) {
                 <div class="menu-group">
                     <div class="menu-group-title">Logístico</div>
                     <div class="menu-item">
-                        <a href="index.php?page=lista" class="menu-link <?= isActive('lista') ?>">
+                        <a href="index.php?page=lista" class="menu-link <?= isActiveMacro('lista') ?>">
                             <span class="menu-icon">🛒</span>
                             <span class="menu-text">Lista de Compras & Encomendas</span>
                         </a>
                     </div>
                     <div class="menu-item">
-                        <a href="index.php?page=estoque_logistico" class="menu-link <?= isActive('estoque_logistico') ?>">
+                        <a href="index.php?page=estoque_logistico" class="menu-link <?= isActiveMacro('estoque_logistico') ?>">
                             <span class="menu-icon">📦</span>
                             <span class="menu-text">Estoque & Alertas</span>
                         </a>
@@ -458,7 +458,7 @@ function isSubmenuOpen($pages) {
                         </a>
                     </div>
                     <div class="menu-item">
-                        <a href="index.php?page=configuracoes" class="menu-link <?= isActive('configuracoes') ?>">
+                        <a href="index.php?page=configuracoes" class="menu-link <?= isActiveMacro('configuracoes') ?>">
                             <span class="menu-icon">🔧</span>
                             <span class="menu-text">Diagnóstico & Manutenção</span>
                         </a>
