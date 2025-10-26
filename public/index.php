@@ -76,6 +76,7 @@ $routes = [
   'agenda_config'       => 'agenda_config.php',
   'agenda_relatorios'   => 'agenda_relatorios.php',
   'demandas'            => 'demandas.php',
+  'webhook_me_eventos' => 'webhook_me_eventos.php',
 ];
 
 /* exige login */

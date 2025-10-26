@@ -8,11 +8,31 @@ require_once __DIR__ . '/conexao.php';
 $stats = [];
 try {
     $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
-    $stats['eventos'] = $pdo->query("SELECT COUNT(*) FROM eventos")->fetchColumn();
+    
+    // Buscar eventos da ME Eventos (webhooks)
+    $mes_atual = date('Y-m');
+    $stmt = $pdo->prepare("SELECT eventos_ativos, eventos_criados, eventos_excluidos, contratos_fechados, leads_total, leads_negociacao, vendas_realizadas FROM me_eventos_stats WHERE mes_ano = ?");
+    $stmt->execute([$mes_atual]);
+    $me_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($me_stats) {
+        $stats['eventos'] = $me_stats['eventos_ativos'] ?? 0;
+        $stats['contratos_fechados'] = $me_stats['contratos_fechados'] ?? 0;
+        $stats['leads_total'] = $me_stats['leads_total'] ?? 0;
+        $stats['leads_negociacao'] = $me_stats['leads_negociacao'] ?? 0;
+        $stats['vendas_realizadas'] = $me_stats['vendas_realizadas'] ?? 0;
+    } else {
+        $stats['eventos'] = 0;
+        $stats['contratos_fechados'] = 0;
+        $stats['leads_total'] = 0;
+        $stats['leads_negociacao'] = 0;
+        $stats['vendas_realizadas'] = 0;
+    }
+    
     $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
     $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
 } catch (Exception $e) {
-    $stats = ['usuarios' => 0, 'eventos' => 0, 'fornecedores' => 0, 'insumos' => 0];
+    $stats = ['usuarios' => 0, 'eventos' => 0, 'fornecedores' => 0, 'insumos' => 0, 'contratos_fechados' => 0, 'leads_total' => 0, 'leads_negociacao' => 0, 'vendas_realizadas' => 0];
 }
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
@@ -275,7 +295,7 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                     <div class="dashboard-card">
                         <div class="card-icon">🎉</div>
                         <div class="card-value"><?= $stats['eventos'] ?></div>
-                        <div class="card-label">Eventos Cadastrados</div>
+                        <div class="card-label">Eventos Ativos</div>
                         <div class="card-source">ME Eventos</div>
                     </div>
                     
@@ -296,22 +316,22 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 
                 <!-- Resumo do Sistema -->
                 <div class="dashboard-card">
-                    <h3 style="color: #1e3a8a; margin-bottom: 20px; font-size: 1.5em;">📊 Resumo do Sistema</h3>
+                    <h3 style="color: #1e3a8a; margin-bottom: 20px; font-size: 1.5em;">📊 Resumo Comercial</h3>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
                         <div style="text-align: center;">
-                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;">15</div>
+                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;"><?= $stats['leads_total'] ?></div>
                             <div style="color: #64748b;">Leads do Mês</div>
                         </div>
                         <div style="text-align: center;">
-                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;">8</div>
+                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;"><?= $stats['leads_negociacao'] ?></div>
                             <div style="color: #64748b;">Em Negociação</div>
                         </div>
                         <div style="text-align: center;">
-                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;">12</div>
+                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;"><?= $stats['contratos_fechados'] ?></div>
                             <div style="color: #64748b;">Contratos Fechados</div>
                         </div>
                         <div style="text-align: center;">
-                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;">19</div>
+                            <div style="font-size: 2em; color: #1e3a8a; font-weight: bold;"><?= $stats['vendas_realizadas'] ?></div>
                             <div style="color: #64748b;">Vendas Realizadas</div>
                         </div>
                     </div>
