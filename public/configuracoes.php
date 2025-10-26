@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/comercial_email_helper.php';
-require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/sidebar_unified.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -16,15 +16,6 @@ if (!in_array($perfil, ['ADM', 'FIN'])) {
     header('Location: dashboard.php?erro=permissao_negada');
     exit;
 }
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Configurações');
-addBreadcrumb([
-    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
-    ['title' => 'RH'],
-    ['title' => 'Configurações']
-]);
 
 // Buscar estatísticas
 $stats = [
