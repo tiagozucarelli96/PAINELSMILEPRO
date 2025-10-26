@@ -27,17 +27,58 @@ if ($current_page === 'dashboard') {
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
     
     try {
-        // Contratos fechados do mês
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total 
-            FROM comercial_inscricoes 
-            WHERE fechou_contrato = 'sim' 
-            AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
-        ");
-        $stmt->execute();
-        $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
+        // Contratos fechados do mês - via ME Eventos API
+        $me_eventos_url = getenv('ME_EVENTOS_API_URL') ?: 'https://api.meeventos.com.br';
+        $me_eventos_token = getenv('ME_EVENTOS_API_TOKEN');
         
-        // Leads em negociação
+        if ($me_eventos_token) {
+            // Buscar eventos do mês atual
+            $current_month = date('Y-m');
+            $me_api_url = $me_eventos_url . "/api/eventos?mes=" . $current_month;
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $me_api_url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: Bearer ' . $me_eventos_token,
+                'Content-Type: application/json'
+            ]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($http_code === 200 && $response) {
+                $eventos_data = json_decode($response, true);
+                $stats['contratos_mes'] = $eventos_data['contratos_fechados'] ?? 0;
+                $stats['vendas_mes'] = $eventos_data['valor_total_vendas'] ?? 0;
+            } else {
+                // Fallback para dados locais se API falhar
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) as total 
+                    FROM comercial_inscricoes 
+                    WHERE fechou_contrato = 'sim' 
+                    AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+                ");
+                $stmt->execute();
+                $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
+                $stats['vendas_mes'] = $stats['contratos_mes'] * 5000; // Valor estimado
+            }
+        } else {
+            // Sem token ME Eventos, usar dados locais
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as total 
+                FROM comercial_inscricoes 
+                WHERE fechou_contrato = 'sim' 
+                AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+            ");
+            $stmt->execute();
+            $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
+            $stats['vendas_mes'] = $stats['contratos_mes'] * 5000; // Valor estimado
+        }
+        
+        // Leads em negociação (dados locais)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
             FROM comercial_inscricoes 
@@ -47,17 +88,7 @@ if ($current_page === 'dashboard') {
         $stmt->execute();
         $stats['leads_negociacao'] = $stmt->fetchColumn() ?: 0;
         
-        // Vendas realizadas (valor estimado)
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) * 5000 as total 
-            FROM comercial_inscricoes 
-            WHERE fechou_contrato = 'sim' 
-            AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
-        ");
-        $stmt->execute();
-        $stats['vendas_mes'] = $stmt->fetchColumn() ?: 0;
-        
-        // Leads do mês
+        // Leads do mês (dados locais)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
             FROM comercial_inscricoes 
