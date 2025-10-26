@@ -18,44 +18,48 @@ addBreadcrumb([
     ['title' => 'Dashboard']
 ]);
 
-// Buscar métricas do banco de dados
+// Buscar métricas consolidadas do banco de dados
 $stats = [];
 try {
-    // Total de categorias ativas
-    $stats['categorias'] = $pdo->query("SELECT COUNT(*) FROM smilee12_painel_smile.lc_categorias WHERE ativo = true")->fetchColumn();
+    // Métricas básicas do sistema
+    $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
+    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
     
-    // Total de insumos ativos
-    $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM smilee12_painel_smile.lc_insumos WHERE ativo = true")->fetchColumn();
+    // Métricas de compras e receitas
+    $stats['categorias'] = $pdo->query("SELECT COUNT(*) FROM lc_categorias WHERE ativo = true")->fetchColumn();
+    $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
+    $stats['receitas'] = $pdo->query("SELECT COUNT(*) FROM lc_receitas WHERE ativo = true")->fetchColumn();
+    $stats['unidades'] = $pdo->query("SELECT COUNT(*) FROM lc_unidades WHERE ativo = true")->fetchColumn();
     
-    // Total de receitas ativas
-    $stats['receitas'] = $pdo->query("SELECT COUNT(*) FROM smilee12_painel_smile.lc_receitas WHERE ativo = true")->fetchColumn();
-    
-    // Total de unidades ativas
-    $stats['unidades'] = $pdo->query("SELECT COUNT(*) FROM smilee12_painel_smile.lc_unidades WHERE ativo = true")->fetchColumn();
-    
-    // Receitas recentes (últimos 7 dias)
+    // Métricas de atividade recente
     $stats['receitas_recentes'] = $pdo->query("
-        SELECT COUNT(*) FROM smilee12_painel_smile.lc_receitas 
+        SELECT COUNT(*) FROM lc_receitas 
         WHERE ativo = true AND created_at >= NOW() - INTERVAL '7 days'
     ")->fetchColumn();
     
     // Custo médio das receitas
     $custo_medio = $pdo->query("
-        SELECT AVG(custo_total) FROM smilee12_painel_smile.lc_receitas 
+        SELECT AVG(custo_total) FROM lc_receitas 
         WHERE ativo = true AND custo_total > 0
     ")->fetchColumn();
     $stats['custo_medio'] = $custo_medio ? number_format($custo_medio, 2, ',', '.') : '0,00';
     
-    // Métricas dos novos módulos
-    $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
-    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
+    // Métricas específicas por módulo (com verificação de permissão)
+    if (lc_can_access_module('compras')) {
+        $stats['listas_ativas'] = $pdo->query("SELECT COUNT(*) FROM lc_listas WHERE status = 'ativa'")->fetchColumn();
+        $stats['insumos_ativos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
+    }
     
-    // Métricas de pagamentos
+    if (lc_can_access_module('estoque')) {
+        $stats['contagens_abertas'] = $pdo->query("SELECT COUNT(*) FROM estoque_contagens WHERE status = 'aberta'")->fetchColumn();
+    }
+    
     if (lc_can_access_module('pagamentos')) {
-        $stats['solicitacoes_pendentes'] = $pdo->query("
-            SELECT COUNT(*) FROM pagamentos_solicitacoes 
-            WHERE status = 'aguardando_analise'
-        ")->fetchColumn();
+        $stats['solicitacoes_pendentes'] = $pdo->query("SELECT COUNT(*) FROM lc_solicitacoes_pagamento WHERE status = 'aguardando'")->fetchColumn();
+    }
+    
+    if (lc_can_access_module('comercial')) {
+        $stats['degustacoes_ativas'] = $pdo->query("SELECT COUNT(*) FROM comercial_degustacoes WHERE status = 'publicado'")->fetchColumn();
     }
     
     // Métricas de estoque

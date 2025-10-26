@@ -13,9 +13,9 @@ echo "<tr><th>Módulo</th><th>Páginas</th><th>Sistema de Permissão</th><th>Sta
 
 $modulos = [
     'Dashboard' => [
-        'paginas' => ['dashboard2.php', 'index.php'],
-        'permissao' => 'Sistema antigo (perm_*)',
-        'status' => '✅ Funcional'
+        'paginas' => ['dashboard_agenda.php', 'index.php'],
+        'permissao' => 'Sistema novo (lc_can_access_*)',
+        'status' => '✅ Funcional - Consolidado'
     ],
     'Compras' => [
         'paginas' => ['lista_compras.php', 'lc_index.php', 'historico.php'],
@@ -133,7 +133,7 @@ echo "<h3>1. Padronização Imediata</h3>";
 echo "<ul>";
 echo "<li>Executar scripts SQL para adicionar campos RH</li>";
 echo "<li>Atualizar sidebar.php com novos módulos</li>";
-echo "<li>Migrar dashboard2.php para sistema novo de permissões</li>";
+echo "<li>Dashboard consolidado em dashboard_agenda.php</li>";
 echo "<li>Testar controle de acesso em todos os módulos</li>";
 echo "</ul>";
 
