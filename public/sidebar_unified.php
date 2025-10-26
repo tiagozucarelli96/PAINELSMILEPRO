@@ -800,6 +800,14 @@ if ($current_page === 'dashboard') {
         // Carregar conteúdo da página atual
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
+            
+            // Se for dashboard, não fazer AJAX - usar conteúdo já inserido
+            if (currentPage === 'dashboard') {
+                // Dashboard já está carregado via PHP, não fazer nada
+                return;
+            }
+            
+            // Para outras páginas, carregar via AJAX
             loadPageContent(currentPage);
         });
         
