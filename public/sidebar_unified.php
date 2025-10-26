@@ -14,12 +14,98 @@ if (!function_exists('isActiveUnified')) {
     }
 }
 
-// Se não for o dashboard, incluir apenas o conteúdo da página
-if ($current_page !== 'dashboard') {
-    // Incluir o conteúdo da página atual
-    $page_file = $_GET['page'] ?? 'dashboard';
-    $page_path = __DIR__ . '/' . $page_file . '.php';
+// Para todas as páginas, incluir o conteúdo da página atual
+$page_file = $_GET['page'] ?? 'dashboard';
+$page_path = __DIR__ . '/' . $page_file . '.php';
+
+// Se for dashboard, criar conteúdo padrão
+if ($current_page === 'dashboard') {
+    $dashboard_content = '
+    <div class="page-container">
+        <div class="page-header">
+            <h1 class="page-title">🏠 Dashboard</h1>
+            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '!</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📋 Comercial</h3>
+                    <span class="card-icon">📋</span>
+                </div>
+                <div class="card-content">
+                    <p>Gestão de degustações e conversões</p>
+                    <a href="index.php?page=comercial_degustacoes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📦 Logístico</h3>
+                    <span class="card-icon">📦</span>
+                </div>
+                <div class="card-content">
+                    <p>Controle de estoque e compras</p>
+                    <a href="index.php?page=lc_index" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>⚙️ Configurações</h3>
+                    <span class="card-icon">⚙️</span>
+                </div>
+                <div class="card-content">
+                    <p>Configurações do sistema</p>
+                    <a href="index.php?page=configuracoes" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>📝 Cadastros</h3>
+                    <span class="card-icon">📝</span>
+                </div>
+                <div class="card-content">
+                    <p>Gestão de usuários e fornecedores</p>
+                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>💰 Financeiro</h3>
+                    <span class="card-icon">💰</span>
+                </div>
+                <div class="card-content">
+                    <p>Pagamentos e solicitações</p>
+                    <a href="index.php?page=pagamentos" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+            
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3>👥 Administrativo</h3>
+                    <span class="card-icon">👥</span>
+                </div>
+                <div class="card-content">
+                    <p>Relatórios e administração</p>
+                    <a href="index.php?page=administrativo" class="btn-primary">Acessar</a>
+                </div>
+            </div>
+        </div>
+    </div>';
     
+    // Inserir o conteúdo do dashboard no JavaScript
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = `$dashboard_content`;
+        }
+    });";
+} else {
+    // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
         // Capturar o conteúdo da página
         ob_start();
@@ -35,8 +121,21 @@ if ($current_page !== 'dashboard') {
             }
         }
         
-        echo $page_content;
-        return;
+        $dashboard_js = "
+        document.addEventListener('DOMContentLoaded', function() {
+            const pageContent = document.getElementById('pageContent');
+            if (pageContent) {
+                pageContent.innerHTML = `" . addslashes($page_content) . "`;
+            }
+        });";
+    } else {
+        $dashboard_js = "
+        document.addEventListener('DOMContentLoaded', function() {
+            const pageContent = document.getElementById('pageContent');
+            if (pageContent) {
+                pageContent.innerHTML = '<div style=\"text-align: center; padding: 50px; color: #dc2626;\"><div style=\"font-size: 24px; margin-bottom: 20px;\">❌</div><div>Página não encontrada</div></div>';
+            }
+        });";
     }
 }
 ?>
@@ -225,6 +324,90 @@ if ($current_page !== 'dashboard') {
             box-shadow: 0 6px 20px rgba(30, 58, 138, 0.4);
         }
         
+        /* Dashboard Styles */
+        .page-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .page-header {
+            margin-bottom: 30px;
+        }
+        
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+        
+        .page-subtitle {
+            color: #64748b;
+            font-size: 16px;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .dashboard-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .card-header h3 {
+            margin: 0;
+            color: #1e293b;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .card-icon {
+            font-size: 24px;
+        }
+        
+        .card-content p {
+            color: #64748b;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+        
+        .btn-primary {
+            display: inline-block;
+            background: #1e40af;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background: #1e3a8a;
+        }
+        
         /* Responsivo */
         @media (max-width: 768px) {
             .sidebar {
@@ -343,6 +526,8 @@ if ($current_page !== 'dashboard') {
             const currentPage = '<?= $current_page ?>';
             loadPageContent(currentPage);
         });
+        
+        <?= $dashboard_js ?>
         
         // Função para carregar conteúdo das páginas
         function loadPageContent(page) {
