@@ -50,7 +50,7 @@ if ($page === '' || $page === null) {
 
 /* rotas permitidas */
 $routes = [
-  'dashboard'           => 'dashboard_principal.php',
+  'dashboard'           => 'dashboard_funcional.php',
   'tarefas'             => 'tarefas.php',
   'lista'               => 'lista_compras.php',
   'lc_index'            => 'lc_index.php',
