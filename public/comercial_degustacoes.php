@@ -203,7 +203,7 @@ function getStatusBadge($status) {
                             <div class="detail-row">
                                 <span class="detail-label">🕐 Horário:</span>
                                 <span class="detail-value">
-                                    <?php if (!empty($degustacao['hora_inicio']) && !empty($degustacao['hora_fim'])): ?>
+                                    <?php if (!empty($degustacao['hora_inicio']) && !empty($degustacao['hora_fim']) && $degustacao['hora_inicio'] !== null && $degustacao['hora_fim'] !== null): ?>
                                         <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?>
                                     <?php else: ?>
                                         Não definido
@@ -217,7 +217,7 @@ function getStatusBadge($status) {
                             <div class="detail-row">
                                 <span class="detail-label">📅 Data limite:</span>
                                 <span class="detail-value">
-                                    <?php if (!empty($degustacao['data_limite'])): ?>
+                                    <?php if (!empty($degustacao['data_limite']) && $degustacao['data_limite'] !== null): ?>
                                         <?= date('d/m/Y', strtotime($degustacao['data_limite'])) ?>
                                     <?php else: ?>
                                         Não definida
