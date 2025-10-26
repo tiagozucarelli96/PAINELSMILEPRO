@@ -90,6 +90,7 @@ $routes = [
   'test_dashboard_connection' => 'test_dashboard_connection.php',
   'test_pages' => 'test_pages.php',
   'diagnostic_pages' => 'diagnostic_pages.php',
+  'fix_old_sidebars' => 'fix_old_sidebars.php',
 ];
 
 /* exige login */
