@@ -1,44 +1,78 @@
 <?php
-// dashboard_simples.php — Dashboard simples e funcional (apenas conteúdo)
+// dashboard_robusto.php — Dashboard robusto com tratamento de erros
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
 
-// Buscar métricas básicas
-$stats = [];
+// Inicializar variáveis com valores padrão
+$stats = [
+    'usuarios' => 0,
+    'eventos' => 0,
+    'fornecedores' => 0,
+    'insumos' => 0,
+    'contratos_fechados' => 0,
+    'leads_total' => 0,
+    'leads_negociacao' => 0,
+    'vendas_realizadas' => 0
+];
 $usuarios_com_email = [];
+$erros = [];
+
 try {
-    $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
-    
-    // Buscar usuários com email para exibir no dashboard
-    $stmt = $pdo->query("SELECT nome, email FROM usuarios WHERE ativo = true AND email IS NOT NULL AND email != '' ORDER BY nome LIMIT 10");
-    $usuarios_com_email = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Buscar eventos da ME Eventos (webhooks)
-    $mes_atual = date('Y-m');
-    $stmt = $pdo->prepare("SELECT eventos_ativos, eventos_criados, eventos_excluidos, contratos_fechados, leads_total, leads_negociacao, vendas_realizadas FROM me_eventos_stats WHERE mes_ano = ?");
-    $stmt->execute([$mes_atual]);
-    $me_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($me_stats) {
-        $stats['eventos'] = $me_stats['eventos_ativos'] ?? 0;
-        $stats['contratos_fechados'] = $me_stats['contratos_fechados'] ?? 0;
-        $stats['leads_total'] = $me_stats['leads_total'] ?? 0;
-        $stats['leads_negociacao'] = $me_stats['leads_negociacao'] ?? 0;
-        $stats['vendas_realizadas'] = $me_stats['vendas_realizadas'] ?? 0;
-    } else {
-        $stats['eventos'] = 0;
-        $stats['contratos_fechados'] = 0;
-        $stats['leads_total'] = 0;
-        $stats['leads_negociacao'] = 0;
-        $stats['vendas_realizadas'] = 0;
+    // Testar conexão
+    if (!$pdo) {
+        throw new Exception("Conexão com banco de dados falhou");
     }
     
-    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
-    $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
+    // Buscar usuários ativos
+    try {
+        $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
+    } catch (Exception $e) {
+        $erros[] = "Erro ao buscar usuários: " . $e->getMessage();
+    }
+    
+    // Buscar fornecedores ativos
+    try {
+        $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
+    } catch (Exception $e) {
+        $erros[] = "Erro ao buscar fornecedores: " . $e->getMessage();
+    }
+    
+    // Buscar insumos
+    try {
+        $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
+    } catch (Exception $e) {
+        $erros[] = "Erro ao buscar insumos: " . $e->getMessage();
+    }
+    
+    // Buscar usuários com email
+    try {
+        $stmt = $pdo->query("SELECT nome, email FROM usuarios WHERE ativo = true AND email IS NOT NULL AND email != '' ORDER BY nome LIMIT 10");
+        $usuarios_com_email = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $erros[] = "Erro ao buscar usuários com email: " . $e->getMessage();
+    }
+    
+    // Buscar dados da ME Eventos
+    try {
+        $mes_atual = date('Y-m');
+        $stmt = $pdo->prepare("SELECT eventos_ativos, contratos_fechados, leads_total, leads_negociacao, vendas_realizadas FROM me_eventos_stats WHERE mes_ano = ?");
+        $stmt->execute([$mes_atual]);
+        $me_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($me_stats) {
+            $stats['eventos'] = $me_stats['eventos_ativos'] ?? 0;
+            $stats['contratos_fechados'] = $me_stats['contratos_fechados'] ?? 0;
+            $stats['leads_total'] = $me_stats['leads_total'] ?? 0;
+            $stats['leads_negociacao'] = $me_stats['leads_negociacao'] ?? 0;
+            $stats['vendas_realizadas'] = $me_stats['vendas_realizadas'] ?? 0;
+        }
+    } catch (Exception $e) {
+        $erros[] = "Erro ao buscar dados ME Eventos: " . $e->getMessage();
+    }
+    
 } catch (Exception $e) {
-    $stats = ['usuarios' => 0, 'eventos' => 0, 'fornecedores' => 0, 'insumos' => 0, 'contratos_fechados' => 0, 'leads_total' => 0, 'leads_negociacao' => 0, 'vendas_realizadas' => 0];
-    $usuarios_com_email = [];
+    $erros[] = "Erro geral: " . $e->getMessage();
 }
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
@@ -49,6 +83,17 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
     <div class="dashboard-header">
         <h1 class="dashboard-title">🎉 Dashboard Principal</h1>
         <p class="dashboard-subtitle">Bem-vindo ao sistema Smile EVENTOS</p>
+        
+        <?php if (!empty($erros)): ?>
+        <div style="background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 15px; border-radius: 8px; margin-top: 20px;">
+            <h4>⚠️ Avisos do Sistema:</h4>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <?php foreach ($erros as $erro): ?>
+                <li><?= htmlspecialchars($erro) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- Cards Principais -->
@@ -123,6 +168,29 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
         </div>
     </div>
     <?php endif; ?>
+    
+    <!-- Informações de Debug -->
+    <div class="dashboard-card">
+        <h3 style="color: #1e3a8a; margin-bottom: 20px; font-size: 1.5em;">🔧 Informações do Sistema</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div style="text-align: center;">
+                <div style="font-size: 1.5em; color: #1e3a8a; font-weight: bold;"><?= date('Y-m') ?></div>
+                <div style="color: #64748b;">Mês Atual</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5em; color: #1e3a8a; font-weight: bold;"><?= count($erros) ?></div>
+                <div style="color: #64748b;">Avisos</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5em; color: #1e3a8a; font-weight: bold;"><?= $pdo ? 'OK' : 'ERRO' ?></div>
+                <div style="color: #64748b;">Conexão DB</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 1.5em; color: #1e3a8a; font-weight: bold;"><?= session_status() === PHP_SESSION_ACTIVE ? 'OK' : 'ERRO' ?></div>
+                <div style="color: #64748b;">Sessão</div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>

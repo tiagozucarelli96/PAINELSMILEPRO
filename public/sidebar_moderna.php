@@ -323,13 +323,13 @@ if (!function_exists('isSubmenuOpen')) {
         <!-- Sidebar -->
         <nav class="sidebar" id="sidebar">
             <!-- Header -->
-            <div class="sidebar-header">
+  <div class="sidebar-header">
                 <div class="sidebar-logo">
                     <img src="logo-smile.png" alt="Smile EVENTOS" style="width: 50px; height: 50px;">
                 </div>
-            </div>
-            
-            <!-- Navegação -->
+  </div>
+
+  <!-- Navegação -->
             <div class="sidebar-nav">
                 <?php if ($logado): ?>
                     <!-- Seção Principal -->
@@ -452,16 +452,16 @@ if (!function_exists('isSubmenuOpen')) {
                                 <span class="nav-icon">👤</span>
                                 <span class="nav-text">Usuários</span>
                             </a>
-                        </div>
+      </div>
                         
                         <div class="nav-item">
                             <a href="index.php?page=configuracoes" class="nav-link <?= isActive('configuracoes') ?>">
                                 <span class="nav-icon">⚙️</span>
                                 <span class="nav-text">Configurações</span>
                             </a>
-                        </div>
-                    </div>
-                    
+      </div>
+    </div>
+    
                     <!-- Seção Administrativo -->
                     <?php if ($perfil === 'ADM'): ?>
                     <div class="nav-section">
@@ -490,8 +490,8 @@ if (!function_exists('isSubmenuOpen')) {
                             <a href="login.php" class="nav-link">
                                 <span class="nav-icon">🔐</span>
                                 <span class="nav-text">Fazer Login</span>
-                            </a>
-                        </div>
+    </a>
+  </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -513,12 +513,12 @@ if (!function_exists('isSubmenuOpen')) {
     <button class="sidebar-toggle" onclick="toggleSidebar()" id="sidebarToggle">
         ☰
     </button>
-    
-    <script>
+
+<script>
         // Toggle sidebar
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
             const mainContent = document.getElementById('mainContent');
             
             if (window.innerWidth <= 768) {
@@ -589,7 +589,7 @@ if (!function_exists('isSubmenuOpen')) {
             navItems.forEach((item, index) => {
                 item.style.animationDelay = `${index * 0.1}s`;
             });
-        });
-    </script>
+});
+</script>
 </body>
 </html>

@@ -86,6 +86,7 @@ $routes = [
   'contab_gerar_link'   => 'contab_gerar_link.php',
   'config_categorias'   => 'config_categorias.php',
   'verificacao_completa_erros' => 'verificacao_completa_erros.php',
+  'test_dashboard_connection' => 'test_dashboard_connection.php',
 ];
 
 /* exige login */
