@@ -50,7 +50,7 @@ if ($page === '' || $page === null) {
 
 /* rotas permitidas */
 $routes = [
-  'dashboard'           => 'dashboard_integration.php',
+  'dashboard'           => 'sidebar_unified.php',
   'comercial'           => 'comercial.php',
   'logistico'           => 'logistico.php',
   'configuracoes'       => 'configuracoes_nova.php',
