@@ -83,12 +83,17 @@ function isSubmenuOpen($pages) {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            padding: 10px 0;
         }
         
         .sidebar-logo img {
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar-logo img:hover {
+            transform: scale(1.05);
         }
         
         /* Navegação */
@@ -316,11 +321,7 @@ function isSubmenuOpen($pages) {
             <!-- Header -->
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <img src="logo-smile.png" alt="Smile EVENTOS" style="width: 40px; height: 40px; margin-right: 10px;">
-                    <div>
-                        <div style="font-size: 20px; font-weight: 800; line-height: 1.2;">Smile EVENTOS</div>
-                        <div style="font-size: 12px; opacity: 0.8; font-weight: 400;">Sistema de Gestão</div>
-                    </div>
+                    <img src="logo-smile.png" alt="Smile EVENTOS" style="width: 50px; height: 50px;">
                 </div>
             </div>
             
