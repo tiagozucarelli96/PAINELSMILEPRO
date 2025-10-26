@@ -27,66 +27,56 @@ if ($current_page === 'dashboard') {
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
     
     try {
-        // Contratos fechados do mês - via dados do webhook ME Eventos
-        $current_month = date('Y-m');
-        
-        // Buscar eventos criados no mês atual via webhook
+        // 1. Inscritos em Degustações Ativas do Mês
         $stmt = $pdo->prepare("
-            SELECT 
-                COUNT(*) as total_eventos,
-                COUNT(CASE WHEN webhook_tipo = 'created' THEN 1 END) as eventos_criados,
-                COUNT(CASE WHEN status = 'fechado' OR status = 'concluido' THEN 1 END) as contratos_fechados,
-                COALESCE(SUM(valor), 0) as valor_total_vendas
+            SELECT COUNT(*) as total 
+            FROM comercial_inscricoes ci
+            JOIN comercial_degustacoes cd ON ci.event_id = cd.id
+            WHERE cd.status = 'publicado'
+            AND DATE_TRUNC('month', ci.criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+            AND ci.status IN ('confirmado', 'lista_espera')
+        ");
+        $stmt->execute();
+        $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
+        
+        // 2. Eventos Criados via ME Eventos (webhook)
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) as total 
             FROM me_eventos_webhook 
-            WHERE DATE_TRUNC('month', recebido_em) = DATE_TRUNC('month', CURRENT_DATE)
-            AND webhook_tipo IN ('created', 'updated')
+            WHERE webhook_tipo = 'created'
+            AND DATE_TRUNC('month', recebido_em) = DATE_TRUNC('month', CURRENT_DATE)
         ");
         $stmt->execute();
-        $webhook_stats = $stmt->fetch();
+        $stats['eventos_criados'] = $stmt->fetchColumn() ?: 0;
         
-        $stats['contratos_mes'] = $webhook_stats['contratos_fechados'] ?: 0;
-        $stats['vendas_mes'] = $webhook_stats['valor_total_vendas'] ?: 0;
-        $stats['eventos_criados'] = $webhook_stats['eventos_criados'] ?: 0;
-        
-        // Se não houver dados do webhook, usar dados locais como fallback
-        if ($stats['contratos_mes'] == 0 && $stats['eventos_criados'] == 0) {
-            $stmt = $pdo->prepare("
-                SELECT COUNT(*) as total 
-                FROM comercial_inscricoes 
-                WHERE fechou_contrato = 'sim' 
-                AND DATE_TRUNC('month', criado_em) = DATE_TRUNC('month', CURRENT_DATE)
-            ");
-            $stmt->execute();
-            $stats['contratos_mes'] = $stmt->fetchColumn() ?: 0;
-            $stats['vendas_mes'] = $stats['contratos_mes'] * 5000; // Valor estimado
-        }
-        
-        // Leads em negociação (dados locais)
+        // 3. Visitas Realizadas (Agenda)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
-            FROM comercial_inscricoes 
-            WHERE fechou_contrato = 'nao' 
-            AND criado_em >= CURRENT_DATE - INTERVAL '30 days'
+            FROM agenda_eventos 
+            WHERE tipo = 'visita'
+            AND status = 'realizado'
+            AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
         ");
         $stmt->execute();
-        $stats['leads_negociacao'] = $stmt->fetchColumn() ?: 0;
+        $stats['visitas_realizadas'] = $stmt->fetchColumn() ?: 0;
         
-        // Leads do mês (dados locais)
+        // 4. Fechamentos Realizados (Agenda)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
-            FROM comercial_inscricoes 
-            WHERE criado_em >= DATE_TRUNC('month', CURRENT_DATE)
+            FROM agenda_eventos 
+            WHERE fechou_contrato = true
+            AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
         ");
         $stmt->execute();
-        $stats['leads_mes'] = $stmt->fetchColumn() ?: 0;
+        $stats['fechamentos_realizados'] = $stmt->fetchColumn() ?: 0;
         
     } catch (Exception $e) {
         // Se der erro, usar valores padrão
         $stats = [
-            'contratos_mes' => 0,
-            'leads_negociacao' => 0,
-            'vendas_mes' => 0,
-            'leads_mes' => 0
+            'inscritos_degustacao' => 0,
+            'eventos_criados' => 0,
+            'visitas_realizadas' => 0,
+            'fechamentos_realizados' => 0
         ];
     }
     
@@ -94,7 +84,7 @@ if ($current_page === 'dashboard') {
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">🏠 Dashboard</h1>
-            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
+            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '!</p>
         </div>
         
         <!-- Métricas Principais -->
@@ -102,32 +92,32 @@ if ($current_page === 'dashboard') {
             <div class="metric-card">
                 <div class="metric-icon">📋</div>
                 <div class="metric-content">
-                    <h3>' . $stats['leads_mes'] . '</h3>
-                    <p>Leads do Mês</p>
+                    <h3>' . $stats['inscritos_degustacao'] . '</h3>
+                    <p>Inscritos em Degustações</p>
                 </div>
             </div>
             
             <div class="metric-card">
                 <div class="metric-icon">🎉</div>
                 <div class="metric-content">
-                    <h3>' . ($stats['eventos_criados'] ?? 0) . '</h3>
-                    <p>Eventos Criados (Mês)</p>
+                    <h3>' . $stats['eventos_criados'] . '</h3>
+                    <p>Eventos Criados (ME Eventos)</p>
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon">📅</div>
+                <div class="metric-content">
+                    <h3>' . $stats['visitas_realizadas'] . '</h3>
+                    <p>Visitas Realizadas</p>
                 </div>
             </div>
             
             <div class="metric-card">
                 <div class="metric-icon">✅</div>
                 <div class="metric-content">
-                    <h3>' . $stats['contratos_mes'] . '</h3>
-                    <p>Contratos Fechados (Mês)</p>
-                </div>
-            </div>
-            
-            <div class="metric-card">
-                <div class="metric-icon">💰</div>
-                <div class="metric-content">
-                    <h3>R$ ' . number_format($stats['vendas_mes'], 0, ',', '.') . '</h3>
-                    <p>Vendas Realizadas (Mês)</p>
+                    <h3>' . $stats['fechamentos_realizados'] . '</h3>
+                    <p>Fechamentos Realizados</p>
                 </div>
             </div>
         </div>
