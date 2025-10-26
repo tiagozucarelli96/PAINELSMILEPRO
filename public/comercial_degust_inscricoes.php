@@ -2,6 +2,7 @@
 // comercial_degust_inscricoes.php — Todas as inscrições de todas as degustações
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Verificar permissões
@@ -9,6 +10,10 @@ if (!lc_can_manage_inscritos()) {
     header('Location: dashboard.php?error=permission_denied');
     exit;
 }
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Inscrições');
 
 // Filtros
 $event_filter = (int)($_GET['event_id'] ?? 0);
@@ -98,283 +103,8 @@ function getStatusBadge($status) {
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todas as Inscrições - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
-        .inscricoes-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        
-        .page-title {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin: 0;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-secondary {
-            background: #6b7280;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-        }
-        
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin: 0 0 5px 0;
-        }
-        
-        .stat-label {
-            color: #6b7280;
-            font-size: 14px;
-        }
-        
-        .filters {
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .form-label {
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        
-        .form-input {
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .form-select {
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-            background: white;
-        }
-        
-        .filters-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        
-        .inscricoes-table {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .table-header {
-            background: #f8fafc;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e5e7eb;
-            font-weight: 600;
-            color: #374151;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
-            gap: 15px;
-        }
-        
-        .table-row {
-            padding: 15px 20px;
-            border-bottom: 1px solid #e5e7eb;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
-            gap: 15px;
-            align-items: center;
-        }
-        
-        .table-row:hover {
-            background: #f8fafc;
-        }
-        
-        .table-row:last-child {
-            border-bottom: none;
-        }
-        
-        .participant-info {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .participant-name {
-            font-weight: 600;
-            color: #1f2937;
-            margin: 0 0 5px 0;
-        }
-        
-        .participant-email {
-            color: #6b7280;
-            font-size: 14px;
-            margin: 0;
-        }
-        
-        .degustacao-info {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .degustacao-name {
-            font-weight: 600;
-            color: #1e3a8a;
-            margin: 0 0 5px 0;
-        }
-        
-        .degustacao-date {
-            color: #6b7280;
-            font-size: 14px;
-            margin: 0;
-        }
-        
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .badge-danger {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .badge-secondary {
-            background: #e5e7eb;
-            color: #374151;
-        }
-        
-        .btn-sm {
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            border: none;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .btn-edit {
-            background: #3b82f6;
-            color: white;
-        }
-        
-        .btn-success {
-            background: #10b981;
-            color: white;
-        }
-        
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .pagination a {
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            text-decoration: none;
-            color: #374151;
-        }
-        
-        .pagination a:hover {
-            background: #f3f4f6;
-        }
-        
-        .pagination .current {
-            background: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-        }
-    </style>
-</head>
-<body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
+<div class="page-container">
+    
     
     <div class="main-content">
         <div class="inscricoes-container">
@@ -526,5 +256,10 @@ function getStatusBadge($status) {
             alert('Funcionalidade de exportação será implementada em breve');
         }
     </script>
-</body>
-</html>
+</div>
+
+
+<?php
+// Finalizar sidebar
+endSidebar();
+?>

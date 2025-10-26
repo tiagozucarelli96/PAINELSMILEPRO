@@ -19,11 +19,20 @@ if (!$uid || !is_numeric($uid) || !$estaLogado) {
     http_response_code(403);
     echo "Acesso negado. Faça login para continuar.";
     exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver');
 }
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
-if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
+require_once __DIR__ . '/sidebar_integration.php';
+if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver'); }
 
 // ========= Helpers =========
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -43,7 +52,11 @@ $tab = (string)($_GET['tab'] ?? 'compras');
 $q   = trim((string)($_GET['q'] ?? ''));
 $exp = (string)($_GET['export'] ?? ''); // 'csv' para exportar
 
-if ($g <= 0) { http_response_code(400); echo "Grupo inválido."; exit; }
+if ($g <= 0) { http_response_code(400); echo "Grupo inválido."; exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver'); }
 if (!in_array($tab, ['compras','encomendas'], true)) $tab = 'compras';
 
 // ========= Cabeçalho do grupo =========
@@ -59,7 +72,11 @@ $hdr = $pdo->prepare("
 ");
 $hdr->execute([':g'=>$g]);
 $hrow = $hdr->fetch(PDO::FETCH_ASSOC);
-if (!$hrow || !$hrow['data_gerada']) { http_response_code(404); echo "Grupo não encontrado."; exit; }
+if (!$hrow || !$hrow['data_gerada']) { http_response_code(404); echo "Grupo não encontrado."; exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver'); }
 
 // ========= Data sources =========
 if ($tab === 'compras') {
@@ -97,6 +114,10 @@ if ($tab === 'compras') {
         }
         fclose($out);
         exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver');
     }
 
 } else {
@@ -154,6 +175,10 @@ if ($tab === 'compras') {
         }
         fclose($out);
         exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Ver');
     }
 }
 ?>
@@ -288,5 +313,10 @@ if ($tab === 'compras') {
 
 </div>
 </div>
-</body>
-</html>
+</div>
+
+
+<?php
+// Finalizar sidebar
+endSidebar();
+?>

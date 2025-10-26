@@ -2,6 +2,7 @@
 // comercial_clientes.php — Funil de conversão: quem foi × quem fechou
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
 // Verificar permissões
@@ -9,6 +10,10 @@ if (!lc_can_view_conversao()) {
     header('Location: dashboard.php?error=permission_denied');
     exit;
 }
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Clientes');
 
 // Filtros
 $degustacao_filter = (int)($_GET['degustacao_id'] ?? 0);
@@ -132,6 +137,10 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
         // Recarregar página para atualizar dados
         header("Location: " . $_SERVER['REQUEST_URI']);
         exit;
+
+// Iniciar sidebar
+includeSidebar();
+setPageTitle('Comercial clientes');
         
     } catch (Exception $e) {
         $error_message = "Erro ao atualizar contrato: " . $e->getMessage();
@@ -149,450 +158,8 @@ function getStatusBadge($status) {
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Funil de Conversão - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
-        .conversao-container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        
-        .page-title {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin: 0;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-secondary {
-            background: #6b7280;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .conversion-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: 25px;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-        }
-        
-        .stat-value {
-            font-size: 36px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin: 0 0 10px 0;
-        }
-        
-        .stat-label {
-            color: #6b7280;
-            font-size: 16px;
-            margin: 0 0 15px 0;
-        }
-        
-        .stat-percentage {
-            font-size: 24px;
-            font-weight: 600;
-            color: #10b981;
-        }
-        
-        .stat-percentage.negative {
-            color: #ef4444;
-        }
-        
-        .filters {
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .form-label {
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        
-        .form-input {
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .form-select {
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-            background: white;
-        }
-        
-        .filters-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        
-        .degustacoes-stats {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .degustacoes-title {
-            font-size: 20px;
-            font-weight: 600;
-            color: #1e3a8a;
-            margin: 0 0 20px 0;
-        }
-        
-        .degustacoes-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 15px;
-        }
-        
-        .degustacao-stat {
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 15px;
-        }
-        
-        .degustacao-name {
-            font-weight: 600;
-            color: #1e3a8a;
-            margin: 0 0 10px 0;
-        }
-        
-        .degustacao-details {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 14px;
-            color: #6b7280;
-        }
-        
-        .degustacao-conversion {
-            font-size: 18px;
-            font-weight: 600;
-            color: #10b981;
-        }
-        
-        .inscricoes-table {
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .table-header {
-            background: #f8fafc;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e5e7eb;
-            font-weight: 600;
-            color: #374151;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
-            gap: 15px;
-        }
-        
-        .table-row {
-            padding: 15px 20px;
-            border-bottom: 1px solid #e5e7eb;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
-            gap: 15px;
-            align-items: center;
-        }
-        
-        .table-row:hover {
-            background: #f8fafc;
-        }
-        
-        .table-row:last-child {
-            border-bottom: none;
-        }
-        
-        .participant-info {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .participant-name {
-            font-weight: 600;
-            color: #1f2937;
-            margin: 0 0 5px 0;
-        }
-        
-        .participant-email {
-            color: #6b7280;
-            font-size: 14px;
-            margin: 0;
-        }
-        
-        .degustacao-info {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .degustacao-name {
-            font-weight: 600;
-            color: #1e3a8a;
-            margin: 0 0 5px 0;
-        }
-        
-        .degustacao-date {
-            color: #6b7280;
-            font-size: 14px;
-            margin: 0;
-        }
-        
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-        
-        .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        
-        .badge-danger {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        
-        .badge-secondary {
-            background: #e5e7eb;
-            color: #374151;
-        }
-        
-        .btn-sm {
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            border: none;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .btn-success {
-            background: #10b981;
-            color: white;
-        }
-        
-        .alert {
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        
-        .alert-success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 1px solid #a7f3d0;
-        }
-        
-        .alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fca5a5;
-        }
-        
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
-        
-        .modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            max-width: 500px;
-            width: 90%;
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .modal-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin: 0;
-        }
-        
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #6b7280;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-label {
-            display: block;
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 5px;
-        }
-        
-        .form-input {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .form-radio-group {
-            display: flex;
-            gap: 15px;
-        }
-        
-        .form-radio {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .form-radio input[type="radio"] {
-            width: 16px;
-            height: 16px;
-            accent-color: #3b82f6;
-        }
-        
-        .form-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-            margin-top: 20px;
-        }
-        
-        .btn-cancel {
-            background: #6b7280;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        
-        .btn-save {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
+<div class="page-container">
+    
     
     <div class="main-content">
         <div class="conversao-container">
@@ -844,5 +411,10 @@ function getStatusBadge($status) {
             }
         });
     </script>
-</body>
-</html>
+</div>
+
+
+<?php
+// Finalizar sidebar
+endSidebar();
+?>
