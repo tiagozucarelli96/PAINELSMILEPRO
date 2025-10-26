@@ -145,18 +145,12 @@ if ($user_id > 0) {
 function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Usuários - GRUPO Smile EVENTOS</title>
-<link rel="stylesheet" href="estilo.css">
 <style>
         .users-container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
+            margin-left: 0;
         }
         
         .page-header {
@@ -499,10 +493,7 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
             border: 1px solid #fca5a5;
         }
     </style>
-</head>
-<body>
-<?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
-    
+
 <div class="main-content">
         <div class="users-container">
             <!-- Header -->
@@ -825,5 +816,3 @@ function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
         });
     </script>
 <?php endSidebar(); ?>
-</body>
-</html>
