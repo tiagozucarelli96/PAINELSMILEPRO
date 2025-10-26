@@ -26,8 +26,7 @@ function endSidebar() {
     // Obter o conteúdo da página
     $pageContent = ob_get_clean();
     
-    // Incluir a sidebar
-    include __DIR__ . '/sidebar_moderna.php';
+    // Sidebar já foi incluída no includeSidebar()
     
     // Inserir o conteúdo da página no main-content
     echo '<script>
