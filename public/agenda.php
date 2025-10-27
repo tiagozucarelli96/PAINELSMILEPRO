@@ -91,10 +91,21 @@ $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
-// Conteúdo da página agenda - será injetado no pageContent pelo sidebar_unified.php
+// Renderizar página completa
+header('Content-Type: text/html; charset=utf-8');
 ?>
 
-<style>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda - GRUPO Smile EVENTOS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js" defer></script>
+    <style>
         .agenda-page-content {
             font-family: 'Inter', sans-serif;
             padding: 20px;
@@ -1091,3 +1102,7 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             }
         });
     </script>
+    </div><!-- agenda-container -->
+</div><!-- agenda-page-content -->
+</body>
+</html>
