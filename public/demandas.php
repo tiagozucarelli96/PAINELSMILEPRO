@@ -15,7 +15,6 @@ if (!lc_can_access_demandas()) {
 
 // Iniciar sidebar com título
 includeSidebar('Demandas');
-setPageTitle('Demandas');
 
 $demandas = new DemandasHelper();
 $usuario_id = $_SESSION['user_id'] ?? 1;

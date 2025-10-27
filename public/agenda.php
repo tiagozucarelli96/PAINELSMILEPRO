@@ -17,11 +17,6 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
 
 // Iniciar sidebar com título
 includeSidebar('Agenda');
-setPageTitle('Agenda');
-addBreadcrumb([
-    ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
-    ['title' => 'Agenda']
-]);
 
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
