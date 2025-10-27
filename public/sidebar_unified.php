@@ -819,15 +819,13 @@ if ($current_page === 'dashboard') {
             pageContent.innerHTML = `$administrativo_content`;
         }
     });";
+} elseif (in_array($current_page, ['agenda', 'demandas'])) {
+    // Páginas que já têm sidebar integrada - não processar
+    $dashboard_js = "";
+    goto skip_dashboard_js;
 } else {
     // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
-        // Páginas que já têm sidebar integrada - não processar
-        if (in_array($current_page, ['agenda', 'demandas'])) {
-            // Retornar sem dashboard_js - página vai renderizar sozinha
-            $dashboard_js = "";
-            goto skip_dashboard_js;
-        }
         
         // Capturar o conteúdo da página
         ob_start();
