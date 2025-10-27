@@ -836,14 +836,6 @@ if ($current_page === 'dashboard') {
             padding: 0 !important;
         }
         
-        /* Layout Principal */
-        .app-container {
-            /* display: flex removido pois sidebar usa position: fixed */
-            min-height: 100vh;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        
         /* Sidebar */
         .sidebar {
             width: 280px;
@@ -1419,8 +1411,8 @@ if ($current_page === 'dashboard') {
 <body>
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
     
-    <div class="app-container">
-        <div class="sidebar" id="sidebar">
+    <!-- Sidebar fixa -->
+    <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="user-info">
                     <div class="user-avatar"><?= strtoupper(substr($nomeUser, 0, 2)) ?></div>
@@ -1479,9 +1471,11 @@ if ($current_page === 'dashboard') {
                     Administrativo
                 </a>
             </nav>
-        </div>
-        
-        <div class="main-content" id="mainContent">
+    </div>
+    <!-- Sidebar fechada -->
+    
+    <!-- Conteúdo principal -->
+    <div class="main-content" id="mainContent">
             <div id="pageContent">
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
@@ -1506,14 +1500,17 @@ if ($current_page === 'dashboard') {
                 ?>
             </div>
         </div>
-    </div>
 
     <script>
         // Função para alternar sidebar
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
-            const floatingToggle = document.getElementById('floatingToggle');
+            
+            if (!sidebar || !mainContent) {
+                console.error('Sidebar ou mainContent não encontrados');
+                return;
+            }
             
             const isCollapsed = sidebar.classList.contains('collapsed');
             
@@ -1521,12 +1518,10 @@ if ($current_page === 'dashboard') {
                 // Mostrar sidebar
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
-                floatingToggle.style.display = 'none';
             } else {
                 // Esconder sidebar
                 sidebar.classList.add('collapsed');
                 mainContent.classList.add('expanded');
-                floatingToggle.style.display = 'block';
             }
         }
         
