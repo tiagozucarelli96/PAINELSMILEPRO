@@ -15,9 +15,6 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
     exit;
 }
 
-// Iniciar sidebar com título
-includeSidebar('Agenda');
-
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
     header('Content-Type: application/json');
@@ -86,6 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
     echo json_encode($response);
     exit;
 }
+
+// Iniciar sidebar com título - APENAS PARA GET
+includeSidebar('Agenda');
 
 // Obter dados para a página
 $espacos = $agenda->obterEspacos();
