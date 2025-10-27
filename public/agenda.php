@@ -1098,5 +1098,3 @@ includeSidebar('Agenda');
         });
     </script>
 <?php endSidebar(); ?>
-</body>
-</html>
