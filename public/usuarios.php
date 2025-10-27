@@ -6,6 +6,11 @@ require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 
+// Garantir que $pdo está disponível
+if (!isset($pdo)) {
+    global $pdo;
+}
+
 // Verificar permissões
 if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
     http_response_code(403); 

@@ -14,6 +14,25 @@ class DemandasHelper {
     }
     
     /**
+     * Obter quadros do usuário
+     */
+    public function obterQuadrosUsuario($usuario_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT dq.*, 
+                   COUNT(dc.id) as total_cartoes
+            FROM demandas_quadros dq
+            LEFT JOIN demandas_participantes dp ON dq.id = dp.quadro_id
+            LEFT JOIN demandas_cartoes dc ON dq.id = dc.quadro_id
+            WHERE dp.usuario_id = ? AND dq.ativo = TRUE
+            GROUP BY dq.id
+            ORDER BY dq.updated_at DESC
+        ");
+        
+        $stmt->execute([$usuario_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
      * Obter agenda do dia do usuário
      */
     public function obterAgendaDia($usuario_id, $incluir_48h = false) {

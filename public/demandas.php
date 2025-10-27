@@ -50,20 +50,8 @@ $agenda_hoje = $demandas->obterAgendaDia($usuario_id, false);
 $agenda_48h = $demandas->obterAgendaDia($usuario_id, true);
 $notificacoes = $demandas->contarNotificacoesNaoLidas($usuario_id);
 
-// Obter quadros do usuário
-$stmt = $pdo->prepare("
-    SELECT dq.*, 
-           COUNT(dc.id) as total_cartoes,
-           SUM(CASE WHEN dc.concluido = FALSE THEN 1 ELSE 0 END) as cartoes_pendentes
-    FROM demandas_quadros dq
-    LEFT JOIN demandas_participantes dp ON dq.id = dp.quadro_id
-    LEFT JOIN demandas_cartoes dc ON dq.id = dc.quadro_id AND dc.arquivado = FALSE
-    WHERE dp.usuario_id = ? AND dq.ativo = TRUE
-    GROUP BY dq.id
-    ORDER BY dq.atualizado_em DESC
-");
-$stmt->execute([$usuario_id]);
-$quadros = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Obter quadros do usuário usando o helper
+$quadros = $demandas->obterQuadrosUsuario($usuario_id);
 ?>
 
 <div class="page-container">
