@@ -57,6 +57,7 @@ $quadros = $demandas->obterQuadrosUsuario($usuario_id);
 includeSidebar('Demandas');
 ?>
 
+<div id="pageContent">
 <div class="page-container">
     <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
 
@@ -218,5 +219,5 @@ includeSidebar('Demandas');
         }
     </script>
 </div>
-
+</div><!-- pageContent -->
 <?php endSidebar(); ?>
