@@ -4,6 +4,7 @@
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
 require_once __DIR__ . '/lc_units_helper.php';
@@ -198,10 +199,12 @@ if ($insumo_id) {
     $stmt->execute([$insumo_id]);
     $insumo_selecionado = $stmt->fetch(PDO::FETCH_ASSOC);
 }
+
+// Criar conteúdo da página
+ob_start();
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
+<style>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1059,5 +1062,9 @@ if ($insumo_id) {
             }
         });
     </script>
-</body>
-</html>
+<?php
+$conteudo = ob_get_clean();
+includeSidebar('Estoque - Kardex');
+echo $conteudo;
+endSidebar();
+?>
