@@ -95,8 +95,7 @@ $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
-// Criar conteúdo da página para ser injetado via sidebar_unified.php
-ob_start();
+includeSidebar('Agenda');
 ?>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css">
@@ -1098,10 +1097,4 @@ ob_start();
     </script>
 </div><!-- agenda-container -->
 </div><!-- agenda-page-content -->
-<?php
-$conteudo = ob_get_clean();
-require_once __DIR__ . '/sidebar_integration.php';
-includeSidebar('Agenda');
-echo $conteudo;
-endSidebar();
-?>
+<?php endSidebar(); ?>

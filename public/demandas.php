@@ -54,8 +54,7 @@ $notificacoes = $demandas->contarNotificacoesNaoLidas($usuario_id);
 // Obter quadros do usuário usando o helper
 $quadros = $demandas->obterQuadrosUsuario($usuario_id);
 
-// Criar conteúdo da página
-ob_start();
+includeSidebar('Demandas');
 ?>
 
 <div class="page-container">
@@ -220,10 +219,4 @@ ob_start();
     </script>
 </div>
 
-<?php
-$conteudo = ob_get_clean();
-require_once __DIR__ . '/sidebar_integration.php';
-includeSidebar('Demandas');
-echo $conteudo;
-endSidebar();
-?>
+<?php endSidebar(); ?>
