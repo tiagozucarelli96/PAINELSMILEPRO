@@ -109,8 +109,6 @@ header('Content-Type: text/html; charset=utf-8');
     
     <!-- Sidebar CSS -->
     <link rel="stylesheet" href="estilo.css">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
 
 <style>
         .agenda-page-content {
