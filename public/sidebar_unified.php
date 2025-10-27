@@ -1589,9 +1589,10 @@ if ($current_page === 'dashboard') {
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
             
-            // Se for dashboard, comercial, logistico, configuracoes, cadastros, financeiro ou administrativo, 
+            // Se for dashboard, comercial, logistico, configurações, cadastros, financeiro ou administrativo, 
             // o conteúdo já foi renderizado via PHP, não fazer nada
-            if (!['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'].includes(currentPage)) {
+            // Para agenda, o conteúdo também já foi renderizado via PHP após sidebar_unified.php
+            if (!['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda'].includes(currentPage)) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
