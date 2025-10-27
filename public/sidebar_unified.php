@@ -981,6 +981,30 @@ if ($current_page === 'dashboard') {
         /* Page Content */
         #pageContent {
             width: 100%;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        /* Garantir que body e html não tenham espaço em branco */
+        html, body {
+            height: auto !important;
+            overflow-x: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        /* Forçar main-content a começar do topo */
+        .main-content {
+            position: relative !important;
+            top: 0 !important;
+            left: 0 !important;
+        }
+        
+        /* Remove qualquer espaço em branco antes do conteúdo */
+        .main-content::before,
+        #pageContent::before {
+            content: none !important;
+            display: none !important;
         }
         
         /* Toggle Button */
@@ -1418,7 +1442,7 @@ if ($current_page === 'dashboard') {
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
     
     <!-- Sidebar fixa -->
-    <div class="sidebar" id="sidebar">
+    <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1000 !important;">
             <div class="sidebar-header">
                 <div class="user-info">
                     <div class="user-avatar"><?= strtoupper(substr($nomeUser, 0, 2)) ?></div>
@@ -1481,7 +1505,7 @@ if ($current_page === 'dashboard') {
     <!-- Sidebar fechada -->
     
     <!-- Conteúdo principal -->
-    <div class="main-content" id="mainContent">
+    <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
             <div id="pageContent">
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
@@ -1524,10 +1548,14 @@ if ($current_page === 'dashboard') {
                 // Mostrar sidebar
                 sidebar.classList.remove('collapsed');
                 mainContent.classList.remove('expanded');
+                mainContent.style.marginLeft = '280px';
+                mainContent.style.width = 'calc(100% - 280px)';
             } else {
                 // Esconder sidebar
                 sidebar.classList.add('collapsed');
                 mainContent.classList.add('expanded');
+                mainContent.style.marginLeft = '0';
+                mainContent.style.width = '100%';
             }
         }
         
