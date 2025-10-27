@@ -825,7 +825,7 @@ if ($current_page === 'dashboard') {
         // Páginas que já têm sidebar integrada - não processar
         if (in_array($current_page, ['agenda', 'demandas'])) {
             // Retornar sem dashboard_js - página vai renderizar sozinha
-            $dashboard_js = "// Página tem sidebar própria";
+            $dashboard_js = "";
             goto skip_dashboard_js;
         }
         
@@ -1571,7 +1571,9 @@ skip_dashboard_js:
             loadPageContent(currentPage);
         });
         
-        <?= $dashboard_js ?>
+        <?php if (!empty($dashboard_js)): ?>
+            <?= $dashboard_js ?>
+        <?php endif; ?>
         
         // Funções do modal de pagamento
         function openPaymentModal() {
