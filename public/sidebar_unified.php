@@ -831,7 +831,7 @@ if ($current_page === 'dashboard') {
         
         /* Layout Principal */
         .app-container {
-            display: flex;
+            /* display: flex removido pois sidebar usa position: fixed */
             min-height: 100vh;
         }
         
@@ -957,8 +957,8 @@ if ($current_page === 'dashboard') {
         
         /* Main Content */
         .main-content {
-            flex: 1;
             margin-left: 280px;
+            width: calc(100% - 280px);
             min-height: 100vh;
             background: #f8fafc;
             transition: margin-left 0.3s ease;
@@ -966,6 +966,7 @@ if ($current_page === 'dashboard') {
         
         .main-content.expanded {
             margin-left: 0;
+            width: 100%;
         }
         
         /* Toggle Button */
@@ -1390,6 +1391,7 @@ if ($current_page === 'dashboard') {
             
             .main-content {
                 margin-left: 0;
+                width: 100%;
             }
             
             .sidebar-toggle {
