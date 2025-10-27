@@ -825,6 +825,7 @@ if ($current_page === 'dashboard') {
         html {
             margin: 0 !important;
             padding: 0 !important;
+            height: 100%;
         }
         
         body {
@@ -834,6 +835,8 @@ if ($current_page === 'dashboard') {
             overflow-x: hidden;
             margin: 0 !important;
             padding: 0 !important;
+            height: 100%;
+            display: block;
         }
         
         /* Sidebar */
@@ -966,14 +969,26 @@ if ($current_page === 'dashboard') {
             width: calc(100% - 280px) !important;
             min-height: 100vh;
             background: #f8fafc;
-            transition: margin-left 0.3s ease;
+            transition: margin-left 0.3s ease, width 0.3s ease;
             box-sizing: border-box !important;
-            padding: 0;
-            margin-top: 0;
+            padding: 0 !important;
+            margin: 0 !important;
+            top: 0 !important;
+            left: 0 !important;
         }
         
         .main-content.expanded {
             margin-left: 0 !important;
+            width: 100% !important;
+        }
+        
+        /* Page Content */
+        #pageContent {
+            margin: 0 !important;
+            padding: 0 !important;
+            position: relative !important;
+            top: 0 !important;
+            left: 0 !important;
             width: 100% !important;
         }
         
