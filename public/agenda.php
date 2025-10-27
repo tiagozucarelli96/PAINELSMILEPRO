@@ -491,6 +491,11 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                 </div>
             </div>
 
+            <!-- Calendário no TOPO -->
+            <div class="calendar-container">
+                <div id="calendar"></div>
+            </div>
+
             <!-- Filtros -->
             <div id="filters" class="filters" style="display: none;">
                 <div class="filter-group">
@@ -517,11 +522,6 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
                 <button class="btn btn-outline" onclick="clearFilters()">
                     Limpar
                 </button>
-            </div>
-
-            <!-- Calendário -->
-            <div class="calendar-container">
-                <div id="calendar"></div>
             </div>
 
             <!-- Legenda -->
@@ -1105,5 +1105,8 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
     </script>
     </div><!-- agenda-container -->
 </div><!-- agenda-page-content -->
+<script>
+document.body.classList.add('page-agenda');
+</script>
 </body>
 </html>
