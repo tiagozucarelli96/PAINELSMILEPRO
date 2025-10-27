@@ -222,6 +222,17 @@ includeSidebar('Agenda');
             margin: 0;
             margin-top: 0 !important;
         }
+        
+        /* Garantir que o calendário tenha altura */
+        #calendar {
+            min-height: 600px;
+            width: 100%;
+        }
+        
+        /* FullCalendar específico */
+        .fc {
+            width: 100%;
+        }
 
         .legend {
             display: flex;
@@ -666,6 +677,13 @@ includeSidebar('Agenda');
         // Inicializar calendário
         document.addEventListener('DOMContentLoaded', function() {
             const calendarEl = document.getElementById('calendar');
+            
+            if (!calendarEl) {
+                console.error('Elemento calendar não encontrado!');
+                return;
+            }
+            
+            console.log('Inicializando FullCalendar...');
             
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
