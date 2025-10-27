@@ -67,8 +67,6 @@ $quadros = $demandas->obterQuadrosUsuario($usuario_id);
     </style>
 </head>
 <body>
-    <?php include __DIR__ . '/sidebar.php'; ?>
-    
 <div class="page-container">
     <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
 

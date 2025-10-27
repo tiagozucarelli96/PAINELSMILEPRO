@@ -463,8 +463,6 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 </style>
 </head>
 <body>
-    <?php include __DIR__ . '/sidebar.php'; ?>
-    
 <div id="pageContent">
 <div class="agenda-page-content">
 <div class="agenda-container">
