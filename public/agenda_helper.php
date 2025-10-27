@@ -264,13 +264,13 @@ class AgendaHelper {
                 ae.compareceu,
                 ae.fechou_contrato,
                 u.nome as responsavel_nome,
-                u.cor_agenda,
+                u.cor_agenda as cor_agenda,
                 esp.nome as espaco_nome,
                 criador.nome as criado_por_nome
             FROM agenda_eventos ae
-            JOIN usuarios u ON ae.responsavel_usuario_id = u.id
+            LEFT JOIN usuarios u ON ae.responsavel_usuario_id = u.id
             LEFT JOIN agenda_espacos esp ON ae.espaco_id = esp.id
-            JOIN usuarios criador ON ae.criado_por_usuario_id = criador.id
+            LEFT JOIN usuarios criador ON ae.criado_por_usuario_id = criador.id
             WHERE {$where_clause}
             AND ae.status != 'cancelado'
             ORDER BY ae.inicio ASC
