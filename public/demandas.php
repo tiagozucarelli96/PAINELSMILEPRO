@@ -60,6 +60,13 @@ $quadros = $demandas->obterQuadrosUsuario($usuario_id);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demandas - GRUPO Smile EVENTOS</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <?php 
+    // Incluir sidebar unificada
+    $_GET['page'] = 'demandas';
+    require_once __DIR__ . '/sidebar_unified.php'; 
+    ?>
+    
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 <div class="page-container">

@@ -104,6 +104,13 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
     <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js" defer></script>
+    
+    <?php 
+    // Incluir sidebar unificada
+    $_GET['page'] = 'agenda';
+    require_once __DIR__ . '/sidebar_unified.php'; 
+    ?>
+    
     <style>
         .agenda-page-content {
             font-family: 'Inter', sans-serif;
