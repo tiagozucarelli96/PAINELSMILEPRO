@@ -961,18 +961,21 @@ if ($current_page === 'dashboard') {
             font-size: 18px;
         }
         
-        /* Main Content */
+        /* Main Content - Sobrescrever estilo.css */
         .main-content {
-            margin-left: 280px;
-            width: calc(100% - 280px);
-            min-height: 100vh;
-            background: #f8fafc;
-            transition: margin-left 0.3s ease, width 0.3s ease;
+            margin-left: 280px !important;
+            width: calc(100% - 280px) !important;
+            min-height: 100vh !important;
+            background: #f8fafc !important;
+            transition: margin-left 0.3s ease, width 0.3s ease !important;
+            padding: 0 !important;
+            flex: 0 0 auto !important;
+            min-width: auto !important;
         }
         
         .main-content.expanded {
-            margin-left: 0;
-            width: 100%;
+            margin-left: 0 !important;
+            width: 100% !important;
         }
         
         /* Page Content */
