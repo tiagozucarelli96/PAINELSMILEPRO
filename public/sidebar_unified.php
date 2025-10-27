@@ -1571,7 +1571,7 @@ skip_dashboard_js:
             loadPageContent(currentPage);
         });
         
-        <?php if (!empty($dashboard_js)): ?>
+        <?php if (!empty($dashboard_js) && $dashboard_js !== ""): ?>
             <?= $dashboard_js ?>
         <?php endif; ?>
         
