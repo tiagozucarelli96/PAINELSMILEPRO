@@ -6,6 +6,10 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($pdo)) {
     require_once __DIR__ . '/conexao.php';
 }
+// Garantir que $pdo está disponível globalmente
+if (!isset($pdo) && isset($GLOBALS['pdo'])) {
+    $pdo = $GLOBALS['pdo'];
+}
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $perfil = $_SESSION['perfil'] ?? 'CONSULTA';

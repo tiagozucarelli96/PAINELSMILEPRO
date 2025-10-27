@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
 $agenda = new AgendaHelper();
 $usuario_id = $_SESSION['user_id'] ?? 1;
@@ -43,16 +44,7 @@ $stmt = $GLOBALS['pdo']->prepare("
 $stmt->execute([$usuario_id]);
 $config = $stmt->fetch(PDO::FETCH_ASSOC);
 ?>
-
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurações da Agenda - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
+<style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f4f7f6;
@@ -208,13 +200,10 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
             }
         }
     </style>
-</head>
-<body>
-    <?php include __DIR__ . '/sidebar.php'; ?>
+<?php includeSidebar('Configurações da Agenda'); ?>
 
-    <div class="main-content">
-        <div class="container">
-            <h1>⚙️ Configurações da Agenda</h1>
+<div style="padding: 20px;">
+    <h1>⚙️ Configurações da Agenda</h1>
             
             <?php if (isset($success)): ?>
                 <div class="alert alert-success">
@@ -284,7 +273,7 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
                 </div>
                 
                 <div class="form-actions">
-                    <a href="agenda.php" class="btn btn-outline">
+                    <a href="index.php?page=agenda" class="btn btn-outline">
                         ← Voltar para Agenda
                     </a>
                     <button type="submit" class="btn btn-primary">
@@ -292,10 +281,9 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
                     </button>
                 </div>
             </form>
-        </div>
-    </div>
+</div>
 
-    <script>
+<script>
         // Atualizar preview da cor
         document.getElementById('cor_agenda').addEventListener('input', function() {
             document.getElementById('colorPreview').style.backgroundColor = this.value;
@@ -322,5 +310,4 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
             }, 2000);
         }
     </script>
-</body>
-</html>
+<?php endSidebar(); ?>

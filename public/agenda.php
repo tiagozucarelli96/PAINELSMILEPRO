@@ -19,10 +19,17 @@ $usuario_id = $_SESSION['user_id'] ?? 1;
 
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
+    // Desabilitar display de erros para retornar apenas JSON
+    ini_set('display_errors', 0);
+    error_reporting(E_ALL);
+    ini_set('log_errors', 1);
+    
     header('Content-Type: application/json');
     
     $acao = $_POST['acao'];
     $response = ['success' => false];
+    
+    try {
     
     switch ($acao) {
         case 'criar_evento':
@@ -80,6 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'sugestao' => $agenda->sugerirProximoHorario($responsavel_id, $espaco_id, $duracao)
             ];
             break;
+    }
+    } catch (Exception $e) {
+        $response = [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
     }
     
     echo json_encode($response);
@@ -1016,10 +1029,20 @@ includeSidebar('Agenda');
                 body: formData
             })
             .then(response => {
+                const contentType = response.headers.get("content-type");
                 if (!response.ok) {
                     throw new Error('Erro na requisição: ' + response.status);
                 }
-                return response.json();
+                // Verificar se a resposta é JSON
+                if (contentType && contentType.includes("application/json")) {
+                    return response.json();
+                } else {
+                    // Se não for JSON, tentar converter
+                    return response.text().then(text => {
+                        console.error('Resposta não é JSON:', text);
+                        throw new Error('Resposta do servidor não é JSON válido');
+                    });
+                }
             })
             .then(data => {
                 console.log('Resposta do servidor:', data);
