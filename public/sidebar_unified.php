@@ -1528,6 +1528,10 @@ if ($current_page === 'dashboard') {
                     }
                 }
                 ?>
+                <?php 
+                // Para outras páginas (como agenda), deixar que continuem renderizando aqui
+                // O arquivo chamador (agenda.php) continuará o HTML após este ponto
+                ?>
             </div>
         </div>
 
@@ -1626,5 +1630,3 @@ if ($current_page === 'dashboard') {
                 });
         }
     </script>
-</body>
-</html>
