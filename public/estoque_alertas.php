@@ -4,6 +4,7 @@
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_calc.php';
 require_once __DIR__ . '/lc_units_helper.php';
@@ -423,9 +424,8 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
             border: 1px solid #f5c6cb;
         }
     </style>
-</head>
-<body>
-    <div class="container">
+
+<div class="container">
         <div class="header">
             <h1>🚨 Alertas de Risco de Ruptura</h1>
             <p>Insumos com estoque abaixo do mínimo estabelecido</p>
@@ -1527,5 +1527,10 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
             }
         }
     </script>
-</body>
-</html>
+</div>
+<?php
+$conteudo = ob_get_clean();
+includeSidebar('Estoque - Alertas');
+echo $conteudo;
+endSidebar();
+?>
