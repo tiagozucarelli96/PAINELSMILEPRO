@@ -258,12 +258,13 @@ if ($current_page === 'dashboard') {
     </div>';
     
     // Inserir o conteúdo do dashboard no JavaScript
-    $dashboard_content_escaped = addslashes($dashboard_content);
+    $dashboard_content_safe = str_replace(["\r", "\n"], " ", $dashboard_content);
+    $dashboard_content_safe = addslashes($dashboard_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$dashboard_content_escaped';
+            pageContent.innerHTML = '" . $dashboard_content_safe . "';
         }
     });";
 } elseif ($current_page === 'comercial') {
@@ -333,12 +334,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $comercial_content_escaped = addslashes($comercial_content);
+    $comercial_content_safe = str_replace(["\r", "\n"], " ", $comercial_content);
+    $comercial_content_safe = addslashes($comercial_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$comercial_content_escaped';
+            pageContent.innerHTML = '" . $comercial_content_safe . "';
         }
     });";
 } elseif ($current_page === 'logistico') {
@@ -441,12 +443,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $logistico_content_escaped = addslashes($logistico_content);
+    $logistico_content_safe = str_replace(["\r", "\n"], " ", $logistico_content);
+    $logistico_content_safe = addslashes($logistico_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$logistico_content_escaped';
+            pageContent.innerHTML = '" . $logistico_content_safe . "';
         }
     });";
 } elseif ($current_page === 'configuracoes') {
@@ -516,12 +519,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $configuracoes_content_escaped = addslashes($configuracoes_content);
+    $configuracoes_content_safe = str_replace(["\r", "\n"], " ", $configuracoes_content);
+    $configuracoes_content_safe = addslashes($configuracoes_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$configuracoes_content_escaped';
+            pageContent.innerHTML = '" . $configuracoes_content_safe . "';
         }
     });";
 } elseif ($current_page === 'cadastros') {
@@ -624,12 +628,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $cadastros_content_escaped = addslashes($cadastros_content);
+    $cadastros_content_safe = str_replace(["\r", "\n"], " ", $cadastros_content);
+    $cadastros_content_safe = addslashes($cadastros_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$cadastros_content_escaped';
+            pageContent.innerHTML = '" . $cadastros_content_safe . "';
         }
     });";
 } elseif ($current_page === 'financeiro') {
@@ -732,12 +737,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $financeiro_content_escaped = addslashes($financeiro_content);
+    $financeiro_content_safe = str_replace(["\r", "\n"], " ", $financeiro_content);
+    $financeiro_content_safe = addslashes($financeiro_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$financeiro_content_escaped';
+            pageContent.innerHTML = '" . $financeiro_content_safe . "';
         }
     });";
 } elseif ($current_page === 'administrativo') {
@@ -818,12 +824,13 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
-    $administrativo_content_escaped = addslashes($administrativo_content);
+    $administrativo_content_safe = str_replace(["\r", "\n"], " ", $administrativo_content);
+    $administrativo_content_safe = addslashes($administrativo_content_safe);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = '$administrativo_content_escaped';
+            pageContent.innerHTML = '" . $administrativo_content_safe . "';
         }
     });";
 } else {
@@ -847,12 +854,13 @@ if ($current_page === 'dashboard') {
             }
         }
         
-        $page_content_escaped = addslashes($page_content);
+        $page_content_safe = str_replace(["\r", "\n"], " ", $page_content);
+        $page_content_safe = addslashes($page_content_safe);
         $dashboard_js = "
         document.addEventListener('DOMContentLoaded', function() {
             const pageContent = document.getElementById('pageContent');
             if (pageContent) {
-                pageContent.innerHTML = '$page_content_escaped';
+                pageContent.innerHTML = '" . $page_content_safe . "';
             }
         });";
     } else {
@@ -1615,7 +1623,7 @@ skip_dashboard_js:
             pageContent.innerHTML = '<div style="text-align: center; padding: 50px; color: #64748b;"><div style="font-size: 24px; margin-bottom: 20px;">⏳</div><div>Carregando...</div></div>';
             
             // Carregar página via AJAX
-            fetch(`index.php?page=${page}`)
+            fetch('index.php?page=' + page)
                 .then(response => response.text())
                 .then(html => {
                     // Extrair apenas o conteúdo da página (sem sidebar duplicada)
