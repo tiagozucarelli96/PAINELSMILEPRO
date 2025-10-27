@@ -93,16 +93,11 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 includeSidebar('Agenda');
 ?>
 
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
+
 <style>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agenda Interna - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
-    <style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f4f7f6;
@@ -463,7 +458,8 @@ includeSidebar('Agenda');
             }
     }
 </style>
-        <div class="container">
+
+<div class="container">
             <div class="toolbar">
                 <div class="toolbar-left">
                     <h1>🗓️ Agenda Interna</h1>
