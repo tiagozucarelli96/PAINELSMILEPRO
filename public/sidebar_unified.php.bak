@@ -434,6 +434,16 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
     </div>';
+    
+    $logistico_content_safe = str_replace(["\r", "\n"], " ", $logistico_content);
+    $logistico_content_safe = addslashes($logistico_content_safe);
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = '" . $logistico_content_safe . "';
+        }
+    });";
 } elseif ($current_page === 'configuracoes') {
     // Conteúdo da página Configurações
     $configuracoes_content = '
@@ -500,6 +510,16 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
     </div>';
+    
+    $configuracoes_content_safe = str_replace(["\r", "\n"], " ", $configuracoes_content);
+    $configuracoes_content_safe = addslashes($configuracoes_content_safe);
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = '" . $configuracoes_content_safe . "';
+        }
+    });";
 } elseif ($current_page === 'cadastros') {
     // Conteúdo da página Cadastros
     $cadastros_content = '
@@ -599,6 +619,16 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
     </div>';
+    
+    $cadastros_content_safe = str_replace(["\r", "\n"], " ", $cadastros_content);
+    $cadastros_content_safe = addslashes($cadastros_content_safe);
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = '" . $cadastros_content_safe . "';
+        }
+    });";
 } elseif ($current_page === 'financeiro') {
     // Conteúdo da página Financeiro
     $financeiro_content = '
@@ -698,6 +728,16 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
     </div>';
+    
+    $financeiro_content_safe = str_replace(["\r", "\n"], " ", $financeiro_content);
+    $financeiro_content_safe = addslashes($financeiro_content_safe);
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = '" . $financeiro_content_safe . "';
+        }
+    });";
 } elseif ($current_page === 'administrativo') {
     // Conteúdo da página Administrativo
     $administrativo_content = '
@@ -775,6 +815,16 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
     </div>';
+    
+    $administrativo_content_safe = str_replace(["\r", "\n"], " ", $administrativo_content);
+    $administrativo_content_safe = addslashes($administrativo_content_safe);
+    $dashboard_js = "
+    document.addEventListener('DOMContentLoaded', function() {
+        const pageContent = document.getElementById('pageContent');
+        if (pageContent) {
+            pageContent.innerHTML = '" . $administrativo_content_safe . "';
+        }
+    });";
 } else {
     // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
@@ -796,9 +846,27 @@ if ($current_page === 'dashboard') {
             }
         }
         
-        // Conteúdo será renderizado via PHP para outras páginas
+        $page_content_safe = str_replace(["\r", "\n"], " ", $page_content);
+        $page_content_safe = addslashes($page_content_safe);
+        $dashboard_js = "
+        document.addEventListener('DOMContentLoaded', function() {
+            const pageContent = document.getElementById('pageContent');
+            if (pageContent) {
+                pageContent.innerHTML = '" . $page_content_safe . "';
+            }
+        });";
+    } else {
+        $dashboard_js = "
+        document.addEventListener('DOMContentLoaded', function() {
+            const pageContent = document.getElementById('pageContent');
+            if (pageContent) {
+                pageContent.innerHTML = '<div style=\"text-align: center; padding: 50px; color: #dc2626;\"><div style=\"font-size: 24px; margin-bottom: 20px;\">❌</div><div>Página não encontrada</div></div>';
+            }
+        });";
     }
 }
+
+skip_dashboard_js:
 ?>
 
 <!DOCTYPE html>
