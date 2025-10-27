@@ -95,21 +95,9 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 ob_start();
 ?>
 
-<script>
-// Adicionar CSS e JS ao head
-const linkCSS = document.createElement('link');
-linkCSS.rel = 'stylesheet';
-linkCSS.href = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css';
-document.head.appendChild(linkCSS);
-
-const scriptFC = document.createElement('script');
-scriptFC.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js';
-document.head.appendChild(scriptFC);
-
-const scriptPT = document.createElement('script');
-scriptPT.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js';
-document.head.appendChild(scriptPT);
-</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
 
 <style>
         .agenda-page-content {
