@@ -29,12 +29,10 @@ class DemandasHelper {
             FROM demandas_cartoes dc
             JOIN demandas_quadros dq ON dc.quadro_id = dq.id
             JOIN demandas_colunas dc2 ON dc.coluna_id = dc2.id
-            LEFT JOIN usuarios u ON dc.responsavel_usuario_id = u.id
-            WHERE dc.responsavel_usuario_id = ?
-            AND dc.concluido = FALSE
-            AND dc.arquivado = FALSE
-            AND dc.vencimento BETWEEN NOW() AND NOW() + INTERVAL '{$horas} hours'
-            ORDER BY dc.vencimento ASC
+            LEFT JOIN usuarios u ON dc.criado_por = u.id
+            WHERE dc.criado_por = ?
+            AND dc.data_vencimento BETWEEN NOW() AND NOW() + INTERVAL '{$horas} hours'
+            ORDER BY dc.data_vencimento ASC
         ");
         
         $stmt->execute([$usuario_id]);
