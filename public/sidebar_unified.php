@@ -258,11 +258,12 @@ if ($current_page === 'dashboard') {
     </div>';
     
     // Inserir o conteúdo do dashboard no JavaScript
+    $dashboard_content_escaped = addslashes($dashboard_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$dashboard_content`;
+            pageContent.innerHTML = '$dashboard_content_escaped';
         }
     });";
 } elseif ($current_page === 'comercial') {
@@ -332,11 +333,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $comercial_content_escaped = addslashes($comercial_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$comercial_content`;
+            pageContent.innerHTML = '$comercial_content_escaped';
         }
     });";
 } elseif ($current_page === 'logistico') {
@@ -439,11 +441,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $logistico_content_escaped = addslashes($logistico_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$logistico_content`;
+            pageContent.innerHTML = '$logistico_content_escaped';
         }
     });";
 } elseif ($current_page === 'configuracoes') {
@@ -513,11 +516,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $configuracoes_content_escaped = addslashes($configuracoes_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$configuracoes_content`;
+            pageContent.innerHTML = '$configuracoes_content_escaped';
         }
     });";
 } elseif ($current_page === 'cadastros') {
@@ -620,11 +624,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $cadastros_content_escaped = addslashes($cadastros_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$cadastros_content`;
+            pageContent.innerHTML = '$cadastros_content_escaped';
         }
     });";
 } elseif ($current_page === 'financeiro') {
@@ -727,11 +732,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $financeiro_content_escaped = addslashes($financeiro_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$financeiro_content`;
+            pageContent.innerHTML = '$financeiro_content_escaped';
         }
     });";
 } elseif ($current_page === 'administrativo') {
@@ -812,11 +818,12 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
     
+    $administrativo_content_escaped = addslashes($administrativo_content);
     $dashboard_js = "
     document.addEventListener('DOMContentLoaded', function() {
         const pageContent = document.getElementById('pageContent');
         if (pageContent) {
-            pageContent.innerHTML = `$administrativo_content`;
+            pageContent.innerHTML = '$administrativo_content_escaped';
         }
     });";
 } else {
@@ -840,11 +847,12 @@ if ($current_page === 'dashboard') {
             }
         }
         
+        $page_content_escaped = addslashes($page_content);
         $dashboard_js = "
         document.addEventListener('DOMContentLoaded', function() {
             const pageContent = document.getElementById('pageContent');
             if (pageContent) {
-                pageContent.innerHTML = `" . addslashes($page_content) . "`;
+                pageContent.innerHTML = '$page_content_escaped';
             }
         });";
     } else {
