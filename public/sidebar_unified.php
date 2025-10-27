@@ -2,6 +2,11 @@
 // sidebar_unified.php — Sistema unificado de sidebar para todas as páginas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+// Garantir que $pdo está disponível
+if (!isset($pdo)) {
+    require_once __DIR__ . '/conexao.php';
+}
+
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $perfil = $_SESSION['perfil'] ?? 'CONSULTA';
 $current_page = $_GET['page'] ?? 'dashboard';
