@@ -9,11 +9,11 @@ require_once __DIR__ . '/sidebar_integration.php';
 $agenda = new AgendaHelper();
 $usuario_id = $_SESSION['user_id'] ?? 1;
 
-// Verificar permissões
-if (!$agenda->canAccessAgenda($usuario_id)) {
-    header('Location: index.php?page=dashboard');
-    exit;
-}
+// Não precisa verificar perm_agenda_ver pois é apenas configurações de usuário
+// if (!$agenda->canAccessAgenda($usuario_id)) {
+//     header('Location: index.php?page=dashboard');
+//     exit;
+// }
 
 // Processar atualizações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
