@@ -106,6 +106,11 @@ header('Content-Type: text/html; charset=utf-8');
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
+    
+    <!-- Sidebar CSS -->
+    <link rel="stylesheet" href="estilo.css">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
 
 <style>
         .agenda-page-content {
@@ -460,7 +465,10 @@ header('Content-Type: text/html; charset=utf-8');
             }
     }
 </style>
-
+</head>
+<body>
+    <?php require_once __DIR__ . '/sidebar_unified.php'; ?>
+    
 <div id="pageContent">
 <div class="agenda-page-content">
 <div class="agenda-container">
