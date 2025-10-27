@@ -983,6 +983,19 @@ if ($current_page === 'dashboard') {
             width: 100%;
             margin: 0 !important;
             padding: 0 !important;
+            display: block !important;
+        }
+        
+        /* Garantir que agenda-page-content comece do topo */
+        .agenda-page-content {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        
+        /* Garantir que o primeiro elemento não tenha margin-top */
+        #pageContent > div:first-child {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
         }
         
         /* Garantir que body e html não tenham espaço em branco */
