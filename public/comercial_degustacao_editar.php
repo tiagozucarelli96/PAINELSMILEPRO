@@ -2,6 +2,7 @@
 // comercial_degustacao_editar.php — Editor de degustações com Form Builder
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
@@ -138,17 +139,11 @@ if ($is_edit && $degustacao) {
     $token_publico = $degustacao['token_publico'];
 }
 
-
+// Criar conteúdo da página
+ob_start();
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $is_edit ? 'Editar' : 'Nova' ?> Degustação - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<style>
         .editor-container {
             max-width: 1000px;
             margin: 0 auto;
@@ -421,12 +416,8 @@ if ($is_edit && $degustacao) {
             color: #6b7280;
         }
     </style>
-</head>
-<body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
-    
-    <div class="main-content">
-        <div class="editor-container">
+
+<div class="editor-container">
             <!-- Header -->
             <div class="page-header">
                 <h1 class="page-title"><?= $is_edit ? '✏️ Editar' : '➕ Nova' ?> Degustação</h1>
@@ -753,5 +744,10 @@ if ($is_edit && $degustacao) {
         // Carregar campos iniciais
         renderFields();
     </script>
-</body>
-</html>
+<?php
+$conteudo = ob_get_clean();
+require_once __DIR__ . '/sidebar_integration.php';
+includeSidebar($is_edit ? 'Editar Degustação' : 'Nova Degustação');
+echo $conteudo;
+endSidebar();
+?>
