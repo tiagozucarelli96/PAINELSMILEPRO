@@ -84,18 +84,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
     exit;
 }
 
-// Iniciar sidebar com título - APENAS PARA GET
-includeSidebar('Agenda');
-
 // Obter dados para a página
 $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
+
+// Iniciar sidebar com título - APENAS PARA GET
+includeSidebar('Agenda');
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
+<style>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agenda Interna - GRUPO Smile EVENTOS</title>
@@ -463,13 +461,8 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             .form-row {
                 flex-direction: column;
             }
-        }
-    </style>
-</head>
-<body>
-    <!-- sidebar antiga removida; o includeSidebar() já a carrega -->
-
-    <div class="main-content">
+    }
+</style>
         <div class="container">
             <div class="toolbar">
                 <div class="toolbar-left">
