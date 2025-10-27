@@ -990,6 +990,12 @@ if ($current_page === 'dashboard') {
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
+            min-height: auto;
+        }
+        
+        /* Garantir que conteúdo da agenda não fique empurrado para baixo */
+        #pageContent > * {
+            margin-top: 0 !important;
         }
         
         /* Toggle Button */

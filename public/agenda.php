@@ -95,10 +95,6 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 includeSidebar('Agenda');
 ?>
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
-
 <style>
         .agenda-page-content {
             font-family: 'Inter', sans-serif;
