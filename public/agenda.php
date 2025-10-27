@@ -456,6 +456,7 @@ includeSidebar('Agenda');
     }
 </style>
 
+<div id="pageContent">
 <div class="agenda-page-content">
 <div class="agenda-container">
             <div class="toolbar">
@@ -1097,4 +1098,5 @@ includeSidebar('Agenda');
     </script>
 </div><!-- agenda-container -->
 </div><!-- agenda-page-content -->
+</div><!-- pageContent -->
 <?php endSidebar(); ?>
