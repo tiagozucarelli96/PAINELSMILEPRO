@@ -15,6 +15,8 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
     exit;
 }
 
+$usuario_id = $_SESSION['user_id'] ?? 1;
+
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
     header('Content-Type: application/json');
