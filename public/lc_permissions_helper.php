@@ -108,6 +108,15 @@ function lc_can_access_demandas(): bool {
 }
 
 /**
+ * Verifica se o usuário pode criar quadros de demandas
+ * @return bool
+ */
+function lc_can_create_quadros(): bool {
+    $perfil = lc_get_user_perfil();
+    return in_array($perfil, ['ADM', 'OPER']);
+}
+
+/**
  * Obtém mensagem de erro baseada no perfil
  * @param string $action Ação que foi negada
  * @return string Mensagem de erro
