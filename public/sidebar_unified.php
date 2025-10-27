@@ -844,9 +844,9 @@ if ($current_page === 'dashboard') {
             width: 280px;
             background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
             color: white;
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: fixed;
+            top: 0;
+            left: 0;
             height: 100vh;
             overflow-y: auto;
             z-index: 1000;
@@ -963,39 +963,21 @@ if ($current_page === 'dashboard') {
         
         /* Main Content */
         .main-content {
-            display: block !important;
-            position: relative !important;
-            margin-left: 280px !important;
-            width: calc(100% - 280px) !important;
+            margin-left: 280px;
+            width: calc(100% - 280px);
             min-height: 100vh;
             background: #f8fafc;
             transition: margin-left 0.3s ease, width 0.3s ease;
-            box-sizing: border-box !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            top: 0 !important;
-            left: 0 !important;
         }
         
         .main-content.expanded {
-            margin-left: 0 !important;
-            width: 100% !important;
+            margin-left: 0;
+            width: 100%;
         }
         
         /* Page Content */
         #pageContent {
-            margin: 0 !important;
-            padding: 0 !important;
-            position: relative !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            min-height: auto;
-        }
-        
-        /* Garantir que conteúdo da agenda não fique empurrado para baixo */
-        #pageContent > * {
-            margin-top: 0 !important;
+            width: 100%;
         }
         
         /* Toggle Button */
