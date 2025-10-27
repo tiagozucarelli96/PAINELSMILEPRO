@@ -51,7 +51,6 @@ $notificacoes = $demandas->contarNotificacoesNaoLidas($usuario_id);
 $quadros = $demandas->obterQuadrosUsuario($usuario_id);
 
 // Renderizar página completa
-header('Content-Type: text/html; charset=utf-8');
 ?>
 
 <!DOCTYPE html>

@@ -92,7 +92,6 @@ $usuarios = $agenda->obterUsuariosComCores();
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
 // Renderizar página completa
-header('Content-Type: text/html; charset=utf-8');
 ?>
 
 <!DOCTYPE html>
