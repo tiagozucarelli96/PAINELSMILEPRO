@@ -50,24 +50,12 @@ $notificacoes = $demandas->contarNotificacoesNaoLidas($usuario_id);
 // Obter quadros do usuário usando o helper
 $quadros = $demandas->obterQuadrosUsuario($usuario_id);
 
-// Renderizar página completa
+// Renderizar página completa usando sidebar_integration
+includeSidebar('Demandas');
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Demandas - GRUPO Smile EVENTOS</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="estilo.css">
-    
-    <style>
+<style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    </style>
-</head>
-<body>
-<div class="page-container">
     <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
 
     <div class="main-content">
@@ -227,6 +215,6 @@ $quadros = $demandas->obterQuadrosUsuario($usuario_id);
             }
         }
     </script>
-</div><!-- page-container -->
-</body>
-</html>
+</div>
+
+<?php endSidebar(); ?>
