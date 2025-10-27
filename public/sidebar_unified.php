@@ -819,7 +819,12 @@ if ($current_page === 'dashboard') {
         * {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
+            box-sizing: border-box !important;
+        }
+        
+        html {
+            margin: 0 !important;
+            padding: 0 !important;
         }
         
         body {
@@ -827,12 +832,16 @@ if ($current_page === 'dashboard') {
             background: #f8fafc;
             color: #1e293b;
             overflow-x: hidden;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         
         /* Layout Principal */
         .app-container {
             /* display: flex removido pois sidebar usa position: fixed */
             min-height: 100vh;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         
         /* Sidebar */
@@ -840,7 +849,9 @@ if ($current_page === 'dashboard') {
             width: 280px;
             background: linear-gradient(180deg, #1e3a8a 0%, #1e40af 100%);
             color: white;
-            position: fixed;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
             height: 100vh;
             overflow-y: auto;
             z-index: 1000;
@@ -957,16 +968,21 @@ if ($current_page === 'dashboard') {
         
         /* Main Content */
         .main-content {
-            margin-left: 280px;
-            width: calc(100% - 280px);
+            display: block !important;
+            position: relative !important;
+            margin-left: 280px !important;
+            width: calc(100% - 280px) !important;
             min-height: 100vh;
             background: #f8fafc;
             transition: margin-left 0.3s ease;
+            box-sizing: border-box !important;
+            padding: 0;
+            margin-top: 0;
         }
         
         .main-content.expanded {
-            margin-left: 0;
-            width: 100%;
+            margin-left: 0 !important;
+            width: 100% !important;
         }
         
         /* Toggle Button */
@@ -1390,8 +1406,8 @@ if ($current_page === 'dashboard') {
             }
             
             .main-content {
-                margin-left: 0;
-                width: 100%;
+                margin-left: 0 !important;
+                width: 100% !important;
             }
             
             .sidebar-toggle {
