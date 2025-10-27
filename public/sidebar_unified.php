@@ -822,6 +822,12 @@ if ($current_page === 'dashboard') {
 } else {
     // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
+        // Páginas que já têm sidebar integrada - não processar
+        if (in_array($current_page, ['agenda', 'demandas'])) {
+            // Deixar página se renderizar sozinha
+            exit;
+        }
+        
         // Capturar o conteúdo da página
         ob_start();
         include $page_path;
