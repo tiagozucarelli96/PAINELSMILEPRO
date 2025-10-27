@@ -1540,14 +1540,14 @@ if ($current_page === 'dashboard') {
                         echo $administrativo_content;
                     }
                 }
+                
+                // Fechar divs apenas se for página especial que já renderizou o conteúdo
+                if (in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
+                    echo '</div>'; // fecha #pageContent
+                    echo '</div>'; // fecha .main-content
+                }
                 ?>
-                <?php 
-                // Para outras páginas (como agenda), deixar que continuem renderizando aqui
-                // O arquivo chamador (agenda.php) continuará o HTML após este ponto
-                ?>
-            </div>
-        </div>
-
+                
     <script>
         // Função para alternar sidebar
         function toggleSidebar() {

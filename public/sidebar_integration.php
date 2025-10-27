@@ -12,7 +12,14 @@ if (!function_exists('includeSidebar')) {
 
 if (!function_exists('endSidebar')) {
     function endSidebar(): void {
-        echo "</div><!-- main-content-end -->";
+        global $current_page;
+        
+        // Se for página especial, as divs já foram fechadas no sidebar_unified.php
+        if (!in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
+            echo '</div>'; // fecha #pageContent se ainda estiver aberto
+            echo '</div>'; // fecha .main-content se ainda estiver aberto
+        }
+        
         echo "</body></html>";
     }
 }
