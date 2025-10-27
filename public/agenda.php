@@ -89,29 +89,33 @@ $espacos = $agenda->obterEspacos();
 $usuarios = $agenda->obterUsuariosComCores();
 $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
 
-// Iniciar sidebar com título - APENAS PARA GET
-includeSidebar('Agenda');
+// Criar conteúdo da página para ser injetado via sidebar_unified.php
+ob_start();
 ?>
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
+<script>
+// Adicionar CSS e JS ao head
+const linkCSS = document.createElement('link');
+linkCSS.rel = 'stylesheet';
+linkCSS.href = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css';
+document.head.appendChild(linkCSS);
+
+const scriptFC = document.createElement('script');
+scriptFC.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js';
+document.head.appendChild(scriptFC);
+
+const scriptPT = document.createElement('script');
+scriptPT.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js';
+document.head.appendChild(scriptPT);
+</script>
 
 <style>
-        body {
+        .agenda-page-content {
             font-family: 'Inter', sans-serif;
-            background-color: #f4f7f6;
-            color: #333;
-            margin: 0;
-        }
-
-        .main-content {
-            margin-left: 250px;
             padding: 20px;
-            transition: margin-left 0.3s ease;
         }
 
-        .container {
+        .agenda-container {
             max-width: 1400px;
             margin: 0 auto;
             background-color: #fff;
@@ -459,7 +463,8 @@ includeSidebar('Agenda');
     }
 </style>
 
-<div class="container">
+<div class="agenda-page-content">
+<div class="agenda-container">
             <div class="toolbar">
                 <div class="toolbar-left">
                     <h1>🗓️ Agenda Interna</h1>
@@ -1097,4 +1102,12 @@ includeSidebar('Agenda');
             }
         });
     </script>
-<?php endSidebar(); ?>
+</div><!-- agenda-container -->
+</div><!-- agenda-page-content -->
+<?php
+$conteudo = ob_get_clean();
+require_once __DIR__ . '/sidebar_integration.php';
+includeSidebar('Agenda');
+echo $conteudo;
+endSidebar();
+?>
