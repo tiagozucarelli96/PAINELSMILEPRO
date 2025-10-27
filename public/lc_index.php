@@ -126,9 +126,9 @@ try {
             <div class="recent-item-info">
                 <div class="recent-item-name"><?= htmlspecialchars($fornecedor['nome']) ?></div>
                 <div class="recent-item-details">
-                    📧 <?= htmlspecialchars($fornecedor['email']) ?>
+                    📧 <?= htmlspecialchars($fornecedor['email'] ?? '') ?>
                     <?php if ($fornecedor['telefone']): ?>
-                    | 📞 <?= htmlspecialchars($fornecedor['telefone']) ?>
+                    | 📞 <?= htmlspecialchars($fornecedor['telefone'] ?? '') ?>
                     <?php endif; ?>
                 </div>
             </div>
