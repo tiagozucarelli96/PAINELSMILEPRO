@@ -824,8 +824,9 @@ if ($current_page === 'dashboard') {
     if (file_exists($page_path)) {
         // Páginas que já têm sidebar integrada - não processar
         if (in_array($current_page, ['agenda', 'demandas'])) {
-            // Deixar página se renderizar sozinha
-            exit;
+            // Retornar sem dashboard_js - página vai renderizar sozinha
+            $dashboard_js = "// Página tem sidebar própria";
+            goto skip_dashboard_js;
         }
         
         // Capturar o conteúdo da página
@@ -859,6 +860,8 @@ if ($current_page === 'dashboard') {
         });";
     }
 }
+
+skip_dashboard_js:
 ?>
 
 <!DOCTYPE html>
