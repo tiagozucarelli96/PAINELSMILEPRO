@@ -205,10 +205,6 @@ ob_start();
 ?>
 
 <style>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kardex - Histórico de Movimentos</title>
     <link rel="stylesheet" href="estilo.css">
     <link rel="stylesheet" href="css/smile-ui.css">
     <style>
