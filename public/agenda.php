@@ -230,6 +230,8 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            margin: 0;
+            margin-top: 0 !important;
         }
 
         .legend {
