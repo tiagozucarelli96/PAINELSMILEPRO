@@ -1050,6 +1050,7 @@ includeSidebar('Agenda');
                 if (data.success) {
                     // Sucesso
                     submitBtn.innerHTML = '✅ Salvo!';
+                    alert('✅ Bloqueio criado com sucesso!');
                     setTimeout(() => {
                         if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
                             calendar.refetchEvents();

@@ -235,8 +235,9 @@ class AgendaHelper {
      * Obter eventos para calendário
      */
     public function obterEventosCalendario($usuario_id, $inicio, $fim, $filtros = []) {
-        $where_conditions = ["ae.inicio >= ?", "ae.fim <= ?"];
-        $params = [$inicio, $fim];
+        // Mostrar eventos que se sobrepõem ao período solicitado
+        $where_conditions = ["(ae.inicio < ? AND ae.fim > ?)"];
+        $params = [$fim, $inicio];
         
         // Filtro por responsável
         if (isset($filtros['responsavel_id']) && $filtros['responsavel_id']) {
