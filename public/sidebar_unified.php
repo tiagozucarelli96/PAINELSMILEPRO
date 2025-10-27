@@ -1571,6 +1571,8 @@ skip_dashboard_js:
         
         <?php if (!empty($dashboard_js) && $dashboard_js !== ""): ?>
             <?= $dashboard_js ?>
+        <?php else: ?>
+            // Página com sidebar própria - não renderizar dashboard_js
         <?php endif; ?>
         
         // Funções do modal de pagamento
