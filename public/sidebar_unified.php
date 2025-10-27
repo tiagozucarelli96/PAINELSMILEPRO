@@ -822,6 +822,12 @@ if ($current_page === 'dashboard') {
 } else {
     // Para outras páginas, incluir o conteúdo da página atual
     if (file_exists($page_path)) {
+        // Páginas com conteúdo próprio - não processar via AJAX
+        if (in_array($current_page, ['agenda', 'demandas'])) {
+            // Incluir página diretamente
+            include $page_path;
+            exit;
+        }
         
         // Capturar o conteúdo da página
         ob_start();
