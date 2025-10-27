@@ -61,12 +61,15 @@ header('Content-Type: text/html; charset=utf-8');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Demandas - GRUPO Smile EVENTOS</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="estilo.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: #f4f7f6; }
     </style>
 </head>
 <body>
+    <?php require_once __DIR__ . '/sidebar_unified.php'; ?>
+    
 <div id="pageContent">
 <div class="page-container">
     <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
