@@ -56,8 +56,9 @@ includeSidebar('Demandas');
 
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
+</style>
 
+<div class="page-container">
     <div class="main-content">
         <div class="container">
             <div class="header-actions">
