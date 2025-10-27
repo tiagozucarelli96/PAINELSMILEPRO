@@ -2,7 +2,7 @@
 // comercial_degustacoes.php — Lista e gestão de degustações
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
@@ -129,6 +129,9 @@ $sql .= " ORDER BY d.data DESC, d.created_at DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Criar conteúdo da página
+ob_start();
 ?>
 
 <div class="page-container">
@@ -305,5 +308,8 @@ $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
 <?php
-// Página finalizada - sidebar já está incluída no sidebar_unified.php
+$conteudo = ob_get_clean();
+includeSidebar('Degustações');
+echo $conteudo;
+endSidebar();
 ?>
