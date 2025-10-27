@@ -2,7 +2,7 @@
 // demandas.php — Sistema principal de demandas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/demandas_helper.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
@@ -11,11 +11,11 @@ require_once __DIR__ . '/lc_permissions_helper.php';
 if (!lc_can_access_demandas()) {
     header('Location: index.php?page=dashboard');
     exit;
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Demandas');
 }
+
+// Iniciar sidebar com título
+includeSidebar('Demandas');
+setPageTitle('Demandas');
 
 $demandas = new DemandasHelper();
 $usuario_id = $_SESSION['user_id'] ?? 1;
@@ -34,10 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $quadro_id = $demandas->criarQuadro($nome, $descricao, $cor, $usuario_id);
                 header('Location: demandas_quadro.php?id=' . $quadro_id);
                 exit;
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Demandas');
             }
             break;
             
@@ -72,7 +68,7 @@ $quadros = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <div class="page-container">
-    <?php include __DIR__ . '/sidebar.php'; ?>
+    <!-- sidebar.php removido; sidebar é carregada via includeSidebar() -->
 
     <div class="main-content">
         <div class="container">

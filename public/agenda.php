@@ -3,7 +3,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
-require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 
 // Verificar permissões
@@ -15,8 +15,8 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
     exit;
 }
 
-// Iniciar sidebar
-includeSidebar();
+// Iniciar sidebar com título
+includeSidebar('Agenda');
 setPageTitle('Agenda');
 addBreadcrumb([
     ['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'],
@@ -472,7 +472,7 @@ $agenda_dia = $agenda->obterAgendaDia($usuario_id, 24);
     </style>
 </head>
 <body>
-    <?php include __DIR__ . '/sidebar.php'; ?>
+    <!-- sidebar antiga removida; o includeSidebar() já a carrega -->
 
     <div class="main-content">
         <div class="container">
