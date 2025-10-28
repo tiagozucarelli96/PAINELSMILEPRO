@@ -635,12 +635,16 @@ includeSidebar('Agenda');
                 </div>
                 
                 <div id="conversionGroup" style="display: none;">
+                    <!-- Campos ocultos com valores padrão -->
+                    <input type="hidden" id="compareceu_hidden" name="compareceu" value="1">
+                    <input type="hidden" id="fechou_contrato_hidden" name="fechou_contrato" value="0">
+                    
                     <div class="form-row" style="display: flex; gap: 20px; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                            <input type="checkbox" id="compareceu" name="compareceu" style="margin: 0; width: 16px; height: 16px;"> Não Compareceu
+                            <input type="checkbox" id="compareceu" style="margin: 0; width: 16px; height: 16px;"> Não Compareceu
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                            <input type="checkbox" id="fechou_contrato" name="fechou_contrato" style="margin: 0; width: 16px; height: 16px;"> Fechou Contrato
+                            <input type="checkbox" id="fechou_contrato" style="margin: 0; width: 16px; height: 16px;"> Fechou Contrato
                         </label>
                     </div>
                 </div>
@@ -1127,26 +1131,22 @@ includeSidebar('Agenda');
             // Adicionar ação
             formData.append('acao', acao);
             
-            // Converter valores de checkbox para boolean corretamente
-            // SEMPRE definir os valores - nunca deixar vazio
+            // Atualizar campos ocultos baseado nos checkboxes
             const compareceuEl = document.getElementById('compareceu');
             const fechouContratoEl = document.getElementById('fechou_contrato');
+            const compareceuHidden = document.getElementById('compareceu_hidden');
+            const fechouContratoHidden = document.getElementById('fechou_contrato_hidden');
             
-            if (compareceuEl) {
-                // Inverter lógica: marcado = false, desmarcado = true
-                const value = compareceuEl.checked ? '0' : '1';
-                formData.set('compareceu', value);
-                console.log('compareceu:', value, compareceuEl.checked);
-            } else {
-                formData.set('compareceu', '1'); // Default: compareceu
+            if (compareceuEl && compareceuHidden) {
+                // Inverter: marcado = não compareceu (0), desmarcado = compareceu (1)
+                compareceuHidden.value = compareceuEl.checked ? '0' : '1';
+                console.log('compareceu:', compareceuHidden.value, 'checked:', compareceuEl.checked);
             }
             
-            if (fechouContratoEl) {
-                const value = fechouContratoEl.checked ? '1' : '0';
-                formData.set('fechou_contrato', value);
-                console.log('fechou_contrato:', value, fechouContratoEl.checked);
-            } else {
-                formData.set('fechou_contrato', '0'); // Default: não fechou
+            if (fechouContratoEl && fechouContratoHidden) {
+                // Normal: marcado = fechou (1), desmarcado = não fechou (0)
+                fechouContratoHidden.value = fechouContratoEl.checked ? '1' : '0';
+                console.log('fechou_contrato:', fechouContratoHidden.value, 'checked:', fechouContratoEl.checked);
             }
             
             // Mostrar loading
