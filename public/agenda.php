@@ -835,6 +835,16 @@ includeSidebar('Agenda');
             return d.toISOString().slice(0, 16);
         }
         
+        // Auto-preencer data fim ao preencher data início
+        document.getElementById('inicio').addEventListener('change', function() {
+            const inicio = this.value;
+            if (inicio && !document.getElementById('fim').value) {
+                const inicioDate = new Date(inicio);
+                const fimDate = new Date(inicioDate.getTime() + 60 * 60 * 1000); // +1 hora
+                document.getElementById('fim').value = formatDateTimeLocal(fimDate);
+            }
+        });
+        
         // Verificar permissões
         function canCreateEvents() {
             return <?= $agenda->canCreateEvents($usuario_id) ? 'true' : 'false' ?>;
@@ -1143,14 +1153,21 @@ includeSidebar('Agenda');
                     submitBtn.innerHTML = '✅ Salvo!';
                     
                     // Mostrar mensagem suspensa
-                    const tipoEvento = formData.get('tipo') === 'bloqueio' ? 'Bloqueio' : 'Visita';
-                    showToast('✅ ' + tipoEvento + ' criado com sucesso!', 'success');
+                    const tipoEvento = formData.get('eventoTipo') || formData.get('tipo');
+                    const tipoText = tipoEvento === 'bloqueio' ? 'Bloqueio' : 'Visita';
+                    showToast('✅ ' + tipoText + ' criado com sucesso!', 'success');
                     
                     setTimeout(() => {
                         if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
                             calendar.refetchEvents();
                         }
                         closeEventModal();
+                        
+                        // Restaurar botão após fechar modal
+                        setTimeout(() => {
+                            submitBtn.innerHTML = originalText;
+                            submitBtn.disabled = false;
+                        }, 500);
                     }, 1000);
                 } else {
                     // Erro
