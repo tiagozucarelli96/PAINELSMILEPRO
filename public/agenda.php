@@ -643,10 +643,6 @@ includeSidebar('Agenda');
                             <input type="checkbox" id="fechou_contrato" name="fechou_contrato" style="margin: 0; width: 16px; height: 16px;"> Fechou Contrato
                         </label>
                     </div>
-                    <div class="form-group">
-                        <label for="fechou_ref">Referência do Contrato</label>
-                        <input type="text" id="fechou_ref" name="fechou_ref">
-                    </div>
                 </div>
                 
                 <div id="conflictWarning" class="conflict-warning" style="display: none;">
@@ -808,8 +804,6 @@ includeSidebar('Agenda');
                 // Inverter lógica: marcado = Não Compareceu
                 document.getElementById('compareceu').checked = !(compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
                 document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1 || fechouContrato === 't' || fechouContrato === 'T');
-                document.getElementById('fechou_ref').value = event.extendedProps.fechou_ref || '';
-                
                 // Mostrar/ocultar campos baseado no tipo
                 espacoGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
                 statusGroup.style.display = 'block';
