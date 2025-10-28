@@ -715,7 +715,7 @@ includeSidebar('Agenda');
                     list: 'Lista'
                 },
                 events: function(info, successCallback, failureCallback) {
-                    loadEvents(info.start, info.end);
+                    loadEvents(info.start, info.end, successCallback, failureCallback);
                 },
                 eventClick: function(info) {
                     openEventModal('edit', info.event);
@@ -735,7 +735,7 @@ includeSidebar('Agenda');
         });
         
         // Carregar eventos
-        function loadEvents(start, end) {
+        function loadEvents(start, end, successCallback, failureCallback) {
             const params = new URLSearchParams({
                 start: start.toISOString(),
                 end: end.toISOString(),
@@ -745,11 +745,15 @@ includeSidebar('Agenda');
             fetch(`agenda_api.php?${params}`)
                 .then(response => response.json())
                 .then(data => {
-                    calendar.removeAllEvents();
-                    calendar.addEventSource(data);
+                    if (successCallback) {
+                        successCallback(data);
+                    }
                 })
                 .catch(error => {
                     console.error('Erro ao carregar eventos:', error);
+                    if (failureCallback) {
+                        failureCallback(error);
+                    }
                 });
         }
         
