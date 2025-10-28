@@ -40,12 +40,20 @@ try {
     // Formatar para FullCalendar
     $eventos_formatados = [];
     foreach ($eventos as $evento) {
+        // Definir cor baseada no tipo se não tiver cor_agenda
+        $cor = $evento['cor_agenda'] ?? $evento['cor_evento'] ?? '#3b96f7';
+        if ($evento['tipo'] === 'bloqueio') {
+            $cor = '#dc2626'; // Vermelho para bloqueios
+        } elseif ($evento['tipo'] === 'visita') {
+            $cor = '#10b981'; // Verde para visitas
+        }
+        
         $eventos_formatados[] = [
             'id' => $evento['id'],
             'title' => $evento['titulo'],
             'start' => $evento['inicio'],
             'end' => $evento['fim'],
-            'color' => $evento['cor_agenda'],
+            'color' => $cor,
             'extendedProps' => [
                 'tipo' => $evento['tipo'],
                 'descricao' => $evento['descricao'],
