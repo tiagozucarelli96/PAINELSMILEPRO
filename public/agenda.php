@@ -62,10 +62,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
             $fechou_contrato = $_POST['fechou_contrato'] ?? '0';
             
             // Se receber string vazia, usar default
-            if ($compareceu === '') $compareceu = '1';
-            if ($fechou_contrato === '') $fechou_contrato = '0';
+            if ($compareceu === '' || $compareceu === null) $compareceu = '1';
+            if ($fechou_contrato === '' || $fechou_contrato === null) $fechou_contrato = '0';
             
-            error_log("Valores validados - compareceu: $compareceu, fechou_contrato: $fechou_contrato");
+            // Debug: Log DOIS NÍVEIS - valores absolutos recebidos
+            error_log("POST RAW - compareceu: '" . var_export($compareceu, true) . "', fechou_contrato: '" . var_export($fechou_contrato, true) . "'");
+            error_log("POST PROCESSADO - compareceu: '$compareceu', fechou_contrato: '$fechou_contrato'");
             
             $dados = [
                 'tipo' => $_POST['tipo'],

@@ -206,6 +206,20 @@ class AgendaHelper {
                 WHERE id = ?
             ");
             
+            // VALIDAR fechou_ref ANTES de executar
+            $fechou_ref = $dados['fechou_ref'] ?? null;
+            if ($fechou_ref === '') $fechou_ref = null;
+            
+            // Garantir que participantes seja array válido
+            $participantes = $dados['participantes'] ?? [];
+            if (is_array($participantes)) {
+                $participantes_json = json_encode($participantes);
+            } else {
+                $participantes_json = '[]';
+            }
+            
+            error_log("Executando SQL com valores: compareceu=" . var_export($compareceu, true) . ", fechou_contrato=" . var_export($fechou_contrato, true) . ", fechou_ref=" . var_export($fechou_ref, true));
+            
             $stmt->execute([
                 $dados['tipo'],
                 $dados['titulo'],
@@ -218,8 +232,8 @@ class AgendaHelper {
                 $dados['status'],
                 $compareceu,
                 $fechou_contrato,
-                $dados['fechou_ref'],
-                json_encode($dados['participantes'] ?? []),
+                $fechou_ref,
+                $participantes_json,
                 $evento_id
             ]);
             
