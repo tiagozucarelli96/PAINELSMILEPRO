@@ -635,9 +635,9 @@ includeSidebar('Agenda');
                 </div>
                 
                 <div id="conversionGroup" style="display: none;">
-                    <!-- Campos ocultos com valores padrão -->
-                    <input type="hidden" id="compareceu_hidden" name="compareceu" value="1">
-                    <input type="hidden" id="fechou_contrato_hidden" name="fechou_contrato" value="0">
+                    <!-- Campos ocultos SEM name para não serem enviados diretamente -->
+                    <input type="hidden" id="compareceu_hidden" value="1">
+                    <input type="hidden" id="fechou_contrato_hidden" value="0">
                     
                     <div class="form-row" style="display: flex; gap: 20px; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
@@ -1131,22 +1131,29 @@ includeSidebar('Agenda');
             // Adicionar ação
             formData.append('acao', acao);
             
-            // Atualizar campos ocultos baseado nos checkboxes
+            // Atualizar campos ocultos baseado nos checkboxes E adicionar ao FormData
             const compareceuEl = document.getElementById('compareceu');
             const fechouContratoEl = document.getElementById('fechou_contrato');
             const compareceuHidden = document.getElementById('compareceu_hidden');
             const fechouContratoHidden = document.getElementById('fechou_contrato_hidden');
             
+            // SEMPRE definir valores no FormData - NUNCA deixar vazio
             if (compareceuEl && compareceuHidden) {
-                // Inverter: marcado = não compareceu (0), desmarcado = compareceu (1)
-                compareceuHidden.value = compareceuEl.checked ? '0' : '1';
-                console.log('compareceu:', compareceuHidden.value, 'checked:', compareceuEl.checked);
+                const value = compareceuEl.checked ? '0' : '1';
+                compareceuHidden.value = value;
+                formData.set('compareceu', value);
+                console.log('✅ compareceu enviado:', value);
+            } else {
+                formData.set('compareceu', '1'); // Default: compareceu
             }
             
             if (fechouContratoEl && fechouContratoHidden) {
-                // Normal: marcado = fechou (1), desmarcado = não fechou (0)
-                fechouContratoHidden.value = fechouContratoEl.checked ? '1' : '0';
-                console.log('fechou_contrato:', fechouContratoHidden.value, 'checked:', fechouContratoEl.checked);
+                const value = fechouContratoEl.checked ? '1' : '0';
+                fechouContratoHidden.value = value;
+                formData.set('fechou_contrato', value);
+                console.log('✅ fechou_contrato enviado:', value);
+            } else {
+                formData.set('fechou_contrato', '0'); // Default: não fechou
             }
             
             // Mostrar loading
