@@ -1146,29 +1146,40 @@ includeSidebar('Agenda');
             // Adicionar ação
             formData.append('acao', acao);
             
-            // Atualizar campos ocultos baseado nos checkboxes E adicionar ao FormData
+            // REMOVER qualquer campo que possa estar vazio ANTES de adicionar os corretos
+            if (formData.has('compareceu')) formData.delete('compareceu');
+            if (formData.has('fechou_contrato')) formData.delete('fechou_contrato');
+            if (formData.has('fechou_ref')) formData.delete('fechou_ref');
+            if (formData.has('participantes')) formData.delete('participantes');
+            
+            // SEMPRE definir valores VALIDOS - NUNCA string vazia
             const compareceuEl = document.getElementById('compareceu');
             const fechouContratoEl = document.getElementById('fechou_contrato');
-            const compareceuHidden = document.getElementById('compareceu_hidden');
-            const fechouContratoHidden = document.getElementById('fechou_contrato_hidden');
             
-            // SEMPRE definir valores no FormData - NUNCA deixar vazio
-            if (compareceuEl && compareceuHidden) {
+            if (compareceuEl) {
                 const value = compareceuEl.checked ? '0' : '1';
-                compareceuHidden.value = value;
-                formData.set('compareceu', value);
-                console.log('✅ compareceu enviado:', value);
+                formData.append('compareceu', value);
+                console.log('✅ compareceu:', compareceuEl.checked, '→ enviado:', value);
             } else {
-                formData.set('compareceu', '1'); // Default: compareceu
+                formData.append('compareceu', '1'); // Default
             }
             
-            if (fechouContratoEl && fechouContratoHidden) {
+            if (fechouContratoEl) {
                 const value = fechouContratoEl.checked ? '1' : '0';
-                fechouContratoHidden.value = value;
-                formData.set('fechou_contrato', value);
-                console.log('✅ fechou_contrato enviado:', value);
+                formData.append('fechou_contrato', value);
+                console.log('✅ fechou_contrato:', fechouContratoEl.checked, '→ enviado:', value);
             } else {
-                formData.set('fechou_contrato', '0'); // Default: não fechou
+                formData.append('fechou_contrato', '0'); // Default
+            }
+            
+            // Campos opcionais - garantir que existam
+            if (formData.has('fechou_ref')) {
+                formData.delete('fechou_ref');
+                formData.append('fechou_ref', formData.get('fechou_ref') || '');
+            }
+            
+            if (!formData.has('participantes')) {
+                formData.append('participantes', '[]');
             }
             
             // Mostrar loading
