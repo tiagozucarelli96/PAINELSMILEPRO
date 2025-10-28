@@ -536,21 +536,26 @@ includeSidebar('Agenda');
 
             <!-- Legenda -->
             <div class="legend">
+                <!-- Legenda por tipo de evento -->
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #dc2626;"></div>
+                    <span>Bloqueio</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #10b981;"></div>
+                    <span>Visita</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #3b96f7;"></div>
+                    <span>Outro</span>
+                </div>
+                <!-- Legenda por usuário -->
                 <?php foreach ($usuarios as $user): ?>
                     <div class="legend-item">
                         <div class="legend-color" style="background-color: <?= htmlspecialchars($user['cor_agenda']) ?>"></div>
                         <span class="legend-text"><?= htmlspecialchars($user['nome']) ?></span>
                     </div>
                 <?php endforeach; ?>
-                <div class="legend-item">
-                    <span class="legend-text">👤 Visita</span>
-                </div>
-                <div class="legend-item">
-                    <span class="legend-text">🔒 Bloqueio</span>
-                </div>
-                <div class="legend-item">
-                    <span class="legend-text">🕓 Outro</span>
-                </div>
             </div>
         </div>
     </div>
