@@ -62,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'espaco_id' => $_POST['espaco_id'] ?: null,
                 'lembrete_minutos' => $_POST['lembrete_minutos'],
                 'status' => $_POST['status'],
-                'compareceu' => isset($_POST['compareceu']),
-                'fechou_contrato' => isset($_POST['fechou_contrato']),
+                'compareceu' => $_POST['compareceu'] ?? '1',
+                'fechou_contrato' => $_POST['fechou_contrato'] ?? '0',
                 'fechou_ref' => $_POST['fechou_ref'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
                 'forcar_conflito' => isset($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
