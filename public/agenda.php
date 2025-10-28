@@ -780,7 +780,13 @@ includeSidebar('Agenda');
                 
                 document.getElementById('eventId').value = event.id;
                 document.getElementById('eventTipo').value = eventTipo;
-                document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id || '1';
+                // Carregar responsável corretamente
+                const responsavelId = event.extendedProps.responsavel_usuario_id;
+                if (responsavelId) {
+                    document.getElementById('responsavel').value = responsavelId;
+                } else {
+                    document.getElementById('responsavel').value = '1';
+                }
                 
                 // Carregar espaço corretamente
                 const espacoId = event.extendedProps.espaco_id;
