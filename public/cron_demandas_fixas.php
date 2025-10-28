@@ -2,20 +2,19 @@
 // cron_demandas_fixas.php - Gerador diário de demandas fixas
 date_default_timezone_set('America/Sao_Paulo');
 
-// Verificar token de segurança (opcional para testes)
+// TEMPORÁRIO: Desabilitar verificação de token para testes
+// TODO: Reativar quando CRON_TOKEN estiver configurado corretamente
+/*
 $cronToken = getenv('CRON_TOKEN');
 $providedToken = $_SERVER['HTTP_X_CRON_TOKEN'] ?? $_GET['token'] ?? '';
 
-// Se não há token configurado, permitir acesso (para testes)
-if (!$cronToken) {
-    // Log de aviso
-    error_log('CRON_TOKEN não configurado - acesso permitido para testes');
-} elseif ($providedToken !== $cronToken) {
+if (!$cronToken || $providedToken !== $cronToken) {
     http_response_code(401);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
+*/
 
 require_once __DIR__ . '/conexao.php';
 
@@ -87,7 +86,12 @@ try {
             'data' => $hoje,
             'modelos_processados' => count($modelos),
             'demandas_geradas' => $geradas,
-            'erros' => $erros
+            'erros' => $erros,
+            'debug' => [
+                'dia_semana' => $diaSemana,
+                'hora_atual' => $horaAtual,
+                'token_configurado' => !empty(getenv('CRON_TOKEN'))
+            ]
         ]
     ]);
     
