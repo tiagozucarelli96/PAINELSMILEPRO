@@ -172,21 +172,30 @@ class AgendaHelper {
             }
             
             // Converter valores booleanos corretamente
-            // Para compareceu: invertido - marcado = false (0), desmarcado = true (1)
+            // VALIDAR primeiro - NUNCA permitir string vazia
             $compareceu_val = $dados['compareceu'] ?? '1';
+            $fechou_contrato_val = $dados['fechou_contrato'] ?? '0';
+            
+            // Se string vazia chegou aqui, substituir por default
+            if ($compareceu_val === '' || $compareceu_val === null) $compareceu_val = '1';
+            if ($fechou_contrato_val === '' || $fechou_contrato_val === null) $fechou_contrato_val = '0';
+            
             // Debug
-            error_log("compareceu recebido: " . var_export($compareceu_val, true));
+            error_log("compareceu recebido no helper: " . var_export($compareceu_val, true));
+            error_log("fechou_contrato recebido no helper: " . var_export($fechou_contrato_val, true));
+            
+            // Para compareceu: '1' = true, '0' = false
+            // Lógica invertida: marcado no checkbox = '0' (não compareceu)
             $compareceu = ($compareceu_val === '1' || $compareceu_val === 1 || $compareceu_val === true || $compareceu_val === 'true');
             
-            // Para fechou_contrato: marcado = true (1), desmarcado = false (0)
-            $fechou_contrato_val = $dados['fechou_contrato'] ?? '0';
-            // Debug
-            error_log("fechou_contrato recebido: " . var_export($fechou_contrato_val, true));
+            // Para fechou_contrato: '1' = true, '0' = false
             $fechou_contrato = ($fechou_contrato_val === '1' || $fechou_contrato_val === 1 || $fechou_contrato_val === true || $fechou_contrato_val === 'true');
             
-            // Converter para boolean strict
+            // Converter para boolean strict - GARANTE que seja true ou false
             $compareceu = (bool)$compareceu;
             $fechou_contrato = (bool)$fechou_contrato;
+            
+            error_log("Valores finais boolean: compareceu=" . var_export($compareceu, true) . ", fechou_contrato=" . var_export($fechou_contrato, true));
             
             $stmt = $this->pdo->prepare("
                 UPDATE agenda_eventos SET 
