@@ -56,6 +56,292 @@ includeSidebar('Demandas');
 
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    /* Layout Principal */
+    .page-container {
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .header-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .header-actions h1 {
+        font-size: 2rem;
+        color: #1f2937;
+        font-weight: 600;
+    }
+    
+    .header-actions > div {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+    
+    /* Botões */
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 500;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+        border: none;
+    }
+    
+    .btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background: #2563eb;
+    }
+    
+    .btn-outline {
+        background: white;
+        color: #3b82f6;
+        border: 2px solid #3b82f6;
+    }
+    
+    .btn-outline:hover {
+        background: #eff6ff;
+    }
+    
+    /* Agenda Section */
+    .agenda-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .agenda-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #1f2937;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .agenda-item {
+        background: #f9fafb;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 0.75rem;
+        border-left: 4px solid #3b82f6;
+    }
+    
+    .agenda-item-title {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: #1f2937;
+    }
+    
+    .agenda-item-meta {
+        font-size: 0.875rem;
+        color: #6b7280;
+    }
+    
+    .agenda-actions {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        gap: 1rem;
+    }
+    
+    /* Quadros Section */
+    .quadros-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1rem;
+    }
+    
+    .quadro-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+        border: 2px solid #e5e7eb;
+    }
+    
+    .quadro-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .quadro-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .quadro-nome {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #1f2937;
+    }
+    
+    .quadro-cor {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+    }
+    
+    .quadro-stats {
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 1rem;
+    }
+    
+    .stat {
+        text-align: center;
+    }
+    
+    .stat-number {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #3b82f6;
+    }
+    
+    .stat-label {
+        font-size: 0.875rem;
+        color: #6b7280;
+        margin-top: 0.25rem;
+    }
+    
+    .quadro-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .quadro-actions .btn {
+        flex: 1;
+        justify-content: center;
+    }
+    
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        background: white;
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+    
+    .empty-state-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.25rem;
+        margin-bottom: 0.5rem;
+        color: #1f2937;
+    }
+    
+    .empty-state p {
+        color: #6b7280;
+        margin-bottom: 1.5rem;
+    }
+    
+    /* Modal */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 90%;
+        position: relative;
+    }
+    
+    .close-button {
+        position: absolute;
+        right: 1rem;
+        top: 1rem;
+        font-size: 2rem;
+        cursor: pointer;
+        color: #6b7280;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #1f2937;
+    }
+    
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        margin-top: 2rem;
+    }
+    
+    /* Notification Badge */
+    .notification-badge {
+        position: relative;
+    }
+    
+    .notification-badge::after {
+        content: attr(data-count);
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        background: #ef4444;
+        color: white;
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        border-radius: 10px;
+        min-width: 20px;
+        text-align: center;
+    }
 </style>
 
 <div class="page-container">
