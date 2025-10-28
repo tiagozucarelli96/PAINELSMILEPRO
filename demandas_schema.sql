@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS demandas (
   responsavel_id INTEGER NOT NULL,
   criador_id INTEGER NOT NULL,
   whatsapp VARCHAR(32),
-  status TEXT NOT NULL DEFAULT 'pendente', -- pendente|vencida|concluida
+  status TEXT NOT NULL DEFAULT 'pendente',
   data_criacao TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   data_conclusao TIMESTAMPTZ
 );
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS demandas_arquivos (
   nome_original TEXT NOT NULL,
   mime_type VARCHAR(100) NOT NULL,
   tamanho_bytes BIGINT NOT NULL,
-  chave_storage TEXT NOT NULL, -- exemplo: demandas/2025/10/uuid.ext
+  chave_storage TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_demandas_arquivos_demanda ON demandas_arquivos (demanda_id, criado_em);
@@ -46,8 +46,8 @@ CREATE TABLE IF NOT EXISTS demandas_modelos (
   titulo VARCHAR(140) NOT NULL,
   descricao_padrao TEXT NOT NULL,
   responsavel_id INTEGER NOT NULL,
-  dia_semana INT NOT NULL,            -- 0..6 (dom..sab)
-  prazo_offset_dias INT NOT NULL,     -- 0 = hoje; 2 = +2 dias
+  dia_semana INT NOT NULL,
+  prazo_offset_dias INT NOT NULL,
   hora_geracao TIME NOT NULL DEFAULT '09:00',
   ativo BOOLEAN NOT NULL DEFAULT TRUE
 );
