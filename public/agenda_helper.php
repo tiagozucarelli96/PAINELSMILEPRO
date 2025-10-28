@@ -260,7 +260,7 @@ class AgendaHelper {
         
         $where_clause = implode(' AND ', $where_conditions);
         
-        $stmt = $this->pdo->prepare("
+            $stmt = $this->pdo->prepare("
             SELECT 
                 ae.id,
                 ae.tipo,
@@ -272,6 +272,8 @@ class AgendaHelper {
                 ae.compareceu,
                 ae.fechou_contrato,
                 ae.cor_evento,
+                ae.responsavel_usuario_id,
+                ae.espaco_id,
                 u.nome as responsavel_nome,
                 u.cor_agenda as cor_agenda,
                 esp.nome as espaco_nome,
