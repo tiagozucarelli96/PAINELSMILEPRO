@@ -52,6 +52,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
             
         case 'atualizar_evento':
             $evento_id = $_POST['evento_id'];
+            
+            // Debug: log dos valores recebidos
+            error_log("POST compareceu: " . var_export($_POST['compareceu'] ?? 'NULL', true));
+            error_log("POST fechou_contrato: " . var_export($_POST['fechou_contrato'] ?? 'NULL', true));
+            
+            // VALIDAR que temos '1' ou '0', nunca vazio
+            $compareceu = $_POST['compareceu'] ?? '1';
+            $fechou_contrato = $_POST['fechou_contrato'] ?? '0';
+            
+            // Se receber string vazia, usar default
+            if ($compareceu === '') $compareceu = '1';
+            if ($fechou_contrato === '') $fechou_contrato = '0';
+            
+            error_log("Valores validados - compareceu: $compareceu, fechou_contrato: $fechou_contrato");
+            
             $dados = [
                 'tipo' => $_POST['tipo'],
                 'titulo' => $_POST['titulo'],
@@ -62,8 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'espaco_id' => $_POST['espaco_id'] ?: null,
                 'lembrete_minutos' => $_POST['lembrete_minutos'],
                 'status' => $_POST['status'],
-                'compareceu' => $_POST['compareceu'] ?? '1',
-                'fechou_contrato' => $_POST['fechou_contrato'] ?? '0',
+                'compareceu' => $compareceu,
+                'fechou_contrato' => $fechou_contrato,
                 'fechou_ref' => $_POST['fechou_ref'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
                 'forcar_conflito' => isset($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
