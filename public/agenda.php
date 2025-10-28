@@ -780,7 +780,7 @@ includeSidebar('Agenda');
                 
                 document.getElementById('eventId').value = event.id;
                 document.getElementById('eventTipo').value = eventTipo;
-                document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id || '';
+                document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id || '1';
                 document.getElementById('espaco').value = event.extendedProps.espaco_id || '';
                 document.getElementById('titulo').value = event.title;
                 document.getElementById('inicio').value = formatDateTimeLocal(event.start);
