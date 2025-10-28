@@ -8,72 +8,56 @@ try {
     $pdo = $GLOBALS['pdo'];
     $hoje = date('Y-m-d');
     
-    // Verificar se as tabelas existem
-    $stmt = $pdo->query("
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name IN ('demandas', 'demandas_modelos', 'demandas_modelos_log')
+    // Criar tabelas se não existirem (sem verificação prévia)
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS demandas (
+            id SERIAL PRIMARY KEY,
+            descricao TEXT NOT NULL,
+            prazo DATE NOT NULL,
+            responsavel_id INTEGER NOT NULL,
+            criador_id INTEGER NOT NULL,
+            whatsapp VARCHAR(32),
+            status TEXT NOT NULL DEFAULT 'pendente',
+            data_criacao TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            data_conclusao TIMESTAMPTZ
+        )
     ");
-    $tabelas_existentes = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
-    if (!in_array('demandas', $tabelas_existentes)) {
-        // Criar tabela demandas primeiro
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS demandas (
-                id SERIAL PRIMARY KEY,
-                descricao TEXT NOT NULL,
-                prazo DATE NOT NULL,
-                responsavel_id INTEGER NOT NULL,
-                criador_id INTEGER NOT NULL,
-                whatsapp VARCHAR(32),
-                status TEXT NOT NULL DEFAULT 'pendente',
-                data_criacao TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                data_conclusao TIMESTAMPTZ
-            )
-        ");
-    }
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS demandas_modelos (
+            id SERIAL PRIMARY KEY,
+            titulo VARCHAR(140) NOT NULL,
+            descricao_padrao TEXT NOT NULL,
+            responsavel_id INTEGER NOT NULL,
+            dia_semana INT NOT NULL,
+            prazo_offset_dias INT NOT NULL,
+            hora_geracao TIME NOT NULL DEFAULT '09:00',
+            ativo BOOLEAN NOT NULL DEFAULT TRUE
+        )
+    ");
     
-    if (!in_array('demandas_modelos', $tabelas_existentes)) {
-        // Criar tabela demandas_modelos
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS demandas_modelos (
-                id SERIAL PRIMARY KEY,
-                titulo VARCHAR(140) NOT NULL,
-                descricao_padrao TEXT NOT NULL,
-                responsavel_id INTEGER NOT NULL,
-                dia_semana INT NOT NULL,
-                prazo_offset_dias INT NOT NULL,
-                hora_geracao TIME NOT NULL DEFAULT '09:00',
-                ativo BOOLEAN NOT NULL DEFAULT TRUE
-            )
-        ");
-        
-        // Inserir modelo de exemplo
-        $stmt = $pdo->prepare("
-            INSERT INTO demandas_modelos (titulo, descricao_padrao, responsavel_id, dia_semana, prazo_offset_dias) 
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
-            'Relatório Semanal',
-            'Preparar relatório semanal de atividades e resultados',
-            1, // admin
-            1, // Segunda-feira
-            2  // Prazo: +2 dias
-        ]);
-    }
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS demandas_modelos_log (
+            id SERIAL PRIMARY KEY,
+            modelo_id INTEGER NOT NULL,
+            gerado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            demanda_id INTEGER
+        )
+    ");
     
-    if (!in_array('demandas_modelos_log', $tabelas_existentes)) {
-        // Criar tabela demandas_modelos_log
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS demandas_modelos_log (
-                id SERIAL PRIMARY KEY,
-                modelo_id INTEGER NOT NULL REFERENCES demandas_modelos(id) ON DELETE CASCADE,
-                gerado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                demanda_id INTEGER REFERENCES demandas(id)
-            )
-        ");
-    }
+    // Inserir modelo de exemplo se não existir
+    $stmt = $pdo->prepare("
+        INSERT INTO demandas_modelos (titulo, descricao_padrao, responsavel_id, dia_semana, prazo_offset_dias) 
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT DO NOTHING
+    ");
+    $stmt->execute([
+        'Relatório Semanal',
+        'Preparar relatório semanal de atividades e resultados',
+        1, // admin
+        1, // Segunda-feira
+        2  // Prazo: +2 dias
+    ]);
     
     $diaSemana = (int)date('w'); // 0=domingo, 6=sábado
     $horaAtual = date('H:i');
@@ -144,7 +128,7 @@ try {
             'debug' => [
                 'dia_semana' => $diaSemana,
                 'hora_atual' => $horaAtual,
-                'tabelas_criadas' => !in_array('demandas_modelos', $tabelas_existentes)
+                'tabelas_criadas' => true
             ]
         ]
     ]);
