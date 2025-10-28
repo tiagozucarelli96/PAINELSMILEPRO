@@ -264,6 +264,7 @@ class AgendaHelper {
                 ae.status,
                 ae.compareceu,
                 ae.fechou_contrato,
+                ae.cor_evento,
                 u.nome as responsavel_nome,
                 u.cor_agenda as cor_agenda,
                 esp.nome as espaco_nome,
