@@ -197,6 +197,13 @@ class AgendaHelper {
             
             error_log("Valores finais boolean: compareceu=" . var_export($compareceu, true) . ", fechou_contrato=" . var_export($fechou_contrato, true));
             
+            // CRÍTICO: PDO pode converter false para string vazia em PostgreSQL
+            // Converter explicitamente para PgSQL boolean format
+            $compareceu_db = $compareceu ? '1' : '0';
+            $fechou_contrato_db = $fechou_contrato ? '1' : '0';
+            
+            error_log("Valores para PostgreSQL: compareceu='$compareceu_db', fechou_contrato='$fechou_contrato_db'");
+            
             $stmt = $this->pdo->prepare("
                 UPDATE agenda_eventos SET 
                     tipo = ?, titulo = ?, descricao = ?, inicio = ?, fim = ?, 
@@ -220,6 +227,7 @@ class AgendaHelper {
             
             error_log("Executando SQL com valores: compareceu=" . var_export($compareceu, true) . ", fechou_contrato=" . var_export($fechou_contrato, true) . ", fechou_ref=" . var_export($fechou_ref, true));
             
+            // Usar valores convertidos para PostgreSQL em vez de boolean nativo
             $stmt->execute([
                 $dados['tipo'],
                 $dados['titulo'],
@@ -230,8 +238,8 @@ class AgendaHelper {
                 $dados['espaco_id'],
                 $dados['lembrete_minutos'],
                 $dados['status'],
-                $compareceu,
-                $fechou_contrato,
+                $compareceu_db,        // Usar string '1' ou '0' em vez de boolean
+                $fechou_contrato_db,   // Usar string '1' ou '0' em vez de boolean
                 $fechou_ref,
                 $participantes_json,
                 $evento_id
