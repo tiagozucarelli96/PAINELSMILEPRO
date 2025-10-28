@@ -1116,8 +1116,16 @@ includeSidebar('Agenda');
             formData.append('acao', acao);
             
             // Converter valores de checkbox para boolean corretamente
-            formData.set('compareceu', document.getElementById('compareceu').checked ? 'true' : 'false');
-            formData.set('fechou_contrato', document.getElementById('fechou_contrato').checked ? 'true' : 'false');
+            const compareceuChecked = document.getElementById('compareceu').checked;
+            const fechouContratoChecked = document.getElementById('fechou_contrato').checked;
+            
+            // Apenas definir se os checkboxes existem (para edição)
+            if (document.getElementById('compareceu')) {
+                formData.set('compareceu', compareceuChecked ? '1' : '0');
+            }
+            if (document.getElementById('fechou_contrato')) {
+                formData.set('fechou_contrato', fechouContratoChecked ? '1' : '0');
+            }
             
             // Mostrar loading
             const submitBtn = this.querySelector('button[type="submit"]');
