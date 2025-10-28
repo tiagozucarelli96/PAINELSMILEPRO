@@ -1128,16 +1128,25 @@ includeSidebar('Agenda');
             formData.append('acao', acao);
             
             // Converter valores de checkbox para boolean corretamente
-            const compareceuChecked = document.getElementById('compareceu').checked;
-            const fechouContratoChecked = document.getElementById('fechou_contrato').checked;
+            // SEMPRE definir os valores - nunca deixar vazio
+            const compareceuEl = document.getElementById('compareceu');
+            const fechouContratoEl = document.getElementById('fechou_contrato');
             
-            // Apenas definir se os checkboxes existem (para edição)
-            // Inverter lógica: marcado = Não Compareceu
-            if (document.getElementById('compareceu')) {
-                formData.set('compareceu', compareceuChecked ? '0' : '1'); // Invertido
+            if (compareceuEl) {
+                // Inverter lógica: marcado = false, desmarcado = true
+                const value = compareceuEl.checked ? '0' : '1';
+                formData.set('compareceu', value);
+                console.log('compareceu:', value, compareceuEl.checked);
+            } else {
+                formData.set('compareceu', '1'); // Default: compareceu
             }
-            if (document.getElementById('fechou_contrato')) {
-                formData.set('fechou_contrato', fechouContratoChecked ? '1' : '0');
+            
+            if (fechouContratoEl) {
+                const value = fechouContratoEl.checked ? '1' : '0';
+                formData.set('fechou_contrato', value);
+                console.log('fechou_contrato:', value, fechouContratoEl.checked);
+            } else {
+                formData.set('fechou_contrato', '0'); // Default: não fechou
             }
             
             // Mostrar loading

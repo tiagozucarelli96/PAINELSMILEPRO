@@ -173,13 +173,20 @@ class AgendaHelper {
             
             // Converter valores booleanos corretamente
             // Para compareceu: invertido - marcado = false (0), desmarcado = true (1)
-            $compareceu_val = $dados['compareceu'] ?? '1'; // Default = true (desmarcado no checkbox)
-            $compareceu = ($compareceu_val === '1' || $compareceu_val === 1 || $compareceu_val === true || $compareceu_val === 'true' || $compareceu_val === 'on');
+            $compareceu_val = $dados['compareceu'] ?? '1';
+            // Debug
+            error_log("compareceu recebido: " . var_export($compareceu_val, true));
+            $compareceu = ($compareceu_val === '1' || $compareceu_val === 1 || $compareceu_val === true || $compareceu_val === 'true');
             
             // Para fechou_contrato: marcado = true (1), desmarcado = false (0)
-            // Verificar explicitamente se é '1'
             $fechou_contrato_val = $dados['fechou_contrato'] ?? '0';
-            $fechou_contrato = ($fechou_contrato_val === '1');
+            // Debug
+            error_log("fechou_contrato recebido: " . var_export($fechou_contrato_val, true));
+            $fechou_contrato = ($fechou_contrato_val === '1' || $fechou_contrato_val === 1 || $fechou_contrato_val === true || $fechou_contrato_val === 'true');
+            
+            // Converter para boolean strict
+            $compareceu = (bool)$compareceu;
+            $fechou_contrato = (bool)$fechou_contrato;
             
             $stmt = $this->pdo->prepare("
                 UPDATE agenda_eventos SET 
