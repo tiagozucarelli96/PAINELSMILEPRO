@@ -159,15 +159,15 @@ class DemandasHelper {
     /**
      * Adicionar participante ao quadro
      */
-    public function adicionarParticipante($quadro_id, $usuario_id, $permissao, $convidado_por) {
+    public function adicionarParticipante($quadro_id, $usuario_id, $permissao, $convidado_por = null) {
         $stmt = $this->pdo->prepare("
-            INSERT INTO demandas_participantes (quadro_id, usuario_id, permissao, convidado_por) 
-            VALUES (?, ?, ?, ?)
+            INSERT INTO demandas_participantes (quadro_id, usuario_id, permissao) 
+            VALUES (?, ?, ?)
             ON CONFLICT (quadro_id, usuario_id) 
             DO UPDATE SET permissao = EXCLUDED.permissao
         ");
         
-        $stmt->execute([$quadro_id, $usuario_id, $permissao, $convidado_por]);
+        $stmt->execute([$quadro_id, $usuario_id, $permissao]);
         
         // Notificar usuário
         $this->criarNotificacao(
