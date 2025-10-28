@@ -106,13 +106,13 @@ class AgendaHelper {
             $stmt->execute([$dados['responsavel_usuario_id']]);
             $cor_responsavel = $stmt->fetchColumn();
             
-            // Criar evento
+            // Criar evento - valores padrão: checkboxes desmarcados
             $stmt = $this->pdo->prepare("
                 INSERT INTO agenda_eventos (
                     tipo, titulo, descricao, inicio, fim, responsavel_usuario_id, 
                     criado_por_usuario_id, espaco_id, lembrete_minutos, 
-                    participantes, cor_evento
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    compareceu, fechou_contrato, participantes, cor_evento
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '1', '0', ?, ?)
             ");
             
             $stmt->execute([
