@@ -312,11 +312,11 @@ class DemandasHelper {
      */
     public function criarNotificacao($usuario_id, $tipo, $titulo, $mensagem, $cartao_id = null) {
         $stmt = $this->pdo->prepare("
-            INSERT INTO demandas_notificacoes (usuario_id, tipo, titulo, mensagem, cartao_id) 
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO demandas_notificacoes (usuario_id, tipo, titulo, mensagem) 
+            VALUES (?, ?, ?, ?)
         ");
         
-        $stmt->execute([$usuario_id, $tipo, $titulo, $mensagem, $cartao_id]);
+        $stmt->execute([$usuario_id, $tipo, $titulo, $mensagem]);
         
         // Enviar e-mail se configurado
         $this->enviarEmailNotificacao($usuario_id, $titulo, $mensagem);
