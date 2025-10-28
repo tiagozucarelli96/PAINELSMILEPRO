@@ -77,6 +77,14 @@ includeSidebar('Demandas');
         font-size: 2rem;
         color: #1f2937;
         font-weight: 600;
+        margin: 0;
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1f2937;
+        margin: 2rem 0 1rem 0;
     }
     
     .header-actions > div {
@@ -345,10 +353,8 @@ includeSidebar('Demandas');
 </style>
 
 <div class="page-container">
-    <div class="main-content">
-        <div class="container">
-            <div class="header-actions">
-                <h1>📋 Demandas</h1>
+    <div class="header-actions">
+        <h1>📋 Demandas</h1>
                 <div>
                     <?php if (lc_can_create_quadros()): ?>
                         <button class="btn btn-primary" onclick="openCreateQuadroModal()">➕ Novo Quadro</button>
@@ -357,9 +363,9 @@ includeSidebar('Demandas');
                         🔔 Notificações
                     </a>
                 </div>
-            </div>
+    </div>
 
-            <!-- Agenda do Dia -->
+    <!-- Agenda do Dia -->
             <div class="agenda-section">
                 <div class="agenda-title">
                     📅 Agenda do Dia
@@ -398,48 +404,47 @@ includeSidebar('Demandas');
                 </div>
             </div>
 
-            <!-- Quadros -->
-            <h2>📊 Meus Quadros</h2>
+    <!-- Quadros -->
+    <h2 class="section-title">📊 Meus Quadros</h2>
             
-            <?php if (count($quadros) > 0): ?>
-                <div class="quadros-grid">
-                    <?php foreach ($quadros as $quadro): ?>
-                        <div class="quadro-card">
-                            <div class="quadro-header">
-                                <h3 class="quadro-nome"><?= htmlspecialchars($quadro['nome']) ?></h3>
-                                <div class="quadro-cor" style="background-color: <?= htmlspecialchars($quadro['cor']) ?>"></div>
-                            </div>
-                            
-                            <div class="quadro-stats">
-                                <div class="stat">
-                                    <div class="stat-number"><?= $quadro['total_cartoes'] ?></div>
-                                    <div class="stat-label">Total</div>
-                                </div>
-                                <div class="stat">
-                                    <div class="stat-number"><?= $quadro['cartoes_pendentes'] ?></div>
-                                    <div class="stat-label">Pendentes</div>
-                                </div>
-                            </div>
-                            
-                            <div class="quadro-actions">
-                                <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>" class="btn btn-primary">👁️ Abrir</a>
-                                <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>&action=settings" class="btn btn-outline">⚙️ Configurar</a>
-                            </div>
+    <?php if (count($quadros) > 0): ?>
+        <div class="quadros-grid">
+            <?php foreach ($quadros as $quadro): ?>
+                <div class="quadro-card">
+                    <div class="quadro-header">
+                        <h3 class="quadro-nome"><?= htmlspecialchars($quadro['nome']) ?></h3>
+                        <div class="quadro-cor" style="background-color: <?= htmlspecialchars($quadro['cor']) ?>"></div>
+                    </div>
+                    
+                    <div class="quadro-stats">
+                        <div class="stat">
+                            <div class="stat-number"><?= $quadro['total_cartoes'] ?></div>
+                            <div class="stat-label">Total</div>
                         </div>
-                    <?php endforeach; ?>
+                        <div class="stat">
+                            <div class="stat-number"><?= $quadro['cartoes_pendentes'] ?></div>
+                            <div class="stat-label">Pendentes</div>
+                        </div>
+                    </div>
+                    
+                    <div class="quadro-actions">
+                        <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>" class="btn btn-primary">👁️ Abrir</a>
+                        <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>&action=settings" class="btn btn-outline">⚙️ Configurar</a>
+                    </div>
                 </div>
-            <?php else: ?>
-                <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <h3>Nenhum quadro encontrado</h3>
-                    <p>Você ainda não foi convidado para nenhum quadro ou não criou nenhum.</p>
-                    <?php if (lc_can_create_quadros()): ?>
-                        <button class="btn btn-primary" onclick="openCreateQuadroModal()">➕ Criar Primeiro Quadro</button>
-                    <?php endif; ?>
-                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php else: ?>
+        <div class="empty-state">
+            <div class="empty-state-icon">📋</div>
+            <h3>Nenhum quadro encontrado</h3>
+            <p>Você ainda não foi convidado para nenhum quadro ou não criou nenhum.</p>
+            <?php if (lc_can_create_quadros()): ?>
+                <button class="btn btn-primary" onclick="openCreateQuadroModal()">➕ Criar Primeiro Quadro</button>
             <?php endif; ?>
         </div>
-    </div>
+    <?php endif; ?>
+</div>
 
     <!-- Modal Criar Quadro -->
     <div id="createQuadroModal" class="modal">
