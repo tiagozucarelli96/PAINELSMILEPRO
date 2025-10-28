@@ -13,7 +13,7 @@ try {
         SELECT table_name 
         FROM information_schema.tables 
         WHERE table_schema = 'public' 
-        AND table_name IN ('demandas_modelos', 'demandas_modelos_log')
+        AND table_name IN ('demandas', 'demandas_modelos', 'demandas_modelos_log')
     ");
     $tabelas_existentes = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
