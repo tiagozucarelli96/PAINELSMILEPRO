@@ -781,7 +781,14 @@ includeSidebar('Agenda');
                 document.getElementById('eventId').value = event.id;
                 document.getElementById('eventTipo').value = eventTipo;
                 document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id || '1';
-                document.getElementById('espaco').value = event.extendedProps.espaco_id || '';
+                
+                // Carregar espaço corretamente
+                const espacoId = event.extendedProps.espaco_id;
+                if (espacoId) {
+                    document.getElementById('espaco').value = espacoId;
+                } else {
+                    document.getElementById('espaco').value = '';
+                }
                 document.getElementById('titulo').value = event.title;
                 document.getElementById('inicio').value = formatDateTimeLocal(event.start);
                 document.getElementById('fim').value = formatDateTimeLocal(event.end);
