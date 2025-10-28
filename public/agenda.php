@@ -1105,6 +1105,10 @@ includeSidebar('Agenda');
             // Adicionar ação
             formData.append('acao', acao);
             
+            // Converter valores de checkbox para boolean corretamente
+            formData.set('compareceu', document.getElementById('compareceu').checked ? 'true' : 'false');
+            formData.set('fechou_contrato', document.getElementById('fechou_contrato').checked ? 'true' : 'false');
+            
             // Mostrar loading
             const submitBtn = this.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
