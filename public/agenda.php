@@ -630,17 +630,13 @@ includeSidebar('Agenda');
                 </div>
                 
                 <div id="conversionGroup" style="display: none;">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="compareceu" name="compareceu"> Compareceu
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="fechou_contrato" name="fechou_contrato"> Fechou Contrato
-                            </label>
-                        </div>
+                    <div class="form-row" style="display: flex; gap: 20px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
+                            <input type="checkbox" id="compareceu" name="compareceu" style="margin: 0; width: 16px; height: 16px;"> Compareceu
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
+                            <input type="checkbox" id="fechou_contrato" name="fechou_contrato" style="margin: 0; width: 16px; height: 16px;"> Fechou Contrato
+                        </label>
                     </div>
                     <div class="form-group">
                         <label for="fechou_ref">Referência do Contrato</label>
