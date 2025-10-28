@@ -171,6 +171,10 @@ class AgendaHelper {
                 }
             }
             
+            // Converter valores booleanos corretamente
+            $compareceu = isset($dados['compareceu']) && ($dados['compareceu'] === true || $dados['compareceu'] === 'true' || $dados['compareceu'] === '1');
+            $fechou_contrato = isset($dados['fechou_contrato']) && ($dados['fechou_contrato'] === true || $dados['fechou_contrato'] === 'true' || $dados['fechou_contrato'] === '1');
+            
             $stmt = $this->pdo->prepare("
                 UPDATE agenda_eventos SET 
                     tipo = ?, titulo = ?, descricao = ?, inicio = ?, fim = ?, 
@@ -190,8 +194,8 @@ class AgendaHelper {
                 $dados['espaco_id'],
                 $dados['lembrete_minutos'],
                 $dados['status'],
-                $dados['compareceu'] ?? false,
-                $dados['fechou_contrato'] ?? false,
+                $compareceu,
+                $fechou_contrato,
                 $dados['fechou_ref'],
                 json_encode($dados['participantes'] ?? []),
                 $evento_id

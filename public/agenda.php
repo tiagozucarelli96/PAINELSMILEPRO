@@ -776,8 +776,11 @@ includeSidebar('Agenda');
             if (event) {
                 // Editar evento existente
                 title.textContent = 'Editar Evento';
+                const eventTipo = event.extendedProps.tipo;
+                
                 document.getElementById('eventId').value = event.id;
-                document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id;
+                document.getElementById('eventTipo').value = eventTipo;
+                document.getElementById('responsavel').value = event.extendedProps.responsavel_usuario_id || '';
                 document.getElementById('espaco').value = event.extendedProps.espaco_id || '';
                 document.getElementById('titulo').value = event.title;
                 document.getElementById('inicio').value = formatDateTimeLocal(event.start);
@@ -789,8 +792,10 @@ includeSidebar('Agenda');
                 document.getElementById('fechou_contrato').checked = event.extendedProps.fechou_contrato || false;
                 document.getElementById('fechou_ref').value = event.extendedProps.fechou_ref || '';
                 
+                // Mostrar/ocultar campos baseado no tipo
+                espacoGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
                 statusGroup.style.display = 'block';
-                conversionGroup.style.display = event.extendedProps.tipo === 'visita' ? 'block' : 'none';
+                conversionGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
                 deleteBtn.style.display = 'block';
                 
                 if (canForceConflict()) {
