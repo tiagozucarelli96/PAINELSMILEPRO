@@ -14,6 +14,51 @@ class DemandasHelper {
     }
     
     /**
+     * Obter quadro específico
+     */
+    public function obterQuadro($quadro_id, $usuario_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT dq.*
+            FROM demandas_quadros dq
+            JOIN demandas_participantes dp ON dq.id = dp.quadro_id
+            WHERE dq.id = ? AND dp.usuario_id = ? AND dq.ativo = TRUE
+        ");
+        
+        $stmt->execute([$quadro_id, $usuario_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Obter colunas do quadro
+     */
+    public function obterColunasQuadro($quadro_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM demandas_colunas 
+            WHERE quadro_id = ? 
+            ORDER BY ordem ASC, id ASC
+        ");
+        
+        $stmt->execute([$quadro_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Obter cartões do quadro
+     */
+    public function obterCartoesQuadro($quadro_id) {
+        $stmt = $this->pdo->prepare("
+            SELECT dc.*, u.nome as responsavel_nome
+            FROM demandas_cartoes dc
+            LEFT JOIN usuarios u ON dc.criado_por = u.id
+            WHERE dc.quadro_id = ?
+            ORDER BY dc.created_at DESC
+        ");
+        
+        $stmt->execute([$quadro_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
      * Obter quadros do usuário
      */
     public function obterQuadrosUsuario($usuario_id) {
