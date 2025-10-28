@@ -60,7 +60,6 @@ $routes = [
   'administrativo' => 'config_insumos.php',
   'agenda' => 'agenda.php',
   'demandas' => 'demandas.php',
-  'demandas_quadro' => 'demandas_quadro.php',
 
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',
