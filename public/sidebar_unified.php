@@ -1526,7 +1526,7 @@ if ($current_page === 'dashboard') {
             <div id="pageContent">
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
-                if (in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
+                if (in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'demandas', 'demandas_quadro'])) {
                     // O conteúdo já foi definido nas variáveis acima
                     if ($current_page === 'dashboard' && !empty($dashboard_content)) {
                         echo $dashboard_content;
