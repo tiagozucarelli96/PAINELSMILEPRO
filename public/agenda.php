@@ -820,9 +820,26 @@ includeSidebar('Agenda');
                 // Carregar checkboxes com valores corretos (PostgreSQL retorna 't' ou 'f')
                 const compareceu = event.extendedProps.compareceu;
                 const fechouContrato = event.extendedProps.fechou_contrato;
+                
+                // Debug
+                console.log('📥 Loading event data:', {
+                    compareceu: compareceu,
+                    fechou_contrato: fechouContrato,
+                    compareceu_type: typeof compareceu,
+                    fechou_contrato_type: typeof fechouContrato
+                });
+                
                 // Inverter lógica: marcado = Não Compareceu
-                document.getElementById('compareceu').checked = !(compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
-                document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1 || fechouContrato === 't' || fechouContrato === 'T');
+                const compareceuChecked = !(compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
+                const fechouContratoChecked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1 || fechouContrato === 't' || fechouContrato === 'T');
+                
+                document.getElementById('compareceu').checked = compareceuChecked;
+                document.getElementById('fechou_contrato').checked = fechouContratoChecked;
+                
+                console.log('✅ Checkboxes setados:', {
+                    'Não Compareceu': compareceuChecked,
+                    'Fechou Contrato': fechouContratoChecked
+                });
                 // Mostrar/ocultar campos baseado no tipo
                 espacoGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
                 statusGroup.style.display = 'block';
@@ -1178,6 +1195,7 @@ includeSidebar('Agenda');
                 formData.append('fechou_ref', formData.get('fechou_ref') || '');
             }
             
+            // Garantir que participantes exista
             if (!formData.has('participantes')) {
                 formData.append('participantes', '[]');
             }
