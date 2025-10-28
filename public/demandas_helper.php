@@ -19,7 +19,8 @@ class DemandasHelper {
     public function obterQuadrosUsuario($usuario_id) {
         $stmt = $this->pdo->prepare("
             SELECT dq.*, 
-                   COUNT(dc.id) as total_cartoes
+                   COUNT(dc.id) as total_cartoes,
+                   COUNT(CASE WHEN dc.status != 'concluido' THEN 1 END) as cartoes_pendentes
             FROM demandas_quadros dq
             LEFT JOIN demandas_participantes dp ON dq.id = dp.quadro_id
             LEFT JOIN demandas_cartoes dc ON dq.id = dc.quadro_id

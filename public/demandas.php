@@ -422,7 +422,7 @@ includeSidebar('Demandas');
                             <div class="stat-label">Total</div>
                         </div>
                         <div class="stat">
-                            <div class="stat-number"><?= $quadro['cartoes_pendentes'] ?></div>
+                            <div class="stat-number"><?= $quadro['cartoes_pendentes'] ?? 0 ?></div>
                             <div class="stat-label">Pendentes</div>
                         </div>
                     </div>
