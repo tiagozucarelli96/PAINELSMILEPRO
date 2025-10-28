@@ -1596,7 +1596,7 @@ if ($current_page === 'dashboard') {
             // Se for dashboard, comercial, logistico, configurações, cadastros, financeiro ou administrativo, 
             // o conteúdo já foi renderizado via PHP, não fazer nada
             // Para agenda, o conteúdo também já foi renderizado via PHP após sidebar_unified.php
-            if (!['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda'].includes(currentPage)) {
+            if (!['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda', 'demandas', 'demandas_quadro'].includes(currentPage)) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
