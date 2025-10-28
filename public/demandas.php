@@ -42,12 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Obter dados para o dashboard
-$agenda_hoje = $demandas->obterAgendaDia($usuario_id, false);
-$agenda_48h = $demandas->obterAgendaDia($usuario_id, true);
-$notificacoes = $demandas->contarNotificacoesNaoLidas($usuario_id);
-
-// Obter quadros do usuário usando o helper
+// Obter quadros do usuário
 $quadros = $demandas->obterQuadrosUsuario($usuario_id);
 
 // Renderizar página completa usando sidebar_integration
@@ -354,58 +349,14 @@ includeSidebar('Demandas');
 
 <div class="page-container">
     <div class="header-actions">
-        <h1>📋 Demandas</h1>
-                <div>
-                    <?php if (lc_can_create_quadros()): ?>
-                        <button class="btn btn-primary" onclick="openCreateQuadroModal()">➕ Novo Quadro</button>
-                    <?php endif; ?>
-                    <a href="demandas_notificacoes.php" class="btn btn-outline notification-badge" data-count="<?= $notificacoes ?>">
-                        🔔 Notificações
-                    </a>
-                </div>
+        <h1>📋 Meus Quadros</h1>
+        <div>
+            <?php if (lc_can_create_quadros()): ?>
+                <button class="btn btn-primary" onclick="openCreateQuadroModal()">➕ Novo Quadro</button>
+            <?php endif; ?>
+        </div>
     </div>
 
-    <!-- Agenda do Dia -->
-            <div class="agenda-section">
-                <div class="agenda-title">
-                    📅 Agenda do Dia
-                    <?php if (count($agenda_hoje) > 0): ?>
-                        <span class="notification-badge" data-count="<?= count($agenda_hoje) ?>"></span>
-                    <?php endif; ?>
-                </div>
-                
-                <?php if (count($agenda_hoje) > 0): ?>
-                    <?php foreach ($agenda_hoje as $item): ?>
-                        <div class="agenda-item">
-                            <div class="agenda-item-title"><?= htmlspecialchars($item['titulo']) ?></div>
-                            <div class="agenda-item-meta">
-                                📋 <?= htmlspecialchars($item['quadro_nome']) ?> • 
-                                ⏰ <?= date('H:i', strtotime($item['vencimento'])) ?>
-                                <?php if ($item['prioridade'] === 'urgente'): ?>
-                                    • 🔴 Urgente
-                                <?php elseif ($item['prioridade'] === 'alta'): ?>
-                                    • 🟠 Alta
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="agenda-item">
-                        <div class="agenda-item-title">🎉 Nenhuma tarefa vencendo hoje!</div>
-                        <div class="agenda-item-meta">Você está em dia com suas responsabilidades.</div>
-                    </div>
-                <?php endif; ?>
-                
-                <div class="agenda-actions">
-                    <a href="demandas_agenda.php" class="btn btn-outline">📅 Ver Agenda Completa</a>
-                    <?php if (count($agenda_48h) > count($agenda_hoje)): ?>
-                        <button class="btn btn-outline" onclick="toggle48h()">👁️ Exibir próximas 48h</button>
-                    <?php endif; ?>
-                </div>
-            </div>
-
-    <!-- Quadros -->
-    <h2 class="section-title">📊 Meus Quadros</h2>
             
     <?php if (count($quadros) > 0): ?>
         <div class="quadros-grid">

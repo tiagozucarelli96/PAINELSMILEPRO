@@ -18,12 +18,14 @@ class DemandasHelper {
      */
     public function obterQuadrosUsuario($usuario_id) {
         $stmt = $this->pdo->prepare("
-            SELECT dq.*, 
-                   COUNT(dc.id) as total_cartoes,
-                   COUNT(CASE WHEN dc.status != 'concluido' THEN 1 END) as cartoes_pendentes
+            SELECT 
+                dq.*,
+                COUNT(DISTINCT dc.id) as total_cartoes,
+                COUNT(DISTINCT CASE WHEN dco.nome != 'Concluído' THEN dc.id END) as cartoes_pendentes
             FROM demandas_quadros dq
             LEFT JOIN demandas_participantes dp ON dq.id = dp.quadro_id
             LEFT JOIN demandas_cartoes dc ON dq.id = dc.quadro_id
+            LEFT JOIN demandas_colunas dco ON dc.coluna_id = dco.id
             WHERE dp.usuario_id = ? AND dq.ativo = TRUE
             GROUP BY dq.id
             ORDER BY dq.updated_at DESC
