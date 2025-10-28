@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if ($nome && lc_can_create_quadros()) {
                 $quadro_id = $demandas->criarQuadro($nome, $descricao, $cor, $usuario_id);
-                header('Location: demandas_quadro.php?id=' . $quadro_id);
+                header('Location: index.php?page=demandas_quadro&id=' . $quadro_id);
                 exit;
             }
             break;
@@ -379,8 +379,8 @@ includeSidebar('Demandas');
                     </div>
                     
                     <div class="quadro-actions">
-                        <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>" class="btn btn-primary">👁️ Abrir</a>
-                        <a href="demandas_quadro.php?id=<?= $quadro['id'] ?>&action=settings" class="btn btn-outline">⚙️ Configurar</a>
+                        <a href="index.php?page=demandas_quadro&id=<?= $quadro['id'] ?>" class="btn btn-primary">👁️ Abrir</a>
+                        <a href="index.php?page=demandas_quadro&id=<?= $quadro['id'] ?>&action=settings" class="btn btn-outline">⚙️ Configurar</a>
                     </div>
                 </div>
             <?php endforeach; ?>
