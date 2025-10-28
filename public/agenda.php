@@ -796,11 +796,11 @@ includeSidebar('Agenda');
                 document.getElementById('lembrete').value = event.extendedProps.lembrete_minutos || 60;
                 document.getElementById('status').value = event.extendedProps.status || 'agendado';
                 
-                // Carregar checkboxes com valores corretos
+                // Carregar checkboxes com valores corretos (PostgreSQL retorna 't' ou 'f')
                 const compareceu = event.extendedProps.compareceu;
                 const fechouContrato = event.extendedProps.fechou_contrato;
-                document.getElementById('compareceu').checked = (compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1);
-                document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1);
+                document.getElementById('compareceu').checked = (compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
+                document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1 || fechouContrato === 't' || fechouContrato === 'T');
                 document.getElementById('fechou_ref').value = event.extendedProps.fechou_ref || '';
                 
                 // Mostrar/ocultar campos baseado no tipo
