@@ -795,8 +795,12 @@ includeSidebar('Agenda');
                 document.getElementById('descricao').value = event.extendedProps.descricao || '';
                 document.getElementById('lembrete').value = event.extendedProps.lembrete_minutos || 60;
                 document.getElementById('status').value = event.extendedProps.status || 'agendado';
-                document.getElementById('compareceu').checked = event.extendedProps.compareceu || false;
-                document.getElementById('fechou_contrato').checked = event.extendedProps.fechou_contrato || false;
+                
+                // Carregar checkboxes com valores corretos
+                const compareceu = event.extendedProps.compareceu;
+                const fechouContrato = event.extendedProps.fechou_contrato;
+                document.getElementById('compareceu').checked = (compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1);
+                document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1);
                 document.getElementById('fechou_ref').value = event.extendedProps.fechou_ref || '';
                 
                 // Mostrar/ocultar campos baseado no tipo
@@ -1170,7 +1174,8 @@ includeSidebar('Agenda');
                     // Mostrar mensagem suspensa
                     const tipoEvento = formData.get('eventoTipo') || formData.get('tipo');
                     const tipoText = tipoEvento === 'bloqueio' ? 'Bloqueio' : 'Visita';
-                    showToast('✅ ' + tipoText + ' criado com sucesso!', 'success');
+                    const isEdit = eventoId ? 'editado' : 'criado';
+                    showToast('✅ ' + tipoText + ' ' + isEdit + ' com sucesso!', 'success');
                     
                     setTimeout(() => {
                         if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
