@@ -44,7 +44,8 @@ try {
         if ($evento['tipo'] === 'bloqueio') {
             $cor = '#dc2626'; // Vermelho para bloqueios
         } elseif ($evento['tipo'] === 'visita') {
-            $cor = '#10b981'; // Verde para visitas
+            // Visitas usam a cor configurada do responsável
+            $cor = $evento['cor_agenda'] ?? $evento['cor_evento'] ?? '#3b96f7';
         } else {
             $cor = $evento['cor_agenda'] ?? $evento['cor_evento'] ?? '#3b96f7';
         }

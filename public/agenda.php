@@ -925,6 +925,83 @@ includeSidebar('Agenda');
             });
         }
         
+        // Função para mostrar toast/snackbar
+        function showToast(message, type = 'success') {
+            // Remover toast anterior se existir
+            const existingToast = document.getElementById('agendaToast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+            
+            // Criar novo toast
+            const toast = document.createElement('div');
+            toast.id = 'agendaToast';
+            toast.textContent = message;
+            
+            // Estilos baseados no tipo
+            const styles = {
+                success: { bg: '#10b981', color: 'white' },
+                error: { bg: '#dc2626', color: 'white' },
+                info: { bg: '#3b82f6', color: 'white' }
+            };
+            
+            const style = styles[type] || styles.success;
+            
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: ${style.bg};
+                color: ${style.color};
+                padding: 16px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 10002;
+                font-size: 14px;
+                font-weight: 500;
+                animation: slideInUp 0.3s ease-out;
+                max-width: 400px;
+            `;
+            
+            // Adicionar animação
+            const styleSheet = document.createElement('style');
+            styleSheet.textContent = `
+                @keyframes slideInUp {
+                    from {
+                        transform: translateY(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+                @keyframes slideOutDown {
+                    from {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                    to {
+                        transform: translateY(100%);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(styleSheet);
+            
+            document.body.appendChild(toast);
+            
+            // Auto-remover após 3 segundos
+            setTimeout(() => {
+                toast.style.animation = 'slideOutDown 0.3s ease-out';
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.remove();
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
         // Mostrar feedback da sugestão
         function showSuggestionFeedback(message) {
             // Remover feedback anterior
@@ -1054,7 +1131,11 @@ includeSidebar('Agenda');
                 if (data.success) {
                     // Sucesso
                     submitBtn.innerHTML = '✅ Salvo!';
-                    alert('✅ Bloqueio criado com sucesso!');
+                    
+                    // Mostrar mensagem suspensa
+                    const tipoEvento = formData.get('tipo') === 'bloqueio' ? 'Bloqueio' : 'Visita';
+                    showToast('✅ ' + tipoEvento + ' criado com sucesso!', 'success');
+                    
                     setTimeout(() => {
                         if (typeof calendar !== 'undefined' && calendar.refetchEvents) {
                             calendar.refetchEvents();
@@ -1065,7 +1146,7 @@ includeSidebar('Agenda');
                     // Erro
                     console.error('Erro ao salvar:', data.message || 'Erro desconhecido');
                     submitBtn.innerHTML = '❌ Erro';
-                    alert('Erro ao salvar: ' + (data.message || 'Erro desconhecido'));
+                    showToast('❌ Erro ao salvar: ' + (data.message || 'Erro desconhecido'), 'error');
                     setTimeout(() => {
                         submitBtn.innerHTML = originalText;
                         submitBtn.disabled = false;
