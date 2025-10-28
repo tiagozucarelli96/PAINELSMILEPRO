@@ -637,7 +637,7 @@ includeSidebar('Agenda');
                 <div id="conversionGroup" style="display: none;">
                     <div class="form-row" style="display: flex; gap: 20px; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                            <input type="checkbox" id="compareceu" name="compareceu" style="margin: 0; width: 16px; height: 16px;"> Compareceu
+                            <input type="checkbox" id="compareceu" name="compareceu" style="margin: 0; width: 16px; height: 16px;"> Não Compareceu
                         </label>
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0;">
                             <input type="checkbox" id="fechou_contrato" name="fechou_contrato" style="margin: 0; width: 16px; height: 16px;"> Fechou Contrato
@@ -805,7 +805,8 @@ includeSidebar('Agenda');
                 // Carregar checkboxes com valores corretos (PostgreSQL retorna 't' ou 'f')
                 const compareceu = event.extendedProps.compareceu;
                 const fechouContrato = event.extendedProps.fechou_contrato;
-                document.getElementById('compareceu').checked = (compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
+                // Inverter lógica: marcado = Não Compareceu
+                document.getElementById('compareceu').checked = !(compareceu === true || compareceu === 'true' || compareceu === '1' || compareceu === 1 || compareceu === 't' || compareceu === 'T');
                 document.getElementById('fechou_contrato').checked = (fechouContrato === true || fechouContrato === 'true' || fechouContrato === '1' || fechouContrato === 1 || fechouContrato === 't' || fechouContrato === 'T');
                 document.getElementById('fechou_ref').value = event.extendedProps.fechou_ref || '';
                 
@@ -1137,8 +1138,9 @@ includeSidebar('Agenda');
             const fechouContratoChecked = document.getElementById('fechou_contrato').checked;
             
             // Apenas definir se os checkboxes existem (para edição)
+            // Inverter lógica: marcado = Não Compareceu
             if (document.getElementById('compareceu')) {
-                formData.set('compareceu', compareceuChecked ? '1' : '0');
+                formData.set('compareceu', compareceuChecked ? '0' : '1'); // Invertido
             }
             if (document.getElementById('fechou_contrato')) {
                 formData.set('fechou_contrato', fechouContratoChecked ? '1' : '0');
