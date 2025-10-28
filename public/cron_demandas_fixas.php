@@ -17,8 +17,25 @@ try {
     ");
     $tabelas_existentes = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
+    if (!in_array('demandas', $tabelas_existentes)) {
+        // Criar tabela demandas primeiro
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS demandas (
+                id SERIAL PRIMARY KEY,
+                descricao TEXT NOT NULL,
+                prazo DATE NOT NULL,
+                responsavel_id INTEGER NOT NULL,
+                criador_id INTEGER NOT NULL,
+                whatsapp VARCHAR(32),
+                status TEXT NOT NULL DEFAULT 'pendente',
+                data_criacao TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                data_conclusao TIMESTAMPTZ
+            )
+        ");
+    }
+    
     if (!in_array('demandas_modelos', $tabelas_existentes)) {
-        // Criar tabelas se não existirem
+        // Criar tabela demandas_modelos
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS demandas_modelos (
                 id SERIAL PRIMARY KEY,
@@ -29,15 +46,6 @@ try {
                 prazo_offset_dias INT NOT NULL,
                 hora_geracao TIME NOT NULL DEFAULT '09:00',
                 ativo BOOLEAN NOT NULL DEFAULT TRUE
-            )
-        ");
-        
-        $pdo->exec("
-            CREATE TABLE IF NOT EXISTS demandas_modelos_log (
-                id SERIAL PRIMARY KEY,
-                modelo_id INTEGER NOT NULL REFERENCES demandas_modelos(id) ON DELETE CASCADE,
-                gerado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                demanda_id INTEGER REFERENCES demandas(id)
             )
         ");
         
@@ -53,6 +61,18 @@ try {
             1, // Segunda-feira
             2  // Prazo: +2 dias
         ]);
+    }
+    
+    if (!in_array('demandas_modelos_log', $tabelas_existentes)) {
+        // Criar tabela demandas_modelos_log
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS demandas_modelos_log (
+                id SERIAL PRIMARY KEY,
+                modelo_id INTEGER NOT NULL REFERENCES demandas_modelos(id) ON DELETE CASCADE,
+                gerado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                demanda_id INTEGER REFERENCES demandas(id)
+            )
+        ");
     }
     
     $diaSemana = (int)date('w'); // 0=domingo, 6=sábado
