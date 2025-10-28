@@ -172,13 +172,14 @@ class AgendaHelper {
             }
             
             // Converter valores booleanos corretamente
-            // Para compareceu: invertido - marcado = false, desmarcado = true
-            $compareceu_val = $dados['compareceu'] ?? false;
+            // Para compareceu: invertido - marcado = false (0), desmarcado = true (1)
+            $compareceu_val = $dados['compareceu'] ?? '1'; // Default = true (desmarcado no checkbox)
             $compareceu = ($compareceu_val === '1' || $compareceu_val === 1 || $compareceu_val === true || $compareceu_val === 'true' || $compareceu_val === 'on');
             
-            // Para fechou_contrato: marcado = true, desmarcado = false
+            // Para fechou_contrato: marcado = true (1), desmarcado = false (0)
+            // Verificar explicitamente se é '1'
             $fechou_contrato_val = $dados['fechou_contrato'] ?? '0';
-            $fechou_contrato = ($fechou_contrato_val === '1' || $fechou_contrato_val === 1 || $fechou_contrato_val === true || $fechou_contrato_val === 'true' || $fechou_contrato_val === 'on');
+            $fechou_contrato = ($fechou_contrato_val === '1');
             
             $stmt = $this->pdo->prepare("
                 UPDATE agenda_eventos SET 
