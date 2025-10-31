@@ -857,17 +857,26 @@ ob_start();
         }
         
         function initializeForm() {
-            // Garantir que elementos existem antes de usar
-            waitForElement('fieldsList', function() {
-                // Carregar campos iniciais
-                renderFields();
-            });
-            
-            // Garantir que modal está fechado
+            // Garantir que modal está fechado primeiro
             const modal = document.getElementById('fieldModal');
             if (modal) {
                 modal.classList.remove('active');
             }
+            
+            // Garantir que elementos existem antes de usar
+            // Aguardar um pouco mais para garantir que tabs estão renderizadas
+            setTimeout(function() {
+                waitForElement('fieldsList', function() {
+                    // Verificar se a tab está visível antes de renderizar
+                    const tabCampos = document.getElementById('campos');
+                    const fieldsList = document.getElementById('fieldsList');
+                    
+                    if (fieldsList && tabCampos) {
+                        // Carregar campos iniciais
+                        renderFields();
+                    }
+                });
+            }, 200);
             
             // Se local atual não está nas opções, mostrar campo customizado
             const localAtual = <?= $is_edit ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
