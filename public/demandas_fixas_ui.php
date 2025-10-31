@@ -16,11 +16,63 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
 }
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)($_SESSION['user_id'] ?? 1);
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 1);
 
-// Buscar quadros e listas
-$stmt_boards = $pdo->query("SELECT id, nome FROM demandas_boards WHERE ativo = TRUE ORDER BY nome");
-$boards = $stmt_boards->fetchAll(PDO::FETCH_ASSOC);
+// Verificar se tabelas existem antes de consultar
+try {
+    $stmt_check = $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'demandas_boards'");
+    $table_exists = $stmt_check->fetchColumn() > 0;
+    
+    if (!$table_exists) {
+        // Tabelas não criadas - redirecionar para script de criação
+        echo '<!DOCTYPE html>
+        <html>
+        <head>
+            <title>Schema não aplicado</title>
+            <meta charset="utf-8">
+            <style>
+                body { font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+                .error { background: #fee2e2; color: #991b1b; padding: 20px; border-radius: 8px; max-width: 600px; margin: 20px auto; }
+                .btn { background: #3b82f6; color: white; padding: 12px 24px; border: none; border-radius: 6px; text-decoration: none; display: inline-block; margin-top: 20px; }
+            </style>
+        </head>
+        <body>
+            <div class="error">
+                <h2>⚠️ Tabelas do sistema Trello não foram criadas</h2>
+                <p>É necessário aplicar o schema no banco de dados antes de usar esta página.</p>
+                <a href="apply_trello_schema.php" class="btn">📦 Criar Tabelas Agora</a>
+                <br><br>
+                <a href="index.php?page=demandas">← Voltar</a>
+            </div>
+        </body>
+        </html>';
+        exit;
+    }
+    
+    // Buscar quadros e listas
+    $stmt_boards = $pdo->query("SELECT id, nome FROM demandas_boards WHERE ativo = TRUE ORDER BY nome");
+    $boards = $stmt_boards->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    echo '<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Erro de Banco de Dados</title>
+        <meta charset="utf-8">
+        <style>
+            body { font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+            .error { background: #fee2e2; color: #991b1b; padding: 20px; border-radius: 8px; max-width: 600px; margin: 20px auto; }
+        </style>
+    </head>
+    <body>
+        <div class="error">
+            <h2>❌ Erro ao acessar banco de dados</h2>
+            <p>' . htmlspecialchars($e->getMessage()) . '</p>
+            <a href="apply_trello_schema.php">📦 Tentar Criar Tabelas</a>
+        </div>
+    </body>
+    </html>';
+    exit;
+}
 
 // Buscar demandas fixas
 $stmt = $pdo->query("

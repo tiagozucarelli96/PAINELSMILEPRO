@@ -13,7 +13,11 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Verificar autenticação
-if (empty($_SESSION['user_id'])) {
+// Verificar múltiplas variáveis de sessão possíveis
+$usuario_id_session = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+$logado = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? null;
+
+if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
     http_response_code(401);
     header('Content-Type: application/json');
     echo json_encode(['success' => false, 'error' => 'Não autenticado']);
@@ -24,7 +28,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)$_SESSION['user_id'];
+$usuario_id = (int)$usuario_id_session;
 $is_admin = isset($_SESSION['permissao']) && strpos($_SESSION['permissao'], 'admin') !== false;
 
 $method = $_SERVER['REQUEST_METHOD'];
