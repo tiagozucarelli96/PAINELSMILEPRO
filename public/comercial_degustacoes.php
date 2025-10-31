@@ -11,9 +11,15 @@ if (!isset($pdo)) {
     global $pdo;
 }
 
+// Verificar se está logado (index.php já verifica, mas garantimos aqui também)
+if (empty($_SESSION['logado']) || $_SESSION['logado'] != 1) {
+    header('Location: login.php');
+    exit;
+}
+
 // Verificar permissões
 if (!lc_can_access_comercial()) {
-    header('Location: dashboard.php?error=permission_denied');
+    header('Location: index.php?page=dashboard&error=permission_denied');
     exit;
 }
 
