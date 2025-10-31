@@ -541,89 +541,159 @@ function limparFiltros() {
 }
 
 function verDetalhes(id) {
-    fetch(`demandas_api.php/${id}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                const demanda = data.data;
-                
-                document.getElementById('modal-titulo').textContent = `Demanda #${demanda.id}`;
-                document.getElementById('modal-conteudo').innerHTML = `
-                    <div>
-                        <p><strong>Descrição:</strong></p>
-                        <p style="margin-bottom: 1rem; line-height: 1.5;">${demanda.descricao}</p>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                            <div><strong>Prazo:</strong> ${new Date(demanda.prazo).toLocaleDateString('pt-BR')}</div>
-                            <div><strong>Status:</strong> <span class="badge badge-${demanda.status_real}">${demanda.status_real}</span></div>
-                            <div><strong>Responsável:</strong> ${demanda.responsavel_nome || 'Sem responsável'}</div>
-                            <div><strong>Criado por:</strong> ${demanda.criador_nome || 'Sistema'}</div>
-                        </div>
-                        
-                        ${demanda.whatsapp ? `<p><strong>WhatsApp:</strong> ${demanda.whatsapp}</p>` : ''}
+    console.log('Carregando detalhes da demanda:', id);
+    
+    // Usar PATH_INFO correto
+    fetch(`demandas_api.php/${id}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Dados recebidos:', data);
+        if (data.success) {
+            const demanda = data.data;
+            
+            const modalTitulo = document.getElementById('modal-titulo');
+            const modalConteudo = document.getElementById('modal-conteudo');
+            const modal = document.getElementById('detailModal');
+            
+            if (!modalTitulo || !modalConteudo || !modal) {
+                console.error('Elementos do modal não encontrados');
+                alert('Erro ao abrir modal de detalhes');
+                return;
+            }
+            
+            modalTitulo.textContent = `Demanda #${demanda.id}`;
+            modalConteudo.innerHTML = `
+                <div>
+                    <p><strong>Descrição:</strong></p>
+                    <p style="margin-bottom: 1rem; line-height: 1.5;">${demanda.descricao || 'Sem descrição'}</p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div><strong>Prazo:</strong> ${new Date(demanda.prazo).toLocaleDateString('pt-BR')}</div>
+                        <div><strong>Status:</strong> <span class="badge badge-${demanda.status_real || demanda.status || 'pendente'}">${demanda.status_real || demanda.status || 'pendente'}</span></div>
+                        <div><strong>Responsável:</strong> ${demanda.responsavel_nome || 'Sem responsável'}</div>
+                        <div><strong>Criado por:</strong> ${demanda.criador_nome || 'Sistema'}</div>
                     </div>
                     
-                    ${demanda.comentarios && demanda.comentarios.length > 0 ? `
-                        <div class="comentarios-section">
-                            <h3>Comentários</h3>
-                            ${demanda.comentarios.map(comentario => `
-                                <div class="comentario">
-                                    <div class="comentario-header">
-                                        <span class="comentario-autor">${comentario.autor_nome}</span>
-                                        <span class="comentario-data">${new Date(comentario.data_criacao).toLocaleString('pt-BR')}</span>
-                                    </div>
-                                    <div class="comentario-texto">${comentario.mensagem}</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : ''}
-                    
-                    ${demanda.anexos && demanda.anexos.length > 0 ? `
-                        <div class="anexos-section">
-                            <h3>Anexos</h3>
-                            ${demanda.anexos.map(anexo => `
-                                <div class="anexo-item">
-                                    <span class="anexo-icon">${anexo.mime_type.startsWith('image/') ? '🖼️' : '📄'}</span>
-                                    <span>${anexo.nome_original}</span>
-                                    <button class="btn btn-outline" onclick="downloadAnexo(${anexo.id})">Download</button>
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : ''}
-                `;
+                    ${demanda.whatsapp ? `<p><strong>WhatsApp:</strong> ${demanda.whatsapp}</p>` : ''}
+                </div>
                 
-                document.getElementById('detailModal').style.display = 'block';
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao carregar detalhes:', error);
-        });
+                ${demanda.comentarios && demanda.comentarios.length > 0 ? `
+                    <div class="comentarios-section">
+                        <h3>Comentários</h3>
+                        ${demanda.comentarios.map(comentario => `
+                            <div class="comentario">
+                                <div class="comentario-header">
+                                    <span class="comentario-autor">${comentario.autor_nome || 'Anônimo'}</span>
+                                    <span class="comentario-data">${new Date(comentario.data_criacao).toLocaleString('pt-BR')}</span>
+                                </div>
+                                <div class="comentario-texto">${comentario.mensagem}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<div class="comentarios-section"><p>Nenhum comentário ainda.</p></div>'}
+                
+                ${demanda.anexos && demanda.anexos.length > 0 ? `
+                    <div class="anexos-section">
+                        <h3>Anexos</h3>
+                        ${demanda.anexos.map(anexo => `
+                            <div class="anexo-item">
+                                <span class="anexo-icon">${anexo.mime_type && anexo.mime_type.startsWith('image/') ? '🖼️' : '📄'}</span>
+                                <span>${anexo.nome_original}</span>
+                                <button class="btn btn-outline" onclick="downloadAnexo(${anexo.id})">Download</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<div class="anexos-section"><p>Nenhum anexo.</p></div>'}
+            `;
+            
+            modal.style.display = 'block';
+        } else {
+            alert('Erro ao carregar detalhes: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Erro ao carregar detalhes:', error);
+        alert('Erro ao carregar detalhes da demanda. Verifique o console para mais informações.');
+    });
 }
 
 function concluirDemanda(id) {
-    fetch(`demandas_api.php/${id}/concluir`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                carregarDemandas();
-                alert('Demanda concluída com sucesso!');
-            } else {
-                alert('Erro ao concluir demanda: ' + data.error);
-            }
-        });
+    if (!confirm('Deseja realmente concluir esta demanda?')) {
+        return;
+    }
+    
+    console.log('Concluindo demanda:', id);
+    
+    fetch(`demandas_api.php/${id}/concluir`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+            carregarDemandas();
+            alert('✅ Demanda concluída com sucesso!');
+        } else {
+            alert('❌ Erro ao concluir demanda: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Erro ao concluir demanda:', error);
+        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
+    });
 }
 
 function reabrirDemanda(id) {
-    fetch(`demandas_api.php/${id}/reabrir`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                carregarDemandas();
-                alert('Demanda reaberta com sucesso!');
-            } else {
-                alert('Erro ao reabrir demanda: ' + data.error);
-            }
-        });
+    if (!confirm('Deseja realmente reabrir esta demanda?')) {
+        return;
+    }
+    
+    console.log('Reabrindo demanda:', id);
+    
+    fetch(`demandas_api.php/${id}/reabrir`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            carregarDemandas();
+            alert('✅ Demanda reaberta com sucesso!');
+        } else {
+            alert('❌ Erro ao reabrir demanda: ' + (data.error || 'Erro desconhecido'));
+        }
+    })
+    .catch(error => {
+        console.error('Erro ao reabrir demanda:', error);
+        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
+    });
 }
 
 function downloadAnexo(id) {

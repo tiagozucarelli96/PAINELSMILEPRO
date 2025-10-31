@@ -51,10 +51,10 @@ try {
             break;
             
         case 'POST':
-            if (empty($pathParts[0])) {
+            if (empty($pathParts) || count($pathParts) === 0) {
                 // POST /demandas - Criar
                 criarDemanda($pdo);
-            } elseif (is_numeric($pathParts[0])) {
+            } elseif (count($pathParts) === 2 && is_numeric($pathParts[0])) {
                 if ($pathParts[1] === 'concluir') {
                     concluirDemanda($pdo, $pathParts[0]);
                 } elseif ($pathParts[1] === 'reabrir') {
@@ -63,7 +63,15 @@ try {
                     adicionarComentario($pdo, $pathParts[0]);
                 } elseif ($pathParts[1] === 'anexos') {
                     adicionarAnexo($pdo, $pathParts[0]);
+                } else {
+                    http_response_code(404);
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => false, 'error' => 'Rota não encontrada']);
                 }
+            } else {
+                http_response_code(400);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Rota inválida']);
             }
             break;
             
