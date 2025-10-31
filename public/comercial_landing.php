@@ -527,9 +527,11 @@ includeSidebar('Comercial');
             <div class="stat-card-icon">✅</div>
             <div class="stat-card-value"><?= $stats['fecharam_contrato'] ?></div>
             <div class="stat-card-label">Contratos Fechados</div>
-            <div class="stat-card-subtext"><?= $stats['taxa_conversao'] ?>% conversão</div>
-            <?php if ($stats['inscritos_total'] > 0): 
-                $percent = round(($stats['fecharam_contrato'] / $stats['inscritos_total']) * 100);
+            <div class="stat-card-subtext"><?= $stats['taxa_conversao'] ?>% conversão (3 últimas degustações)</div>
+            <?php 
+                $total_relevante_contratos = $stats['fecharam_contrato'] + $stats['nao_fecharam_contrato'];
+                if ($total_relevante_contratos > 0): 
+                    $percent = round(($stats['fecharam_contrato'] / $total_relevante_contratos) * 100);
             ?>
             <div class="stat-progress-bar">
                 <div class="stat-progress-fill" style="width: <?= $percent ?>%; background: linear-gradient(90deg, #8b5cf6, #7c3aed);"></div>
