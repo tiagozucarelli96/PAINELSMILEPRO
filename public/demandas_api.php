@@ -106,58 +106,72 @@ try {
 }
 
 function listarDemandas($pdo) {
-    $filtros = [
-        'status' => $_GET['status'] ?? '',
-        'responsavel' => $_GET['responsavel'] ?? '',
-        'texto' => $_GET['texto'] ?? '',
-        'ate_data' => $_GET['ate_data'] ?? ''
-    ];
-    
-    $where = ['1=1'];
-    $params = [];
-    
-    if ($filtros['status']) {
-        $where[] = 'd.status = ?';
-        $params[] = $filtros['status'];
+    try {
+        $filtros = [
+            'status' => $_GET['status'] ?? '',
+            'responsavel' => $_GET['responsavel'] ?? '',
+            'texto' => $_GET['texto'] ?? '',
+            'ate_data' => $_GET['ate_data'] ?? ''
+        ];
+        
+        $where = ['1=1'];
+        $params = [];
+        
+        if ($filtros['status']) {
+            $where[] = 'd.status = ?';
+            $params[] = $filtros['status'];
+        }
+        
+        if ($filtros['responsavel']) {
+            $where[] = 'd.responsavel_id = ?';
+            $params[] = $filtros['responsavel'];
+        }
+        
+        if ($filtros['texto']) {
+            $where[] = 'd.descricao ILIKE ?';
+            $params[] = '%' . $filtros['texto'] . '%';
+        }
+        
+        if ($filtros['ate_data']) {
+            $where[] = 'd.prazo <= ?';
+            $params[] = $filtros['ate_data'];
+        }
+        
+        $sql = "
+            SELECT 
+                d.*,
+                r.nome as responsavel_nome,
+                c.nome as criador_nome,
+                CASE 
+                    WHEN d.status = 'concluida' THEN 'concluida'
+                    WHEN d.prazo < CURRENT_DATE THEN 'vencida'
+                    ELSE 'pendente'
+                END as status_real
+            FROM demandas d
+            LEFT JOIN usuarios r ON d.responsavel_id = r.id
+            LEFT JOIN usuarios c ON d.criador_id = c.id
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY d.prazo ASC, d.data_criacao DESC
+        ";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $demandas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true, 
+            'data' => $demandas,
+            'count' => count($demandas)
+        ]);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar demandas: ' . $e->getMessage()
+        ]);
     }
-    
-    if ($filtros['responsavel']) {
-        $where[] = 'd.responsavel_id = ?';
-        $params[] = $filtros['responsavel'];
-    }
-    
-    if ($filtros['texto']) {
-        $where[] = 'd.descricao ILIKE ?';
-        $params[] = '%' . $filtros['texto'] . '%';
-    }
-    
-    if ($filtros['ate_data']) {
-        $where[] = 'd.prazo <= ?';
-        $params[] = $filtros['ate_data'];
-    }
-    
-    $sql = "
-        SELECT 
-            d.*,
-            r.nome as responsavel_nome,
-            c.nome as criador_nome,
-            CASE 
-                WHEN d.status = 'concluida' THEN 'concluida'
-                WHEN d.prazo < CURRENT_DATE THEN 'vencida'
-                ELSE 'pendente'
-            END as status_real
-        FROM demandas d
-        LEFT JOIN usuarios r ON d.responsavel_id = r.id
-        LEFT JOIN usuarios c ON d.criador_id = c.id
-        WHERE " . implode(' AND ', $where) . "
-        ORDER BY d.prazo ASC, d.data_criacao DESC
-    ";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $demandas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    echo json_encode(['success' => true, 'data' => $demandas]);
 }
 
 function obterDemanda($pdo, $id) {

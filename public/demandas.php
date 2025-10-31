@@ -442,19 +442,33 @@ function carregarDemandas() {
         return response.json();
     })
     .then(data => {
-        if (data.success) {
-            demandas = data.data || [];
+        console.log('Dados recebidos da API:', data);
+        if (data.success && data.data) {
+            demandas = Array.isArray(data.data) ? data.data : [];
+            console.log('Demandas carregadas:', demandas.length);
             renderizarDemandas();
         } else {
-            console.error('Erro ao carregar demandas:', data.error);
+            console.error('Erro ao carregar demandas:', data.error || 'Resposta inválida');
+            console.error('Resposta completa:', data);
             demandas = [];
             renderizarDemandas();
         }
     })
     .catch(error => {
         console.error('Erro ao carregar demandas:', error);
+        console.error('Stack trace:', error.stack);
         demandas = [];
-        renderizarDemandas();
+        const container = document.getElementById('demandas-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">⚠️</div>
+                    <h3>Erro ao carregar demandas</h3>
+                    <p>Erro: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="carregarDemandas()">🔄 Tentar Novamente</button>
+                </div>
+            `;
+        }
     });
 }
 
