@@ -95,11 +95,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             throw new Exception("Preencha todos os campos obrigatórios");
         }
         
+        // Construir data_evento combinando data + hora_inicio (para coluna data_evento TIMESTAMP)
+        $data_evento = null;
+        if ($data && $hora_inicio) {
+            try {
+                $data_evento = date('Y-m-d H:i:s', strtotime($data . ' ' . $hora_inicio));
+            } catch (Exception $e) {
+                error_log("Erro ao construir data_evento: " . $e->getMessage());
+            }
+        }
+        
         if ($is_edit) {
             // Atualizar degustação existente
-            // IMPORTANTE: A tabela usa 'titulo' e 'nome', vamos atualizar ambos se existirem
+            // IMPORTANTE: A tabela usa 'titulo', 'nome' e 'data_evento', vamos atualizar todos
             $sql = "UPDATE comercial_degustacoes SET 
-                    nome = :nome, titulo = :nome, data = :data, hora_inicio = :hora_inicio, hora_fim = :hora_fim,
+                    nome = :nome, titulo = :nome, data = :data, 
+                    data_evento = COALESCE(:data_evento, (data || ' ' || hora_inicio)::timestamp),
+                    hora_inicio = :hora_inicio, hora_fim = :hora_fim,
                     local = :local, capacidade = :capacidade, data_limite = :data_limite, lista_espera = :lista_espera,
                     preco_casamento = :preco_casamento, incluidos_casamento = :incluidos_casamento,
                     preco_15anos = :preco_15anos, incluidos_15anos = :incluidos_15anos, preco_extra = :preco_extra,
@@ -108,7 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
                     WHERE id = :id";
             
             $params = [
-                ':nome' => $nome, ':data' => $data, ':hora_inicio' => $hora_inicio, ':hora_fim' => $hora_fim,
+                ':nome' => $nome, ':data' => $data, ':data_evento' => $data_evento,
+                ':hora_inicio' => $hora_inicio, ':hora_fim' => $hora_fim,
                 ':local' => $local, ':capacidade' => $capacidade, ':data_limite' => $data_limite, ':lista_espera' => $lista_espera,
                 ':preco_casamento' => $preco_casamento, ':incluidos_casamento' => $incluidos_casamento,
                 ':preco_15anos' => $preco_15anos, ':incluidos_15anos' => $incluidos_15anos, ':preco_extra' => $preco_extra,
@@ -117,18 +130,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             ];
         } else {
             // Criar nova degustação
-            // IMPORTANTE: A tabela tem 'titulo' como NOT NULL, então precisamos inserir em 'titulo' também
+            // IMPORTANTE: A tabela tem 'titulo' e 'data_evento' como NOT NULL, então precisamos inserir em ambos
+            // Se data_evento for null, usar COALESCE para construir a partir de data + hora_inicio
             $sql = "INSERT INTO comercial_degustacoes 
-                    (nome, titulo, data, hora_inicio, hora_fim, local, capacidade, data_limite, lista_espera,
+                    (nome, titulo, data, data_evento, hora_inicio, hora_fim, local, capacidade, data_limite, lista_espera,
                      preco_casamento, incluidos_casamento, preco_15anos, incluidos_15anos, preco_extra,
                      instrutivo_html, email_confirmacao_html, msg_sucesso_html, campos_json, status, criado_por)
                     VALUES 
-                    (:nome, :nome, :data, :hora_inicio, :hora_fim, :local, :capacidade, :data_limite, :lista_espera,
+                    (:nome, :nome, :data, 
+                     COALESCE(:data_evento, (:data || ' ' || :hora_inicio)::timestamp),
+                     :hora_inicio, :hora_fim, :local, :capacidade, :data_limite, :lista_espera,
                      :preco_casamento, :incluidos_casamento, :preco_15anos, :incluidos_15anos, :preco_extra,
                      :instrutivo_html, :email_confirmacao_html, :msg_sucesso_html, :campos_json, 'rascunho', :criado_por)";
             
             $params = [
-                ':nome' => $nome, ':data' => $data, ':hora_inicio' => $hora_inicio, ':hora_fim' => $hora_fim,
+                ':nome' => $nome, ':data' => $data, ':data_evento' => $data_evento,
+                ':hora_inicio' => $hora_inicio, ':hora_fim' => $hora_fim,
                 ':local' => $local, ':capacidade' => $capacidade, ':data_limite' => $data_limite, ':lista_espera' => $lista_espera,
                 ':preco_casamento' => $preco_casamento, ':incluidos_casamento' => $incluidos_casamento,
                 ':preco_15anos' => $preco_15anos, ':incluidos_15anos' => $incluidos_15anos, ':preco_extra' => $preco_extra,
