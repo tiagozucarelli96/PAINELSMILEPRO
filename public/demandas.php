@@ -453,14 +453,34 @@ function carregarDemandas() {
     .then(response => {
         console.log('Response status:', response.status);
         console.log('Response headers:', response.headers);
-        if (!response.ok) {
-            // Tentar ler o corpo da resposta mesmo em erro para debug
-            return response.text().then(text => {
-                console.error('Response body (error):', text);
-                throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
-            });
-        }
-        return response.json();
+        
+        // Tentar parsear JSON mesmo se status não for ok (pode ser 405 mas com dados válidos)
+        return response.text().then(text => {
+            try {
+                const data = JSON.parse(text);
+                console.log('Dados parseados:', data);
+                
+                // Se tem success:true e data, tratar como sucesso mesmo com status 405
+                if (data.success && data.data !== undefined) {
+                    console.log('✅ Resposta válida encontrada, ignorando status HTTP');
+                    return data;
+                }
+                
+                // Se não for ok e não tiver dados válidos, lançar erro
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                
+                return data;
+            } catch (e) {
+                // Se não conseguir parsear JSON e status não for ok, lançar erro
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                // Se status for ok mas não conseguir parsear, tentar novamente como JSON
+                return response.json();
+            }
+        });
     })
     .then(data => {
         console.log('Dados recebidos da API:', data);
