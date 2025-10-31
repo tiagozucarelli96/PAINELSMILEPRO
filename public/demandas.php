@@ -418,21 +418,44 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function carregarDemandas() {
-    const params = new URLSearchParams(filtros);
+    // Filtrar apenas valores não vazios
+    const filtrosLimpos = {};
+    Object.keys(filtros).forEach(key => {
+        if (filtros[key] && filtros[key] !== '') {
+            filtrosLimpos[key] = filtros[key];
+        }
+    });
     
-    fetch(`demandas_api.php?${params}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                demandas = data.data;
-                renderizarDemandas();
-            } else {
-                console.error('Erro ao carregar demandas:', data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Erro:', error);
-        });
+    const params = new URLSearchParams(filtrosLimpos);
+    const url = `demandas_api.php${params.toString() ? '?' + params.toString() : ''}`;
+    
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            demandas = data.data || [];
+            renderizarDemandas();
+        } else {
+            console.error('Erro ao carregar demandas:', data.error);
+            demandas = [];
+            renderizarDemandas();
+        }
+    })
+    .catch(error => {
+        console.error('Erro ao carregar demandas:', error);
+        demandas = [];
+        renderizarDemandas();
+    });
 }
 
 function renderizarDemandas() {
@@ -497,13 +520,24 @@ function aplicarFiltros() {
 }
 
 function limparFiltros() {
-    document.getElementById('filtro-status').value = '';
-    document.getElementById('filtro-responsavel').value = '';
-    document.getElementById('filtro-texto').value = '';
-    document.getElementById('filtro-data').value = '';
+    // Limpar campos do formulário
+    const statusField = document.getElementById('filtro-status');
+    const responsavelField = document.getElementById('filtro-responsavel');
+    const textoField = document.getElementById('filtro-texto');
+    const dataField = document.getElementById('filtro-data');
     
+    if (statusField) statusField.value = '';
+    if (responsavelField) responsavelField.value = '';
+    if (textoField) textoField.value = '';
+    if (dataField) dataField.value = '';
+    
+    // Limpar filtros
     filtros = {};
+    
+    // Recarregar demandas
     carregarDemandas();
+    
+    console.log('✅ Filtros limpos');
 }
 
 function verDetalhes(id) {

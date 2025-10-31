@@ -29,19 +29,24 @@ try {
     $pdo = $GLOBALS['pdo'];
     $method = $_SERVER['REQUEST_METHOD'];
     $path = $_SERVER['PATH_INFO'] ?? '';
-    $pathParts = explode('/', trim($path, '/'));
+    $pathParts = array_filter(explode('/', trim($path, '/')));
+    $pathParts = array_values($pathParts); // Reindexar
     
     switch ($method) {
         case 'GET':
-            if (empty($pathParts[0])) {
-                // GET /demandas - Listar com filtros
+            if (empty($pathParts) || (count($pathParts) === 0)) {
+                // GET /demandas ou /demandas_api.php?parametros - Listar com filtros
                 listarDemandas($pdo);
-            } elseif (is_numeric($pathParts[0])) {
+            } elseif (count($pathParts) === 1 && is_numeric($pathParts[0])) {
                 // GET /demandas/{id} - Detalhes
                 obterDemanda($pdo, $pathParts[0]);
-            } elseif ($pathParts[0] === 'anexos' && is_numeric($pathParts[1])) {
+            } elseif (count($pathParts) === 2 && $pathParts[0] === 'anexos' && is_numeric($pathParts[1])) {
                 // GET /demandas/anexos/{arquivo_id} - Download
                 downloadAnexo($pdo, $pathParts[1]);
+            } else {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'error' => 'Rota não encontrada']);
             }
             break;
             
