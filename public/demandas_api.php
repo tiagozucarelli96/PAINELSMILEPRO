@@ -90,6 +90,7 @@ try {
     elseif ($method === 'PATCH' || ($method === 'POST' && $action === 'editar' && $id)) {
         if ($id) {
             editarDemanda($pdo, $id);
+            exit;
         } else {
             http_response_code(400);
             header('Content-Type: application/json');
