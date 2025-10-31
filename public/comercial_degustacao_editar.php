@@ -858,19 +858,14 @@ ob_start();
             // Ao submeter formulário, garantir que local seja enviado corretamente
             const form = document.getElementById('degustacaoForm');
             if (form) {
-                // Remover event listener anterior se existir
-                const newForm = form.cloneNode(true);
-                form.parentNode.replaceChild(newForm, form);
-                
-                // Adicionar novo listener
-                document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
+                form.addEventListener('submit', function(e) {
                     const currentSelect = document.getElementById('localSelect');
                     const currentCustom = document.getElementById('localCustom');
                     
                     const selectValue = currentSelect ? currentSelect.value : '';
                     const customValue = currentCustom ? currentCustom.value.trim() : '';
                     
-                    // Se campo customizado está visível e preenchido, garantir que select não seja enviado
+                    // Se campo customizado está visível e preenchido, usar ele
                     if (currentCustom && currentCustom.style.display !== 'none' && customValue) {
                         // Criar input hidden com valor customizado
                         const hidden = document.createElement('input');
@@ -890,11 +885,9 @@ ob_start();
                             currentCustom.disabled = true;
                             currentCustom.required = false;
                         }
-                    } else {
-                        // Se nenhum tem valor, deixar HTML5 validation funcionar
-                        // Não fazer preventDefault - deixar o navegador mostrar o erro
                     }
-                }, { once: false });
+                    // Se nenhum tem valor, deixar HTML5 validation funcionar normalmente
+                });
             }
         }
     </script>
