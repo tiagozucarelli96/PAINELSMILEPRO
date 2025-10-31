@@ -5,22 +5,30 @@
  * Executar diariamente às 00:00 (horário de Brasília)
  */
 
+// Garantir que não há output buffer interferindo
+if (ob_get_level()) {
+    ob_end_clean();
+}
+
 // Configurar timezone para Brasília
 date_default_timezone_set('America/Sao_Paulo');
 
-require_once __DIR__ . '/conexao.php';
-
-// Token de segurança (opcional - configurar via env)
+// Verificar token ANTES de incluir qualquer coisa que possa redirecionar
 $cron_token = getenv('CRON_TOKEN') ?: '';
 $request_token = $_GET['token'] ?? '';
 
+// Se token estiver configurado e não corresponder, retornar erro imediatamente
 if (!empty($cron_token) && $request_token !== $cron_token) {
     http_response_code(401);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Token inválido']);
     exit;
 }
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/conexao.php';
+
+// Headers devem ser enviados antes de qualquer output
+header('Content-Type: application/json; charset=utf-8');
 
 try {
     $pdo = $GLOBALS['pdo'];
