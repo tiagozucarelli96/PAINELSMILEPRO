@@ -85,8 +85,46 @@ class MagaluUpload {
     }
     
     public function delete($key) {
-        // TODO: Implementar delete real para Magalu Cloud
-        return true;
+        // Implementação de delete no Magalu Cloud
+        // Usando API REST do S3-compatible (Magalu Cloud)
+        
+        if (empty($key)) {
+            return false;
+        }
+        
+        try {
+            // Construir URL do objeto
+            $url = "{$this->endpoint}/{$this->bucket}/{$key}";
+            
+            // Preparar requisição DELETE
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_CUSTOMREQUEST => 'DELETE',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: AWS ' . $this->accessKey . ':' . $this->generateSignature('DELETE', $key)
+                ]
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            // 204 (No Content) ou 200 (OK) indicam sucesso
+            return $httpCode === 204 || $httpCode === 200;
+            
+        } catch (Exception $e) {
+            error_log("Erro ao deletar do Magalu Cloud: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    private function generateSignature($method, $key) {
+        // Gerar assinatura AWS S3-compatible para autenticação
+        // Simplificado - em produção, usar AWS SDK ou biblioteca adequada
+        $date = gmdate('Ymd\THis\Z');
+        $stringToSign = "{$method}\n\n\n{$date}\n/{$this->bucket}/{$key}";
+        return base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
     }
 }
 

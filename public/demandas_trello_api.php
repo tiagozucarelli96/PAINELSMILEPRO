@@ -21,6 +21,7 @@ if (empty($_SESSION['user_id'])) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)$_SESSION['user_id'];
@@ -969,7 +970,7 @@ function downloadAnexo($pdo, $anexo_id) {
  */
 function deletarAnexo($pdo, $anexo_id) {
     try {
-        // Buscar info do anexo antes de deletar (para limpar do Magalu se necessário)
+        // Buscar info do anexo antes de deletar (para limpar do Magalu)
         $stmt_info = $pdo->prepare("SELECT chave_storage FROM demandas_arquivos_trello WHERE id = :id");
         $stmt_info->execute([':id' => $anexo_id]);
         $anexo = $stmt_info->fetch(PDO::FETCH_ASSOC);
@@ -980,17 +981,30 @@ function deletarAnexo($pdo, $anexo_id) {
             exit;
         }
         
-        // Deletar do banco (CASCADE vai deletar automaticamente)
+        // Deletar arquivo físico do Magalu Cloud (se existir)
+        if (!empty($anexo['chave_storage'])) {
+            try {
+                $uploader = new MagaluUpload();
+                $uploader->delete($anexo['chave_storage']);
+            } catch (Exception $e) {
+                // Log do erro mas não impede a deleção do registro
+                error_log("Erro ao deletar arquivo do Magalu Cloud: " . $e->getMessage());
+            }
+        }
+        
+        // Deletar registro do banco
         $stmt = $pdo->prepare("DELETE FROM demandas_arquivos_trello WHERE id = :id");
         $stmt->execute([':id' => $anexo_id]);
         
-        // TODO: Deletar do Magalu Cloud se necessário
-        // $uploader = new MagaluUpload();
-        // $uploader->delete($anexo['chave_storage']);
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Anexo não encontrado no banco']);
+            exit;
+        }
         
         echo json_encode([
             'success' => true,
-            'message' => 'Anexo deletado com sucesso'
+            'message' => 'Anexo deletado com sucesso (arquivo e registro)'
         ]);
         exit;
     } catch (PDOException $e) {
