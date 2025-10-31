@@ -238,22 +238,25 @@ ob_start();
     text-align: right;
 }
 
-/* Estatísticas */
+/* Estatísticas - parte do mesmo card */
 .stats-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     padding: 1.25rem 1.5rem;
-    background: #f8fafc;
+    background: #f1f5f9;
+    border-top: 1px solid #e5e7eb;
     border-bottom: 1px solid #e5e7eb;
+    margin-top: 0;
 }
 
 .stat-item {
     text-align: center;
-    padding: 0.75rem;
+    padding: 1rem;
     background: white;
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .stat-value {
