@@ -362,74 +362,8 @@ if ($current_page === 'dashboard') {
     </div>';
     
     // Conteúdo será renderizado diretamente via PHP (linha 1548-1563)
-} elseif ($current_page === 'comercial') {
-    // Conteúdo da página Comercial
-    $comercial_content = '
-    <div class="page-container">
-        <div class="page-header">
-            <h1 class="page-title">📋 Comercial</h1>
-            <p class="page-subtitle">Gestão de degustações e conversões</p>
-        </div>
-        
-        <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🎉 Degustações</h3>
-                    <span class="card-icon">🎉</span>
-                </div>
-                <div class="card-content">
-                    <p>Gerenciar degustações e eventos</p>
-                    <a href="index.php?page=comercial_degustacoes" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>👥 Inscritos</h3>
-                    <span class="card-icon">👥</span>
-                </div>
-                <div class="card-content">
-                    <p>Visualizar inscrições e participantes</p>
-                    <a href="index.php?page=comercial_degust_inscricoes" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📊 Clientes</h3>
-                    <span class="card-icon">📊</span>
-                </div>
-                <div class="card-content">
-                    <p>Funil de conversão e clientes</p>
-                    <a href="index.php?page=comercial_clientes" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>✏️ Nova Degustação</h3>
-                    <span class="card-icon">✏️</span>
-                </div>
-                <div class="card-content">
-                    <p>Criar nova degustação</p>
-                    <a href="index.php?page=comercial_degustacao_editar" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Inscritos (Todas)</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Lista completa de inscritos</p>
-                    <a href="index.php?page=comercial_degust_inscritos" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-        </div>
-    </div>';
-    
-    // Conteúdo será renderizado diretamente via PHP (linha 1548-1563)
+    // NOTA: A página Comercial usa comercial_landing.php (definida no index.php)
+    // Os cards duplicados foram removidos para evitar confusão
 } elseif ($current_page === 'logistico') {
     // Conteúdo da página Logístico
     $logistico_content = '
