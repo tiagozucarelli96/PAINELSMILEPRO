@@ -808,6 +808,39 @@ function deletarCard($pdo, $card_id, $usuario_id, $is_admin) {
             }
         }
         
+        // ANTES de deletar o card, deletar todos os anexos do Magalu Cloud
+        require_once __DIR__ . '/upload_magalu.php';
+        $uploader = new MagaluUpload();
+        
+        $stmt_anexos = $pdo->prepare("
+            SELECT id, chave_storage 
+            FROM demandas_arquivos_trello 
+            WHERE card_id = :card_id
+        ");
+        $stmt_anexos->execute([':card_id' => $card_id]);
+        $anexos = $stmt_anexos->fetchAll(PDO::FETCH_ASSOC);
+        
+        $arquivosDeletados = 0;
+        $errosDeletacao = [];
+        
+        foreach ($anexos as $anexo) {
+            if (!empty($anexo['chave_storage'])) {
+                try {
+                    if ($uploader->delete($anexo['chave_storage'])) {
+                        $arquivosDeletados++;
+                        error_log("Arquivo deletado do Magalu: {$anexo['chave_storage']}");
+                    } else {
+                        $errosDeletacao[] = $anexo['chave_storage'];
+                        error_log("Erro ao deletar arquivo do Magalu: {$anexo['chave_storage']}");
+                    }
+                } catch (Exception $e) {
+                    $errosDeletacao[] = $anexo['chave_storage'];
+                    error_log("Exceção ao deletar arquivo: " . $e->getMessage());
+                }
+            }
+        }
+        
+        // Deletar o card (cascata vai deletar anexos do banco)
         $stmt = $pdo->prepare("DELETE FROM demandas_cards WHERE id = :id");
         $stmt->execute([':id' => $card_id]);
         
@@ -817,9 +850,17 @@ function deletarCard($pdo, $card_id, $usuario_id, $is_admin) {
             exit;
         }
         
+        $message = 'Card deletado com sucesso';
+        if ($arquivosDeletados > 0) {
+            $message .= " ({$arquivosDeletados} arquivo(s) removido(s) do Magalu Cloud)";
+        }
+        if (!empty($errosDeletacao)) {
+            $message .= ". Atenção: " . count($errosDeletacao) . " arquivo(s) não puderam ser removidos do storage.";
+        }
+        
         echo json_encode([
             'success' => true,
-            'message' => 'Card deletado com sucesso'
+            'message' => $message
         ]);
         exit;
     } catch (PDOException $e) {

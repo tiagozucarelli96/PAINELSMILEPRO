@@ -883,11 +883,18 @@ function renderizarQuadros() {
     container.innerHTML = '<div class="boards-list">' + 
         boards.map(board => `
             <div class="board-card ${currentBoardId === board.id ? 'active' : ''}" 
-                 onclick="selecionarQuadro(${board.id})">
-                <div style="font-weight: 600; margin-bottom: 0.5rem;">${board.nome}</div>
-                <div style="font-size: 0.75rem; color: #6b7280;">
-                    ${board.total_listas || 0} listas • ${board.total_cards || 0} cards
+                 style="position: relative;">
+                <div onclick="selecionarQuadro(${board.id})" style="cursor: pointer;">
+                    <div style="font-weight: 600; margin-bottom: 0.5rem;">${board.nome}</div>
+                    <div style="font-size: 0.75rem; color: #6b7280;">
+                        ${board.total_listas || 0} listas • ${board.total_cards || 0} cards
+                    </div>
                 </div>
+                <button onclick="event.stopPropagation(); deletarQuadro(${board.id})" 
+                        style="position: absolute; top: 0.5rem; right: 0.5rem; background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; padding: 0.25rem; opacity: 0.6; transition: opacity 0.2s;"
+                        onmouseover="this.style.opacity='1'" 
+                        onmouseout="this.style.opacity='0.6'"
+                        title="Deletar quadro">🗑️</button>
             </div>
         `).join('') + '</div>';
 }
@@ -1582,6 +1589,39 @@ async function deletarLista(listaId) {
     } catch (error) {
         console.error('Erro:', error);
         customAlert('Erro ao deletar lista', '❌ Erro');
+    }
+}
+
+async function deletarQuadro(quadroId) {
+    const confirmado = await customConfirm('Tem certeza? Todo o quadro, listas, cards e arquivos serão deletados permanentemente.', '⚠️ Confirmar Exclusão de Quadro');
+    if (!confirmado) {
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`${API_BASE}?action=deletar_quadro&id=${quadroId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            mostrarToast('✅ Quadro deletado com sucesso!');
+            await carregarQuadros();
+            
+            // Selecionar outro quadro se disponível
+            if (boards.length > 0) {
+                selecionarQuadro(boards[0].id);
+            } else {
+                document.getElementById('trello-board').innerHTML = '<div class="empty-state"><p>Nenhum quadro disponível. Crie um novo quadro para começar.</p></div>';
+                currentBoardId = null;
+            }
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao deletar quadro', '❌ Erro');
     }
 }
 
