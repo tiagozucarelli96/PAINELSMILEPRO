@@ -182,33 +182,55 @@ function obterDemanda($pdo, $id) {
 function criarDemanda($pdo) {
     $data = json_decode(file_get_contents('php://input'), true);
     
+    if (!$data) {
+        // Tentar pegar de $_POST se JSON não funcionar
+        $data = $_POST;
+    }
+    
     $descricao = $data['descricao'] ?? '';
     $prazo = $data['prazo'] ?? '';
-    $responsavel_id = $data['responsavel_id'] ?? 0;
+    $responsavel_id = isset($data['responsavel_id']) ? (int)$data['responsavel_id'] : 0;
     $whatsapp = $data['whatsapp'] ?? '';
     
     if (!$descricao || !$prazo || !$responsavel_id) {
         http_response_code(400);
-        echo json_encode(['error' => 'Dados obrigatórios: descricao, prazo, responsavel_id']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Dados obrigatórios: descricao, prazo, responsavel_id',
+            'debug' => [
+                'descricao' => $descricao ? 'preenchido' : 'vazio',
+                'prazo' => $prazo ? 'preenchido' : 'vazio',
+                'responsavel_id' => $responsavel_id
+            ]
+        ]);
         return;
     }
     
-    $stmt = $pdo->prepare("
-        INSERT INTO demandas (descricao, prazo, responsavel_id, criador_id, whatsapp) 
-        VALUES (?, ?, ?, ?, ?)
-        RETURNING id
-    ");
-    $stmt->execute([
-        $descricao,
-        $prazo,
-        $responsavel_id,
-        $_SESSION['user_id'] ?? 1,
-        $whatsapp
-    ]);
-    
-    $id = $stmt->fetchColumn();
-    
-    echo json_encode(['success' => true, 'data' => ['id' => $id]]);
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO demandas (descricao, prazo, responsavel_id, criador_id, whatsapp) 
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id
+        ");
+        $stmt->execute([
+            $descricao,
+            $prazo,
+            $responsavel_id,
+            $_SESSION['user_id'] ?? 1,
+            $whatsapp ?: null
+        ]);
+        
+        $id = $stmt->fetchColumn();
+        
+        echo json_encode(['success' => true, 'data' => ['id' => $id]]);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao inserir no banco: ' . $e->getMessage()
+        ]);
+    }
 }
 
 function editarDemanda($pdo, $id) {

@@ -300,10 +300,10 @@ includeSidebar('Demandas');
 </style>
 
 <div class="page-container">
-    <div class="header-actions">
-        <h1>📋 Demandas</h1>
+            <div class="header-actions">
+                <h1>📋 Demandas</h1>
         <button class="btn btn-primary" onclick="openCreateModal()">➕ Nova Demanda</button>
-    </div>
+                </div>
     
     <!-- Filtros -->
     <div class="filters">
@@ -317,7 +317,7 @@ includeSidebar('Demandas');
                     <option value="concluida">Concluída</option>
                 </select>
             </div>
-            
+
             <div class="form-group">
                 <label for="filtro-responsavel">Responsável</label>
                 <select id="filtro-responsavel">
@@ -331,14 +331,14 @@ includeSidebar('Demandas');
             <div class="form-group">
                 <label for="filtro-texto">Buscar texto</label>
                 <input type="text" id="filtro-texto" placeholder="Digite para buscar...">
-            </div>
-            
+                            </div>
+                            
             <div class="form-group">
                 <label for="filtro-data">Até data</label>
                 <input type="date" id="filtro-data">
-            </div>
-        </div>
-        
+                                </div>
+                            </div>
+                            
         <button class="btn btn-outline" onclick="aplicarFiltros()">🔍 Filtrar</button>
         <button class="btn btn-outline" onclick="limparFiltros()">🗑️ Limpar</button>
     </div>
@@ -348,9 +348,9 @@ includeSidebar('Demandas');
         <div class="empty-state">
             <div class="empty-state-icon">⏳</div>
             <div>Carregando demandas...</div>
-        </div>
-    </div>
-</div>
+                            </div>
+                        </div>
+                </div>
 
 <!-- Modal de detalhes -->
 <div id="detailModal" class="modal">
@@ -358,43 +358,43 @@ includeSidebar('Demandas');
         <div class="modal-header">
             <h2 id="modal-titulo">Detalhes da Demanda</h2>
             <span class="close" onclick="closeDetailModal()">&times;</span>
-        </div>
+                </div>
         
         <div id="modal-conteudo">
             <!-- Conteúdo carregado via AJAX -->
         </div>
+        </div>
     </div>
-</div>
 
 <!-- Modal de criação -->
 <div id="createModal" class="modal">
-    <div class="modal-content">
+        <div class="modal-content">
         <div class="modal-header">
             <h2>Nova Demanda</h2>
             <span class="close" onclick="closeCreateModal()">&times;</span>
         </div>
         
         <form id="createForm">
-            <div class="form-group">
+                <div class="form-group">
                 <label for="descricao">Descrição *</label>
                 <textarea id="descricao" name="descricao" rows="4" required></textarea>
-            </div>
-            
-            <div class="form-group">
+                </div>
+                
+                <div class="form-group">
                 <label for="prazo">Prazo *</label>
                 <input type="date" id="prazo" name="prazo" required>
-            </div>
-            
-            <div class="form-group">
+                </div>
+                
+                <div class="form-group">
                 <label for="responsavel_id">Responsável *</label>
                 <select id="responsavel_id" name="responsavel_id" required>
                     <option value="">Selecione...</option>
                     <?php foreach ($usuarios as $usuario): ?>
                         <option value="<?= $usuario['id'] ?>"><?= htmlspecialchars($usuario['nome']) ?></option>
                     <?php endforeach; ?>
-                </select>
-            </div>
-            
+                    </select>
+                </div>
+                
             <div class="form-group">
                 <label for="whatsapp">WhatsApp (opcional)</label>
                 <input type="text" id="whatsapp" name="whatsapp" placeholder="(11) 99999-9999">
@@ -403,12 +403,12 @@ includeSidebar('Demandas');
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="button" class="btn btn-outline" onclick="closeCreateModal()">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Criar Demanda</button>
-            </div>
-        </form>
+                </div>
+            </form>
+        </div>
     </div>
-</div>
 
-<script>
+    <script>
 let demandas = [];
 let filtros = {};
 
@@ -635,7 +635,20 @@ document.getElementById('createForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const formData = new FormData(this);
-    const data = Object.fromEntries(formData);
+    const data = {
+        descricao: formData.get('descricao'),
+        prazo: formData.get('prazo'),
+        responsavel_id: parseInt(formData.get('responsavel_id')),
+        whatsapp: formData.get('whatsapp') || ''
+    };
+    
+    console.log('Dados enviados:', data);
+    
+    // Validação client-side
+    if (!data.descricao || !data.prazo || !data.responsavel_id) {
+        alert('Por favor, preencha todos os campos obrigatórios (Descrição, Prazo e Responsável)');
+        return;
+    }
     
     fetch('demandas_api.php', {
         method: 'POST',
@@ -644,21 +657,27 @@ document.getElementById('createForm').addEventListener('submit', function(e) {
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status);
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data);
         if (data.success) {
             closeCreateModal();
             carregarDemandas();
-            alert('Demanda criada com sucesso!');
+            alert('✅ Demanda criada com sucesso!');
         } else {
-            alert('Erro ao criar demanda: ' + data.error);
+            const errorMsg = data.error || 'Erro desconhecido';
+            const debugInfo = data.debug ? '\nDebug: ' + JSON.stringify(data.debug) : '';
+            alert('❌ Erro ao criar demanda: ' + errorMsg + debugInfo);
         }
     })
     .catch(error => {
-        console.error('Erro:', error);
-        alert('Erro ao criar demanda');
+        console.error('Erro na requisição:', error);
+        alert('❌ Erro ao conectar com o servidor. Verifique o console para mais detalhes.');
     });
 });
-</script>
+    </script>
 
 <?php endSidebar(); ?>
