@@ -32,13 +32,14 @@ function processarWebhook($data) {
         }
         
         // Preparar dados para inserção - estrutura correta da ME Eventos
+        // IMPORTANTE: Não atualizar recebido_em no ON CONFLICT para manter a data original
         $stmt = $pdo->prepare("
             INSERT INTO me_eventos_webhook (
                 evento_id, nome, data_evento, status, tipo_evento, 
-                cliente_nome, cliente_email, valor, webhook_tipo, webhook_data
+                cliente_nome, cliente_email, valor, webhook_tipo, webhook_data, recebido_em
             ) VALUES (
                 :evento_id, :nome, :data_evento, :status, :tipo_evento,
-                :cliente_nome, :cliente_email, :valor, :webhook_tipo, :webhook_data
+                :cliente_nome, :cliente_email, :valor, :webhook_tipo, :webhook_data, NOW()
             ) ON CONFLICT (evento_id, webhook_tipo) DO UPDATE SET
                 nome = EXCLUDED.nome,
                 data_evento = EXCLUDED.data_evento,
@@ -48,8 +49,8 @@ function processarWebhook($data) {
                 cliente_email = EXCLUDED.cliente_email,
                 valor = EXCLUDED.valor,
                 webhook_data = EXCLUDED.webhook_data,
-                recebido_em = NOW(),
                 processado = FALSE
+                -- recebido_em NÃO é atualizado no ON CONFLICT para manter a data original
         ");
         
         // Mapear dados da ME Eventos para nossa estrutura
