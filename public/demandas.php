@@ -602,15 +602,31 @@ function verDetalhes(id) {
     fetch(`demandas_api.php?action=detalhes&id=${id}`, {
         method: 'GET',
         headers: {
-            'Content-Type': 'application/json'
-        }
+            'Accept': 'application/json'
+        },
+        credentials: 'same-origin',
+        cache: 'no-cache'
     })
     .then(response => {
         console.log('Response status:', response.status);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
+        return response.text().then(text => {
+            try {
+                const data = JSON.parse(text);
+                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
+                if (data.success) {
+                    return data;
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return data;
+            } catch (e) {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return JSON.parse(text);
+            }
+        });
     })
     .then(data => {
         console.log('Dados recebidos:', data);
@@ -693,15 +709,31 @@ function concluirDemanda(id) {
     fetch(`demandas_api.php?action=concluir&id=${id}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
-        }
+            'Accept': 'application/json'
+        },
+        credentials: 'same-origin',
+        cache: 'no-cache'
     })
     .then(response => {
         console.log('Response status:', response.status);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
+        return response.text().then(text => {
+            try {
+                const data = JSON.parse(text);
+                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
+                if (data.success) {
+                    return data;
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return data;
+            } catch (e) {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return JSON.parse(text);
+            }
+        });
     })
     .then(data => {
         console.log('Response data:', data);

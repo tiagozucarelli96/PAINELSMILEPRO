@@ -49,6 +49,7 @@ try {
         } elseif ($action === 'detalhes' && $id) {
             // GET ?action=detalhes&id=X
             obterDemanda($pdo, $id);
+            exit;
         } elseif ($action === 'anexo' && $id) {
             // GET ?action=anexo&id=X
             downloadAnexo($pdo, $id);
@@ -68,6 +69,7 @@ try {
         } elseif ($action === 'concluir' && $id) {
             // POST ?action=concluir&id=X
             concluirDemanda($pdo, $id);
+            exit;
         } elseif ($action === 'reabrir' && $id) {
             // POST ?action=reabrir&id=X
             reabrirDemanda($pdo, $id);
@@ -221,50 +223,83 @@ function listarDemandas($pdo) {
 }
 
 function obterDemanda($pdo, $id) {
-    $stmt = $pdo->prepare("
-        SELECT 
-            d.*,
-            r.nome as responsavel_nome,
-            c.nome as criador_nome
-        FROM demandas d
-        LEFT JOIN usuarios r ON d.responsavel_id = r.id
-        LEFT JOIN usuarios c ON d.criador_id = c.id
-        WHERE d.id = ?
-    ");
-    $stmt->execute([$id]);
-    $demanda = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$demanda) {
-        http_response_code(404);
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        $stmt = $pdo->prepare("
+            SELECT 
+                d.*,
+                r.nome as responsavel_nome,
+                c.nome as criador_nome
+            FROM demandas d
+            LEFT JOIN usuarios r ON d.responsavel_id = r.id
+            LEFT JOIN usuarios c ON d.criador_id = c.id
+            WHERE d.id = ?
+        ");
+        $stmt->execute([$id]);
+        $demanda = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$demanda) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
+            return;
+        }
+        
+        // Buscar comentários (tabela pode não existir, usar try-catch)
+        $comentarios = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    dc.*,
+                    u.nome as autor_nome
+                FROM demandas_comentarios dc
+                LEFT JOIN usuarios u ON dc.autor_id = u.id
+                WHERE dc.demanda_id = ?
+                ORDER BY dc.data_criacao ASC
+            ");
+            $stmt->execute([$id]);
+            $comentarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Erro ao buscar comentários: " . $e->getMessage());
+            // Continuar sem comentários se tabela não existir
+        }
+        
+        // Buscar anexos (tabela pode não existir, usar try-catch)
+        $anexos = [];
+        try {
+            $stmt = $pdo->prepare("
+                SELECT * FROM demandas_arquivos 
+                WHERE demanda_id = ?
+                ORDER BY criado_em ASC
+            ");
+            $stmt->execute([$id]);
+            $anexos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Erro ao buscar anexos: " . $e->getMessage());
+            // Continuar sem anexos se tabela não existir
+        }
+        
+        $demanda['comentarios'] = $comentarios;
+        $demanda['anexos'] = $anexos;
+        
+        echo json_encode(['success' => true, 'data' => $demanda], JSON_UNESCAPED_UNICODE);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
-        return;
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao buscar demanda: ' . $e->getMessage()
+        ]);
     }
-    
-    $stmt = $pdo->prepare("
-        SELECT 
-            dc.*,
-            u.nome as autor_nome
-        FROM demandas_comentarios dc
-        LEFT JOIN usuarios u ON dc.autor_id = u.id
-        WHERE dc.demanda_id = ?
-        ORDER BY dc.data_criacao ASC
-    ");
-    $stmt->execute([$id]);
-    $comentarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $stmt = $pdo->prepare("
-        SELECT * FROM demandas_arquivos 
-        WHERE demanda_id = ?
-        ORDER BY criado_em ASC
-    ");
-    $stmt->execute([$id]);
-    $anexos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    $demanda['comentarios'] = $comentarios;
-    $demanda['anexos'] = $anexos;
-    
-    echo json_encode(['success' => true, 'data' => $demanda]);
 }
 
 function criarDemanda($pdo) {
@@ -362,14 +397,46 @@ function editarDemanda($pdo, $id) {
 }
 
 function concluirDemanda($pdo, $id) {
-    $stmt = $pdo->prepare("
-        UPDATE demandas 
-        SET status = 'concluida', data_conclusao = NOW()
-        WHERE id = ?
-    ");
-    $stmt->execute([$id]);
-    
-    echo json_encode(['success' => true]);
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID da demanda não fornecido']);
+            return;
+        }
+        
+        $stmt = $pdo->prepare("
+            UPDATE demandas 
+            SET status = 'concluida', data_conclusao = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$id]);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
+            return;
+        }
+        
+        echo json_encode(['success' => true, 'message' => 'Demanda concluída com sucesso']);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao concluir demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao concluir demanda: ' . $e->getMessage()
+        ]);
+    }
 }
 
 function reabrirDemanda($pdo, $id) {
