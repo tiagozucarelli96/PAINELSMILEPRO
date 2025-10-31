@@ -27,8 +27,15 @@ if (!empty($cron_token) && $request_token !== $cron_token) {
 
 require_once __DIR__ . '/conexao.php';
 
-// Headers devem ser enviados antes de qualquer output
+// Headers devem ser enviados antes de qualquer output (garantir que não há redirecionamento)
 header('Content-Type: application/json; charset=utf-8');
+
+// Prevenir qualquer redirecionamento que possa vir de conexao.php ou outros includes
+if (!isset($_GET['token'])) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Token não fornecido']);
+    exit;
+}
 
 try {
     $pdo = $GLOBALS['pdo'];
