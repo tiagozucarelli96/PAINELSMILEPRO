@@ -582,6 +582,12 @@ includeSidebar('Demandas Trello');
                 </select>
                 <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
             </div>
+            <div class="form-group">
+                <label for="edit-card-anexo">📎 Adicionar Anexo</label>
+                <input type="file" id="edit-card-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                <button type="button" class="btn btn-outline" onclick="adicionarAnexoNoEditar()" style="margin-top: 0.5rem;">➕ Adicionar Arquivo</button>
+                <small style="color: #6b7280; font-size: 0.75rem; display: block; margin-top: 0.5rem;">Formatos: PDF, imagens, Word, Excel (máx. 10MB)</small>
+            </div>
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="button" class="btn btn-outline" onclick="fecharModal('modal-editar-card')">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Salvar</button>
@@ -638,6 +644,11 @@ includeSidebar('Demandas Trello');
                     <?php endforeach; ?>
                 </select>
                 <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
+            </div>
+            <div class="form-group">
+                <label for="card-anexo">📎 Anexar Arquivo (opcional)</label>
+                <input type="file" id="card-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                <small style="color: #6b7280; font-size: 0.75rem;">Formatos: PDF, imagens, Word, Excel (máx. 10MB)</small>
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="button" class="btn btn-outline" onclick="fecharModal('modal-novo-card')">Cancelar</button>
@@ -906,8 +917,11 @@ async function criarCard(listaIdPredefinida = null) {
     const prioridade = document.getElementById('card-prioridade').value;
     const categoria = document.getElementById('card-categoria').value || null;
     const usuarios = Array.from(document.getElementById('card-usuarios').selectedOptions).map(opt => parseInt(opt.value));
+    const anexoInput = document.getElementById('card-anexo');
+    const temAnexo = anexoInput && anexoInput.files[0];
     
     try {
+        // Criar card primeiro
         const response = await fetch(`${API_BASE}?action=criar_card`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -925,11 +939,34 @@ async function criarCard(listaIdPredefinida = null) {
         const data = await response.json();
         
         if (data.success) {
+            const cardId = data.data.id;
+            
+            // Se houver anexo, fazer upload
+            if (temAnexo) {
+                const formData = new FormData();
+                formData.append('arquivo', anexoInput.files[0]);
+                
+                try {
+                    const anexoResponse = await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const anexoData = await anexoResponse.json();
+                    if (!anexoData.success) {
+                        console.error('Erro ao anexar arquivo:', anexoData.error);
+                        // Não falhar a criação do card se o anexo falhar
+                    }
+                } catch (anexoError) {
+                    console.error('Erro ao anexar arquivo:', anexoError);
+                }
+            }
+            
             fecharModal('modal-novo-card');
             document.getElementById('form-novo-card').reset();
             await carregarTodosCards();
             renderizarBoard();
-            mostrarToast('✅ Card criado com sucesso!');
+            mostrarToast('✅ Card criado com sucesso!' + (temAnexo ? ' Arquivo anexado.' : ''));
         } else {
             alert('Erro: ' + (data.error || 'Erro desconhecido'));
         }
@@ -1028,9 +1065,11 @@ async function verCard(cardId) {
                             </div>
                         `).join('')}
                     </div>
-                    <div style="margin-top: 1rem;">
-                        <input type="file" id="novo-anexo" style="margin-bottom: 0.5rem;">
-                        <button class="btn btn-primary" onclick="adicionarAnexo(${card.id})">Adicionar Anexo</button>
+                    <div style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 2px dashed #d1d5db;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">➕ Adicionar Novo Anexo</label>
+                        <input type="file" id="novo-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="margin-bottom: 0.75rem; width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
+                        <button class="btn btn-primary" onclick="adicionarAnexo(${card.id})" style="width: 100%;">📎 Anexar Arquivo</button>
+                        <small style="display: block; margin-top: 0.5rem; color: #6b7280; font-size: 0.75rem;">Formatos aceitos: PDF, imagens, Word, Excel (máx. 10MB)</small>
                     </div>
                 </div>
                 
@@ -1462,6 +1501,48 @@ async function deletarCardConfirmado(cardId) {
     } catch (error) {
         console.error('Erro:', error);
         alert('Erro ao deletar card');
+    }
+}
+
+// Função para adicionar anexo no modal de edição
+async function adicionarAnexoNoEditar() {
+    const anexoInput = document.getElementById('edit-card-anexo');
+    const cardId = parseInt(document.getElementById('edit-card-id').value);
+    
+    if (!anexoInput || !anexoInput.files[0]) {
+        alert('Selecione um arquivo primeiro');
+        return;
+    }
+    
+    if (!cardId) {
+        alert('Erro: ID do card não encontrado');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('arquivo', anexoInput.files[0]);
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            anexoInput.value = '';
+            mostrarToast('✅ Anexo adicionado!');
+            // Recarregar o card para mostrar o anexo
+            await verCard(cardId);
+            // Reabrir modal de edição
+            setTimeout(() => editarCard(cardId), 500);
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro ao adicionar anexo:', error);
+        alert('Erro ao adicionar anexo');
     }
 }
 
