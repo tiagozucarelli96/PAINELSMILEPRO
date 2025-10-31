@@ -130,20 +130,11 @@ function processarWebhook($data) {
     }
 }
 
-// Log de todas as requisições (antes de qualquer validação)
-logWebhook("=== REQUISIÇÃO RECEBIDA ===");
-logWebhook("Método: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN'));
-logWebhook("URL: " . ($_SERVER['REQUEST_URI'] ?? 'UNKNOWN'));
-logWebhook("Headers: " . json_encode(getallheaders() ?: []));
-logWebhook("GET params: " . json_encode($_GET));
-logWebhook("POST params: " . json_encode($_POST));
-logWebhook("Raw input: " . (file_get_contents('php://input') ?: 'VAZIO'));
-
 // Verificar método HTTP
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['erro' => 'Método não permitido']);
-    logWebhook("ERRO: Método " . $_SERVER['REQUEST_METHOD'] . " não permitido");
+    logWebhook("ERRO: Método " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN') . " não permitido. Esperado: POST");
     exit;
 }
 
@@ -191,17 +182,28 @@ require_once __DIR__ . '/core/helpers.php';
 
 // Obter dados do webhook
 $input = file_get_contents('php://input');
+
+// Log de todas as requisições recebidas
+logWebhook("=== REQUISIÇÃO RECEBIDA ===");
+logWebhook("Método: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN'));
+logWebhook("URL: " . ($_SERVER['REQUEST_URI'] ?? 'UNKNOWN'));
+logWebhook("Headers: " . json_encode(getallheaders() ?: []));
+logWebhook("GET params: " . json_encode($_GET));
+logWebhook("POST params: " . json_encode($_POST));
+logWebhook("Raw input length: " . strlen($input) . " bytes");
+logWebhook("Raw input preview: " . substr($input, 0, 500));
+
 $data = json_decode($input, true);
 
 if (json_last_error() !== JSON_ERROR_NONE) {
     http_response_code(400);
     echo json_encode(['erro' => 'JSON inválido']);
-    logWebhook("JSON inválido recebido: $input");
+    logWebhook("JSON inválido recebido. Erro: " . json_last_error_msg() . " | Input: " . substr($input, 0, 500));
     exit;
 }
 
-// Log do webhook recebido
-logWebhook("Webhook recebido: " . $input);
+// Log do webhook recebido (completo)
+logWebhook("Webhook recebido e parseado com sucesso: " . json_encode($data));
 
 // Processar webhook
 if (processarWebhook($data)) {
