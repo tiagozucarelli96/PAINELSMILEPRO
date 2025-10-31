@@ -264,9 +264,15 @@ ob_start();
                             </a>
                             <?php endif; ?>
                             
-                            <a href="index.php?page=comercial_degust_public&t=<?= $degustacao['token_publico'] ?>" class="btn-sm btn-secondary" target="_blank">
+                            <?php if (!empty($degustacao['token_publico'])): ?>
+                            <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($degustacao['token_publico'], ENT_QUOTES, 'UTF-8') ?>" class="btn-sm btn-secondary" target="_blank">
                                 🔗 Link Público
                             </a>
+                            <?php else: ?>
+                            <span class="btn-sm btn-secondary" style="opacity: 0.5; cursor: not-allowed;" title="Link público não disponível">
+                                🔗 Link Público
+                            </span>
+                            <?php endif; ?>
                             
                             <?php if (lc_can_edit_degustacoes()): ?>
                                 <?php if ($degustacao['status'] === 'rascunho'): ?>
