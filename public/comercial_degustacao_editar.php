@@ -42,7 +42,7 @@ if ($result && $result['campos_json']) {
 }
 
 // Processar formulário
-if ($_POST) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
     try {
         $nome = trim($_POST['nome'] ?? '');
         $data = $_POST['data'] ?? '';
@@ -466,7 +466,7 @@ ob_start();
                 <div class="tab" onclick="showTab('textos')">📝 Textos</div>
             </div>
             
-            <form method="POST" id="degustacaoForm">
+            <form method="POST" id="degustacaoForm" action="" onsubmit="return validarFormulario(event)">
                 <!-- Tab Geral -->
                 <div id="geral" class="tab-content active">
                     <div class="form-grid">
