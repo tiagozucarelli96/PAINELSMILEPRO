@@ -61,6 +61,7 @@ $routes = [
   'agenda' => 'agenda.php',
   'demandas' => 'demandas_trello.php',
   'demandas_old' => 'demandas.php', // Versão antiga mantida
+  'demandas_fixas' => 'demandas_fixas_ui.php',
 
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',

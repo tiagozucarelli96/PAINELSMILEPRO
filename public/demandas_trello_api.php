@@ -297,8 +297,28 @@ function moverCard($pdo, $card_id, $nova_lista_id, $nova_posicao) {
 /**
  * Atualizar card
  */
-function atualizarCard($pdo, $card_id, $dados) {
+function atualizarCard($pdo, $card_id, $dados, $usuario_id, $is_admin) {
     try {
+        // Verificar permissão: apenas criador, responsável ou admin pode editar
+        if (!$is_admin) {
+            $stmt_check = $pdo->prepare("
+                SELECT dc.criador_id, 
+                       COUNT(dcu.usuario_id) as is_responsavel
+                FROM demandas_cards dc
+                LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id AND dcu.usuario_id = :user_id
+                WHERE dc.id = :card_id
+                GROUP BY dc.criador_id
+            ");
+            $stmt_check->execute([':card_id' => $card_id, ':user_id' => $usuario_id]);
+            $card = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$card || ((int)$card['criador_id'] !== $usuario_id && (int)$card['is_responsavel'] === 0)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem permissão para editar este card']);
+                exit;
+            }
+        }
+        
         $campos = [];
         $valores = [':card_id' => $card_id];
         
@@ -683,8 +703,21 @@ function criarLista($pdo, $board_id, $dados) {
 /**
  * Deletar card
  */
-function deletarCard($pdo, $card_id) {
+function deletarCard($pdo, $card_id, $usuario_id, $is_admin) {
     try {
+        // Verificar permissão: apenas criador ou admin pode deletar
+        if (!$is_admin) {
+            $stmt_check = $pdo->prepare("SELECT criador_id FROM demandas_cards WHERE id = :id");
+            $stmt_check->execute([':id' => $card_id]);
+            $card = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$card || (int)$card['criador_id'] !== $usuario_id) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem permissão para deletar este card']);
+                exit;
+            }
+        }
+        
         $stmt = $pdo->prepare("DELETE FROM demandas_cards WHERE id = :id");
         $stmt->execute([':id' => $card_id]);
         
@@ -709,8 +742,21 @@ function deletarCard($pdo, $card_id) {
 /**
  * Deletar quadro
  */
-function deletarQuadro($pdo, $board_id) {
+function deletarQuadro($pdo, $board_id, $usuario_id, $is_admin) {
     try {
+        // Verificar permissão: apenas criador ou admin pode deletar
+        if (!$is_admin) {
+            $stmt_check = $pdo->prepare("SELECT criado_por FROM demandas_boards WHERE id = :id");
+            $stmt_check->execute([':id' => $board_id]);
+            $board = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$board || (int)$board['criado_por'] !== $usuario_id) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem permissão para deletar este quadro']);
+                exit;
+            }
+        }
+        
         $stmt = $pdo->prepare("UPDATE demandas_boards SET ativo = FALSE WHERE id = :id");
         $stmt->execute([':id' => $board_id]);
         
@@ -735,8 +781,26 @@ function deletarQuadro($pdo, $board_id) {
 /**
  * Deletar lista
  */
-function deletarLista($pdo, $lista_id) {
+function deletarLista($pdo, $lista_id, $usuario_id, $is_admin) {
     try {
+        // Verificar permissão: apenas criador do quadro ou admin pode deletar
+        if (!$is_admin) {
+            $stmt_check = $pdo->prepare("
+                SELECT db.criado_por 
+                FROM demandas_listas dl
+                JOIN demandas_boards db ON db.id = dl.board_id
+                WHERE dl.id = :id
+            ");
+            $stmt_check->execute([':id' => $lista_id]);
+            $lista = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$lista || (int)$lista['criado_por'] !== $usuario_id) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem permissão para deletar esta lista']);
+                exit;
+            }
+        }
+        
         $stmt = $pdo->prepare("DELETE FROM demandas_listas WHERE id = :id");
         $stmt->execute([':id' => $lista_id]);
         
@@ -855,6 +919,88 @@ function atualizarLista($pdo, $lista_id, $dados) {
 }
 
 /**
+ * Download de anexo
+ */
+function downloadAnexo($pdo, $anexo_id) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT da.*, dc.id as card_id
+            FROM demandas_arquivos_trello da
+            JOIN demandas_cards dc ON dc.id = da.card_id
+            WHERE da.id = :id
+        ");
+        $stmt->execute([':id' => $anexo_id]);
+        $anexo = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$anexo) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Anexo não encontrado']);
+            exit;
+        }
+        
+        // Se tiver URL do Magalu, redirecionar
+        if (!empty($anexo['chave_storage'])) {
+            // Construir URL do Magalu Cloud
+            $bucket = getenv('MAGALU_BUCKET') ?: 'SmilePainel';
+            $region = getenv('MAGALU_REGION') ?: 'br-se1';
+            $url = "https://{$bucket}.{$region}.magaluobjects.com/{$anexo['chave_storage']}";
+            
+            // Retornar URL para download direto
+            echo json_encode([
+                'success' => true,
+                'url' => $url,
+                'nome_original' => $anexo['nome_original']
+            ]);
+            exit;
+        }
+        
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'Arquivo não disponível']);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Deletar anexo
+ */
+function deletarAnexo($pdo, $anexo_id) {
+    try {
+        // Buscar info do anexo antes de deletar (para limpar do Magalu se necessário)
+        $stmt_info = $pdo->prepare("SELECT chave_storage FROM demandas_arquivos_trello WHERE id = :id");
+        $stmt_info->execute([':id' => $anexo_id]);
+        $anexo = $stmt_info->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$anexo) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Anexo não encontrado']);
+            exit;
+        }
+        
+        // Deletar do banco (CASCADE vai deletar automaticamente)
+        $stmt = $pdo->prepare("DELETE FROM demandas_arquivos_trello WHERE id = :id");
+        $stmt->execute([':id' => $anexo_id]);
+        
+        // TODO: Deletar do Magalu Cloud se necessário
+        // $uploader = new MagaluUpload();
+        // $uploader->delete($anexo['chave_storage']);
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Anexo deletado com sucesso'
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
  * Helper: Criar notificação
  */
 function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem) {
@@ -889,6 +1035,9 @@ try {
             listarCards($pdo, $id);
         } elseif ($action === 'notificacoes') {
             listarNotificacoes($pdo, $usuario_id);
+        } elseif ($action === 'anexo' && $id) {
+            // GET: Download de anexo
+            downloadAnexo($pdo, $id);
         } elseif ($action === 'card' && $id) {
             // Detalhes de um card específico
             $stmt = $pdo->prepare("
@@ -978,7 +1127,7 @@ try {
         $data = json_decode(file_get_contents('php://input'), true);
         
         if ($action === 'atualizar_card' && $id) {
-            atualizarCard($pdo, $id, $data);
+            atualizarCard($pdo, $id, $data, $usuario_id, $is_admin);
         } elseif ($action === 'atualizar_quadro' && $id) {
             atualizarQuadro($pdo, $id, $data);
         } elseif ($action === 'atualizar_lista' && $id) {
@@ -986,11 +1135,13 @@ try {
         }
     } elseif ($method === 'DELETE') {
         if ($action === 'deletar_card' && $id) {
-            deletarCard($pdo, $id);
+            deletarCard($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'deletar_quadro' && $id) {
-            deletarQuadro($pdo, $id);
+            deletarQuadro($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'deletar_lista' && $id) {
-            deletarLista($pdo, $id);
+            deletarLista($pdo, $id, $usuario_id, $is_admin);
+        } elseif ($action === 'deletar_anexo' && $id) {
+            deletarAnexo($pdo, $id);
         }
     }
     

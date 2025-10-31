@@ -1021,7 +1021,10 @@ async function verCard(cardId) {
                         ${(card.anexos || []).map(a => `
                             <div class="anexo-item">
                                 <span>📄 ${a.nome_original}</span>
-                                <button class="btn btn-outline" onclick="downloadAnexo(${a.id})">Download</button>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-outline" onclick="downloadAnexo(${a.id})">Download</button>
+                                    <button class="btn" onclick="deletarAnexoTrello(${a.id}, ${card.id})" style="background: #ef4444; color: white;">🗑️</button>
+                                </div>
                             </div>
                         `).join('')}
                     </div>
@@ -1114,8 +1117,44 @@ async function adicionarAnexo(cardId) {
     }
 }
 
-function downloadAnexo(anexoId) {
-    window.open(`${API_BASE}?action=anexo&id=${anexoId}`, '_blank');
+async function downloadAnexo(anexoId) {
+    try {
+        const response = await fetch(`${API_BASE}?action=anexo&id=${anexoId}`);
+        const data = await response.json();
+        
+        if (data.success && data.url) {
+            window.open(data.url, '_blank');
+        } else {
+            alert('Erro ao baixar arquivo: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao baixar arquivo');
+    }
+}
+
+async function deletarAnexoTrello(anexoId, cardId) {
+    if (!confirm('Deseja realmente excluir este anexo?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=deletar_anexo&id=${anexoId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            verCard(cardId); // Recarregar modal
+            mostrarToast('✅ Anexo deletado!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao deletar anexo');
+    }
 }
 
 // ============================================
@@ -1458,7 +1497,7 @@ function abrirModalNovoCard(listaIdPredefinida = null) {
 }
 
 function abrirModalDemandasFixas() {
-    alert('Funcionalidade de Demandas Fixas em desenvolvimento');
+    window.open('index.php?page=demandas_fixas', '_blank');
 }
 
 function fecharModal(modalId) {
