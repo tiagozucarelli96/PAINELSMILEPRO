@@ -436,18 +436,29 @@ function carregarDemandas() {
     });
     
     const params = new URLSearchParams(filtrosLimpos);
-    const url = `demandas_api.php${params.toString() ? '?' + params.toString() : ''}`;
+    // Usar caminho absoluto para evitar problemas de roteamento
+    const baseUrl = window.location.pathname.replace(/\/[^/]*$/, '/') || '/';
+    const url = `${baseUrl}demandas_api.php${params.toString() ? '?' + params.toString() : ''}`;
     console.log('Carregando demandas de:', url);
+    console.log('URL completa:', window.location.origin + url);
     
     fetch(url, {
         method: 'GET',
         headers: {
-            'Content-Type': 'application/json'
-        }
+            'Accept': 'application/json'
+        },
+        credentials: 'same-origin',
+        cache: 'no-cache'
     })
     .then(response => {
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Tentar ler o corpo da resposta mesmo em erro para debug
+            return response.text().then(text => {
+                console.error('Response body (error):', text);
+                throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+            });
         }
         return response.json();
     })
