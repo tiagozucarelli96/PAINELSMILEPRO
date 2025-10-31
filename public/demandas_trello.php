@@ -1492,19 +1492,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
+            // Validar dados antes de enviar
+            if (!dados.titulo || !dados.board_id || !dados.lista_id || !dados.periodicidade) {
+                customAlert('Por favor, preencha todos os campos obrigatórios (*)', '⚠️ Validação');
+                return;
+            }
+            
             let response;
             if (fixaId) {
                 // Editar
                 response = await apiFetch(`${API_FIXAS}?id=${fixaId}`, {
                     method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(dados)
                 });
             } else {
                 // Criar
                 response = await apiFetch(`${API_FIXAS}`, {
                     method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(dados)
                 });
+            }
+            
+            // Verificar status HTTP
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Erro HTTP ${response.status}` }));
+                throw new Error(errorData.error || `Erro ${response.status}`);
             }
             
             const data = await response.json();
@@ -1517,8 +1531,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
             }
         } catch (error) {
-            console.error('Erro:', error);
-            customAlert('Erro ao salvar demanda fixa', '❌ Erro');
+            console.error('Erro ao salvar demanda fixa:', error);
+            customAlert('Erro ao salvar demanda fixa: ' + (error.message || 'Erro desconhecido'), '❌ Erro');
         }
     });
     
@@ -2619,6 +2633,13 @@ async function carregarDrawerFixas() {
         
         // Buscar demandas fixas via API
         const response = await apiFetch(`${API_FIXAS}`);
+        
+        // Verificar status HTTP
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `Erro HTTP ${response.status}` }));
+            throw new Error(errorData.error || `Erro ${response.status}`);
+        }
+        
         const data = await response.json();
         
         if (data.success) {
@@ -2632,9 +2653,11 @@ async function carregarDrawerFixas() {
     } catch (error) {
         console.error('Erro ao carregar demandas fixas:', error);
         const content = document.getElementById('drawer-fixas-content');
-        content.querySelector('#fixas-tabela').innerHTML = `
-            <p style="color: #ef4444; text-align: center; padding: 2rem;">Erro ao carregar demandas fixas</p>
-        `;
+        if (content && content.querySelector('#fixas-tabela')) {
+            content.querySelector('#fixas-tabela').innerHTML = `
+                <p style="color: #ef4444; text-align: center; padding: 2rem;">Erro ao carregar: ${escapeHtml(error.message || 'Erro desconhecido')}</p>
+            `;
+        }
     }
 }
 
