@@ -141,12 +141,17 @@ try {
 
 function listarDemandas($pdo) {
     try {
+        ob_clean(); // Limpar qualquer output anterior
+        header('Content-Type: application/json; charset=utf-8');
+        
         $filtros = [
             'status' => $_GET['status'] ?? '',
             'responsavel' => $_GET['responsavel'] ?? '',
             'texto' => $_GET['texto'] ?? '',
             'ate_data' => $_GET['ate_data'] ?? ''
         ];
+        
+        error_log("DEMANDAS_API: listarDemandas() - Filtros: " . json_encode($filtros));
         
         $where = ['1=1'];
         $params = [];
@@ -188,15 +193,22 @@ function listarDemandas($pdo) {
             ORDER BY d.prazo ASC, d.data_criacao DESC
         ";
         
+        error_log("DEMANDAS_API: Executando SQL: " . substr($sql, 0, 200) . "...");
+        
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $demandas = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        echo json_encode([
+        error_log("DEMANDAS_API: Demandas encontradas: " . count($demandas));
+        
+        $response = [
             'success' => true, 
             'data' => $demandas,
             'count' => count($demandas)
-        ]);
+        ];
+        
+        echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        error_log("DEMANDAS_API: Resposta enviada com sucesso");
         
     } catch (PDOException $e) {
         http_response_code(500);
