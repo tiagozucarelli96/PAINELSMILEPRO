@@ -13,25 +13,30 @@
 - **Quando**: Um card é criado E você é atribuído como responsável
 - **Tipo**: `tarefa_atribuida`
 - **Mensagem**: "Você foi atribuído ao card: {título do card}"
-- **Onde**: `public/demandas_trello_api.php` linha 275-283
+- **Onde**: `public/demandas_trello_api.php` linha 314-316
+- **Status**: ✅ Funcionando
+
+### 3. **Card Atualizado** ✨ NOVO
+- **Quando**: Um card que você acompanha (é criador ou responsável) é modificado
+- **Tipo**: `card_atualizado`
+- **Mensagem**: "Card '{título}' foi atualizado: título, descrição, prazo..." (lista os campos alterados)
+- **Notifica**: Criador do card + todos os responsáveis atribuídos (exceto quem fez a alteração)
+- **Onde**: `public/demandas_trello_api.php` linha 435-474
+- **Status**: ✅ Funcionando
+
+### 4. **Novo Card Criado** ✨ NOVO
+- **Quando**: Um novo card é criado em um board onde você tem cards (é responsável de outros cards)
+- **Tipo**: `card_criado`
+- **Mensagem**: "Novo card criado em {nome do board}: {título do card}"
+- **Notifica**: Todos os responsáveis de outros cards no mesmo board (exceto criador e já atribuídos)
+- **Onde**: `public/demandas_trello_api.php` linha 279-325
 - **Status**: ✅ Funcionando
 
 ---
 
 ## ❌ O que NÃO está configurado (mas poderia ser adicionado):
 
-### 1. **Novo Card Criado**
-- **Quando**: Um card novo é criado
-- **Ação**: Notificar todos os usuários ou apenas responsáveis do board
-- **Status**: ❌ Não implementado
-
-### 2. **Card Atualizado**
-- **Quando**: Título, descrição, prazo, prioridade, status ou categoria de um card é alterado
-- **Ação**: Notificar responsáveis do card sobre mudanças
-- **Onde seria**: `public/demandas_trello_api.php` função `atualizarCard` (linha 338)
-- **Status**: ❌ Não implementado
-
-### 3. **Card Concluído**
+### 1. **Card Concluído**
 - **Quando**: Um card é marcado como concluído
 - **Ação**: Notificar criador e responsáveis
 - **Onde seria**: `public/demandas_trello_api.php` função `concluirCard`
