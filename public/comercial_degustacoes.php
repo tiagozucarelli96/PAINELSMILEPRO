@@ -342,7 +342,17 @@ ob_start();
 
 
 <?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
 $conteudo = ob_get_clean();
+
+// Verificar se houve algum erro no buffer
+if (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
 includeSidebar('Degustações');
 echo $conteudo;
 endSidebar();
