@@ -12,6 +12,12 @@ if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
 
 // Se for um .php existente, injeta conexao e inclui o arquivo
 if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
+    // Arquivos de cron devem ser servidos diretamente SEM redirecionamento
+    if (strpos($path, 'cron_') === 1 || strpos($path, '/cron_') !== false) {
+        require $file;
+        exit;
+    }
+    
     // Injeção de conexão (idempotente)
     $conn = __DIR__ . '/conexao.php';
     if (is_file($conn)) { require_once $conn; }
