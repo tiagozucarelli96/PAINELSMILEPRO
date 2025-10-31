@@ -566,16 +566,39 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
  */
 function listarNotificacoes($pdo, $usuario_id) {
     try {
-        $stmt = $pdo->prepare("
-            SELECT dn.*, 
-                   dc.titulo as card_titulo,
-                   dc.lista_id
-            FROM demandas_notificacoes dn
-            LEFT JOIN demandas_cards dc ON dc.id = dn.referencia_id
-            WHERE dn.usuario_id = :user_id
-            ORDER BY dn.criada_em DESC
-            LIMIT 50
+        // Verificar se coluna referencia_id existe, senão usar alternativa
+        $stmt_check = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'demandas_notificacoes' 
+            AND column_name = 'referencia_id'
+            LIMIT 1
         ");
+        $has_referencia_id = $stmt_check->rowCount() > 0;
+        
+        if ($has_referencia_id) {
+            $stmt = $pdo->prepare("
+                SELECT dn.*, 
+                       dc.titulo as card_titulo,
+                       dc.lista_id
+                FROM demandas_notificacoes dn
+                LEFT JOIN demandas_cards dc ON dc.id = dn.referencia_id
+                WHERE dn.usuario_id = :user_id
+                ORDER BY dn.criada_em DESC
+                LIMIT 50
+            ");
+        } else {
+            // Tabela antiga sem referencia_id - apenas listar notificações
+            $stmt = $pdo->prepare("
+                SELECT dn.*,
+                       NULL as card_titulo,
+                       NULL as lista_id
+                FROM demandas_notificacoes dn
+                WHERE dn.usuario_id = :user_id
+                ORDER BY dn.criada_em DESC
+                LIMIT 50
+            ");
+        }
         $stmt->execute([':user_id' => $usuario_id]);
         
         $notificacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);

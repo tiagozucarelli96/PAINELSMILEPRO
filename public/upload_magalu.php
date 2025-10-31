@@ -79,7 +79,7 @@ class MagaluUpload {
     }
     
     private function uploadToMagalu($tmpFile, $key, $mimeType) {
-        // Upload real para Magalu Cloud usando API S3-compatible
+        // Upload real para Magalu Cloud usando API S3-compatible (formato correto AWS S3 v2)
         $url = "{$this->endpoint}/{$this->bucket}/{$key}";
         
         // Ler conteúdo do arquivo
@@ -88,13 +88,16 @@ class MagaluUpload {
             throw new Exception('Erro ao ler arquivo temporário');
         }
         
-        // Preparar requisição PUT
-        $date = gmdate('Ymd\THis\Z');
-        $contentType = $mimeType;
-        $contentMd5 = base64_encode(md5($fileContent, true));
+        $fileSize = filesize($tmpFile);
         
-        // Gerar string para assinatura
-        $stringToSign = "PUT\n{$contentMd5}\n{$contentType}\n{$date}\n/{$this->bucket}/{$key}";
+        // Preparar requisição PUT - AWS S3 Signature Version 2
+        $date = gmdate('D, d M Y H:i:s \G\M\T');
+        $contentType = $mimeType;
+        
+        // String para assinatura AWS S3 v2
+        $stringToSign = "PUT\n\n{$contentType}\n{$date}\n/{$this->bucket}/{$key}";
+        
+        // Gerar assinatura HMAC-SHA1
         $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
         
         // Abrir arquivo para upload
@@ -109,12 +112,11 @@ class MagaluUpload {
             CURLOPT_CUSTOMREQUEST => 'PUT',
             CURLOPT_PUT => true,
             CURLOPT_INFILE => $fileHandle,
-            CURLOPT_INFILESIZE => filesize($tmpFile),
+            CURLOPT_INFILESIZE => $fileSize,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => [
                 'Authorization: AWS ' . $this->accessKey . ':' . $signature,
                 'Content-Type: ' . $contentType,
-                'Content-MD5: ' . $contentMd5,
                 'Date: ' . $date
             ],
             CURLOPT_TIMEOUT => 60 // Timeout maior para arquivos grandes
@@ -135,6 +137,7 @@ class MagaluUpload {
             error_log("Magalu Upload Error - HTTP {$httpCode}: " . ($response ?: 'Sem resposta'));
             error_log("URL tentada: {$url}");
             error_log("Bucket: {$this->bucket}, Key: {$key}");
+            error_log("String to sign: {$stringToSign}");
             throw new Exception("Erro no upload para Magalu Cloud. Código HTTP: {$httpCode}. Verifique as credenciais e permissões.");
         }
         
@@ -157,12 +160,17 @@ class MagaluUpload {
             $url = "{$this->endpoint}/{$this->bucket}/{$key}";
             
             // Preparar requisição DELETE
+            $date = gmdate('D, d M Y H:i:s \G\M\T');
+            $stringToSign = "DELETE\n\n\n{$date}\n/{$this->bucket}/{$key}";
+            $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
+            
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_CUSTOMREQUEST => 'DELETE',
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER => [
-                    'Authorization: AWS ' . $this->accessKey . ':' . $this->generateSignature('DELETE', $key)
+                    'Authorization: AWS ' . $this->accessKey . ':' . $signature,
+                    'Date: ' . $date
                 ]
             ]);
             
@@ -180,9 +188,8 @@ class MagaluUpload {
     }
     
     private function generateSignature($method, $key) {
-        // Gerar assinatura AWS S3-compatible para autenticação
-        // Simplificado - em produção, usar AWS SDK ou biblioteca adequada
-        $date = gmdate('Ymd\THis\Z');
+        // Gerar assinatura AWS S3-compatible para autenticação (v2)
+        $date = gmdate('D, d M Y H:i:s \G\M\T');
         $stringToSign = "{$method}\n\n\n{$date}\n/{$this->bucket}/{$key}";
         return base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
     }
