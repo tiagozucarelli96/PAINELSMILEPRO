@@ -845,6 +845,51 @@ ob_start();
             return div.innerHTML;
         }
         
+        // Função de validação chamada no onsubmit do form
+        window.validarFormulario = function(e) {
+            try {
+                const currentSelect = document.getElementById('localSelect');
+                const currentCustom = document.getElementById('localCustom');
+                
+                if (!currentSelect || !currentCustom) {
+                    return true; // Deixar HTML5 validation funcionar
+                }
+                
+                const selectValue = currentSelect.value || '';
+                const customValue = currentCustom.value ? currentCustom.value.trim() : '';
+                const customVisible = currentCustom.style.display !== 'none';
+                
+                // Se campo customizado está visível e preenchido, usar ele
+                if (customVisible && customValue) {
+                    // Criar input hidden com valor customizado
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'local';
+                    hidden.value = customValue;
+                    e.target.appendChild(hidden);
+                    
+                    // Remover required do select para não bloquear submit
+                    currentSelect.required = false;
+                    currentSelect.disabled = true;
+                    
+                    // Desabilitar custom para não enviar como local_custom
+                    currentCustom.disabled = true;
+                    currentCustom.name = 'local_custom_disabled';
+                } else if (selectValue) {
+                    // Se select tem valor, garantir que custom não seja enviado
+                    currentCustom.disabled = true;
+                    currentCustom.required = false;
+                    currentCustom.name = 'local_custom_disabled';
+                }
+                
+                // Retornar true para permitir submit (HTML5 validation já bloqueia se necessário)
+                return true;
+            } catch (err) {
+                console.error('Erro em validarFormulario:', err);
+                return true; // Em caso de erro, deixar submit prosseguir
+            }
+        };
+        
         // Aguardar DOM estar completamente pronto
         function waitForElement(selector, callback, maxAttempts = 50) {
             let attempts = 0;
