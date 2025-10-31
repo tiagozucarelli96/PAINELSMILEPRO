@@ -44,6 +44,10 @@ if ($result && $result['campos_json']) {
 // Processar formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
     try {
+        // Debug: log do que está chegando
+        error_log("=== PROCESSANDO FORMULÁRIO ===");
+        error_log("POST data: " . json_encode($_POST));
+        
         $nome = trim($_POST['nome'] ?? '');
         $data = $_POST['data'] ?? '';
         $hora_inicio = $_POST['hora_inicio'] ?? '';
@@ -52,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         $capacidade = (int)($_POST['capacidade'] ?? 50);
         $data_limite = $_POST['data_limite'] ?? '';
         $lista_espera = isset($_POST['lista_espera']) ? 1 : 0;
+        
+        error_log("Nome: $nome, Data: $data, Local: $local");
         
         // Preços
         $preco_casamento = (float)($_POST['preco_casamento'] ?? 150.00);
@@ -130,13 +136,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             ];
         }
         
+        error_log("Executando SQL: $sql");
+        error_log("Params: " . json_encode($params));
+        
         $stmt = $pdo->prepare($sql);
         if (!$stmt->execute($params)) {
-            throw new Exception("Erro ao salvar no banco de dados");
+            $errorInfo = $stmt->errorInfo();
+            error_log("Erro PDO: " . json_encode($errorInfo));
+            throw new Exception("Erro ao salvar no banco de dados: " . ($errorInfo[2] ?? 'Erro desconhecido'));
         }
+        
+        error_log("Salvamento bem-sucedido!");
         
         if (!$is_edit) {
             $event_id = (int)$pdo->lastInsertId();
+            error_log("Nova degustação criada com ID: $event_id");
         }
         
         // Salvar como padrão se solicitado
@@ -152,8 +166,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         $success_msg = $is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
         $redirect_url = 'index.php?page=comercial_degustacoes&success=' . urlencode($success_msg);
         
+        error_log("Redirecionando para: $redirect_url");
+        
         // Limpar qualquer output antes do redirecionamento
-        if (ob_get_level() > 0) {
+        while (ob_get_level() > 0) {
             ob_end_clean();
         }
         
@@ -162,6 +178,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
+        error_log("ERRO ao processar formulário: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
     }
 }
 
