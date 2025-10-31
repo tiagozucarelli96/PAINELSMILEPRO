@@ -98,46 +98,69 @@ header('Content-Type: text/html; charset=utf-8');
     echo '<h2>1. Verificação da Tabela</h2>';
     
     $tabela_existe = false;
+    $schema_tabela = null;
     try {
-        // Primeiro, tentar verificar via information_schema
-        $stmt = $pdo->query("
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = 'me_eventos_webhook'
-            );
-        ");
-        $tabela_existe = (bool)$stmt->fetchColumn();
-        
-        // Se não encontrou, tentar fazer uma query direta (mais confiável)
-        if (!$tabela_existe) {
+        // Primeiro, tentar fazer uma query direta (mais confiável, usa o search_path do PDO)
+        try {
+            $stmt = $pdo->query("SELECT COUNT(*) FROM me_eventos_webhook LIMIT 1");
+            $stmt->fetchColumn();
+            $tabela_existe = true; // Se chegou aqui, a tabela existe e está acessível
+            
+            // Descobrir qual schema está sendo usado
             try {
-                $stmt = $pdo->query("SELECT COUNT(*) FROM me_eventos_webhook LIMIT 1");
-                $stmt->fetchColumn();
-                $tabela_existe = true; // Se chegou aqui, a tabela existe
+                $stmt = $pdo->query("SELECT current_schema()");
+                $schema_tabela = $stmt->fetchColumn();
             } catch (Exception $e) {
-                // Se deu erro, realmente não existe
-                $tabela_existe = false;
+                // Tentar descobrir via information_schema
+                $stmt = $pdo->query("
+                    SELECT table_schema 
+                    FROM information_schema.tables 
+                    WHERE table_name = 'me_eventos_webhook'
+                    LIMIT 1
+                ");
+                $schema_tabela = $stmt->fetchColumn() ?: 'desconhecido';
+            }
+        } catch (Exception $e) {
+            // Se deu erro, tentar verificar via information_schema em todos os schemas
+            $stmt = $pdo->query("
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'me_eventos_webhook'
+                );
+            ");
+            $tabela_existe = (bool)$stmt->fetchColumn();
+            
+            if ($tabela_existe) {
+                // Descobrir qual schema
+                $stmt = $pdo->query("
+                    SELECT table_schema 
+                    FROM information_schema.tables 
+                    WHERE table_name = 'me_eventos_webhook'
+                    LIMIT 1
+                ");
+                $schema_tabela = $stmt->fetchColumn() ?: 'desconhecido';
             }
         }
         
         if ($tabela_existe) {
             echo '<p class="success">✅ Tabela <code>me_eventos_webhook</code> existe</p>';
             
-            // Verificar também o schema atual
-            try {
-                $stmt = $pdo->query("SELECT current_schema()");
-                $schema_atual = $stmt->fetchColumn();
-                echo '<p><small>Schema atual: <code>' . htmlspecialchars($schema_atual) . '</code></small></p>';
-            } catch (Exception $e) {
-                // Ignorar erro
+            if ($schema_tabela) {
+                echo '<p><small>Schema: <code>' . htmlspecialchars($schema_tabela) . '</code></small></p>';
             }
             
             // Verificar estrutura da tabela
+            // Usar o schema correto se descobrimos qual é
+            $where_schema = '';
+            if ($schema_tabela && $schema_tabela !== 'desconhecido') {
+                $where_schema = "AND table_schema = '" . addslashes($schema_tabela) . "'";
+            }
+            
             $stmt = $pdo->query("
                 SELECT column_name, data_type, is_nullable
                 FROM information_schema.columns
                 WHERE table_name = 'me_eventos_webhook'
+                {$where_schema}
                 ORDER BY ordinal_position
             ");
             $colunas = $stmt->fetchAll(PDO::FETCH_ASSOC);
