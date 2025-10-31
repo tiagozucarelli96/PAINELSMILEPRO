@@ -34,28 +34,86 @@ $stats = [
 ];
 
 try {
-    // Total de degustações
+    // Total de degustações (apenas para referência)
     $stats['degustacoes_total'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_degustacoes")->fetchColumn();
     $stats['degustacoes_publicadas'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_degustacoes WHERE status = 'publicado'")->fetchColumn();
-    $stats['degustacoes_encerradas'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_degustacoes WHERE status = 'encerrado'")->fetchColumn();
     
-    // Total de inscrições
-    $stats['inscritos_total'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes")->fetchColumn();
-    $stats['inscritos_confirmados'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE status = 'confirmado'")->fetchColumn();
-    $stats['inscritos_lista_espera'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE status = 'lista_espera'")->fetchColumn();
+    // Inscritos confirmados APENAS de degustações ATIVAS (publicado)
+    $stats['inscritos_confirmados'] = (int)$pdo->query("
+        SELECT COUNT(*) 
+        FROM comercial_inscricoes ci
+        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
+        WHERE cd.status = 'publicado'
+        AND ci.status = 'confirmado'
+    ")->fetchColumn();
     
-    // Fechamentos de contrato
-    $stats['fecharam_contrato'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE fechou_contrato = 'sim'")->fetchColumn();
-    $stats['nao_fecharam_contrato'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE fechou_contrato = 'nao'")->fetchColumn();
+    $stats['inscritos_total'] = (int)$pdo->query("
+        SELECT COUNT(*) 
+        FROM comercial_inscricoes ci
+        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
+        WHERE cd.status = 'publicado'
+    ")->fetchColumn();
     
-    // Taxa de conversão
-    if ($stats['inscritos_total'] > 0) {
-        $stats['taxa_conversao'] = round(($stats['fecharam_contrato'] / $stats['inscritos_total']) * 100, 1);
+    $stats['inscritos_lista_espera'] = (int)$pdo->query("
+        SELECT COUNT(*) 
+        FROM comercial_inscricoes ci
+        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
+        WHERE cd.status = 'publicado'
+        AND ci.status = 'lista_espera'
+    ")->fetchColumn();
+    
+    // Contratos fechados: Calcular conversão das 3 ÚLTIMAS degustações realizadas
+    // Considerando apenas inscritos que NÃO fecharam (excluir quem já fechou antes)
+    $ultimas_3_degustacoes = $pdo->query("
+        SELECT d.id, d.nome, d.data
+        FROM comercial_degustacoes d
+        WHERE d.status IN ('publicado', 'encerrado')
+        AND d.data IS NOT NULL
+        ORDER BY d.data DESC
+        LIMIT 3
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    
+    $total_inscritos_sem_contrato = 0;
+    $total_fecharam_contrato = 0;
+    
+    foreach ($ultimas_3_degustacoes as $deg) {
+        // Total de inscritos confirmados desta degustação que NÃO fecharam contrato ainda
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM comercial_inscricoes 
+            WHERE degustacao_id = :deg_id 
+            AND status = 'confirmado'
+            AND (fechou_contrato IS NULL OR fechou_contrato = 'nao' OR fechou_contrato = '')
+        ");
+        $stmt->execute([':deg_id' => $deg['id']]);
+        $inscritos_sem_contrato = (int)$stmt->fetchColumn();
+        
+        // Inscritos desta degustação que FECHARAM contrato
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM comercial_inscricoes 
+            WHERE degustacao_id = :deg_id 
+            AND status = 'confirmado'
+            AND fechou_contrato = 'sim'
+        ");
+        $stmt->execute([':deg_id' => $deg['id']]);
+        $fecharam = (int)$stmt->fetchColumn();
+        
+        $total_inscritos_sem_contrato += $inscritos_sem_contrato;
+        $total_fecharam_contrato += $fecharam;
     }
     
-    // Pagamentos
-    $stats['pagamentos_pagos'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE pagamento_status = 'pago'")->fetchColumn();
-    $stats['pagamentos_pendentes'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_inscricoes WHERE pagamento_status = 'aguardando'")->fetchColumn();
+    $stats['fecharam_contrato'] = $total_fecharam_contrato;
+    $stats['nao_fecharam_contrato'] = $total_inscritos_sem_contrato;
+    
+    // Taxa de conversão baseada apenas nos que NÃO fecharam (denominador correto)
+    // Total relevante = inscritos que não fecharam + inscritos que fecharam
+    $total_relevante = $total_inscritos_sem_contrato + $total_fecharam_contrato;
+    if ($total_relevante > 0) {
+        $stats['taxa_conversao'] = round(($total_fecharam_contrato / $total_relevante) * 100, 1);
+    } else {
+        $stats['taxa_conversao'] = 0;
+    }
     
     // Degustações recentes (próximas 5)
     $degustacoes_recentes = $pdo->query("
@@ -480,31 +538,10 @@ includeSidebar('Comercial');
         </div>
         
         <div class="stat-card">
-            <div class="stat-card-icon">💰</div>
-            <div class="stat-card-value"><?= $stats['pagamentos_pagos'] ?></div>
-            <div class="stat-card-label">Pagamentos Recebidos</div>
-            <div class="stat-card-subtext"><?= $stats['pagamentos_pendentes'] ?> pendentes</div>
-            <?php 
-                $total_pagamentos = $stats['pagamentos_pagos'] + $stats['pagamentos_pendentes'];
-                if ($total_pagamentos > 0): 
-                    $percent = round(($stats['pagamentos_pagos'] / $total_pagamentos) * 100);
-            ?>
-            <div class="stat-progress-bar">
-                <div class="stat-progress-fill" style="width: <?= $percent ?>%; background: linear-gradient(90deg, #f59e0b, #d97706);"></div>
-            </div>
-            <?php endif; ?>
-        </div>
-        
-        <div class="stat-card">
             <div class="stat-card-icon">⏳</div>
             <div class="stat-card-value"><?= $stats['inscritos_lista_espera'] ?></div>
             <div class="stat-card-label">Lista de Espera</div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-card-icon">📊</div>
-            <div class="stat-card-value"><?= $stats['degustacoes_encerradas'] ?></div>
-            <div class="stat-card-label">Degustações Encerradas</div>
+            <div class="stat-card-subtext">Degustações ativas</div>
         </div>
     </div>
     
