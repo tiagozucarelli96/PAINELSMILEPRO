@@ -1685,12 +1685,10 @@ if ($current_page === 'dashboard') {
             <div id="pageContent">
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
-                if (in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'demandas', 'demandas_quadro'])) {
+                if (in_array($current_page, ['dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'demandas', 'demandas_quadro'])) {
                     // O conteúdo já foi definido nas variáveis acima
                     if ($current_page === 'dashboard' && !empty($dashboard_content)) {
                         echo $dashboard_content;
-                    } elseif ($current_page === 'comercial' && !empty($comercial_content)) {
-                        echo $comercial_content;
                     } elseif ($current_page === 'logistico' && !empty($logistico_content)) {
                         echo $logistico_content;
                     } elseif ($current_page === 'configuracoes' && !empty($configuracoes_content)) {
@@ -1753,10 +1751,11 @@ if ($current_page === 'dashboard') {
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
             
-            // Se for dashboard, comercial, logistico, configurações, cadastros, financeiro ou administrativo, 
+            // Se for dashboard, logistico, configurações, cadastros, financeiro ou administrativo, 
             // o conteúdo já foi renderizado via PHP, não fazer nada
             // Para agenda, o conteúdo também já foi renderizado via PHP após sidebar_unified.php
-            if (!['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda', 'demandas', 'demandas_quadro'].includes(currentPage)) {
+            // NOTA: Comercial usa comercial_landing.php via index.php, não precisa renderizar aqui
+            if (!['dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda', 'demandas', 'demandas_quadro'].includes(currentPage)) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
