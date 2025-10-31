@@ -17,7 +17,7 @@
    Title: Gerar Demandas Fixas
    
    Address (URL): 
-   https://painelsmilepro-production.up.railway.app/public/cron_demandas_trello_fixas.php?token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
+   https://painelsmilepro-production.up.railway.app/cron.php?tipo=demandas_fixas&token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
    
    Schedule:
    - Selecionar: "Every day"
@@ -45,7 +45,7 @@
    Cron Job Name: Gerar Demandas Fixas
    
    URL: 
-   https://painelsmilepro-production.up.railway.app/public/cron_demandas_trello_fixas.php?token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
+   https://painelsmilepro-production.up.railway.app/cron.php?tipo=demandas_fixas&token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
    
    Schedule: 0 0 * * *
    Timezone: America/Sao_Paulo
@@ -58,7 +58,12 @@
 ## 🧪 Testar Agora (Antes de Agendar)
 
 ### Via Navegador:
-Cole no navegador:
+Cole no navegador (URL SIMPLIFICADA):
+```
+https://painelsmilepro-production.up.railway.app/cron.php?tipo=demandas_fixas&token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
+```
+
+**OU** a URL antiga (também funciona):
 ```
 https://painelsmilepro-production.up.railway.app/public/cron_demandas_trello_fixas.php?token=a82b0934e5b5adeee5ebf7ed7bdad85a211e79bde81ef783d0274459dc7dcecb
 ```
