@@ -209,7 +209,7 @@ if ($current_page === 'dashboard') {
         <div class="dashboard-section">
             <div class="section-header">
                 <h2>📋 Demandas do Dia</h2>
-                <span class="section-badge">' . count($demandas_hoje) . ' tarefas</span>
+                <span class="section-badge">' . count($demandas_hoje) . ' demandas</span>
             </div>
             <div class="demandas-list">
                 ' . (empty($demandas_hoje) ? 

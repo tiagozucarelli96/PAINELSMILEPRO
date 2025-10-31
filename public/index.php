@@ -129,7 +129,6 @@ $routes = [
   'notas_fiscais' => 'notas_fiscais.php',
   'dados_contrato' => 'dados_contrato.php',
   'uso_fiorino' => 'uso_fiorino.php',
-  'tarefas' => 'tarefas.php',
   'webhook_me_eventos' => 'webhook_me_eventos.php',
   'contab_link' => 'contab_link.php',
   'contab_gerar_link' => 'contab_gerar_link.php',
