@@ -29,36 +29,45 @@ try {
     $pdo = $GLOBALS['pdo'];
     $method = $_SERVER['REQUEST_METHOD'];
     
-    // Obter PATH_INFO - pode estar vazio quando chamado como demandas_api.php?parametros
-    $path = $_SERVER['PATH_INFO'] ?? $_SERVER['REQUEST_URI'] ?? '';
-    
-    // Remover query string se existir
-    if (($pos = strpos($path, '?')) !== false) {
-        $path = substr($path, 0, $pos);
+    // Detectar rota baseada no método e URI
+    // Se for GET sem path específico, listar demandas
+    if ($method === 'GET') {
+        // Verificar se há ID na URL via PATH_INFO
+        $pathInfo = $_SERVER['PATH_INFO'] ?? '';
+        
+        if (empty($pathInfo)) {
+            // GET sem path = listar todas
+            listarDemandas($pdo);
+            exit;
+        }
+        
+        $pathParts = array_filter(explode('/', trim($pathInfo, '/')));
+        $pathParts = array_values($pathParts);
+        
+        if (count($pathParts) === 1 && is_numeric($pathParts[0])) {
+            // GET /{id} - Detalhes
+            obterDemanda($pdo, $pathParts[0]);
+            exit;
+        } elseif (count($pathParts) === 2 && $pathParts[0] === 'anexos' && is_numeric($pathParts[1])) {
+            // GET /anexos/{arquivo_id} - Download
+            downloadAnexo($pdo, $pathParts[1]);
+            exit;
+        } else {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Rota não encontrada']);
+            exit;
+        }
     }
     
-    // Remover nome do arquivo se existir
-    $path = preg_replace('#^.*demandas_api\.php#', '', $path);
-    
+    // Para outros métodos, usar roteamento normal
+    $path = $_SERVER['PATH_INFO'] ?? '';
     $pathParts = array_filter(explode('/', trim($path, '/')));
-    $pathParts = array_values($pathParts); // Reindexar
+    $pathParts = array_values($pathParts);
     
     switch ($method) {
         case 'GET':
-            // Se não há path ou está vazio, listar demandas
-            if (empty($pathParts) || count($pathParts) === 0) {
-                listarDemandas($pdo);
-            } elseif (count($pathParts) === 1 && is_numeric($pathParts[0])) {
-                // GET /demandas/{id} - Detalhes
-                obterDemanda($pdo, $pathParts[0]);
-            } elseif (count($pathParts) === 2 && $pathParts[0] === 'anexos' && is_numeric($pathParts[1])) {
-                // GET /demandas/anexos/{arquivo_id} - Download
-                downloadAnexo($pdo, $pathParts[1]);
-            } else {
-                http_response_code(404);
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'error' => 'Rota não encontrada']);
-            }
+            // Já processado acima
             break;
             
         case 'POST':
