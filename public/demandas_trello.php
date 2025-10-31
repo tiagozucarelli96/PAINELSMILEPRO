@@ -1253,7 +1253,7 @@ async function adicionarAnexo(cardId) {
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
-        alert('Erro ao adicionar anexo');
+        customAlert('Erro ao adicionar anexo', '❌ Erro');
     }
 }
 
@@ -1644,7 +1644,7 @@ async function adicionarAnexoNoEditar() {
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
-        alert('Erro ao adicionar anexo');
+        customAlert('Erro ao adicionar anexo', '❌ Erro');
     }
 }
 

@@ -439,7 +439,7 @@ async function editarFixa(id) {
         customAlert('Funcionalidade de edição será implementada na próxima versão. Por enquanto, delete e crie novamente.', 'ℹ️ Informação');
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao carregar dados para edição');
+        customAlert('Erro ao carregar dados para edição', '❌ Erro');
     }
 }
 
