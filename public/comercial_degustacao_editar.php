@@ -927,40 +927,8 @@ ob_start();
                 });
             }
             
-            // Ao submeter formulário, garantir que local seja enviado corretamente
-            const form = document.getElementById('degustacaoForm');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    const currentSelect = document.getElementById('localSelect');
-                    const currentCustom = document.getElementById('localCustom');
-                    
-                    const selectValue = currentSelect ? currentSelect.value : '';
-                    const customValue = currentCustom ? currentCustom.value.trim() : '';
-                    
-                    // Se campo customizado está visível e preenchido, usar ele
-                    if (currentCustom && currentCustom.style.display !== 'none' && customValue) {
-                        // Criar input hidden com valor customizado
-                        const hidden = document.createElement('input');
-                        hidden.type = 'hidden';
-                        hidden.name = 'local';
-                        hidden.value = customValue;
-                        this.appendChild(hidden);
-                        
-                        // Remover required do select para não bloquear submit
-                        if (currentSelect) {
-                            currentSelect.required = false;
-                            currentSelect.disabled = true;
-                        }
-                    } else if (selectValue) {
-                        // Se select tem valor, garantir que custom não seja enviado
-                        if (currentCustom) {
-                            currentCustom.disabled = true;
-                            currentCustom.required = false;
-                        }
-                    }
-                    // Se nenhum tem valor, deixar HTML5 validation funcionar normalmente
-                });
-            }
+            // Função validarFormulario já está definida como window.validarFormulario
+            // e é chamada via onsubmit no formulário
         }
     </script>
 <?php
