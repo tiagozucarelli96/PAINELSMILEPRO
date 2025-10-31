@@ -1000,26 +1000,101 @@ function downloadAnexo($pdo, $anexo_id) {
         
         if (!$anexo) {
             http_response_code(404);
+            header('Content-Type: application/json');
+            ob_clean();
             echo json_encode(['success' => false, 'error' => 'Anexo não encontrado']);
             exit;
         }
         
-        // Se tiver chave de storage, construir URL do Magalu Cloud
+        // Se tiver chave de storage, baixar do Magalu Cloud usando AWS SDK
         if (!empty($anexo['chave_storage'])) {
-            $bucket = getenv('MAGALU_BUCKET') ?: 'SmilePainel';
-            $endpoint = getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+            require_once __DIR__ . '/upload_magalu.php';
+            
+            // Tentar usar AWS SDK primeiro
+            if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+                require_once __DIR__ . '/../vendor/autoload.php';
+                
+                if (class_exists('Aws\S3\S3Client')) {
+                    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                    $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+                    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                    $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+                    $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+                    $bucket = strtolower($bucket);
+                    
+                    try {
+                        $s3Client = new \Aws\S3\S3Client([
+                            'region' => $region,
+                            'version' => 'latest',
+                            'credentials' => [
+                                'key' => $accessKey,
+                                'secret' => $secretKey,
+                            ],
+                            'endpoint' => $endpoint,
+                            'use_path_style_endpoint' => true,
+                        ]);
+                        
+                        // Gerar URL pré-assinada (válida por 1 hora)
+                        $cmd = $s3Client->getCommand('GetObject', [
+                            'Bucket' => $bucket,
+                            'Key' => $anexo['chave_storage'],
+                        ]);
+                        
+                        $presignedUrl = $s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
+                        
+                        // Redirecionar para URL pré-assinada
+                        header("Location: " . (string)$presignedUrl);
+                        exit;
+                        
+                    } catch (\Aws\Exception\AwsException $e) {
+                        error_log("Erro AWS SDK no download: " . $e->getMessage());
+                        // Fallback: tentar baixar diretamente e servir
+                        try {
+                            $result = $s3Client->getObject([
+                                'Bucket' => $bucket,
+                                'Key' => $anexo['chave_storage'],
+                            ]);
+                            
+                            // Servir o arquivo
+                            header('Content-Type: ' . ($anexo['mime_type'] ?? 'application/octet-stream'));
+                            header('Content-Disposition: attachment; filename="' . addslashes($anexo['nome_original']) . '"');
+                            header('Content-Length: ' . ($anexo['tamanho_bytes'] ?? $result['ContentLength'] ?? 0));
+                            ob_clean();
+                            echo $result['Body'];
+                            exit;
+                            
+                        } catch (\Exception $e2) {
+                            error_log("Erro ao baixar arquivo: " . $e2->getMessage());
+                            http_response_code(500);
+                            header('Content-Type: application/json');
+                            ob_clean();
+                            echo json_encode(['success' => false, 'error' => 'Erro ao baixar arquivo: ' . $e2->getMessage()]);
+                            exit;
+                        }
+                    }
+                }
+            }
+            
+            // Fallback: construir URL direta (pode não funcionar se arquivo não for público)
+            $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+            $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+            $bucket = strtolower($bucket);
             $url = "{$endpoint}/{$bucket}/{$anexo['chave_storage']}";
             
-            // Redirecionar para URL do arquivo
+            // Redirecionar para URL do arquivo (pode falhar se não for público)
             header("Location: {$url}");
             exit;
         }
         
         http_response_code(404);
+        header('Content-Type: application/json');
+        ob_clean();
         echo json_encode(['success' => false, 'error' => 'Arquivo não disponível']);
         exit;
     } catch (PDOException $e) {
         http_response_code(500);
+        header('Content-Type: application/json');
+        ob_clean();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
     }
