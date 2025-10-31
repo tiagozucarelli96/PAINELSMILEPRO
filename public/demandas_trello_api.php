@@ -56,6 +56,8 @@ header('Content-Type: application/json; charset=utf-8');
  */
 function listarQuadros($pdo, $usuario_id, $is_admin) {
     try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         if ($is_admin) {
             // Admin vê todos os quadros
             $stmt = $pdo->query("
@@ -566,6 +568,8 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
  */
 function listarNotificacoes($pdo, $usuario_id) {
     try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         $stmt = $pdo->prepare("
             SELECT dn.*, 
                    dc.titulo as card_titulo,
@@ -623,6 +627,9 @@ function marcarNotificacaoComoLida($pdo, $notificacao_id) {
  */
 function criarQuadro($pdo, $usuario_id, $dados) {
     try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
         $nome = trim($dados['nome'] ?? '');
         $descricao = $dados['descricao'] ?? null;
         $cor = $dados['cor'] ?? '#3b82f6';
@@ -647,6 +654,12 @@ function criarQuadro($pdo, $usuario_id, $dados) {
         
         $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        if (!$quadro) {
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => 'Erro ao criar quadro no banco de dados']);
+            exit;
+        }
+        
         // Criar listas padrão
         $listas_padrao = [
             ['nome' => '📋 Para Fazer', 'posicao' => 0],
@@ -655,15 +668,20 @@ function criarQuadro($pdo, $usuario_id, $dados) {
         ];
         
         foreach ($listas_padrao as $lista) {
-            $stmt_lista = $pdo->prepare("
-                INSERT INTO demandas_listas (board_id, nome, posicao)
-                VALUES (:board_id, :nome, :posicao)
-            ");
-            $stmt_lista->execute([
-                ':board_id' => (int)$quadro['id'],
-                ':nome' => $lista['nome'],
-                ':posicao' => $lista['posicao']
-            ]);
+            try {
+                $stmt_lista = $pdo->prepare("
+                    INSERT INTO demandas_listas (board_id, nome, posicao)
+                    VALUES (:board_id, :nome, :posicao)
+                ");
+                $stmt_lista->execute([
+                    ':board_id' => (int)$quadro['id'],
+                    ':nome' => $lista['nome'],
+                    ':posicao' => $lista['posicao']
+                ]);
+            } catch (PDOException $e) {
+                error_log("Erro ao criar lista padrão: " . $e->getMessage());
+                // Continuar mesmo se falhar criar uma lista
+            }
         }
         
         echo json_encode([
@@ -673,8 +691,18 @@ function criarQuadro($pdo, $usuario_id, $dados) {
         ]);
         exit;
     } catch (PDOException $e) {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        error_log("Erro ao criar quadro: " . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'Erro ao criar quadro: ' . $e->getMessage()]);
+        exit;
+    } catch (Exception $e) {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+        error_log("Erro geral ao criar quadro: " . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'Erro ao criar quadro: ' . $e->getMessage()]);
         exit;
     }
 }
@@ -1138,14 +1166,24 @@ try {
             exit;
         }
     } elseif ($method === 'POST') {
-        $data = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        $rawInput = file_get_contents('php://input');
+        $data = !empty($rawInput) ? json_decode($rawInput, true) : $_POST;
+        
+        if (json_last_error() !== JSON_ERROR_NONE && !empty($rawInput)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'JSON inválido: ' . json_last_error_msg()]);
+            exit;
+        }
         
         if ($action === 'criar_quadro') {
-            criarQuadro($pdo, $usuario_id, $data);
+            criarQuadro($pdo, $usuario_id, $data ?? []);
         } elseif ($action === 'criar_lista' && $id) {
-            criarLista($pdo, $id, $data);
+            criarLista($pdo, $id, $data ?? []);
         } elseif ($action === 'criar_card') {
-            criarCard($pdo, $usuario_id, $data);
+            criarCard($pdo, $usuario_id, $data ?? []);
         } elseif ($action === 'mover_card' && $id) {
             moverCard($pdo, $id, $data['nova_lista_id'] ?? null, $data['nova_posicao'] ?? 0);
         } elseif ($action === 'concluir' && $id) {
