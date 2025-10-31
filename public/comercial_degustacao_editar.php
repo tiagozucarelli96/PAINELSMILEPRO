@@ -710,6 +710,53 @@ ob_start();
     </div>
     
     <script>
+        // Função SIMPLES para preparar local antes do submit
+        // IMPORTANTE: Esta função NÃO bloqueia o submit - apenas prepara os campos
+        window.prepararLocalAntesDoSubmit = function(e) {
+            try {
+                const select = document.getElementById('localSelect');
+                const custom = document.getElementById('localCustom');
+                
+                if (!select || !custom) {
+                    return true; // Prosseguir normalmente
+                }
+                
+                const selectValue = select.value || '';
+                const customValue = custom.value ? custom.value.trim() : '';
+                const customVisible = custom.style.display !== 'none';
+                
+                // Se custom está visível e tem valor, usar ele
+                if (customVisible && customValue) {
+                    // Adicionar input hidden com valor
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'local';
+                    hidden.value = customValue;
+                    e.target.appendChild(hidden);
+                    
+                    // Desabilitar select
+                    select.disabled = true;
+                    select.required = false;
+                    select.name = 'local_disabled';
+                    
+                    // Desabilitar custom
+                    custom.disabled = true;
+                    custom.name = 'local_custom_disabled';
+                } else if (selectValue) {
+                    // Se select tem valor, desabilitar custom
+                    custom.disabled = true;
+                    custom.required = false;
+                    custom.name = 'local_custom_disabled';
+                }
+                
+                // SEMPRE retornar true - nunca bloquear
+                return true;
+            } catch (err) {
+                console.error('Erro em prepararLocalAntesDoSubmit:', err);
+                return true; // Em caso de erro, prosseguir
+            }
+        };
+        
         // Esperar DOM estar pronto antes de executar código
         document.addEventListener('DOMContentLoaded', function() {
             // Garantir que modal está fechado inicialmente
@@ -746,7 +793,7 @@ ob_start();
                 tabElement.classList.add('active');
             }
             if (event && event.target) {
-                event.target.classList.add('active');
+            event.target.classList.add('active');
             }
         }
         
@@ -834,20 +881,20 @@ ob_start();
             container.innerHTML = '';
             
             if (fields && Array.isArray(fields)) {
-                fields.forEach(field => {
-                    const fieldDiv = document.createElement('div');
-                    fieldDiv.className = 'field-item';
-                    fieldDiv.innerHTML = `
-                        <div class="field-info">
+            fields.forEach(field => {
+                const fieldDiv = document.createElement('div');
+                fieldDiv.className = 'field-item';
+                fieldDiv.innerHTML = `
+                    <div class="field-info">
                             <div class="field-label">${escapeHtml(field.label || '')} ${field.required ? '*' : ''}</div>
                             <div class="field-type">${escapeHtml(field.type || '')}</div>
-                        </div>
-                        <div class="field-actions">
+                    </div>
+                    <div class="field-actions">
                             <button type="button" class="btn-sm btn-delete" onclick="removeField(${field.id || 0})">🗑️</button>
-                        </div>
-                    `;
-                    container.appendChild(fieldDiv);
-                });
+                    </div>
+                `;
+                container.appendChild(fieldDiv);
+            });
             }
             
             // Atualizar campo oculto
@@ -863,50 +910,6 @@ ob_start();
             return div.innerHTML;
         }
         
-        // Função de validação chamada no onsubmit do form
-        window.validarFormulario = function(e) {
-            try {
-                const currentSelect = document.getElementById('localSelect');
-                const currentCustom = document.getElementById('localCustom');
-                
-                if (!currentSelect || !currentCustom) {
-                    return true; // Deixar HTML5 validation funcionar
-                }
-                
-                const selectValue = currentSelect.value || '';
-                const customValue = currentCustom.value ? currentCustom.value.trim() : '';
-                const customVisible = currentCustom.style.display !== 'none';
-                
-                // Se campo customizado está visível e preenchido, usar ele
-                if (customVisible && customValue) {
-                    // Criar input hidden com valor customizado
-                    const hidden = document.createElement('input');
-                    hidden.type = 'hidden';
-                    hidden.name = 'local';
-                    hidden.value = customValue;
-                    e.target.appendChild(hidden);
-                    
-                    // Remover required do select para não bloquear submit
-                    currentSelect.required = false;
-                    currentSelect.disabled = true;
-                    
-                    // Desabilitar custom para não enviar como local_custom
-                    currentCustom.disabled = true;
-                    currentCustom.name = 'local_custom_disabled';
-                } else if (selectValue) {
-                    // Se select tem valor, garantir que custom não seja enviado
-                    currentCustom.disabled = true;
-                    currentCustom.required = false;
-                    currentCustom.name = 'local_custom_disabled';
-                }
-                
-                // Retornar true para permitir submit (HTML5 validation já bloqueia se necessário)
-                return true;
-            } catch (err) {
-                console.error('Erro em validarFormulario:', err);
-                return true; // Em caso de erro, deixar submit prosseguir
-            }
-        };
         
         // Aguardar DOM estar completamente pronto
         function waitForElement(selector, callback, maxAttempts = 50) {
@@ -950,8 +953,8 @@ ob_start();
                     const fieldsList = document.getElementById('fieldsList');
                     
                     if (fieldsList && tabCampos) {
-                        // Carregar campos iniciais
-                        renderFields();
+        // Carregar campos iniciais
+        renderFields();
                     }
                 });
             }, 200);
@@ -990,7 +993,7 @@ ob_start();
                 });
             }
             
-            // Função validarFormulario já está definida como window.validarFormulario
+            // Função prepararLocalAntesDoSubmit já está definida antes do script
             // e é chamada via onsubmit no formulário
         }
     </script>
