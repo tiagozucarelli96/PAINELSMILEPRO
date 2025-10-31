@@ -1022,18 +1022,19 @@ function downloadAnexo($pdo, $anexo_id) {
                     $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
                     $bucket = strtolower($bucket);
                     
+                    // Criar cliente S3
+                    $s3Client = new \Aws\S3\S3Client([
+                        'region' => $region,
+                        'version' => 'latest',
+                        'credentials' => [
+                            'key' => $accessKey,
+                            'secret' => $secretKey,
+                        ],
+                        'endpoint' => $endpoint,
+                        'use_path_style_endpoint' => true,
+                    ]);
+                    
                     try {
-                        $s3Client = new \Aws\S3\S3Client([
-                            'region' => $region,
-                            'version' => 'latest',
-                            'credentials' => [
-                                'key' => $accessKey,
-                                'secret' => $secretKey,
-                            ],
-                            'endpoint' => $endpoint,
-                            'use_path_style_endpoint' => true,
-                        ]);
-                        
                         // Gerar URL pré-assinada (válida por 1 hora)
                         $cmd = $s3Client->getCommand('GetObject', [
                             'Bucket' => $bucket,
@@ -1047,7 +1048,7 @@ function downloadAnexo($pdo, $anexo_id) {
                         exit;
                         
                     } catch (\Aws\Exception\AwsException $e) {
-                        error_log("Erro AWS SDK no download: " . $e->getMessage());
+                        error_log("Erro AWS SDK no presigned URL: " . $e->getMessage());
                         // Fallback: tentar baixar diretamente e servir
                         try {
                             $result = $s3Client->getObject([
