@@ -1294,7 +1294,7 @@ async function deletarAnexoTrello(anexoId, cardId) {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao deletar anexo');
+        customAlert('Erro ao deletar anexo', '❌ Erro');
     }
 }
 
