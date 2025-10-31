@@ -1433,13 +1433,13 @@ async function criarQuadro() {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao criar quadro');
+        customAlert('Erro ao criar quadro', '❌ Erro');
     }
 }
 
 async function criarLista() {
     if (!currentBoardId) {
-        alert('Selecione um quadro primeiro');
+        customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
         return;
     }
     
@@ -1468,12 +1468,13 @@ async function criarLista() {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao criar lista');
+        customAlert('Erro ao criar lista', '❌ Erro');
     }
 }
 
 async function deletarLista(listaId) {
-    if (!confirm('Tem certeza? Todos os cards desta lista serão deletados.')) {
+    const confirmado = await customConfirm('Tem certeza? Todos os cards desta lista serão deletados.', '⚠️ Confirmar Exclusão');
+    if (!confirmado) {
         return;
     }
     
@@ -1492,7 +1493,7 @@ async function deletarLista(listaId) {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao deletar lista');
+        customAlert('Erro ao deletar lista', '❌ Erro');
     }
 }
 
@@ -1580,7 +1581,8 @@ async function deletarCardAtual() {
 }
 
 async function deletarCardConfirmado(cardId) {
-    if (!confirm('Tem certeza que deseja deletar este card?')) {
+    const confirmado = await customConfirm('Tem certeza que deseja deletar este card? Esta ação não pode ser desfeita.', '⚠️ Confirmar Exclusão');
+    if (!confirmado) {
         return;
     }
     
