@@ -1008,10 +1008,25 @@ function renderizarCards(listaId) {
             prazoClass === 'proximo' ? 'proximo-vencimento' : ''
         ].filter(Boolean).join(' ');
         
+        // Preview de imagem (estilo Trello)
+        let previewHtml = '';
+        if (card.preview_imagem && card.preview_imagem.url_preview) {
+            previewHtml = `
+                <div class="card-preview-imagem" style="width: 100%; height: 150px; overflow: hidden; border-radius: 4px 4px 0 0; margin: -0.75rem -0.75rem 0.5rem -0.75rem; background: #f3f4f6; display: flex; align-items: center; justify-content: center;">
+                    <img src="${card.preview_imagem.url_preview}" 
+                         alt="${card.preview_imagem.nome}" 
+                         style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer;"
+                         onclick="event.stopPropagation(); verCard(${card.id})"
+                         onerror="this.style.display='none'">
+                </div>
+            `;
+        }
+        
         return `
             <div class="card-item ${cardClass}" 
                  data-card-id="${card.id}"
                  onclick="verCard(${card.id})">
+                ${previewHtml}
                 <div class="card-titulo">${card.titulo}</div>
                 ${card.descricao ? `<div style="font-size: 0.75rem; color: #6b7280; margin: 0.5rem 0;">${card.descricao.substring(0, 100)}${card.descricao.length > 100 ? '...' : ''}</div>` : ''}
                 <div class="card-badges">
@@ -1205,7 +1220,9 @@ async function verCard(cardId) {
                     <div style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 2px dashed #d1d5db;">
                         <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">➕ Adicionar Novo Anexo</label>
                         <input type="file" id="novo-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="margin-bottom: 0.75rem; width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-                        <button class="btn btn-primary" onclick="adicionarAnexo(${card.id})" style="width: 100%;">📎 Anexar Arquivo</button>
+                        <div id="upload-status-${card.id}" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: #dbeafe; border-radius: 4px; font-size: 0.875rem;">
+                            <span id="upload-text-${card.id}">⏳ Enviando...</span>
+                        </div>
                         <small style="display: block; margin-top: 0.5rem; color: #6b7280; font-size: 0.75rem;">Formatos aceitos: PDF, imagens, Word, Excel (máx. 10MB)</small>
                     </div>
                 </div>
@@ -1222,6 +1239,16 @@ async function verCard(cardId) {
             `;
             
             document.getElementById('modal-ver-card').style.display = 'block';
+            
+            // Adicionar listener para upload automático quando arquivo for selecionado
+            const fileInput = document.getElementById('novo-anexo');
+            if (fileInput) {
+                fileInput.onchange = function() {
+                    if (this.files && this.files[0]) {
+                        adicionarAnexo(cardId);
+                    }
+                };
+            }
         }
     } catch (error) {
         console.error('Erro ao carregar card:', error);
@@ -1264,9 +1291,19 @@ async function adicionarComentario(cardId) {
 
 async function adicionarAnexo(cardId) {
     const input = document.getElementById('novo-anexo');
-    if (!input.files[0]) {
+    const statusDiv = document.getElementById(`upload-status-${cardId}`);
+    const statusText = document.getElementById(`upload-text-${cardId}`);
+    
+    if (!input || !input.files[0]) {
         customAlert('Selecione um arquivo', '⚠️ Atenção');
         return;
+    }
+    
+    // Mostrar status de upload
+    if (statusDiv && statusText) {
+        statusDiv.style.display = 'block';
+        statusText.textContent = '⏳ Enviando arquivo...';
+        statusDiv.style.background = '#dbeafe';
     }
     
     const formData = new FormData();
@@ -1282,13 +1319,28 @@ async function adicionarAnexo(cardId) {
         
         if (data.success) {
             input.value = '';
-            verCard(cardId); // Recarregar
+            if (statusDiv && statusText) {
+                statusText.textContent = '✅ Arquivo anexado com sucesso!';
+                statusDiv.style.background = '#d1fae5';
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 2000);
+            }
+            await verCard(cardId); // Recarregar
             mostrarToast('✅ Anexo adicionado!');
         } else {
+            if (statusDiv && statusText) {
+                statusText.textContent = '❌ Erro: ' + (data.error || 'Erro desconhecido');
+                statusDiv.style.background = '#fee2e2';
+            }
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
+        if (statusDiv && statusText) {
+            statusText.textContent = '❌ Erro ao anexar arquivo';
+            statusDiv.style.background = '#fee2e2';
+        }
         customAlert('Erro ao adicionar anexo', '❌ Erro');
     }
 }

@@ -173,7 +173,7 @@ function listarCards($pdo, $lista_id) {
             $stmt_com->execute([':card_id' => $card['id']]);
             $card['total_comentarios'] = (int)$stmt_com->fetch(PDO::FETCH_ASSOC)['total'];
             
-            // Contagem de anexos
+            // Contagem de anexos e buscar primeiro anexo de imagem para preview
             $stmt_anx = $pdo->prepare("
                 SELECT COUNT(*) as total 
                 FROM demandas_arquivos_trello 
@@ -181,6 +181,30 @@ function listarCards($pdo, $lista_id) {
             ");
             $stmt_anx->execute([':card_id' => $card['id']]);
             $card['total_anexos'] = (int)$stmt_anx->fetch(PDO::FETCH_ASSOC)['total'];
+            
+            // Buscar primeiro anexo de imagem para preview (se houver)
+            $stmt_preview = $pdo->prepare("
+                SELECT id, nome_original, mime_type, chave_storage
+                FROM demandas_arquivos_trello 
+                WHERE card_id = :card_id 
+                AND mime_type LIKE 'image/%'
+                ORDER BY id ASC
+                LIMIT 1
+            ");
+            $stmt_preview->execute([':card_id' => $card['id']]);
+            $preview = $stmt_preview->fetch(PDO::FETCH_ASSOC);
+            if ($preview && !empty($preview['chave_storage'])) {
+                // Gerar presigned URL para preview
+                $previewUrl = gerarUrlPreview($preview['chave_storage']);
+                if ($previewUrl) {
+                    $card['preview_imagem'] = [
+                        'id' => $preview['id'],
+                        'nome' => $preview['nome_original'],
+                        'chave_storage' => $preview['chave_storage'],
+                        'url_preview' => $previewUrl
+                    ];
+                }
+            }
         }
         
         echo json_encode([
@@ -1153,6 +1177,65 @@ function deletarAnexo($pdo, $anexo_id) {
 /**
  * Helper: Criar notificação
  */
+/**
+ * Gerar URL de preview de imagem usando presigned URL
+ */
+function gerarUrlPreview($chave_storage) {
+    if (empty($chave_storage)) {
+        return null;
+    }
+    
+    // Tentar usar AWS SDK para gerar presigned URL
+    if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+        require_once __DIR__ . '/../vendor/autoload.php';
+        
+        if (class_exists('Aws\S3\S3Client')) {
+            try {
+                $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+                $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+                $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+                $bucket = strtolower($bucket);
+                
+                if (!$accessKey || !$secretKey) {
+                    return null;
+                }
+                
+                $s3Client = new \Aws\S3\S3Client([
+                    'region' => $region,
+                    'version' => 'latest',
+                    'credentials' => [
+                        'key' => $accessKey,
+                        'secret' => $secretKey,
+                    ],
+                    'endpoint' => $endpoint,
+                    'use_path_style_endpoint' => true,
+                ]);
+                
+                // Gerar presigned URL válida por 1 hora
+                $cmd = $s3Client->getCommand('GetObject', [
+                    'Bucket' => $bucket,
+                    'Key' => $chave_storage,
+                ]);
+                
+                $presignedUrl = $s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
+                return (string)$presignedUrl;
+                
+            } catch (\Exception $e) {
+                error_log("Erro ao gerar URL de preview: " . $e->getMessage());
+                return null;
+            }
+        }
+    }
+    
+    // Fallback: URL direta (pode não funcionar se arquivo não for público)
+    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+    $bucket = strtolower($bucket);
+    return "{$endpoint}/{$bucket}/{$chave_storage}";
+}
+
 function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem) {
     try {
         $stmt = $pdo->prepare("
