@@ -70,9 +70,14 @@ if ($_POST) {
         $usar_como_padrao = isset($_POST['usar_como_padrao']) ? 1 : 0;
         
         // Validar campos obrigatórios
-        // Se local_custom foi enviado, usar ele; senão usar local do select
-        if (!empty($_POST['local_custom'])) {
+        // Se local_custom foi enviado e não está vazio, usar ele; senão usar local do select
+        if (!empty($_POST['local_custom']) && trim($_POST['local_custom']) !== '') {
             $local = trim($_POST['local_custom']);
+        }
+        
+        // Se local ainda está vazio, tentar pegar do campo 'local' normal (do select)
+        if (empty($local)) {
+            $local = trim($_POST['local'] ?? '');
         }
         
         // Validar local
