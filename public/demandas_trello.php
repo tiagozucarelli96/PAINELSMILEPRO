@@ -1121,9 +1121,9 @@ includeSidebar('Demandas');
         <h3 style="margin: 0; font-size: 1rem;">Notificações</h3>
         <button class="btn-icon" onclick="marcarTodasNotificacoesLidas()" title="Marcar todas como lidas">✓</button>
     </div>
-    <div class="page-demandas-notificacoes-tabs">
-        <button class="page-demandas-notificacoes-tab active" onclick="switchNotificacoesTab('todas')">Todas</button>
-        <button class="page-demandas-notificacoes-tab" onclick="switchNotificacoesTab('mencoes')">Menções (@)</button>
+            <div class="page-demandas-notificacoes-tabs">
+        <button class="page-demandas-notificacoes-tab active" onclick="switchNotificacoesTab('todas', this)">Todas</button>
+        <button class="page-demandas-notificacoes-tab" onclick="switchNotificacoesTab('mencoes', this)">Menções (@)</button>
     </div>
     <div class="page-demandas-notificacoes-content" id="notificacoes-content">
         <!-- Preenchido via JS -->
@@ -2434,10 +2434,10 @@ function toggleNotificacoes(event) {
     }, 100);
 }
 
-function switchNotificacoesTab(tab) {
+function switchNotificacoesTab(tab, element) {
     notificacoesTab = tab;
     document.querySelectorAll('.page-demandas-notificacoes-tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    if (element) element.classList.add('active');
     renderizarNotificacoes();
 }
 
