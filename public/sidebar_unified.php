@@ -2,6 +2,13 @@
 // sidebar_unified.php — Sistema unificado de sidebar para todas as páginas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+// Headers para evitar cache na dashboard (especialmente demandas do dia)
+if (isset($_GET['page']) && $_GET['page'] === 'dashboard') {
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+}
+
 // Garantir que $pdo está disponível
 if (!isset($pdo)) {
     require_once __DIR__ . '/conexao.php';
