@@ -135,7 +135,7 @@ if ($current_page === 'dashboard') {
                    dc.titulo,
                    dc.titulo as descricao,
                    dc.prazo, 
-                   dc.arquivado,
+                   dc.status,
                    db.nome as quadro_nome,
                    u.nome as responsavel_nome
             FROM demandas_cards dc
@@ -144,8 +144,8 @@ if ($current_page === 'dashboard') {
             LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
             LEFT JOIN usuarios u ON u.id = dcu.usuario_id
             WHERE DATE(dc.prazo) = CURRENT_DATE
-            AND (dc.arquivado IS NULL OR dc.arquivado = false)
-            GROUP BY dc.id, dc.titulo, dc.prazo, dc.arquivado, db.nome, u.nome
+            AND dc.status NOT IN ('concluido', 'cancelado')
+            GROUP BY dc.id, dc.titulo, dc.prazo, dc.status, db.nome, u.nome
             ORDER BY dc.prazo ASC, dc.id ASC
             LIMIT 10
         ");
