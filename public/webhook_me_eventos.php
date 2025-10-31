@@ -73,15 +73,22 @@ function processarWebhook($data) {
         $webhook_tipo = $data['event']; // 'event_created', 'event_updated', 'event_canceled', etc
         
         // Converter webhook_tipo para formato compatível com a query da dashboard
-        // Se for event_created, manter como 'created' para compatibilidade
+        // Mapeamento dos eventos da ME Eventos:
+        // - event_created → 'created' (conta no dashboard)
+        // - event_updated → 'updated' (atualização, não conta como novo)
+        // - event_canceled → 'deleted' (evento cancelado)
+        // - event_deleted → 'deleted' (evento excluído)
+        // - event_reactivated → 'created' (reativar conta como criado novamente)
         $webhook_tipo_original = $webhook_tipo;
-        if ($webhook_tipo === 'event_created') {
+        if ($webhook_tipo === 'event_created' || $webhook_tipo === 'event_reactivated') {
+            // Evento criado ou reativado conta como 'created' na dashboard
             $webhook_tipo = 'created';
         } elseif ($webhook_tipo === 'event_updated') {
             $webhook_tipo = 'updated';
         } elseif ($webhook_tipo === 'event_canceled' || $webhook_tipo === 'event_deleted') {
             $webhook_tipo = 'deleted';
         }
+        // Se for outro tipo não mapeado, mantém o original
         
         // Extrair dados do evento
         $evento_id = (string)$evento_data['id'];
