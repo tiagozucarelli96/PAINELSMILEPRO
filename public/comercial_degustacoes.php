@@ -14,6 +14,15 @@ if (!isset($pdo)) {
     }
 }
 
+// Garantir acesso ao $pdo global se necessário
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO) {
+        $pdo = $GLOBALS['pdo'];
+    } else {
+        die('Erro: Conexão com banco de dados não disponível');
+    }
+}
+
 // Verificar permissões (index.php já verifica login)
 if (!lc_can_access_comercial()) {
     header('Location: index.php?page=dashboard&error=permission_denied');
