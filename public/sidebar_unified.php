@@ -58,11 +58,14 @@ if ($current_page === 'dashboard') {
         $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
         
         // 2. Eventos Criados via ME Eventos (webhook)
+        // Conta APENAS eventos event_created do mês atual
+        // Automaticamente zera no primeiro dia do mês (só conta eventos do mês atual)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
             FROM me_eventos_webhook 
             WHERE webhook_tipo = 'created'
             AND DATE_TRUNC('month', recebido_em) = DATE_TRUNC('month', CURRENT_DATE)
+            -- Filtra apenas eventos do mês atual, automaticamente zera no dia 1
         ");
         $stmt->execute();
         $stats['eventos_criados'] = $stmt->fetchColumn() ?: 0;
