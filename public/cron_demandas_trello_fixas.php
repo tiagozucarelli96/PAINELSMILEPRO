@@ -2,8 +2,11 @@
 /**
  * cron_demandas_trello_fixas.php
  * Gera cards automaticamente baseado em demandas fixas configuradas
- * Executar diariamente às 00:00
+ * Executar diariamente às 00:00 (horário de Brasília)
  */
+
+// Configurar timezone para Brasília
+date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/conexao.php';
 
