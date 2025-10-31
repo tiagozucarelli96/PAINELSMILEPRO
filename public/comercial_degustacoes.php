@@ -148,6 +148,10 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $degustacoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Suprimir warnings de variáveis undefined durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
 // Criar conteúdo da página
 ob_start();
 ?>
