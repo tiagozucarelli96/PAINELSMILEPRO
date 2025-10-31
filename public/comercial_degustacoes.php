@@ -302,7 +302,7 @@ ob_start();
                 query = document.querySelector('.search-input').value;
             }
             const status = document.querySelector('.status-select').value;
-            let url = '?search=' + encodeURIComponent(query);
+            let url = 'index.php?page=comercial_degustacoes&search=' + encodeURIComponent(query);
             if (status) {
                 url += '&status=' + encodeURIComponent(status);
             }
@@ -311,7 +311,7 @@ ob_start();
         
         function filterByStatus(status) {
             const search = document.querySelector('.search-input').value;
-            let url = '?search=' + encodeURIComponent(search);
+            let url = 'index.php?page=comercial_degustacoes&search=' + encodeURIComponent(search);
             if (status) {
                 url += '&status=' + encodeURIComponent(status);
             }
