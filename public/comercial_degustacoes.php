@@ -477,14 +477,16 @@ ob_start();
             <!-- Filtros -->
             <div class="filters">
                 <input type="text" class="search-input" placeholder="Pesquisar por nome ou local..." 
-                       value="<?= h($search) ?>" onkeyup="searchDegustacoes(this.value)">
-                <select class="status-select" onchange="filterByStatus(this.value)">
+                       value="<?= h($search) ?>" 
+                       onkeypress="if(event.key === 'Enter') searchDegustacoes()"
+                       id="searchInput">
+                <select class="status-select" id="statusSelect" onchange="filterByStatus(this.value)">
                     <option value="">Todos os status</option>
                     <option value="rascunho" <?= $status_filter === 'rascunho' ? 'selected' : '' ?>>Rascunho</option>
                     <option value="publicado" <?= $status_filter === 'publicado' ? 'selected' : '' ?>>Publicado</option>
                     <option value="encerrado" <?= $status_filter === 'encerrado' ? 'selected' : '' ?>>Encerrado</option>
                 </select>
-                <button class="btn-primary" onclick="searchDegustacoes()">🔍 Buscar</button>
+                <button class="btn-primary" onclick="searchDegustacoes()" type="button">🔍 Buscar</button>
             </div>
             
             <!-- Grid de Degustações -->
@@ -608,9 +610,11 @@ ob_start();
     <script>
         function searchDegustacoes(query = '') {
             if (query === '') {
-                query = document.querySelector('.search-input').value;
+                const input = document.getElementById('searchInput');
+                query = input ? input.value : '';
             }
-            const status = document.querySelector('.status-select').value;
+            const select = document.getElementById('statusSelect');
+            const status = select ? select.value : '';
             let url = 'index.php?page=comercial_degustacoes&search=' + encodeURIComponent(query);
             if (status) {
                 url += '&status=' + encodeURIComponent(status);
@@ -619,7 +623,8 @@ ob_start();
         }
         
         function filterByStatus(status) {
-            const search = document.querySelector('.search-input').value;
+            const input = document.getElementById('searchInput');
+            const search = input ? input.value : '';
             let url = 'index.php?page=comercial_degustacoes&search=' + encodeURIComponent(search);
             if (status) {
                 url += '&status=' + encodeURIComponent(status);
