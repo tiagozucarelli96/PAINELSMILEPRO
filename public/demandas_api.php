@@ -73,6 +73,7 @@ try {
         } elseif ($action === 'reabrir' && $id) {
             // POST ?action=reabrir&id=X
             reabrirDemanda($pdo, $id);
+            exit;
         } elseif ($action === 'comentario' && $id) {
             // POST ?action=comentario&id=X
             adicionarComentario($pdo, $id);
@@ -440,14 +441,46 @@ function concluirDemanda($pdo, $id) {
 }
 
 function reabrirDemanda($pdo, $id) {
-    $stmt = $pdo->prepare("
-        UPDATE demandas 
-        SET status = 'pendente', data_conclusao = NULL
-        WHERE id = ?
-    ");
-    $stmt->execute([$id]);
-    
-    echo json_encode(['success' => true]);
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID da demanda não fornecido']);
+            return;
+        }
+        
+        $stmt = $pdo->prepare("
+            UPDATE demandas 
+            SET status = 'pendente', data_conclusao = NULL
+            WHERE id = ?
+        ");
+        $stmt->execute([$id]);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
+            return;
+        }
+        
+        echo json_encode(['success' => true, 'message' => 'Demanda reaberta com sucesso']);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao reabrir demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao reabrir demanda: ' . $e->getMessage()
+        ]);
+    }
 }
 
 function adicionarComentario($pdo, $id) {

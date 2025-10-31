@@ -760,14 +760,31 @@ function reabrirDemanda(id) {
     fetch(`demandas_api.php?action=reabrir&id=${id}`, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
-        }
+            'Accept': 'application/json'
+        },
+        credentials: 'same-origin',
+        cache: 'no-cache'
     })
     .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
+        console.log('Response status:', response.status);
+        return response.text().then(text => {
+            try {
+                const data = JSON.parse(text);
+                // Se tem success:true, tratar como sucesso mesmo com status diferente de 200
+                if (data.success) {
+                    return data;
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return data;
+            } catch (e) {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text.substring(0, 200)}`);
+                }
+                return JSON.parse(text);
+            }
+        });
     })
     .then(data => {
         if (data.success) {
