@@ -193,13 +193,38 @@ else {
 // Log para debug (sem mostrar o token completo por segurança)
 logWebhook("Tentativa de autenticação. Token recebido: " . (empty($token) ? 'NENHUM' : substr($token, 0, 10) . '...'));
 logWebhook("Headers recebidos: " . json_encode($headers));
+logWebhook("GET params: " . json_encode($_GET));
+logWebhook("REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'UNKNOWN'));
+
+// Se não encontrou token, verificar se a ME Eventos está enviando via outro método
+// Algumas plataformas enviam token no próprio URL configurado
+if (empty($token)) {
+    // Verificar se a URL completa tem token (pode estar no webhook configurado na ME Eventos)
+    $request_uri = $_SERVER['REQUEST_URI'] ?? '';
+    if (preg_match('/[?&]token=([^&]+)/', $request_uri, $matches)) {
+        $token = urldecode($matches[1]);
+        logWebhook("Token extraído da URL via regex: " . substr($token, 0, 10) . '...');
+    }
+}
 
 if (empty($token) || !validarToken($token)) {
+    $full_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . 
+                '://' . $_SERVER['HTTP_HOST'] . '/webhook_me_eventos.php';
+    $suggested_url = $full_url . '?token=smile-token-2025';
+    
     http_response_code(401);
-    echo json_encode(['erro' => 'Token inválido ou ausente']);
-    logWebhook("Tentativa de acesso com token inválido ou ausente. Headers: " . json_encode($headers));
+    echo json_encode([
+        'erro' => 'Token inválido ou ausente',
+        'detalhes' => 'O token deve ser enviado via query parameter (?token=...), header Authorization ou X-Token',
+        'token_esperado' => 'smile-token-2025',
+        'url_sugerida' => $suggested_url
+    ]);
+    logWebhook("❌ Tentativa de acesso com token inválido ou ausente.");
+    logWebhook("📋 Configure o webhook na ME Eventos com a URL: " . $suggested_url);
     exit;
 }
+
+logWebhook("✅ Token válido! Processando webhook...");
 
 // Conectar ao banco de dados
 try {
