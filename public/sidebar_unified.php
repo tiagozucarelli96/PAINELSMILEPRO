@@ -193,11 +193,30 @@ if ($current_page === 'dashboard') {
         $demandas_hoje = [];
     }
     
+    // Buscar notificações não lidas para o usuário atual
+    $notificacoes_nao_lidas = 0;
+    $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+    if ($usuario_id_dashboard) {
+        try {
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM demandas_notificacoes WHERE usuario_id = :user_id AND lida = FALSE");
+            $stmt->execute([':user_id' => $usuario_id_dashboard]);
+            $notificacoes_nao_lidas = (int)$stmt->fetchColumn();
+        } catch (Exception $e) {
+            error_log("Erro ao contar notificações: " . $e->getMessage());
+        }
+    }
+    
     $dashboard_content = '
     <div class="page-container">
         <div class="page-header">
-            <h1 class="page-title">🏠 Dashboard</h1>
-            <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
+            <div style="flex: 1;">
+                <h1 class="page-title">🏠 Dashboard</h1>
+                <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
+            </div>
+            <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.75rem; border-radius: 50%; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; transition: background 0.2s;">
+                <span style="font-size: 1.5rem;">🔔</span>
+                ' . ($notificacoes_nao_lidas > 0 ? '<span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 4px; right: 4px; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; font-weight: 600; min-width: 18px; text-align: center; line-height: 1.4;">' . $notificacoes_nao_lidas . '</span>' : '<span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="display: none;">0</span>') . '
+            </div>
         </div>
         
         <!-- Métricas Principais -->
@@ -322,6 +341,20 @@ if ($current_page === 'dashboard') {
                         </div>
                         <button type="submit" class="btn-primary">Solicitar</button>
                     </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal de Notificações na Dashboard -->
+        <div id="dashboard-notificacoes-dropdown" class="dashboard-notificacoes-dropdown">
+            <div class="dashboard-notificacoes-header">
+                <h3 style="margin: 0; font-size: 1.125rem; font-weight: 600;">🔔 Notificações</h3>
+                <button onclick="marcarTodasDashboardNotificacoesLidas()" style="background: transparent; border: none; color: #3b82f6; cursor: pointer; font-size: 0.875rem; padding: 0.5rem;" title="Marcar todas como lidas">Marcar todas</button>
+            </div>
+            <div class="dashboard-notificacoes-content" id="dashboard-notificacoes-content">
+                <div class="dashboard-notificacoes-empty">
+                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔔</div>
+                    <div>Nenhuma notificação</div>
                 </div>
             </div>
         </div>
@@ -1114,6 +1147,10 @@ if ($current_page === 'dashboard') {
         
         .page-header {
             margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
         }
         
         .page-title {
@@ -1121,6 +1158,131 @@ if ($current_page === 'dashboard') {
             font-weight: 700;
             color: #1e293b;
             margin-bottom: 8px;
+        }
+        
+        /* Notificações na Dashboard */
+        .dashboard-notificacoes-badge {
+            position: relative;
+            cursor: pointer;
+            padding: 0.75rem;
+            border-radius: 50%;
+            background: #3b82f6;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            min-height: 48px;
+            transition: background 0.2s;
+        }
+        
+        .dashboard-notificacoes-badge:hover {
+            background: #2563eb;
+        }
+        
+        .dashboard-notificacoes-count {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: #ef4444;
+            color: white;
+            border-radius: 10px;
+            padding: 2px 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            min-width: 18px;
+            text-align: center;
+            line-height: 1.4;
+        }
+        
+        /* Modal de Notificações na Dashboard */
+        .dashboard-notificacoes-dropdown {
+            position: fixed;
+            top: 120px;
+            right: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            min-width: 400px;
+            max-width: 90vw;
+            max-height: 600px;
+            overflow: hidden;
+            z-index: 2000;
+            display: none;
+            animation: slideDown 0.2s;
+        }
+        
+        .dashboard-notificacoes-dropdown.open {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .dashboard-notificacoes-header {
+            padding: 1.25rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        .dashboard-notificacoes-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        .dashboard-notificacao-item {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .dashboard-notificacao-item:hover {
+            background: #f9fafb;
+        }
+        
+        .dashboard-notificacao-item.nao-lida {
+            background: #eff6ff;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .dashboard-notificacao-titulo {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: #172b4d;
+            font-size: 0.875rem;
+        }
+        
+        .dashboard-notificacao-trecho {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+        
+        .dashboard-notificacao-meta {
+            font-size: 0.7rem;
+            color: #9ca3af;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .dashboard-notificacoes-empty {
+            padding: 3rem;
+            text-align: center;
+            color: #9ca3af;
         }
         
         .page-subtitle {

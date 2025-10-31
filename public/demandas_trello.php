@@ -1047,10 +1047,6 @@ includeSidebar('Demandas');
             <button class="btn btn-outline" onclick="abrirModalNovaLista()">📋 Nova Lista</button>
             <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Demandas Fixas</button>
             <button class="btn-icon" onclick="toggleMenuActions()" aria-label="Mais ações">⋯</button>
-            <div class="notificacoes-badge" onclick="toggleNotificacoes(event)" aria-label="Notificações" style="position: relative;">
-                🔔
-                <span id="notificacoes-count" class="notificacoes-count" style="display: none;">0</span>
-            </div>
         </div>
     </div>
     
