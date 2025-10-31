@@ -213,10 +213,10 @@ if ($current_page === 'dashboard') {
                 <h1 class="page-title">🏠 Dashboard</h1>
                 <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
             </div>
-            <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.5rem; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; min-width: 56px; min-height: 56px; transition: transform 0.2s;">
-                <img src="assets/icons/bell_custom.png" alt="Notificações" style="width: 40px; height: 40px; display: block;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
+            <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.5rem; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; min-width: 64px; min-height: 64px; transition: transform 0.2s;">
+                <img src="assets/icons/bell_custom.png" alt="Notificações" style="width: 56px; height: 56px; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
                 <span style="font-size: 1.5rem; display: none;">🔔</span>
-                <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 2px; right: 2px; background: transparent; color: white; font-size: 0.75rem; font-weight: 700; min-width: 16px; text-align: center; line-height: 1.2; pointer-events: none; ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . htmlspecialchars($notificacoes_nao_lidas > 99 ? '99+' : $notificacoes_nao_lidas) . '</span>
+                <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 4px; right: 4px; background: transparent; color: white; font-size: 0.85rem; font-weight: 700; min-width: 18px; text-align: center; line-height: 1.2; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.3); ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . htmlspecialchars($notificacoes_nao_lidas > 99 ? '99+' : $notificacoes_nao_lidas) . '</span>
             </div>
         </div>
         
@@ -1171,8 +1171,8 @@ if ($current_page === 'dashboard') {
             display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 56px;
-            min-height: 56px;
+            min-width: 64px;
+            min-height: 64px;
             transition: transform 0.2s;
         }
         
@@ -1181,23 +1181,25 @@ if ($current_page === 'dashboard') {
         }
         
         .dashboard-notificacoes-badge img {
-            width: 40px;
-            height: 40px;
+            width: 56px;
+            height: 56px;
             object-fit: contain;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
         }
         
         .dashboard-notificacoes-count {
             position: absolute;
-            top: 2px;
-            right: 2px;
+            top: 4px;
+            right: 4px;
             background: transparent;
             color: white;
-            font-size: 0.75rem;
+            font-size: 0.85rem;
             font-weight: 700;
-            min-width: 16px;
+            min-width: 18px;
             text-align: center;
             line-height: 1.2;
             pointer-events: none;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
         
         /* Modal de Notificações na Dashboard */
