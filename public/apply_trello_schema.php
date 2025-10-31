@@ -9,6 +9,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/conexao.php';
+$pdo = $GLOBALS['pdo'];
+
 // Verificar autenticação ou token (mais permissivo para facilitar aplicação)
 $token = $_GET['token'] ?? '';
 $expectedToken = getenv('SCHEMA_APPLY_TOKEN') ?: 'apply_trello_2024';
@@ -20,8 +23,6 @@ $allowAccess = $isLoggedIn || $token === $expectedToken;
 // Se não está logado e não tem token, verificar se é primeira instalação
 if (!$allowAccess) {
     try {
-        require_once __DIR__ . '/conexao.php';
-        $pdo = $GLOBALS['pdo'];
         $stmt = $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'demandas_boards'");
         $tableExists = $stmt->fetchColumn() > 0;
         
@@ -38,10 +39,6 @@ if (!$allowAccess) {
 if (!$allowAccess) {
     die('Acesso negado. Para aplicar o schema, você precisa:<br>1) Estar logado no sistema, OU<br>2) Fornecer o token correto via URL: ?token=' . htmlspecialchars($expectedToken));
 }
-
-require_once __DIR__ . '/conexao.php';
-
-$pdo = $GLOBALS['pdo'];
 
 header('Content-Type: text/html; charset=utf-8');
 ?>
