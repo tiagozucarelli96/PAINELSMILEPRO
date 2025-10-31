@@ -1,18 +1,28 @@
 <?php
 // demandas_api.php - Controller REST para demandas
+
+// Desabilitar output de erros para não quebrar JSON
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 // Verificar se usuário está logado
 if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
     http_response_code(401);
-    echo json_encode(['error' => 'Não autorizado']);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'error' => 'Não autorizado']);
     exit;
 }
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
 
-header('Content-Type: application/json');
+// Garantir que apenas JSON é retornado
+header('Content-Type: application/json; charset=utf-8');
+
+// Limpar qualquer output anterior
+ob_clean();
 
 try {
     $pdo = $GLOBALS['pdo'];
@@ -67,12 +77,18 @@ try {
             
         default:
             http_response_code(405);
-            echo json_encode(['error' => 'Método não permitido']);
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Método não permitido']);
     }
     
 } catch (Exception $e) {
     http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+    ]);
 }
 
 function listarDemandas($pdo) {
@@ -194,16 +210,18 @@ function criarDemanda($pdo) {
     
     if (!$descricao || !$prazo || !$responsavel_id) {
         http_response_code(400);
+        header('Content-Type: application/json');
         echo json_encode([
             'success' => false,
             'error' => 'Dados obrigatórios: descricao, prazo, responsavel_id',
             'debug' => [
                 'descricao' => $descricao ? 'preenchido' : 'vazio',
                 'prazo' => $prazo ? 'preenchido' : 'vazio',
-                'responsavel_id' => $responsavel_id
+                'responsavel_id' => $responsavel_id,
+                'recebido' => $data
             ]
         ]);
-        return;
+        exit;
     }
     
     try {
