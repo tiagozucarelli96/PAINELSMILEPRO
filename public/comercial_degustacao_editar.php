@@ -13,7 +13,7 @@ if (!isset($pdo)) {
 
 // Verificar permissões
 if (!lc_can_edit_degustacoes()) {
-    header('Location: dashboard.php?error=permission_denied');
+    header('Location: index.php?page=dashboard&error=permission_denied');
     exit;
 }
 
