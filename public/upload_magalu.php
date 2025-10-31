@@ -104,11 +104,15 @@ class MagaluUpload {
         $contentType = $mimeType;
         
         // String para assinatura AWS S3 v2 (formato correto)
-        // PUT\n\nContent-Type\nDate\n/bucket/key
-        $stringToSign = "PUT\n\n{$contentType}\n{$date}\n/{$this->bucket}/{$key}";
+        // Formato: HTTP-Verb\n\nContent-MD5\nContent-Type\nDate\nCanonicalizedResource
+        // Para PUT sem Content-MD5, a linha fica vazia
+        $canonicalizedResource = "/{$this->bucket}/{$key}";
+        $stringToSign = "PUT\n\n{$contentType}\n{$date}\n{$canonicalizedResource}";
         
         // Gerar assinatura HMAC-SHA1 e codificar em base64
         $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
+        
+        error_log("String to sign (raw): " . str_replace("\n", "\\n", $stringToSign));
         
         // Log detalhado para debug (apenas em desenvolvimento)
         error_log("=== Magalu Upload Debug ===");
@@ -126,25 +130,27 @@ class MagaluUpload {
             throw new Exception('Não foi possível abrir arquivo para upload');
         }
         
-        // Headers da requisição
+        // Headers da requisição (ordem importante para S3)
         $headers = [
-            'Authorization: AWS ' . $this->accessKey . ':' . $signature,
-            'Content-Type: ' . $contentType,
             'Date: ' . $date,
-            'Content-Length: ' . $fileSize
+            'Content-Type: ' . $contentType,
+            'Content-Length: ' . $fileSize,
+            'Authorization: AWS ' . $this->accessKey . ':' . $signature
         ];
         
-        // Fazer upload via cURL
+        // Fazer upload via cURL usando CURLOPT_POSTFIELDS com file_get_contents
+        // Método alternativo que funciona melhor com alguns serviços S3-compatible
+        rewind($fileHandle);
+        $fileContentForUpload = file_get_contents($tmpFile);
+        
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_PUT => true,
-            CURLOPT_INFILE => $fileHandle,
-            CURLOPT_INFILESIZE => $fileSize,
+            CURLOPT_POSTFIELDS => $fileContentForUpload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 60,
-            CURLOPT_VERBOSE => false // Desabilitar verbose em produção
+            CURLOPT_VERBOSE => false
         ]);
         
         $response = curl_exec($ch);
@@ -152,7 +158,10 @@ class MagaluUpload {
         $curlError = curl_error($ch);
         $curlInfo = curl_getinfo($ch);
         curl_close($ch);
-        fclose($fileHandle);
+        // Não fechar $fileHandle aqui pois já lemos o conteúdo
+        if (is_resource($fileHandle)) {
+            fclose($fileHandle);
+        }
         
         if ($curlError) {
             error_log("Magalu Upload cURL Error: {$curlError}");

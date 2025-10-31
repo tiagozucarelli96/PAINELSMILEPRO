@@ -588,14 +588,23 @@ function listarNotificacoes($pdo, $usuario_id) {
                 LIMIT 50
             ");
         } else {
-            // Tabela antiga sem referencia_id - apenas listar notificações
+            // Tabela antiga sem referencia_id - verificar qual coluna de data existe
+            $stmt_check_col = $pdo->query("
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'demandas_notificacoes' 
+                AND column_name IN ('criada_em', 'criado_em', 'created_at')
+                LIMIT 1
+            ");
+            $date_column = $stmt_check_col->fetchColumn() ?: 'id'; // Fallback para id se nenhuma coluna de data existir
+            
             $stmt = $pdo->prepare("
                 SELECT dn.*,
                        NULL as card_titulo,
                        NULL as lista_id
                 FROM demandas_notificacoes dn
                 WHERE dn.usuario_id = :user_id
-                ORDER BY dn.criada_em DESC
+                ORDER BY dn.{$date_column} DESC
                 LIMIT 50
             ");
         }
