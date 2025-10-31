@@ -2,6 +2,7 @@
 /**
  * demandas_trello.php
  * Interface estilo Trello para sistema de Demandas
+ * REFATORADO: UI completa com sidebar interna, drawer de fixas, notificações aprimoradas
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -16,7 +17,7 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
 }
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)($_SESSION['user_id'] ?? 1);
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 1);
 $is_admin = isset($_SESSION['permissao']) && strpos($_SESSION['permissao'], 'admin') !== false;
 
 // Buscar usuários para menções e atribuições
@@ -24,591 +25,1145 @@ $stmt = $pdo->prepare("SELECT id, nome, email FROM usuarios ORDER BY nome");
 $stmt->execute();
 $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Buscar quadros disponíveis
+// Buscar quadros disponíveis para sidebar
 $board_id = isset($_GET['board_id']) ? (int)$_GET['board_id'] : null;
 
-includeSidebar('Demandas Trello');
+includeSidebar('Demandas');
 ?>
 
 <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: #f4f5f7;
-        color: #172b4d;
-    }
-    
-    .trello-container {
-        padding: 1.5rem;
-        height: calc(100vh - 60px);
-        overflow-x: auto;
-        overflow-y: hidden;
-    }
-    
-    .trello-header {
-        background: white;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .trello-header h1 {
-        font-size: 1.5rem;
-        color: #172b4d;
-    }
-    
-    .header-buttons {
-        display: flex;
-        gap: 0.75rem;
-        align-items: center;
-    }
-    
-    .btn {
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        border: none;
-        font-size: 0.875rem;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
-    .btn-primary {
-        background: #3b82f6;
-        color: white;
-    }
-    
-    .btn-primary:hover {
-        background: #2563eb;
-    }
-    
-    .btn-outline {
-        background: white;
-        color: #3b82f6;
-        border: 1px solid #3b82f6;
-    }
-    
-    .btn-outline:hover {
-        background: #eff6ff;
-    }
-    
-    .notificacoes-badge {
-        position: relative;
-        cursor: pointer;
-    }
-    
-    .notificacoes-count {
-        position: absolute;
-        top: -8px;
-        right: -8px;
-        background: #ef4444;
-        color: white;
-        border-radius: 10px;
-        padding: 2px 6px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        min-width: 20px;
-        text-align: center;
-    }
-    
-    .boards-list {
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-        overflow-x: auto;
-        padding-bottom: 0.5rem;
-    }
-    
-    .board-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        cursor: pointer;
-        min-width: 200px;
-        transition: transform 0.2s;
-    }
-    
-    .board-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    .board-card.active {
-        border: 2px solid #3b82f6;
-    }
-    
-    .trello-board {
-        display: flex;
-        gap: 1rem;
-        height: calc(100vh - 250px);
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding-bottom: 1rem;
-    }
-    
-    .trello-list {
-        background: #ebecf0;
-        border-radius: 8px;
-        padding: 0.75rem;
-        min-width: 300px;
-        max-width: 300px;
-        display: flex;
-        flex-direction: column;
-        height: fit-content;
-        max-height: 100%;
-    }
-    
-    .list-header {
-        font-weight: 600;
-        padding: 0.75rem;
-        margin-bottom: 0.5rem;
-        color: #172b4d;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .list-count {
-        background: rgba(0,0,0,0.1);
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-    }
-    
-    .cards-container {
-        flex: 1;
-        overflow-y: auto;
-        min-height: 50px;
-    }
-    
-    .card-item {
-        background: white;
-        border-radius: 6px;
-        padding: 0.75rem;
-        margin-bottom: 0.5rem;
-        cursor: pointer;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-        position: relative;
-    }
-    
-    .card-item:hover {
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-        transform: translateY(-1px);
-    }
-    
-    .card-item.vencido {
-        border-left: 4px solid #ef4444;
-    }
-    
-    .card-item.proximo-vencimento {
-        border-left: 4px solid #f59e0b;
-    }
-    
-    .card-item.concluido {
-        opacity: 0.7;
-        background: #f0f9ff;
-    }
-    
-    .card-titulo {
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-        color: #172b4d;
-    }
-    
-    .card-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 0.75rem;
-        color: #6b7280;
-        margin-top: 0.5rem;
-    }
-    
-    .card-prazo {
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.7rem;
-    }
-    
-    .card-prazo.vencido {
-        background: #fee2e2;
-        color: #991b1b;
-    }
-    
-    .card-prazo.proximo {
-        background: #fef3c7;
-        color: #92400e;
-    }
-    
-    .card-usuarios {
-        display: flex;
-        gap: 0.25rem;
-    }
-    
-    .avatar {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: #3b82f6;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.7rem;
-        font-weight: 600;
-    }
-    
-    .card-badges {
-        display: flex;
-        gap: 0.5rem;
-        margin-top: 0.5rem;
-        flex-wrap: wrap;
-    }
-    
-    .badge {
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.7rem;
-        font-weight: 500;
-    }
-    
-    /* Sistema de Alertas Customizados */
-    .custom-alert-overlay {
+/* ============================================
+   SCOPO: Página Demandas (.page-demandas)
+   ============================================ */
+.page-demandas {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f4f5f7;
+    color: #172b4d;
+    height: calc(100vh - 60px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ============================================
+   HEADER LIMPO
+   ============================================ */
+.page-demandas-header {
+    background: white;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+.page-demandas-header h1 {
+    font-size: 1.5rem;
+    color: #172b4d;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.page-demandas-header-actions {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-outline {
+    background: white;
+    color: #3b82f6;
+    border: 1px solid #3b82f6;
+}
+
+.btn-outline:hover {
+    background: #eff6ff;
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    padding: 0.5rem;
+    cursor: pointer;
+    border-radius: 6px;
+    color: #6b7280;
+    font-size: 1.25rem;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.notificacoes-badge {
+    position: relative;
+    cursor: pointer;
+}
+
+.notificacoes-count {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #ef4444;
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    min-width: 18px;
+    text-align: center;
+    border: 2px solid white;
+}
+
+/* ============================================
+   LAYOUT PRINCIPAL (Sidebar + Board)
+   ============================================ */
+.page-demandas-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ============================================
+   SIDEBAR INTERNA DE NAVEGAÇÃO
+   ============================================ */
+.page-demandas-sidebar {
+    width: 260px;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+.page-demandas-sidebar-header {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.page-demandas-sidebar-search {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.page-demandas-sidebar-search:focus {
+    border-color: #3b82f6;
+}
+
+.page-demandas-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.75rem;
+}
+
+.page-demandas-sidebar-section {
+    margin-bottom: 1.5rem;
+}
+
+.page-demandas-sidebar-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+    padding: 0 0.5rem;
+}
+
+.page-demandas-board-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 0.25rem;
+    position: relative;
+}
+
+.page-demandas-board-item:hover {
+    background: #f9fafb;
+}
+
+.page-demandas-board-item.active {
+    background: #eff6ff;
+    color: #3b82f6;
+    font-weight: 500;
+}
+
+.page-demandas-board-item-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.page-demandas-board-item-name {
+    flex: 1;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.page-demandas-board-item-star {
+    color: #fbbf24;
+    font-size: 0.875rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.page-demandas-board-item:hover .page-demandas-board-item-star {
+    opacity: 1;
+}
+
+.page-demandas-board-item.favorito .page-demandas-board-item-star {
+    opacity: 1;
+}
+
+.page-demandas-sidebar-footer {
+    padding: 1rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.page-demandas-sidebar-footer .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+/* Drawer mobile */
+.page-demandas-sidebar.drawer {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 1000;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
+    transform: translateX(-100%);
+}
+
+.page-demandas-sidebar.drawer.open {
+    transform: translateX(0);
+}
+
+@media (max-width: 1279px) {
+    .page-demandas-sidebar {
         position: fixed;
-        top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        animation: fadeIn 0.2s;
-    }
-    
-    .custom-alert {
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-        padding: 0;
-        max-width: 400px;
-        width: 90%;
-        animation: slideUp 0.3s;
-        overflow: hidden;
-    }
-    
-    .custom-alert-header {
-        padding: 1.5rem;
-        background: #3b82f6;
-        color: white;
-        font-weight: 600;
-        font-size: 1.1rem;
-    }
-    
-    .custom-alert-body {
-        padding: 1.5rem;
-        color: #374151;
-        line-height: 1.6;
-    }
-    
-    .custom-alert-actions {
-        padding: 1rem 1.5rem;
-        display: flex;
-        gap: 0.75rem;
-        justify-content: flex-end;
-        border-top: 1px solid #e5e7eb;
-    }
-    
-    .custom-alert-btn {
-        padding: 0.625rem 1.25rem;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        border: none;
-        transition: all 0.2s;
-        font-size: 0.875rem;
-    }
-    
-    .custom-alert-btn-primary {
-        background: #3b82f6;
-        color: white;
-    }
-    
-    .custom-alert-btn-primary:hover {
-        background: #2563eb;
-    }
-    
-    .custom-alert-btn-secondary {
-        background: #f3f4f6;
-        color: #374151;
-    }
-    
-    .custom-alert-btn-secondary:hover {
-        background: #e5e7eb;
-    }
-    
-    .custom-alert-btn-danger {
-        background: #ef4444;
-        color: white;
-    }
-    
-    .custom-alert-btn-danger:hover {
-        background: #dc2626;
-    }
-    
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-    
-    @keyframes slideUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .badge-comentarios {
-        background: #eff6ff;
-        color: #1e40af;
-    }
-    
-    .badge-anexos {
-        background: #f0f9ff;
-        color: #0369a1;
-    }
-    
-    .badge-prioridade {
-        color: white;
-        font-weight: 600;
-    }
-    
-    .prioridade-baixa { background: #10b981; }
-    .prioridade-media { background: #3b82f6; }
-    .prioridade-alta { background: #f59e0b; }
-    .prioridade-urgente { background: #ef4444; }
-    
-    .add-card-btn {
-        background: transparent;
-        border: none;
-        color: #6b7280;
-        padding: 0.75rem;
-        width: 100%;
-        text-align: left;
-        cursor: pointer;
-        border-radius: 6px;
-        transition: background 0.2s;
-    }
-    
-    .add-card-btn:hover {
-        background: rgba(0,0,0,0.05);
-    }
-    
-    .modal {
-        display: none;
-        position: fixed;
+        top: 0;
+        bottom: 0;
         z-index: 1000;
-        left: 0;
-        top: 0;
+        box-shadow: 4px 0 12px rgba(0,0,0,0.15);
+        transform: translateX(-100%);
+    }
+    
+    .page-demandas-sidebar.open {
+        transform: translateX(0);
+    }
+    
+    .page-demandas-main-content {
         width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        overflow-y: auto;
     }
-    
-    .modal-content {
-        background: white;
-        margin: 2rem auto;
-        padding: 2rem;
-        border-radius: 12px;
-        max-width: 700px;
-        width: 90%;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+/* ============================================
+   ÁREA DE BOARD (Colunas Kanban)
+   ============================================ */
+.page-demandas-main-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: #f4f5f7;
+}
+
+.page-demandas-board-header {
+    padding: 1rem 1.5rem;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
+}
+
+.page-demandas-board-header-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #172b4d;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.page-demandas-board-header-color-bar {
+    height: 4px;
+    border-radius: 2px;
+    min-width: 60px;
+}
+
+.page-demandas-board-container {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.page-demandas-list {
+    background: #ebecf0;
+    border-radius: 8px;
+    padding: 0.75rem;
+    min-width: 340px;
+    max-width: 360px;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    min-height: 70vh;
+    max-height: calc(100vh - 200px);
+}
+
+.page-demandas-list-header {
+    font-weight: 600;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    color: #172b4d;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.page-demandas-list-count {
+    background: rgba(0,0,0,0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+}
+
+.page-demandas-list-cards {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 200px;
+    padding-right: 4px;
+}
+
+.page-demandas-list-cards::-webkit-scrollbar {
+    width: 8px;
+}
+
+.page-demandas-list-cards::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.page-demandas-list-cards::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+}
+
+.page-demandas-list-cards::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,0.3);
+}
+
+.page-demandas-list-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.page-demandas-card {
+    background: white;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+    position: relative;
+}
+
+.page-demandas-card:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+.page-demandas-card-preview {
+    width: 100%;
+    height: 150px;
+    overflow: hidden;
+    border-radius: 4px 4px 0 0;
+    margin: -0.75rem -0.75rem 0.5rem -0.75rem;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-demandas-card-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: cover;
+    cursor: pointer;
+}
+
+.page-demandas-card-title {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: #172b4d;
+    font-size: 0.875rem;
+}
+
+.page-demandas-card-badges {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.page-demandas-card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 0.5rem;
+}
+
+.page-demandas-card-users {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.page-demandas-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.page-demandas-add-card-btn {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    padding: 0.75rem;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s;
+    margin-top: 0.5rem;
+    flex-shrink: 0;
+}
+
+.page-demandas-add-card-btn:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+/* Badges */
+.badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.badge-prioridade {
+    color: white;
+    font-weight: 600;
+}
+
+.prioridade-baixa { background: #10b981; }
+.prioridade-media { background: #3b82f6; }
+.prioridade-alta { background: #f59e0b; }
+.prioridade-urgente { background: #ef4444; }
+
+.badge-comentarios {
+    background: #eff6ff;
+    color: #1e40af;
+}
+
+.badge-anexos {
+    background: #f0f9ff;
+    color: #0369a1;
+}
+
+/* ============================================
+   DRAWER DE DEMANDAS FIXAS
+   ============================================ */
+.page-demandas-drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 2000;
+    display: none;
+    animation: fadeIn 0.2s;
+}
+
+.page-demandas-drawer-overlay.open {
+    display: block;
+}
+
+.page-demandas-drawer {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 600px;
+    max-width: 90vw;
+    background: white;
+    box-shadow: -4px 0 12px rgba(0,0,0,0.15);
+    z-index: 2001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+}
+
+.page-demandas-drawer.open {
+    transform: translateX(0);
+}
+
+.page-demandas-drawer-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.page-demandas-drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+
+.page-demandas-drawer-close {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    color: #6b7280;
+    cursor: pointer;
+    padding: 0.25rem;
+    line-height: 1;
+}
+
+/* ============================================
+   NOTIFICAÇÕES DROPDOWN
+   ============================================ */
+.page-demandas-notificacoes-dropdown {
+    position: fixed;
+    top: 70px;
+    right: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 380px;
+    max-width: 90vw;
+    max-height: 500px;
+    overflow: hidden;
+    z-index: 2000;
+    display: none;
+    animation: slideDown 0.2s;
+}
+
+.page-demandas-notificacoes-dropdown.open {
+    display: block;
+}
+
+.page-demandas-notificacoes-header {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.page-demandas-notificacoes-tabs {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0 1rem;
+}
+
+.page-demandas-notificacoes-tab {
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #6b7280;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+}
+
+.page-demandas-notificacoes-tab.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+    font-weight: 500;
+}
+
+.page-demandas-notificacoes-content {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.page-demandas-notificacoes-group {
+    margin-bottom: 1rem;
+}
+
+.page-demandas-notificacoes-group-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    padding: 0.5rem 1rem;
+}
+
+.page-demandas-notificacao-item {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.page-demandas-notificacao-item:hover {
+    background: #f9fafb;
+}
+
+.page-demandas-notificacao-item.nao-lida {
+    background: #eff6ff;
+}
+
+.page-demandas-notificacao-titulo {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    color: #172b4d;
+    font-size: 0.875rem;
+}
+
+.page-demandas-notificacao-trecho {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+}
+
+.page-demandas-notificacao-meta {
+    font-size: 0.7rem;
+    color: #9ca3af;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* ============================================
+   MODAIS
+   ============================================ */
+.page-demandas-modal {
+    display: none;
+    position: fixed;
+    z-index: 3000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    overflow-y: auto;
+    animation: fadeIn 0.2s;
+}
+
+.page-demandas-modal.open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-demandas-modal-content {
+    background: white;
+    margin: 2rem auto;
+    padding: 2rem;
+    border-radius: 12px;
+    max-width: 700px;
+    width: 90%;
+    box-shadow: 0 20px 25px rgba(0,0,0,0.15);
+    animation: slideUp 0.3s;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.page-demandas-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.page-demandas-modal-header h2 {
+    font-size: 1.5rem;
+    color: #172b4d;
+    margin: 0;
+}
+
+.page-demandas-modal-close {
+    font-size: 2rem;
+    font-weight: 300;
+    color: #6b7280;
+    cursor: pointer;
+    line-height: 1;
+    background: transparent;
+    border: none;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.page-demandas-form-group {
+    margin-bottom: 1rem;
+}
+
+.page-demandas-form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.875rem;
+}
+
+.page-demandas-form-group input,
+.page-demandas-form-group textarea,
+.page-demandas-form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.page-demandas-form-group input:focus,
+.page-demandas-form-group textarea:focus,
+.page-demandas-form-group select:focus {
+    border-color: #3b82f6;
+}
+
+.page-demandas-form-group textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+.page-demandas-color-picker-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.page-demandas-color-picker-preview {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    border: 2px solid #e5e7eb;
+    cursor: pointer;
+}
+
+.page-demandas-color-picker-input {
+    flex: 1;
+    padding: 0.75rem !important;
+}
+
+.page-demandas-color-hex {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-family: monospace;
+}
+
+/* ============================================
+   SKELETON LOADING
+   ============================================ */
+.page-demandas-skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+}
+
+.page-demandas-skeleton-card {
+    height: 120px;
+    margin-bottom: 0.5rem;
+}
+
+.page-demandas-skeleton-list {
+    height: 40px;
+    margin-bottom: 1rem;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ============================================
+   TOAST
+   ============================================ */
+.page-demandas-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #10b981;
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 10000;
+    animation: slideInRight 0.3s;
+    max-width: 400px;
+}
+
+.page-demandas-toast.error {
+    background: #ef4444;
+}
+
+.page-demandas-toast.warning {
+    background: #f59e0b;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
     }
-    
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
+    to {
+        transform: translateX(0);
+        opacity: 1;
     }
-    
-    .modal-header h2 {
-        font-size: 1.5rem;
-        color: #172b4d;
+}
+
+/* ============================================
+   ANIMAÇÕES
+   ============================================ */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
     }
-    
-    .close {
-        font-size: 2rem;
-        font-weight: 300;
-        color: #6b7280;
-        cursor: pointer;
-        line-height: 1;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
-    
-    .close:hover {
-        color: #172b4d;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
     }
-    
-    .form-group {
-        margin-bottom: 1rem;
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
-    
-    .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: 500;
-        color: #374151;
+}
+
+/* ============================================
+   RESPONSIVIDADE
+   ============================================ */
+@media (min-width: 1440px) {
+    .page-demandas-list {
+        min-width: 360px;
+        width: 360px;
     }
-    
-    .form-group input,
-    .form-group textarea,
-    .form-group select {
-        width: 100%;
-        padding: 0.75rem;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        font-size: 0.875rem;
-        font-family: inherit;
+}
+
+@media (max-width: 1439px) and (min-width: 1280px) {
+    .page-demandas-list {
+        min-width: 340px;
+        width: 340px;
     }
-    
-    .form-group textarea {
-        resize: vertical;
-        min-height: 100px;
+}
+
+@media (max-width: 1279px) and (min-width: 1024px) {
+    .page-demandas-list {
+        min-width: 320px;
+        width: 320px;
     }
-    
-    .comentarios-section {
-        margin-top: 2rem;
-        padding-top: 2rem;
-        border-top: 1px solid #e5e7eb;
+}
+
+@media (max-width: 1023px) {
+    .page-demandas-list {
+        min-width: 280px;
+        width: 280px;
     }
-    
-    .comentario-item {
-        background: #f9fafb;
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-    }
-    
-    .comentario-header {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-    }
-    
-    .comentario-autor {
-        font-weight: 600;
-        color: #172b4d;
-    }
-    
-    .comentario-data {
-        color: #6b7280;
-    }
-    
-    .comentario-texto {
-        color: #374151;
-        line-height: 1.5;
-    }
-    
-    .anexos-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        margin-top: 1rem;
-    }
-    
-    .anexo-item {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem;
-        background: #f9fafb;
-        border-radius: 6px;
-    }
-    
-    .sortable-ghost {
-        opacity: 0.4;
-    }
-    
-    .sortable-drag {
-        opacity: 0.8;
-    }
-    
-    .empty-state {
-        text-align: center;
-        padding: 2rem;
-        color: #6b7280;
-    }
+}
+
+/* ============================================
+   CUSTOM ALERTS (reutilizado)
+   ============================================ */
+.custom-alert-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s;
+}
+
+.custom-alert {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    padding: 0;
+    max-width: 400px;
+    width: 90%;
+    animation: slideUp 0.3s;
+    overflow: hidden;
+}
+
+.custom-alert-header {
+    padding: 1.5rem;
+    background: #3b82f6;
+    color: white;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.custom-alert-body {
+    padding: 1.5rem;
+    color: #374151;
+    line-height: 1.6;
+}
+
+.custom-alert-actions {
+    padding: 1rem 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    border-top: 1px solid #e5e7eb;
+}
+
+.custom-alert-btn {
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+}
+
+.custom-alert-btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.custom-alert-btn-primary:hover {
+    background: #2563eb;
+}
+
+.custom-alert-btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.custom-alert-btn-secondary:hover {
+    background: #e5e7eb;
+}
+
+.custom-alert-btn-danger {
+    background: #ef4444;
+    color: white;
+}
+
+.custom-alert-btn-danger:hover {
+    background: #dc2626;
+}
 </style>
 
-<div class="trello-container">
-    <div class="trello-header">
-        <div>
-            <h1>📋 Demandas</h1>
-            <div id="board-selector"></div>
-        </div>
-        <div class="header-buttons">
-            <button class="btn btn-outline" onclick="abrirModalNovoQuadro()">
-                ➕ Novo Quadro
-            </button>
-            <button class="btn btn-outline" onclick="abrirModalNovaLista()">
-                📋 Nova Lista
-            </button>
-            <button class="btn btn-outline" onclick="abrirModalDemandasFixas()">
-                📅 Demandas Fixas
-            </button>
-            <button class="btn btn-primary" onclick="abrirModalNovoCard()">
-                ➕ Novo Card
-            </button>
-            <div class="notificacoes-badge" onclick="toggleNotificacoes()">
+<div class="page-demandas">
+    <!-- Header Limpo -->
+    <div class="page-demandas-header">
+        <h1>📋 Demandas</h1>
+        <div class="page-demandas-header-actions">
+            <button class="btn btn-primary" onclick="abrirModalNovoCard()">➕ Novo Card</button>
+            <button class="btn btn-outline" onclick="abrirModalNovaLista()">📋 Nova Lista</button>
+            <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Demandas Fixas</button>
+            <button class="btn-icon" onclick="toggleMenuActions()" aria-label="Mais ações">⋯</button>
+            <div class="notificacoes-badge" onclick="toggleNotificacoes(event)" aria-label="Notificações" style="position: relative;">
                 🔔
                 <span id="notificacoes-count" class="notificacoes-count" style="display: none;">0</span>
             </div>
         </div>
     </div>
     
-    <div id="trello-board" class="trello-board">
-        <div class="empty-state">
-            <p>Selecione ou crie um quadro para começar</p>
+    <!-- Layout Principal -->
+    <div class="page-demandas-main">
+        <!-- Sidebar Interna -->
+        <div id="sidebar-boards" class="page-demandas-sidebar">
+            <div class="page-demandas-sidebar-header">
+                <input type="text" 
+                       id="search-boards" 
+                       class="page-demandas-sidebar-search" 
+                       placeholder="🔍 Buscar quadros..."
+                       oninput="filtrarQuadros(this.value)">
+            </div>
+            <div class="page-demandas-sidebar-content">
+                <div class="page-demandas-sidebar-section">
+                    <div class="page-demandas-sidebar-section-title">⭐ Favoritos</div>
+                    <div id="boards-favoritos"></div>
+                </div>
+                <div class="page-demandas-sidebar-section">
+                    <div class="page-demandas-sidebar-section-title">Todos os Quadros</div>
+                    <div id="boards-todos"></div>
+                </div>
+            </div>
+            <div class="page-demandas-sidebar-footer">
+                <button class="btn btn-primary" onclick="abrirModalNovoQuadro()">➕ Novo Quadro</button>
+            </div>
         </div>
+        
+        <!-- Área de Board -->
+        <div class="page-demandas-main-content">
+            <div class="page-demandas-board-header" id="board-header">
+                <div class="page-demandas-board-header-title">
+                    <span id="board-header-color-bar" class="page-demandas-board-header-color-bar"></span>
+                    <span id="board-header-title">Selecione um quadro</span>
+                </div>
+            </div>
+            <div class="page-demandas-board-container" id="trello-board">
+                <div class="page-demandas-list-empty">Selecione ou crie um quadro para começar</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Botão para abrir sidebar no mobile -->
+    <button class="btn btn-outline" 
+            id="btn-toggle-sidebar"
+            style="display: none; position: fixed; top: 80px; left: 1rem; z-index: 999;"
+            onclick="toggleSidebarBoards()">
+        📋 Quadros
+    </button>
+</div>
+
+<!-- Drawer de Demandas Fixas -->
+<div id="drawer-fixas-overlay" class="page-demandas-drawer-overlay" onclick="toggleDrawerFixas()"></div>
+<div id="drawer-fixas" class="page-demandas-drawer">
+    <div class="page-demandas-drawer-header">
+        <h2 style="margin: 0; font-size: 1.25rem;">📅 Demandas Fixas</h2>
+        <button class="page-demandas-drawer-close" onclick="toggleDrawerFixas()">&times;</button>
+    </div>
+    <div class="page-demandas-drawer-content" id="drawer-fixas-content">
+        <!-- Preenchido via JS -->
     </div>
 </div>
 
+<!-- Dropdown de Notificações -->
+<div id="notificacoes-dropdown" class="page-demandas-notificacoes-dropdown">
+    <div class="page-demandas-notificacoes-header">
+        <h3 style="margin: 0; font-size: 1rem;">Notificações</h3>
+        <button class="btn-icon" onclick="marcarTodasNotificacoesLidas()" title="Marcar todas como lidas">✓</button>
+    </div>
+    <div class="page-demandas-notificacoes-tabs">
+        <button class="page-demandas-notificacoes-tab active" onclick="switchNotificacoesTab('todas')">Todas</button>
+        <button class="page-demandas-notificacoes-tab" onclick="switchNotificacoesTab('mencoes')">Menções (@)</button>
+    </div>
+    <div class="page-demandas-notificacoes-content" id="notificacoes-content">
+        <!-- Preenchido via JS -->
+    </div>
+</div>
+
+<!-- Modais -->
 <!-- Modal: Novo Quadro -->
-<div id="modal-novo-quadro" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
+<div id="modal-novo-quadro" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
             <h2>Novo Quadro</h2>
-            <span class="close" onclick="fecharModal('modal-novo-quadro')">&times;</span>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-novo-quadro')">&times;</button>
         </div>
         <form id="form-novo-quadro">
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="quadro-nome">Nome *</label>
                 <input type="text" id="quadro-nome" required>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="quadro-descricao">Descrição</label>
                 <textarea id="quadro-descricao" rows="3"></textarea>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="quadro-cor">Cor</label>
-                <input type="color" id="quadro-cor" value="#3b82f6">
+                <div class="page-demandas-color-picker-wrapper">
+                    <div class="page-demandas-color-picker-preview" 
+                         id="quadro-cor-preview" 
+                         style="background: #3b82f6;"
+                         onclick="document.getElementById('quadro-cor').click()"></div>
+                    <input type="color" id="quadro-cor" value="#3b82f6" onchange="atualizarPreviewCor(this.value)">
+                    <input type="text" 
+                           id="quadro-cor-hex" 
+                           class="page-demandas-color-picker-input" 
+                           value="#3b82f6"
+                           placeholder="#3b82f6"
+                           pattern="^#[0-9A-Fa-f]{6}$"
+                           onchange="atualizarCorDoHex(this.value)">
+                    <span class="page-demandas-color-hex" id="quadro-cor-hex-display">#3b82f6</span>
+                </div>
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="button" class="btn btn-outline" onclick="fecharModal('modal-novo-quadro')">Cancelar</button>
@@ -619,14 +1174,14 @@ includeSidebar('Demandas Trello');
 </div>
 
 <!-- Modal: Nova Lista -->
-<div id="modal-nova-lista" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
+<div id="modal-nova-lista" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
             <h2>Nova Lista</h2>
-            <span class="close" onclick="fecharModal('modal-nova-lista')">&times;</span>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-nova-lista')">&times;</button>
         </div>
         <form id="form-nova-lista">
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="lista-nome">Nome *</label>
                 <input type="text" id="lista-nome" required>
             </div>
@@ -638,92 +1193,32 @@ includeSidebar('Demandas Trello');
     </div>
 </div>
 
-<!-- Modal: Editar Card -->
-<div id="modal-editar-card" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>Editar Card</h2>
-            <span class="close" onclick="fecharModal('modal-editar-card')">&times;</span>
-        </div>
-        <form id="form-editar-card">
-            <input type="hidden" id="edit-card-id">
-            <div class="form-group">
-                <label for="edit-card-titulo">Título *</label>
-                <input type="text" id="edit-card-titulo" required>
-            </div>
-            <div class="form-group">
-                <label for="edit-card-descricao">Descrição</label>
-                <textarea id="edit-card-descricao" rows="4"></textarea>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                    <label for="edit-card-prazo">Prazo</label>
-                    <input type="date" id="edit-card-prazo">
-                </div>
-                <div class="form-group">
-                    <label for="edit-card-prioridade">Prioridade</label>
-                    <select id="edit-card-prioridade">
-                        <option value="baixa">Baixa</option>
-                        <option value="media">Média</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="edit-card-categoria">Categoria</label>
-                <input type="text" id="edit-card-categoria">
-            </div>
-            <div class="form-group">
-                <label for="edit-card-usuarios">Responsáveis</label>
-                <select id="edit-card-usuarios" multiple style="min-height: 100px;">
-                    <?php foreach ($usuarios as $user): ?>
-                        <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
-            </div>
-            <div class="form-group">
-                <label for="edit-card-anexo">📎 Adicionar Anexo</label>
-                <input type="file" id="edit-card-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
-                <button type="button" class="btn btn-outline" onclick="adicionarAnexoNoEditar()" style="margin-top: 0.5rem;">➕ Adicionar Arquivo</button>
-                <small style="color: #6b7280; font-size: 0.75rem; display: block; margin-top: 0.5rem;">Formatos: PDF, imagens, Word, Excel (máx. 10MB)</small>
-            </div>
-            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-editar-card')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Salvar</button>
-                <button type="button" class="btn" onclick="deletarCardAtual()" style="background: #ef4444; color: white;">🗑️ Deletar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- Modal: Novo Card -->
-<div id="modal-novo-card" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
+<div id="modal-novo-card" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
             <h2>Novo Card</h2>
-            <span class="close" onclick="fecharModal('modal-novo-card')">&times;</span>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-novo-card')">&times;</button>
         </div>
         <form id="form-novo-card">
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-titulo">Título *</label>
                 <input type="text" id="card-titulo" required>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-lista">Lista *</label>
                 <select id="card-lista" required></select>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-descricao">Descrição</label>
                 <textarea id="card-descricao"></textarea>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
+                <div class="page-demandas-form-group">
                     <label for="card-prazo">Prazo</label>
                     <input type="date" id="card-prazo">
                 </div>
-                <div class="form-group">
+                <div class="page-demandas-form-group">
                     <label for="card-prioridade">Prioridade</label>
                     <select id="card-prioridade">
                         <option value="media">Média</option>
@@ -733,11 +1228,11 @@ includeSidebar('Demandas Trello');
                     </select>
                 </div>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-categoria">Categoria</label>
                 <input type="text" id="card-categoria" placeholder="Ex: Marketing, Vendas...">
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-usuarios">Responsáveis</label>
                 <select id="card-usuarios" multiple style="min-height: 100px;">
                     <?php foreach ($usuarios as $user): ?>
@@ -746,7 +1241,7 @@ includeSidebar('Demandas Trello');
                 </select>
                 <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
             </div>
-            <div class="form-group">
+            <div class="page-demandas-form-group">
                 <label for="card-anexo">📎 Anexar Arquivo (opcional)</label>
                 <input type="file" id="card-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
                 <small style="color: #6b7280; font-size: 0.75rem;">Formatos: PDF, imagens, Word, Excel (máx. 10MB)</small>
@@ -760,11 +1255,11 @@ includeSidebar('Demandas Trello');
 </div>
 
 <!-- Modal: Ver Card -->
-<div id="modal-ver-card" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
+<div id="modal-ver-card" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
             <h2 id="modal-card-titulo">Card</h2>
-            <span class="close" onclick="fecharModal('modal-ver-card')">&times;</span>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-ver-card')">&times;</button>
         </div>
         <div id="modal-card-content">
             <!-- Preenchido via JS -->
@@ -772,26 +1267,84 @@ includeSidebar('Demandas Trello');
     </div>
 </div>
 
-<!-- Notificações Dropdown -->
-<div id="notificacoes-dropdown" style="display: none; position: fixed; top: 70px; right: 20px; background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-width: 300px; max-width: 400px; max-height: 500px; overflow-y: auto; z-index: 1000; padding: 1rem;">
-    <h3 style="margin-bottom: 1rem; font-size: 1rem;">Notificações</h3>
-    <div id="notificacoes-list"></div>
+<!-- Modal: Editar Card -->
+<div id="modal-editar-card" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
+            <h2>Editar Card</h2>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-editar-card')">&times;</button>
+        </div>
+        <form id="form-editar-card">
+            <input type="hidden" id="edit-card-id">
+            <div class="page-demandas-form-group">
+                <label for="edit-card-titulo">Título *</label>
+                <input type="text" id="edit-card-titulo" required>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="edit-card-descricao">Descrição</label>
+                <textarea id="edit-card-descricao" rows="4"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="page-demandas-form-group">
+                    <label for="edit-card-prazo">Prazo</label>
+                    <input type="date" id="edit-card-prazo">
+                </div>
+                <div class="page-demandas-form-group">
+                    <label for="edit-card-prioridade">Prioridade</label>
+                    <select id="edit-card-prioridade">
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                        <option value="urgente">Urgente</option>
+                    </select>
+                </div>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="edit-card-categoria">Categoria</label>
+                <input type="text" id="edit-card-categoria">
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="edit-card-usuarios">Responsáveis</label>
+                <select id="edit-card-usuarios" multiple style="min-height: 100px;">
+                    <?php foreach ($usuarios as $user): ?>
+                        <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-editar-card')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" class="btn" onclick="deletarCardAtual()" style="background: #ef4444; color: white;">🗑️ Deletar</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script>
-// Estado global
+// ============================================
+// ESTADO GLOBAL
+// ============================================
 let boards = [];
+let boardsFavoritos = [];
+let boardsFiltrados = [];
 let currentBoardId = null;
+let currentBoard = null;
 let lists = [];
 let cards = {};
 let notificacoes = [];
+let notificacoesTab = 'todas';
 let usuarios = <?= json_encode($usuarios) ?>;
+let favoritosStorage = JSON.parse(localStorage.getItem('demandas_favoritos') || '[]');
 
 // API Base
 const API_BASE = 'demandas_trello_api.php';
+const API_FIXAS = 'demandas_fixas_api.php';
 
-// Função auxiliar para fetch com credenciais
+// ============================================
+// UTILITÁRIOS
+// ============================================
 async function apiFetch(url, options = {}) {
     const defaultOptions = {
         credentials: 'same-origin',
@@ -801,7 +1354,6 @@ async function apiFetch(url, options = {}) {
         }
     };
     
-    // Remover undefined headers
     Object.keys(defaultOptions.headers).forEach(key => {
         if (defaultOptions.headers[key] === undefined) {
             delete defaultOptions.headers[key];
@@ -818,11 +1370,20 @@ async function apiFetch(url, options = {}) {
     });
 }
 
-// Inicialização
+// ============================================
+// INICIALIZAÇÃO
+// ============================================
 document.addEventListener('DOMContentLoaded', function() {
+    // Verificar responsividade
+    verificarResponsividade();
+    window.addEventListener('resize', verificarResponsividade);
+    
+    // Carregar dados
     carregarQuadros();
     carregarNotificacoes();
-    setInterval(carregarNotificacoes, 30000); // Atualizar a cada 30s
+    
+    // Polling de notificações (30s)
+    setInterval(carregarNotificacoes, 30000);
     
     // Forms
     document.getElementById('form-novo-card').addEventListener('submit', function(e) {
@@ -844,20 +1405,47 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         salvarEdicaoCard();
     });
+    
+    // Fechar modais ao clicar fora
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('page-demandas-modal')) {
+            fecharModal(e.target.id);
+        }
+    });
 });
 
-// ============================================
-// QUADROS
-// ============================================
+function verificarResponsividade() {
+    const sidebar = document.getElementById('sidebar-boards');
+    const btnToggle = document.getElementById('btn-toggle-sidebar');
+    
+    if (window.innerWidth < 1280) {
+        sidebar.classList.add('drawer');
+        if (btnToggle) btnToggle.style.display = 'block';
+    } else {
+        sidebar.classList.remove('drawer', 'open');
+        if (btnToggle) btnToggle.style.display = 'none';
+    }
+}
 
+function toggleSidebarBoards() {
+    const sidebar = document.getElementById('sidebar-boards');
+    sidebar.classList.toggle('open');
+}
+
+// ============================================
+// QUADROS - SIDEBAR INTERNA
+// ============================================
 async function carregarQuadros() {
     try {
+        mostrarSkeletonQuadros();
+        
         const response = await apiFetch(`${API_BASE}?action=quadros`);
         const data = await response.json();
         
         if (data.success) {
             boards = data.data;
-            renderizarQuadros();
+            atualizarFavoritos();
+            renderizarSidebarQuadros();
             
             // Se houver board_id na URL, selecionar
             const urlParams = new URLSearchParams(window.location.search);
@@ -870,48 +1458,133 @@ async function carregarQuadros() {
         }
     } catch (error) {
         console.error('Erro ao carregar quadros:', error);
+        mostrarToast('Erro ao carregar quadros', 'error');
     }
 }
 
-function renderizarQuadros() {
-    const container = document.getElementById('board-selector');
-    if (boards.length === 0) {
-        container.innerHTML = '<p style="color: #6b7280; margin-top: 0.5rem;">Nenhum quadro encontrado</p>';
+function mostrarSkeletonQuadros() {
+    document.getElementById('boards-favoritos').innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(3);
+    document.getElementById('boards-todos').innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(5);
+}
+
+function atualizarFavoritos() {
+    boardsFavoritos = boards.filter(b => favoritosStorage.includes(b.id));
+    boardsFavoritos.sort((a, b) => favoritosStorage.indexOf(a.id) - favoritosStorage.indexOf(b.id));
+}
+
+function renderizarSidebarQuadros() {
+    // Renderizar favoritos
+    const favoritosEl = document.getElementById('boards-favoritos');
+    if (boardsFavoritos.length === 0) {
+        favoritosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum favorito</div>';
+    } else {
+        favoritosEl.innerHTML = boardsFavoritos.map(board => renderizarItemQuadro(board, true)).join('');
+    }
+    
+    // Renderizar todos (excluindo favoritos)
+    const todosEl = document.getElementById('boards-todos');
+    const boardsSemFavoritos = boardsFiltrados.length > 0 
+        ? boardsFiltrados.filter(b => !favoritosStorage.includes(b.id))
+        : boards.filter(b => !favoritosStorage.includes(b.id));
+    
+    if (boardsSemFavoritos.length === 0) {
+        todosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum quadro encontrado</div>';
+    } else {
+        todosEl.innerHTML = boardsSemFavoritos.map(board => renderizarItemQuadro(board, false)).join('');
+    }
+}
+
+function renderizarItemQuadro(board, isFavorito) {
+    const cor = board.cor || '#3b82f6';
+    const isActive = currentBoardId === board.id;
+    
+    return `
+        <div class="page-demandas-board-item ${isActive ? 'active' : ''} ${isFavorito ? 'favorito' : ''}" 
+             onclick="selecionarQuadro(${board.id})"
+             data-board-id="${board.id}">
+            <div class="page-demandas-board-item-color" style="background: ${cor}"></div>
+            <div class="page-demandas-board-item-name">${escapeHtml(board.nome)}</div>
+            <span class="page-demandas-board-item-star" onclick="event.stopPropagation(); toggleFavorito(${board.id})">⭐</span>
+        </div>
+    `;
+}
+
+function filtrarQuadros(termo) {
+    const termoLower = termo.toLowerCase().trim();
+    
+    if (!termoLower) {
+        boardsFiltrados = [];
+        renderizarSidebarQuadros();
         return;
     }
     
-    container.innerHTML = '<div class="boards-list">' + 
-        boards.map(board => `
-            <div class="board-card ${currentBoardId === board.id ? 'active' : ''}" 
-                 style="position: relative;">
-                <div onclick="selecionarQuadro(${board.id})" style="cursor: pointer;">
-                    <div style="font-weight: 600; margin-bottom: 0.5rem;">${board.nome}</div>
-                    <div style="font-size: 0.75rem; color: #6b7280;">
-                        ${board.total_listas || 0} listas • ${board.total_cards || 0} cards
-                    </div>
-                </div>
-                <button onclick="event.stopPropagation(); deletarQuadro(${board.id})" 
-                        style="position: absolute; top: 0.5rem; right: 0.5rem; background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 1rem; padding: 0.25rem; opacity: 0.6; transition: opacity 0.2s;"
-                        onmouseover="this.style.opacity='1'" 
-                        onmouseout="this.style.opacity='0.6'"
-                        title="Deletar quadro">🗑️</button>
-            </div>
-        `).join('') + '</div>';
+    boardsFiltrados = boards.filter(board => 
+        board.nome.toLowerCase().includes(termoLower) ||
+        (board.descricao && board.descricao.toLowerCase().includes(termoLower))
+    );
+    
+    renderizarSidebarQuadros();
+}
+
+function toggleFavorito(boardId) {
+    const index = favoritosStorage.indexOf(boardId);
+    
+    if (index > -1) {
+        favoritosStorage.splice(index, 1);
+    } else {
+        favoritosStorage.push(boardId);
+    }
+    
+    localStorage.setItem('demandas_favoritos', JSON.stringify(favoritosStorage));
+    atualizarFavoritos();
+    renderizarSidebarQuadros();
 }
 
 function selecionarQuadro(boardId) {
     currentBoardId = boardId;
-    renderizarQuadros();
+    currentBoard = boards.find(b => b.id === boardId);
+    
+    // Fechar sidebar mobile após seleção
+    if (window.innerWidth < 1280) {
+        document.getElementById('sidebar-boards').classList.remove('open');
+    }
+    
+    renderizarSidebarQuadros();
+    atualizarHeaderQuadro();
     carregarListas(boardId);
     window.history.replaceState({}, '', `?page=demandas&board_id=${boardId}`);
+}
+
+function atualizarHeaderQuadro() {
+    if (!currentBoard) {
+        document.getElementById('board-header-title').textContent = 'Selecione um quadro';
+        document.getElementById('board-header-color-bar').style.display = 'none';
+        return;
+    }
+    
+    const cor = currentBoard.cor || '#3b82f6';
+    document.getElementById('board-header-title').textContent = currentBoard.nome;
+    const colorBar = document.getElementById('board-header-color-bar');
+    colorBar.style.background = cor;
+    colorBar.style.display = 'block';
+    
+    // Aplicar cor nas bordas das colunas (via CSS custom property)
+    document.documentElement.style.setProperty('--board-color', cor);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ============================================
 // LISTAS E CARDS
 // ============================================
-
 async function carregarListas(boardId) {
     try {
+        mostrarSkeletonListas();
+        
         const response = await apiFetch(`${API_BASE}?action=listas&id=${boardId}`);
         const data = await response.json();
         
@@ -922,47 +1595,62 @@ async function carregarListas(boardId) {
         }
     } catch (error) {
         console.error('Erro ao carregar listas:', error);
+        mostrarToast('Erro ao carregar listas', 'error');
     }
+}
+
+function mostrarSkeletonListas() {
+    const container = document.getElementById('trello-board');
+    container.innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-card"></div>'.repeat(3);
 }
 
 async function carregarTodosCards() {
     cards = {};
-    for (const lista of lists) {
+    
+    // Carregar em paralelo para melhor performance
+    const promises = lists.map(async (lista) => {
         try {
             const response = await apiFetch(`${API_BASE}?action=cards&id=${lista.id}`);
             const data = await response.json();
             
             if (data.success) {
                 cards[lista.id] = data.data;
+            } else {
+                cards[lista.id] = [];
             }
         } catch (error) {
             console.error(`Erro ao carregar cards da lista ${lista.id}:`, error);
             cards[lista.id] = [];
         }
-    }
+    });
+    
+    await Promise.all(promises);
 }
 
 function renderizarBoard() {
     const container = document.getElementById('trello-board');
     
     if (lists.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>Nenhuma lista encontrada neste quadro</p></div>';
+        container.innerHTML = '<div class="page-demandas-list-empty"><p>Nenhuma lista encontrada neste quadro</p></div>';
         return;
     }
     
     container.innerHTML = lists.map(lista => `
-        <div class="trello-list" data-lista-id="${lista.id}">
-            <div class="list-header">
-                <span>${lista.nome}</span>
+        <div class="page-demandas-list" data-lista-id="${lista.id}" style="border-left: 2px solid var(--board-color, #3b82f6);">
+            <div class="page-demandas-list-header">
+                <span>${escapeHtml(lista.nome)}</span>
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <span class="list-count">${cards[lista.id]?.length || 0}</span>
-                    <button onclick="deletarLista(${lista.id})" style="background: transparent; border: none; color: #6b7280; cursor: pointer; font-size: 0.875rem;" title="Deletar lista">🗑️</button>
+                    <span class="page-demandas-list-count">${cards[lista.id]?.length || 0}</span>
+                    <button onclick="deletarLista(${lista.id})" 
+                            class="btn-icon" 
+                            title="Deletar lista"
+                            aria-label="Deletar lista">🗑️</button>
                 </div>
             </div>
-            <div class="cards-container" id="cards-${lista.id}">
+            <div class="page-demandas-list-cards" id="cards-${lista.id}">
                 ${renderizarCards(lista.id)}
             </div>
-            <button class="add-card-btn" onclick="abrirModalNovoCard(${lista.id})">
+            <button class="page-demandas-add-card-btn" onclick="abrirModalNovoCard(${lista.id})">
                 ➕ Adicionar card
             </button>
         </div>
@@ -970,16 +1658,21 @@ function renderizarBoard() {
     
     // Inicializar Sortable.js para cada lista
     lists.forEach(lista => {
-        new Sortable(document.getElementById(`cards-${lista.id}`), {
-            group: 'shared',
-            animation: 150,
-            onEnd: function(evt) {
-                const cardId = parseInt(evt.item.dataset.cardId);
-                const novaListaId = parseInt(evt.to.closest('.trello-list').dataset.listaId);
-                const novaPosicao = evt.newIndex;
-                moverCard(cardId, novaListaId, novaPosicao);
-            }
-        });
+        const cardsContainer = document.getElementById(`cards-${lista.id}`);
+        if (cardsContainer) {
+            new Sortable(cardsContainer, {
+                group: 'shared',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                onEnd: function(evt) {
+                    const cardId = parseInt(evt.item.dataset.cardId);
+                    const novaListaId = parseInt(evt.to.closest('.page-demandas-list').dataset.listaId);
+                    const novaPosicao = evt.newIndex;
+                    moverCard(cardId, novaListaId, novaPosicao);
+                }
+            });
+        }
     });
 }
 
@@ -987,7 +1680,7 @@ function renderizarCards(listaId) {
     const cardsList = cards[listaId] || [];
     
     if (cardsList.length === 0) {
-        return '<div class="empty-state" style="padding: 1rem; font-size: 0.875rem;">Nenhum card</div>';
+        return '<div class="page-demandas-list-empty">Nenhum card</div>';
     }
     
     return cardsList.map(card => {
@@ -1009,20 +1702,13 @@ function renderizarCards(listaId) {
             }
         }
         
-        const cardClass = [
-            card.status === 'concluido' ? 'concluido' : '',
-            prazoClass === 'vencido' ? 'vencido' : '',
-            prazoClass === 'proximo' ? 'proximo-vencimento' : ''
-        ].filter(Boolean).join(' ');
-        
-        // Preview de imagem (estilo Trello)
+        // Preview de imagem
         let previewHtml = '';
         if (card.preview_imagem && card.preview_imagem.url_preview) {
             previewHtml = `
-                <div class="card-preview-imagem" style="width: 100%; height: 150px; overflow: hidden; border-radius: 4px 4px 0 0; margin: -0.75rem -0.75rem 0.5rem -0.75rem; background: #f3f4f6; display: flex; align-items: center; justify-content: center;">
+                <div class="page-demandas-card-preview">
                     <img src="${card.preview_imagem.url_preview}" 
-                         alt="${card.preview_imagem.nome}" 
-                         style="max-width: 100%; max-height: 100%; object-fit: cover; cursor: pointer;"
+                         alt="${escapeHtml(card.preview_imagem.nome)}" 
                          onclick="event.stopPropagation(); verCard(${card.id})"
                          onerror="this.style.display='none'">
                 </div>
@@ -1030,24 +1716,25 @@ function renderizarCards(listaId) {
         }
         
         return `
-            <div class="card-item ${cardClass}" 
+            <div class="page-demandas-card" 
                  data-card-id="${card.id}"
-                 onclick="verCard(${card.id})">
+                 onclick="verCard(${card.id})"
+                 ${prazoClass ? `data-prazo-class="${prazoClass}"` : ''}>
                 ${previewHtml}
-                <div class="card-titulo">${card.titulo}</div>
-                ${card.descricao ? `<div style="font-size: 0.75rem; color: #6b7280; margin: 0.5rem 0;">${card.descricao.substring(0, 100)}${card.descricao.length > 100 ? '...' : ''}</div>` : ''}
-                <div class="card-badges">
+                <div class="page-demandas-card-title">${escapeHtml(card.titulo)}</div>
+                ${card.descricao ? `<div style="font-size: 0.75rem; color: #6b7280; margin: 0.5rem 0;">${escapeHtml(card.descricao.substring(0, 100))}${card.descricao.length > 100 ? '...' : ''}</div>` : ''}
+                <div class="page-demandas-card-badges">
                     ${card.prioridade && card.prioridade !== 'media' ? `<span class="badge badge-prioridade prioridade-${card.prioridade}">${card.prioridade}</span>` : ''}
                     ${card.total_comentarios > 0 ? `<span class="badge badge-comentarios">💬 ${card.total_comentarios}</span>` : ''}
                     ${card.total_anexos > 0 ? `<span class="badge badge-anexos">📎 ${card.total_anexos}</span>` : ''}
                 </div>
-                <div class="card-meta">
-                    ${prazo ? `<span class="card-prazo ${prazoClass}">📅 ${prazoText}</span>` : ''}
-                    <div class="card-usuarios">
+                <div class="page-demandas-card-meta">
+                    ${prazo ? `<span style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; ${prazoClass === 'vencido' ? 'background: #fee2e2; color: #991b1b;' : prazoClass === 'proximo' ? 'background: #fef3c7; color: #92400e;' : ''}">📅 ${prazoText}</span>` : ''}
+                    <div class="page-demandas-card-users">
                         ${(card.usuarios || []).slice(0, 3).map(u => 
-                            `<div class="avatar" title="${u.nome}">${u.nome.charAt(0).toUpperCase()}</div>`
+                            `<div class="page-demandas-avatar" title="${escapeHtml(u.nome)}">${u.nome.charAt(0).toUpperCase()}</div>`
                         ).join('')}
-                        ${(card.usuarios || []).length > 3 ? `<div class="avatar">+${(card.usuarios || []).length - 3}</div>` : ''}
+                        ${(card.usuarios || []).length > 3 ? `<div class="page-demandas-avatar">+${(card.usuarios || []).length - 3}</div>` : ''}
                     </div>
                 </div>
             </div>
@@ -1058,7 +1745,6 @@ function renderizarCards(listaId) {
 // ============================================
 // CRIAÇÃO E EDIÇÃO
 // ============================================
-
 async function criarCard(listaIdPredefinida = null) {
     const titulo = document.getElementById('card-titulo').value;
     const listaId = listaIdPredefinida || parseInt(document.getElementById('card-lista').value);
@@ -1071,7 +1757,6 @@ async function criarCard(listaIdPredefinida = null) {
     const temAnexo = anexoInput && anexoInput.files[0];
     
     try {
-        // Criar card primeiro
         const response = await apiFetch(`${API_BASE}?action=criar_card`, {
             method: 'POST',
             body: JSON.stringify({
@@ -1085,13 +1770,9 @@ async function criarCard(listaIdPredefinida = null) {
             })
         });
         
-        // Tratar erro de autenticação
         if (response.status === 401) {
-            const errorData = await response.json();
             customAlert('Erro de autenticação. Por favor, faça login novamente.', '🔒 Sessão Expirada');
-            setTimeout(() => {
-                window.location.href = 'login.php';
-            }, 2000);
+            setTimeout(() => window.location.href = 'login.php', 2000);
             return;
         }
         
@@ -1100,22 +1781,15 @@ async function criarCard(listaIdPredefinida = null) {
         if (data.success) {
             const cardId = data.data.id;
             
-            // Se houver anexo, fazer upload
             if (temAnexo) {
                 const formData = new FormData();
                 formData.append('arquivo', anexoInput.files[0]);
                 
                 try {
-                    const anexoResponse = await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
+                    await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
                         method: 'POST',
                         body: formData
                     });
-                    
-                    const anexoData = await anexoResponse.json();
-                    if (!anexoData.success) {
-                        console.error('Erro ao anexar arquivo:', anexoData.error);
-                        // Não falhar a criação do card se o anexo falhar
-                    }
                 } catch (anexoError) {
                     console.error('Erro ao anexar arquivo:', anexoError);
                 }
@@ -1129,7 +1803,7 @@ async function criarCard(listaIdPredefinida = null) {
         } else {
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
-        } catch (error) {
+    } catch (error) {
         console.error('Erro ao criar card:', error);
         customAlert('Erro ao criar card', '❌ Erro');
     }
@@ -1137,366 +1811,20 @@ async function criarCard(listaIdPredefinida = null) {
 
 async function moverCard(cardId, novaListaId, novaPosicao) {
     try {
-        await fetch(`${API_BASE}?action=mover_card&id=${cardId}`, {
+        await apiFetch(`${API_BASE}?action=mover_card&id=${cardId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 nova_lista_id: novaListaId,
                 nova_posicao: novaPosicao
             })
         });
         
-        // Recarregar cards
         await carregarTodosCards();
         renderizarBoard();
     } catch (error) {
         console.error('Erro ao mover card:', error);
     }
 }
-
-async function verCard(cardId) {
-    try {
-        const response = await fetch(`${API_BASE}?action=card&id=${cardId}`);
-        const data = await response.json();
-        
-        if (data.success) {
-            const card = data.data;
-            document.getElementById('modal-card-titulo').textContent = card.titulo;
-            
-            const hoje = new Date();
-            const prazo = card.prazo ? new Date(card.prazo) : null;
-            let prazoHtml = '';
-            
-            if (prazo) {
-                const diffDays = Math.ceil((prazo - hoje) / (1000 * 60 * 60 * 24));
-                let prazoClass = '';
-                if (diffDays < 0) {
-                    prazoClass = 'vencido';
-                    prazoHtml = `<p><strong>Prazo:</strong> <span class="card-prazo vencido">Vencido há ${Math.abs(diffDays)} dias</span></p>`;
-                } else if (diffDays <= 3) {
-                    prazoClass = 'proximo';
-                    prazoHtml = `<p><strong>Prazo:</strong> <span class="card-prazo proximo">Em ${diffDays} dias (${prazo.toLocaleDateString('pt-BR')})</span></p>`;
-                } else {
-                    prazoHtml = `<p><strong>Prazo:</strong> ${prazo.toLocaleDateString('pt-BR')}</p>`;
-                }
-            }
-            
-            document.getElementById('modal-card-content').innerHTML = `
-                <div>
-                    ${prazoHtml}
-                    ${card.descricao ? `<p style="margin: 1rem 0; line-height: 1.6;">${card.descricao}</p>` : ''}
-                    <p><strong>Status:</strong> ${card.status}</p>
-                    <p><strong>Prioridade:</strong> ${card.prioridade || 'Média'}</p>
-                    ${card.categoria ? `<p><strong>Categoria:</strong> ${card.categoria}</p>` : ''}
-                    <p><strong>Criado por:</strong> ${card.criador_nome || 'Desconhecido'}</p>
-                    <p><strong>Responsáveis:</strong> ${(card.usuarios || []).map(u => u.nome).join(', ') || 'Nenhum'}</p>
-                </div>
-                
-                <div class="comentarios-section">
-                    <h3>💬 Comentários</h3>
-                    <div id="comentarios-list">
-                        ${(card.comentarios || []).map(c => `
-                            <div class="comentario-item">
-                                <div class="comentario-header">
-                                    <span class="comentario-autor">${c.autor_nome || 'Anônimo'}</span>
-                                    <span class="comentario-data">${new Date(c.criado_em).toLocaleString('pt-BR')}</span>
-                                </div>
-                                <div class="comentario-texto">${c.mensagem}</div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div style="margin-top: 1rem;">
-                        <textarea id="novo-comentario" placeholder="Digite seu comentário... Use @usuario para mencionar" rows="3" style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
-                        <button class="btn btn-primary" onclick="adicionarComentario(${card.id})" style="margin-top: 0.5rem;">Adicionar</button>
-                    </div>
-                </div>
-                
-                <div class="comentarios-section">
-                    <h3>📎 Anexos</h3>
-                    <div class="anexos-list">
-                        ${(card.anexos || []).map(a => `
-                            <div class="anexo-item">
-                                <span>📄 ${a.nome_original}</span>
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <button class="btn btn-outline" onclick="downloadAnexo(${a.id})">Download</button>
-                                    <button class="btn" onclick="deletarAnexoTrello(${a.id}, ${card.id})" style="background: #ef4444; color: white;">🗑️</button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 2px dashed #d1d5db;">
-                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">➕ Adicionar Novo Anexo</label>
-                        <input type="file" id="novo-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="margin-bottom: 0.75rem; width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;">
-                        <div id="upload-status-${card.id}" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: #dbeafe; border-radius: 4px; font-size: 0.875rem;">
-                            <span id="upload-text-${card.id}">⏳ Enviando...</span>
-                        </div>
-                        <small style="display: block; margin-top: 0.5rem; color: #6b7280; font-size: 0.75rem;">Formatos aceitos: PDF, imagens, Word, Excel (máx. 10MB)</small>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-                    <button class="btn btn-primary" onclick="editarCard(${card.id})">✏️ Editar</button>
-                    ${card.status === 'concluido' 
-                        ? `<button class="btn btn-outline" onclick="reabrirCard(${card.id})">🔄 Reabrir</button>`
-                        : `<button class="btn btn-primary" onclick="concluirCard(${card.id})">✅ Concluir</button>`
-                    }
-                    <button class="btn" onclick="deletarCardConfirmado(${card.id})" style="background: #ef4444; color: white;">🗑️ Deletar</button>
-                    <button class="btn btn-outline" onclick="fecharModal('modal-ver-card')">Fechar</button>
-                </div>
-            `;
-            
-            document.getElementById('modal-ver-card').style.display = 'block';
-            
-            // Adicionar listener para upload automático quando arquivo for selecionado
-            const fileInput = document.getElementById('novo-anexo');
-            if (fileInput) {
-                fileInput.onchange = function() {
-                    if (this.files && this.files[0]) {
-                        adicionarAnexo(cardId);
-                    }
-                };
-            }
-        }
-    } catch (error) {
-        console.error('Erro ao carregar card:', error);
-        customAlert('Erro ao carregar card', '❌ Erro');
-    }
-}
-
-// ============================================
-// COMENTÁRIOS E ANEXOS
-// ============================================
-
-async function adicionarComentario(cardId) {
-    const mensagem = document.getElementById('novo-comentario').value.trim();
-    if (!mensagem) {
-        customAlert('Digite um comentário', '⚠️ Atenção');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE}?action=comentario&id=${cardId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mensagem })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            document.getElementById('novo-comentario').value = '';
-            verCard(cardId); // Recarregar
-            mostrarToast('✅ Comentário adicionado!');
-        } else {
-            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
-        }
-    } catch (error) {
-        console.error('Erro ao adicionar comentário:', error);
-        customAlert('Erro ao adicionar comentário', '❌ Erro');
-    }
-}
-
-async function adicionarAnexo(cardId) {
-    const input = document.getElementById('novo-anexo');
-    const statusDiv = document.getElementById(`upload-status-${cardId}`);
-    const statusText = document.getElementById(`upload-text-${cardId}`);
-    
-    if (!input || !input.files[0]) {
-        customAlert('Selecione um arquivo', '⚠️ Atenção');
-        return;
-    }
-    
-    // Mostrar status de upload
-    if (statusDiv && statusText) {
-        statusDiv.style.display = 'block';
-        statusText.textContent = '⏳ Enviando arquivo...';
-        statusDiv.style.background = '#dbeafe';
-    }
-    
-    const formData = new FormData();
-    formData.append('arquivo', input.files[0]);
-    
-    try {
-        const response = await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            input.value = '';
-            if (statusDiv && statusText) {
-                statusText.textContent = '✅ Arquivo anexado com sucesso!';
-                statusDiv.style.background = '#d1fae5';
-                setTimeout(() => {
-                    statusDiv.style.display = 'none';
-                }, 2000);
-            }
-            await verCard(cardId); // Recarregar
-            mostrarToast('✅ Anexo adicionado!');
-        } else {
-            if (statusDiv && statusText) {
-                statusText.textContent = '❌ Erro: ' + (data.error || 'Erro desconhecido');
-                statusDiv.style.background = '#fee2e2';
-            }
-            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
-        }
-    } catch (error) {
-        console.error('Erro ao adicionar anexo:', error);
-        if (statusDiv && statusText) {
-            statusText.textContent = '❌ Erro ao anexar arquivo';
-            statusDiv.style.background = '#fee2e2';
-        }
-        customAlert('Erro ao adicionar anexo', '❌ Erro');
-    }
-}
-
-async function downloadAnexo(anexoId) {
-    try {
-        const response = await fetch(`${API_BASE}?action=anexo&id=${anexoId}`);
-        const data = await response.json();
-        
-        if (data.success && data.url) {
-            window.open(data.url, '_blank');
-        } else {
-            customAlert('Erro ao baixar arquivo: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-        customAlert('Erro ao baixar arquivo', '❌ Erro');
-    }
-}
-
-async function deletarAnexoTrello(anexoId, cardId) {
-    const confirmado = await customConfirm('Deseja realmente excluir este anexo?', '⚠️ Confirmar Exclusão');
-    if (!confirmado) {
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE}?action=deletar_anexo&id=${anexoId}`, {
-            method: 'DELETE'
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            verCard(cardId); // Recarregar modal
-            mostrarToast('✅ Anexo deletado!');
-        } else {
-            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-        customAlert('Erro ao deletar anexo', '❌ Erro');
-    }
-}
-
-// ============================================
-// AÇÕES
-// ============================================
-
-async function concluirCard(cardId) {
-    try {
-        const response = await fetch(`${API_BASE}?action=concluir&id=${cardId}`, { method: 'POST' });
-        const data = await response.json();
-        
-        if (data.success) {
-            fecharModal('modal-ver-card');
-            await carregarTodosCards();
-            renderizarBoard();
-            mostrarToast('✅ Card concluído!');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-    }
-}
-
-async function reabrirCard(cardId) {
-    try {
-        const response = await fetch(`${API_BASE}?action=reabrir&id=${cardId}`, { method: 'POST' });
-        const data = await response.json();
-        
-        if (data.success) {
-            fecharModal('modal-ver-card');
-            await carregarTodosCards();
-            renderizarBoard();
-            mostrarToast('✅ Card reaberto!');
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-    }
-}
-
-// ============================================
-// NOTIFICAÇÕES
-// ============================================
-
-async function carregarNotificacoes() {
-    try {
-        const response = await fetch(`${API_BASE}?action=notificacoes`);
-        const data = await response.json();
-        
-        if (data.success) {
-            notificacoes = data.data;
-            const naoLidas = data.nao_lidas || 0;
-            
-            const countEl = document.getElementById('notificacoes-count');
-            if (naoLidas > 0) {
-                countEl.textContent = naoLidas;
-                countEl.style.display = 'block';
-            } else {
-                countEl.style.display = 'none';
-            }
-            
-            renderizarNotificacoes();
-        }
-    } catch (error) {
-        console.error('Erro ao carregar notificações:', error);
-    }
-}
-
-function renderizarNotificacoes() {
-    const container = document.getElementById('notificacoes-list');
-    
-    if (notificacoes.length === 0) {
-        container.innerHTML = '<p style="color: #6b7280; text-align: center; padding: 1rem;">Nenhuma notificação</p>';
-        return;
-    }
-    
-    container.innerHTML = notificacoes.map(notif => `
-        <div style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; cursor: pointer; ${notif.lida ? 'opacity: 0.6;' : 'background: #eff6ff;'}"
-             onclick="marcarNotificacaoLida(${notif.id})">
-            <div style="font-weight: 500; margin-bottom: 0.25rem;">${notif.mensagem}</div>
-            <div style="font-size: 0.75rem; color: #6b7280;">${new Date(notif.criada_em).toLocaleString('pt-BR')}</div>
-        </div>
-    `).join('');
-}
-
-function toggleNotificacoes() {
-    const dropdown = document.getElementById('notificacoes-dropdown');
-    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-}
-
-async function marcarNotificacaoLida(notifId) {
-    try {
-        await fetch(`${API_BASE}?action=marcar_notificacao&id=${notifId}`, { method: 'POST' });
-        await carregarNotificacoes();
-        
-        // Se tiver referencia_id, abrir o card
-        const notif = notificacoes.find(n => n.id === notifId);
-        if (notif && notif.referencia_id) {
-            verCard(notif.referencia_id);
-        }
-    } catch (error) {
-        console.error('Erro:', error);
-    }
-}
-
-// ============================================
-// QUADROS E LISTAS
-// ============================================
 
 async function criarQuadro() {
     const nome = document.getElementById('quadro-nome').value.trim();
@@ -1509,9 +1837,8 @@ async function criarQuadro() {
     }
     
     try {
-        const response = await fetch(`${API_BASE}?action=criar_quadro`, {
+        const response = await apiFetch(`${API_BASE}?action=criar_quadro`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nome, descricao, cor })
         });
         
@@ -1520,6 +1847,7 @@ async function criarQuadro() {
         if (data.success) {
             fecharModal('modal-novo-quadro');
             document.getElementById('form-novo-quadro').reset();
+            atualizarPreviewCor('#3b82f6');
             await carregarQuadros();
             selecionarQuadro(data.data.id);
             mostrarToast('✅ Quadro criado com sucesso!');
@@ -1545,9 +1873,8 @@ async function criarLista() {
     }
     
     try {
-        const response = await fetch(`${API_BASE}?action=criar_lista&id=${currentBoardId}`, {
+        const response = await apiFetch(`${API_BASE}?action=criar_lista&id=${currentBoardId}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nome })
         });
         
@@ -1569,12 +1896,10 @@ async function criarLista() {
 
 async function deletarLista(listaId) {
     const confirmado = await customConfirm('Tem certeza? Todos os cards desta lista serão deletados.', '⚠️ Confirmar Exclusão');
-    if (!confirmado) {
-        return;
-    }
+    if (!confirmado) return;
     
     try {
-        const response = await fetch(`${API_BASE}?action=deletar_lista&id=${listaId}`, {
+        const response = await apiFetch(`${API_BASE}?action=deletar_lista&id=${listaId}`, {
             method: 'DELETE'
         });
         
@@ -1594,9 +1919,7 @@ async function deletarLista(listaId) {
 
 async function deletarQuadro(quadroId) {
     const confirmado = await customConfirm('Tem certeza? Todo o quadro, listas, cards e arquivos serão deletados permanentemente.', '⚠️ Confirmar Exclusão de Quadro');
-    if (!confirmado) {
-        return;
-    }
+    if (!confirmado) return;
     
     try {
         const response = await apiFetch(`${API_BASE}?action=deletar_quadro&id=${quadroId}`, {
@@ -1609,12 +1932,12 @@ async function deletarQuadro(quadroId) {
             mostrarToast('✅ Quadro deletado com sucesso!');
             await carregarQuadros();
             
-            // Selecionar outro quadro se disponível
             if (boards.length > 0) {
                 selecionarQuadro(boards[0].id);
             } else {
-                document.getElementById('trello-board').innerHTML = '<div class="empty-state"><p>Nenhum quadro disponível. Crie um novo quadro para começar.</p></div>';
+                document.getElementById('trello-board').innerHTML = '<div class="page-demandas-list-empty"><p>Nenhum quadro disponível. Crie um novo quadro para começar.</p></div>';
                 currentBoardId = null;
+                atualizarHeaderQuadro();
             }
         } else {
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
@@ -1626,19 +1949,108 @@ async function deletarQuadro(quadroId) {
 }
 
 // ============================================
-// EDIÇÃO DE CARDS
+// VER/EDITAR CARDS
 // ============================================
-
-let cardEditando = null;
-
-async function editarCard(cardId) {
+async function verCard(cardId) {
     try {
-        const response = await fetch(`${API_BASE}?action=card&id=${cardId}`);
+        const response = await apiFetch(`${API_BASE}?action=card&id=${cardId}`);
         const data = await response.json();
         
         if (data.success) {
             const card = data.data;
-            cardEditando = cardId;
+            document.getElementById('modal-card-titulo').textContent = card.titulo;
+            
+            const hoje = new Date();
+            const prazo = card.prazo ? new Date(card.prazo) : null;
+            let prazoHtml = '';
+            
+            if (prazo) {
+                const diffDays = Math.ceil((prazo - hoje) / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) {
+                    prazoHtml = `<p><strong>Prazo:</strong> <span style="background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">Vencido há ${Math.abs(diffDays)} dias</span></p>`;
+                } else if (diffDays <= 3) {
+                    prazoHtml = `<p><strong>Prazo:</strong> <span style="background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px;">Em ${diffDays} dias (${prazo.toLocaleDateString('pt-BR')})</span></p>`;
+                } else {
+                    prazoHtml = `<p><strong>Prazo:</strong> ${prazo.toLocaleDateString('pt-BR')}</p>`;
+                }
+            }
+            
+            document.getElementById('modal-card-content').innerHTML = `
+                <div>
+                    ${prazoHtml}
+                    ${card.descricao ? `<p style="margin: 1rem 0; line-height: 1.6;">${escapeHtml(card.descricao)}</p>` : ''}
+                    <p><strong>Status:</strong> ${card.status}</p>
+                    <p><strong>Prioridade:</strong> ${card.prioridade || 'Média'}</p>
+                    ${card.categoria ? `<p><strong>Categoria:</strong> ${escapeHtml(card.categoria)}</p>` : ''}
+                    <p><strong>Criado por:</strong> ${escapeHtml(card.criador_nome || 'Desconhecido')}</p>
+                    <p><strong>Responsáveis:</strong> ${(card.usuarios || []).map(u => escapeHtml(u.nome)).join(', ') || 'Nenhum'}</p>
+                </div>
+                
+                <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                    <h3>💬 Comentários</h3>
+                    <div id="comentarios-list" style="margin-top: 1rem;">
+                        ${(card.comentarios || []).map(c => `
+                            <div style="background: #f9fafb; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem;">
+                                    <span style="font-weight: 600; color: #172b4d;">${escapeHtml(c.autor_nome || 'Anônimo')}</span>
+                                    <span style="color: #6b7280;">${new Date(c.criado_em).toLocaleString('pt-BR')}</span>
+                                </div>
+                                <div style="color: #374151; line-height: 1.5;">${escapeHtml(c.mensagem)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <textarea id="novo-comentario" placeholder="Digite seu comentário... Use @usuario para mencionar" rows="3" style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                        <button class="btn btn-primary" onclick="adicionarComentario(${card.id})" style="margin-top: 0.5rem;">Adicionar</button>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e5e7eb;">
+                    <h3>📎 Anexos</h3>
+                    <div id="anexos-list" style="margin-top: 1rem;">
+                        ${(card.anexos || []).map(a => `
+                            <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #f9fafb; border-radius: 6px; margin-bottom: 0.5rem;">
+                                <span>📄 ${escapeHtml(a.nome_original)}</span>
+                                <div style="display: flex; gap: 0.5rem; margin-left: auto;">
+                                    <button class="btn btn-outline" onclick="downloadAnexo(${a.id})">Download</button>
+                                    <button class="btn" onclick="deletarAnexoTrello(${a.id}, ${card.id})" style="background: #ef4444; color: white;">🗑️</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 6px; border: 2px dashed #d1d5db;">
+                        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">➕ Adicionar Novo Anexo</label>
+                        <input type="file" id="novo-anexo" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx" style="margin-bottom: 0.75rem; width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px;" onchange="if(this.files[0]) adicionarAnexo(${card.id})">
+                        <div id="upload-status-${card.id}" style="display: none; margin-bottom: 0.5rem; padding: 0.5rem; background: #dbeafe; border-radius: 4px; font-size: 0.875rem;"></div>
+                        <small style="display: block; margin-top: 0.5rem; color: #6b7280; font-size: 0.75rem;">Formatos aceitos: PDF, imagens, Word, Excel (máx. 10MB)</small>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                    <button class="btn btn-primary" onclick="editarCard(${card.id})">✏️ Editar</button>
+                    ${card.status === 'concluido' 
+                        ? `<button class="btn btn-outline" onclick="reabrirCard(${card.id})">🔄 Reabrir</button>`
+                        : `<button class="btn btn-primary" onclick="concluirCard(${card.id})">✅ Concluir</button>`
+                    }
+                    <button class="btn" onclick="deletarCardConfirmado(${card.id})" style="background: #ef4444; color: white;">🗑️ Deletar</button>
+                </div>
+            `;
+            
+            abrirModal('modal-ver-card');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar card:', error);
+        customAlert('Erro ao carregar card', '❌ Erro');
+    }
+}
+
+async function editarCard(cardId) {
+    try {
+        const response = await apiFetch(`${API_BASE}?action=card&id=${cardId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const card = data.data;
             
             document.getElementById('edit-card-id').value = card.id;
             document.getElementById('edit-card-titulo').value = card.titulo;
@@ -1647,7 +2059,6 @@ async function editarCard(cardId) {
             document.getElementById('edit-card-prioridade').value = card.prioridade || 'media';
             document.getElementById('edit-card-categoria').value = card.categoria || '';
             
-            // Selecionar usuários
             const selectUsuarios = document.getElementById('edit-card-usuarios');
             Array.from(selectUsuarios.options).forEach(opt => opt.selected = false);
             (card.usuarios || []).forEach(u => {
@@ -1656,7 +2067,7 @@ async function editarCard(cardId) {
             });
             
             fecharModal('modal-ver-card');
-            document.getElementById('modal-editar-card').style.display = 'block';
+            abrirModal('modal-editar-card');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1674,9 +2085,8 @@ async function salvarEdicaoCard() {
     const usuarios = Array.from(document.getElementById('edit-card-usuarios').selectedOptions).map(opt => parseInt(opt.value));
     
     try {
-        const response = await fetch(`${API_BASE}?action=atualizar_card&id=${cardId}`, {
+        const response = await apiFetch(`${API_BASE}?action=atualizar_card&id=${cardId}`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 titulo,
                 descricao,
@@ -1710,12 +2120,10 @@ async function deletarCardAtual() {
 
 async function deletarCardConfirmado(cardId) {
     const confirmado = await customConfirm('Tem certeza que deseja deletar este card? Esta ação não pode ser desfeita.', '⚠️ Confirmar Exclusão');
-    if (!confirmado) {
-        return;
-    }
+    if (!confirmado) return;
     
     try {
-        const response = await fetch(`${API_BASE}?action=deletar_card&id=${cardId}`, {
+        const response = await apiFetch(`${API_BASE}?action=deletar_card&id=${cardId}`, {
             method: 'DELETE'
         });
         
@@ -1736,23 +2144,83 @@ async function deletarCardConfirmado(cardId) {
     }
 }
 
-// Função para adicionar anexo no modal de edição
-async function adicionarAnexoNoEditar() {
-    const anexoInput = document.getElementById('edit-card-anexo');
-    const cardId = parseInt(document.getElementById('edit-card-id').value);
-    
-    if (!anexoInput || !anexoInput.files[0]) {
-        customAlert('Selecione um arquivo primeiro', '⚠️ Atenção');
+async function concluirCard(cardId) {
+    try {
+        const response = await apiFetch(`${API_BASE}?action=concluir&id=${cardId}`, { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-ver-card');
+            await carregarTodosCards();
+            renderizarBoard();
+            mostrarToast('✅ Card concluído!');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+    }
+}
+
+async function reabrirCard(cardId) {
+    try {
+        const response = await apiFetch(`${API_BASE}?action=reabrir&id=${cardId}`, { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-ver-card');
+            await carregarTodosCards();
+            renderizarBoard();
+            mostrarToast('✅ Card reaberto!');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+    }
+}
+
+// ============================================
+// COMENTÁRIOS E ANEXOS
+// ============================================
+async function adicionarComentario(cardId) {
+    const mensagem = document.getElementById('novo-comentario').value.trim();
+    if (!mensagem) {
+        customAlert('Digite um comentário', '⚠️ Atenção');
         return;
     }
     
-    if (!cardId) {
-        customAlert('Erro: ID do card não encontrado', '❌ Erro');
-        return;
+    try {
+        const response = await apiFetch(`${API_BASE}?action=comentario&id=${cardId}`, {
+            method: 'POST',
+            body: JSON.stringify({ mensagem })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('novo-comentario').value = '';
+            verCard(cardId);
+            mostrarToast('✅ Comentário adicionado!');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro ao adicionar comentário:', error);
+        customAlert('Erro ao adicionar comentário', '❌ Erro');
+    }
+}
+
+async function adicionarAnexo(cardId) {
+    const input = document.getElementById('novo-anexo');
+    const statusDiv = document.getElementById(`upload-status-${cardId}`);
+    
+    if (!input || !input.files[0]) return;
+    
+    if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.textContent = '⏳ Enviando arquivo...';
+        statusDiv.style.background = '#dbeafe';
     }
     
     const formData = new FormData();
-    formData.append('arquivo', anexoInput.files[0]);
+    formData.append('arquivo', input.files[0]);
     
     try {
         const response = await fetch(`${API_BASE}?action=anexo&id=${cardId}`, {
@@ -1763,27 +2231,331 @@ async function adicionarAnexoNoEditar() {
         const data = await response.json();
         
         if (data.success) {
-            anexoInput.value = '';
-            mostrarToast('✅ Anexo adicionado!');
-            // Recarregar o card para mostrar o anexo
+            input.value = '';
+            if (statusDiv) {
+                statusDiv.textContent = '✅ Arquivo anexado com sucesso!';
+                statusDiv.style.background = '#d1fae5';
+                setTimeout(() => statusDiv.style.display = 'none', 2000);
+            }
             await verCard(cardId);
-            // Reabrir modal de edição
-            setTimeout(() => editarCard(cardId), 500);
+            mostrarToast('✅ Anexo adicionado!');
         } else {
+            if (statusDiv) {
+                statusDiv.textContent = '❌ Erro: ' + (data.error || 'Erro desconhecido');
+                statusDiv.style.background = '#fee2e2';
+            }
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
+        if (statusDiv) {
+            statusDiv.textContent = '❌ Erro ao anexar arquivo';
+            statusDiv.style.background = '#fee2e2';
+        }
         customAlert('Erro ao adicionar anexo', '❌ Erro');
     }
 }
 
+async function downloadAnexo(anexoId) {
+    try {
+        window.location.href = `${API_BASE}?action=download_anexo&id=${anexoId}`;
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao baixar arquivo', '❌ Erro');
+    }
+}
+
+async function deletarAnexoTrello(anexoId, cardId) {
+    const confirmado = await customConfirm('Deseja realmente excluir este anexo?', '⚠️ Confirmar Exclusão');
+    if (!confirmado) return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}?action=deletar_anexo&id=${anexoId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            verCard(cardId);
+            mostrarToast('✅ Anexo deletado!');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao deletar anexo', '❌ Erro');
+    }
+}
+
 // ============================================
-// MODAIS E UTILITÁRIOS
+// NOTIFICAÇÕES
 // ============================================
+async function carregarNotificacoes() {
+    try {
+        const response = await apiFetch(`${API_BASE}?action=notificacoes`);
+        const data = await response.json();
+        
+        if (data.success) {
+            notificacoes = data.data;
+            const naoLidas = data.nao_lidas || 0;
+            
+            const countEl = document.getElementById('notificacoes-count');
+            if (naoLidas > 0) {
+                countEl.textContent = naoLidas;
+                countEl.style.display = 'block';
+            } else {
+                countEl.style.display = 'none';
+            }
+            
+            renderizarNotificacoes();
+        }
+    } catch (error) {
+        console.error('Erro ao carregar notificações:', error);
+    }
+}
+
+function renderizarNotificacoes() {
+    const container = document.getElementById('notificacoes-content');
+    
+    let notificacoesFiltradas = notificacoes;
+    if (notificacoesTab === 'mencoes') {
+        notificacoesFiltradas = notificacoes.filter(n => n.mensagem && n.mensagem.includes('@'));
+    }
+    
+    if (notificacoesFiltradas.length === 0) {
+        container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #6b7280;">Nenhuma notificação</div>';
+        return;
+    }
+    
+    // Agrupar por data
+    const hoje = new Date();
+    hoje.setHours(0,0,0,0);
+    
+    const grupos = {
+        hoje: [],
+        ontem: [],
+        semana: [],
+        antigas: []
+    };
+    
+    notificacoesFiltradas.forEach(notif => {
+        const dataNotif = new Date(notif.criada_em || notif.criado_em || notif.created_at);
+        const diffMs = hoje - dataNotif;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) grupos.hoje.push(notif);
+        else if (diffDays === 1) grupos.ontem.push(notif);
+        else if (diffDays <= 7) grupos.semana.push(notif);
+        else grupos.antigas.push(notif);
+    });
+    
+    let html = '';
+    
+    if (grupos.hoje.length > 0) {
+        html += `<div class="page-demandas-notificacoes-group"><div class="page-demandas-notificacoes-group-title">Hoje</div>`;
+        html += grupos.hoje.map(n => renderizarNotificacaoItem(n)).join('');
+        html += `</div>`;
+    }
+    
+    if (grupos.ontem.length > 0) {
+        html += `<div class="page-demandas-notificacoes-group"><div class="page-demandas-notificacoes-group-title">Ontem</div>`;
+        html += grupos.ontem.map(n => renderizarNotificacaoItem(n)).join('');
+        html += `</div>`;
+    }
+    
+    if (grupos.semana.length > 0) {
+        html += `<div class="page-demandas-notificacoes-group"><div class="page-demandas-notificacoes-group-title">Esta semana</div>`;
+        html += grupos.semana.map(n => renderizarNotificacaoItem(n)).join('');
+        html += `</div>`;
+    }
+    
+    if (grupos.antigas.length > 0) {
+        html += `<div class="page-demandas-notificacoes-group"><div class="page-demandas-notificacoes-group-title">Mais antigas</div>`;
+        html += grupos.antigas.map(n => renderizarNotificacaoItem(n)).join('');
+        html += `</div>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+function renderizarNotificacaoItem(notif) {
+    const dataNotif = new Date(notif.criada_em || notif.criado_em || notif.created_at);
+    const tempoRelativo = getTempoRelativo(dataNotif);
+    
+    return `
+        <div class="page-demandas-notificacao-item ${!notif.lida ? 'nao-lida' : ''}" 
+             onclick="marcarNotificacaoLida(${notif.id})">
+            <div class="page-demandas-notificacao-titulo">${escapeHtml(notif.titulo || notif.mensagem || 'Notificação')}</div>
+            ${notif.mensagem && notif.mensagem !== notif.titulo ? `<div class="page-demandas-notificacao-trecho">${escapeHtml(notif.mensagem.substring(0, 100))}${notif.mensagem.length > 100 ? '...' : ''}</div>` : ''}
+            <div class="page-demandas-notificacao-meta">
+                <span>${tempoRelativo}</span>
+                ${notif.autor_nome ? `<span>${escapeHtml(notif.autor_nome)}</span>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function getTempoRelativo(data) {
+    const agora = new Date();
+    const diffMs = agora - data;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return 'Agora';
+    if (diffMins < 60) return `${diffMins} min atrás`;
+    if (diffHours < 24) return `${diffHours}h atrás`;
+    if (diffDays === 1) return 'Ontem';
+    if (diffDays < 7) return `${diffDays} dias atrás`;
+    return data.toLocaleDateString('pt-BR');
+}
+
+function toggleNotificacoes(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('notificacoes-dropdown');
+    const isOpen = dropdown.classList.contains('open');
+    
+    // Fechar outros dropdowns
+    document.querySelectorAll('.page-demandas-notificacoes-dropdown.open').forEach(el => el.classList.remove('open'));
+    
+    if (!isOpen) {
+        dropdown.classList.add('open');
+    }
+    
+    // Fechar ao clicar fora
+    setTimeout(() => {
+        document.addEventListener('click', function fecharAoClicarFora(e) {
+            if (!e.target.closest('.notificacoes-badge') && !e.target.closest('.page-demandas-notificacoes-dropdown')) {
+                dropdown.classList.remove('open');
+                document.removeEventListener('click', fecharAoClicarFora);
+            }
+        }, { once: true });
+    }, 100);
+}
+
+function switchNotificacoesTab(tab) {
+    notificacoesTab = tab;
+    document.querySelectorAll('.page-demandas-notificacoes-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    renderizarNotificacoes();
+}
+
+async function marcarNotificacaoLida(notifId, recarregar = true) {
+    try {
+        await apiFetch(`${API_BASE}?action=marcar_notificacao&id=${notifId}`, { method: 'POST' });
+        
+        if (recarregar) {
+            await carregarNotificacoes();
+        }
+        
+        // Se tiver referencia_id, abrir o card
+        const notif = notificacoes.find(n => n.id === notifId);
+        if (notif && notif.referencia_id) {
+            fecharModal('modal-ver-card'); // Fechar se aberto
+            verCard(notif.referencia_id);
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+    }
+}
+
+async function marcarTodasNotificacoesLidas() {
+    try {
+        const naoLidas = notificacoes.filter(n => !n.lida);
+        for (const notif of naoLidas) {
+            await apiFetch(`${API_BASE}?action=marcar_notificacao&id=${notif.id}`, { method: 'POST' });
+        }
+        await carregarNotificacoes();
+        mostrarToast('✅ Todas as notificações foram marcadas como lidas');
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao marcar notificações', '❌ Erro');
+    }
+}
+
+// ============================================
+// DEMANDAS FIXAS (DRAWER)
+// ============================================
+function toggleDrawerFixas() {
+    const overlay = document.getElementById('drawer-fixas-overlay');
+    const drawer = document.getElementById('drawer-fixas');
+    
+    overlay.classList.toggle('open');
+    drawer.classList.toggle('open');
+    
+    if (drawer.classList.contains('open')) {
+        carregarDrawerFixas();
+    }
+}
+
+async function carregarDrawerFixas() {
+    try {
+        // Buscar quadros e listas
+        const response = await apiFetch(`${API_BASE}?action=quadros`);
+        const boardsData = await response.json();
+        
+        // Buscar demandas fixas (via API ou carregar do backend)
+        // Por enquanto, vamos criar a UI diretamente
+        const content = document.getElementById('drawer-fixas-content');
+        content.innerHTML = `
+            <div style="margin-bottom: 1.5rem;">
+                <button class="btn btn-primary" onclick="abrirModalNovaFixa()">➕ Nova Demanda Fixa</button>
+            </div>
+            <div id="fixas-tabela">
+                <p style="color: #6b7280; text-align: center; padding: 2rem;">Carregando...</p>
+            </div>
+        `;
+        
+        // TODO: Implementar busca de demandas fixas via API
+        // Por enquanto, carregar via endpoint existente
+        setTimeout(() => {
+            content.querySelector('#fixas-tabela').innerHTML = `
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Título</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Quadro</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Lista</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Periodicidade</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Status</th>
+                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" style="padding: 2rem; text-align: center; color: #6b7280;">
+                                Nenhuma demanda fixa cadastrada. Clique em "Nova Demanda Fixa" para criar.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }, 500);
+    } catch (error) {
+        console.error('Erro ao carregar demandas fixas:', error);
+        customAlert('Erro ao carregar demandas fixas', '❌ Erro');
+    }
+}
+
+function abrirModalNovaFixa() {
+    customAlert('Funcionalidade de criar demanda fixa será implementada no drawer. Por enquanto, use a página de Demandas Fixas.', 'ℹ️ Informação');
+    // TODO: Implementar modal de criação de demanda fixa dentro do drawer
+}
+
+// ============================================
+// UTILITÁRIOS
+// ============================================
+function abrirModal(modalId) {
+    document.getElementById(modalId).classList.add('open');
+}
+
+function fecharModal(modalId) {
+    document.getElementById(modalId).classList.remove('open');
+}
 
 function abrirModalNovoQuadro() {
-    document.getElementById('modal-novo-quadro').style.display = 'block';
+    abrirModal('modal-novo-quadro');
 }
 
 function abrirModalNovaLista() {
@@ -1791,7 +2563,7 @@ function abrirModalNovaLista() {
         customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
         return;
     }
-    document.getElementById('modal-nova-lista').style.display = 'block';
+    abrirModal('modal-nova-lista');
 }
 
 function abrirModalNovoCard(listaIdPredefinida = null) {
@@ -1800,35 +2572,54 @@ function abrirModalNovoCard(listaIdPredefinida = null) {
         return;
     }
     
-    // Preencher select de listas
     const select = document.getElementById('card-lista');
     select.innerHTML = lists.map(l => 
-        `<option value="${l.id}" ${listaIdPredefinida === l.id ? 'selected' : ''}>${l.nome}</option>`
+        `<option value="${l.id}" ${listaIdPredefinida === l.id ? 'selected' : ''}>${escapeHtml(l.nome)}</option>`
     ).join('');
     
-    document.getElementById('modal-novo-card').style.display = 'block';
+    abrirModal('modal-novo-card');
 }
 
-function abrirModalDemandasFixas() {
-    window.open('index.php?page=demandas_fixas', '_blank');
+function toggleMenuActions() {
+    customAlert('Menu de ações (Renomear, Arquivar, Exportar CSV) será implementado em breve.', 'ℹ️ Informação');
 }
 
-function fecharModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
+function atualizarPreviewCor(cor) {
+    document.getElementById('quadro-cor-preview').style.background = cor;
+    document.getElementById('quadro-cor-hex-display').textContent = cor;
+    document.getElementById('quadro-cor').value = cor;
+}
+
+function atualizarCorDoHex(hex) {
+    if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+        atualizarPreviewCor(hex);
+    }
+}
+
+function mostrarToast(mensagem, tipo = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `page-demandas-toast ${tipo}`;
+    toast.textContent = mensagem;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 // ============================================
-// SISTEMA DE ALERTAS CUSTOMIZADOS
+// CUSTOM ALERTS
 // ============================================
-
 function customAlert(mensagem, titulo = 'Aviso') {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
         overlay.className = 'custom-alert-overlay';
         overlay.innerHTML = `
             <div class="custom-alert">
-                <div class="custom-alert-header">${titulo}</div>
-                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
                 <div class="custom-alert-actions">
                     <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
                 </div>
@@ -1837,7 +2628,6 @@ function customAlert(mensagem, titulo = 'Aviso') {
         
         document.body.appendChild(overlay);
         
-        // Fechar ao clicar fora
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 overlay.remove();
@@ -1858,8 +2648,8 @@ function customConfirm(mensagem, titulo = 'Confirmar') {
         overlay.className = 'custom-alert-overlay';
         overlay.innerHTML = `
             <div class="custom-alert">
-                <div class="custom-alert-header">${titulo}</div>
-                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
                 <div class="custom-alert-actions">
                     <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
                     <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
@@ -1869,7 +2659,6 @@ function customConfirm(mensagem, titulo = 'Confirmar') {
         
         document.body.appendChild(overlay);
         
-        // Fechar ao clicar fora (resolve como false)
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 overlay.remove();
@@ -1883,38 +2672,6 @@ function customConfirm(mensagem, titulo = 'Confirmar') {
         };
     });
 }
-
-function mostrarToast(mensagem) {
-    // Toast simples
-    const toast = document.createElement('div');
-    toast.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 1rem 1.5rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 10000;';
-    toast.textContent = mensagem;
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.3s';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-// Fechar modais ao clicar fora
-window.onclick = function(event) {
-    const modals = ['modal-novo-card', 'modal-ver-card', 'modal-editar-card', 'modal-novo-quadro', 'modal-nova-lista'];
-    modals.forEach(id => {
-        const modal = document.getElementById(id);
-        if (event.target === modal) {
-            fecharModal(id);
-        }
-    });
-    
-    // Fechar dropdown de notificações
-    const dropdown = document.getElementById('notificacoes-dropdown');
-    if (!event.target.closest('.notificacoes-badge') && !event.target.closest('#notificacoes-dropdown')) {
-        dropdown.style.display = 'none';
-    }
-}
 </script>
 
 <?php endSidebar(); ?>
-
