@@ -264,7 +264,40 @@ function criarCard($pdo, $usuario_id, $dados) {
         $card = $stmt->fetch(PDO::FETCH_ASSOC);
         $card_id = (int)$card['id'];
         
+        // Buscar board_id para notificações
+        $stmt_board = $pdo->prepare("
+            SELECT dl.board_id, db.nome as board_nome
+            FROM demandas_listas dl
+            JOIN demandas_boards db ON db.id = dl.board_id
+            WHERE dl.id = :lista_id
+        ");
+        $stmt_board->execute([':lista_id' => $lista_id]);
+        $board_info = $stmt_board->fetch(PDO::FETCH_ASSOC);
+        $board_id = $board_info['board_id'] ?? null;
+        $board_nome = $board_info['board_nome'] ?? 'Quadro';
+        
+        // Buscar todos os responsáveis de cards neste board (para notificar sobre novo card)
+        $usuarios_notificar_novo_card = [];
+        if ($board_id) {
+            $stmt_board_users = $pdo->prepare("
+                SELECT DISTINCT dcu.usuario_id
+                FROM demandas_cards dc
+                JOIN demandas_listas dl ON dl.id = dc.lista_id
+                JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
+                WHERE dl.board_id = :board_id 
+                  AND dcu.usuario_id != :criador_id
+            ");
+            $stmt_board_users->execute([':board_id' => $board_id, ':criador_id' => $usuario_id]);
+            while ($user = $stmt_board_users->fetch(PDO::FETCH_ASSOC)) {
+                $user_id_board = (int)$user['usuario_id'];
+                if ($user_id_board > 0) {
+                    $usuarios_notificar_novo_card[] = $user_id_board;
+                }
+            }
+        }
+        
         // Atribuir usuários
+        $usuarios_atribuidos = [];
         if (!empty($usuarios) && is_array($usuarios)) {
             $stmt_user = $pdo->prepare("
                 INSERT INTO demandas_cards_usuarios (card_id, usuario_id)
@@ -276,10 +309,18 @@ function criarCard($pdo, $usuario_id, $dados) {
                 $user_id = (int)$user_id;
                 if ($user_id > 0) {
                     $stmt_user->execute([':card_id' => $card_id, ':usuario_id' => $user_id]);
+                    $usuarios_atribuidos[] = $user_id;
                     
-                    // Criar notificação
+                    // Criar notificação de atribuição
                     criarNotificacao($pdo, $user_id, 'tarefa_atribuida', $card_id, "Você foi atribuído ao card: {$titulo}");
                 }
+            }
+        }
+        
+        // Notificar outros responsáveis do board sobre novo card (exceto criador e já atribuídos)
+        foreach ($usuarios_notificar_novo_card as $user_id_notif) {
+            if (!in_array($user_id_notif, $usuarios_atribuidos) && $user_id_notif !== $usuario_id) {
+                criarNotificacao($pdo, $user_id_notif, 'card_criado', $card_id, "Novo card criado em {$board_nome}: {$titulo}");
             }
         }
         
@@ -403,6 +444,17 @@ function atualizarCard($pdo, $card_id, $dados, $usuario_id, $is_admin) {
         
         $card = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        // Buscar informações do card para notificações
+        $stmt_card_info = $pdo->prepare("
+            SELECT dc.titulo, dc.criador_id, dc.lista_id, dl.board_id
+            FROM demandas_cards dc
+            JOIN demandas_listas dl ON dl.id = dc.lista_id
+            WHERE dc.id = :card_id
+        ");
+        $stmt_card_info->execute([':card_id' => $card_id]);
+        $card_info = $stmt_card_info->fetch(PDO::FETCH_ASSOC);
+        $titulo_card = $card_info['titulo'] ?? 'Card';
+        
         // Atualizar usuários se fornecido
         if (isset($dados['usuarios']) && is_array($dados['usuarios'])) {
             // Remover todos
@@ -419,6 +471,47 @@ function atualizarCard($pdo, $card_id, $dados, $usuario_id, $is_admin) {
                     $stmt_user->execute([':card_id' => $card_id, ':usuario_id' => $user_id]);
                 }
             }
+        }
+        
+        // Criar notificações para responsáveis do card (exceto quem fez a alteração)
+        $usuarios_notificar = [];
+        
+        // Incluir criador do card (se não for quem está editando)
+        if ($card_info['criador_id'] && (int)$card_info['criador_id'] !== $usuario_id) {
+            $usuarios_notificar[] = (int)$card_info['criador_id'];
+        }
+        
+        // Incluir todos os responsáveis atribuídos ao card
+        $stmt_responsaveis = $pdo->prepare("
+            SELECT DISTINCT usuario_id 
+            FROM demandas_cards_usuarios 
+            WHERE card_id = :card_id AND usuario_id != :user_id
+        ");
+        $stmt_responsaveis->execute([':card_id' => $card_id, ':user_id' => $usuario_id]);
+        while ($resp = $stmt_responsaveis->fetch(PDO::FETCH_ASSOC)) {
+            $user_id_resp = (int)$resp['usuario_id'];
+            if ($user_id_resp > 0 && !in_array($user_id_resp, $usuarios_notificar)) {
+                $usuarios_notificar[] = $user_id_resp;
+            }
+        }
+        
+        // Criar notificações
+        foreach ($usuarios_notificar as $user_id_notif) {
+            // Montar mensagem descritiva do que foi alterado
+            $campos_alterados = [];
+            if (isset($dados['titulo'])) $campos_alterados[] = 'título';
+            if (isset($dados['descricao'])) $campos_alterados[] = 'descrição';
+            if (isset($dados['prazo'])) $campos_alterados[] = 'prazo';
+            if (isset($dados['prioridade'])) $campos_alterados[] = 'prioridade';
+            if (isset($dados['status'])) $campos_alterados[] = 'status';
+            if (isset($dados['categoria'])) $campos_alterados[] = 'categoria';
+            if (isset($dados['usuarios'])) $campos_alterados[] = 'responsáveis';
+            
+            $msg = count($campos_alterados) > 0 
+                ? "Card '{$titulo_card}' foi atualizado: " . implode(', ', $campos_alterados)
+                : "Card '{$titulo_card}' foi atualizado";
+            
+            criarNotificacao($pdo, $user_id_notif, 'card_atualizado', $card_id, $msg);
         }
         
         echo json_encode([
