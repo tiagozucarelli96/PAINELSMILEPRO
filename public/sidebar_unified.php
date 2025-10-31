@@ -1165,35 +1165,39 @@ if ($current_page === 'dashboard') {
         .dashboard-notificacoes-badge {
             position: relative;
             cursor: pointer;
-            padding: 0.75rem;
+            padding: 0.5rem;
             border-radius: 50%;
-            background: #3b82f6;
-            color: white;
+            background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-width: 48px;
-            min-height: 48px;
-            transition: background 0.2s;
+            min-width: 56px;
+            min-height: 56px;
+            transition: transform 0.2s;
         }
         
         .dashboard-notificacoes-badge:hover {
-            background: #2563eb;
+            transform: scale(1.1);
+        }
+        
+        .dashboard-notificacoes-badge img {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
         }
         
         .dashboard-notificacoes-count {
             position: absolute;
-            top: 4px;
-            right: 4px;
-            background: #ef4444;
+            top: 2px;
+            right: 2px;
+            background: transparent;
             color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            min-width: 18px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            min-width: 16px;
             text-align: center;
-            line-height: 1.4;
+            line-height: 1.2;
+            pointer-events: none;
         }
         
         /* Modal de Notificações na Dashboard */
@@ -1880,7 +1884,7 @@ if ($current_page === 'dashboard') {
                     const countEl = document.getElementById('dashboard-notificacoes-count');
                     if (countEl) {
                         if (dashboardNotificacoesNaoLidas > 0) {
-                            countEl.textContent = dashboardNotificacoesNaoLidas;
+                            countEl.textContent = dashboardNotificacoesNaoLidas > 99 ? '99+' : dashboardNotificacoesNaoLidas;
                             countEl.style.display = 'block';
                             countEl.style.visibility = 'visible';
                         } else {
