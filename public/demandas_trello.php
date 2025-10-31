@@ -968,7 +968,7 @@ async function criarCard(listaIdPredefinida = null) {
             renderizarBoard();
             mostrarToast('✅ Card criado com sucesso!' + (temAnexo ? ' Arquivo anexado.' : ''));
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao criar card:', error);
@@ -1099,7 +1099,7 @@ async function verCard(cardId) {
 async function adicionarComentario(cardId) {
     const mensagem = document.getElementById('novo-comentario').value.trim();
     if (!mensagem) {
-        alert('Digite um comentário');
+        customAlert('Digite um comentário', '⚠️ Atenção');
         return;
     }
     
@@ -1117,7 +1117,7 @@ async function adicionarComentario(cardId) {
             verCard(cardId); // Recarregar
             mostrarToast('✅ Comentário adicionado!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao adicionar comentário:', error);
@@ -1148,7 +1148,7 @@ async function adicionarAnexo(cardId) {
             verCard(cardId); // Recarregar
             mostrarToast('✅ Anexo adicionado!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
@@ -1188,7 +1188,7 @@ async function deletarAnexoTrello(anexoId, cardId) {
             verCard(cardId); // Recarregar modal
             mostrarToast('✅ Anexo deletado!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1327,7 +1327,7 @@ async function criarQuadro() {
             selecionarQuadro(data.data.id);
             mostrarToast('✅ Quadro criado com sucesso!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1362,7 +1362,7 @@ async function criarLista() {
             await carregarListas(currentBoardId);
             mostrarToast('✅ Lista criada com sucesso!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1386,7 +1386,7 @@ async function deletarLista(listaId) {
             await carregarListas(currentBoardId);
             mostrarToast('✅ Lista deletada!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1429,7 +1429,7 @@ async function editarCard(cardId) {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao carregar card');
+        customAlert('Erro ao carregar card', '❌ Erro');
     }
 }
 
@@ -1464,7 +1464,7 @@ async function salvarEdicaoCard() {
             renderizarBoard();
             mostrarToast('✅ Card atualizado!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1496,7 +1496,7 @@ async function deletarCardConfirmado(cardId) {
             renderizarBoard();
             mostrarToast('✅ Card deletado!');
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
@@ -1510,12 +1510,12 @@ async function adicionarAnexoNoEditar() {
     const cardId = parseInt(document.getElementById('edit-card-id').value);
     
     if (!anexoInput || !anexoInput.files[0]) {
-        alert('Selecione um arquivo primeiro');
+        customAlert('Selecione um arquivo primeiro', '⚠️ Atenção');
         return;
     }
     
     if (!cardId) {
-        alert('Erro: ID do card não encontrado');
+        customAlert('Erro: ID do card não encontrado', '❌ Erro');
         return;
     }
     
@@ -1538,7 +1538,7 @@ async function adicionarAnexoNoEditar() {
             // Reabrir modal de edição
             setTimeout(() => editarCard(cardId), 500);
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro ao adicionar anexo:', error);
@@ -1556,7 +1556,7 @@ function abrirModalNovoQuadro() {
 
 function abrirModalNovaLista() {
     if (!currentBoardId) {
-        alert('Selecione um quadro primeiro');
+        customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
         return;
     }
     document.getElementById('modal-nova-lista').style.display = 'block';
@@ -1564,7 +1564,7 @@ function abrirModalNovaLista() {
 
 function abrirModalNovoCard(listaIdPredefinida = null) {
     if (!currentBoardId) {
-        alert('Selecione um quadro primeiro');
+        customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
         return;
     }
     
@@ -1583,6 +1583,73 @@ function abrirModalDemandasFixas() {
 
 function fecharModal(modalId) {
     document.getElementById(modalId).style.display = 'none';
+}
+
+// ============================================
+// SISTEMA DE ALERTAS CUSTOMIZADOS
+// ============================================
+
+function customAlert(mensagem, titulo = 'Aviso') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-alert-overlay';
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${titulo}</div>
+                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        // Fechar ao clicar fora
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                resolveCustomAlert();
+            }
+        });
+        
+        window.resolveCustomAlert = () => {
+            overlay.remove();
+            resolve();
+        };
+    });
+}
+
+function customConfirm(mensagem, titulo = 'Confirmar') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-alert-overlay';
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${titulo}</div>
+                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        // Fechar ao clicar fora (resolve como false)
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                resolve(false);
+            }
+        });
+        
+        window.resolveCustomConfirm = (resultado) => {
+            overlay.remove();
+            resolve(resultado);
+        };
+    });
 }
 
 function mostrarToast(mensagem) {
