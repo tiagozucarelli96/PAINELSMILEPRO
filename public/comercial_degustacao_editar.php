@@ -686,7 +686,17 @@ ob_start();
             }
         });
         
-        let fields = <?= $is_edit ? json_encode(json_decode($degustacao['campos_json'] ?? '[]', true) ?: []) : '[]' ?>;
+        let fields = [];
+        try {
+            const camposJsonStr = <?= $is_edit ? json_encode($degustacao['campos_json'] ?? '[]') : "'[]'" ?>;
+            if (camposJsonStr && camposJsonStr !== '[]' && camposJsonStr !== '') {
+                const parsed = JSON.parse(camposJsonStr);
+                fields = Array.isArray(parsed) ? parsed : [];
+            }
+        } catch (e) {
+            console.warn('Erro ao parsear campos_json:', e);
+            fields = [];
+        }
         
         function showTab(tabName) {
             // Esconder todas as tabs
@@ -783,37 +793,75 @@ ob_start();
         
         function renderFields() {
             const container = document.getElementById('fieldsList');
+            if (!container) {
+                console.warn('Container fieldsList não encontrado');
+                return;
+            }
+            
             container.innerHTML = '';
             
-            fields.forEach(field => {
-                const fieldDiv = document.createElement('div');
-                fieldDiv.className = 'field-item';
-                fieldDiv.innerHTML = `
-                    <div class="field-info">
-                        <div class="field-label">${field.label} ${field.required ? '*' : ''}</div>
-                        <div class="field-type">${field.type}</div>
-                    </div>
-                    <div class="field-actions">
-                        <button type="button" class="btn-sm btn-delete" onclick="removeField(${field.id})">🗑️</button>
-                    </div>
-                `;
-                container.appendChild(fieldDiv);
-            });
+            if (fields && Array.isArray(fields)) {
+                fields.forEach(field => {
+                    const fieldDiv = document.createElement('div');
+                    fieldDiv.className = 'field-item';
+                    fieldDiv.innerHTML = `
+                        <div class="field-info">
+                            <div class="field-label">${escapeHtml(field.label || '')} ${field.required ? '*' : ''}</div>
+                            <div class="field-type">${escapeHtml(field.type || '')}</div>
+                        </div>
+                        <div class="field-actions">
+                            <button type="button" class="btn-sm btn-delete" onclick="removeField(${field.id || 0})">🗑️</button>
+                        </div>
+                    `;
+                    container.appendChild(fieldDiv);
+                });
+            }
             
             // Atualizar campo oculto
-            document.getElementById('camposJson').value = JSON.stringify(fields);
+            const camposJson = document.getElementById('camposJson');
+            if (camposJson) {
+                camposJson.value = JSON.stringify(fields || []);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Aguardar DOM estar completamente pronto
+        function waitForElement(selector, callback, maxAttempts = 50) {
+            let attempts = 0;
+            const checkElement = () => {
+                const element = document.getElementById(selector);
+                if (element) {
+                    callback();
+                } else if (attempts < maxAttempts) {
+                    attempts++;
+                    setTimeout(checkElement, 100);
+                } else {
+                    console.warn('Elemento ' + selector + ' não encontrado após espera');
+                }
+            };
+            checkElement();
         }
         
         // Aguardar DOM estar pronto
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeForm);
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(() => initializeForm(), 100);
+            });
         } else {
-            initializeForm();
+            setTimeout(() => initializeForm(), 100);
         }
         
         function initializeForm() {
-            // Carregar campos iniciais
-            renderFields();
+            // Garantir que elementos existem antes de usar
+            waitForElement('fieldsList', function() {
+                // Carregar campos iniciais
+                renderFields();
+            });
             
             // Garantir que modal está fechado
             const modal = document.getElementById('fieldModal');
