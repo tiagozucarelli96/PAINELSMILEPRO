@@ -13,7 +13,7 @@ require_once __DIR__ . '/core/helpers.php';
 $CLIENT_ID     = getenv('CLICKUP_CLIENT_ID') ?: '';
 $CLIENT_SECRET = getenv('CLICKUP_CLIENT_SECRET') ?: '';
 $REDIRECT_URI  = 'https://painelsmilepro-production.up.railway.app/auth/clickup/callback';
-$RETURN_TO     = '/tarefas.php'; // para onde voltar depois
+$RETURN_TO     = '/index.php?page=demandas'; // para onde voltar depois
 
 if (!$CLIENT_ID || !$CLIENT_SECRET) {
   http_response_code(500);
