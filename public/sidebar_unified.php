@@ -126,35 +126,63 @@ if ($current_page === 'dashboard') {
         $agenda_hoje = [];
     }
     
-    // Buscar demandas do dia atual (tabela antiga demandas)
-    // IMPORTANTE: Esta query busca da tabela antiga 'demandas', não da estrutura Trello
+    // Buscar demandas do dia atual (sistema Trello - demandas_cards)
+    // IMPORTANTE: Sistema atual usa demandas_cards (Trello), não a tabela antiga 'demandas'
     $demandas_hoje = [];
     try {
         $stmt = $pdo->prepare("
-            SELECT d.id, 
-                   d.descricao as titulo, 
-                   d.descricao, 
-                   d.prazo, 
-                   d.status,
-                   u.nome as responsavel_nome,
-                   d.data_criacao
-            FROM demandas d
-            LEFT JOIN usuarios u ON u.id = d.responsavel_id
-            WHERE DATE(d.prazo) = CURRENT_DATE
-            AND d.status NOT IN ('concluida', 'concluido')
-            ORDER BY d.prazo ASC, d.id ASC
+            SELECT dc.id, 
+                   dc.titulo,
+                   dc.titulo as descricao,
+                   dc.prazo, 
+                   dc.arquivado,
+                   db.nome as quadro_nome,
+                   u.nome as responsavel_nome
+            FROM demandas_cards dc
+            JOIN demandas_listas dl ON dl.id = dc.lista_id
+            JOIN demandas_boards db ON db.id = dl.board_id
+            LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
+            LEFT JOIN usuarios u ON u.id = dcu.usuario_id
+            WHERE DATE(dc.prazo) = CURRENT_DATE
+            AND (dc.arquivado IS NULL OR dc.arquivado = false)
+            GROUP BY dc.id, dc.titulo, dc.prazo, dc.arquivado, db.nome, u.nome
+            ORDER BY dc.prazo ASC, dc.id ASC
             LIMIT 10
         ");
         $stmt->execute();
         $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Adicionar 'Sem quadro' já que esta tabela não tem relação com boards
-        foreach ($demandas_hoje as &$demanda) {
-            $demanda['quadro_nome'] = 'Sem quadro'; // Tabela antiga não tem boards
+        // Se não encontrou na estrutura Trello, tentar tabela antiga como fallback
+        if (empty($demandas_hoje)) {
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT d.id, 
+                           d.descricao as titulo, 
+                           d.descricao, 
+                           d.prazo, 
+                           d.status,
+                           u.nome as responsavel_nome
+                    FROM demandas d
+                    LEFT JOIN usuarios u ON u.id = d.responsavel_id
+                    WHERE DATE(d.prazo) = CURRENT_DATE
+                    AND d.status NOT IN ('concluida', 'concluido')
+                    ORDER BY d.prazo ASC, d.id ASC
+                    LIMIT 10
+                ");
+                $stmt->execute();
+                $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                // Adicionar 'Sem quadro' para tabela antiga
+                foreach ($demandas_hoje as &$demanda) {
+                    $demanda['quadro_nome'] = 'Sem quadro';
+                }
+                unset($demanda);
+            } catch (Exception $e2) {
+                error_log("Erro ao buscar demandas (fallback): " . $e2->getMessage());
+            }
         }
-        unset($demanda);
     } catch (Exception $e) {
-        error_log("Erro ao buscar demandas do dia: " . $e->getMessage());
+        error_log("Erro ao buscar demandas do dia (Trello): " . $e->getMessage());
         $demandas_hoje = [];
     }
     
