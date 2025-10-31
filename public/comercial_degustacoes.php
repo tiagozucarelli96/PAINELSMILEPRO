@@ -9,15 +9,12 @@ require_once __DIR__ . '/core/helpers.php';
 // Garantir que $pdo está disponível
 if (!isset($pdo)) {
     global $pdo;
+    if (isset($GLOBALS['pdo'])) {
+        $pdo = $GLOBALS['pdo'];
+    }
 }
 
-// Verificar se está logado (index.php já verifica, mas garantimos aqui também)
-if (empty($_SESSION['logado']) || $_SESSION['logado'] != 1) {
-    header('Location: login.php');
-    exit;
-}
-
-// Verificar permissões
+// Verificar permissões (index.php já verifica login)
 if (!lc_can_access_comercial()) {
     header('Location: index.php?page=dashboard&error=permission_denied');
     exit;
