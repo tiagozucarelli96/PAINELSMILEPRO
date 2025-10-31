@@ -319,6 +319,7 @@ header('Content-Type: text/html; charset=utf-8');
         echo '</pre>';
         
         echo '<p><strong>Tamanho do arquivo:</strong> ' . number_format(filesize($log_file) / 1024, 2) . ' KB</p>';
+        echo '<p style="margin-top: 1rem;"><a href="index.php?page=webhook_logs" style="display: inline-block; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-weight: 500;">📋 Ver Logs Completos</a></p>';
     } else {
         echo '<p class="warning">⚠️ Arquivo de log não encontrado: <code>' . htmlspecialchars($log_file) . '</code></p>';
         $avisos[] = 'Arquivo de log não existe. Isso pode indicar que nenhum webhook foi processado ainda.';

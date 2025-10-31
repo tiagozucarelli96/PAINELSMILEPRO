@@ -72,6 +72,7 @@ $routes = [
     'test_magalu_buckets' => 'test_magalu_buckets.php',
   'diagnostico_webhook_eventos' => 'diagnostico_webhook_eventos.php',
   'apply_webhook_schema' => 'apply_webhook_schema.php',
+  'webhook_logs' => 'webhook_logs_viewer.php',
 
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',
