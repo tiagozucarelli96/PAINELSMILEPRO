@@ -142,6 +142,98 @@ includeSidebar('Demandas Fixas');
         border-radius: 12px;
         font-size: 0.75rem;
     }
+    
+    /* Sistema de Alertas Customizados */
+    .custom-alert-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        animation: fadeIn 0.2s;
+    }
+    
+    .custom-alert {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        padding: 0;
+        max-width: 400px;
+        width: 90%;
+        animation: slideUp 0.3s;
+        overflow: hidden;
+    }
+    
+    .custom-alert-header {
+        padding: 1.5rem;
+        background: #3b82f6;
+        color: white;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    
+    .custom-alert-body {
+        padding: 1.5rem;
+        color: #374151;
+        line-height: 1.6;
+    }
+    
+    .custom-alert-actions {
+        padding: 1rem 1.5rem;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: flex-end;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .custom-alert-btn {
+        padding: 0.625rem 1.25rem;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+        font-size: 0.875rem;
+    }
+    
+    .custom-alert-btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .custom-alert-btn-primary:hover {
+        background: #2563eb;
+    }
+    
+    .custom-alert-btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+    }
+    
+    .custom-alert-btn-secondary:hover {
+        background: #e5e7eb;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
 </style>
 
 <div class="page-container">
@@ -335,7 +427,7 @@ async function editarFixa(id) {
         // Por enquanto, vamos carregar a página com parâmetro
         const fixa = document.querySelector(`tr:has(button[onclick="editarFixa(${id})"])`);
         if (!fixa) {
-            alert('Demanda fixa não encontrada');
+            customAlert('Demanda fixa não encontrada', '⚠️ Atenção');
             return;
         }
         
@@ -344,7 +436,7 @@ async function editarFixa(id) {
         document.getElementById('fixa-id').value = id;
         
         // TODO: Buscar dados completos via API para preencher o formulário
-        alert('Funcionalidade de edição será implementada na próxima versão. Por enquanto, delete e crie novamente.');
+        customAlert('Funcionalidade de edição será implementada na próxima versão. Por enquanto, delete e crie novamente.', 'ℹ️ Informação');
     } catch (error) {
         console.error('Erro:', error);
         alert('Erro ao carregar dados para edição');
@@ -364,16 +456,17 @@ async function toggleFixa(id, novoStatus) {
         if (data.success) {
             location.reload();
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao atualizar demanda fixa');
+        customAlert('Erro ao atualizar demanda fixa', '❌ Erro');
     }
 }
 
 async function deletarFixa(id) {
-    if (!confirm('Tem certeza que deseja deletar esta demanda fixa? Esta ação não pode ser desfeita.')) {
+    const confirmado = await customConfirm('Tem certeza que deseja deletar esta demanda fixa? Esta ação não pode ser desfeita.', '⚠️ Confirmar Exclusão');
+    if (!confirmado) {
         return;
     }
     
@@ -387,11 +480,11 @@ async function deletarFixa(id) {
         if (data.success) {
             location.reload();
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao deletar demanda fixa');
+        customAlert('Erro ao deletar demanda fixa', '❌ Erro');
     }
 }
 
@@ -423,14 +516,76 @@ document.getElementById('form-fixa').addEventListener('submit', function(e) {
         if (data.success) {
             location.reload();
         } else {
-            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     })
     .catch(error => {
         console.error('Erro:', error);
-        alert('Erro ao salvar');
+        customAlert('Erro ao salvar', '❌ Erro');
     });
 });
+
+// Funções de alerta customizado
+function customAlert(mensagem, titulo = 'Aviso') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-alert-overlay';
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${titulo}</div>
+                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                resolveCustomAlert();
+            }
+        });
+        
+        window.resolveCustomAlert = () => {
+            overlay.remove();
+            resolve();
+        };
+    });
+}
+
+function customConfirm(mensagem, titulo = 'Confirmar') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-alert-overlay';
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${titulo}</div>
+                <div class="custom-alert-body">${mensagem}</div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                resolve(false);
+            }
+        });
+        
+        window.resolveCustomConfirm = (resultado) => {
+            overlay.remove();
+            resolve(resultado);
+        };
+    });
+}
 
 function fecharModal(id) {
     document.getElementById(id).style.display = 'none';

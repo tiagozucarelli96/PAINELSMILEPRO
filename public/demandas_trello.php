@@ -282,6 +282,107 @@ includeSidebar('Demandas Trello');
         font-weight: 500;
     }
     
+    /* Sistema de Alertas Customizados */
+    .custom-alert-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        animation: fadeIn 0.2s;
+    }
+    
+    .custom-alert {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        padding: 0;
+        max-width: 400px;
+        width: 90%;
+        animation: slideUp 0.3s;
+        overflow: hidden;
+    }
+    
+    .custom-alert-header {
+        padding: 1.5rem;
+        background: #3b82f6;
+        color: white;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    
+    .custom-alert-body {
+        padding: 1.5rem;
+        color: #374151;
+        line-height: 1.6;
+    }
+    
+    .custom-alert-actions {
+        padding: 1rem 1.5rem;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: flex-end;
+        border-top: 1px solid #e5e7eb;
+    }
+    
+    .custom-alert-btn {
+        padding: 0.625rem 1.25rem;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+        font-size: 0.875rem;
+    }
+    
+    .custom-alert-btn-primary {
+        background: #3b82f6;
+        color: white;
+    }
+    
+    .custom-alert-btn-primary:hover {
+        background: #2563eb;
+    }
+    
+    .custom-alert-btn-secondary {
+        background: #f3f4f6;
+        color: #374151;
+    }
+    
+    .custom-alert-btn-secondary:hover {
+        background: #e5e7eb;
+    }
+    
+    .custom-alert-btn-danger {
+        background: #ef4444;
+        color: white;
+    }
+    
+    .custom-alert-btn-danger:hover {
+        background: #dc2626;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
     .badge-comentarios {
         background: #eff6ff;
         color: #1e40af;
@@ -970,9 +1071,9 @@ async function criarCard(listaIdPredefinida = null) {
         } else {
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
-    } catch (error) {
+        } catch (error) {
         console.error('Erro ao criar card:', error);
-        alert('Erro ao criar card');
+        customAlert('Erro ao criar card', '❌ Erro');
     }
 }
 
@@ -1088,7 +1189,7 @@ async function verCard(cardId) {
         }
     } catch (error) {
         console.error('Erro ao carregar card:', error);
-        alert('Erro ao carregar card');
+        customAlert('Erro ao carregar card', '❌ Erro');
     }
 }
 
@@ -1121,14 +1222,14 @@ async function adicionarComentario(cardId) {
         }
     } catch (error) {
         console.error('Erro ao adicionar comentário:', error);
-        alert('Erro ao adicionar comentário');
+        customAlert('Erro ao adicionar comentário', '❌ Erro');
     }
 }
 
 async function adicionarAnexo(cardId) {
     const input = document.getElementById('novo-anexo');
     if (!input.files[0]) {
-        alert('Selecione um arquivo');
+        customAlert('Selecione um arquivo', '⚠️ Atenção');
         return;
     }
     
@@ -1164,16 +1265,17 @@ async function downloadAnexo(anexoId) {
         if (data.success && data.url) {
             window.open(data.url, '_blank');
         } else {
-            alert('Erro ao baixar arquivo: ' + (data.error || 'Erro desconhecido'));
+            customAlert('Erro ao baixar arquivo: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao baixar arquivo');
+        customAlert('Erro ao baixar arquivo', '❌ Erro');
     }
 }
 
 async function deletarAnexoTrello(anexoId, cardId) {
-    if (!confirm('Deseja realmente excluir este anexo?')) {
+    const confirmado = await customConfirm('Deseja realmente excluir este anexo?', '⚠️ Confirmar Exclusão');
+    if (!confirmado) {
         return;
     }
     
@@ -1307,7 +1409,7 @@ async function criarQuadro() {
     const cor = document.getElementById('quadro-cor').value;
     
     if (!nome) {
-        alert('Nome é obrigatório');
+        customAlert('Nome é obrigatório', '⚠️ Atenção');
         return;
     }
     
@@ -1343,7 +1445,7 @@ async function criarLista() {
     
     const nome = document.getElementById('lista-nome').value.trim();
     if (!nome) {
-        alert('Nome é obrigatório');
+        customAlert('Nome é obrigatório', '⚠️ Atenção');
         return;
     }
     
@@ -1468,7 +1570,7 @@ async function salvarEdicaoCard() {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao atualizar card');
+        customAlert('Erro ao atualizar card', '❌ Erro');
     }
 }
 
@@ -1500,7 +1602,7 @@ async function deletarCardConfirmado(cardId) {
         }
     } catch (error) {
         console.error('Erro:', error);
-        alert('Erro ao deletar card');
+        customAlert('Erro ao deletar card', '❌ Erro');
     }
 }
 
