@@ -37,6 +37,13 @@ if (isset($_GET['diag'])) {
   exit;
 }
 
+/* Arquivos de cron devem ser servidos diretamente SEM passar pelo sistema de rotas */
+$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+if (strpos($request_uri, 'cron_') !== false || strpos($request_uri, '/cron_') !== false) {
+  // Deixar o router.php ou servidor PHP servir o arquivo diretamente
+  return false;
+}
+
 /* sem ?page -> manda para login ou dashboard */
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
