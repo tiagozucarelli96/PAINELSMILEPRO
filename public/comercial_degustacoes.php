@@ -449,8 +449,8 @@ ob_start();
 }
 </style>
 
-<div class="comercial-container">
-    <!-- Header -->
+        <div class="comercial-container">
+            <!-- Header -->
             <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb;">
                 <h1 class="page-title" style="margin: 0; font-size: 1.875rem; font-weight: 700; color: #1e3a8a;">🍽️ Degustações</h1>
                 <?php if (lc_can_edit_degustacoes()): ?>
@@ -603,7 +603,7 @@ ob_start();
                         </div>
                     </div>
                 <?php endforeach; ?>
-            </div>
+    </div>
     
     <script>
         function searchDegustacoes(query = '') {
@@ -646,9 +646,7 @@ if (ob_get_level() > 0) {
 
 includeSidebar('Degustações');
 // O sidebar_unified.php já cria <div class="main-content"><div id="pageContent">
-// Então só precisamos do conteúdo da página dentro de page-container
-echo '<div class="page-container">';
+// Então só precisamos do conteúdo da página
 echo $conteudo;
-echo '</div>';
 endSidebar();
 ?>
