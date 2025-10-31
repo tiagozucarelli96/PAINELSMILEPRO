@@ -12,8 +12,10 @@ if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
 
 // Se for um .php existente, injeta conexao e inclui o arquivo
 if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
-    // Arquivos de cron devem ser servidos diretamente SEM redirecionamento
-    if (strpos($path, 'cron') !== false || strpos($path, '/cron') !== false || basename($file) === 'cron.php') {
+    // Arquivos de cron e webhook devem ser servidos diretamente SEM redirecionamento
+    if (strpos($path, 'cron') !== false || strpos($path, '/cron') !== false || 
+        strpos($path, 'webhook') !== false || strpos($path, '/webhook') !== false ||
+        basename($file) === 'cron.php') {
         require $file;
         exit;
     }

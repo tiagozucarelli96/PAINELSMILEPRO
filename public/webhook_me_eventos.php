@@ -130,21 +130,51 @@ function processarWebhook($data) {
     }
 }
 
+// Log de todas as requisições (antes de qualquer validação)
+logWebhook("=== REQUISIÇÃO RECEBIDA ===");
+logWebhook("Método: " . ($_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN'));
+logWebhook("URL: " . ($_SERVER['REQUEST_URI'] ?? 'UNKNOWN'));
+logWebhook("Headers: " . json_encode(getallheaders() ?: []));
+logWebhook("GET params: " . json_encode($_GET));
+logWebhook("POST params: " . json_encode($_POST));
+logWebhook("Raw input: " . (file_get_contents('php://input') ?: 'VAZIO'));
+
 // Verificar método HTTP
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['erro' => 'Método não permitido']);
+    logWebhook("ERRO: Método " . $_SERVER['REQUEST_METHOD'] . " não permitido");
     exit;
 }
 
 // Verificar token de autenticação
-$headers = getallheaders();
-$token = $headers['Authorization'] ?? $headers['X-Token'] ?? $_GET['token'] ?? '';
+// A ME Eventos pode enviar o token de várias formas
+$headers = getallheaders() ?: [];
+$token = '';
 
-if (!validarToken($token)) {
+// Tentar diferentes formatos de header
+if (isset($headers['Authorization'])) {
+    $token = $headers['Authorization'];
+    // Remover "Bearer " se presente
+    $token = preg_replace('/^Bearer\s+/i', '', $token);
+} elseif (isset($headers['X-Token'])) {
+    $token = $headers['X-Token'];
+} elseif (isset($headers['x-token'])) {
+    $token = $headers['x-token'];
+} elseif (isset($_GET['token'])) {
+    $token = $_GET['token'];
+} elseif (isset($_POST['token'])) {
+    $token = $_POST['token'];
+}
+
+// Log para debug (sem mostrar o token completo por segurança)
+logWebhook("Tentativa de autenticação. Token recebido: " . (empty($token) ? 'NENHUM' : substr($token, 0, 10) . '...'));
+logWebhook("Headers recebidos: " . json_encode($headers));
+
+if (empty($token) || !validarToken($token)) {
     http_response_code(401);
-    echo json_encode(['erro' => 'Token inválido']);
-    logWebhook("Tentativa de acesso com token inválido: $token");
+    echo json_encode(['erro' => 'Token inválido ou ausente']);
+    logWebhook("Tentativa de acesso com token inválido ou ausente. Headers: " . json_encode($headers));
     exit;
 }
 
