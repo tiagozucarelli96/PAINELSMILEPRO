@@ -192,6 +192,19 @@ includeSidebar('Demandas');
         color: #065f46;
     }
     
+    .badge-prioridade {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        color: white;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .badge-media {
+        background: #3b82f6;
+    }
+    
     .demanda-actions {
         display: flex;
         gap: 0.5rem;
