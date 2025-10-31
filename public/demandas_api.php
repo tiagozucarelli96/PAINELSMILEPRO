@@ -1,6 +1,9 @@
 <?php
 // demandas_api.php - Controller REST para demandas
 
+// Iniciar output buffering antes de qualquer output
+ob_start();
+
 // Desabilitar output de erros para não quebrar JSON
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
@@ -18,11 +21,9 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
 
-// Garantir que apenas JSON é retornado
-header('Content-Type: application/json; charset=utf-8');
-
-// Limpar qualquer output anterior
+// Limpar qualquer output anterior e garantir que apenas JSON é retornado
 ob_clean();
+header('Content-Type: application/json; charset=utf-8');
 
 try {
     $pdo = $GLOBALS['pdo'];
