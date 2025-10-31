@@ -28,14 +28,25 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     $pdo = $GLOBALS['pdo'];
     $method = $_SERVER['REQUEST_METHOD'];
-    $path = $_SERVER['PATH_INFO'] ?? '';
+    
+    // Obter PATH_INFO - pode estar vazio quando chamado como demandas_api.php?parametros
+    $path = $_SERVER['PATH_INFO'] ?? $_SERVER['REQUEST_URI'] ?? '';
+    
+    // Remover query string se existir
+    if (($pos = strpos($path, '?')) !== false) {
+        $path = substr($path, 0, $pos);
+    }
+    
+    // Remover nome do arquivo se existir
+    $path = preg_replace('#^.*demandas_api\.php#', '', $path);
+    
     $pathParts = array_filter(explode('/', trim($path, '/')));
     $pathParts = array_values($pathParts); // Reindexar
     
     switch ($method) {
         case 'GET':
-            if (empty($pathParts) || (count($pathParts) === 0)) {
-                // GET /demandas ou /demandas_api.php?parametros - Listar com filtros
+            // Se não há path ou está vazio, listar demandas
+            if (empty($pathParts) || count($pathParts) === 0) {
                 listarDemandas($pdo);
             } elseif (count($pathParts) === 1 && is_numeric($pathParts[0])) {
                 // GET /demandas/{id} - Detalhes
