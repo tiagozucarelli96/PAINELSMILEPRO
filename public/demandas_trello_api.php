@@ -47,8 +47,6 @@ $id = isset($_GET['id']) ? (int)$_GET['id'] : null;
 ob_clean();
 header('Content-Type: application/json; charset=utf-8');
 
-try {
-
 // ============================================
 // FUNÇÕES PRINCIPAIS
 // ============================================
