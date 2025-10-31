@@ -28,7 +28,7 @@ if ($is_edit) {
     $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$degustacao) {
-        header('Location: comercial_degustacoes.php?error=not_found');
+        header('Location: index.php?page=comercial_degustacoes&error=not_found');
         exit;
     }
 }
@@ -70,6 +70,11 @@ if ($_POST) {
         $usar_como_padrao = isset($_POST['usar_como_padrao']) ? 1 : 0;
         
         // Validar campos obrigatórios
+        // Se local_custom foi enviado, usar ele; senão usar local do select
+        if (!empty($_POST['local_custom'])) {
+            $local = trim($_POST['local_custom']);
+        }
+        
         if (!$nome || !$data || !$hora_inicio || !$hora_fim || !$local || !$data_limite) {
             throw new Exception("Preencha todos os campos obrigatórios");
         }
@@ -132,6 +137,10 @@ if ($_POST) {
         }
         
         $success_message = $is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
+        
+        // Redirecionar após sucesso
+        header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+        exit;
         
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
@@ -426,9 +435,6 @@ ob_start();
             <!-- Header -->
             <div class="page-header">
                 <h1 class="page-title"><?= $is_edit ? '✏️ Editar' : '➕ Nova' ?> Degustação</h1>
-                <a href="comercial_degustacoes.php" class="btn-secondary">
-                    ← Voltar
-                </a>
             </div>
             
             <!-- Mensagens -->
@@ -481,8 +487,16 @@ ob_start();
                         
                         <div class="form-group">
                             <label class="form-label">Local *</label>
-                            <input type="text" name="local" class="form-input" required 
-                                   value="<?= $is_edit ? h($degustacao['local']) : '' ?>">
+                            <select name="local" id="localSelect" class="form-input" required>
+                                <option value="">Selecione um local...</option>
+                                <option value="" disabled>Carregando locais...</option>
+                            </select>
+                            <input type="text" name="local_custom" id="localCustom" class="form-input" 
+                                   style="margin-top: 10px; display: none;" 
+                                   placeholder="Ou digite um local personalizado...">
+                            <small style="color: #6b7280; margin-top: 5px; display: block;">
+                                Se o local não estiver na lista, digite manualmente no campo abaixo
+                            </small>
                         </div>
                         
                         <div class="form-group">
@@ -493,8 +507,11 @@ ob_start();
                         
                         <div class="form-group">
                             <label class="form-label">Data Limite de Inscrição *</label>
-                            <input type="date" name="data_limite" class="form-input" required 
+                            <input type="date" name="data_limite" id="dataLimite" class="form-input" required 
                                    value="<?= $is_edit ? $degustacao['data_limite'] : '' ?>">
+                            <small style="color: #6b7280; margin-top: 5px; display: block;">
+                                ⚠️ Após esta data, o link público será bloqueado para novas inscrições, mas a degustação permanecerá ativa
+                            </small>
                         </div>
                         
                         <div class="form-group">
@@ -748,6 +765,114 @@ ob_start();
         
         // Carregar campos iniciais
         renderFields();
+        
+        // Carregar locais da ME Eventos
+        async function carregarLocais() {
+            try {
+                const response = await fetch('me_locais_api.php');
+                const data = await response.json();
+                
+                const select = document.getElementById('localSelect');
+                const localCustom = document.getElementById('localCustom');
+                const localAtual = <?= $is_edit ? json_encode($degustacao['local']) : 'null' ?>;
+                
+                // Limpar opções de carregamento
+                select.innerHTML = '<option value="">Selecione um local...</option>';
+                
+                if (data.ok && data.locais && data.locais.length > 0) {
+                    // Adicionar locais ao select
+                    data.locais.forEach(local => {
+                        const option = document.createElement('option');
+                        option.value = local;
+                        option.textContent = local;
+                        if (localAtual && local === localAtual) {
+                            option.selected = true;
+                        }
+                        select.appendChild(option);
+                    });
+                    
+                    // Adicionar opção para inserir local customizado
+                    const customOption = document.createElement('option');
+                    customOption.value = '__custom__';
+                    customOption.textContent = '➕ Inserir local personalizado...';
+                    select.appendChild(customOption);
+                } else {
+                    // Se não conseguiu carregar, mostrar campo de texto
+                    select.style.display = 'none';
+                    localCustom.style.display = 'block';
+                    localCustom.required = true;
+                    if (localAtual) {
+                        localCustom.value = localAtual;
+                    }
+                }
+                
+                // Se local atual não está na lista, mostrar campo customizado
+                if (localAtual && !data.locais.includes(localAtual)) {
+                    select.value = '__custom__';
+                    localCustom.style.display = 'block';
+                    localCustom.value = localAtual;
+                }
+                
+                // Handler para opção customizada
+                select.addEventListener('change', function() {
+                    if (this.value === '__custom__') {
+                        localCustom.style.display = 'block';
+                        localCustom.required = true;
+                        select.required = false;
+                        localCustom.focus();
+                    } else {
+                        localCustom.style.display = 'none';
+                        localCustom.required = false;
+                        select.required = true;
+                    }
+                });
+                
+                // Quando usar campo customizado, atualizar select
+                localCustom.addEventListener('input', function() {
+                    if (this.value.trim()) {
+                        select.value = '__custom__';
+                    }
+                });
+                
+                // Ao submeter formulário, usar valor do select ou customizado
+                document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
+                    const selectValue = document.getElementById('localSelect').value;
+                    const customValue = document.getElementById('localCustom').value.trim();
+                    
+                    if (selectValue === '__custom__' && customValue) {
+                        // Criar input hidden com valor customizado
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'local';
+                        hidden.value = customValue;
+                        this.appendChild(hidden);
+                        
+                        // Desabilitar select para não enviar
+                        document.getElementById('localSelect').disabled = true;
+                    } else if (selectValue && selectValue !== '__custom__') {
+                        // Garantir que campo customizado não seja enviado
+                        document.getElementById('localCustom').disabled = true;
+                    } else if (!selectValue && !customValue) {
+                        e.preventDefault();
+                        alert('Por favor, selecione ou digite um local');
+                        return false;
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Erro ao carregar locais:', error);
+                // Em caso de erro, mostrar campo de texto
+                document.getElementById('localSelect').style.display = 'none';
+                document.getElementById('localCustom').style.display = 'block';
+                document.getElementById('localCustom').required = true;
+                if (<?= $is_edit ? json_encode($degustacao['local']) : 'null' ?>) {
+                    document.getElementById('localCustom').value = <?= $is_edit ? json_encode($degustacao['local']) : '""' ?>;
+                }
+            }
+        }
+        
+        // Carregar locais ao carregar a página
+        carregarLocais();
     </script>
 <?php
 $conteudo = ob_get_clean();

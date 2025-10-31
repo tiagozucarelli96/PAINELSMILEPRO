@@ -24,9 +24,12 @@ if ($degustacao['status'] !== 'publicado') {
     die('Degustação não está disponível para inscrições');
 }
 
-// Verificar data limite
+// Verificar data limite - bloquear ao final do dia (23:59:59)
 $hoje = date('Y-m-d');
-if ($degustacao['data_limite'] < $hoje) {
+$agora = new DateTime();
+$data_limite = new DateTime($degustacao['data_limite'] . ' 23:59:59');
+
+if ($agora > $data_limite) {
     $inscricoes_encerradas = true;
 } else {
     $inscricoes_encerradas = false;
