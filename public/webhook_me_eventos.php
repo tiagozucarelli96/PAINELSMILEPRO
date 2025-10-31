@@ -26,9 +26,24 @@ function processarWebhook($data) {
     global $pdo;
     
     try {
-        // Validar dados obrigatórios - estrutura correta da ME Eventos
-        if (empty($data['id']) || empty($data['action'])) {
-            throw new Exception('Dados obrigatórios ausentes');
+        // Estrutura real da ME Eventos:
+        // {
+        //   "id_event": 83913,
+        //   "event": "event_created",
+        //   "dateCreated": "2024-12-18 13:58:08",
+        //   "data": [{ "id": "1725", "nomeevento": "...", ... }]
+        // }
+        
+        // Validar estrutura do payload
+        if (empty($data['event'])) {
+            throw new Exception('Campo "event" obrigatório ausente');
+        }
+        
+        // Pegar o primeiro item do array data
+        $evento_data = !empty($data['data']) && is_array($data['data']) ? $data['data'][0] : [];
+        
+        if (empty($evento_data['id'])) {
+            throw new Exception('ID do evento não encontrado no payload');
         }
         
         // Preparar dados para inserção - estrutura correta da ME Eventos
@@ -54,34 +69,63 @@ function processarWebhook($data) {
         ");
         
         // Mapear dados da ME Eventos para nossa estrutura
-        $evento_id = $data['id'];
-        $webhook_tipo = $data['action']; // 'created', 'updated', 'deleted'
-        $nome = $data['name'] ?? $data['title'] ?? 'Evento sem nome';
-        $data_evento = $data['date'] ?? $data['event_date'] ?? null;
-        $status = $data['status'] ?? ($webhook_tipo === 'deleted' ? 'excluido' : 'ativo');
-        $tipo_evento = $data['type'] ?? $data['event_type'] ?? 'evento';
-        $cliente_nome = $data['client_name'] ?? $data['customer_name'] ?? null;
-        $cliente_email = $data['client_email'] ?? $data['customer_email'] ?? null;
-        $valor = $data['value'] ?? $data['price'] ?? $data['amount'] ?? 0.00;
+        // webhook_tipo vem do campo "event" (event_created, event_updated, event_canceled, etc)
+        $webhook_tipo = $data['event']; // 'event_created', 'event_updated', 'event_canceled', etc
+        
+        // Converter webhook_tipo para formato compatível com a query da dashboard
+        // Se for event_created, manter como 'created' para compatibilidade
+        $webhook_tipo_original = $webhook_tipo;
+        if ($webhook_tipo === 'event_created') {
+            $webhook_tipo = 'created';
+        } elseif ($webhook_tipo === 'event_updated') {
+            $webhook_tipo = 'updated';
+        } elseif ($webhook_tipo === 'event_canceled' || $webhook_tipo === 'event_deleted') {
+            $webhook_tipo = 'deleted';
+        }
+        
+        // Extrair dados do evento
+        $evento_id = (string)$evento_data['id'];
+        $nome = $evento_data['nomeevento'] ?? $evento_data['nome'] ?? 'Evento sem nome';
+        $data_evento = $evento_data['dataevento'] ?? $evento_data['data'] ?? null;
+        $tipo_evento = $evento_data['tipoevento'] ?? $evento_data['tipo'] ?? 'evento';
+        $valor = isset($evento_data['valor']) ? (float)$evento_data['valor'] : 0.00;
+        
+        // Status baseado no tipo de evento
+        $status = 'ativo';
+        if ($webhook_tipo_original === 'event_canceled' || $webhook_tipo_original === 'event_deleted') {
+            $status = 'cancelado';
+        } elseif ($webhook_tipo_original === 'event_reactivated') {
+            $status = 'ativo';
+        }
+        
+        // Dados do cliente (pode vir em outros eventos ou não estar disponível)
+        $cliente_nome = $evento_data['client_name'] ?? $evento_data['nomecliente'] ?? null;
+        $cliente_email = $evento_data['client_email'] ?? $evento_data['emailcliente'] ?? null;
+        
+        // Se não tiver dados do cliente no evento, tentar buscar pelo idcliente
+        if (empty($cliente_nome) && !empty($evento_data['idcliente'])) {
+            // Opcional: buscar dados do cliente na tabela de clientes se existir
+            // Por enquanto, deixar como null
+        }
         
         $stmt->execute([
             ':evento_id' => $evento_id,
             ':nome' => $nome,
             ':data_evento' => $data_evento,
             ':status' => $status,
-            ':tipo_evento' => $tipo_evento,
+            ':tipo_evento' => (string)$tipo_evento,
             ':cliente_nome' => $cliente_nome,
             ':cliente_email' => $cliente_email,
             ':valor' => $valor,
-            ':webhook_tipo' => $webhook_tipo,
-            ':webhook_data' => json_encode($data)
+            ':webhook_tipo' => $webhook_tipo, // Usar formato 'created' para compatibilidade
+            ':webhook_data' => json_encode($data) // Salvar payload completo original
         ]);
         
-        logWebhook("Webhook processado com sucesso: {$webhook_tipo} - {$evento_id}");
+        logWebhook("Webhook processado com sucesso: {$webhook_tipo_original} ({$webhook_tipo}) - Evento ID: {$evento_id}");
         return true;
         
     } catch (Exception $e) {
-        logWebhook("Erro ao processar webhook: " . $e->getMessage());
+        logWebhook("Erro ao processar webhook: " . $e->getMessage() . " | Payload: " . json_encode($data));
         return false;
     }
 }
@@ -135,8 +179,8 @@ if (processarWebhook($data)) {
     echo json_encode([
         'status' => 'sucesso',
         'mensagem' => 'Webhook processado com sucesso',
-        'evento_id' => $data['id'] ?? null,
-        'webhook_tipo' => $data['action'] ?? null
+        'evento_id' => !empty($data['data']) && is_array($data['data']) && !empty($data['data'][0]['id']) ? $data['data'][0]['id'] : null,
+        'webhook_tipo' => $data['event'] ?? null
     ]);
 } else {
     http_response_code(500);
