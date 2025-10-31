@@ -11,7 +11,17 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
 
 require_once __DIR__ . '/conexao.php';
 
+// Tentar carregar AWS SDK se disponível
+$awsSdkAvailable = false;
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+    if (class_exists('Aws\S3\S3Client')) {
+        $awsSdkAvailable = true;
+    }
+}
+
 class MagaluUpload {
+    private $s3Client = null;
     private $bucket;
     private $region;
     private $endpoint;
@@ -37,6 +47,29 @@ class MagaluUpload {
         }
         
         error_log("Magalu Upload initialized - Bucket: {$this->bucket}, Endpoint: {$this->endpoint}, Region: {$this->region}");
+        
+        // Inicializar AWS SDK se disponível
+        global $awsSdkAvailable;
+        if ($awsSdkAvailable) {
+            try {
+                $this->s3Client = new \Aws\S3\S3Client([
+                    'region' => $this->region,
+                    'version' => 'latest',
+                    'credentials' => [
+                        'key' => $this->accessKey,
+                        'secret' => $this->secretKey,
+                    ],
+                    'endpoint' => $this->endpoint,
+                    'use_path_style_endpoint' => true,
+                ]);
+                error_log("AWS SDK S3Client inicializado com sucesso");
+            } catch (\Exception $e) {
+                error_log("Erro ao inicializar AWS SDK: " . $e->getMessage());
+                $this->s3Client = null;
+            }
+        } else {
+            error_log("AWS SDK não disponível - usando cURL como fallback");
+        }
     }
     
     public function upload($file, $prefix = 'demandas') {
@@ -86,8 +119,47 @@ class MagaluUpload {
     }
     
     private function uploadToMagalu($tmpFile, $key, $mimeType) {
-        // Upload real para Magalu Cloud usando API S3-compatible (formato correto AWS S3 v2)
-        // URL format: https://endpoint/bucket/key
+        // Tentar usar AWS SDK primeiro (método recomendado pela Magalu Cloud)
+        if ($this->s3Client !== null) {
+            try {
+                error_log("Usando AWS SDK para upload");
+                
+                $result = $this->s3Client->putObject([
+                    'Bucket' => $this->bucket,
+                    'Key' => $key,
+                    'SourceFile' => $tmpFile,
+                    'ContentType' => $mimeType,
+                ]);
+                
+                error_log("AWS SDK Upload Success - Key: {$key}");
+                
+                // Retornar URL pública do arquivo
+                return "{$this->endpoint}/{$this->bucket}/{$key}";
+                
+            } catch (\Aws\Exception\AwsException $e) {
+                error_log("AWS SDK Error: " . $e->getMessage());
+                error_log("Error Code: " . $e->getAwsErrorCode());
+                
+                // Extrair mensagem de erro
+                $errorMessage = $e->getMessage();
+                if ($e->getAwsErrorCode() === 'AccessDenied') {
+                    throw new Exception("Erro no upload para Magalu Cloud: Access Denied. Verifique as permissões das credenciais e se o bucket existe.");
+                }
+                throw new Exception("Erro no upload para Magalu Cloud: " . $errorMessage);
+            } catch (\Exception $e) {
+                error_log("Erro genérico no AWS SDK: " . $e->getMessage());
+                // Fallback para cURL
+                error_log("Tentando fallback para cURL...");
+            }
+        }
+        
+        // Fallback: Upload via cURL (método manual)
+        error_log("Usando cURL como fallback para upload");
+        return $this->uploadToMagaluCurl($tmpFile, $key, $mimeType);
+    }
+    
+    private function uploadToMagaluCurl($tmpFile, $key, $mimeType) {
+        // Upload manual para Magalu Cloud usando API S3-compatible (formato AWS S3 v2)
         $url = "{$this->endpoint}/{$this->bucket}/{$key}";
         
         // Ler conteúdo do arquivo
@@ -99,13 +171,10 @@ class MagaluUpload {
         $fileSize = filesize($tmpFile);
         
         // Preparar requisição PUT - AWS S3 Signature Version 2
-        // Date format: RFC 822 (ex: "Wed, 25 Oct 2023 14:25:30 GMT")
         $date = gmdate('D, d M Y H:i:s \G\M\T');
         $contentType = $mimeType;
         
-        // String para assinatura AWS S3 v2 (formato correto)
-        // Formato: HTTP-Verb\n\nContent-MD5\nContent-Type\nDate\nCanonicalizedResource
-        // Para PUT sem Content-MD5, a linha fica vazia
+        // String para assinatura AWS S3 v2
         $canonicalizedResource = "/{$this->bucket}/{$key}";
         $stringToSign = "PUT\n\n{$contentType}\n{$date}\n{$canonicalizedResource}";
         
@@ -113,18 +182,11 @@ class MagaluUpload {
         $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
         
         error_log("String to sign (raw): " . str_replace("\n", "\\n", $stringToSign));
-        
-        // Log detalhado para debug (apenas em desenvolvimento)
-        error_log("=== Magalu Upload Debug ===");
+        error_log("=== Magalu Upload Debug (cURL) ===");
         error_log("URL: {$url}");
-        error_log("Bucket: {$this->bucket}");
-        error_log("Key: {$key}");
-        error_log("Access Key: " . substr($this->accessKey, 0, 8) . "...");
-        error_log("Content-Type: {$contentType}");
-        error_log("Date: {$date}");
-        error_log("File Size: {$fileSize} bytes");
+        error_log("Bucket: {$this->bucket}, Key: {$key}");
         
-        // Headers da requisição (ordem importante para S3)
+        // Headers da requisição
         $headers = [
             'Date: ' . $date,
             'Content-Type: ' . $contentType,
@@ -132,22 +194,19 @@ class MagaluUpload {
             'Authorization: AWS ' . $this->accessKey . ':' . $signature
         ];
         
-        // Fazer upload via cURL usando CURLOPT_POSTFIELDS
-        // Método alternativo que funciona melhor com alguns serviços S3-compatible
+        // Fazer upload via cURL
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_POSTFIELDS => $fileContent, // Usar $fileContent já lido anteriormente
+            CURLOPT_POSTFIELDS => $fileContent,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 60,
-            CURLOPT_VERBOSE => false
         ]);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
-        $curlInfo = curl_getinfo($ch);
         curl_close($ch);
         
         if ($curlError) {
@@ -158,11 +217,8 @@ class MagaluUpload {
         if ($httpCode !== 200 && $httpCode !== 201) {
             error_log("Magalu Upload Error - HTTP {$httpCode}");
             error_log("Response: " . ($response ?: 'Sem resposta'));
-            error_log("URL tentada: {$url}");
-            error_log("Bucket: {$this->bucket}, Key: {$key}");
-            error_log("String to sign (preview): PUT\\n\\n{$contentType}\\n{$date}\\n/{$this->bucket}/{$key}");
             
-            // Extrair mensagem de erro da resposta XML se disponível
+            // Extrair mensagem de erro da resposta XML
             if (strpos($response, '<Error>') !== false) {
                 if (preg_match('/<Message>(.*?)<\/Message>/', $response, $matches)) {
                     throw new Exception("Erro no upload para Magalu Cloud: " . $matches[1]);
@@ -172,25 +228,34 @@ class MagaluUpload {
             throw new Exception("Erro no upload para Magalu Cloud. Código HTTP: {$httpCode}. Verifique as credenciais e permissões.");
         }
         
-        error_log("Magalu Upload Success - HTTP {$httpCode}, Key: {$key}");
+        error_log("Magalu Upload Success (cURL) - HTTP {$httpCode}, Key: {$key}");
         
         // Retornar URL pública do arquivo
         return "{$this->endpoint}/{$this->bucket}/{$key}";
     }
     
     public function delete($key) {
-        // Implementação de delete no Magalu Cloud
-        // Usando API REST do S3-compatible (Magalu Cloud)
-        
         if (empty($key)) {
             return false;
         }
         
+        // Tentar usar AWS SDK primeiro
+        if ($this->s3Client !== null) {
+            try {
+                $this->s3Client->deleteObject([
+                    'Bucket' => $this->bucket,
+                    'Key' => $key,
+                ]);
+                return true;
+            } catch (\Exception $e) {
+                error_log("Erro ao deletar via AWS SDK: " . $e->getMessage());
+                // Fallback para cURL
+            }
+        }
+        
+        // Fallback: Delete via cURL
         try {
-            // Construir URL do objeto
             $url = "{$this->endpoint}/{$this->bucket}/{$key}";
-            
-            // Preparar requisição DELETE
             $date = gmdate('D, d M Y H:i:s \G\M\T');
             $stringToSign = "DELETE\n\n\n{$date}\n/{$this->bucket}/{$key}";
             $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
@@ -209,7 +274,6 @@ class MagaluUpload {
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
             
-            // 204 (No Content) ou 200 (OK) indicam sucesso
             return $httpCode === 204 || $httpCode === 200;
             
         } catch (Exception $e) {
