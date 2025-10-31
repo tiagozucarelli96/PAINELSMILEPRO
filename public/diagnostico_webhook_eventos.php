@@ -131,7 +131,8 @@ header('Content-Type: text/html; charset=utf-8');
             echo '</table>';
         } else {
             echo '<p class="error">❌ Tabela <code>me_eventos_webhook</code> NÃO existe</p>';
-            $erros[] = 'Tabela me_eventos_webhook não existe. Execute o script webhooks_me_eventos.sql';
+            echo '<p><a href="index.php?page=apply_webhook_schema" style="display: inline-block; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-weight: 500; margin-top: 1rem;">🔧 Criar Tabela Automaticamente</a></p>';
+            $erros[] = 'Tabela me_eventos_webhook não existe. Execute o script webhooks_me_eventos.sql ou use o link acima';
         }
     } catch (Exception $e) {
         echo '<p class="error">❌ Erro ao verificar tabela: ' . htmlspecialchars($e->getMessage()) . '</p>';
@@ -308,6 +309,7 @@ header('Content-Type: text/html; charset=utf-8');
     
     if (empty($erros)) {
         echo '<p class="success">✅ Nenhum erro crítico encontrado</p>';
+        echo '<p><a href="index.php?page=dashboard" style="display: inline-block; padding: 0.75rem 1.5rem; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 500; margin-top: 1rem;">📊 Ir para Dashboard</a></p>';
     } else {
         echo '<p class="error">❌ Erros encontrados:</p>';
         echo '<ul>';
