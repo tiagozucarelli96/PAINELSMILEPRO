@@ -145,16 +145,8 @@ $routes = [
   'contab_link' => 'contab_link.php',
   'contab_gerar_link' => 'contab_gerar_link.php',
   
-  // Testes e Diagnósticos
-  'test_sidebar' => 'test_sidebar.php',
-  'verificacao_completa_erros' => 'verificacao_completa_erros.php',
-  'test_dashboard_connection' => 'test_dashboard_connection.php',
-  'test_pages' => 'test_pages.php',
-  'diagnostic_pages' => 'diagnostic_pages.php',
-  'fix_old_sidebars' => 'fix_old_sidebars.php',
-  'diagnostic_completo' => 'diagnostic_completo.php',
-  'fix_all_pages' => 'fix_all_pages.php',
-  'fix_critical_issues' => 'fix_critical_issues.php',
+  // Testes e Diagnósticos (úteis mantidos)
+  // Rotas de teste removidas - manter apenas diagnósticos essenciais
 ];
 
 /* exige login */
