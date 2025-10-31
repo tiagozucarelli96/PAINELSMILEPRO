@@ -159,11 +159,12 @@ ob_start();
 .comercial-container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 1.5rem 2rem;
+    padding: 1.5rem;
 }
 
 .page-header {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
 }
 
 /* Grid de Degustações */
@@ -171,7 +172,7 @@ ob_start();
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
     gap: 1.5rem;
-    margin-top: 1.5rem;
+    margin-top: 1rem;
 }
 
 /* Card de Degustação */
@@ -352,6 +353,7 @@ ob_start();
     display: flex;
     gap: 1rem;
     margin-bottom: 1.5rem;
+    margin-top: 0;
     flex-wrap: wrap;
 }
 
@@ -451,7 +453,7 @@ ob_start();
     <div class="main-content">
         <div class="comercial-container">
             <!-- Header -->
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 2px solid #e5e7eb;">
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e5e7eb;">
                 <h1 class="page-title" style="margin: 0; font-size: 1.875rem; font-weight: 700; color: #1e3a8a;">🍽️ Degustações</h1>
                 <?php if (lc_can_edit_degustacoes()): ?>
                 <a href="index.php?page=comercial_degustacao_editar" class="btn-primary" style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border-radius: 8px; text-decoration: none; font-weight: 600; transition: all 0.2s; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 0.5rem;">
