@@ -805,28 +805,10 @@ if ($current_page === 'dashboard') {
         </div>
     </div>';
 } else {
-    // Para outras páginas, incluir o conteúdo da página atual
-    if (file_exists($page_path)) {
-        // Páginas com conteúdo próprio - permitir que sejam processadas normalmente pelo index.php
-        // Sem verificação especial - essas páginas renderizarão conteúdo vazio aqui
-        // mas serão incluídas corretamente pelo index.php
-        
-        // Capturar o conteúdo da página
-        ob_start();
-        include $page_path;
-        $page_content = ob_get_clean();
-        
-        // Extrair apenas o conteúdo principal (sem sidebar duplicada)
-        if (strpos($page_content, '<div class="page-container">') !== false) {
-            $start = strpos($page_content, '<div class="page-container">');
-            $end = strrpos($page_content, '</div>');
-            if ($start !== false && $end !== false) {
-                $page_content = substr($page_content, $start, $end - $start + 6);
-            }
-        }
-        
-        // Conteúdo será renderizado via PHP para outras páginas
-    }
+    // Para outras páginas (que usam includeSidebar/endSidebar), 
+    // NÃO renderizar conteúdo aqui - a página já renderiza seu próprio conteúdo
+    // via ob_start() antes de chamar includeSidebar()
+    // O conteúdo será incluído quando a página chamar includeSidebar() e endSidebar()
 }
 ?>
 
