@@ -128,10 +128,13 @@ if ($current_page === 'dashboard') {
     
     // Buscar demandas do dia atual (sistema Trello - demandas_cards)
     // IMPORTANTE: Sistema atual usa demandas_cards (Trello), não a tabela antiga 'demandas'
+    // Removido fallback para tabela antiga - só mostra cards do sistema atual
     $demandas_hoje = [];
     try {
+        // Primeiro tentar buscar cards com prazo de hoje
         $stmt = $pdo->prepare("
-            SELECT dc.id, 
+            SELECT DISTINCT ON (dc.id)
+                   dc.id, 
                    dc.titulo,
                    dc.titulo as descricao,
                    dc.prazo, 
@@ -145,40 +148,44 @@ if ($current_page === 'dashboard') {
             LEFT JOIN usuarios u ON u.id = dcu.usuario_id
             WHERE DATE(dc.prazo) = CURRENT_DATE
             AND dc.status NOT IN ('concluido', 'cancelado')
-            GROUP BY dc.id, dc.titulo, dc.prazo, dc.status, db.nome, u.nome
-            ORDER BY dc.prazo ASC, dc.id ASC
+            ORDER BY dc.id, dc.prazo ASC
             LIMIT 10
         ");
         $stmt->execute();
         $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Se não encontrou na estrutura Trello, tentar tabela antiga como fallback
+        // Se não encontrou cards com prazo de hoje, buscar os mais recentes ativos
+        // (mostra cards pendentes criados recentemente sem prazo definido)
         if (empty($demandas_hoje)) {
             try {
                 $stmt = $pdo->prepare("
-                    SELECT d.id, 
-                           d.descricao as titulo, 
-                           d.descricao, 
-                           d.prazo, 
-                           d.status,
+                    SELECT DISTINCT ON (dc.id)
+                           dc.id, 
+                           dc.titulo,
+                           dc.titulo as descricao,
+                           dc.prazo, 
+                           dc.status,
+                           db.nome as quadro_nome,
                            u.nome as responsavel_nome
-                    FROM demandas d
-                    LEFT JOIN usuarios u ON u.id = d.responsavel_id
-                    WHERE DATE(d.prazo) = CURRENT_DATE
-                    AND d.status NOT IN ('concluida', 'concluido')
-                    ORDER BY d.prazo ASC, d.id ASC
-                    LIMIT 10
+                    FROM demandas_cards dc
+                    JOIN demandas_listas dl ON dl.id = dc.lista_id
+                    JOIN demandas_boards db ON db.id = dl.board_id
+                    LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
+                    LEFT JOIN usuarios u ON u.id = dcu.usuario_id
+                    WHERE dc.status NOT IN ('concluido', 'cancelado')
+                    AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
+                    ORDER BY dc.id, dc.criado_em DESC
+                    LIMIT 5
                 ");
                 $stmt->execute();
-                $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $demandas_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
-                // Adicionar 'Sem quadro' para tabela antiga
-                foreach ($demandas_hoje as &$demanda) {
-                    $demanda['quadro_nome'] = 'Sem quadro';
+                // Mostrar apenas se houver cards recentes, senão deixa vazio
+                if (!empty($demandas_recentes)) {
+                    $demandas_hoje = $demandas_recentes;
                 }
-                unset($demanda);
             } catch (Exception $e2) {
-                error_log("Erro ao buscar demandas (fallback): " . $e2->getMessage());
+                error_log("Erro ao buscar demandas recentes: " . $e2->getMessage());
             }
         }
     } catch (Exception $e) {
