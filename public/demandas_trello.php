@@ -2700,7 +2700,12 @@ function renderizarTabelaFixas(fixas) {
     `;
 }
 
-function abrirModalNovaFixa() {
+async function abrirModalNovaFixa() {
+    // Garantir que quadros estão carregados
+    if (boards.length === 0) {
+        await carregarQuadros();
+    }
+    
     // Preencher selects de quadros e listas
     const selectBoard = document.getElementById('fixa-board');
     const selectLista = document.getElementById('fixa-lista');
@@ -2717,6 +2722,7 @@ function abrirModalNovaFixa() {
     document.getElementById('form-fixa').reset();
     document.getElementById('fixa-id').value = '';
     document.getElementById('modal-fixa-titulo').textContent = 'Nova Demanda Fixa';
+    atualizarCamposPeriodicidade();
     abrirModal('modal-fixa');
 }
 
