@@ -101,6 +101,8 @@ function listarQuadros($pdo, $usuario_id, $is_admin) {
         ]);
         exit;
     } catch (PDOException $e) {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
@@ -112,6 +114,8 @@ function listarQuadros($pdo, $usuario_id, $is_admin) {
  */
 function listarListas($pdo, $board_id) {
     try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         $stmt = $pdo->prepare("
             SELECT dl.*, 
                    COUNT(dc.id) as total_cards
@@ -131,6 +135,8 @@ function listarListas($pdo, $board_id) {
         ]);
         exit;
     } catch (PDOException $e) {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
@@ -142,6 +148,8 @@ function listarListas($pdo, $board_id) {
  */
 function listarCards($pdo, $lista_id) {
     try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         $stmt = $pdo->prepare("
             SELECT dc.*,
                    u_criador.nome as criador_nome
@@ -191,6 +199,8 @@ function listarCards($pdo, $lista_id) {
         ]);
         exit;
     } catch (PDOException $e) {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
@@ -1226,11 +1236,18 @@ try {
     }
     
     // Rota não encontrada
+    ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code(404);
     echo json_encode(['success' => false, 'error' => 'Rota não encontrada']);
+    exit;
     
 } catch (Exception $e) {
+    ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code(500);
+    error_log("Erro geral na API: " . $e->getMessage());
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit;
 }
 
