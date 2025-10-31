@@ -214,9 +214,9 @@ if ($current_page === 'dashboard') {
                 <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
             </div>
             <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.75rem; border-radius: 50%; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; min-width: 48px; min-height: 48px; transition: background 0.2s;">
-                <img src="assets/icons/bell.svg" alt="Notificações" style="width: 24px; height: 24px; filter: brightness(0) invert(1);" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';">
+                <img src="assets/icons/bell.svg" alt="Notificações" style="width: 24px; height: 24px; filter: brightness(0) invert(1);" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
                 <span style="font-size: 1.5rem; display: none;">🔔</span>
-                <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 4px; right: 4px; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; font-weight: 600; min-width: 18px; text-align: center; line-height: 1.4; ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . $notificacoes_nao_lidas . '</span>
+                <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 4px; right: 4px; background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 0.7rem; font-weight: 600; min-width: 18px; text-align: center; line-height: 1.4; ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . htmlspecialchars($notificacoes_nao_lidas) . '</span>
             </div>
         </div>
         
