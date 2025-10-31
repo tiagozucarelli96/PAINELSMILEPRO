@@ -150,19 +150,44 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $headers = getallheaders() ?: [];
 $token = '';
 
-// Tentar diferentes formatos de header
-if (isset($headers['Authorization'])) {
+// PRIORIDADE 1: Query parameter (mais comum em webhooks externos)
+if (isset($_GET['token']) && !empty($_GET['token'])) {
+    $token = $_GET['token'];
+    logWebhook("Token encontrado via query parameter");
+}
+// PRIORIDADE 2: Header Authorization (com ou sem Bearer)
+elseif (isset($headers['Authorization'])) {
     $token = $headers['Authorization'];
     // Remover "Bearer " se presente
     $token = preg_replace('/^Bearer\s+/i', '', $token);
-} elseif (isset($headers['X-Token'])) {
+    logWebhook("Token encontrado via header Authorization");
+}
+// PRIORIDADE 3: Header X-Token (case-insensitive)
+elseif (isset($headers['X-Token'])) {
     $token = $headers['X-Token'];
+    logWebhook("Token encontrado via header X-Token");
 } elseif (isset($headers['x-token'])) {
     $token = $headers['x-token'];
-} elseif (isset($_GET['token'])) {
-    $token = $_GET['token'];
-} elseif (isset($_POST['token'])) {
+    logWebhook("Token encontrado via header x-token");
+}
+// PRIORIDADE 4: Body parameter (POST data)
+elseif (isset($_POST['token']) && !empty($_POST['token'])) {
     $token = $_POST['token'];
+    logWebhook("Token encontrado via POST parameter");
+}
+// PRIORIDADE 5: Tentar no JSON do body (se presente)
+else {
+    $input_copy = file_get_contents('php://input');
+    if (!empty($input_copy)) {
+        $json_data = json_decode($input_copy, true);
+        if (isset($json_data['token']) && !empty($json_data['token'])) {
+            $token = $json_data['token'];
+            logWebhook("Token encontrado no JSON body");
+        } elseif (isset($json_data['auth_token']) && !empty($json_data['auth_token'])) {
+            $token = $json_data['auth_token'];
+            logWebhook("Token encontrado como auth_token no JSON body");
+        }
+    }
 }
 
 // Log para debug (sem mostrar o token completo por segurança)
