@@ -853,24 +853,43 @@ ob_start();
             // Ao submeter formulário, garantir que local seja enviado corretamente
             const form = document.getElementById('degustacaoForm');
             if (form) {
-                form.addEventListener('submit', function(e) {
-                    const selectValue = select ? select.value : '';
-                    const customValue = localCustom ? localCustom.value.trim() : '';
+                // Remover event listener anterior se existir
+                const newForm = form.cloneNode(true);
+                form.parentNode.replaceChild(newForm, form);
+                
+                // Adicionar novo listener
+                document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
+                    const currentSelect = document.getElementById('localSelect');
+                    const currentCustom = document.getElementById('localCustom');
                     
-                    // Validar que pelo menos um tem valor
-                    if (!selectValue && !customValue) {
-                        e.preventDefault();
-                        alert('Por favor, selecione ou digite um local');
-                        return false;
-                    }
+                    const selectValue = currentSelect ? currentSelect.value : '';
+                    const customValue = currentCustom ? currentCustom.value.trim() : '';
                     
-                    // Se usar customizado, desabilitar select
-                    if (customValue && !selectValue && select) {
-                        select.disabled = true;
-                    } else if (selectValue && !customValue && localCustom) {
-                        localCustom.disabled = true;
+                    // Se campo customizado está visível e preenchido, garantir que select não seja enviado
+                    if (currentCustom && currentCustom.style.display !== 'none' && customValue) {
+                        // Criar input hidden com valor customizado
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'local';
+                        hidden.value = customValue;
+                        this.appendChild(hidden);
+                        
+                        // Remover required do select para não bloquear submit
+                        if (currentSelect) {
+                            currentSelect.required = false;
+                            currentSelect.disabled = true;
+                        }
+                    } else if (selectValue) {
+                        // Se select tem valor, garantir que custom não seja enviado
+                        if (currentCustom) {
+                            currentCustom.disabled = true;
+                            currentCustom.required = false;
+                        }
+                    } else {
+                        // Se nenhum tem valor, deixar HTML5 validation funcionar
+                        // Não fazer preventDefault - deixar o navegador mostrar o erro
                     }
-                });
+                }, { once: false });
             }
         }
     </script>
