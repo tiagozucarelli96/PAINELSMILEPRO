@@ -672,7 +672,16 @@ ob_start();
     </div>
     
     <script>
-        let fields = <?= $is_edit ? $degustacao['campos_json'] : '[]' ?>;
+        // Esperar DOM estar pronto antes de executar código
+        document.addEventListener('DOMContentLoaded', function() {
+            // Garantir que modal está fechado inicialmente
+            const modal = document.getElementById('fieldModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        });
+        
+        let fields = <?= $is_edit ? json_encode(json_decode($degustacao['campos_json'] ?? '[]', true) ?: []) : '[]' ?>;
         
         function showTab(tabName) {
             // Esconder todas as tabs
@@ -684,22 +693,44 @@ ob_start();
             });
             
             // Mostrar tab selecionada
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            const tabElement = document.getElementById(tabName);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
         }
         
         function openFieldModal() {
-            document.getElementById('fieldModal').classList.add('active');
+            const modal = document.getElementById('fieldModal');
+            if (modal) {
+                modal.classList.add('active');
+                // Focar no primeiro campo
+                const firstInput = modal.querySelector('input, select');
+                if (firstInput) {
+                    setTimeout(() => firstInput.focus(), 100);
+                }
+            }
         }
         
         function closeFieldModal() {
-            document.getElementById('fieldModal').classList.remove('active');
+            const modal = document.getElementById('fieldModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
             // Limpar formulário
-            document.getElementById('fieldType').value = 'texto';
-            document.getElementById('fieldLabel').value = '';
-            document.getElementById('fieldName').value = '';
-            document.getElementById('fieldRequired').checked = false;
-            document.getElementById('fieldOptionsText').value = '';
+            const fieldType = document.getElementById('fieldType');
+            const fieldLabel = document.getElementById('fieldLabel');
+            const fieldName = document.getElementById('fieldName');
+            const fieldRequired = document.getElementById('fieldRequired');
+            const fieldOptionsText = document.getElementById('fieldOptionsText');
+            
+            if (fieldType) fieldType.value = 'texto';
+            if (fieldLabel) fieldLabel.value = '';
+            if (fieldName) fieldName.value = '';
+            if (fieldRequired) fieldRequired.checked = false;
+            if (fieldOptionsText) fieldOptionsText.value = '';
             updateFieldForm();
         }
         
@@ -768,48 +799,80 @@ ob_start();
             document.getElementById('camposJson').value = JSON.stringify(fields);
         }
         
-        // Carregar campos iniciais
-        renderFields();
-        
-        // Se local atual não está nas opções, mostrar campo customizado
-        const localAtual = <?= $is_edit ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
-        const select = document.getElementById('localSelect');
-        const localCustom = document.getElementById('localCustom');
-        
-        if (localAtual && select.options[select.selectedIndex]?.value !== localAtual) {
-            // Se local atual não está na lista, mostrar campo customizado
-            localCustom.style.display = 'block';
-            localCustom.value = localAtual;
-            localCustom.required = true;
-            select.required = false;
+        // Aguardar DOM estar pronto
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeForm);
+        } else {
+            initializeForm();
         }
         
-        // Handler para link de local customizado
-        localCustom.addEventListener('input', function() {
-            if (this.value.trim()) {
-                select.value = '';
-            }
-        });
-        
-        // Ao submeter formulário, garantir que local seja enviado corretamente
-        document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
-            const selectValue = select.value;
-            const customValue = localCustom.value.trim();
+        function initializeForm() {
+            // Carregar campos iniciais
+            renderFields();
             
-            // Validar que pelo menos um tem valor
-            if (!selectValue && !customValue) {
-                e.preventDefault();
-                alert('Por favor, selecione ou digite um local');
-                return false;
+            // Garantir que modal está fechado
+            const modal = document.getElementById('fieldModal');
+            if (modal) {
+                modal.classList.remove('active');
             }
             
-            // Se usar customizado, desabilitar select
-            if (customValue && !selectValue) {
-                select.disabled = true;
-            } else if (selectValue && !customValue) {
-                localCustom.disabled = true;
+            // Se local atual não está nas opções, mostrar campo customizado
+            const localAtual = <?= $is_edit ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
+            const select = document.getElementById('localSelect');
+            const localCustom = document.getElementById('localCustom');
+            
+            if (localAtual && select && localCustom) {
+                // Verificar se local está selecionado no select
+                let foundInSelect = false;
+                for (let i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === localAtual) {
+                        foundInSelect = true;
+                        select.selectedIndex = i;
+                        break;
+                    }
+                }
+                
+                if (!foundInSelect && localAtual) {
+                    // Se local atual não está na lista, mostrar campo customizado
+                    localCustom.style.display = 'block';
+                    localCustom.value = localAtual;
+                    localCustom.required = true;
+                    select.required = false;
+                }
             }
-        });
+            
+            // Handler para link de local customizado
+            if (localCustom) {
+                localCustom.addEventListener('input', function() {
+                    if (this.value.trim() && select) {
+                        select.value = '';
+                    }
+                });
+            }
+            
+            // Ao submeter formulário, garantir que local seja enviado corretamente
+            const form = document.getElementById('degustacaoForm');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    const selectValue = select ? select.value : '';
+                    const customValue = localCustom ? localCustom.value.trim() : '';
+                    
+                    // Validar que pelo menos um tem valor
+                    if (!selectValue && !customValue) {
+                        e.preventDefault();
+                        alert('Por favor, selecione ou digite um local');
+                        return false;
+                    }
+                    
+                    // Se usar customizado, desabilitar select
+                    if (customValue && !selectValue && select) {
+                        select.disabled = true;
+                    } else if (selectValue && !customValue && localCustom) {
+                        localCustom.disabled = true;
+                    }
+                });
+            }
+        }
     </script>
 <?php
 $conteudo = ob_get_clean();
