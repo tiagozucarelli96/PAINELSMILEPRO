@@ -75,7 +75,12 @@ if ($_POST) {
             $local = trim($_POST['local_custom']);
         }
         
-        if (!$nome || !$data || !$hora_inicio || !$hora_fim || !$local || !$data_limite) {
+        // Validar local
+        if (empty($local)) {
+            throw new Exception("Selecione ou digite um local");
+        }
+        
+        if (!$nome || !$data || !$hora_inicio || !$hora_fim || !$data_limite) {
             throw new Exception("Preencha todos os campos obrigatórios");
         }
         
@@ -136,10 +141,9 @@ if ($_POST) {
             ]);
         }
         
-        $success_message = $is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
-        
         // Redirecionar após sucesso
-        header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+        $redirect_url = 'index.php?page=comercial_degustacoes&success=' . urlencode($is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!");
+        header('Location: ' . $redirect_url);
         exit;
         
     } catch (Exception $e) {
@@ -489,13 +493,14 @@ ob_start();
                             <label class="form-label">Local *</label>
                             <select name="local" id="localSelect" class="form-input" required>
                                 <option value="">Selecione um local...</option>
-                                <option value="" disabled>Carregando locais...</option>
+                                <option value="Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && $degustacao['local'] === 'Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
+                                <option value="Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && $degustacao['local'] === 'Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
                             </select>
                             <input type="text" name="local_custom" id="localCustom" class="form-input" 
                                    style="margin-top: 10px; display: none;" 
                                    placeholder="Ou digite um local personalizado...">
                             <small style="color: #6b7280; margin-top: 5px; display: block;">
-                                Se o local não estiver na lista, digite manualmente no campo abaixo
+                                <a href="javascript:void(0)" onclick="document.getElementById('localCustom').style.display='block'; document.getElementById('localCustom').required=true; document.getElementById('localSelect').required=false; document.getElementById('localCustom').focus();" style="color: #3b82f6; text-decoration: underline;">Ou digite um local personalizado</a>
                             </small>
                         </div>
                         
@@ -766,113 +771,45 @@ ob_start();
         // Carregar campos iniciais
         renderFields();
         
-        // Carregar locais da ME Eventos
-        async function carregarLocais() {
-            try {
-                const response = await fetch('me_locais_api.php');
-                const data = await response.json();
-                
-                const select = document.getElementById('localSelect');
-                const localCustom = document.getElementById('localCustom');
-                const localAtual = <?= $is_edit ? json_encode($degustacao['local']) : 'null' ?>;
-                
-                // Limpar opções de carregamento
-                select.innerHTML = '<option value="">Selecione um local...</option>';
-                
-                if (data.ok && data.locais && data.locais.length > 0) {
-                    // Adicionar locais ao select
-                    data.locais.forEach(local => {
-                        const option = document.createElement('option');
-                        option.value = local;
-                        option.textContent = local;
-                        if (localAtual && local === localAtual) {
-                            option.selected = true;
-                        }
-                        select.appendChild(option);
-                    });
-                    
-                    // Adicionar opção para inserir local customizado
-                    const customOption = document.createElement('option');
-                    customOption.value = '__custom__';
-                    customOption.textContent = '➕ Inserir local personalizado...';
-                    select.appendChild(customOption);
-                } else {
-                    // Se não conseguiu carregar, mostrar campo de texto
-                    select.style.display = 'none';
-                    localCustom.style.display = 'block';
-                    localCustom.required = true;
-                    if (localAtual) {
-                        localCustom.value = localAtual;
-                    }
-                }
-                
-                // Se local atual não está na lista, mostrar campo customizado
-                if (localAtual && !data.locais.includes(localAtual)) {
-                    select.value = '__custom__';
-                    localCustom.style.display = 'block';
-                    localCustom.value = localAtual;
-                }
-                
-                // Handler para opção customizada
-                select.addEventListener('change', function() {
-                    if (this.value === '__custom__') {
-                        localCustom.style.display = 'block';
-                        localCustom.required = true;
-                        select.required = false;
-                        localCustom.focus();
-                    } else {
-                        localCustom.style.display = 'none';
-                        localCustom.required = false;
-                        select.required = true;
-                    }
-                });
-                
-                // Quando usar campo customizado, atualizar select
-                localCustom.addEventListener('input', function() {
-                    if (this.value.trim()) {
-                        select.value = '__custom__';
-                    }
-                });
-                
-                // Ao submeter formulário, usar valor do select ou customizado
-                document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
-                    const selectValue = document.getElementById('localSelect').value;
-                    const customValue = document.getElementById('localCustom').value.trim();
-                    
-                    if (selectValue === '__custom__' && customValue) {
-                        // Criar input hidden com valor customizado
-                        const hidden = document.createElement('input');
-                        hidden.type = 'hidden';
-                        hidden.name = 'local';
-                        hidden.value = customValue;
-                        this.appendChild(hidden);
-                        
-                        // Desabilitar select para não enviar
-                        document.getElementById('localSelect').disabled = true;
-                    } else if (selectValue && selectValue !== '__custom__') {
-                        // Garantir que campo customizado não seja enviado
-                        document.getElementById('localCustom').disabled = true;
-                    } else if (!selectValue && !customValue) {
-                        e.preventDefault();
-                        alert('Por favor, selecione ou digite um local');
-                        return false;
-                    }
-                });
-                
-            } catch (error) {
-                console.error('Erro ao carregar locais:', error);
-                // Em caso de erro, mostrar campo de texto
-                document.getElementById('localSelect').style.display = 'none';
-                document.getElementById('localCustom').style.display = 'block';
-                document.getElementById('localCustom').required = true;
-                if (<?= $is_edit ? json_encode($degustacao['local']) : 'null' ?>) {
-                    document.getElementById('localCustom').value = <?= $is_edit ? json_encode($degustacao['local']) : '""' ?>;
-                }
-            }
+        // Se local atual não está nas opções, mostrar campo customizado
+        const localAtual = <?= $is_edit ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
+        const select = document.getElementById('localSelect');
+        const localCustom = document.getElementById('localCustom');
+        
+        if (localAtual && select.options[select.selectedIndex]?.value !== localAtual) {
+            // Se local atual não está na lista, mostrar campo customizado
+            localCustom.style.display = 'block';
+            localCustom.value = localAtual;
+            localCustom.required = true;
+            select.required = false;
         }
         
-        // Carregar locais ao carregar a página
-        carregarLocais();
+        // Handler para link de local customizado
+        localCustom.addEventListener('input', function() {
+            if (this.value.trim()) {
+                select.value = '';
+            }
+        });
+        
+        // Ao submeter formulário, garantir que local seja enviado corretamente
+        document.getElementById('degustacaoForm').addEventListener('submit', function(e) {
+            const selectValue = select.value;
+            const customValue = localCustom.value.trim();
+            
+            // Validar que pelo menos um tem valor
+            if (!selectValue && !customValue) {
+                e.preventDefault();
+                alert('Por favor, selecione ou digite um local');
+                return false;
+            }
+            
+            // Se usar customizado, desabilitar select
+            if (customValue && !selectValue) {
+                select.disabled = true;
+            } else if (selectValue && !customValue) {
+                localCustom.disabled = true;
+            }
+        });
     </script>
 <?php
 $conteudo = ob_get_clean();
