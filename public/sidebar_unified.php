@@ -49,7 +49,7 @@ if ($current_page === 'dashboard') {
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
             FROM comercial_inscricoes ci
-            JOIN comercial_degustacoes cd ON ci.event_id = cd.id
+            JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
             WHERE cd.status = 'publicado'
             AND DATE_TRUNC('month', ci.criado_em) = DATE_TRUNC('month', CURRENT_DATE)
             AND ci.status IN ('confirmado', 'lista_espera')
@@ -102,12 +102,12 @@ if ($current_page === 'dashboard') {
     $agenda_hoje = [];
     try {
         $stmt = $pdo->prepare("
-            SELECT ae.id, ae.titulo, ae.data_inicio, ae.data_fim, ae.tipo, ae.cor, ae.observacoes,
+            SELECT ae.id, ae.titulo, ae.inicio as data_inicio, ae.fim as data_fim, ae.tipo, ae.cor_evento as cor, ae.descricao as observacoes,
                    u.nome as responsavel_nome
             FROM agenda_eventos ae
-            LEFT JOIN usuarios u ON u.id = ae.usuario_id
-            WHERE DATE(ae.data_inicio) = CURRENT_DATE
-            ORDER BY ae.data_inicio ASC
+            LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
+            WHERE DATE(ae.inicio) = CURRENT_DATE
+            ORDER BY ae.inicio ASC
             LIMIT 10
         ");
         $stmt->execute();
@@ -116,18 +116,17 @@ if ($current_page === 'dashboard') {
         $agenda_hoje = [];
     }
     
-    // Buscar demandas do dia atual
+    // Buscar demandas do dia atual (nova tabela)
     $demandas_hoje = [];
     try {
         $stmt = $pdo->prepare("
-            SELECT dc.id, dc.titulo, dc.descricao, dc.prazo, dc.status,
-                   dq.nome as quadro_nome, u.nome as responsavel_nome
-            FROM demandas_cartoes dc
-            LEFT JOIN demandas_quadros dq ON dq.id = dc.quadro_id
-            LEFT JOIN usuarios u ON u.id = dc.responsavel_id
-            WHERE DATE(dc.prazo) = CURRENT_DATE
-            AND dc.status NOT IN ('concluido', 'arquivado')
-            ORDER BY dc.prazo ASC
+            SELECT d.id, d.descricao as titulo, d.descricao, d.prazo, d.status,
+                   u.nome as responsavel_nome
+            FROM demandas d
+            LEFT JOIN usuarios u ON u.id = d.responsavel_id
+            WHERE DATE(d.prazo) = CURRENT_DATE
+            AND d.status NOT IN ('concluida')
+            ORDER BY d.prazo ASC
             LIMIT 10
         ");
         $stmt->execute();

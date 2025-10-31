@@ -105,6 +105,13 @@ try {
     }
     else {
         error_log("DEMANDAS_API: Método não suportado: $method");
+        // FALLBACK: Se chegou aqui e é GET sem action, listar
+        if ($method === 'GET' && empty($action)) {
+            error_log("DEMANDAS_API: FALLBACK - Listando demandas");
+            listarDemandas($pdo);
+            exit;
+        }
+        
         http_response_code(405);
         header('Content-Type: application/json');
         echo json_encode([
@@ -114,7 +121,9 @@ try {
                 'method' => $method,
                 'action' => $action,
                 'id' => $id,
-                'get' => $_GET
+                'get' => $_GET,
+                'path_info' => $_SERVER['PATH_INFO'] ?? 'não definido',
+                'request_uri' => $_SERVER['REQUEST_URI'] ?? 'não definido'
             ]
         ]);
         exit;
