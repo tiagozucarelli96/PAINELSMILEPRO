@@ -499,7 +499,7 @@ ob_start();
                 <div class="tab" onclick="showTab('textos')">📝 Textos</div>
             </div>
             
-            <form method="POST" id="degustacaoForm" action="" onsubmit="console.log('=== SUBMIT INICIADO ==='); if (typeof window.validarFormulario === 'function') { const result = window.validarFormulario(event); console.log('validarFormulario retornou:', result); return result !== false; } else { console.warn('validarFormulario não existe, prosseguindo...'); return true; }">
+            <form method="POST" id="degustacaoForm" action="" onsubmit="return prepararLocalAntesDoSubmit(event)">
                 <!-- Tab Geral -->
                 <div id="geral" class="tab-content active">
                     <div class="form-grid">
