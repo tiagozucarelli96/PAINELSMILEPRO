@@ -59,7 +59,8 @@ $routes = [
   'financeiro' => 'pagamentos.php',
   'administrativo' => 'config_insumos.php',
   'agenda' => 'agenda.php',
-  'demandas' => 'demandas.php',
+  'demandas' => 'demandas_trello.php',
+  'demandas_old' => 'demandas.php', // Versão antiga mantida
 
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',
