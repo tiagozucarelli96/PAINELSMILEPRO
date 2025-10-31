@@ -521,6 +521,11 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
         $uploader = new MagaluUpload();
         $upload_result = $uploader->upload($arquivo, 'demandas_trello');
         
+        // Validar que o upload foi bem-sucedido antes de salvar no banco
+        if (empty($upload_result['chave_storage'])) {
+            throw new Exception('Upload falhou: chave de armazenamento não foi retornada');
+        }
+        
         $stmt = $pdo->prepare("
             INSERT INTO demandas_arquivos_trello 
             (card_id, nome_original, mime_type, tamanho_bytes, chave_storage, upload_por)
@@ -538,6 +543,9 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
         
         $anexo = $stmt->fetch(PDO::FETCH_ASSOC);
         
+        // Log de sucesso para debug
+        error_log("Anexo criado: ID={$anexo['id']}, chave={$upload_result['chave_storage']}, url={$upload_result['url']}");
+        
         echo json_encode([
             'success' => true,
             'message' => 'Anexo adicionado com sucesso',
@@ -546,6 +554,7 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
         ]);
         exit;
     } catch (Exception $e) {
+        error_log("Erro ao adicionar anexo: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
@@ -952,10 +961,16 @@ function downloadAnexo($pdo, $anexo_id) {
             exit;
         }
         
-        // Se tiver URL do Magalu, redirecionar
+        // Se tiver chave de storage, construir URL do Magalu Cloud
         if (!empty($anexo['chave_storage'])) {
-            // Construir URL do Magalu Cloud
             $bucket = getenv('MAGALU_BUCKET') ?: 'SmilePainel';
+            $endpoint = getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+            $url = "{$endpoint}/{$bucket}/{$anexo['chave_storage']}";
+            
+            // Redirecionar para URL do arquivo
+            header("Location: {$url}");
+            exit;
+        }
             $region = getenv('MAGALU_REGION') ?: 'br-se1';
             $url = "https://{$bucket}.{$region}.magaluobjects.com/{$anexo['chave_storage']}";
             

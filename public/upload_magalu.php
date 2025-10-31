@@ -79,9 +79,69 @@ class MagaluUpload {
     }
     
     private function uploadToMagalu($tmpFile, $key, $mimeType) {
-        // TODO: Implementar upload real para Magalu Cloud
-        // Por enquanto, simular sucesso
-        return "https://{$this->bucket}.{$this->region}.magaluobjects.com/{$key}";
+        // Upload real para Magalu Cloud usando API S3-compatible
+        $url = "{$this->endpoint}/{$this->bucket}/{$key}";
+        
+        // Ler conteúdo do arquivo
+        $fileContent = file_get_contents($tmpFile);
+        if ($fileContent === false) {
+            throw new Exception('Erro ao ler arquivo temporário');
+        }
+        
+        // Preparar requisição PUT
+        $date = gmdate('Ymd\THis\Z');
+        $contentType = $mimeType;
+        $contentMd5 = base64_encode(md5($fileContent, true));
+        
+        // Gerar string para assinatura
+        $stringToSign = "PUT\n{$contentMd5}\n{$contentType}\n{$date}\n/{$this->bucket}/{$key}";
+        $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
+        
+        // Abrir arquivo para upload
+        $fileHandle = fopen($tmpFile, 'rb');
+        if ($fileHandle === false) {
+            throw new Exception('Não foi possível abrir arquivo para upload');
+        }
+        
+        // Fazer upload via cURL
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => 'PUT',
+            CURLOPT_PUT => true,
+            CURLOPT_INFILE => $fileHandle,
+            CURLOPT_INFILESIZE => filesize($tmpFile),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: AWS ' . $this->accessKey . ':' . $signature,
+                'Content-Type: ' . $contentType,
+                'Content-MD5: ' . $contentMd5,
+                'Date: ' . $date
+            ],
+            CURLOPT_TIMEOUT => 60 // Timeout maior para arquivos grandes
+        ]);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        fclose($fileHandle); // Fechar handle do arquivo
+        
+        if ($curlError) {
+            error_log("Magalu Upload cURL Error: {$curlError}");
+            throw new Exception('Erro no upload: ' . $curlError);
+        }
+        
+        if ($httpCode !== 200 && $httpCode !== 201) {
+            error_log("Magalu Upload Error - HTTP {$httpCode}: " . ($response ?: 'Sem resposta'));
+            error_log("URL tentada: {$url}");
+            error_log("Bucket: {$this->bucket}, Key: {$key}");
+            throw new Exception("Erro no upload para Magalu Cloud. Código HTTP: {$httpCode}. Verifique as credenciais e permissões.");
+        }
+        
+        error_log("Magalu Upload Success - HTTP {$httpCode}, Key: {$key}");
+        
+        // Retornar URL pública do arquivo
+        return "{$this->endpoint}/{$this->bucket}/{$key}";
     }
     
     public function delete($key) {
