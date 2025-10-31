@@ -97,7 +97,9 @@ header('Content-Type: text/html; charset=utf-8');
     echo '<div class="section">';
     echo '<h2>1. Verificação da Tabela</h2>';
     
+    $tabela_existe = false;
     try {
+        // Primeiro, tentar verificar via information_schema
         $stmt = $pdo->query("
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -105,10 +107,31 @@ header('Content-Type: text/html; charset=utf-8');
                 AND table_name = 'me_eventos_webhook'
             );
         ");
-        $tabela_existe = $stmt->fetchColumn();
+        $tabela_existe = (bool)$stmt->fetchColumn();
+        
+        // Se não encontrou, tentar fazer uma query direta (mais confiável)
+        if (!$tabela_existe) {
+            try {
+                $stmt = $pdo->query("SELECT COUNT(*) FROM me_eventos_webhook LIMIT 1");
+                $stmt->fetchColumn();
+                $tabela_existe = true; // Se chegou aqui, a tabela existe
+            } catch (Exception $e) {
+                // Se deu erro, realmente não existe
+                $tabela_existe = false;
+            }
+        }
         
         if ($tabela_existe) {
             echo '<p class="success">✅ Tabela <code>me_eventos_webhook</code> existe</p>';
+            
+            // Verificar também o schema atual
+            try {
+                $stmt = $pdo->query("SELECT current_schema()");
+                $schema_atual = $stmt->fetchColumn();
+                echo '<p><small>Schema atual: <code>' . htmlspecialchars($schema_atual) . '</code></small></p>';
+            } catch (Exception $e) {
+                // Ignorar erro
+            }
             
             // Verificar estrutura da tabela
             $stmt = $pdo->query("
