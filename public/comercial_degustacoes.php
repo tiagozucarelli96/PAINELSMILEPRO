@@ -145,10 +145,13 @@ ob_start();
     <div class="main-content">
         <div class="comercial-container">
             <!-- Header -->
-            <div class="page-header">
-                <h1 class="page-title">🍽️ Degustações</h1>
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div>
+                    <a href="index.php?page=comercial" style="color: #3b82f6; text-decoration: none; font-size: 0.875rem; margin-bottom: 0.5rem; display: inline-block;">← Voltar para Comercial</a>
+                    <h1 class="page-title" style="margin: 0;">🍽️ Degustações</h1>
+                </div>
                 <?php if (lc_can_edit_degustacoes()): ?>
-                <a href="comercial_degustacao_editar.php" class="btn-primary">
+                <a href="index.php?page=comercial_degustacao_editar" class="btn-primary" style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;">
                     <span>➕</span>
                     Nova Degustação
                 </a>

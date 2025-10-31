@@ -473,11 +473,14 @@ $stats = [
     <div class="main-content">
         <div class="inscritos-container">
             <!-- Header -->
-            <div class="page-header">
-                <h1 class="page-title">👥 Inscritos - <?= h($degustacao['nome']) ?></h1>
+            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <div>
-                    <a href="comercial_degustacoes.php" class="btn-secondary">← Voltar</a>
-                    <button class="btn-primary" onclick="exportCSV()">📊 Exportar CSV</button>
+                    <a href="index.php?page=comercial" style="color: #3b82f6; text-decoration: none; font-size: 0.875rem; margin-bottom: 0.5rem; display: inline-block;">← Voltar para Comercial</a>
+                    <h1 class="page-title" style="margin: 0;">👥 Inscritos - <?= h($degustacao['nome']) ?></h1>
+                </div>
+                <div style="display: flex; gap: 0.75rem;">
+                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151; border-radius: 8px; text-decoration: none; font-weight: 500;">← Degustações</a>
+                    <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">📊 Exportar CSV</button>
                 </div>
             </div>
             
@@ -716,8 +719,37 @@ $stats = [
         }
         
         function exportCSV() {
-            // TODO: Implementar exportação CSV
-            alert('Funcionalidade de exportação será implementada em breve');
+            // Coletar dados da tabela
+            const rows = document.querySelectorAll('.table-row');
+            let csv = 'Participante,Email,Telefone,Status,Tipo Festa,Pessoas,Fechou Contrato,Pagamento,Observações\n';
+            
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('div');
+                if (cells.length >= 6) {
+                    const nome = cells[0]?.textContent?.trim() || '';
+                    const email = cells[1]?.textContent?.trim() || '';
+                    const telefone = cells[2]?.textContent?.trim() || '';
+                    const status = cells[3]?.textContent?.trim() || '';
+                    const tipoFesta = cells[4]?.textContent?.trim() || '';
+                    const pessoas = cells[5]?.textContent?.trim() || '';
+                    const fechou = cells[6]?.textContent?.trim() || '';
+                    const pagamento = cells[7]?.textContent?.trim() || '';
+                    const observacoes = ''; // Não disponível nesta view
+                    
+                    csv += `"${nome}","${email}","${telefone}","${status}","${tipoFesta}","${pessoas}","${fechou}","${pagamento}","${observacoes}"\n`;
+                }
+            });
+            
+            // Criar e baixar arquivo
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `inscritos_degustacao_<?= $degustacao['id'] ?>_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
         
         // Fechar modais ao clicar fora

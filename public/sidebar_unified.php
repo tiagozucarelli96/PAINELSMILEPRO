@@ -1545,7 +1545,8 @@ if ($current_page === 'dashboard') {
                 }
                 
                 // Fechar divs apenas se for página especial que já renderizou o conteúdo
-                if (in_array($current_page, ['dashboard', 'comercial', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
+                // NOTA: comercial agora usa comercial_landing.php que gerencia seus próprios divs
+                if (in_array($current_page, ['dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
                     echo '</div>'; // fecha #pageContent
                     echo '</div>'; // fecha .main-content
                 }

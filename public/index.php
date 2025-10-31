@@ -59,7 +59,7 @@ if ($page === '' || $page === null) {
 $routes = [
   // Dashboard e blocos
   'dashboard' => 'sidebar_unified.php',
-  'comercial' => 'comercial_degustacoes.php',
+  'comercial' => 'comercial_landing.php',
   'logistico' => 'lc_index.php',
   'configuracoes' => 'configuracoes.php',
   'cadastros' => 'usuarios.php',
