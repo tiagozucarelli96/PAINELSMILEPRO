@@ -124,12 +124,6 @@ class MagaluUpload {
         error_log("Date: {$date}");
         error_log("File Size: {$fileSize} bytes");
         
-        // Abrir arquivo para upload
-        $fileHandle = fopen($tmpFile, 'rb');
-        if ($fileHandle === false) {
-            throw new Exception('Não foi possível abrir arquivo para upload');
-        }
-        
         // Headers da requisição (ordem importante para S3)
         $headers = [
             'Date: ' . $date,
@@ -138,15 +132,12 @@ class MagaluUpload {
             'Authorization: AWS ' . $this->accessKey . ':' . $signature
         ];
         
-        // Fazer upload via cURL usando CURLOPT_POSTFIELDS com file_get_contents
+        // Fazer upload via cURL usando CURLOPT_POSTFIELDS
         // Método alternativo que funciona melhor com alguns serviços S3-compatible
-        rewind($fileHandle);
-        $fileContentForUpload = file_get_contents($tmpFile);
-        
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_POSTFIELDS => $fileContentForUpload,
+            CURLOPT_POSTFIELDS => $fileContent, // Usar $fileContent já lido anteriormente
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => 60,
@@ -158,10 +149,6 @@ class MagaluUpload {
         $curlError = curl_error($ch);
         $curlInfo = curl_getinfo($ch);
         curl_close($ch);
-        // Não fechar $fileHandle aqui pois já lemos o conteúdo
-        if (is_resource($fileHandle)) {
-            fclose($fileHandle);
-        }
         
         if ($curlError) {
             error_log("Magalu Upload cURL Error: {$curlError}");
