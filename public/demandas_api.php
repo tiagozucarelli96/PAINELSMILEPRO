@@ -29,24 +29,35 @@ try {
     $pdo = $GLOBALS['pdo'];
     $method = $_SERVER['REQUEST_METHOD'];
     
+    // Debug logs (remover depois)
+    error_log("DEMANDAS_API: Method = $method");
+    error_log("DEMANDAS_API: GET = " . json_encode($_GET));
+    error_log("DEMANDAS_API: PATH_INFO = " . ($_SERVER['PATH_INFO'] ?? 'não definido'));
+    
     // NOVA ABORDAGEM: Usar query parameters em vez de PATH_INFO
     $action = $_GET['action'] ?? '';
     $id = $_GET['id'] ?? null;
     
     // GET - Listar ou obter detalhes
     if ($method === 'GET') {
+        error_log("DEMANDAS_API: Processando GET - action=$action, id=$id");
         if (empty($action) && empty($id)) {
             // GET sem parâmetros = listar todas
+            error_log("DEMANDAS_API: Chamando listarDemandas()");
             listarDemandas($pdo);
+            exit; // IMPORTANTE: sair após processar
         } elseif ($action === 'detalhes' && $id) {
             // GET ?action=detalhes&id=X
             obterDemanda($pdo, $id);
         } elseif ($action === 'anexo' && $id) {
             // GET ?action=anexo&id=X
             downloadAnexo($pdo, $id);
+            exit;
         } else {
             // GET com filtros = listar com filtros
+            error_log("DEMANDAS_API: Chamando listarDemandas() com filtros");
             listarDemandas($pdo);
+            exit; // IMPORTANTE: sair após processar
         }
     }
     // POST - Criar ou ações
@@ -93,9 +104,20 @@ try {
         }
     }
     else {
+        error_log("DEMANDAS_API: Método não suportado: $method");
         http_response_code(405);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'error' => 'Método não permitido']);
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Método não permitido',
+            'debug' => [
+                'method' => $method,
+                'action' => $action,
+                'id' => $id,
+                'get' => $_GET
+            ]
+        ]);
+        exit;
     }
     
 } catch (Exception $e) {
