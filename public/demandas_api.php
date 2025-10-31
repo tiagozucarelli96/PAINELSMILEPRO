@@ -77,9 +77,11 @@ try {
         } elseif ($action === 'comentario' && $id) {
             // POST ?action=comentario&id=X
             adicionarComentario($pdo, $id);
+            exit;
         } elseif ($action === 'anexo' && $id) {
             // POST ?action=anexo&id=X
             adicionarAnexo($pdo, $id);
+            exit;
         } else {
             http_response_code(400);
             header('Content-Type: application/json');
