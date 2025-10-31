@@ -273,27 +273,80 @@ function abrirModalNovaFixa() {
     document.getElementById('modal-fixa').style.display = 'block';
 }
 
-function editarFixa(id) {
-    // TODO: Implementar edição
-    alert('Edição em desenvolvimento');
+async function editarFixa(id) {
+    try {
+        // Buscar dados da fixa
+        const response = await fetch(`demandas_trello_api.php?action=quadros`);
+        const boardsData = await response.json();
+        
+        // Buscar fixa específica (precisamos buscar todas do backend)
+        // Por enquanto, vamos carregar a página com parâmetro
+        const fixa = document.querySelector(`tr:has(button[onclick="editarFixa(${id})"])`);
+        if (!fixa) {
+            alert('Demanda fixa não encontrada');
+            return;
+        }
+        
+        // Preencher modal com dados (simplificado - em produção, buscar via API)
+        document.getElementById('modal-fixa-titulo').textContent = 'Editar Demanda Fixa';
+        document.getElementById('fixa-id').value = id;
+        
+        // TODO: Buscar dados completos via API para preencher o formulário
+        alert('Funcionalidade de edição será implementada na próxima versão. Por enquanto, delete e crie novamente.');
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao carregar dados para edição');
+    }
 }
 
-function toggleFixa(id, novoStatus) {
-    // TODO: Implementar toggle
-    alert('Toggle em desenvolvimento');
+async function toggleFixa(id, novoStatus) {
+    try {
+        const response = await fetch(`demandas_fixas_api.php?id=${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ativo: novoStatus === 'true' })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao atualizar demanda fixa');
+    }
 }
 
-function deletarFixa(id) {
-    if (!confirm('Tem certeza que deseja deletar esta demanda fixa?')) {
+async function deletarFixa(id) {
+    if (!confirm('Tem certeza que deseja deletar esta demanda fixa? Esta ação não pode ser desfeita.')) {
         return;
     }
-    // TODO: Implementar delete
-    alert('Delete em desenvolvimento');
+    
+    try {
+        const response = await fetch(`demandas_fixas_api.php?id=${id}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao deletar demanda fixa');
+    }
 }
 
 document.getElementById('form-fixa').addEventListener('submit', function(e) {
     e.preventDefault();
     
+    const fixaId = document.getElementById('fixa-id').value;
     const periodicidade = document.getElementById('fixa-periodicidade').value;
     const dados = {
         titulo: document.getElementById('fixa-titulo').value,
@@ -305,8 +358,11 @@ document.getElementById('form-fixa').addEventListener('submit', function(e) {
         dia_mes: periodicidade === 'mensal' ? parseInt(document.getElementById('fixa-dia-mes').value) : null
     };
     
-    fetch('demandas_fixas_api.php', {
-        method: 'POST',
+    const method = fixaId ? 'PATCH' : 'POST';
+    const url = fixaId ? `demandas_fixas_api.php?id=${fixaId}` : 'demandas_fixas_api.php';
+    
+    fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dados)
     })
