@@ -1839,6 +1839,248 @@ if ($current_page === 'dashboard') {
             }
         });
         
+        // ============================================
+        // SISTEMA GLOBAL DE NOTIFICAÇÕES (Dashboard)
+        // ============================================
+        let dashboardNotificacoes = [];
+        let dashboardNotificacoesNaoLidas = 0;
+        const DASHBOARD_API_BASE = 'demandas_trello_api.php';
+        
+        // Carregar notificações ao entrar na dashboard
+        <?php if ($current_page === 'dashboard'): ?>
+        document.addEventListener('DOMContentLoaded', function() {
+            carregarDashboardNotificacoes();
+            // Polling a cada 30 segundos
+            setInterval(carregarDashboardNotificacoes, 30000);
+        });
+        <?php endif; ?>
+        
+        async function carregarDashboardNotificacoes() {
+            try {
+                const response = await fetch(DASHBOARD_API_BASE + '?action=notificacoes', {
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    console.warn('Erro ao carregar notificações:', response.status);
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    dashboardNotificacoes = data.data || [];
+                    dashboardNotificacoesNaoLidas = data.nao_lidas || 0;
+                    
+                    // Atualizar contador
+                    const countEl = document.getElementById('dashboard-notificacoes-count');
+                    if (countEl) {
+                        if (dashboardNotificacoesNaoLidas > 0) {
+                            countEl.textContent = dashboardNotificacoesNaoLidas;
+                            countEl.style.display = 'block';
+                        } else {
+                            countEl.style.display = 'none';
+                        }
+                    }
+                    
+                    // Renderizar se o dropdown estiver aberto
+                    const dropdown = document.getElementById('dashboard-notificacoes-dropdown');
+                    if (dropdown && dropdown.classList.contains('open')) {
+                        renderizarDashboardNotificacoes();
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao carregar notificações:', error);
+            }
+        }
+        
+        function toggleDashboardNotificacoes(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('dashboard-notificacoes-dropdown');
+            if (!dropdown) return;
+            
+            const isOpen = dropdown.classList.contains('open');
+            
+            if (isOpen) {
+                dropdown.classList.remove('open');
+            } else {
+                dropdown.classList.add('open');
+                renderizarDashboardNotificacoes();
+            }
+        }
+        
+        function renderizarDashboardNotificacoes() {
+            const container = document.getElementById('dashboard-notificacoes-content');
+            if (!container) return;
+            
+            if (dashboardNotificacoes.length === 0) {
+                container.innerHTML = '<div class="dashboard-notificacoes-empty"><div style="font-size: 2rem; margin-bottom: 0.5rem;">🔔</div><div>Nenhuma notificação</div></div>';
+                return;
+            }
+            
+            // Agrupar por data
+            const hoje = new Date();
+            hoje.setHours(0,0,0,0);
+            
+            const grupos = {
+                hoje: [],
+                ontem: [],
+                semana: [],
+                antigas: []
+            };
+            
+            dashboardNotificacoes.forEach(notif => {
+                const dataNotif = new Date(notif.data_notificacao || notif.criada_em || notif.criado_em || notif.created_at);
+                const diffMs = hoje - dataNotif;
+                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                
+                if (diffDays === 0) grupos.hoje.push(notif);
+                else if (diffDays === 1) grupos.ontem.push(notif);
+                else if (diffDays <= 7) grupos.semana.push(notif);
+                else grupos.antigas.push(notif);
+            });
+            
+            let html = '';
+            
+            if (grupos.hoje.length > 0) {
+                html += '<div style="padding: 0.75rem 1.25rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; background: #f9fafb; border-bottom: 1px solid #e5e7eb;">Hoje</div>';
+                html += grupos.hoje.map(n => renderizarDashboardNotificacaoItem(n)).join('');
+            }
+            
+            if (grupos.ontem.length > 0) {
+                html += '<div style="padding: 0.75rem 1.25rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; background: #f9fafb; border-bottom: 1px solid #e5e7eb; margin-top: 0.5rem;">Ontem</div>';
+                html += grupos.ontem.map(n => renderizarDashboardNotificacaoItem(n)).join('');
+            }
+            
+            if (grupos.semana.length > 0) {
+                html += '<div style="padding: 0.75rem 1.25rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; background: #f9fafb; border-bottom: 1px solid #e5e7eb; margin-top: 0.5rem;">Esta semana</div>';
+                html += grupos.semana.map(n => renderizarDashboardNotificacaoItem(n)).join('');
+            }
+            
+            if (grupos.antigas.length > 0) {
+                html += '<div style="padding: 0.75rem 1.25rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; background: #f9fafb; border-bottom: 1px solid #e5e7eb; margin-top: 0.5rem;">Mais antigas</div>';
+                html += grupos.antigas.map(n => renderizarDashboardNotificacaoItem(n)).join('');
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        function renderizarDashboardNotificacaoItem(notif) {
+            const dataNotif = new Date(notif.data_notificacao || notif.criada_em || notif.criado_em || notif.created_at);
+            const tempoRelativo = getTempoRelativoDashboard(dataNotif);
+            const naoLida = !notif.lida;
+            
+            // Determinar URL de destino baseado no tipo de notificação
+            let urlDestino = '#';
+            let tipoNotificacao = notif.tipo || 'demanda';
+            
+            if (tipoNotificacao.includes('demanda') || tipoNotificacao.includes('card') || tipoNotificacao.includes('menção') || notif.referencia_id) {
+                // Notificação de demanda - ir para a página de demandas
+                urlDestino = 'index.php?page=demandas';
+                // Se tiver referencia_id (card_id), pode adicionar parâmetro para destacar o card
+                if (notif.referencia_id || notif.card_id) {
+                    urlDestino += '#card-' + (notif.referencia_id || notif.card_id);
+                }
+            } else if (tipoNotificacao.includes('agenda')) {
+                urlDestino = 'index.php?page=agenda';
+            } else if (tipoNotificacao.includes('comercial')) {
+                urlDestino = 'index.php?page=comercial';
+            }
+            // Preparado para expansão futura - outros tipos podem ser adicionados aqui
+            
+            return `
+                <div class="dashboard-notificacao-item ${naoLida ? 'nao-lida' : ''}" 
+                     onclick="navegarParaNotificacao('${urlDestino}', ${notif.id})">
+                    <div class="dashboard-notificacao-titulo">${escapeHtml(notif.titulo || 'Notificação')}</div>
+                    ${notif.mensagem && notif.mensagem !== notif.titulo ? `<div class="dashboard-notificacao-trecho">${escapeHtml(notif.mensagem.substring(0, 100))}${notif.mensagem.length > 100 ? '...' : ''}</div>` : ''}
+                    <div class="dashboard-notificacao-meta">
+                        <span>${tempoRelativo}</span>
+                        ${notif.autor_nome ? `<span>${escapeHtml(notif.autor_nome)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function getTempoRelativoDashboard(data) {
+            const agora = new Date();
+            const diffMs = agora - data;
+            const diffSeg = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSeg / 60);
+            const diffHora = Math.floor(diffMin / 60);
+            const diffDia = Math.floor(diffHora / 24);
+            
+            if (diffSeg < 60) return 'Agora';
+            if (diffMin < 60) return diffMin + 'm atrás';
+            if (diffHora < 24) return diffHora + 'h atrás';
+            if (diffDia === 1) return 'Ontem';
+            if (diffDia < 7) return diffDia + 'd atrás';
+            return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        async function navegarParaNotificacao(url, notificacaoId) {
+            // Marcar como lida
+            try {
+                await fetch(DASHBOARD_API_BASE + '?action=marcar_notificacao&id=' + notificacaoId, {
+                    method: 'POST',
+                    credentials: 'same-origin'
+                });
+            } catch (error) {
+                console.error('Erro ao marcar notificação como lida:', error);
+            }
+            
+            // Fechar dropdown
+            const dropdown = document.getElementById('dashboard-notificacoes-dropdown');
+            if (dropdown) {
+                dropdown.classList.remove('open');
+            }
+            
+            // Navegar
+            if (url && url !== '#') {
+                window.location.href = url;
+            }
+        }
+        
+        async function marcarTodasDashboardNotificacoesLidas() {
+            try {
+                const naoLidas = dashboardNotificacoes.filter(n => !n.lida);
+                for (const notif of naoLidas) {
+                    try {
+                        await fetch(DASHBOARD_API_BASE + '?action=marcar_notificacao&id=' + notif.id, {
+                            method: 'POST',
+                            credentials: 'same-origin'
+                        });
+                    } catch (error) {
+                        console.error('Erro ao marcar notificação:', error);
+                    }
+                }
+                
+                // Recarregar notificações
+                await carregarDashboardNotificacoes();
+                renderizarDashboardNotificacoes();
+            } catch (error) {
+                console.error('Erro ao marcar todas como lidas:', error);
+            }
+        }
+        
+        // Fechar dropdown ao clicar fora
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('dashboard-notificacoes-dropdown');
+            const badge = document.querySelector('.dashboard-notificacoes-badge');
+            
+            if (dropdown && badge && !dropdown.contains(e.target) && !badge.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
+        
         // Função para carregar conteúdo das páginas
         function loadPageContent(page) {
             const pageContent = document.getElementById('pageContent');
