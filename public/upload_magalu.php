@@ -20,16 +20,23 @@ class MagaluUpload {
     private $maxSizeMB;
     
     public function __construct() {
-        $this->bucket = getenv('MAGALU_BUCKET') ?: 'SmilePainel';
-        $this->region = getenv('MAGALU_REGION') ?: 'br-se1';
-        $this->endpoint = getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
-        $this->accessKey = getenv('MAGALU_ACCESS_KEY');
-        $this->secretKey = getenv('MAGALU_SECRET_KEY');
-        $this->maxSizeMB = (int)(getenv('UPLOAD_MAX_MB') ?: 10);
+        // Carregar variáveis de ambiente (Railway usa $_ENV)
+        $this->bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+        $this->region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+        $this->endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+        $this->accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+        $this->secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 10);
+        
+        // Normalizar bucket name (minúsculas)
+        $this->bucket = strtolower($this->bucket);
         
         if (!$this->accessKey || !$this->secretKey) {
-            throw new Exception('Credenciais Magalu não configuradas');
+            error_log("Magalu Credentials Missing - Access Key: " . ($this->accessKey ? 'SET' : 'MISSING') . ", Secret Key: " . ($this->secretKey ? 'SET' : 'MISSING'));
+            throw new Exception('Credenciais Magalu não configuradas. Verifique MAGALU_ACCESS_KEY e MAGALU_SECRET_KEY nas variáveis de ambiente.');
         }
+        
+        error_log("Magalu Upload initialized - Bucket: {$this->bucket}, Endpoint: {$this->endpoint}, Region: {$this->region}");
     }
     
     public function upload($file, $prefix = 'demandas') {
@@ -80,6 +87,7 @@ class MagaluUpload {
     
     private function uploadToMagalu($tmpFile, $key, $mimeType) {
         // Upload real para Magalu Cloud usando API S3-compatible (formato correto AWS S3 v2)
+        // URL format: https://endpoint/bucket/key
         $url = "{$this->endpoint}/{$this->bucket}/{$key}";
         
         // Ler conteúdo do arquivo
@@ -91,20 +99,40 @@ class MagaluUpload {
         $fileSize = filesize($tmpFile);
         
         // Preparar requisição PUT - AWS S3 Signature Version 2
+        // Date format: RFC 822 (ex: "Wed, 25 Oct 2023 14:25:30 GMT")
         $date = gmdate('D, d M Y H:i:s \G\M\T');
         $contentType = $mimeType;
         
-        // String para assinatura AWS S3 v2
+        // String para assinatura AWS S3 v2 (formato correto)
+        // PUT\n\nContent-Type\nDate\n/bucket/key
         $stringToSign = "PUT\n\n{$contentType}\n{$date}\n/{$this->bucket}/{$key}";
         
-        // Gerar assinatura HMAC-SHA1
+        // Gerar assinatura HMAC-SHA1 e codificar em base64
         $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
+        
+        // Log detalhado para debug (apenas em desenvolvimento)
+        error_log("=== Magalu Upload Debug ===");
+        error_log("URL: {$url}");
+        error_log("Bucket: {$this->bucket}");
+        error_log("Key: {$key}");
+        error_log("Access Key: " . substr($this->accessKey, 0, 8) . "...");
+        error_log("Content-Type: {$contentType}");
+        error_log("Date: {$date}");
+        error_log("File Size: {$fileSize} bytes");
         
         // Abrir arquivo para upload
         $fileHandle = fopen($tmpFile, 'rb');
         if ($fileHandle === false) {
             throw new Exception('Não foi possível abrir arquivo para upload');
         }
+        
+        // Headers da requisição
+        $headers = [
+            'Authorization: AWS ' . $this->accessKey . ':' . $signature,
+            'Content-Type: ' . $contentType,
+            'Date: ' . $date,
+            'Content-Length: ' . $fileSize
+        ];
         
         // Fazer upload via cURL
         $ch = curl_init($url);
@@ -114,19 +142,17 @@ class MagaluUpload {
             CURLOPT_INFILE => $fileHandle,
             CURLOPT_INFILESIZE => $fileSize,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: AWS ' . $this->accessKey . ':' . $signature,
-                'Content-Type: ' . $contentType,
-                'Date: ' . $date
-            ],
-            CURLOPT_TIMEOUT => 60 // Timeout maior para arquivos grandes
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_VERBOSE => false // Desabilitar verbose em produção
         ]);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
+        $curlInfo = curl_getinfo($ch);
         curl_close($ch);
-        fclose($fileHandle); // Fechar handle do arquivo
+        fclose($fileHandle);
         
         if ($curlError) {
             error_log("Magalu Upload cURL Error: {$curlError}");
@@ -134,10 +160,19 @@ class MagaluUpload {
         }
         
         if ($httpCode !== 200 && $httpCode !== 201) {
-            error_log("Magalu Upload Error - HTTP {$httpCode}: " . ($response ?: 'Sem resposta'));
+            error_log("Magalu Upload Error - HTTP {$httpCode}");
+            error_log("Response: " . ($response ?: 'Sem resposta'));
             error_log("URL tentada: {$url}");
             error_log("Bucket: {$this->bucket}, Key: {$key}");
-            error_log("String to sign: {$stringToSign}");
+            error_log("String to sign (preview): PUT\\n\\n{$contentType}\\n{$date}\\n/{$this->bucket}/{$key}");
+            
+            // Extrair mensagem de erro da resposta XML se disponível
+            if (strpos($response, '<Error>') !== false) {
+                if (preg_match('/<Message>(.*?)<\/Message>/', $response, $matches)) {
+                    throw new Exception("Erro no upload para Magalu Cloud: " . $matches[1]);
+                }
+            }
+            
             throw new Exception("Erro no upload para Magalu Cloud. Código HTTP: {$httpCode}. Verifique as credenciais e permissões.");
         }
         
