@@ -791,6 +791,33 @@ let usuarios = <?= json_encode($usuarios) ?>;
 // API Base
 const API_BASE = 'demandas_trello_api.php';
 
+// Função auxiliar para fetch com credenciais
+async function apiFetch(url, options = {}) {
+    const defaultOptions = {
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': options.body instanceof FormData ? undefined : 'application/json',
+            ...options.headers
+        }
+    };
+    
+    // Remover undefined headers
+    Object.keys(defaultOptions.headers).forEach(key => {
+        if (defaultOptions.headers[key] === undefined) {
+            delete defaultOptions.headers[key];
+        }
+    });
+    
+    return fetch(url, {
+        ...defaultOptions,
+        ...options,
+        headers: {
+            ...defaultOptions.headers,
+            ...options.headers
+        }
+    });
+}
+
 // Inicialização
 document.addEventListener('DOMContentLoaded', function() {
     carregarQuadros();
@@ -825,7 +852,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 async function carregarQuadros() {
     try {
-        const response = await fetch(`${API_BASE}?action=quadros`);
+        const response = await apiFetch(`${API_BASE}?action=quadros`);
         const data = await response.json();
         
         if (data.success) {
@@ -878,7 +905,7 @@ function selecionarQuadro(boardId) {
 
 async function carregarListas(boardId) {
     try {
-        const response = await fetch(`${API_BASE}?action=listas&id=${boardId}`);
+        const response = await apiFetch(`${API_BASE}?action=listas&id=${boardId}`);
         const data = await response.json();
         
         if (data.success) {
@@ -895,7 +922,7 @@ async function carregarTodosCards() {
     cards = {};
     for (const lista of lists) {
         try {
-            const response = await fetch(`${API_BASE}?action=cards&id=${lista.id}`);
+            const response = await apiFetch(`${API_BASE}?action=cards&id=${lista.id}`);
             const data = await response.json();
             
             if (data.success) {
@@ -1023,9 +1050,8 @@ async function criarCard(listaIdPredefinida = null) {
     
     try {
         // Criar card primeiro
-        const response = await fetch(`${API_BASE}?action=criar_card`, {
+        const response = await apiFetch(`${API_BASE}?action=criar_card`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 lista_id: listaId,
                 titulo,
@@ -1036,6 +1062,16 @@ async function criarCard(listaIdPredefinida = null) {
                 usuarios
             })
         });
+        
+        // Tratar erro de autenticação
+        if (response.status === 401) {
+            const errorData = await response.json();
+            customAlert('Erro de autenticação. Por favor, faça login novamente.', '🔒 Sessão Expirada');
+            setTimeout(() => {
+                window.location.href = 'login.php';
+            }, 2000);
+            return;
+        }
         
         const data = await response.json();
         

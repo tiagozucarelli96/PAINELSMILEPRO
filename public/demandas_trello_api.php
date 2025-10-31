@@ -13,14 +13,23 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Verificar autenticação
-// Verificar múltiplas variáveis de sessão possíveis
+// Verificar múltiplas variáveis de sessão possíveis (compatível com login.php)
 $usuario_id_session = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
 $logado = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? null;
+
+// Aceitar se apenas 'logado' estiver definido (compatível com login.php que define $_SESSION['id'])
+if (empty($usuario_id_session) && isset($_SESSION['logado']) && $_SESSION['logado'] == 1 && isset($_SESSION['id'])) {
+    $usuario_id_session = $_SESSION['id'];
+}
 
 if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
     http_response_code(401);
     header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'error' => 'Não autenticado']);
+    ob_clean();
+    echo json_encode([
+        'success' => false, 
+        'error' => 'Não autenticado'
+    ]);
     exit;
 }
 
