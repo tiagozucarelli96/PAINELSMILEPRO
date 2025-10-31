@@ -437,6 +437,7 @@ function carregarDemandas() {
     
     const params = new URLSearchParams(filtrosLimpos);
     const url = `demandas_api.php${params.toString() ? '?' + params.toString() : ''}`;
+    console.log('Carregando demandas de:', url);
     
     fetch(url, {
         method: 'GET',
@@ -566,8 +567,8 @@ function limparFiltros() {
 function verDetalhes(id) {
     console.log('Carregando detalhes da demanda:', id);
     
-    // Usar PATH_INFO correto
-    fetch(`demandas_api.php/${id}`, {
+    // NOVA ABORDAGEM: Usar query parameters
+    fetch(`demandas_api.php?action=detalhes&id=${id}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json'
@@ -658,7 +659,7 @@ function concluirDemanda(id) {
     
     console.log('Concluindo demanda:', id);
     
-    fetch(`demandas_api.php/${id}/concluir`, {
+    fetch(`demandas_api.php?action=concluir&id=${id}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -693,7 +694,7 @@ function reabrirDemanda(id) {
     
     console.log('Reabrindo demanda:', id);
     
-    fetch(`demandas_api.php/${id}/reabrir`, {
+    fetch(`demandas_api.php?action=reabrir&id=${id}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -720,7 +721,7 @@ function reabrirDemanda(id) {
 }
 
 function downloadAnexo(id) {
-    fetch(`demandas_api.php/anexos/${id}`)
+    fetch(`demandas_api.php?action=anexo&id=${id}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
