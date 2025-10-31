@@ -463,6 +463,12 @@ includeSidebar('Demandas Trello');
             <div id="board-selector"></div>
         </div>
         <div class="header-buttons">
+            <button class="btn btn-outline" onclick="abrirModalNovoQuadro()">
+                ➕ Novo Quadro
+            </button>
+            <button class="btn btn-outline" onclick="abrirModalNovaLista()">
+                📋 Nova Lista
+            </button>
             <button class="btn btn-outline" onclick="abrirModalDemandasFixas()">
                 📅 Demandas Fixas
             </button>
@@ -480,6 +486,108 @@ includeSidebar('Demandas Trello');
         <div class="empty-state">
             <p>Selecione ou crie um quadro para começar</p>
         </div>
+    </div>
+</div>
+
+<!-- Modal: Novo Quadro -->
+<div id="modal-novo-quadro" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Novo Quadro</h2>
+            <span class="close" onclick="fecharModal('modal-novo-quadro')">&times;</span>
+        </div>
+        <form id="form-novo-quadro">
+            <div class="form-group">
+                <label for="quadro-nome">Nome *</label>
+                <input type="text" id="quadro-nome" required>
+            </div>
+            <div class="form-group">
+                <label for="quadro-descricao">Descrição</label>
+                <textarea id="quadro-descricao" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="quadro-cor">Cor</label>
+                <input type="color" id="quadro-cor" value="#3b82f6">
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-novo-quadro')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Criar Quadro</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Nova Lista -->
+<div id="modal-nova-lista" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Nova Lista</h2>
+            <span class="close" onclick="fecharModal('modal-nova-lista')">&times;</span>
+        </div>
+        <form id="form-nova-lista">
+            <div class="form-group">
+                <label for="lista-nome">Nome *</label>
+                <input type="text" id="lista-nome" required>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-nova-lista')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Criar Lista</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Editar Card -->
+<div id="modal-editar-card" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Editar Card</h2>
+            <span class="close" onclick="fecharModal('modal-editar-card')">&times;</span>
+        </div>
+        <form id="form-editar-card">
+            <input type="hidden" id="edit-card-id">
+            <div class="form-group">
+                <label for="edit-card-titulo">Título *</label>
+                <input type="text" id="edit-card-titulo" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-card-descricao">Descrição</label>
+                <textarea id="edit-card-descricao" rows="4"></textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="edit-card-prazo">Prazo</label>
+                    <input type="date" id="edit-card-prazo">
+                </div>
+                <div class="form-group">
+                    <label for="edit-card-prioridade">Prioridade</label>
+                    <select id="edit-card-prioridade">
+                        <option value="baixa">Baixa</option>
+                        <option value="media">Média</option>
+                        <option value="alta">Alta</option>
+                        <option value="urgente">Urgente</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="edit-card-categoria">Categoria</label>
+                <input type="text" id="edit-card-categoria">
+            </div>
+            <div class="form-group">
+                <label for="edit-card-usuarios">Responsáveis</label>
+                <select id="edit-card-usuarios" multiple style="min-height: 100px;">
+                    <?php foreach ($usuarios as $user): ?>
+                        <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small style="color: #6b7280; font-size: 0.75rem;">Mantenha Ctrl/Cmd pressionado para selecionar múltiplos</small>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-editar-card')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" class="btn" onclick="deletarCardAtual()" style="background: #ef4444; color: white;">🗑️ Deletar</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -577,10 +685,25 @@ document.addEventListener('DOMContentLoaded', function() {
     carregarNotificacoes();
     setInterval(carregarNotificacoes, 30000); // Atualizar a cada 30s
     
-    // Form novo card
+    // Forms
     document.getElementById('form-novo-card').addEventListener('submit', function(e) {
         e.preventDefault();
         criarCard();
+    });
+    
+    document.getElementById('form-novo-quadro').addEventListener('submit', function(e) {
+        e.preventDefault();
+        criarQuadro();
+    });
+    
+    document.getElementById('form-nova-lista').addEventListener('submit', function(e) {
+        e.preventDefault();
+        criarLista();
+    });
+    
+    document.getElementById('form-editar-card').addEventListener('submit', function(e) {
+        e.preventDefault();
+        salvarEdicaoCard();
     });
 });
 
@@ -685,7 +808,10 @@ function renderizarBoard() {
         <div class="trello-list" data-lista-id="${lista.id}">
             <div class="list-header">
                 <span>${lista.nome}</span>
-                <span class="list-count">${cards[lista.id]?.length || 0}</span>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <span class="list-count">${cards[lista.id]?.length || 0}</span>
+                    <button onclick="deletarLista(${lista.id})" style="background: transparent; border: none; color: #6b7280; cursor: pointer; font-size: 0.875rem;" title="Deletar lista">🗑️</button>
+                </div>
             </div>
             <div class="cards-container" id="cards-${lista.id}">
                 ${renderizarCards(lista.id)}
@@ -906,10 +1032,12 @@ async function verCard(cardId) {
                 </div>
                 
                 <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+                    <button class="btn btn-primary" onclick="editarCard(${card.id})">✏️ Editar</button>
                     ${card.status === 'concluido' 
                         ? `<button class="btn btn-outline" onclick="reabrirCard(${card.id})">🔄 Reabrir</button>`
                         : `<button class="btn btn-primary" onclick="concluirCard(${card.id})">✅ Concluir</button>`
                     }
+                    <button class="btn" onclick="deletarCardConfirmado(${card.id})" style="background: #ef4444; color: white;">🗑️ Deletar</button>
                     <button class="btn btn-outline" onclick="fecharModal('modal-ver-card')">Fechar</button>
                 </div>
             `;
@@ -1092,8 +1220,227 @@ async function marcarNotificacaoLida(notifId) {
 }
 
 // ============================================
+// QUADROS E LISTAS
+// ============================================
+
+async function criarQuadro() {
+    const nome = document.getElementById('quadro-nome').value.trim();
+    const descricao = document.getElementById('quadro-descricao').value;
+    const cor = document.getElementById('quadro-cor').value;
+    
+    if (!nome) {
+        alert('Nome é obrigatório');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=criar_quadro`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome, descricao, cor })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-novo-quadro');
+            document.getElementById('form-novo-quadro').reset();
+            await carregarQuadros();
+            selecionarQuadro(data.data.id);
+            mostrarToast('✅ Quadro criado com sucesso!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao criar quadro');
+    }
+}
+
+async function criarLista() {
+    if (!currentBoardId) {
+        alert('Selecione um quadro primeiro');
+        return;
+    }
+    
+    const nome = document.getElementById('lista-nome').value.trim();
+    if (!nome) {
+        alert('Nome é obrigatório');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=criar_lista&id=${currentBoardId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-nova-lista');
+            document.getElementById('form-nova-lista').reset();
+            await carregarListas(currentBoardId);
+            mostrarToast('✅ Lista criada com sucesso!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao criar lista');
+    }
+}
+
+async function deletarLista(listaId) {
+    if (!confirm('Tem certeza? Todos os cards desta lista serão deletados.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=deletar_lista&id=${listaId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await carregarListas(currentBoardId);
+            mostrarToast('✅ Lista deletada!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao deletar lista');
+    }
+}
+
+// ============================================
+// EDIÇÃO DE CARDS
+// ============================================
+
+let cardEditando = null;
+
+async function editarCard(cardId) {
+    try {
+        const response = await fetch(`${API_BASE}?action=card&id=${cardId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const card = data.data;
+            cardEditando = cardId;
+            
+            document.getElementById('edit-card-id').value = card.id;
+            document.getElementById('edit-card-titulo').value = card.titulo;
+            document.getElementById('edit-card-descricao').value = card.descricao || '';
+            document.getElementById('edit-card-prazo').value = card.prazo || '';
+            document.getElementById('edit-card-prioridade').value = card.prioridade || 'media';
+            document.getElementById('edit-card-categoria').value = card.categoria || '';
+            
+            // Selecionar usuários
+            const selectUsuarios = document.getElementById('edit-card-usuarios');
+            Array.from(selectUsuarios.options).forEach(opt => opt.selected = false);
+            (card.usuarios || []).forEach(u => {
+                const option = selectUsuarios.querySelector(`option[value="${u.id}"]`);
+                if (option) option.selected = true;
+            });
+            
+            fecharModal('modal-ver-card');
+            document.getElementById('modal-editar-card').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao carregar card');
+    }
+}
+
+async function salvarEdicaoCard() {
+    const cardId = parseInt(document.getElementById('edit-card-id').value);
+    const titulo = document.getElementById('edit-card-titulo').value.trim();
+    const descricao = document.getElementById('edit-card-descricao').value;
+    const prazo = document.getElementById('edit-card-prazo').value || null;
+    const prioridade = document.getElementById('edit-card-prioridade').value;
+    const categoria = document.getElementById('edit-card-categoria').value || null;
+    const usuarios = Array.from(document.getElementById('edit-card-usuarios').selectedOptions).map(opt => parseInt(opt.value));
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=atualizar_card&id=${cardId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                titulo,
+                descricao,
+                prazo,
+                prioridade,
+                categoria,
+                usuarios
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-editar-card');
+            await carregarTodosCards();
+            renderizarBoard();
+            mostrarToast('✅ Card atualizado!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao atualizar card');
+    }
+}
+
+async function deletarCardAtual() {
+    const cardId = parseInt(document.getElementById('edit-card-id').value);
+    deletarCardConfirmado(cardId);
+}
+
+async function deletarCardConfirmado(cardId) {
+    if (!confirm('Tem certeza que deseja deletar este card?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}?action=deletar_card&id=${cardId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            fecharModal('modal-ver-card');
+            fecharModal('modal-editar-card');
+            await carregarTodosCards();
+            renderizarBoard();
+            mostrarToast('✅ Card deletado!');
+        } else {
+            alert('Erro: ' + (data.error || 'Erro desconhecido'));
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao deletar card');
+    }
+}
+
+// ============================================
 // MODAIS E UTILITÁRIOS
 // ============================================
+
+function abrirModalNovoQuadro() {
+    document.getElementById('modal-novo-quadro').style.display = 'block';
+}
+
+function abrirModalNovaLista() {
+    if (!currentBoardId) {
+        alert('Selecione um quadro primeiro');
+        return;
+    }
+    document.getElementById('modal-nova-lista').style.display = 'block';
+}
 
 function abrirModalNovoCard(listaIdPredefinida = null) {
     if (!currentBoardId) {
@@ -1134,7 +1481,7 @@ function mostrarToast(mensagem) {
 
 // Fechar modais ao clicar fora
 window.onclick = function(event) {
-    const modals = ['modal-novo-card', 'modal-ver-card'];
+    const modals = ['modal-novo-card', 'modal-ver-card', 'modal-editar-card', 'modal-novo-quadro', 'modal-nova-lista'];
     modals.forEach(id => {
         const modal = document.getElementById(id);
         if (event.target === modal) {

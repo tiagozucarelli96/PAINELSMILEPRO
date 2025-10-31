@@ -576,6 +576,285 @@ function marcarNotificacaoComoLida($pdo, $notificacao_id) {
 }
 
 /**
+ * Criar novo quadro
+ */
+function criarQuadro($pdo, $usuario_id, $dados) {
+    try {
+        $nome = trim($dados['nome'] ?? '');
+        $descricao = $dados['descricao'] ?? null;
+        $cor = $dados['cor'] ?? '#3b82f6';
+        
+        if (empty($nome)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Nome do quadro é obrigatório']);
+            exit;
+        }
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO demandas_boards (nome, descricao, criado_por, cor)
+            VALUES (:nome, :descricao, :criado_por, :cor)
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':nome' => $nome,
+            ':descricao' => $descricao ?: null,
+            ':criado_por' => $usuario_id,
+            ':cor' => $cor
+        ]);
+        
+        $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Criar listas padrão
+        $listas_padrao = [
+            ['nome' => '📋 Para Fazer', 'posicao' => 0],
+            ['nome' => '🔄 Em Andamento', 'posicao' => 1],
+            ['nome' => '✅ Feito', 'posicao' => 2]
+        ];
+        
+        foreach ($listas_padrao as $lista) {
+            $stmt_lista = $pdo->prepare("
+                INSERT INTO demandas_listas (board_id, nome, posicao)
+                VALUES (:board_id, :nome, :posicao)
+            ");
+            $stmt_lista->execute([
+                ':board_id' => (int)$quadro['id'],
+                ':nome' => $lista['nome'],
+                ':posicao' => $lista['posicao']
+            ]);
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Quadro criado com sucesso',
+            'data' => $quadro
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Criar nova lista
+ */
+function criarLista($pdo, $board_id, $dados) {
+    try {
+        $nome = trim($dados['nome'] ?? '');
+        
+        if (empty($nome)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Nome da lista é obrigatório']);
+            exit;
+        }
+        
+        // Buscar posição máxima
+        $stmt_pos = $pdo->prepare("SELECT COALESCE(MAX(posicao), 0) + 1 as nova_pos FROM demandas_listas WHERE board_id = :board_id");
+        $stmt_pos->execute([':board_id' => $board_id]);
+        $posicao = (int)$stmt_pos->fetch(PDO::FETCH_ASSOC)['nova_pos'];
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO demandas_listas (board_id, nome, posicao)
+            VALUES (:board_id, :nome, :posicao)
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':board_id' => $board_id,
+            ':nome' => $nome,
+            ':posicao' => $posicao
+        ]);
+        
+        $lista = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Lista criada com sucesso',
+            'data' => $lista
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Deletar card
+ */
+function deletarCard($pdo, $card_id) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM demandas_cards WHERE id = :id");
+        $stmt->execute([':id' => $card_id]);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Card não encontrado']);
+            exit;
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Card deletado com sucesso'
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Deletar quadro
+ */
+function deletarQuadro($pdo, $board_id) {
+    try {
+        $stmt = $pdo->prepare("UPDATE demandas_boards SET ativo = FALSE WHERE id = :id");
+        $stmt->execute([':id' => $board_id]);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Quadro não encontrado']);
+            exit;
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Quadro deletado com sucesso'
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Deletar lista
+ */
+function deletarLista($pdo, $lista_id) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM demandas_listas WHERE id = :id");
+        $stmt->execute([':id' => $lista_id]);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Lista não encontrada']);
+            exit;
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Lista deletada com sucesso'
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Atualizar quadro
+ */
+function atualizarQuadro($pdo, $board_id, $dados) {
+    try {
+        $campos = [];
+        $valores = [':id' => $board_id];
+        
+        if (isset($dados['nome'])) {
+            $campos[] = 'nome = :nome';
+            $valores[':nome'] = trim($dados['nome']);
+        }
+        if (isset($dados['descricao'])) {
+            $campos[] = 'descricao = :descricao';
+            $valores[':descricao'] = $dados['descricao'] ?: null;
+        }
+        if (isset($dados['cor'])) {
+            $campos[] = 'cor = :cor';
+            $valores[':cor'] = $dados['cor'];
+        }
+        
+        if (empty($campos)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Nenhum campo para atualizar']);
+            exit;
+        }
+        
+        $stmt = $pdo->prepare("
+            UPDATE demandas_boards 
+            SET " . implode(', ', $campos) . "
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute($valores);
+        
+        $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Quadro atualizado com sucesso',
+            'data' => $quadro
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
+ * Atualizar lista
+ */
+function atualizarLista($pdo, $lista_id, $dados) {
+    try {
+        $campos = [];
+        $valores = [':id' => $lista_id];
+        
+        if (isset($dados['nome'])) {
+            $campos[] = 'nome = :nome';
+            $valores[':nome'] = trim($dados['nome']);
+        }
+        if (isset($dados['posicao'])) {
+            $campos[] = 'posicao = :posicao';
+            $valores[':posicao'] = (int)$dados['posicao'];
+        }
+        
+        if (empty($campos)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Nenhum campo para atualizar']);
+            exit;
+        }
+        
+        $stmt = $pdo->prepare("
+            UPDATE demandas_listas 
+            SET " . implode(', ', $campos) . "
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute($valores);
+        
+        $lista = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Lista atualizada com sucesso',
+            'data' => $lista
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
  * Helper: Criar notificação
  */
 function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem) {
@@ -670,7 +949,11 @@ try {
     } elseif ($method === 'POST') {
         $data = json_decode(file_get_contents('php://input'), true) ?? $_POST;
         
-        if ($action === 'criar_card') {
+        if ($action === 'criar_quadro') {
+            criarQuadro($pdo, $usuario_id, $data);
+        } elseif ($action === 'criar_lista' && $id) {
+            criarLista($pdo, $id, $data);
+        } elseif ($action === 'criar_card') {
             criarCard($pdo, $usuario_id, $data);
         } elseif ($action === 'mover_card' && $id) {
             moverCard($pdo, $id, $data['nova_lista_id'] ?? null, $data['nova_posicao'] ?? 0);
@@ -696,6 +979,18 @@ try {
         
         if ($action === 'atualizar_card' && $id) {
             atualizarCard($pdo, $id, $data);
+        } elseif ($action === 'atualizar_quadro' && $id) {
+            atualizarQuadro($pdo, $id, $data);
+        } elseif ($action === 'atualizar_lista' && $id) {
+            atualizarLista($pdo, $id, $data);
+        }
+    } elseif ($method === 'DELETE') {
+        if ($action === 'deletar_card' && $id) {
+            deletarCard($pdo, $id);
+        } elseif ($action === 'deletar_quadro' && $id) {
+            deletarQuadro($pdo, $id);
+        } elseif ($action === 'deletar_lista' && $id) {
+            deletarLista($pdo, $id);
         }
     }
     
