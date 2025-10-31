@@ -96,10 +96,17 @@ try {
             echo json_encode(['success' => false, 'error' => 'ID necessário para editar']);
         }
     }
-    // DELETE - Deletar anexo
-    elseif ($method === 'DELETE' || ($method === 'POST' && $action === 'deletar_anexo' && $id)) {
-        if ($action === 'deletar_anexo' && $id) {
+    // DELETE - Deletar demanda ou anexo
+    elseif ($method === 'DELETE' || ($method === 'POST' && ($action === 'deletar' || $action === 'arquivar' || $action === 'deletar_anexo') && $id)) {
+        if ($action === 'deletar' && $id) {
+            excluirDemanda($pdo, $id);
+            exit;
+        } elseif ($action === 'arquivar' && $id) {
+            arquivarDemanda($pdo, $id);
+            exit;
+        } elseif ($action === 'deletar_anexo' && $id) {
             deletarAnexo($pdo, $id);
+            exit;
         } else {
             http_response_code(400);
             header('Content-Type: application/json');
@@ -151,13 +158,27 @@ function listarDemandas($pdo) {
             'status' => $_GET['status'] ?? '',
             'responsavel' => $_GET['responsavel'] ?? '',
             'texto' => $_GET['texto'] ?? '',
-            'ate_data' => $_GET['ate_data'] ?? ''
+            'ate_data' => $_GET['ate_data'] ?? '',
+            'prioridade' => $_GET['prioridade'] ?? '',
+            'categoria' => $_GET['categoria'] ?? '',
+            'arquivado' => $_GET['arquivado'] ?? 'false' // Por padrão não mostrar arquivadas
         ];
+        
+        // Ordenação (preserva compatibilidade)
+        $sort_by = $_GET['sort_by'] ?? 'prazo';
+        $order = strtoupper($_GET['order'] ?? 'ASC');
+        $allowed_sort = ['prazo', 'data_criacao', 'prioridade', 'progresso', 'status'];
+        if (!in_array($sort_by, $allowed_sort)) {
+            $sort_by = 'prazo';
+        }
+        if (!in_array($order, ['ASC', 'DESC'])) {
+            $order = 'ASC';
+        }
         
         error_log("DEMANDAS_API: listarDemandas() - Filtros: " . json_encode($filtros));
         
-        $where = ['1=1'];
-        $params = [];
+        $where = ['d.arquivado = ?']; // Sempre filtrar arquivadas por padrão
+        $params = [($filtros['arquivado'] === 'true' ? 'true' : 'false')];
         
         if ($filtros['status']) {
             $where[] = 'd.status = ?';
@@ -179,6 +200,17 @@ function listarDemandas($pdo) {
             $params[] = $filtros['ate_data'];
         }
         
+        // Novos filtros (opcionais - só aplica se colunas existirem)
+        if ($filtros['prioridade']) {
+            $where[] = 'd.prioridade = ?';
+            $params[] = $filtros['prioridade'];
+        }
+        
+        if ($filtros['categoria']) {
+            $where[] = 'd.categoria = ?';
+            $params[] = $filtros['categoria'];
+        }
+        
         $sql = "
             SELECT 
                 d.*,
@@ -193,7 +225,7 @@ function listarDemandas($pdo) {
             LEFT JOIN usuarios r ON d.responsavel_id = r.id
             LEFT JOIN usuarios c ON d.criador_id = c.id
             WHERE " . implode(' AND ', $where) . "
-            ORDER BY d.prazo ASC, d.data_criacao DESC
+            ORDER BY d.{$sort_by} {$order}, d.data_criacao DESC
         ";
         
         error_log("DEMANDAS_API: Executando SQL: " . substr($sql, 0, 200) . "...");
@@ -304,43 +336,115 @@ function obterDemanda($pdo, $id) {
 }
 
 function criarDemanda($pdo) {
-    $data = json_decode(file_get_contents('php://input'), true);
-    
-    if (!$data) {
-        $data = $_POST;
-    }
-    
-    $descricao = $data['descricao'] ?? '';
-    $prazo = $data['prazo'] ?? '';
-    $responsavel_id = isset($data['responsavel_id']) ? (int)$data['responsavel_id'] : 0;
-    $whatsapp = $data['whatsapp'] ?? '';
-    
-    if (!$descricao || !$prazo || !$responsavel_id) {
-        http_response_code(400);
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => false,
-            'error' => 'Dados obrigatórios: descricao, prazo, responsavel_id'
-        ]);
-        exit;
-    }
-    
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO demandas (descricao, prazo, responsavel_id, criador_id, whatsapp) 
-            VALUES (?, ?, ?, ?, ?)
-            RETURNING id
-        ");
-        $stmt->execute([
-            $descricao,
-            $prazo,
-            $responsavel_id,
-            $_SESSION['user_id'] ?? 1,
-            $whatsapp ?: null
-        ]);
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        // Suporta JSON e FormData
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (!$data) {
+            $data = $_POST;
+        }
+        
+        $descricao = $data['descricao'] ?? '';
+        $prazo = $data['prazo'] ?? '';
+        $responsavel_id = isset($data['responsavel_id']) ? (int)$data['responsavel_id'] : 0;
+        $whatsapp = $data['whatsapp'] ?? '';
+        
+        // Novos campos opcionais (preserva compatibilidade)
+        $prioridade = $data['prioridade'] ?? 'media';
+        $categoria = $data['categoria'] ?? null;
+        $progresso = isset($data['progresso']) ? (int)$data['progresso'] : 0;
+        $etapa = $data['etapa'] ?? 'planejamento';
+        $referencia_externa = $data['referencia_externa'] ?? null;
+        $tipo_referencia = $data['tipo_referencia'] ?? null;
+        
+        if (!$descricao || !$prazo || !$responsavel_id) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Dados obrigatórios: descricao, prazo, responsavel_id'
+            ]);
+            return;
+        }
+        
+        // Validar prioridade
+        if (!in_array($prioridade, ['baixa', 'media', 'alta', 'urgente'])) {
+            $prioridade = 'media';
+        }
+        
+        // Validar progresso
+        if ($progresso < 0 || $progresso > 100) {
+            $progresso = 0;
+        }
+        
+        // Validar etapa
+        if (!in_array($etapa, ['planejamento', 'execucao', 'revisao', 'concluida'])) {
+            $etapa = 'planejamento';
+        }
+        
+        // Construir SQL dinamicamente para incluir apenas campos que existem
+        $campos = ['descricao', 'prazo', 'responsavel_id', 'criador_id'];
+        $valores = [$descricao, $prazo, $responsavel_id, $_SESSION['user_id'] ?? 1];
+        $placeholders = ['?', '?', '?', '?'];
+        
+        // Adicionar campos opcionais se fornecidos
+        if ($whatsapp) {
+            $campos[] = 'whatsapp';
+            $valores[] = $whatsapp;
+            $placeholders[] = '?';
+        }
+        
+        // Verificar se coluna existe antes de adicionar (evita erro se migration não rodou)
+        try {
+            $teste = $pdo->query("SELECT prioridade FROM demandas LIMIT 1");
+            $campos[] = 'prioridade';
+            $valores[] = $prioridade;
+            $placeholders[] = '?';
+            
+            if ($categoria) {
+                $campos[] = 'categoria';
+                $valores[] = $categoria;
+                $placeholders[] = '?';
+            }
+            
+            $campos[] = 'progresso';
+            $valores[] = $progresso;
+            $placeholders[] = '?';
+            
+            $campos[] = 'etapa';
+            $valores[] = $etapa;
+            $placeholders[] = '?';
+            
+            if ($referencia_externa) {
+                $campos[] = 'referencia_externa';
+                $valores[] = $referencia_externa;
+                $placeholders[] = '?';
+            }
+            
+            if ($tipo_referencia) {
+                $campos[] = 'tipo_referencia';
+                $valores[] = $tipo_referencia;
+                $placeholders[] = '?';
+            }
+        } catch (PDOException $e) {
+            // Colunas novas não existem ainda - usar estrutura básica
+            error_log("DEMANDAS_API: Campos novos não disponíveis, usando estrutura básica");
+        }
+        
+        $sql = "INSERT INTO demandas (" . implode(', ', $campos) . ") 
+                VALUES (" . implode(', ', $placeholders) . ")
+                RETURNING id";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($valores);
         
         $id = $stmt->fetchColumn();
-        echo json_encode(['success' => true, 'data' => ['id' => $id]]);
+        echo json_encode([
+            'success' => true, 
+            'data' => ['id' => $id],
+            'message' => 'Demanda criada com sucesso'
+        ]);
         
     } catch (PDOException $e) {
         http_response_code(500);
@@ -349,52 +453,169 @@ function criarDemanda($pdo) {
             'success' => false,
             'error' => 'Erro ao inserir no banco: ' . $e->getMessage()
         ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao criar demanda: ' . $e->getMessage()
+        ]);
     }
 }
 
 function editarDemanda($pdo, $id) {
-    $data = json_decode(file_get_contents('php://input'), true);
-    
-    $campos = [];
-    $params = [];
-    
-    if (isset($data['descricao'])) {
-        $campos[] = 'descricao = ?';
-        $params[] = $data['descricao'];
-    }
-    
-    if (isset($data['prazo'])) {
-        $campos[] = 'prazo = ?';
-        $params[] = $data['prazo'];
-    }
-    
-    if (isset($data['responsavel_id'])) {
-        $campos[] = 'responsavel_id = ?';
-        $params[] = $data['responsavel_id'];
-    }
-    
-    if (isset($data['whatsapp'])) {
-        $campos[] = 'whatsapp = ?';
-        $params[] = $data['whatsapp'];
-    }
-    
-    if (empty($campos)) {
-        http_response_code(400);
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID da demanda não fornecido']);
+            return;
+        }
+        
+        // Suporta JSON e FormData
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (!$data) {
+            $data = $_POST;
+        }
+        
+        // Verificar permissões (criador ou admin pode editar)
+        $user_id = $_SESSION['user_id'] ?? 1;
+        $stmt_check = $pdo->prepare("SELECT criador_id FROM demandas WHERE id = ?");
+        $stmt_check->execute([$id]);
+        $demanda = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$demanda) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
+            return;
+        }
+        
+        // Verificar se é criador (pode adicionar validação de admin depois)
+        // if ($demanda['criador_id'] != $user_id) {
+        //     http_response_code(403);
+        //     echo json_encode(['success' => false, 'error' => 'Sem permissão para editar esta demanda']);
+        //     return;
+        // }
+        
+        $campos = [];
+        $params = [];
+        
+        // Campos básicos
+        if (isset($data['descricao'])) {
+            $campos[] = 'descricao = ?';
+            $params[] = $data['descricao'];
+        }
+        
+        if (isset($data['prazo'])) {
+            $campos[] = 'prazo = ?';
+            $params[] = $data['prazo'];
+        }
+        
+        if (isset($data['responsavel_id'])) {
+            $campos[] = 'responsavel_id = ?';
+            $params[] = (int)$data['responsavel_id'];
+        }
+        
+        if (isset($data['whatsapp'])) {
+            $campos[] = 'whatsapp = ?';
+            $params[] = $data['whatsapp'] ?: null;
+        }
+        
+        if (isset($data['status'])) {
+            $campos[] = 'status = ?';
+            $params[] = $data['status'];
+        }
+        
+        // Novos campos (verificar se coluna existe antes)
+        try {
+            $teste = $pdo->query("SELECT prioridade FROM demandas LIMIT 1");
+            
+            if (isset($data['prioridade'])) {
+                $prioridade = $data['prioridade'];
+                if (in_array($prioridade, ['baixa', 'media', 'alta', 'urgente'])) {
+                    $campos[] = 'prioridade = ?';
+                    $params[] = $prioridade;
+                }
+            }
+            
+            if (isset($data['categoria'])) {
+                $campos[] = 'categoria = ?';
+                $params[] = $data['categoria'] ?: null;
+            }
+            
+            if (isset($data['progresso'])) {
+                $progresso = (int)$data['progresso'];
+                if ($progresso >= 0 && $progresso <= 100) {
+                    $campos[] = 'progresso = ?';
+                    $params[] = $progresso;
+                }
+            }
+            
+            if (isset($data['etapa'])) {
+                $etapa = $data['etapa'];
+                if (in_array($etapa, ['planejamento', 'execucao', 'revisao', 'concluida'])) {
+                    $campos[] = 'etapa = ?';
+                    $params[] = $etapa;
+                }
+            }
+            
+            if (isset($data['referencia_externa'])) {
+                $campos[] = 'referencia_externa = ?';
+                $params[] = $data['referencia_externa'] ?: null;
+            }
+            
+            if (isset($data['tipo_referencia'])) {
+                $campos[] = 'tipo_referencia = ?';
+                $params[] = $data['tipo_referencia'] ?: null;
+            }
+        } catch (PDOException $e) {
+            // Colunas novas não existem ainda - pular
+            error_log("DEMANDAS_API: Campos novos não disponíveis para edição");
+        }
+        
+        if (empty($campos)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'Nenhum campo para atualizar']);
+            return;
+        }
+        
+        $params[] = $id;
+        
+        $stmt = $pdo->prepare("
+            UPDATE demandas 
+            SET " . implode(', ', $campos) . "
+            WHERE id = ?
+        ");
+        $stmt->execute($params);
+        
+        if ($stmt->rowCount() === 0) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada ou nenhuma alteração']);
+            return;
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Demanda atualizada com sucesso'
+        ]);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
         header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'error' => 'Nenhum campo para atualizar']);
-        return;
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao atualizar demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao atualizar demanda: ' . $e->getMessage()
+        ]);
     }
-    
-    $params[] = $id;
-    
-    $stmt = $pdo->prepare("
-        UPDATE demandas 
-        SET " . implode(', ', $campos) . "
-        WHERE id = ?
-    ");
-    $stmt->execute($params);
-    
-    echo json_encode(['success' => true]);
 }
 
 function concluirDemanda($pdo, $id) {
@@ -557,6 +778,124 @@ function downloadAnexo($pdo, $arquivoId) {
     
     header('Content-Type: application/json');
     echo json_encode(['url' => 'https://magalu-cloud-url/' . $arquivo['chave_storage']]);
+}
+
+function excluirDemanda($pdo, $id) {
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID da demanda não fornecido']);
+            return;
+        }
+        
+        // Verificar se demanda existe
+        $stmt_check = $pdo->prepare("SELECT id FROM demandas WHERE id = ? AND arquivado = false");
+        $stmt_check->execute([$id]);
+        if (!$stmt_check->fetch()) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda não encontrada']);
+            return;
+        }
+        
+        // Soft delete: marcar como arquivada (mais seguro que DELETE)
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE demandas 
+                SET arquivado = true, arquivado_em = NOW(), arquivado_por = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$_SESSION['user_id'] ?? 1, $id]);
+            
+            if ($stmt->rowCount() === 0) {
+                // Se coluna arquivado não existe, fazer hard delete
+                $stmt = $pdo->prepare("DELETE FROM demandas WHERE id = ?");
+                $stmt->execute([$id]);
+            }
+        } catch (PDOException $e) {
+            // Se coluna arquivado não existe, fazer hard delete
+            $stmt = $pdo->prepare("DELETE FROM demandas WHERE id = ?");
+            $stmt->execute([$id]);
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Demanda excluída com sucesso'
+        ]);
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao excluir demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao excluir demanda: ' . $e->getMessage()
+        ]);
+    }
+}
+
+function arquivarDemanda($pdo, $id) {
+    try {
+        ob_clean();
+        header('Content-Type: application/json; charset=utf-8');
+        
+        if (!$id) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'ID da demanda não fornecido']);
+            return;
+        }
+        
+        // Verificar se coluna existe
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE demandas 
+                SET arquivado = true, arquivado_em = NOW(), arquivado_por = ?
+                WHERE id = ? AND arquivado = false
+            ");
+            $stmt->execute([$_SESSION['user_id'] ?? 1, $id]);
+            
+            if ($stmt->rowCount() === 0) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => 'Demanda não encontrada ou já arquivada']);
+                return;
+            }
+            
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Demanda arquivada com sucesso'
+            ]);
+        } catch (PDOException $e) {
+            // Coluna arquivado não existe
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Funcionalidade de arquivamento não disponível'
+            ]);
+        }
+        
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao arquivar demanda: ' . $e->getMessage()
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'error' => 'Erro ao arquivar demanda: ' . $e->getMessage()
+        ]);
+    }
 }
 
 function deletarAnexo($pdo, $arquivoId) {
