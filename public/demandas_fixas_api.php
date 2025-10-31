@@ -30,7 +30,52 @@ ob_clean();
 header('Content-Type: application/json; charset=utf-8');
 
 try {
-    if ($method === 'POST') {
+    if ($method === 'GET' && !$id) {
+        // Listar todas as demandas fixas
+        $stmt = $pdo->query("
+            SELECT df.*, 
+                   db.nome as board_nome,
+                   dl.nome as lista_nome
+            FROM demandas_fixas df
+            JOIN demandas_boards db ON db.id = df.board_id
+            JOIN demandas_listas dl ON dl.id = df.lista_id
+            ORDER BY df.criado_em DESC
+        ");
+        $fixas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        echo json_encode([
+            'success' => true,
+            'data' => $fixas
+        ]);
+        exit;
+        
+    } elseif ($method === 'GET' && $id) {
+        // Buscar uma demanda fixa específica
+        $stmt = $pdo->prepare("
+            SELECT df.*, 
+                   db.nome as board_nome,
+                   dl.nome as lista_nome
+            FROM demandas_fixas df
+            JOIN demandas_boards db ON db.id = df.board_id
+            JOIN demandas_listas dl ON dl.id = df.lista_id
+            WHERE df.id = :id
+        ");
+        $stmt->execute([':id' => $id]);
+        $fixa = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$fixa) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Demanda fixa não encontrada']);
+            exit;
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'data' => $fixa
+        ]);
+        exit;
+        
+    } elseif ($method === 'POST') {
         $data = json_decode(file_get_contents('php://input'), true);
         
         $titulo = trim($data['titulo'] ?? '');

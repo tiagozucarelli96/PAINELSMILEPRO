@@ -1115,6 +1115,72 @@ includeSidebar('Demandas');
     </div>
 </div>
 
+<!-- Modal: Nova/Editar Demanda Fixa -->
+<div id="modal-fixa" class="page-demandas-modal">
+    <div class="page-demandas-modal-content">
+        <div class="page-demandas-modal-header">
+            <h2 id="modal-fixa-titulo">Nova Demanda Fixa</h2>
+            <button class="page-demandas-modal-close" onclick="fecharModal('modal-fixa')">&times;</button>
+        </div>
+        <form id="form-fixa">
+            <input type="hidden" id="fixa-id">
+            <div class="page-demandas-form-group">
+                <label for="fixa-titulo">Título *</label>
+                <input type="text" id="fixa-titulo" required>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="fixa-descricao">Descrição</label>
+                <textarea id="fixa-descricao" rows="3"></textarea>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="fixa-board">Quadro *</label>
+                <select id="fixa-board" required onchange="carregarListasFixa(this.value)">
+                    <option value="">Selecione...</option>
+                </select>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="fixa-lista">Lista *</label>
+                <select id="fixa-lista" required>
+                    <option value="">Selecione um quadro primeiro</option>
+                </select>
+            </div>
+            <div class="page-demandas-form-group">
+                <label for="fixa-periodicidade">Periodicidade *</label>
+                <select id="fixa-periodicidade" required onchange="atualizarCamposPeriodicidade()">
+                    <option value="">Selecione...</option>
+                    <option value="diaria">Diária</option>
+                    <option value="semanal">Semanal</option>
+                    <option value="mensal">Mensal</option>
+                </select>
+            </div>
+            <div id="fixa-dia-semana-container" style="display: none;">
+                <div class="page-demandas-form-group">
+                    <label for="fixa-dia-semana">Dia da Semana *</label>
+                    <select id="fixa-dia-semana">
+                        <option value="0">Domingo</option>
+                        <option value="1">Segunda-feira</option>
+                        <option value="2">Terça-feira</option>
+                        <option value="3">Quarta-feira</option>
+                        <option value="4">Quinta-feira</option>
+                        <option value="5">Sexta-feira</option>
+                        <option value="6">Sábado</option>
+                    </select>
+                </div>
+            </div>
+            <div id="fixa-dia-mes-container" style="display: none;">
+                <div class="page-demandas-form-group">
+                    <label for="fixa-dia-mes">Dia do Mês *</label>
+                    <input type="number" id="fixa-dia-mes" min="1" max="31">
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="button" class="btn btn-outline" onclick="fecharModal('modal-fixa')">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Dropdown de Notificações -->
 <div id="notificacoes-dropdown" class="page-demandas-notificacoes-dropdown">
     <div class="page-demandas-notificacoes-header">
@@ -1404,6 +1470,56 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('form-editar-card').addEventListener('submit', function(e) {
         e.preventDefault();
         salvarEdicaoCard();
+    });
+    
+    document.getElementById('form-fixa')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const fixaId = document.getElementById('fixa-id').value;
+        const periodicidade = document.getElementById('fixa-periodicidade').value;
+        const dados = {
+            titulo: document.getElementById('fixa-titulo').value.trim(),
+            descricao: document.getElementById('fixa-descricao').value || null,
+            board_id: parseInt(document.getElementById('fixa-board').value),
+            lista_id: parseInt(document.getElementById('fixa-lista').value),
+            periodicidade: periodicidade
+        };
+        
+        if (periodicidade === 'semanal') {
+            dados.dia_semana = parseInt(document.getElementById('fixa-dia-semana').value);
+        } else if (periodicidade === 'mensal') {
+            dados.dia_mes = parseInt(document.getElementById('fixa-dia-mes').value);
+        }
+        
+        try {
+            let response;
+            if (fixaId) {
+                // Editar
+                response = await apiFetch(`${API_FIXAS}?id=${fixaId}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(dados)
+                });
+            } else {
+                // Criar
+                response = await apiFetch(`${API_FIXAS}`, {
+                    method: 'POST',
+                    body: JSON.stringify(dados)
+                });
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                fecharModal('modal-fixa');
+                await carregarDrawerFixas();
+                mostrarToast(`✅ Demanda fixa ${fixaId ? 'atualizada' : 'criada'} com sucesso!`);
+            } else {
+                customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+            }
+        } catch (error) {
+            console.error('Erro:', error);
+            customAlert('Erro ao salvar demanda fixa', '❌ Erro');
+        }
     });
     
     // Fechar modais ao clicar fora
@@ -2491,12 +2607,6 @@ function toggleDrawerFixas() {
 
 async function carregarDrawerFixas() {
     try {
-        // Buscar quadros e listas
-        const response = await apiFetch(`${API_BASE}?action=quadros`);
-        const boardsData = await response.json();
-        
-        // Buscar demandas fixas (via API ou carregar do backend)
-        // Por enquanto, vamos criar a UI diretamente
         const content = document.getElementById('drawer-fixas-content');
         content.innerHTML = `
             <div style="margin-bottom: 1.5rem;">
@@ -2507,40 +2617,223 @@ async function carregarDrawerFixas() {
             </div>
         `;
         
-        // TODO: Implementar busca de demandas fixas via API
-        // Por enquanto, carregar via endpoint existente
-        setTimeout(() => {
+        // Buscar demandas fixas via API
+        const response = await apiFetch(`${API_FIXAS}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const fixas = data.data || [];
+            renderizarTabelaFixas(fixas);
+        } else {
             content.querySelector('#fixas-tabela').innerHTML = `
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Título</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Quadro</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Lista</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Periodicidade</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Status</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600;">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="6" style="padding: 2rem; text-align: center; color: #6b7280;">
-                                Nenhuma demanda fixa cadastrada. Clique em "Nova Demanda Fixa" para criar.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <p style="color: #ef4444; text-align: center; padding: 2rem;">Erro ao carregar: ${escapeHtml(data.error || 'Erro desconhecido')}</p>
             `;
-        }, 500);
+        }
     } catch (error) {
         console.error('Erro ao carregar demandas fixas:', error);
-        customAlert('Erro ao carregar demandas fixas', '❌ Erro');
+        const content = document.getElementById('drawer-fixas-content');
+        content.querySelector('#fixas-tabela').innerHTML = `
+            <p style="color: #ef4444; text-align: center; padding: 2rem;">Erro ao carregar demandas fixas</p>
+        `;
     }
 }
 
+function renderizarTabelaFixas(fixas) {
+    const tabelaEl = document.getElementById('fixas-tabela');
+    
+    if (fixas.length === 0) {
+        tabelaEl.innerHTML = `
+            <div style="padding: 2rem; text-align: center; color: #6b7280;">
+                <p style="margin-bottom: 1rem;">Nenhuma demanda fixa cadastrada.</p>
+                <button class="btn btn-primary" onclick="abrirModalNovaFixa()">➕ Criar Primeira Demanda Fixa</button>
+            </div>
+        `;
+        return;
+    }
+    
+    tabelaEl.innerHTML = `
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Título</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Quadro</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Lista</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Periodicidade</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Status</th>
+                    <th style="padding: 0.75rem; text-align: left; font-weight: 600; font-size: 0.875rem;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${fixas.map(fixa => {
+                    const periodicidadeText = fixa.periodicidade === 'diaria' ? 'Diária' :
+                                             fixa.periodicidade === 'semanal' ? `Semanal (${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][fixa.dia_semana || 0]})` :
+                                             fixa.periodicidade === 'mensal' ? `Mensal (dia ${fixa.dia_mes})` : fixa.periodicidade;
+                    const statusBadge = fixa.ativo ? 
+                        '<span style="background: #10b981; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem;">Ativo</span>' :
+                        '<span style="background: #6b7280; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.75rem;">Inativo</span>';
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid #e5e7eb;">
+                            <td style="padding: 0.75rem; font-size: 0.875rem;">${escapeHtml(fixa.titulo)}</td>
+                            <td style="padding: 0.75rem; font-size: 0.875rem; color: #6b7280;">${escapeHtml(fixa.board_nome || 'N/A')}</td>
+                            <td style="padding: 0.75rem; font-size: 0.875rem; color: #6b7280;">${escapeHtml(fixa.lista_nome || 'N/A')}</td>
+                            <td style="padding: 0.75rem; font-size: 0.875rem;">${periodicidadeText}</td>
+                            <td style="padding: 0.75rem;">${statusBadge}</td>
+                            <td style="padding: 0.75rem;">
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn-icon" onclick="toggleFixaDrawer(${fixa.id}, ${fixa.ativo ? 'false' : 'true'})" 
+                                            title="${fixa.ativo ? 'Pausar' : 'Ativar'}" 
+                                            style="font-size: 0.875rem;">${fixa.ativo ? '⏸️' : '▶️'}</button>
+                                    <button class="btn-icon" onclick="editarFixaDrawer(${fixa.id})" 
+                                            title="Editar"
+                                            style="font-size: 0.875rem;">✏️</button>
+                                    <button class="btn-icon" onclick="deletarFixaDrawer(${fixa.id})" 
+                                            title="Deletar"
+                                            style="font-size: 0.875rem; color: #ef4444;">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
 function abrirModalNovaFixa() {
-    customAlert('Funcionalidade de criar demanda fixa será implementada no drawer. Por enquanto, use a página de Demandas Fixas.', 'ℹ️ Informação');
-    // TODO: Implementar modal de criação de demanda fixa dentro do drawer
+    // Preencher selects de quadros e listas
+    const selectBoard = document.getElementById('fixa-board');
+    const selectLista = document.getElementById('fixa-lista');
+    
+    if (selectBoard) {
+        selectBoard.innerHTML = '<option value="">Selecione...</option>' + 
+            boards.map(b => `<option value="${b.id}">${escapeHtml(b.nome)}</option>`).join('');
+    }
+    
+    if (selectLista) {
+        selectLista.innerHTML = '<option value="">Selecione um quadro primeiro</option>';
+    }
+    
+    document.getElementById('form-fixa').reset();
+    document.getElementById('fixa-id').value = '';
+    document.getElementById('modal-fixa-titulo').textContent = 'Nova Demanda Fixa';
+    abrirModal('modal-fixa');
+}
+
+async function editarFixaDrawer(id) {
+    try {
+        const response = await apiFetch(`${API_FIXAS}?id=${id}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const fixa = data.data;
+            
+            document.getElementById('fixa-id').value = fixa.id;
+            document.getElementById('fixa-titulo').value = fixa.titulo;
+            document.getElementById('fixa-descricao').value = fixa.descricao || '';
+            document.getElementById('fixa-board').value = fixa.board_id;
+            document.getElementById('fixa-periodicidade').value = fixa.periodicidade;
+            
+            await carregarListasFixa(fixa.board_id);
+            
+            setTimeout(() => {
+                document.getElementById('fixa-lista').value = fixa.lista_id;
+                if (fixa.periodicidade === 'semanal') {
+                    document.getElementById('fixa-dia-semana').value = fixa.dia_semana;
+                } else if (fixa.periodicidade === 'mensal') {
+                    document.getElementById('fixa-dia-mes').value = fixa.dia_mes;
+                }
+                atualizarCamposPeriodicidade();
+            }, 300);
+            
+            document.getElementById('modal-fixa-titulo').textContent = 'Editar Demanda Fixa';
+            abrirModal('modal-fixa');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao carregar demanda fixa', '❌ Erro');
+    }
+}
+
+async function toggleFixaDrawer(id, novoStatus) {
+    try {
+        const response = await apiFetch(`${API_FIXAS}?id=${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ ativo: novoStatus })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await carregarDrawerFixas();
+            mostrarToast(`✅ Demanda fixa ${novoStatus ? 'ativada' : 'pausada'}!`);
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao atualizar demanda fixa', '❌ Erro');
+    }
+}
+
+async function deletarFixaDrawer(id) {
+    const confirmado = await customConfirm('Tem certeza que deseja deletar esta demanda fixa? Esta ação não pode ser desfeita.', '⚠️ Confirmar Exclusão');
+    if (!confirmado) return;
+    
+    try {
+        const response = await apiFetch(`${API_FIXAS}?id=${id}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await carregarDrawerFixas();
+            mostrarToast('✅ Demanda fixa deletada!');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao deletar demanda fixa', '❌ Erro');
+    }
+}
+
+async function carregarListasFixa(boardId) {
+    const selectLista = document.getElementById('fixa-lista');
+    
+    if (!boardId) {
+        selectLista.innerHTML = '<option value="">Selecione um quadro primeiro</option>';
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`${API_BASE}?action=listas&id=${boardId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            selectLista.innerHTML = '<option value="">Selecione...</option>' +
+                data.data.map(l => `<option value="${l.id}">${escapeHtml(l.nome)}</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar listas:', error);
+    }
+}
+
+function atualizarCamposPeriodicidade() {
+    const periodicidade = document.getElementById('fixa-periodicidade').value;
+    const diaSemanaContainer = document.getElementById('fixa-dia-semana-container');
+    const diaMesContainer = document.getElementById('fixa-dia-mes-container');
+    
+    if (diaSemanaContainer) diaSemanaContainer.style.display = periodicidade === 'semanal' ? 'block' : 'none';
+    if (diaMesContainer) diaMesContainer.style.display = periodicidade === 'mensal' ? 'block' : 'none';
+    
+    const diaSemana = document.getElementById('fixa-dia-semana');
+    const diaMes = document.getElementById('fixa-dia-mes');
+    if (diaSemana) diaSemana.required = periodicidade === 'semanal';
+    if (diaMes) diaMes.required = periodicidade === 'mensal';
 }
 
 // ============================================
@@ -2581,7 +2874,197 @@ function abrirModalNovoCard(listaIdPredefinida = null) {
 }
 
 function toggleMenuActions() {
-    customAlert('Menu de ações (Renomear, Arquivar, Exportar CSV) será implementado em breve.', 'ℹ️ Informação');
+    if (!currentBoardId) {
+        customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
+        return;
+    }
+    
+    const menu = document.getElementById('menu-actions');
+    if (menu) {
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        return;
+    }
+    
+    // Criar menu dropdown
+    const menuEl = document.createElement('div');
+    menuEl.id = 'menu-actions';
+    menuEl.style.cssText = 'position: fixed; top: 70px; right: 1rem; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 2000; min-width: 200px; padding: 0.5rem;';
+    menuEl.innerHTML = `
+        <button class="btn btn-outline" onclick="renomearQuadro()" style="width: 100%; justify-content: flex-start; margin-bottom: 0.5rem;">✏️ Renomear Quadro</button>
+        <button class="btn btn-outline" onclick="arquivarQuadro()" style="width: 100%; justify-content: flex-start; margin-bottom: 0.5rem;">📦 Arquivar Quadro</button>
+        <button class="btn btn-outline" onclick="exportarCSV()" style="width: 100%; justify-content: flex-start;">📥 Exportar CSV</button>
+    `;
+    document.body.appendChild(menuEl);
+    
+    // Fechar ao clicar fora
+    setTimeout(() => {
+        document.addEventListener('click', function fecharMenu(e) {
+            if (!e.target.closest('#menu-actions') && !e.target.closest('.btn-icon[onclick="toggleMenuActions()"]')) {
+                menuEl.remove();
+                document.removeEventListener('click', fecharMenu);
+            }
+        }, { once: true });
+    }, 100);
+}
+
+async function renomearQuadro() {
+    const novoNome = await customPrompt('Digite o novo nome do quadro:', 'Renomear Quadro', currentBoard?.nome || '');
+    if (!novoNome || novoNome.trim() === '') return;
+    
+    try {
+        const response = await apiFetch(`${API_BASE}?action=atualizar_quadro&id=${currentBoardId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ nome: novoNome.trim() })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await carregarQuadros();
+            selecionarQuadro(currentBoardId);
+            mostrarToast('✅ Quadro renomeado com sucesso!');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao renomear quadro', '❌ Erro');
+    }
+    
+    document.getElementById('menu-actions')?.remove();
+}
+
+async function arquivarQuadro() {
+    const confirmado = await customConfirm('Deseja arquivar este quadro? Ele ficará oculto mas não será deletado permanentemente.', '⚠️ Arquivar Quadro');
+    if (!confirmado) {
+        document.getElementById('menu-actions')?.remove();
+        return;
+    }
+    
+    try {
+        const response = await apiFetch(`${API_BASE}?action=deletar_quadro&id=${currentBoardId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            mostrarToast('✅ Quadro arquivado com sucesso!');
+            await carregarQuadros();
+            
+            if (boards.length > 0) {
+                selecionarQuadro(boards[0].id);
+            } else {
+                document.getElementById('trello-board').innerHTML = '<div class="page-demandas-list-empty"><p>Nenhum quadro disponível. Crie um novo quadro para começar.</p></div>';
+                currentBoardId = null;
+                atualizarHeaderQuadro();
+            }
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao arquivar quadro', '❌ Erro');
+    }
+    
+    document.getElementById('menu-actions')?.remove();
+}
+
+async function exportarCSV() {
+    if (!currentBoardId) {
+        customAlert('Selecione um quadro primeiro', '⚠️ Atenção');
+        return;
+    }
+    
+    try {
+        // Carregar todas as listas e cards
+        await carregarListas(currentBoardId);
+        await carregarTodosCards();
+        
+        // Gerar CSV
+        let csv = 'Título,Lista,Descrição,Prazo,Prioridade,Status,Responsáveis\n';
+        
+        lists.forEach(lista => {
+            (cards[lista.id] || []).forEach(card => {
+                const responsaveis = (card.usuarios || []).map(u => u.nome).join('; ') || '';
+                const linha = [
+                    `"${(card.titulo || '').replace(/"/g, '""')}"`,
+                    `"${lista.nome.replace(/"/g, '""')}"`,
+                    `"${(card.descricao || '').replace(/"/g, '""')}"`,
+                    card.prazo || '',
+                    card.prioridade || '',
+                    card.status || '',
+                    `"${responsaveis.replace(/"/g, '""')}"`
+                ].join(',');
+                csv += linha + '\n';
+            });
+        });
+        
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${currentBoard?.nome || 'quadro'}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        mostrarToast('✅ CSV exportado com sucesso!');
+    } catch (error) {
+        console.error('Erro:', error);
+        customAlert('Erro ao exportar CSV', '❌ Erro');
+    }
+    
+    document.getElementById('menu-actions')?.remove();
+}
+
+function customPrompt(mensagem, titulo = 'Input', valorPadrao = '') {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-alert-overlay';
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                <div class="custom-alert-body">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">${escapeHtml(mensagem)}</label>
+                    <input type="text" id="custom-prompt-input" value="${escapeHtml(valorPadrao)}" style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.875rem;" autofocus>
+                </div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomPrompt(null)">Cancelar</button>
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomPrompt(document.getElementById('custom-prompt-input').value)">OK</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        const input = overlay.querySelector('#custom-prompt-input');
+        input.focus();
+        input.select();
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                resolveCustomPrompt(input.value);
+            } else if (e.key === 'Escape') {
+                resolveCustomPrompt(null);
+            }
+        });
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                resolve(null);
+            }
+        });
+        
+        window.resolveCustomPrompt = (resultado) => {
+            overlay.remove();
+            resolve(resultado);
+        };
+    });
 }
 
 function atualizarPreviewCor(cor) {
