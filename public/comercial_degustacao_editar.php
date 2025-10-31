@@ -131,10 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         }
         
         $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        if (!$stmt->execute($params)) {
+            throw new Exception("Erro ao salvar no banco de dados");
+        }
         
         if (!$is_edit) {
-            $event_id = $pdo->lastInsertId();
+            $event_id = (int)$pdo->lastInsertId();
         }
         
         // Salvar como padrão se solicitado
@@ -146,10 +148,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             ]);
         }
         
-        // Redirecionar após sucesso
-        $redirect_url = 'index.php?page=comercial_degustacoes&success=' . urlencode($is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!");
+        // Redirecionar após sucesso - IMPORTANTE: limpar output antes
+        $success_msg = $is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
+        $redirect_url = 'index.php?page=comercial_degustacoes&success=' . urlencode($success_msg);
+        
+        // Limpar qualquer output antes do redirecionamento
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
         header('Location: ' . $redirect_url);
-        exit;
+        exit();
         
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
@@ -447,9 +456,15 @@ ob_start();
             </div>
             
             <!-- Mensagens -->
-            <?php if (isset($success_message)): ?>
+            <?php if (isset($_GET['success'])): ?>
                 <div class="alert alert-success">
-                    ✅ <?= h($success_message) ?>
+                    ✅ <?= h(urldecode($_GET['success'])) ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if (isset($_GET['error'])): ?>
+                <div class="alert alert-error">
+                    ❌ <?= h(urldecode($_GET['error'])) ?>
                 </div>
             <?php endif; ?>
             
