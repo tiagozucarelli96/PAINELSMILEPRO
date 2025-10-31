@@ -214,7 +214,7 @@ if ($current_page === 'dashboard') {
                 <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
             </div>
             <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.5rem; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; min-width: 128px; min-height: 128px; transition: transform 0.2s;">
-                <img src="assets/icons/bell_custom.png" alt="Notificações" style="width: 112px; height: 112px; display: block; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.3));" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
+                <img src="assets/icons/bell_custom.png" alt="Notificações" style="width: 112px; height: 112px; display: block;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
                 <span style="font-size: 1.5rem; display: none;">🔔</span>
                 <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 8px; right: 8px; background: transparent; color: white; font-size: 1.2rem; font-weight: 700; min-width: 24px; text-align: center; line-height: 1.2; pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.4); ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . htmlspecialchars($notificacoes_nao_lidas > 99 ? '99+' : $notificacoes_nao_lidas) . '</span>
             </div>
@@ -1184,7 +1184,6 @@ if ($current_page === 'dashboard') {
             width: 112px;
             height: 112px;
             object-fit: contain;
-            filter: drop-shadow(0 3px 6px rgba(0,0,0,0.3));
         }
         
         .dashboard-notificacoes-count {
