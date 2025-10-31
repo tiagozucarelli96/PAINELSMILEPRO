@@ -131,6 +131,7 @@ if ($status_filter) {
 }
 
 $sql = "SELECT d.*, 
+               COALESCE(d.token_publico, '') as token_publico,
                u.nome as criado_por_nome,
                    (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id AND status = 'confirmado') as inscritos_confirmados,
                    (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id AND status = 'lista_espera') as lista_espera_count
@@ -264,8 +265,11 @@ ob_start();
                             </a>
                             <?php endif; ?>
                             
-                            <?php if (!empty($degustacao['token_publico'])): ?>
-                            <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($degustacao['token_publico'], ENT_QUOTES, 'UTF-8') ?>" class="btn-sm btn-secondary" target="_blank">
+                            <?php 
+                            $token_publico = isset($degustacao['token_publico']) ? trim($degustacao['token_publico']) : '';
+                            if (!empty($token_publico)): 
+                            ?>
+                            <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-sm btn-secondary" target="_blank">
                                 🔗 Link Público
                             </a>
                             <?php else: ?>
