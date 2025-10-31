@@ -97,8 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         
         if ($is_edit) {
             // Atualizar degustação existente
+            // IMPORTANTE: A tabela usa 'titulo' e 'nome', vamos atualizar ambos se existirem
             $sql = "UPDATE comercial_degustacoes SET 
-                    nome = :nome, data = :data, hora_inicio = :hora_inicio, hora_fim = :hora_fim,
+                    nome = :nome, titulo = :nome, data = :data, hora_inicio = :hora_inicio, hora_fim = :hora_fim,
                     local = :local, capacidade = :capacidade, data_limite = :data_limite, lista_espera = :lista_espera,
                     preco_casamento = :preco_casamento, incluidos_casamento = :incluidos_casamento,
                     preco_15anos = :preco_15anos, incluidos_15anos = :incluidos_15anos, preco_extra = :preco_extra,
@@ -116,12 +117,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             ];
         } else {
             // Criar nova degustação
+            // IMPORTANTE: A tabela tem 'titulo' como NOT NULL, então precisamos inserir em 'titulo' também
             $sql = "INSERT INTO comercial_degustacoes 
-                    (nome, data, hora_inicio, hora_fim, local, capacidade, data_limite, lista_espera,
+                    (nome, titulo, data, hora_inicio, hora_fim, local, capacidade, data_limite, lista_espera,
                      preco_casamento, incluidos_casamento, preco_15anos, incluidos_15anos, preco_extra,
                      instrutivo_html, email_confirmacao_html, msg_sucesso_html, campos_json, status, criado_por)
                     VALUES 
-                    (:nome, :data, :hora_inicio, :hora_fim, :local, :capacidade, :data_limite, :lista_espera,
+                    (:nome, :nome, :data, :hora_inicio, :hora_fim, :local, :capacidade, :data_limite, :lista_espera,
                      :preco_casamento, :incluidos_casamento, :preco_15anos, :incluidos_15anos, :preco_extra,
                      :instrutivo_html, :email_confirmacao_html, :msg_sucesso_html, :campos_json, 'rascunho', :criado_por)";
             
@@ -506,7 +508,7 @@ ob_start();
                         <div class="form-group">
                             <label class="form-label">Nome da Degustação *</label>
                             <input type="text" name="nome" class="form-input" required 
-                                   value="<?= $is_edit ? h($degustacao['nome']) : '' ?>">
+                                   value="<?= $is_edit ? h($degustacao['nome'] ?? $degustacao['titulo'] ?? '') : '' ?>">
                         </div>
                         
                         <div class="form-group">
