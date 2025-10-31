@@ -414,6 +414,15 @@ let filtros = {};
 
 // Carregar demandas ao inicializar
 document.addEventListener('DOMContentLoaded', function() {
+    const container = document.getElementById('demandas-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">⏳</div>
+                <h3>Carregando demandas...</h3>
+            </div>
+        `;
+    }
     carregarDemandas();
 });
 
