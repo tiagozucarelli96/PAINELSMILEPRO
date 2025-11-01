@@ -127,23 +127,39 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         require_once __DIR__ . '/asaas_helper.php';
         require_once __DIR__ . '/config_env.php';
         
+        // Log inicial para debug
+        error_log("=== INÍCIO geração de cobrança PIX ===");
+        error_log("Inscrição ID: {$inscricao_id}");
+        error_log("Event ID: " . ($event_id ?? 'não definido'));
+        
         // Buscar inscrição
         $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE id = :id");
         $stmt->execute([':id' => $inscricao_id]);
         $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$inscricao) {
-            throw new Exception("Inscrição não encontrada");
+            error_log("ERRO: Inscrição não encontrada - ID: {$inscricao_id}");
+            throw new Exception("Inscrição não encontrada (ID: {$inscricao_id})");
         }
+        
+        error_log("Inscrição encontrada: " . json_encode([
+            'id' => $inscricao['id'],
+            'nome' => $inscricao['nome'],
+            'email' => $inscricao['email'],
+            'tipo_festa' => $inscricao['tipo_festa'] ?? null,
+            'qtd_pessoas' => $inscricao['qtd_pessoas'] ?? null
+        ]));
         
         // Verificar se já tem QR Code
         if (!empty($inscricao['asaas_qr_code_id'])) {
+            error_log("QR Code já existe para inscrição {$inscricao_id}: " . $inscricao['asaas_qr_code_id']);
             // Retornar JSON com o payload existente
             header('Content-Type: application/json');
             echo json_encode([
                 'success' => true,
                 'qr_code_id' => $inscricao['asaas_qr_code_id'],
-                'payload' => $inscricao['qr_code_payload'] ?? '',
+                'payload' => $inscricao['qr_code_payload'] ?? $inscricao['qr_code_image'] ?? '',
+                'valor' => $inscricao['valor_total'] ?? $inscricao['valor_pago'] ?? 0,
                 'message' => 'QR Code já existe'
             ]);
             exit;
@@ -151,16 +167,37 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         
         // Verificar se fechou contrato
         if ($inscricao['fechou_contrato'] === 'sim') {
+            error_log("ERRO: Cliente já fechou contrato - Inscrição ID: {$inscricao_id}");
             throw new Exception("Cliente já fechou contrato, não é necessário pagamento");
         }
         
         // Buscar dados da degustação para calcular valor
+        if (empty($event_id)) {
+            error_log("ERRO: event_id não definido");
+            throw new Exception("ID da degustação não foi informado");
+        }
+        
         $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
         $stmt->execute([':id' => $event_id]);
         $degustacao_info = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$degustacao_info) {
-            throw new Exception("Degustação não encontrada");
+            error_log("ERRO: Degustação não encontrada - ID: {$event_id}");
+            throw new Exception("Degustação não encontrada (ID: {$event_id})");
+        }
+        
+        error_log("Degustação encontrada: " . $degustacao_info['nome']);
+        
+        // Verificar se AsaasHelper está disponível
+        if (!class_exists('AsaasHelper')) {
+            error_log("ERRO: Classe AsaasHelper não encontrada");
+            throw new Exception("Erro interno: AsaasHelper não está disponível");
+        }
+        
+        // Verificar chave PIX
+        if (empty(ASAAS_PIX_ADDRESS_KEY)) {
+            error_log("ERRO: Chave PIX não configurada");
+            throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
         }
         
         // Calcular valor
@@ -176,15 +213,22 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         $tipo_festa = $inscricao['tipo_festa'] ?? 'casamento';
         $qtd_pessoas = (int)($inscricao['qtd_pessoas'] ?? 1);
         
+        error_log("Calculando valor - Tipo: {$tipo_festa}, Pessoas: {$qtd_pessoas}");
+        
         $valor_info = $asaasHelper->calculateTotal($tipo_festa, $qtd_pessoas, $precos);
         $valor_total = $valor_info['valor_total'];
         
+        error_log("Valor calculado: R$ " . number_format($valor_total, 2, ',', '.'));
+        
         if ($valor_total <= 0) {
-            throw new Exception("Valor inválido para pagamento");
+            error_log("ERRO: Valor inválido calculado - R$ {$valor_total}");
+            throw new Exception("Valor inválido para pagamento (R$ " . number_format($valor_total, 2, ',', '.') . ")");
         }
         
         // Criar QR Code PIX estático (com payload para copia e cola)
         $descricao = substr("Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa), 0, 37); // Máximo 37 caracteres
+        
+        error_log("Criando QR Code PIX - Descrição: {$descricao}, Valor: R$ " . number_format($valor_total, 2, ',', '.'));
         
         // Especificar format como PAYLOAD para obter o código PIX copia e cola
         $qr_code_data = [
@@ -196,19 +240,39 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             'format' => 'PAYLOAD' // Formato PAYLOAD para obter código copia e cola
         ];
         
-        $qr_response = $asaasHelper->createStaticQrCode($qr_code_data);
+        error_log("Dados do QR Code: " . json_encode($qr_code_data));
         
-        if (!$qr_response || !isset($qr_response['id'])) {
-            throw new Exception("Erro ao criar QR Code no ASAAS");
+        try {
+            $qr_response = $asaasHelper->createStaticQrCode($qr_code_data);
+            error_log("Resposta do Asaas: " . json_encode($qr_response));
+        } catch (Exception $e) {
+            error_log("ERRO na chamada do Asaas: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            throw $e; // Re-lançar para ser capturado pelo catch externo
+        }
+        
+        if (!$qr_response) {
+            error_log("ERRO: Resposta do Asaas é nula");
+            throw new Exception("Erro ao criar QR Code no ASAAS: resposta vazia");
+        }
+        
+        if (!isset($qr_response['id'])) {
+            error_log("ERRO: QR Code criado mas sem ID. Resposta completa: " . json_encode($qr_response));
+            throw new Exception("Erro ao criar QR Code no ASAAS: ID não retornado. Resposta: " . json_encode($qr_response));
         }
         
         $qr_code_id = $qr_response['id'];
+        error_log("QR Code criado com sucesso - ID: {$qr_code_id}");
+        
         // O Asaas retorna o payload no campo 'payload' independente do format
-        $qr_payload = $qr_response['payload'] ?? '';
+        $qr_payload = $qr_response['payload'] ?? $qr_response['encodedImage'] ?? '';
         
         if (empty($qr_payload)) {
-            throw new Exception("QR Code criado mas payload não retornado. Verifique a configuração do Asaas.");
+            error_log("ERRO: Payload vazio. Resposta completa: " . json_encode($qr_response));
+            throw new Exception("QR Code criado mas payload não retornado. Resposta do Asaas: " . json_encode($qr_response));
         }
+        
+        error_log("Payload recebido (tamanho): " . strlen($qr_payload) . " caracteres");
         
         // Atualizar inscrição com QR Code
         $update_fields = ["pagamento_status = 'aguardando'"];
@@ -265,11 +329,52 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         exit;
         
     } catch (Exception $e) {
+        error_log("=== ERRO FINAL ao gerar cobrança PIX ===");
+        error_log("Mensagem: " . $e->getMessage());
+        error_log("Arquivo: " . $e->getFile() . " | Linha: " . $e->getLine());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        
         header('Content-Type: application/json');
         http_response_code(400);
+        
+        $error_message = $e->getMessage();
+        $error_type = 'Sistema';
+        $error_details = '';
+        
+        // Verificar se é erro do Asaas
+        if (strpos($error_message, 'Erro ASAAS') !== false || strpos($error_message, 'ASAAS') !== false || strpos($error_message, 'Asaas') !== false) {
+            $error_type = 'Asaas API';
+            // Extrair código de erro do Asaas se existir
+            if (preg_match('/\[([^\]]+)\]/', $error_message, $matches)) {
+                $error_details = 'Código: ' . $matches[1];
+            }
+            if (preg_match('/HTTP\s+(\d+)/', $error_message, $matches)) {
+                $error_details .= ($error_details ? ' | ' : '') . 'HTTP ' . $matches[1];
+            }
+        } elseif (strpos($error_message, 'SQLSTATE') !== false || strpos($error_message, 'PDO') !== false || strpos($error_message, 'column') !== false) {
+            $error_type = 'Banco de Dados';
+            $error_details = $error_message;
+        } elseif (strpos($error_message, 'cURL') !== false || strpos($error_message, 'HTTP') !== false || strpos($error_message, 'connection') !== false) {
+            $error_type = 'Conectividade';
+            $error_details = $error_message;
+        } elseif (strpos($error_message, 'chave') !== false || strpos($error_message, 'key') !== false || strpos($error_message, 'configurada') !== false) {
+            $error_type = 'Configuração';
+            $error_details = $error_message;
+        }
+        
         echo json_encode([
             'success' => false,
-            'message' => $e->getMessage()
+            'message' => $error_message,
+            'error' => $error_message,
+            'error_type' => $error_type,
+            'error_details' => $error_details ?: $error_message,
+            'debug' => [
+                'inscricao_id' => $inscricao_id ?? null,
+                'event_id' => $event_id ?? null,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => explode("\n", substr($e->getTraceAsString(), 0, 500)) // Limitar tamanho
+            ]
         ]);
         exit;
     }
@@ -419,7 +524,7 @@ $stats = [
 ob_start();
 ?>
 <link rel="stylesheet" href="assets/css/custom_modals.css">
-<style>
+    <style>
         .inscritos-container {
             width: 100%;
             max-width: none;
@@ -799,28 +904,28 @@ ob_start();
             cursor: pointer;
         }
     </style>
-
-<div class="inscritos-container">
-    <!-- Header -->
+    
+        <div class="inscritos-container">
+            <!-- Header -->
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 1.25rem 1.5rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 2px solid #e5e7eb;">
-        <div>
+                <div>
             <h1 class="page-title" style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e3a8a;">👥 Inscrições da Degustação</h1>
             <div style="margin-top: 0.5rem; font-size: 1.125rem; font-weight: 600; color: #1e3a8a;"><?= h($degustacao['nome']) ?></div>
         </div>
         <div style="display: flex; gap: 0.75rem;">
             <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 0.5rem;">📊 Exportar CSV</button>
-        </div>
-    </div>
+                </div>
+            </div>
             
-    <!-- Informações do Evento -->
+            <!-- Informações do Evento -->
     <div class="event-info" style="background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
         <div style="color: #6b7280; font-size: 14px; line-height: 1.8;">
             <div style="margin-bottom: 8px;">📅 <strong>Data:</strong> <?= date('d/m/Y', strtotime($degustacao['data'])) ?></div>
             <div style="margin-bottom: 8px;">🕐 <strong>Horário:</strong> <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?></div>
             <div style="margin-bottom: 8px;">📍 <strong>Local:</strong> <?= h($degustacao['local']) ?></div>
             <div>👥 <strong>Capacidade:</strong> <?= $degustacao['capacidade'] ?> pessoas</div>
-        </div>
-    </div>
+                </div>
+            </div>
             
             <!-- Mensagens -->
             <?php if (isset($success_message)): ?>
@@ -887,13 +992,13 @@ ob_start();
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($inscricoes as $inscricao): ?>
+                <?php foreach ($inscricoes as $inscricao): ?>
                         <tr class="table-row">
                             <td class="table-cell">
-                                <div class="participant-info">
-                                    <div class="participant-name"><?= h($inscricao['nome']) ?></div>
-                                    <div class="participant-email"><?= h($inscricao['email']) ?></div>
-                                </div>
+                        <div class="participant-info">
+                            <div class="participant-name"><?= h($inscricao['nome']) ?></div>
+                            <div class="participant-email"><?= h($inscricao['email']) ?></div>
+                        </div>
                             </td>
                             
                             <td class="table-cell" style="text-align: center;">
@@ -957,54 +1062,54 @@ ob_start();
                                                 onclick="gerarCobranca(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
                                                 id="btnGerarCobranca_<?= $inscricao['id'] ?>">
                                             💳 Gerar Cobrança
-                                        </button>
+                            </button>
                                     <?php endif; ?>
                                     
                                     <button type="button" class="btn-sm btn-danger" 
                                             onclick="return excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>');"
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                         🗑️ Excluir
-                                    </button>
-                                </div>
+                            </button>
+                        </div>
                             </td>
                         </tr>
-                    <?php endforeach; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
-</div>
-
-<!-- Modal de Comparecimento -->
+    </div>
+    
+    <!-- Modal de Comparecimento -->
 <div class="modal" id="comparecimentoModal" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 class="modal-title">Marcar Comparecimento</h3>
-            <button class="close-btn" onclick="closeComparecimentoModal()">&times;</button>
-        </div>
-        
-        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
-            <input type="hidden" name="action" value="marcar_comparecimento">
-            <input type="hidden" name="inscricao_id" id="comparecimentoInscricaoId">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Marcar Comparecimento</h3>
+                <button class="close-btn" onclick="closeComparecimentoModal()">&times;</button>
+            </div>
             
-            <div class="form-group">
-                <div class="form-radio-group">
-                    <div class="form-radio">
-                        <input type="radio" name="compareceu" value="1" id="compareceu_sim">
-                        <label for="compareceu_sim">Compareceu</label>
-                    </div>
-                    <div class="form-radio">
-                        <input type="radio" name="compareceu" value="0" id="compareceu_nao">
-                        <label for="compareceu_nao">Não compareceu</label>
+        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
+                <input type="hidden" name="action" value="marcar_comparecimento">
+                <input type="hidden" name="inscricao_id" id="comparecimentoInscricaoId">
+                
+                <div class="form-group">
+                    <div class="form-radio-group">
+                        <div class="form-radio">
+                            <input type="radio" name="compareceu" value="1" id="compareceu_sim">
+                            <label for="compareceu_sim">Compareceu</label>
+                        </div>
+                        <div class="form-radio">
+                            <input type="radio" name="compareceu" value="0" id="compareceu_nao">
+                            <label for="compareceu_nao">Não compareceu</label>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="form-actions">
-                <button type="button" class="btn-cancel" onclick="closeComparecimentoModal()">Cancelar</button>
-                <button type="submit" class="btn-save">Salvar</button>
-            </div>
-        </form>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-cancel" onclick="closeComparecimentoModal()">Cancelar</button>
+                    <button type="submit" class="btn-save">Salvar</button>
+                </div>
+            </form>
+        </div>
     </div>
-</div>
 
 <!-- Modal de Cobrança PIX -->
 <div class="modal" id="cobrancaModal" style="display: none;">
@@ -1074,52 +1179,52 @@ ob_start();
     color: #1e293b;
 }
 </style>
-
-<!-- Modal de Contrato -->
+    
+    <!-- Modal de Contrato -->
 <div class="modal" id="contratoModal" style="display: none;">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 class="modal-title">Status do Contrato</h3>
-            <button class="close-btn" onclick="closeContratoModal()">&times;</button>
-        </div>
-        
-        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
-            <input type="hidden" name="action" value="marcar_fechou_contrato">
-            <input type="hidden" name="inscricao_id" id="contratoInscricaoId">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Status do Contrato</h3>
+                <button class="close-btn" onclick="closeContratoModal()">&times;</button>
+            </div>
             
-            <div class="form-group">
-                <label class="form-label">Fechou contrato?</label>
-                <div class="form-radio-group">
-                    <div class="form-radio">
-                        <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim">
-                        <label for="fechou_sim">Sim</label>
-                    </div>
-                    <div class="form-radio">
-                        <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao">
-                        <label for="fechou_nao">Não</label>
+        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
+                <input type="hidden" name="action" value="marcar_fechou_contrato">
+                <input type="hidden" name="inscricao_id" id="contratoInscricaoId">
+                
+                <div class="form-group">
+                    <label class="form-label">Fechou contrato?</label>
+                    <div class="form-radio-group">
+                        <div class="form-radio">
+                            <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim">
+                            <label for="fechou_sim">Sim</label>
+                        </div>
+                        <div class="form-radio">
+                            <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao">
+                            <label for="fechou_nao">Não</label>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Nome do titular do contrato</label>
-                <input type="text" name="nome_titular_contrato" class="form-input" id="nomeTitular">
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">3 primeiros dígitos do CPF</label>
-                <input type="text" name="cpf_3_digitos" class="form-input" maxlength="3" pattern="[0-9]{3}">
-            </div>
-            
-            <div class="form-actions">
-                <button type="button" class="btn-cancel" onclick="closeContratoModal()">Cancelar</button>
-                <button type="submit" class="btn-save">Salvar</button>
-            </div>
-        </form>
+                
+                <div class="form-group">
+                    <label class="form-label">Nome do titular do contrato</label>
+                    <input type="text" name="nome_titular_contrato" class="form-input" id="nomeTitular">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">3 primeiros dígitos do CPF</label>
+                    <input type="text" name="cpf_3_digitos" class="form-input" maxlength="3" pattern="[0-9]{3}">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn-cancel" onclick="closeContratoModal()">Cancelar</button>
+                    <button type="submit" class="btn-save">Salvar</button>
+                </div>
+            </form>
+        </div>
     </div>
-</div>
-
-<script>
+    
+    <script>
         function searchInscritos(query = '') {
             if (query === '') {
                 query = document.querySelector('.search-input').value;
@@ -1223,9 +1328,9 @@ ob_start();
         
         document.getElementById('contratoModal').addEventListener('click', function(e) {
             if (e.target === this) {
-            closeContratoModal();
-        }
-    });
+                closeContratoModal();
+            }
+        });
     
     // Gerar pagamento PIX e mostrar botão copiar
     async function gerarPagamentoPix(inscricaoId) {
@@ -1303,7 +1408,24 @@ ob_start();
                 body: formData
             });
             
-            const data = await response.json();
+            // Verificar status HTTP antes de processar JSON
+            if (!response.ok) {
+                console.error('Erro HTTP:', response.status, response.statusText);
+            }
+            
+            // Verificar se a resposta é JSON válido
+            let data;
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                const textResponse = await response.text();
+                console.error('Resposta não é JSON:', textResponse);
+                throw new Error('Resposta do servidor inválida. Não é JSON. Status: ' + response.status);
+            }
+            
+            // Log detalhado para debug
+            console.log('Resposta do servidor:', data);
             
             if (data.success && data.payload) {
                 // Buscar dados completos da inscrição para mostrar no modal
@@ -1412,16 +1534,50 @@ ob_start();
                     console.error('Erro ao buscar payload:', e);
                 }
                 
+                // Construir mensagem de erro detalhada
+                let errorMessage = data.message || data.error || 'Não foi possível gerar o código PIX';
+                let errorTypeInfo = '';
+                let errorDetailsInfo = '';
+                
+                if (data.error_type) {
+                    errorTypeInfo = `<div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 0.75rem; margin: 1rem 0; border-radius: 4px; text-align: left;">
+                        <div style="font-size: 0.75rem; color: #92400e; font-weight: 600; margin-bottom: 0.25rem;">Tipo de Erro:</div>
+                        <div style="font-size: 0.875rem; color: #78350f;">${data.error_type}</div>
+                    </div>`;
+                }
+                
+                if (data.error_details) {
+                    errorDetailsInfo = `<div style="background: #fee2e2; border-left: 4px solid #ef4444; padding: 0.75rem; margin: 1rem 0; border-radius: 4px; text-align: left;">
+                        <div style="font-size: 0.75rem; color: #991b1b; font-weight: 600; margin-bottom: 0.25rem;">Detalhes:</div>
+                        <div style="font-size: 0.75rem; color: #7f1d1d; font-family: monospace; word-break: break-all;">${data.error_details}</div>
+                    </div>`;
+                }
+                
                 modalBody.innerHTML = `
-                    <div style="padding: 2rem; text-align: center;">
-                        <div style="color: #ef4444; font-size: 3rem; margin-bottom: 1rem;">❌</div>
-                        <p style="color: #1e293b; font-weight: 600; margin-bottom: 0.5rem;">Erro ao gerar cobrança</p>
-                        <p style="color: #64748b; font-size: 0.875rem;">${data.message || 'Não foi possível gerar o código PIX'}</p>
-                        <button type="button" 
-                                onclick="closeCobrancaModal()" 
-                                style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                            Fechar
-                        </button>
+                    <div style="padding: 2rem;">
+                        <div style="text-align: center; margin-bottom: 1.5rem;">
+                            <div style="color: #ef4444; font-size: 3rem; margin-bottom: 1rem;">❌</div>
+                            <p style="color: #1e293b; font-weight: 600; margin-bottom: 0.5rem; font-size: 1.125rem;">Erro ao gerar cobrança</p>
+                            <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.5rem;">${errorMessage}</p>
+                        </div>
+                        
+                        ${errorTypeInfo}
+                        ${errorDetailsInfo}
+                        
+                        ${data.debug ? `<div style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 0.75rem; margin: 1rem 0; border-radius: 4px; text-align: left;">
+                            <div style="font-size: 0.75rem; color: #475569; font-weight: 600; margin-bottom: 0.5rem; cursor: pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none';">
+                                🔍 Detalhes Técnicos (clique para expandir)
+                            </div>
+                            <pre style="display: none; font-size: 0.7rem; color: #334155; overflow-x: auto; margin: 0;">${JSON.stringify(data.debug, null, 2)}</pre>
+                        </div>` : ''}
+                        
+                        <div style="text-align: center; margin-top: 1.5rem;">
+                            <button type="button" 
+                                    onclick="closeCobrancaModal()" 
+                                    style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                Fechar
+                            </button>
+                        </div>
                     </div>
                 `;
                 
@@ -1430,13 +1586,23 @@ ob_start();
                     btnGerar.textContent = '💳 Gerar Cobrança';
                 }
             }
-        } catch (error) {
+            } catch (error) {
             console.error('Erro ao gerar cobrança:', error);
+            
+            // Tentar obter detalhes do erro
+            let errorDetails = 'Ocorreu um erro inesperado.';
+            let errorType = 'Erro Desconhecido';
+            
+            if (error.message) {
+                errorDetails = error.message;
+            }
+            
             modalBody.innerHTML = `
                 <div style="padding: 2rem; text-align: center;">
                     <div style="color: #ef4444; font-size: 3rem; margin-bottom: 1rem;">❌</div>
                     <p style="color: #1e293b; font-weight: 600; margin-bottom: 0.5rem;">Erro ao gerar cobrança</p>
-                    <p style="color: #64748b; font-size: 0.875rem;">Ocorreu um erro inesperado. Tente novamente.</p>
+                    <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.5rem;">${errorDetails}</p>
+                    <p style="color: #9ca3af; font-size: 0.75rem; margin-top: 1rem;">Verifique o console do navegador (F12) para mais detalhes.</p>
                     <button type="button" 
                             onclick="closeCobrancaModal()" 
                             style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
