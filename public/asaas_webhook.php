@@ -194,8 +194,8 @@ try {
             // Se erro for violação de constraint único (evento já processado)
             if ($e->getCode() == 23505 || strpos($e->getMessage(), 'duplicate key') !== false || strpos($e->getMessage(), 'UNIQUE constraint') !== false) {
                 logWebhook("Evento já processado (idempotência): $event_id");
+                // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
                 http_response_code(200);
-                echo json_encode(['status' => 'success', 'message' => 'Event already processed']);
                 exit;
             }
             // Se for outro erro, logar mas continuar processamento
