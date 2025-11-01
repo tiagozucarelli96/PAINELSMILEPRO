@@ -74,6 +74,7 @@ $routes = [
   'apply_webhook_schema' => 'apply_webhook_schema.php',
   'webhook_logs' => 'webhook_logs_viewer.php',
   'asaas_webhook_logs' => 'asaas_webhook_logs_viewer.php',
+  'test_asaas_checkout' => 'test_asaas_checkout.php',
 
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',
