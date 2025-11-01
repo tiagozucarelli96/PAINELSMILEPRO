@@ -69,8 +69,13 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 $status_filter = $_GET['status'] ?? '';
 $search = trim($_GET['search'] ?? '');
 
-$where = ['i.degustacao_id = :event_id'];
+// Verificar se a coluna é degustacao_id ou event_id
+// Por padrão, usar event_id (conforme schema oficial)
+$where = ['i.event_id = :event_id'];
 $params = [':event_id' => $event_id];
+
+// Log para debug
+error_log("Buscando inscrições para degustação ID: $event_id");
 
 if ($status_filter) {
     $where[] = 'i.status = :status';
