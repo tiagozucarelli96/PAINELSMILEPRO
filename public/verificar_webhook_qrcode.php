@@ -1,13 +1,31 @@
 <?php
 // verificar_webhook_qrcode.php — Script para verificar se inscrição foi atualizada via QR Code
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/helpers.php';
 
-// Verificar autenticação
-if (!isset($_SESSION['user_id'])) {
-    header('Location: index.php?page=login');
-    exit;
+// Verificar se está sendo acessado diretamente (não via index.php)
+$direct_access = !isset($_GET['page']);
+
+if ($direct_access) {
+    // Acesso direto - garantir que autenticação está configurada
+    require_once __DIR__ . '/conexao.php';
+    require_once __DIR__ . '/core/helpers.php';
+    
+    // Verificar autenticação apenas se não for acesso público
+    if (!isset($_SESSION['user_id']) && !isset($_SESSION['logado'])) {
+        // Tentar carregar via index.php para autenticação
+        header('Location: index.php?page=verificar_webhook_qrcode' . (isset($_GET['pix_qr_code_id']) ? '&pix_qr_code_id=' . urlencode($_GET['pix_qr_code_id']) : ''));
+        exit;
+    }
+} else {
+    // Acesso via index.php - usar conexão já estabelecida
+    require_once __DIR__ . '/conexao.php';
+    require_once __DIR__ . '/core/helpers.php';
+    
+    // Verificar autenticação
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: index.php?page=login');
+        exit;
+    }
 }
 
 $pix_qr_code_id = $_GET['pix_qr_code_id'] ?? 'GRPSMLEV00000543613783ASA'; // QR Code ID do teste
