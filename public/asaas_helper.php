@@ -21,9 +21,17 @@ class AsaasHelper {
         // Log para debug (primeiros e últimos caracteres apenas)
         $key_preview = substr($this->api_key, 0, 30) . '...' . substr($this->api_key, -10);
         $fonte = $env_key ? 'ENV_VAR' : 'CONSTANTE';
+        $tamanho = strlen($this->api_key);
         error_log("AsaasHelper inicializado - API Key preview: $key_preview");
         error_log("AsaasHelper - Fonte da chave: $fonte");
+        error_log("AsaasHelper - Tamanho da chave: $tamanho caracteres");
         error_log("AsaasHelper - Chave completa (para debug): " . $this->api_key);
+        
+        // ALERTA se a chave parece ser a antiga (167 chars) ou está muito curta
+        if ($tamanho < 180) {
+            error_log("⚠️ ALERTA: Chave parece estar desatualizada! Tamanho: $tamanho chars (esperado: ~200 chars)");
+            error_log("⚠️ VERIFIQUE: Railway ENV pode não ter sido atualizado ou redeploy não foi feito!");
+        }
     }
     
     /**
