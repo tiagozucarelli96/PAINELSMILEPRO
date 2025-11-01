@@ -19,10 +19,13 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
     }
 }
 
-// Verificar permissões
+// Verificar permissões - MAS só redirecionar se NÃO for POST (para evitar perder dados do formulário)
 if (!lc_can_edit_degustacoes()) {
-    header('Location: index.php?page=dashboard&error=permission_denied');
-    exit;
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        header('Location: index.php?page=dashboard&error=permission_denied');
+        exit;
+    }
+    // Se for POST, deixar o erro ser capturado no try/catch abaixo
 }
 
 $event_id = (int)($_GET['id'] ?? 0);
@@ -264,16 +267,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         error_log("ERRO ao processar formulário: " . $e->getMessage());
         error_log("Stack trace: " . $e->getTraceAsString());
         
+        // Se o erro for de permissão, redirecionar para dashboard
+        if (strpos(strtolower($e->getMessage()), 'permissão') !== false || 
+            strpos(strtolower($e->getMessage()), 'permission') !== false) {
+            error_log("Erro de permissão detectado, redirecionando para dashboard");
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            header('Location: index.php?page=dashboard&error=permission_denied');
+            exit;
+        }
+        
         // IMPORTANTE: Se houve erro e estamos em modo edição, recarregar a degustação
         // porque ela pode não ter sido carregada antes do processamento do POST
-        if ($is_edit && $event_id > 0 && !isset($degustacao)) {
-            error_log("Recarregando degustação após erro no POST...");
+        $error_event_id = (int)($_POST['event_id'] ?? $_GET['id'] ?? 0);
+        if ($error_event_id > 0 && !isset($degustacao)) {
+            error_log("Recarregando degustação após erro no POST... ID: $error_event_id");
             try {
+                // Garantir search_path
+                try {
+                    $pdo->exec("SET search_path TO smilee12_painel_smile, public");
+                } catch (Exception $e_path) {
+                    error_log("Aviso: Não foi possível definir search_path: " . $e_path->getMessage());
+                }
+                
                 $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
-                $stmt->execute([':id' => $event_id]);
+                $stmt->execute([':id' => $error_event_id]);
                 $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
                 if ($degustacao) {
                     error_log("Degustação recarregada com sucesso após erro");
+                    $event_id = $error_event_id;
+                    $is_edit = true;
                 } else {
                     error_log("Falha ao recarregar degustação após erro");
                 }
