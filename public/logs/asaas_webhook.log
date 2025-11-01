@@ -1,1 +1,3 @@
-2025-11-01 06:54:34 - TESTE: Verificando se log funciona\n
+2025-11-01 06:54:34 - TESTE: Verificando se log funciona\n2025-11-01 07:35:08 - {"webhook_called":true,"request_uri":"/public/asaas_webhook.php","method":"POST"}
+2025-11-01 07:35:08 - {"method":"POST","content_type":"application/x-www-form-urlencoded","content_length":0,"raw_input_preview":"","has_input":false,"has_post_data":false}
+2025-11-01 07:35:08 - {"warning":"Input vazio recebido","content_length":0,"request_method":"POST","content_type":"application/x-www-form-urlencoded"}
