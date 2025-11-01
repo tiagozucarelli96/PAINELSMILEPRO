@@ -91,12 +91,35 @@ logWebhook([
 $webhook_data = json_decode($input, true);
 $json_error = json_last_error();
 
-if ($json_error !== JSON_ERROR_NONE) {
+// Verificar se JSON está vazio ou inválido
+if (empty($input)) {
+    // Input vazio - Asaas pode estar enviando requisição vazia (teste?)
+    logWebhook([
+        'warning' => 'Input vazio recebido',
+        'content_length' => strlen($input),
+        'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
+        'content_type' => $_SERVER['CONTENT_TYPE'] ?? 'UNKNOWN'
+    ]);
+    
+    http_response_code(200);
+    header('Content-Type: application/json', true);
+    echo json_encode([
+        'status' => 'warning', 
+        'message' => 'Empty input received',
+        'note' => 'Asaas may be testing the webhook endpoint'
+    ]);
+    exit;
+}
+
+if ($json_error !== JSON_ERROR_NONE || $webhook_data === null) {
     // Log do erro de JSON detalhado
     logWebhook([
-        'json_error' => $json_error,
+        'json_error_code' => $json_error,
         'json_error_message' => json_last_error_msg(),
-        'input_first_500' => substr($input, 0, 500)
+        'input_length' => strlen($input),
+        'input_first_500' => substr($input, 0, 500),
+        'input_last_200' => substr($input, -200),
+        'is_null' => ($webhook_data === null)
     ]);
     
     // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
@@ -106,7 +129,9 @@ if ($json_error !== JSON_ERROR_NONE) {
     echo json_encode([
         'status' => 'warning', 
         'message' => 'Invalid JSON received but logged',
-        'json_error' => json_last_error_msg()
+        'json_error' => json_last_error_msg(),
+        'json_error_code' => $json_error,
+        'input_length' => strlen($input)
     ]);
     exit;
 }
