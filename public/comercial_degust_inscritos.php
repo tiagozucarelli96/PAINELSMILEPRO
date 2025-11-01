@@ -185,16 +185,117 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             'qtd_pessoas' => $inscricao['qtd_pessoas'] ?? null
         ]));
         
-        // Verificar se já tem QR Code
+        // Verificar se AsaasHelper está disponível (necessário para verificar QR Code existente)
+        if (!class_exists('AsaasHelper')) {
+            error_log("ERRO: Classe AsaasHelper não encontrada");
+            throw new Exception("Erro interno: AsaasHelper não está disponível");
+        }
+        $asaasHelper = new AsaasHelper();
+        
+        // Verificar se já tem QR Code - Se sim, verificar se está pago ou expirado
         if (!empty($inscricao['asaas_qr_code_id'])) {
             error_log("QR Code já existe para inscrição {$inscricao_id}: " . $inscricao['asaas_qr_code_id']);
-            returnJson([
-                'success' => true,
-                'qr_code_id' => $inscricao['asaas_qr_code_id'],
-                'payload' => $inscricao['qr_code_payload'] ?? $inscricao['qr_code_image'] ?? '',
-                'valor' => $inscricao['valor_total'] ?? $inscricao['valor_pago'] ?? 0,
-                'message' => 'QR Code já existe'
-            ]);
+            
+            // Verificar status do pagamento na inscrição
+            $pagamento_status = $inscricao['pagamento_status'] ?? 'aguardando';
+            
+            // Se já foi pago, não permitir gerar novo
+            if ($pagamento_status === 'pago' || $pagamento_status === 'confirmado' || $pagamento_status === 'paid') {
+                error_log("Inscrição {$inscricao_id} já foi paga. Status: {$pagamento_status}");
+                returnJson([
+                    'success' => false,
+                    'error' => 'Pagamento já foi realizado',
+                    'error_type' => 'Pagamento Já Realizado',
+                    'error_details' => 'Esta inscrição já foi paga. Não é possível gerar nova cobrança.',
+                    'message' => 'Esta inscrição já foi paga. Não é possível gerar nova cobrança.'
+                ], 400);
+            }
+            
+            // Verificar se o QR Code está expirado consultando pagamentos relacionados no Asaas
+            try {
+                $qr_code_id = $inscricao['asaas_qr_code_id'];
+                error_log("Verificando status do QR Code no Asaas: {$qr_code_id}");
+                
+                // Buscar pagamentos relacionados a este QR Code
+                $payments = $asaasHelper->getPaymentsByStaticQrCode($qr_code_id);
+                error_log("Pagamentos encontrados para QR Code {$qr_code_id}: " . json_encode($payments));
+                
+                $qr_code_valido = false;
+                $qr_code_expirado = false;
+                $qr_code_pago = false;
+                
+                if (isset($payments['data']) && is_array($payments['data'])) {
+                    foreach ($payments['data'] as $payment) {
+                        $payment_status = $payment['status'] ?? '';
+                        
+                        // Se algum pagamento foi confirmado, o QR Code foi pago
+                        if (in_array($payment_status, ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH_APP', 'AWAITING_RISK_ANALYSIS'])) {
+                            $qr_code_pago = true;
+                            break;
+                        }
+                        
+                        // Verificar se há pagamentos pendentes (QR Code ainda válido)
+                        if ($payment_status === 'PENDING') {
+                            $qr_code_valido = true;
+                        }
+                    }
+                }
+                
+                // Verificar data de expiração do QR Code (se temos informação na resposta)
+                // Se não há pagamentos pendentes e não foi pago, pode estar expirado
+                if (!$qr_code_valido && !$qr_code_pago) {
+                    // Verificar se temos data de criação do QR Code para calcular expiração
+                    // QR Codes estáticos expiram em 1 hora por padrão (conforme criação)
+                    $qr_code_expirado = true;
+                    error_log("QR Code {$qr_code_id} parece estar expirado ou sem pagamentos pendentes");
+                }
+                
+                // Se já foi pago, não permitir gerar novo
+                if ($qr_code_pago) {
+                    error_log("QR Code {$qr_code_id} já foi pago");
+                    returnJson([
+                        'success' => false,
+                        'error' => 'QR Code já foi pago',
+                        'error_type' => 'QR Code Já Pago',
+                        'error_details' => 'Este QR Code já foi utilizado para pagamento. Não é possível gerar nova cobrança.',
+                        'message' => 'Este QR Code já foi pago. Não é possível gerar nova cobrança.'
+                    ], 400);
+                }
+                
+                // Se está válido (tem pagamento pendente), retornar o existente
+                if ($qr_code_valido) {
+                    error_log("QR Code {$qr_code_id} ainda está válido e tem pagamento pendente");
+                    returnJson([
+                        'success' => true,
+                        'qr_code_id' => $qr_code_id,
+                        'payload' => $inscricao['qr_code_payload'] ?? $inscricao['qr_code_image'] ?? '',
+                        'valor' => $inscricao['valor_total'] ?? $inscricao['valor_pago'] ?? 0,
+                        'message' => 'QR Code válido já existe'
+                    ]);
+                }
+                
+                // Se expirado ou inválido, continuar o fluxo para gerar novo QR Code
+                if ($qr_code_expirado) {
+                    error_log("QR Code {$qr_code_id} expirado. Gerando novo QR Code...");
+                    // Limpar QR Code antigo antes de gerar novo
+                    $update_clear = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_qr_code_id = NULL, qr_code_payload = NULL WHERE id = :id");
+                    $update_clear->execute([':id' => $inscricao_id]);
+                    // Continuar o fluxo para gerar novo QR Code
+                }
+                
+            } catch (Exception $e) {
+                error_log("Erro ao verificar status do QR Code no Asaas: " . $e->getMessage());
+                // Em caso de erro na verificação, assumir que pode estar expirado e permitir gerar novo
+                error_log("Assumindo QR Code pode estar expirado e permitindo gerar novo...");
+                // Limpar QR Code antigo antes de gerar novo
+                try {
+                    $update_clear = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_qr_code_id = NULL, qr_code_payload = NULL WHERE id = :id");
+                    $update_clear->execute([':id' => $inscricao_id]);
+                } catch (Exception $e2) {
+                    error_log("Erro ao limpar QR Code antigo: " . $e2->getMessage());
+                }
+                // Continuar o fluxo para gerar novo QR Code
+            }
         }
         
         // Verificar se fechou contrato
@@ -232,8 +333,7 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
         }
         
-        // Calcular valor
-        $asaasHelper = new AsaasHelper();
+        // Calcular valor (AsaasHelper já foi instanciado acima)
         $precos = [
             'casamento' => (float)($degustacao_info['preco_casamento'] ?? 150.00),
             '15anos' => (float)($degustacao_info['preco_15anos'] ?? 180.00),
