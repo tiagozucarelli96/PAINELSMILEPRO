@@ -1,12 +1,12 @@
 <?php
-// lc_index.php — Página principal do sistema de lista de compras
+// lc_index.php — Página principal do módulo Logístico
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
-require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -34,338 +34,304 @@ try {
     // Ignorar erro
 }
 
-// Buscar fornecedores recentes
-$fornecedores_recentes = [];
-try {
-    $stmt = $pdo->query("SELECT id, nome, email, telefone FROM fornecedores WHERE ativo = true ORDER BY id DESC LIMIT 5");
-    $fornecedores_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Ignorar erro
-}
+ob_start();
 ?>
 
-<div class="dashboard-container">
-    <!-- Header -->
-    <div class="dashboard-header">
-        <h1 class="dashboard-title">🛒 Lista de Compras</h1>
-        <p class="dashboard-subtitle">Sistema de gestão de compras e fornecedores</p>
-    </div>
-
-    <!-- Estatísticas -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon">🏢</div>
-            <div class="stat-value"><?= $stats['fornecedores'] ?></div>
-            <div class="stat-label">Fornecedores Ativos</div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">📦</div>
-            <div class="stat-value"><?= $stats['insumos'] ?></div>
-            <div class="stat-label">Insumos Cadastrados</div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">📁</div>
-            <div class="stat-value"><?= $stats['categorias'] ?></div>
-            <div class="stat-label">Categorias</div>
-        </div>
-        
-        <div class="stat-card">
-            <div class="stat-icon">📋</div>
-            <div class="stat-value"><?= $stats['encomendas'] ?></div>
-            <div class="stat-label">Encomendas</div>
-        </div>
-    </div>
-
-    <!-- Ações Principais -->
-    <div class="actions-grid">
-        <div class="action-card">
-            <div class="action-icon">📝</div>
-            <div class="action-title">Gerar Lista</div>
-            <div class="action-description">Criar nova lista de compras baseada em eventos e necessidades</div>
-            <a href="index.php?page=lista_compras" class="smile-btn smile-btn-primary">
-                Gerar Lista
-            </a>
-        </div>
-        
-        <div class="action-card">
-            <div class="action-icon">🏢</div>
-            <div class="action-title">Fornecedores</div>
-            <div class="action-description">Gerenciar fornecedores e seus dados</div>
-            <a href="index.php?page=config_fornecedores" class="smile-btn smile-btn-primary">
-                Gerenciar Fornecedores
-            </a>
-        </div>
-        
-        <div class="action-card">
-            <div class="action-icon">📦</div>
-            <div class="action-title">Insumos</div>
-            <div class="action-description">Cadastrar e gerenciar insumos</div>
-            <a href="index.php?page=config_insumos" class="smile-btn smile-btn-primary">
-                Gerenciar Insumos
-            </a>
-        </div>
-        
-        <div class="action-card">
-            <div class="action-icon">📋</div>
-            <div class="action-title">Encomendas</div>
-            <div class="action-description">Visualizar e gerenciar encomendas</div>
-            <a href="index.php?page=ver" class="smile-btn smile-btn-primary">
-                Ver Encomendas
-            </a>
-        </div>
-    </div>
-
-    <!-- Fornecedores Recentes -->
-    <?php if (!empty($fornecedores_recentes)): ?>
-    <div class="recent-section">
-        <h3 class="recent-title">🏢 Fornecedores Recentes</h3>
-        <?php foreach ($fornecedores_recentes as $fornecedor): ?>
-        <div class="recent-item">
-            <div class="recent-item-info">
-                <div class="recent-item-name"><?= htmlspecialchars($fornecedor['nome']) ?></div>
-                <div class="recent-item-details">
-                    📧 <?= htmlspecialchars($fornecedor['email'] ?? '') ?>
-                    <?php if ($fornecedor['telefone']): ?>
-                    | 📞 <?= htmlspecialchars($fornecedor['telefone'] ?? '') ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <a href="index.php?page=config_fornecedores" class="recent-item-action">
-                Ver →
-            </a>
-        </div>
-        <?php endforeach; ?>
-        <div style="text-align: center; margin-top: 15px;">
-            <a href="index.php?page=config_fornecedores" class="smile-btn smile-btn-primary">
-                Ver Todos os Fornecedores
-            </a>
-        </div>
-    </div>
-    <?php endif; ?>
-</div>
-
 <style>
-/* Dashboard Styles */
-.dashboard-container {
+/* Container Principal */
+.page-logistico-landing {
+    width: 100%;
     max-width: 1400px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 1.5rem;
 }
 
-.dashboard-header {
+/* Header */
+.page-logistico-header {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 2rem;
 }
 
-.dashboard-title {
-    font-size: 2.5em;
+.page-logistico-header h1 {
+    font-size: 2rem;
     font-weight: 700;
     color: #1e3a8a;
-    margin-bottom: 10px;
+    margin: 0 0 0.5rem 0;
 }
 
-.dashboard-subtitle {
-    font-size: 1.2em;
+.page-logistico-header p {
+    font-size: 1.125rem;
     color: #64748b;
+    margin: 0;
 }
 
+/* Estatísticas */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 25px;
-    margin-bottom: 40px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
 }
 
 .stat-card {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
     text-align: center;
-    border-left: 5px solid #1e3a8a;
-    transition: all 0.3s ease;
 }
 
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+.stat-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
 }
 
-.stat-icon {
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, #1e3a8a, #1e40af);
-    border-radius: 15px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 28px;
-    color: white;
-    margin: 0 auto 20px;
-}
-
-.stat-value {
-    font-size: 3em;
-    font-weight: 800;
+.stat-card-value {
+    font-size: 2rem;
+    font-weight: 700;
     color: #1e3a8a;
-    margin-bottom: 10px;
+    margin: 0 0 0.5rem 0;
 }
 
-.stat-label {
-    font-size: 1.1em;
+.stat-card-label {
+    font-size: 0.875rem;
     color: #64748b;
-    font-weight: 600;
+    font-weight: 500;
 }
 
-.actions-grid {
+/* Cards de Funcionalidades */
+.funcionalidades-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 25px;
-    margin-bottom: 40px;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
 }
 
-.action-card {
+.funcionalidade-card {
     background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    text-align: center;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
     transition: all 0.3s ease;
-}
-
-.action-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
-
-.action-icon {
-    width: 80px;
-    height: 80px;
-    background: linear-gradient(135deg, #1e3a8a, #1e40af);
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 36px;
-    color: white;
-    margin: 0 auto 20px;
-}
-
-.action-title {
-    font-size: 1.4em;
-    font-weight: 600;
-    color: #1e293b;
-    margin-bottom: 10px;
-}
-
-.action-description {
-    color: #64748b;
-    margin-bottom: 20px;
-    line-height: 1.5;
-}
-
-.smile-btn {
-    display: inline-block;
-    padding: 12px 24px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    border: none;
     cursor: pointer;
-}
-
-.smile-btn-primary {
-    background: linear-gradient(135deg, #1e3a8a, #1e40af);
-    color: white;
-}
-
-.smile-btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(30, 58, 138, 0.4);
-}
-
-.recent-section {
-    background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    margin-bottom: 30px;
-}
-
-.recent-title {
-    font-size: 1.5em;
-    font-weight: 600;
-    color: #1e293b;
-    margin-bottom: 20px;
-}
-
-.recent-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 15px;
-    border-bottom: 1px solid #f1f5f9;
-    transition: all 0.3s ease;
-}
-
-.recent-item:hover {
-    background: #f8fafc;
-}
-
-.recent-item:last-child {
-    border-bottom: none;
-}
-
-.recent-item-info {
-    flex: 1;
-}
-
-.recent-item-name {
-    font-weight: 600;
-    color: #1e293b;
-    margin-bottom: 5px;
-}
-
-.recent-item-details {
-    color: #64748b;
-    font-size: 0.9em;
-}
-
-.recent-item-action {
-    color: #1e3a8a;
     text-decoration: none;
-    font-weight: 500;
-    padding: 8px 16px;
-    border-radius: 6px;
-    background: #f1f5f9;
-    transition: all 0.3s ease;
+    color: inherit;
+    display: block;
 }
 
-.recent-item-action:hover {
-    background: #1e3a8a;
+.funcionalidade-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    border-color: #3b82f6;
+}
+
+.funcionalidade-card-header {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
     color: white;
+    padding: 1.5rem;
 }
 
-@media (max-width: 768px) {
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 15px;
-    }
-    
-    .actions-grid {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-    
-    .dashboard-title {
-        font-size: 2em;
-    }
+.funcionalidade-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    display: block;
+}
+
+.funcionalidade-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.funcionalidade-card-subtitle {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+.funcionalidade-card-content {
+    padding: 1.25rem;
+}
+
+.funcionalidade-card-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.funcionalidade-card-item:hover {
+    background: #e2e8f0;
+}
+
+.funcionalidade-card-item:last-child {
+    margin-bottom: 0;
+}
+
+.funcionalidade-item-icon {
+    font-size: 1.25rem;
+    margin-right: 0.75rem;
+    width: 24px;
+    text-align: center;
+}
+
+.funcionalidade-item-text {
+    flex: 1;
+    font-weight: 500;
+    color: #1e293b;
+    font-size: 0.875rem;
+}
+
+.funcionalidade-item-arrow {
+    color: #64748b;
+    font-weight: bold;
+}
+
+/* Card simples (sem subitens) */
+.funcionalidade-card-simples {
+    text-decoration: none;
+    color: inherit;
+}
+
+.funcionalidade-card-simples .funcionalidade-card-content {
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.funcionalidade-card-simples .funcionalidade-card-content::after {
+    content: '→';
+    display: block;
+    margin-top: 1rem;
+    color: #64748b;
+    font-weight: bold;
+    font-size: 1.5rem;
 }
 </style>
 
+<div class="page-logistico-landing">
+    <!-- Header -->
+    <div class="page-logistico-header">
+        <h1>📦 Área Logística</h1>
+        <p>Controle de estoque e compras</p>
+    </div>
+    
+    <!-- Estatísticas Rápidas -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-card-icon">🏢</div>
+            <div class="stat-card-value"><?= $stats['fornecedores'] ?></div>
+            <div class="stat-card-label">Fornecedores Ativos</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-card-icon">📦</div>
+            <div class="stat-card-value"><?= $stats['insumos'] ?></div>
+            <div class="stat-card-label">Insumos Cadastrados</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-card-icon">📁</div>
+            <div class="stat-card-value"><?= $stats['categorias'] ?></div>
+            <div class="stat-card-label">Categorias</div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-card-icon">📋</div>
+            <div class="stat-card-value"><?= $stats['encomendas'] ?></div>
+            <div class="stat-card-label">Encomendas</div>
+        </div>
+    </div>
+    
+    <!-- Funcionalidades Principais -->
+    <div class="funcionalidades-grid">
+        <!-- Lista de Compras -->
+        <div class="funcionalidade-card" style="cursor: default;">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">📋</span>
+                <div class="funcionalidade-card-title">Lista de Compras</div>
+                <div class="funcionalidade-card-subtitle">Gerar e gerenciar listas de compras</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <a href="index.php?page=lista_compras" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🛒</span>
+                    <span class="funcionalidade-item-text">Gerar Lista</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=lc_index" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📝</span>
+                    <span class="funcionalidade-item-text">Gerenciar Listas</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Estoque -->
+        <div class="funcionalidade-card" style="cursor: default;">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
+                <span class="funcionalidade-card-icon">📦</span>
+                <div class="funcionalidade-card-title">Estoque</div>
+                <div class="funcionalidade-card-subtitle">Controle de estoque logístico</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <a href="index.php?page=estoque_logistico" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📊</span>
+                    <span class="funcionalidade-item-text">Visualizar Estoque</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=estoque_kardex" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📈</span>
+                    <span class="funcionalidade-item-text">Kardex de Movimentações</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=estoque_contagens" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📉</span>
+                    <span class="funcionalidade-item-text">Contagens de Estoque</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Encomendas -->
+        <a href="index.php?page=ver" class="funcionalidade-card funcionalidade-card-simples">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <span class="funcionalidade-card-icon">📄</span>
+                <div class="funcionalidade-card-title">Ver Encomendas</div>
+                <div class="funcionalidade-card-subtitle">Visualizar detalhes das encomendas</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Alertas -->
+        <a href="index.php?page=estoque_alertas" class="funcionalidade-card funcionalidade-card-simples">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">⚠️</span>
+                <div class="funcionalidade-card-title">Alertas</div>
+                <div class="funcionalidade-card-subtitle">Alertas de estoque</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- PDFs -->
+        <a href="index.php?page=lc_pdf" class="funcionalidade-card funcionalidade-card-simples">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                <span class="funcionalidade-card-icon">📄</span>
+                <div class="funcionalidade-card-title">PDFs</div>
+                <div class="funcionalidade-card-subtitle">Gerar PDFs de compras</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+    </div>
+</div>
+
 <?php
-// Página finalizada - sidebar já está incluída no sidebar_unified.php
+$conteudo = ob_get_clean();
+includeSidebar('Logístico');
+?>
+<?= $conteudo ?>
+<?php
+endSidebar();
 ?>
