@@ -818,10 +818,34 @@ ob_start();
                         $token_publico = $degustacao['token_publico'];
                     }
                     ?>
-                    <?php if (!empty($token_publico)): ?>
-                    <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary" target="_blank">
-                        🔗 Ver Link Público
-                    </a>
+                    <?php if (!empty($token_publico)): 
+                        // Gerar URL completa
+                        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                        $host = $_SERVER['HTTP_HOST'] ?? 'painelsmilepro-production.up.railway.app';
+                        $public_url = $protocol . '://' . $host . '/index.php?page=comercial_degust_public&t=' . urlencode($token_publico);
+                    ?>
+                    <div style="margin-top: 15px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">🔗 Link Público para Divulgação:</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" 
+                                   id="link-publico-editar" 
+                                   value="<?= htmlspecialchars($public_url, ENT_QUOTES, 'UTF-8') ?>" 
+                                   readonly 
+                                   style="flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; font-family: monospace; color: #1f2937;">
+                            <button type="button" 
+                                    onclick="copiarLinkPublicoEditar()" 
+                                    class="btn-secondary"
+                                    style="white-space: nowrap;">
+                                📋 Copiar
+                            </button>
+                            <a href="<?= htmlspecialchars($public_url, ENT_QUOTES, 'UTF-8') ?>" 
+                               class="btn-secondary" 
+                               target="_blank"
+                               style="white-space: nowrap;">
+                                🔗 Abrir
+                            </a>
+                        </div>
+                    </div>
                     <?php else: ?>
                     <span style="color: #6b7280; font-size: 14px; padding: 8px;">
                         ℹ️ Link público será gerado automaticamente ao publicar
@@ -1251,6 +1275,55 @@ ob_start();
             
             // Função prepararLocalAntesDoSubmit já está definida antes do script
             // e é chamada via onsubmit no formulário
+        }
+        
+        // Função para copiar link público na página de edição
+        function copiarLinkPublicoEditar() {
+            const input = document.getElementById('link-publico-editar');
+            if (!input) {
+                customAlert('Campo de link não encontrado', 'Erro');
+                return;
+            }
+            
+            input.select();
+            input.setSelectionRange(0, 99999); // Para dispositivos móveis
+            
+            try {
+                document.execCommand('copy');
+                // Feedback visual
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copiado!';
+                btn.style.background = '#10b981';
+                btn.style.color = 'white';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 2000);
+            } catch (err) {
+                // Fallback para navegadores modernos
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(input.value).then(() => {
+                        const btn = event.target;
+                        const originalText = btn.textContent;
+                        btn.textContent = '✅ Copiado!';
+                        btn.style.background = '#10b981';
+                        btn.style.color = 'white';
+                        
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.style.background = '';
+                            btn.style.color = '';
+                        }, 2000);
+                    }).catch(() => {
+                        customAlert('Erro ao copiar link', 'Erro');
+                    });
+                } else {
+                    customAlert('Erro ao copiar link. Seu navegador pode não suportar esta ação.', 'Erro');
+                }
+            }
         }
     </script>
 <?php

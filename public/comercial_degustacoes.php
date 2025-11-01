@@ -62,7 +62,7 @@ if ($action === 'publicar' && $degustacao_id > 0) {
                 ':token' => $token_publico,
                 ':id' => $degustacao_id
             ]);
-            $success_message = "Degustação publicada com sucesso!";
+        $success_message = "Degustação publicada com sucesso!";
             
             // Redirecionar após publicação
             header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
@@ -607,10 +607,33 @@ ob_start();
                                 ? trim($degustacao['token_publico']) 
                                 : '';
                             if (!empty($token_publico)): 
+                                // Gerar URL completa
+                                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                $host = $_SERVER['HTTP_HOST'] ?? 'painelsmilepro-production.up.railway.app';
+                                $public_url = $protocol . '://' . $host . '/index.php?page=comercial_degust_public&t=' . urlencode($token_publico);
                             ?>
-                            <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-sm btn-secondary" target="_blank">
-                                🔗 Link Público
-                            </a>
+                            <div style="margin-top: 10px; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e5e7eb;">
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px;">🔗 Link Público para Divulgação:</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" 
+                                           id="link-publico-<?= $degustacao['id'] ?>" 
+                                           value="<?= htmlspecialchars($public_url, ENT_QUOTES, 'UTF-8') ?>" 
+                                           readonly 
+                                           style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; font-family: monospace; color: #1f2937;">
+                                    <button type="button" 
+                                            onclick="copiarLinkPublico('<?= $degustacao['id'] ?>')" 
+                                            class="btn-sm btn-secondary"
+                                            style="white-space: nowrap;">
+                                        📋 Copiar
+                                    </button>
+                                    <a href="<?= htmlspecialchars($public_url, ENT_QUOTES, 'UTF-8') ?>" 
+                                       class="btn-sm btn-secondary" 
+                                       target="_blank"
+                                       style="white-space: nowrap;">
+                                        🔗 Abrir
+                                    </a>
+                                </div>
+                            </div>
                             <?php else: ?>
                             <span class="btn-sm btn-secondary" style="opacity: 0.5; cursor: not-allowed;" title="Link público não disponível">
                                 🔗 Link Público
@@ -647,7 +670,7 @@ ob_start();
                         </div>
                     </div>
                 <?php endforeach; ?>
-    </div>
+            </div>
     
     <style>
         /* Modais customizados - substituem alert/confirm nativos */
