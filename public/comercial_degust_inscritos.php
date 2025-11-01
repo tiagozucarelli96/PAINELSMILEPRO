@@ -938,8 +938,8 @@ ob_start();
                                         </button>
                                     <?php endif; ?>
                                     
-                                    <button class="btn-sm btn-danger" 
-                                            onclick="excluirInscrito(<?= $inscricao['id'] ?>, '<?= h($inscricao['nome']) ?>')"
+                                    <button type="button" class="btn-sm btn-danger" 
+                                            onclick="excluirInscrito(event, <?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                         🗑️ Excluir
                                     </button>
@@ -1331,27 +1331,41 @@ ob_start();
     }
     
     // Excluir inscrito
-    function excluirInscrito(inscricaoId, nome) {
-        if (confirm('⚠️ Tem certeza que deseja excluir o inscrito "' + nome + '"?\n\nEsta ação não pode ser desfeita.')) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = window.location.href;
-            
-            const actionInput = document.createElement('input');
-            actionInput.type = 'hidden';
-            actionInput.name = 'action';
-            actionInput.value = 'excluir_inscrito';
-            
-            const idInput = document.createElement('input');
-            idInput.type = 'hidden';
-            idInput.name = 'inscricao_id';
-            idInput.value = inscricaoId;
-            
-            form.appendChild(actionInput);
-            form.appendChild(idInput);
-            document.body.appendChild(form);
-            form.submit();
+    function excluirInscrito(event, inscricaoId, nome) {
+        // Prevenir qualquer ação padrão
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
         }
+        
+        // Confirmar exclusão
+        const confirmacao = confirm('⚠️ Tem certeza que deseja excluir o inscrito "' + nome + '"?\n\nEsta ação não pode ser desfeita.');
+        
+        if (!confirmacao) {
+            return false; // Usuário cancelou
+        }
+        
+        // Criar e submeter formulário apenas após confirmação
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = window.location.href;
+        
+        const actionInput = document.createElement('input');
+        actionInput.type = 'hidden';
+        actionInput.name = 'action';
+        actionInput.value = 'excluir_inscrito';
+        
+        const idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'inscricao_id';
+        idInput.value = inscricaoId;
+        
+        form.appendChild(actionInput);
+        form.appendChild(idInput);
+        document.body.appendChild(form);
+        form.submit();
+        
+        return false;
     }
     </script>
     
