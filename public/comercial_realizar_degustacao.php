@@ -10,18 +10,39 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
+// Verificar permissões - MAS primeiro criar variáveis para debug
+$debug_info = []; // Inicializar ANTES de verificar permissão
+
 // Verificar permissões
-$tem_permissao = lc_can_access_comercial();
-$debug_info[] = "🔍 DEBUG: Verificação de permissão - lc_can_access_comercial() = " . ($tem_permissao ? 'true' : 'false');
-$debug_info[] = "🔍 DEBUG: Sessão logado = " . (isset($_SESSION['logado']) ? var_export($_SESSION['logado'], true) : 'NÃO DEFINIDO');
-$debug_info[] = "🔍 DEBUG: Sessão id = " . (isset($_SESSION['id']) ? var_export($_SESSION['id'], true) : 'NÃO DEFINIDO');
+$tem_permissao = false;
+try {
+    $tem_permissao = lc_can_access_comercial();
+    $perfil = lc_get_user_profile();
+    
+    $debug_info[] = "🔍 DEBUG: Verificação de permissão - lc_can_access_comercial() = " . ($tem_permissao ? 'true' : 'false');
+    $debug_info[] = "🔍 DEBUG: Perfil do usuário = " . ($perfil ?? 'NÃO DEFINIDO');
+    $debug_info[] = "🔍 DEBUG: Sessão logado = " . (isset($_SESSION['logado']) ? var_export($_SESSION['logado'], true) : 'NÃO DEFINIDO');
+    $debug_info[] = "🔍 DEBUG: Sessão id = " . (isset($_SESSION['id']) ? var_export($_SESSION['id'], true) : 'NÃO DEFINIDO');
+    $debug_info[] = "🔍 DEBUG: Sessão perm_usuarios = " . (isset($_SESSION['perm_usuarios']) ? var_export($_SESSION['perm_usuarios'], true) : 'NÃO DEFINIDO');
+    $debug_info[] = "🔍 DEBUG: Sessão perm_pagamentos = " . (isset($_SESSION['perm_pagamentos']) ? var_export($_SESSION['perm_pagamentos'], true) : 'NÃO DEFINIDO');
+} catch (Exception $e) {
+    $debug_info[] = "❌ DEBUG: Erro ao verificar permissão: " . $e->getMessage();
+    error_log("❌ Erro ao verificar permissão em comercial_realizar_degustacao.php: " . $e->getMessage());
+}
 
 if (!$tem_permissao) {
     $debug_info[] = "❌ DEBUG: SEM PERMISSÃO - Redirecionando para dashboard";
-    // Log antes de redirecionar
-    error_log("⚠️ comercial_realizar_degustacao.php: Sem permissão para acessar. Sessão logado: " . ($_SESSION['logado'] ?? 'N/A'));
-    header('Location: index.php?page=dashboard&error=permission_denied');
-    exit;
+    // Log antes de redirecionar - mas renderizar debug ANTES se possível
+    error_log("⚠️ comercial_realizar_degustacao.php: Sem permissão para acessar. Perfil: " . ($perfil ?? 'N/A') . ", Sessão logado: " . ($_SESSION['logado'] ?? 'N/A'));
+    
+    // TEMPORÁRIO: Permitir acesso mesmo sem permissão para debug (remover depois)
+    // Se quiser testar se é problema de permissão, descomente a linha abaixo:
+    // $tem_permissao = true;
+    
+    if (!$tem_permissao) {
+        header('Location: index.php?page=dashboard&error=permission_denied');
+        exit;
+    }
 }
 
 $pdo = $GLOBALS['pdo'];
