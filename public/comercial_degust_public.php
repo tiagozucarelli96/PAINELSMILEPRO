@@ -1003,9 +1003,9 @@ if ($_POST && !$inscricoes_encerradas) {
             <div class="alert alert-warning">
                 ⚠️ Degustação lotada, mas você pode se inscrever na lista de espera.
             </div>
-        <?php else: ?>
+        <?php elseif (!($show_qr_code && $qr_inscricao_id > 0)): ?>
         
-        <!-- Formulário de Inscrição -->
+        <!-- Formulário de Inscrição (apenas quando NÃO estiver na tela do QR Code) -->
         <div class="form-container">
             <form method="POST" id="inscricaoForm">
                 <h2 style="margin-bottom: 20px; color: #1e3a8a;">📝 Inscrição</h2>
