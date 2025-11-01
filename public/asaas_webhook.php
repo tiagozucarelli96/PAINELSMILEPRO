@@ -2,17 +2,48 @@
 // asaas_webhook.php — Webhook para receber notificações do ASAAS (Checkout e Pagamentos)
 // Documentação: https://docs.asaas.com/docs/eventos-para-checkout
 
-// CRÍTICO: Este arquivo deve ser acessado DIRETAMENTE, não via index.php
-// Garantir que não há sessão ou autenticação necessária
-if (session_status() === PHP_SESSION_ACTIVE) {
-    session_write_close(); // Fechar sessão se estiver aberta
-}
+// ============================================
+// CRÍTICO: ISOLAMENTO TOTAL DO WEBHOOK
+// ============================================
+// Este arquivo DEVE ser acessado DIRETAMENTE, nunca via index.php ou router
+// NUNCA deve requerer autenticação ou retornar HTML
 
-// Desabilitar output buffering que pode causar problemas
-if (ob_get_level()) {
+// 1. Desabilitar completamente output buffering ANTES de qualquer coisa
+while (ob_get_level()) {
     ob_end_clean();
 }
 
+// 2. Limpar TODOS os headers que possam existir
+header_remove();
+
+// 3. Fechar sessão se existir (ANTES de incluir qualquer arquivo)
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+// 4. Desabilitar qualquer auto-start de sessão
+ini_set('session.auto_start', '0');
+
+// 5. Garantir que não há redirects automáticos
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
+// 6. Definir headers corretos IMEDIATAMENTE (antes de qualquer include)
+http_response_code(200);
+header('Content-Type: application/json', true);
+header('Cache-Control: no-cache, no-store, must-revalidate', true);
+header('X-Content-Type-Options: nosniff', true);
+header('Access-Control-Allow-Origin: *', true);
+header('Access-Control-Allow-Methods: POST', true);
+
+// 7. Verificar método HTTP ANTES de incluir arquivos
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+    exit;
+}
+
+// 8. Incluir arquivos necessários (mas NUNCA incluir index.php ou router)
+// NUNCA incluir arquivos que façam verificação de autenticação
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 
@@ -26,29 +57,10 @@ function logWebhook($data) {
     file_put_contents($log_file, $log, FILE_APPEND | LOCK_EX);
 }
 
-// IMPORTANTE: Webhook deve responder sem redirecionamentos
-// Limpar TODOS os headers que podem causar redirect
-header_remove('Location');
-header_remove('Refresh');
-header_remove('X-Redirect');
-
-// Desabilitar qualquer auto-redirect
-ini_set('display_errors', '0');
-ini_set('log_errors', '1');
-
-// Verificar se é POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    header('Content-Type: application/json', true);
-    header('Cache-Control: no-cache, no-store, must-revalidate', true);
-    echo json_encode(['status' => 'error', 'message' => 'Method not allowed']);
-    exit;
-}
-
-// Garantir que sempre retorna JSON - SEM REDIRECTS
-header('Content-Type: application/json', true);
-header('Cache-Control: no-cache, no-store, must-revalidate', true);
-header('X-Content-Type-Options: nosniff', true);
+// ============================================
+// HEADERS JÁ FORAM DEFINIDOS NO INÍCIO DO ARQUIVO
+// NÃO redefinir aqui para evitar conflitos
+// ============================================
 
 // Obter dados do webhook
 $input = file_get_contents('php://input');
