@@ -117,40 +117,35 @@ class AsaasHelper {
         // Asaas API v3 - Testar diferentes formatos de autenticação
         // A API Asaas pode aceitar diferentes formatos, vamos testar o mais comum
         
-        // IMPORTANTE: A chave do Asaas pode vir com $ do ENV
-        // Conforme documentação: chaves de produção começam com $aact_prod_
-        // A API Asaas aceita a chave COM ou SEM o $, mas vamos testar ambos os formatos
+        // IMPORTANTE: Conforme documentação oficial Asaas
+        // Documentação: https://docs.asaas.com/docs/autenticacao-1
+        // "A chave de API deve ser utilizada EXATAMENTE como foi gerada, 
+        //  incluindo o prefixo $aact_prod_ para chaves de produção"
+        // 
+        // Ou seja: usar a chave COM o $ no header!
         $api_key_original = $this->api_key;
-        $api_key_without_dollar = $api_key_original;
+        $api_key_to_use = trim($api_key_original);
         
-        // Remover $ se existir no início
-        if (strpos($api_key_without_dollar, '$') === 0) {
-            $api_key_without_dollar = substr($api_key_without_dollar, 1);
-            error_log("AsaasHelper - Chave original tem \$ no início. Versão sem \$ criada para teste.");
-        }
-        
-        // Testar SEM o $ primeiro (mais comum conforme documentação)
-        $api_key_to_use = trim($api_key_without_dollar);
+        // NÃO remover o $ - a documentação diz para usar exatamente como gerada
         
         // Asaas API v3 - Formato EXATO conforme documentação oficial
-        // Documentação: https://docs.asaas.com/docs/checkout-asaas
+        // Documentação: https://docs.asaas.com/docs/autenticacao-1
         // Headers obrigatórios:
         //   "Content-Type": "application/json"
         //   "User-Agent": "nome_da_sua_aplicação"
-        //   "access_token": "sua_api_key"
+        //   "access_token": "sua_api_key" (COM $ se a chave tiver $)
         // 
         // Em headers HTTP cURL, o formato é: "Nome: Valor" (com espaço após dois pontos)
         
         $headers = [
             'Content-Type: application/json',
             'User-Agent: PainelSmilePRO/1.0',
-            'access_token: ' . $api_key_to_use  // COM espaço após dois pontos (formato HTTP padrão)
+            'access_token: ' . $api_key_to_use  // COM espaço após dois pontos, COM $ se a chave tiver
         ];
         
         // Log detalhado para debug
-        error_log("AsaasHelper - Chave ORIGINAL (primeiros 30): " . substr($api_key_original, 0, 30) . "...");
-        error_log("AsaasHelper - Chave LIMPA (sem \$) (primeiros 30): " . substr($api_key_to_use, 0, 30) . "...");
-        error_log("AsaasHelper - Header access_token (primeiros 50 chars): " . substr('access_token:' . $api_key_to_use, 0, 50) . "...");
+        error_log("AsaasHelper - Chave usada (primeiros 35): " . substr($api_key_to_use, 0, 35) . "...");
+        error_log("AsaasHelper - Header access_token (primeiros 50 chars): " . substr('access_token: ' . $api_key_to_use, 0, 50) . "...");
         
         // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
