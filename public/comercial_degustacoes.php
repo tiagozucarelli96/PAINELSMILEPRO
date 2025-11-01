@@ -35,11 +35,26 @@ $degustacao_id = (int)($_POST['degustacao_id'] ?? $_GET['id'] ?? 0);
 
 if ($action === 'publicar' && $degustacao_id > 0) {
     try {
-        $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado' WHERE id = :id");
+        // Verificar se degustação existe e está em rascunho
+        $stmt = $pdo->prepare("SELECT id, status, nome FROM comercial_degustacoes WHERE id = :id");
         $stmt->execute([':id' => $degustacao_id]);
-        $success_message = "Degustação publicada com sucesso!";
+        $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$degustacao) {
+            $error_message = "Degustação não encontrada!";
+        } else {
+            // Atualizar status para publicado
+            $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado' WHERE id = :id");
+            $stmt->execute([':id' => $degustacao_id]);
+            $success_message = "Degustação publicada com sucesso!";
+            
+            // Redirecionar após publicação
+            header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+            exit;
+        }
     } catch (Exception $e) {
         $error_message = "Erro ao publicar: " . $e->getMessage();
+        error_log("Erro ao publicar degustação: " . $e->getMessage());
     }
 }
 
@@ -48,8 +63,13 @@ if ($action === 'encerrar' && $degustacao_id > 0) {
         $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'encerrado' WHERE id = :id");
         $stmt->execute([':id' => $degustacao_id]);
         $success_message = "Degustação encerrada com sucesso!";
+        
+        // Redirecionar após encerramento
+        header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+        exit;
     } catch (Exception $e) {
         $error_message = "Erro ao encerrar: " . $e->getMessage();
+        error_log("Erro ao encerrar degustação: " . $e->getMessage());
     }
 }
 
@@ -96,20 +116,28 @@ if ($action === 'duplicar' && $degustacao_id > 0) {
 
 if ($action === 'apagar' && $degustacao_id > 0) {
     try {
-        // Verificar se tem inscrições
+        // Verificar se tem inscrições (apenas para aviso, não bloqueia exclusão)
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id");
         $stmt->execute([':id' => $degustacao_id]);
-        $inscricoes_count = $stmt->fetchColumn();
+        $inscricoes_count = (int)$stmt->fetchColumn();
+        
+        // IMPORTANTE: Excluir degustação mas NÃO excluir inscrições
+        // As inscrições ficam no banco (degustacao_id pode ficar como null ou manter referência)
+        $stmt = $pdo->prepare("DELETE FROM comercial_degustacoes WHERE id = :id");
+        $stmt->execute([':id' => $degustacao_id]);
         
         if ($inscricoes_count > 0) {
-            $error_message = "Não é possível apagar degustação com inscrições. As inscrições serão preservadas.";
+            $success_message = "Degustação apagada com sucesso! ($inscricoes_count inscrição(ões) preservada(s) no sistema)";
         } else {
-            $stmt = $pdo->prepare("DELETE FROM comercial_degustacoes WHERE id = :id");
-            $stmt->execute([':id' => $degustacao_id]);
             $success_message = "Degustação apagada com sucesso!";
         }
+        
+        // Redirecionar após exclusão
+        header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+        exit;
     } catch (Exception $e) {
         $error_message = "Erro ao apagar: " . $e->getMessage();
+        error_log("Erro ao apagar degustação: " . $e->getMessage());
     }
 }
 

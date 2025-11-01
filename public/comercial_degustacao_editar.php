@@ -669,9 +669,11 @@ ob_start();
                 <div class="form-actions">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
                     <?php if ($is_edit): ?>
-                    <a href="comercial_degust_public.php?t=<?= $token_publico ?>" class="btn-secondary" target="_blank">
+                    <?php if (!empty($token_publico)): ?>
+                    <a href="comercial_degust_public.php?t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary" target="_blank">
                         🔗 Ver Link Público
                     </a>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </form>
