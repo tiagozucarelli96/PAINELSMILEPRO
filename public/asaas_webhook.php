@@ -45,7 +45,10 @@ if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !
 
 // 8. Verificar método HTTP ANTES de incluir arquivos
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
+    // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para métodos errados
+    http_response_code(200);
+    header('Content-Type: application/json', true);
+    echo json_encode(['status' => 'warning', 'message' => 'Method not allowed. Use POST.']);
     exit;
 }
 
