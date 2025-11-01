@@ -212,6 +212,97 @@ class AsaasHelper {
     }
     
     /**
+     * Criar Checkout Asaas (formulário de pagamento pronto)
+     * Documentação: https://docs.asaas.com/docs/checkout-asaas
+     */
+    public function createCheckout($data) {
+        $endpoint = $this->base_url . '/checkouts';
+        
+        // Validar campos obrigatórios conforme documentação
+        if (empty($data['billingTypes']) || !is_array($data['billingTypes'])) {
+            throw new Exception('billingTypes é obrigatório e deve ser um array');
+        }
+        
+        if (empty($data['chargeTypes']) || !is_array($data['chargeTypes'])) {
+            throw new Exception('chargeTypes é obrigatório e deve ser um array');
+        }
+        
+        if (empty($data['callback']) || !is_array($data['callback'])) {
+            throw new Exception('callback é obrigatório e deve conter cancelUrl, expiredUrl e successUrl');
+        }
+        
+        if (empty($data['items']) || !is_array($data['items'])) {
+            throw new Exception('items é obrigatório e deve ser um array');
+        }
+        
+        // Montar payload conforme documentação
+        $payload = [
+            'billingTypes' => $data['billingTypes'], // Ex: ["PIX"] ou ["PIX", "CREDIT_CARD"]
+            'chargeTypes' => $data['chargeTypes'],   // Ex: ["DETACHED"] para pagamento único
+            'callback' => [
+                'cancelUrl' => $data['callback']['cancelUrl'],
+                'expiredUrl' => $data['callback']['expiredUrl'],
+                'successUrl' => $data['callback']['successUrl']
+            ],
+            'items' => []
+        ];
+        
+        // Adicionar items (obrigatório)
+        foreach ($data['items'] as $item) {
+            $payload['items'][] = [
+                'name' => $item['name'],
+                'description' => $item['description'] ?? '',
+                'quantity' => $item['quantity'] ?? 1,
+                'value' => number_format((float)($item['value'] ?? 0), 2, '.', '')
+            ];
+        }
+        
+        // Tempo de expiração (opcional, em minutos)
+        if (isset($data['minutesToExpire'])) {
+            $payload['minutesToExpire'] = (int)$data['minutesToExpire'];
+        } else {
+            $payload['minutesToExpire'] = 60; // Padrão: 1 hora
+        }
+        
+        // Dados do cliente (opcional - pré-preenche formulário)
+        if (!empty($data['customerData'])) {
+            $customerData = $data['customerData'];
+            $payload['customerData'] = [
+                'name' => $customerData['name'] ?? '',
+                'email' => $customerData['email'] ?? '',
+                'phone' => $customerData['phone'] ?? '',
+                'cpfCnpj' => $customerData['cpfCnpj'] ?? ''
+            ];
+            
+            // Endereço (opcional)
+            if (!empty($customerData['address'])) {
+                $payload['customerData']['address'] = $customerData['address'];
+                $payload['customerData']['addressNumber'] = $customerData['addressNumber'] ?? '';
+                $payload['customerData']['complement'] = $customerData['complement'] ?? '';
+                $payload['customerData']['postalCode'] = $customerData['postalCode'] ?? '';
+                $payload['customerData']['province'] = $customerData['province'] ?? '';
+                $payload['customerData']['city'] = $customerData['city'] ?? '';
+            }
+        }
+        
+        // Referência externa (opcional)
+        if (!empty($data['externalReference'])) {
+            $payload['externalReference'] = $data['externalReference'];
+        }
+        
+        // Fazer requisição
+        $response = $this->makeRequest('POST', $endpoint, $payload);
+        
+        // Retornar resposta com ID do checkout
+        if (isset($response['id'])) {
+            // Construir URL do checkout conforme documentação
+            $response['checkoutUrl'] = 'https://asaas.com/checkoutSession/show?id=' . $response['id'];
+        }
+        
+        return $response;
+    }
+    
+    /**
      * Calcular valor total baseado nas opções
      */
     public function calculateTotal($tipo_festa, $qtd_pessoas, $precos) {

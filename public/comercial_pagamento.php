@@ -1,12 +1,29 @@
 <?php
-// comercial_pagamento.php — Página de pagamento PIX
+// comercial_pagamento.php — Página de pagamento (suporta Checkout Asaas e PIX direto)
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/asaas_helper.php';
 
+$checkout_id = $_GET['checkout_id'] ?? $_GET['checkout'] ?? '';
 $payment_id = $_GET['payment_id'] ?? '';
 $inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
+
+// Verificar se veio do Checkout Asaas (sucesso)
+if ($checkout_id && $inscricao_id) {
+    // Checkout Asaas redireciona automaticamente para successUrl quando pago
+    // Atualizar status da inscrição para pago
+    try {
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'pago' WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        
+        // Redirecionar para página de sucesso
+        header("Location: comercial_sucesso.php?inscricao_id={$inscricao_id}");
+        exit;
+    } catch (Exception $e) {
+        error_log("Erro ao atualizar status após checkout: " . $e->getMessage());
+    }
+}
 
 if (!$payment_id || !$inscricao_id) {
     die('Parâmetros inválidos');
@@ -16,7 +33,7 @@ if (!$payment_id || !$inscricao_id) {
 $stmt = $pdo->prepare("
     SELECT i.*, d.nome as degustacao_nome, d.data as degustacao_data, d.local as degustacao_local
     FROM comercial_inscricoes i
-    LEFT JOIN comercial_degustacoes d ON d.id = i.event_id
+    LEFT JOIN comercial_degustacoes d ON d.id = i.degustacao_id
     WHERE i.id = :inscricao_id
 ");
 $stmt->execute([':inscricao_id' => $inscricao_id]);
@@ -26,7 +43,7 @@ if (!$inscricao) {
     die('Inscrição não encontrada');
 }
 
-// Buscar dados do pagamento no ASAAS
+// Buscar dados do pagamento no ASAAS (modo antigo - PIX direto)
 $asaasHelper = new AsaasHelper();
 $payment_data = null;
 $qr_code = null;

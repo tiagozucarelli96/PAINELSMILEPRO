@@ -231,52 +231,84 @@ if ($_POST && !$inscricoes_encerradas) {
         $stmt->execute($params);
         $inscricao_id = $pdo->lastInsertId();
         
-        // Se não fechou contrato, processar pagamento ASAAS
+        // Se não fechou contrato, processar pagamento via Asaas Checkout
         if ($fechou_contrato === 'nao' && $valor_total > 0) {
             try {
                 $asaasHelper = new AsaasHelper();
                 
-                // Dados do customer
-                $customer_data = [
+                // URLs de redirecionamento
+                $base_url = "https://{$_SERVER['HTTP_HOST']}";
+                $current_url = $base_url . $_SERVER['REQUEST_URI'];
+                
+                // Dados do cliente para pré-preencher (customerData)
+                $customerData = [
                     'name' => $nome,
                     'email' => $email,
-                    'phone' => $telefone,
-                    'external_reference' => 'inscricao_' . $inscricao_id
+                    'phone' => preg_replace('/\D/', '', $telefone), // Apenas números
                 ];
                 
-                // Dados do pagamento
-                $payment_data = [
-                    'value' => $valor_total,
-                    'description' => "Degustação: {$degustacao['nome']} - {$tipo_festa} ({$qtd_pessoas} pessoas)",
-                    'external_reference' => 'inscricao_' . $inscricao_id,
-                    'success_url' => "https://{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}?success=1",
-                    'customer_data' => $customer_data
+                // Descrição detalhada do item
+                $incluidos = $tipo_festa === 'casamento' ? $degustacao['incluidos_casamento'] : $degustacao['incluidos_15anos'];
+                $extras = max(0, $qtd_pessoas - $incluidos);
+                $descricao_item = "Degustação {$degustacao['nome']} - {$tipo_festa}";
+                if ($extras > 0) {
+                    $descricao_item .= " ({$incluidos} pessoas incluídas + {$extras} extras)";
+                } else {
+                    $descricao_item .= " ({$incluidos} pessoas incluídas)";
+                }
+                
+                // Criar Checkout conforme documentação Asaas
+                $checkout_data = [
+                    'billingTypes' => ['PIX'], // Apenas PIX por enquanto
+                    'chargeTypes' => ['DETACHED'], // Pagamento único (à vista)
+                    'callback' => [
+                        'cancelUrl' => $current_url . '&cancelado=1',
+                        'expiredUrl' => $current_url . '&expirado=1',
+                        'successUrl' => $base_url . '/comercial_pagamento.php?checkout_id={checkout}&inscricao_id=' . $inscricao_id
+                    ],
+                    'items' => [
+                        [
+                            'name' => "Degustação: {$degustacao['nome']}",
+                            'description' => $descricao_item,
+                            'quantity' => 1,
+                            'value' => $valor_total
+                        ]
+                    ],
+                    'minutesToExpire' => 60, // Link válido por 1 hora
+                    'customerData' => $customerData,
+                    'externalReference' => 'inscricao_' . $inscricao_id
                 ];
                 
-                // Criar pagamento no ASAAS
-                $payment_response = $asaasHelper->createPixPayment($payment_data);
+                // Criar checkout no Asaas
+                $checkout_response = $asaasHelper->createCheckout($checkout_data);
                 
-                if ($payment_response && isset($payment_response['id'])) {
+                if ($checkout_response && isset($checkout_response['id'])) {
                     // Verificar se colunas existem antes de atualizar
                     try {
                         $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                                                    WHERE table_name = 'comercial_inscricoes' 
-                                                   AND column_name IN ('asaas_payment_id', 'valor_pago')");
+                                                   AND column_name IN ('asaas_payment_id', 'asaas_checkout_id', 'valor_pago')");
                         $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
                         $has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
+                        $has_asaas_checkout_id = in_array('asaas_checkout_id', $check_columns);
                         $has_valor_pago = in_array('valor_pago', $check_columns);
                     } catch (PDOException $e) {
                         $has_asaas_payment_id = false;
+                        $has_asaas_checkout_id = false;
                         $has_valor_pago = false;
                     }
                     
-                    // Atualizar inscrição com payment_id do ASAAS
+                    // Atualizar inscrição com checkout_id do Asaas
                     $update_fields = ["pagamento_status = 'aguardando'"];
                     $update_params = [':id' => $inscricao_id];
                     
-                    if ($has_asaas_payment_id) {
+                    if ($has_asaas_checkout_id) {
+                        $update_fields[] = "asaas_checkout_id = :checkout_id";
+                        $update_params[':checkout_id'] = $checkout_response['id'];
+                    } elseif ($has_asaas_payment_id) {
+                        // Fallback: usar payment_id se checkout_id não existir
                         $update_fields[] = "asaas_payment_id = :payment_id";
-                        $update_params[':payment_id'] = $payment_response['id'];
+                        $update_params[':payment_id'] = $checkout_response['id'];
                     }
                     
                     if ($has_valor_pago) {
@@ -288,15 +320,23 @@ if ($_POST && !$inscricoes_encerradas) {
                     $stmt = $pdo->prepare($update_sql);
                     $stmt->execute($update_params);
                     
-                    // Redirecionar para página de pagamento
-                    header("Location: comercial_pagamento.php?payment_id={$payment_response['id']}&inscricao_id={$inscricao_id}");
-                    exit;
+                    // Redirecionar para o Checkout Asaas
+                    if (isset($checkout_response['checkoutUrl'])) {
+                        header("Location: " . $checkout_response['checkoutUrl']);
+                        exit;
+                    } else {
+                        // Fallback: construir URL manualmente
+                        $checkout_url = 'https://asaas.com/checkoutSession/show?id=' . $checkout_response['id'];
+                        header("Location: " . $checkout_url);
+                        exit;
+                    }
                 } else {
-                    throw new Exception("Erro ao criar pagamento no ASAAS");
+                    throw new Exception("Erro ao criar checkout no Asaas");
                 }
                 
             } catch (Exception $e) {
                 $error_message = "Erro ao processar pagamento: " . $e->getMessage();
+                error_log("Erro ao criar checkout Asaas: " . $e->getMessage());
             }
         }
         
