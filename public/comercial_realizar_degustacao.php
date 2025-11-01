@@ -483,7 +483,7 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação - VERSÃO SIMPLIFICADA -->
     <div class="selecao-container">
-        <form method="GET" action="" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
+        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
@@ -503,6 +503,16 @@ includeSidebar('Comercial');
             </div>
         </form>
         
+        <?php if ($degustacao_id > 0): ?>
+        <div style="margin-top: 1rem; padding: 1rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; color: #0369a1;">
+            <strong>✅ Degustação selecionada (ID: <?= $degustacao_id ?>)</strong>
+            <?php if (isset($degustacao)): ?>
+                <p style="margin: 0.5rem 0 0 0;"><?= h($degustacao['nome']) ?></p>
+            <?php else: ?>
+                <p style="margin: 0.5rem 0 0 0; color: #dc2626;">⚠️ Degustação não encontrada no banco de dados</p>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
     </div>
     
     <!-- Info Box e Relatório (renderizado pelo PHP quando há degustacao_id) -->
@@ -584,11 +594,14 @@ includeSidebar('Comercial');
         </div>
     <?php elseif ($degustacao_id > 0 && !isset($degustacao)): ?>
         <div class="error-panel">
-            ⚠️ <strong>Atenção:</strong> Degustação selecionada mas dados não encontrados. Verifique o painel de debug acima.
+            ⚠️ <strong>Atenção:</strong> Degustação selecionada (ID: <?= $degustacao_id ?>) mas dados não encontrados no banco de dados.
+            <br><br>
+            Verifique o painel de debug acima para mais detalhes.
         </div>
     <?php else: ?>
         <div style="text-align: center; padding: 3rem; color: #6b7280; background: white; border: 1px solid #e5e7eb; border-radius: 12px; margin-top: 2rem;">
-            <p style="font-size: 1.125rem; margin: 0;">Selecione uma degustação e clique em "Gerar Relatório" para visualizar os dados.</p>
+            <p style="font-size: 1.125rem; margin: 0; font-weight: 600;">📋 Instruções:</p>
+            <p style="font-size: 1rem; margin: 1rem 0 0 0;">Selecione uma degustação no dropdown acima e clique em <strong>"📊 Gerar Relatório"</strong> para visualizar os dados.</p>
         </div>
     <?php endif; ?>
 </div>
