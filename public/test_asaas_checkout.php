@@ -100,14 +100,23 @@ header('Content-Type: text/html; charset=utf-8');
     echo '<h3>Validações da Chave:</h3>';
     echo '<ul>';
     
-    // Verificar formato
+    // Verificar formato (considerando que Railway pode remover o $)
     $tem_dolar = strpos($chave_usada, '$') === 0;
+    $comeca_aact_prod = strpos($chave_usada, 'aact_prod_') === 0;
+    $comeca_aact_hmlg = strpos($chave_usada, 'aact_hmlg_') === 0;
     $comeca_prod = strpos($chave_usada, '$aact_prod_') === 0;
     $comeca_hmlg = strpos($chave_usada, '$aact_hmlg_') === 0;
     
-    echo '<li><strong>Começa com $:</strong> ' . ($tem_dolar ? '✅ SIM' : '❌ NÃO (deve começar com $)') . '</li>';
-    echo '<li><strong>Formato Produção ($aact_prod_):</strong> ' . ($comeca_prod ? '✅ SIM' : '❌ NÃO') . '</li>';
-    echo '<li><strong>Formato Sandbox ($aact_hmlg_):</strong> ' . ($comeca_hmlg ? '⚠️ SIM (chave de sandbox em produção?)' : '✅ NÃO') . '</li>';
+    // Verificar se precisa adicionar $ (Railway remove o $ às vezes)
+    $precisa_adicionar_dolar = ($comeca_aact_prod || $comeca_aact_hmlg) && !$tem_dolar;
+    
+    echo '<li><strong>Começa com $:</strong> ' . ($tem_dolar ? '✅ SIM' : ($precisa_adicionar_dolar ? '⚠️ NÃO (mas será corrigido automaticamente)' : '❌ NÃO')) . '</li>';
+    echo '<li><strong>Formato Produção ($aact_prod_):</strong> ' . ($comeca_prod ? '✅ SIM' : ($comeca_aact_prod ? '⚠️ SIM (mas sem $ - será corrigido)' : '❌ NÃO')) . '</li>';
+    echo '<li><strong>Formato Sandbox ($aact_hmlg_):</strong> ' . ($comeca_hmlg ? '⚠️ SIM (chave de sandbox em produção?)' : ($comeca_aact_hmlg ? '⚠️ SIM (mas sem $ - será corrigido)' : '✅ NÃO')) . '</li>';
+    
+    if ($precisa_adicionar_dolar) {
+        echo '<li><strong>🔧 Correção automática:</strong> <span class="info">O sistema adicionará o $ automaticamente antes de enviar</span></li>';
+    }
     
     // Verificar espaços
     $tem_espacos = preg_match('/\s/', $chave_usada);
@@ -134,14 +143,22 @@ header('Content-Type: text/html; charset=utf-8');
         echo '</div>';
     }
     
-    if (!$comeca_prod && !$comeca_hmlg) {
+    // Mostrar aviso se formato está incorreto (mas permitir se começa com aact_prod_ ou aact_hmlg_ sem $)
+    if (!$comeca_prod && !$comeca_hmlg && !$comeca_aact_prod && !$comeca_aact_hmlg) {
         echo '<div style="background: #fee2e2; border: 1px solid #dc2626; padding: 15px; border-radius: 6px; margin: 15px 0;">';
         echo '<p><strong>❌ ERRO:</strong> A chave não está no formato correto!</p>';
         echo '<p>Chaves válidas devem começar com:</p>';
         echo '<ul>';
-        echo '<li><code>$aact_prod_...</code> para produção</li>';
-        echo '<li><code>$aact_hmlg_...</code> para sandbox</li>';
+        echo '<li><code>$aact_prod_...</code> ou <code>aact_prod_...</code> para produção</li>';
+        echo '<li><code>$aact_hmlg_...</code> ou <code>aact_hmlg_...</code> para sandbox</li>';
         echo '</ul>';
+        echo '</div>';
+    } elseif ($precisa_adicionar_dolar) {
+        echo '<div style="background: #dbeafe; border: 1px solid #3b82f6; padding: 15px; border-radius: 6px; margin: 15px 0;">';
+        echo '<p><strong>ℹ️ INFO:</strong> O Railway removeu o <code>$</code> do início da chave.</p>';
+        echo '<p>Isso é comum quando você salva variáveis de ambiente no Railway. O sistema detectará isso e adicionará o <code>$</code> automaticamente antes de enviar para a API Asaas.</p>';
+        echo '<p><strong>Chave original (sem $):</strong> <code>' . htmlspecialchars(substr($chave_usada, 0, 50)) . '...</code></p>';
+        echo '<p><strong>Chave que será enviada (com $):</strong> <code>$' . htmlspecialchars(substr($chave_usada, 0, 49)) . '...</code></p>';
         echo '</div>';
     }
     
