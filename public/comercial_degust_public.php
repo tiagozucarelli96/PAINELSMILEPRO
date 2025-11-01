@@ -101,19 +101,18 @@ if ($_POST && !$inscricoes_encerradas) {
             throw new Exception("Já existe uma inscrição com este e-mail para esta degustação");
         }
         
-        // Inserir inscrição
+        // Inserir inscrição (removido me_event_id que não existe na tabela)
         $sql = "INSERT INTO comercial_inscricoes 
-                (degustacao_id, status, fechou_contrato, me_event_id, nome_titular_contrato, nome, email, celular, 
+                (degustacao_id, status, fechou_contrato, nome_titular_contrato, nome, email, celular, 
                  dados_json, qtd_pessoas, tipo_festa, extras, pagamento_status, valor_pago, ip_origem, user_agent_origem)
                 VALUES 
-                (:degustacao_id, :status, :fechou_contrato, :me_event_id, :nome_titular_contrato, :nome, :email, :celular,
+                (:degustacao_id, :status, :fechou_contrato, :nome_titular_contrato, :nome, :email, :celular,
                  :dados_json, :qtd_pessoas, :tipo_festa, :extras, :pagamento_status, :valor_pago, :ip_origem, :user_agent_origem)";
         
         $params = [
             ':degustacao_id' => $degustacao['id'],
             ':status' => $status,
             ':fechou_contrato' => $fechou_contrato,
-            ':me_event_id' => null,
             ':nome_titular_contrato' => $nome_titular_contrato,
             ':nome' => $nome,
             ':email' => $email,
@@ -158,12 +157,36 @@ if ($_POST && !$inscricoes_encerradas) {
                 $payment_response = $asaasHelper->createPixPayment($payment_data);
                 
                 if ($payment_response && isset($payment_response['id'])) {
+                    // Verificar se colunas existem antes de atualizar
+                    try {
+                        $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                   WHERE table_name = 'comercial_inscricoes' 
+                                                   AND column_name IN ('asaas_payment_id', 'valor_pago')");
+                        $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
+                        $has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
+                        $has_valor_pago = in_array('valor_pago', $check_columns);
+                    } catch (PDOException $e) {
+                        $has_asaas_payment_id = false;
+                        $has_valor_pago = false;
+                    }
+                    
                     // Atualizar inscrição com payment_id do ASAAS
-                    $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_payment_id = :payment_id, pagamento_status = 'aguardando' WHERE id = :id");
-                    $stmt->execute([
-                        ':payment_id' => $payment_response['id'],
-                        ':id' => $inscricao_id
-                    ]);
+                    $update_fields = ["pagamento_status = 'aguardando'"];
+                    $update_params = [':id' => $inscricao_id];
+                    
+                    if ($has_asaas_payment_id) {
+                        $update_fields[] = "asaas_payment_id = :payment_id";
+                        $update_params[':payment_id'] = $payment_response['id'];
+                    }
+                    
+                    if ($has_valor_pago) {
+                        $update_fields[] = "valor_pago = :valor_pago";
+                        $update_params[':valor_pago'] = $valor_total;
+                    }
+                    
+                    $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
+                    $stmt = $pdo->prepare($update_sql);
+                    $stmt->execute($update_params);
                     
                     // Redirecionar para página de pagamento
                     header("Location: comercial_pagamento.php?payment_id={$payment_response['id']}&inscricao_id={$inscricao_id}");
@@ -452,12 +475,12 @@ if ($_POST && !$inscricoes_encerradas) {
                     <label class="form-label">Tipo de Festa *</label>
                     <div class="form-radio-group">
                         <div class="form-radio">
-                            <input type="radio" name="tipo_festa" value="casamento" id="casamento" required>
-                            <label for="casamento">Casamento (R$ <?= number_format($degustacao['preco_casamento'], 2, ',', '.') ?> - <?= $degustacao['incluidos_casamento'] ?> pessoas)</label>
+                            <input type="radio" name="tipo_festa" value="casamento" id="casamento" required onchange="autoPreencherPessoas()">
+                            <label for="casamento">Casamento (R$ <?= number_format($degustacao['preco_casamento'], 2, ',', '.') ?> - <?= $degustacao['incluidos_casamento'] ?> pessoas incluídas)</label>
                         </div>
                         <div class="form-radio">
-                            <input type="radio" name="tipo_festa" value="15anos" id="15anos" required>
-                            <label for="15anos">15 Anos (R$ <?= number_format($degustacao['preco_15anos'], 2, ',', '.') ?> - <?= $degustacao['incluidos_15anos'] ?> pessoas)</label>
+                            <input type="radio" name="tipo_festa" value="15anos" id="15anos" required onchange="autoPreencherPessoas()">
+                            <label for="15anos">15 Anos (R$ <?= number_format($degustacao['preco_15anos'], 2, ',', '.') ?> - <?= $degustacao['incluidos_15anos'] ?> pessoas incluídas)</label>
                         </div>
                     </div>
                 </div>
@@ -465,7 +488,10 @@ if ($_POST && !$inscricoes_encerradas) {
                 <!-- Quantidade de Pessoas -->
                 <div class="form-group">
                     <label class="form-label">Quantidade de Pessoas *</label>
-                    <input type="number" name="qtd_pessoas" class="form-input" min="1" required onchange="calcularPreco()">
+                    <input type="number" name="qtd_pessoas" id="qtdPessoasInput" class="form-input" min="1" required onchange="calcularPreco()">
+                    <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
+                        💡 Quantidade padrão preenchida automaticamente baseada no tipo de festa escolhido
+                    </small>
                 </div>
                 
                 <!-- Informações de Preço -->
@@ -588,28 +614,59 @@ if ($_POST && !$inscricoes_encerradas) {
     </div>
     
     <script>
+        const PRECOS = {
+            casamento: {
+                base: <?= $degustacao['preco_casamento'] ?>,
+                incluidos: <?= $degustacao['incluidos_casamento'] ?>
+            },
+            '15anos': {
+                base: <?= $degustacao['preco_15anos'] ?>,
+                incluidos: <?= $degustacao['incluidos_15anos'] ?>
+            },
+            extra: <?= $degustacao['preco_extra'] ?>
+        };
+        
+        // Auto-preenchimento de quantidade de pessoas baseado no tipo de festa
+        function autoPreencherPessoas() {
+            const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
+            if (!tipoFesta) return;
+            
+            const qtdPadrao = tipoFesta.value === 'casamento' ? 
+                PRECOS.casamento.incluidos : 
+                PRECOS['15anos'].incluidos;
+            
+            const qtdPessoasInput = document.getElementById('qtdPessoasInput');
+            qtdPessoasInput.value = qtdPadrao;
+            
+            // Calcular preço automaticamente após preencher
+            calcularPreco();
+        }
+        
         function calcularPreco() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
-            const qtdPessoas = parseInt(document.querySelector('input[name="qtd_pessoas"]').value) || 0;
+            const qtdPessoas = parseInt(document.getElementById('qtdPessoasInput').value) || 0;
             
             if (!tipoFesta || qtdPessoas === 0) {
                 document.getElementById('priceInfo').style.display = 'none';
                 return;
             }
             
-            const precoBase = tipoFesta.value === 'casamento' ? 
-                <?= $degustacao['preco_casamento'] ?> : 
-                <?= $degustacao['preco_15anos'] ?>;
-            const incluidos = tipoFesta.value === 'casamento' ? 
-                <?= $degustacao['incluidos_casamento'] ?> : 
-                <?= $degustacao['incluidos_15anos'] ?>;
-            const precoExtra = <?= $degustacao['preco_extra'] ?>;
+            const precoInfo = tipoFesta.value === 'casamento' ? PRECOS.casamento : PRECOS['15anos'];
+            const precoBase = precoInfo.base;
+            const incluidos = precoInfo.incluidos;
+            const precoExtra = PRECOS.extra;
             
             const extras = Math.max(0, qtdPessoas - incluidos);
             const valorTotal = precoBase + (extras * precoExtra);
             
             document.getElementById('precoBase').textContent = 'R$ ' + precoBase.toFixed(2).replace('.', ',');
-            document.getElementById('extrasInfo').textContent = extras + ' x R$ ' + precoExtra.toFixed(2).replace('.', ',');
+            
+            if (extras > 0) {
+                document.getElementById('extrasInfo').textContent = extras + ' pessoa(s) extra(s) x R$ ' + precoExtra.toFixed(2).replace('.', ',') + ' = R$ ' + (extras * precoExtra).toFixed(2).replace('.', ',');
+            } else {
+                document.getElementById('extrasInfo').textContent = '0 pessoa(s) extra(s) (dentro do valor base)';
+            }
+            
             document.getElementById('valorTotal').textContent = 'R$ ' + valorTotal.toFixed(2).replace('.', ',');
             
             document.getElementById('priceInfo').style.display = 'block';
@@ -636,7 +693,9 @@ if ($_POST && !$inscricoes_encerradas) {
         
         // Calcular preço quando tipo de festa mudar
         document.querySelectorAll('input[name="tipo_festa"]').forEach(radio => {
-            radio.addEventListener('change', calcularPreco);
+            radio.addEventListener('change', function() {
+                autoPreencherPessoas();
+            });
         });
         
         // Buscar contrato na ME Eventos quando nome do titular for preenchido
