@@ -289,11 +289,22 @@ if ($_POST && !$inscricoes_encerradas) {
                 
                 $qr_code_response = $asaasHelper->createStaticQrCode($qr_code_data);
                 
+                // Log completo da resposta para debug
+                error_log("📋 Resposta completa do QR Code: " . json_encode($qr_code_response, JSON_PRETTY_PRINT));
+                
                 if ($qr_code_response && isset($qr_code_response['id'])) {
                     $qr_code_id = $qr_code_response['id'];
-                    $qr_code_payload = $qr_code_response['payload'] ?? ''; // Base64 da imagem
+                    
+                    // O Asaas pode retornar a imagem em diferentes campos
+                    // Tentar: encodedImage, payload, ou image
+                    $qr_code_payload = $qr_code_response['encodedImage'] 
+                        ?? $qr_code_response['payload'] 
+                        ?? $qr_code_response['image']
+                        ?? '';
                     
                     error_log("✅ QR Code estático criado: $qr_code_id");
+                    error_log("📷 Imagem encontrada: " . (!empty($qr_code_payload) ? 'SIM (' . strlen($qr_code_payload) . ' chars)' : 'NÃO'));
+                    error_log("📋 Campos disponíveis: " . implode(', ', array_keys($qr_code_response)));
                     
                     // Verificar/criar colunas necessárias
                     try {
