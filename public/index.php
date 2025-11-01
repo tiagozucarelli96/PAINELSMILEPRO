@@ -1,6 +1,21 @@
 <?php
 declare(strict_types=1);
 
+// ============================================
+// CRÍTICO: Verificar webhooks ANTES de iniciar sessão
+// ============================================
+$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+$script_name = $_SERVER['SCRIPT_NAME'] ?? '';
+
+// Se for requisição ao webhook Asaas, servir DIRETAMENTE sem sessão
+if (strpos($request_uri, 'asaas_webhook.php') !== false || 
+    strpos($script_name, 'asaas_webhook.php') !== false ||
+    (isset($_SERVER['PHP_SELF']) && strpos($_SERVER['PHP_SELF'], 'asaas_webhook.php') !== false)) {
+    // Não iniciar sessão para webhooks
+    require_once __DIR__ . '/asaas_webhook.php';
+    exit;
+}
+
 session_start();
 
 /* ===== ATALHO TEMPORÁRIO (REMOVER APÓS O TESTE) ===== */
