@@ -2,7 +2,23 @@
 // Router para servidor embutido do PHP (Railway)
 // - Injeta conexao.php antes de servir qualquer .php
 // - Deixa arquivos estáticos irem direto
-$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+
+// ============================================
+// CRÍTICO: Verificar webhooks ANTES de qualquer coisa
+// ============================================
+$request_uri = $_SERVER['REQUEST_URI'] ?? '';
+$path = parse_url($request_uri, PHP_URL_PATH) ?: '/';
+
+// Se for webhook Asaas, servir DIRETAMENTE sem passar por nada
+if (strpos($path, 'asaas_webhook.php') !== false || strpos($request_uri, 'asaas_webhook.php') !== false) {
+    $webhook_file = realpath(__DIR__ . '/asaas_webhook.php');
+    if ($webhook_file && is_file($webhook_file)) {
+        // Servir webhook DIRETAMENTE, sem injeção de conexão ou qualquer coisa
+        require $webhook_file;
+        exit;
+    }
+}
+
 $file = realpath(__DIR__ . $path);
 
 // Se for arquivo estático existente (css, js, imagens), serve direto
