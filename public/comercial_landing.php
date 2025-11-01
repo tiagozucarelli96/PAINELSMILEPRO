@@ -556,8 +556,8 @@ includeSidebar('Comercial');
                 <div class="funcionalidade-card-title">Degustações</div>
                 <div class="funcionalidade-card-subtitle">Gerenciar degustações e eventos</div>
             </div>
-            <div class="funcionalidade-card-content">
-                <a href="index.php?page=comercial_degustacao_editar" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+            <div class="funcionalidade-card-content" onclick="event.stopPropagation();">
+                <a href="index.php?page=comercial_degustacao_editar" class="funcionalidade-card-item" style="text-decoration: none; color: inherit; display: block;" onclick="event.stopPropagation();">
                     <span class="funcionalidade-item-icon">➕</span>
                     <span class="funcionalidade-item-text">Criar Nova Degustação</span>
                     <span class="funcionalidade-item-arrow">→</span>
