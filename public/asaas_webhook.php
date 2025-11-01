@@ -14,11 +14,22 @@ function logWebhook($data) {
     file_put_contents($log_file, $log, FILE_APPEND | LOCK_EX);
 }
 
+// IMPORTANTE: Webhook deve responder sem redirecionamentos
+// Desabilitar qualquer redirect automático
+if (function_exists('header_remove')) {
+    header_remove('Location');
+}
+
 // Verificar se é POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    exit('Method not allowed');
+    header('Content-Type: application/json');
+    echo json_encode(['status' => 'error', 'message' => 'Method not allowed']);
+    exit;
 }
+
+// Garantir que sempre retorna JSON
+header('Content-Type: application/json');
 
 // Obter dados do webhook
 $input = file_get_contents('php://input');
@@ -140,19 +151,62 @@ try {
         exit;
     }
     
-    // EVENTOS DE PAGAMENTO (modo antigo - retrocompatibilidade)
+    // EVENTOS DE PAGAMENTO (modo antigo - retrocompatibilidade + QR Code estático)
     $payment_id = $webhook_data['payment']['id'] ?? '';
+    $pix_qr_code_id = $webhook_data['payment']['pixQrCodeId'] ?? null; // ID do QR Code estático
     
     if ($payment_id) {
-        logWebhook("Processando evento de Pagamento: $event - Payment ID: $payment_id");
+        logWebhook("Processando evento de Pagamento: $event - Payment ID: $payment_id" . ($pix_qr_code_id ? " - QR Code ID: $pix_qr_code_id" : ""));
         
-        // Buscar inscrição pelo payment_id do ASAAS
-        $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE asaas_payment_id = :payment_id");
-        $stmt->execute([':payment_id' => $payment_id]);
-        $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+        $inscricao = null;
+        
+        // PRIORIDADE 1: Buscar por QR Code estático (se veio de QR Code)
+        if ($pix_qr_code_id) {
+            try {
+                // Verificar se coluna existe
+                $check_col = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'comercial_inscricoes' AND column_name = 'asaas_qr_code_id'");
+                if ($check_col->rowCount() > 0) {
+                    $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE asaas_qr_code_id = :qr_code_id");
+                    $stmt->execute([':qr_code_id' => $pix_qr_code_id]);
+                    $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($inscricao) {
+                        logWebhook("Inscrição encontrada via QR Code estático: ID=" . $inscricao['id']);
+                        
+                        // Salvar também o payment_id para referência futura
+                        try {
+                            $check_payment_col = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'comercial_inscricoes' AND column_name = 'asaas_payment_id'");
+                            if ($check_payment_col->rowCount() > 0) {
+                                $stmt_update = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_payment_id = :payment_id WHERE id = :id");
+                                $stmt_update->execute([':payment_id' => $payment_id, ':id' => $inscricao['id']]);
+                            }
+                        } catch (Exception $e) {
+                            logWebhook("Erro ao salvar payment_id: " . $e->getMessage());
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                logWebhook("Erro ao buscar por QR Code: " . $e->getMessage());
+            }
+        }
+        
+        // PRIORIDADE 2: Buscar inscrição pelo payment_id do ASAAS (se não encontrou por QR Code)
+        if (!$inscricao) {
+            $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE asaas_payment_id = :payment_id");
+            $stmt->execute([':payment_id' => $payment_id]);
+            $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($inscricao) {
+                logWebhook("Inscrição encontrada via payment_id: ID=" . $inscricao['id']);
+            }
+        }
         
         if (!$inscricao) {
-            throw new Exception("Inscrição não encontrada para payment_id: $payment_id");
+            logWebhook("⚠️ Inscrição não encontrada para payment_id: $payment_id" . ($pix_qr_code_id ? " ou qr_code_id: $pix_qr_code_id" : ""));
+            // Não lançar exceção para não quebrar o webhook - apenas logar
+            http_response_code(200);
+            echo json_encode(['status' => 'warning', 'message' => "Inscrição não encontrada para payment_id: $payment_id"]);
+            exit;
         }
         
         // Buscar dados da degustação
