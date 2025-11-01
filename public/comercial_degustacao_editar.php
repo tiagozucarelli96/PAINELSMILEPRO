@@ -40,25 +40,44 @@ $degustacao = null;
 if ($is_edit && $event_id > 0) {
     try {
         error_log("Buscando degustação com ID: $event_id");
+        
+        // Garantir search_path correto antes de buscar
+        try {
+            $pdo->exec("SET search_path TO smilee12_painel_smile, public");
+        } catch (Exception $e_path) {
+            error_log("Aviso: Não foi possível definir search_path: " . $e_path->getMessage());
+        }
+        
+        // Tentar primeiro no schema smilee12_painel_smile
     $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
     $stmt->execute([':id' => $event_id]);
     $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
     
+        // Se não encontrou, tentar sem schema (public)
+    if (!$degustacao) {
+            error_log("Não encontrado no schema principal, tentando public...");
+            $stmt = $pdo->prepare("SELECT * FROM public.comercial_degustacoes WHERE id = :id");
+            $stmt->execute([':id' => $event_id]);
+            $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+        
         error_log("Degustação encontrada: " . ($degustacao ? 'SIM' : 'NÃO'));
         if ($degustacao) {
             error_log("Nome: " . ($degustacao['nome'] ?? 'N/A'));
             error_log("Token público: " . (isset($degustacao['token_publico']) ? 'SIM' : 'NÃO'));
             error_log("Status: " . ($degustacao['status'] ?? 'N/A'));
         } else {
-            error_log("Degustação não encontrada no banco com ID: $event_id");
-            header('Location: index.php?page=comercial_degustacoes&error=not_found');
-        exit;
-    }
+            error_log("⚠️ Degustação não encontrada no banco com ID: $event_id");
+            // Não redirecionar imediatamente, deixar mostrar erro na página
+            // header('Location: index.php?page=comercial_degustacoes&error=not_found');
+            // exit;
+        }
     } catch (Exception $e) {
-        error_log("Erro ao buscar degustação: " . $e->getMessage());
+        error_log("❌ Erro ao buscar degustação: " . $e->getMessage());
         error_log("Stack trace: " . $e->getTraceAsString());
-        header('Location: index.php?page=comercial_degustacoes&error=' . urlencode('Erro ao buscar degustação: ' . $e->getMessage()));
-        exit;
+        // Não redirecionar, deixar mostrar erro na página
+        // header('Location: index.php?page=comercial_degustacoes&error=' . urlencode('Erro ao buscar degustação: ' . $e->getMessage()));
+        // exit;
     }
 } else {
     error_log("Modo de criação - não é edição (event_id = $event_id)");
