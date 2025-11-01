@@ -142,6 +142,9 @@ try {
         
         $events = $data['data'] ?? [];
         
+        // Log da resposta completa para debug (remover em produção)
+        error_log("ME Buscar Cliente - Resposta completa: " . json_encode($events[0] ?? [], JSON_PRETTY_PRINT));
+        
         // Buscar evento específico deste cliente
         $evento_encontrado = null;
         foreach ($events as $e) {
@@ -149,14 +152,33 @@ try {
             
             // Comparar nomes (normalizado)
             if (mb_strtolower($nomeCliente) === mb_strtolower($nome_cliente)) {
-                // Aqui deveríamos validar o CPF se a API retornar
-                // Por enquanto, vamos assumir que se o nome bate, está ok
-                // NOTA: A API ME Eventos pode não retornar CPF por segurança
-                // Será necessário verificar se há campo de CPF na resposta
+                // Buscar CPF na resposta da API (testar múltiplos campos possíveis)
+                $cpf_api = $e['cpfCliente'] ?? $e['cpf'] ?? $e['cliente_cpf'] ?? $e['documento'] ?? '';
                 
-                // Buscar email e telefone do cliente se disponível na API
-                $email = $e['emailCliente'] ?? $e['email'] ?? $e['cliente_email'] ?? '';
-                $telefone = $e['telefoneCliente'] ?? $e['telefone'] ?? $e['celular'] ?? $e['cliente_telefone'] ?? $e['cliente_celular'] ?? '';
+                // VALIDAÇÃO CRÍTICA DE SEGURANÇA: Se a API retornar CPF, validar
+                if (!empty($cpf_api)) {
+                    $cpf_api_limpo = preg_replace('/\D/', '', $cpf_api);
+                    $cpf_limpo = preg_replace('/\D/', '', $cpf);
+                    
+                    // CPF deve bater EXATAMENTE
+                    if ($cpf_api_limpo !== $cpf_limpo) {
+                        throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados.');
+                    }
+                } else {
+                    // Se a API não retorna CPF, usar método alternativo de segurança
+                    // Por segurança, SEMPRE rejeitar se não há como validar CPF
+                    // OU implementar validação adicional (ex: data do evento + nome)
+                    // Por enquanto, rejeitamos para garantir segurança
+                    throw new Exception('Não foi possível validar o CPF. Entre em contato com a equipe para confirmar seus dados.');
+                }
+                
+                // Buscar email e telefone do cliente se disponível na API (testar todos os campos possíveis)
+                $email = $e['emailCliente'] ?? $e['email'] ?? $e['cliente_email'] ?? 
+                        $e['emailCliente'] ?? $e['emailCliente'] ?? $e['contato_email'] ?? 
+                        $e['email_contato'] ?? '';
+                $telefone = $e['telefoneCliente'] ?? $e['telefone'] ?? $e['celular'] ?? 
+                           $e['celularCliente'] ?? $e['cliente_telefone'] ?? $e['cliente_celular'] ?? 
+                           $e['contato_telefone'] ?? $e['telefone_contato'] ?? '';
                 
                 $evento_encontrado = [
                     'id' => $e['id'] ?? null,
@@ -172,14 +194,15 @@ try {
                     'celular' => $telefone // Alias para compatibilidade
                 ];
                 
-                // Se a API retornar CPF, validar aqui
-                // Por enquanto, retornamos sucesso se encontrou pelo nome
+                // Log dos dados encontrados para debug
+                error_log("ME Buscar Cliente - Evento encontrado: " . json_encode($evento_encontrado, JSON_UNESCAPED_UNICODE));
+                
                 break;
             }
         }
         
         if (!$evento_encontrado) {
-            throw new Exception('Cliente não encontrado ou CPF não confere');
+            throw new Exception('Cliente não encontrado. Verifique o nome digitado.');
         }
         
         // Retornar dados do evento encontrado

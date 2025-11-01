@@ -801,10 +801,15 @@ if ($_POST && !$inscricoes_encerradas) {
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
             z-index: 10000;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
             box-sizing: border-box;
+            overflow: auto;
+        }
+        
+        .modal[style*="flex"] {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
         }
         
         .modal-content {
@@ -816,8 +821,7 @@ if ($_POST && !$inscricoes_encerradas) {
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            margin: 0 auto;
-            transform: translate(0, 0);
+            margin: auto;
         }
         
         .modal-header {
