@@ -152,33 +152,45 @@ try {
             
             // Comparar nomes (normalizado)
             if (mb_strtolower($nomeCliente) === mb_strtolower($nome_cliente)) {
-                // Buscar CPF na resposta da API (testar múltiplos campos possíveis)
-                $cpf_api = $e['cpfCliente'] ?? $e['cpf'] ?? $e['cliente_cpf'] ?? $e['documento'] ?? '';
+                // Buscar CPF na resposta da API (testar TODOS os campos possíveis)
+                // A API ME Eventos pode retornar CPF em diferentes formatos
+                $cpf_api = $e['cpfCliente'] ?? $e['cpf'] ?? $e['cliente_cpf'] ?? $e['documento'] ?? 
+                          $e['cpf_cliente'] ?? $e['clienteCpf'] ?? $e['cpfCliente'] ?? 
+                          $e['documentoCliente'] ?? $e['cpfDocumento'] ?? $e['cpfcnpj'] ?? '';
                 
-                // VALIDAÇÃO CRÍTICA DE SEGURANÇA: Se a API retornar CPF, validar
-                if (!empty($cpf_api)) {
-                    $cpf_api_limpo = preg_replace('/\D/', '', $cpf_api);
-                    $cpf_limpo = preg_replace('/\D/', '', $cpf);
-                    
-                    // CPF deve bater EXATAMENTE
-                    if ($cpf_api_limpo !== $cpf_limpo) {
-                        throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados.');
-                    }
-                } else {
-                    // Se a API não retorna CPF (comum por segurança), aceitar o CPF fornecido pelo usuário
-                    // O nome já foi validado acima (deve bater exatamente)
-                    // O usuário está fornecendo o CPF, então assumimos que está correto
-                    error_log("ME Buscar Cliente - CPF não retornado pela API. Nome válido, aceitando CPF fornecido pelo usuário.");
-                    
-                    // Validar formato do CPF (deve ter 11 dígitos)
-                    $cpf_limpo = preg_replace('/\D/', '', $cpf);
-                    if (strlen($cpf_limpo) !== 11) {
-                        throw new Exception('CPF deve ter 11 dígitos.');
-                    }
-                    
-                    // Aceitar e prosseguir
-                    error_log("ME Buscar Cliente - CPF aceito por validação alternativa (nome + CPF fornecido)");
+                // Log detalhado para debug
+                error_log("ME Buscar Cliente - Tentando encontrar CPF na API. Campos testados: " . json_encode([
+                    'cpfCliente' => $e['cpfCliente'] ?? null,
+                    'cpf' => $e['cpf'] ?? null,
+                    'cliente_cpf' => $e['cliente_cpf'] ?? null,
+                    'documento' => $e['documento'] ?? null,
+                    'cpf_cliente' => $e['cpf_cliente'] ?? null,
+                    'clienteCpf' => $e['clienteCpf'] ?? null,
+                    'documentoCliente' => $e['documentoCliente'] ?? null,
+                    'cpfDocumento' => $e['cpfDocumento'] ?? null,
+                    'cpfcnpj' => $e['cpfcnpj'] ?? null,
+                    'cpf_encontrado' => $cpf_api ?: 'NÃO ENCONTRADO'
+                ], JSON_UNESCAPED_UNICODE));
+                
+                // VALIDAÇÃO OBRIGATÓRIA: A API DEVE retornar CPF para validar
+                if (empty($cpf_api)) {
+                    error_log("ME Buscar Cliente - ERRO: CPF não encontrado na resposta da API ME Eventos");
+                    throw new Exception('Não foi possível validar o CPF. A API não retornou os dados necessários. Entre em contato com a equipe.');
                 }
+                
+                // CPF encontrado na API - validar
+                $cpf_api_limpo = preg_replace('/\D/', '', $cpf_api);
+                $cpf_limpo = preg_replace('/\D/', '', $cpf);
+                
+                error_log("ME Buscar Cliente - Comparando CPFs: API='$cpf_api_limpo' vs Digitado='$cpf_limpo'");
+                
+                // CPF deve bater EXATAMENTE
+                if ($cpf_api_limpo !== $cpf_limpo) {
+                    error_log("ME Buscar Cliente - CPF NÃO CONFERE! Rejeitando.");
+                    throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados.');
+                }
+                
+                error_log("ME Buscar Cliente - CPF VALIDADO COM SUCESSO!");
                 
                 // Buscar email e telefone do cliente se disponível na API (testar todos os campos possíveis)
                 $email = $e['emailCliente'] ?? $e['email'] ?? $e['cliente_email'] ?? 
