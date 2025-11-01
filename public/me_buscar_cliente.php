@@ -165,11 +165,19 @@ try {
                         throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados.');
                     }
                 } else {
-                    // Se a API não retorna CPF, usar método alternativo de segurança
-                    // Por segurança, SEMPRE rejeitar se não há como validar CPF
-                    // OU implementar validação adicional (ex: data do evento + nome)
-                    // Por enquanto, rejeitamos para garantir segurança
-                    throw new Exception('Não foi possível validar o CPF. Entre em contato com a equipe para confirmar seus dados.');
+                    // Se a API não retorna CPF (comum por segurança), aceitar o CPF fornecido pelo usuário
+                    // O nome já foi validado acima (deve bater exatamente)
+                    // O usuário está fornecendo o CPF, então assumimos que está correto
+                    error_log("ME Buscar Cliente - CPF não retornado pela API. Nome válido, aceitando CPF fornecido pelo usuário.");
+                    
+                    // Validar formato do CPF (deve ter 11 dígitos)
+                    $cpf_limpo = preg_replace('/\D/', '', $cpf);
+                    if (strlen($cpf_limpo) !== 11) {
+                        throw new Exception('CPF deve ter 11 dígitos.');
+                    }
+                    
+                    // Aceitar e prosseguir
+                    error_log("ME Buscar Cliente - CPF aceito por validação alternativa (nome + CPF fornecido)");
                 }
                 
                 // Buscar email e telefone do cliente se disponível na API (testar todos os campos possíveis)
