@@ -89,6 +89,7 @@ $routes = [
   'apply_webhook_schema' => 'apply_webhook_schema.php',
   'webhook_logs' => 'webhook_logs_viewer.php',
   'asaas_webhook_logs' => 'asaas_webhook_logs_viewer.php',
+  'create_asaas_webhook_table' => 'create_asaas_webhook_table.php',
   'test_asaas_checkout' => 'test_asaas_checkout.php',
 
   // Comercial
@@ -175,6 +176,7 @@ $routes = [
   'processar_pagamento_manual' => 'processar_pagamento_manual.php',
   'processar_pagamento_automatico' => 'processar_pagamento_automatico.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
+  'testar_identificacao_pagamento' => 'testar_identificacao_pagamento.php',
   'login' => 'login.php', // Rota de login
   
   // Testes e Diagnósticos (úteis mantidos)

@@ -211,8 +211,41 @@ try {
                 flush();
                 exit;
             }
-            // Se for outro erro, logar mas continuar processamento
-            logWebhook("Erro ao inserir evento (não é duplicata): " . $e->getMessage());
+            // Se erro for "tabela não existe" (42P01), tentar criar a tabela automaticamente
+            if ($e->getCode() == 42P01 || strpos($e->getMessage(), 'does not exist') !== false || strpos($e->getMessage(), 'relation') !== false) {
+                try {
+                    // Tentar criar a tabela
+                    $pdo->exec("
+                        CREATE TABLE IF NOT EXISTS asaas_webhook_events (
+                            id SERIAL PRIMARY KEY,
+                            asaas_event_id TEXT UNIQUE NOT NULL,
+                            event_type VARCHAR(100) NOT NULL,
+                            payload JSONB NOT NULL,
+                            processed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                        );
+                    ");
+                    // Criar índices
+                    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_asaas_webhook_events_event_id ON asaas_webhook_events(asaas_event_id);");
+                    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_asaas_webhook_events_event_type ON asaas_webhook_events(event_type);");
+                    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_asaas_webhook_events_processed_at ON asaas_webhook_events(processed_at);");
+                    logWebhook("✅ Tabela asaas_webhook_events criada automaticamente");
+                    
+                    // Tentar inserir novamente
+                    $stmt = $pdo->prepare("INSERT INTO asaas_webhook_events (asaas_event_id, event_type, payload, processed_at) VALUES (:event_id, :event_type, :payload, NOW())");
+                    $stmt->execute([
+                        ':event_id' => $event_id,
+                        ':event_type' => $webhook_data['event'] ?? 'UNKNOWN',
+                        ':payload' => $input
+                    ]);
+                } catch (PDOException $e2) {
+                    // Se não conseguir criar, logar mas continuar (não é crítico para o processamento)
+                    logWebhook("⚠️ Não foi possível criar tabela asaas_webhook_events automaticamente: " . $e2->getMessage() . " - Acesse index.php?page=create_asaas_webhook_table para criar manualmente");
+                }
+            } else {
+                // Se for outro erro, logar mas continuar processamento
+                logWebhook("Erro ao inserir evento (não é duplicata): " . $e->getMessage());
+            }
         }
     }
     

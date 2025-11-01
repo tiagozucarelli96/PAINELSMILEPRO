@@ -53,12 +53,41 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     
     require_once __DIR__ . '/conexao.php';
     $check_id = (int)$_GET['inscricao_id'];
-    $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
+    
+    // Buscar status de pagamento e valor (mesma lógica da página de inscritos)
+    $stmt = $pdo->prepare("
+        SELECT 
+            pagamento_status,
+            COALESCE(valor_total, valor_pago, 0) as valor_pago
+        FROM comercial_inscricoes 
+        WHERE id = :id
+    ");
     $stmt->execute([':id' => $check_id]);
-    $status = $stmt->fetch(PDO::FETCH_ASSOC);
+    $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$inscricao) {
+        echo json_encode([
+            'status' => 'erro',
+            'message' => 'Inscrição não encontrada',
+            'inscricao_id' => $check_id
+        ]);
+        exit;
+    }
+    
+    // Converter status para texto legível (mesma lógica da página de inscritos)
+    $status_text = match($inscricao['pagamento_status']) {
+        'pago' => 'Pago',
+        'aguardando' => 'Aguardando',
+        'expirado' => 'Expirado',
+        'cancelado' => 'Cancelado',
+        default => 'N/A'
+    };
     
     echo json_encode([
-        'status' => $status['pagamento_status'] ?? 'aguardando',
+        'status' => $inscricao['pagamento_status'] ?? 'aguardando',
+        'status_text' => $status_text,
+        'valor_pago' => (float)($inscricao['valor_pago'] ?? 0),
+        'pago' => ($inscricao['pagamento_status'] === 'pago'),
         'inscricao_id' => $check_id
     ]);
     exit;
@@ -678,7 +707,16 @@ if ($_POST && !$inscricoes_encerradas) {
             // Se não estiver na sessão, buscar do banco
             if (empty($qr_code_image)) {
                 try {
-                    $stmt = $pdo->prepare("SELECT qr_code_image, asaas_qr_code_id, valor_total FROM comercial_inscricoes WHERE id = :id");
+                    // Buscar também pagamento_status para verificar se já foi pago
+                    $stmt = $pdo->prepare("
+                        SELECT 
+                            qr_code_image, 
+                            asaas_qr_code_id, 
+                            COALESCE(valor_total, valor_pago, 0) as valor_total,
+                            pagamento_status
+                        FROM comercial_inscricoes 
+                        WHERE id = :id
+                    ");
                     $stmt->execute([':id' => $qr_inscricao_id]);
                     $qr_data = $stmt->fetch(PDO::FETCH_ASSOC);
                     
@@ -686,13 +724,63 @@ if ($_POST && !$inscricoes_encerradas) {
                         $qr_code_image = $qr_data['qr_code_image'] ?? '';
                         $qr_code_id = $qr_data['asaas_qr_code_id'] ?? '';
                         $qr_code_value = $qr_data['valor_total'] ?? 0;
+                        $pagamento_status = $qr_data['pagamento_status'] ?? 'aguardando';
+                    } else {
+                        $pagamento_status = 'aguardando';
                     }
                 } catch (Exception $e) {
                     error_log("Erro ao buscar QR Code: " . $e->getMessage());
+                    $pagamento_status = 'aguardando';
+                }
+            } else {
+                // Se está na sessão, buscar status do banco
+                try {
+                    $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
+                    $stmt->execute([':id' => $qr_inscricao_id]);
+                    $status_data = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $pagamento_status = $status_data['pagamento_status'] ?? 'aguardando';
+                } catch (Exception $e) {
+                    $pagamento_status = 'aguardando';
                 }
             }
             
-            if (!empty($qr_code_image)): ?>
+            // Se já foi pago, não mostrar QR Code, mostrar confirmação
+            if ($pagamento_status === 'pago') {
+                // Buscar valor pago para exibir
+                try {
+                    $stmt = $pdo->prepare("SELECT COALESCE(valor_total, valor_pago, 0) as valor_pago FROM comercial_inscricoes WHERE id = :id");
+                    $stmt->execute([':id' => $qr_inscricao_id]);
+                    $valor_data = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $valor_pago = $valor_data['valor_pago'] ?? $qr_code_value;
+                } catch (Exception $e) {
+                    $valor_pago = $qr_code_value;
+                }
+            }
+            
+            // Se pagamento já foi confirmado, mostrar mensagem de sucesso
+            if ($pagamento_status === 'pago'): ?>
+                <div class="qr-code-container" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: 3px solid #10b981; border-radius: 12px; padding: 40px; margin: 30px 0; text-align: center; box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);">
+                    <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+                    <h2 style="color: white; margin-bottom: 15px; font-size: 28px;">🎉 Pagamento Confirmado!</h2>
+                    <p style="color: rgba(255, 255, 255, 0.95); margin-bottom: 20px; font-size: 18px; line-height: 1.6;">
+                        Sua inscrição foi confirmada com sucesso!
+                    </p>
+                    
+                    <div style="margin-top: 25px; padding: 20px; background: rgba(255, 255, 255, 0.2); border-radius: 8px; backdrop-filter: blur(10px);">
+                        <p style="margin: 0; font-size: 32px; font-weight: 700; color: white;">
+                            R$ <?= number_format($valor_pago, 2, ',', '.') ?>
+                        </p>
+                        <p style="margin: 10px 0 0 0; font-size: 14px; color: rgba(255, 255, 255, 0.9);">
+                            Valor pago
+                        </p>
+                    </div>
+                    
+                    <p style="color: rgba(255, 255, 255, 0.9); font-size: 14px; margin-top: 25px; line-height: 1.6;">
+                        📧 Você receberá um e-mail de confirmação em breve<br>
+                        📅 Fique atento às informações da degustação
+                    </p>
+                </div>
+                <?php elseif (!empty($qr_code_image)): ?>
                 <div class="qr-code-container" style="background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                     <h2 style="color: #1e40af; margin-bottom: 20px;">💰 Pague com PIX</h2>
                     <p style="color: #6b7280; margin-bottom: 15px; font-size: 16px;">
@@ -736,17 +824,41 @@ if ($_POST && !$inscricoes_encerradas) {
                         💡 Após o pagamento, sua inscrição será confirmada automaticamente
                     </p>
                     
-                    <div style="margin-top: 20px;">
-                        <button onclick="window.location.reload()" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                    <div id="statusPagamentoContainer" style="margin-top: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; display: none;">
+                        <p id="statusPagamentoTexto" style="margin: 0; font-size: 14px; color: #6b7280; text-align: center;">
+                            ⏳ Verificando pagamento...
+                        </p>
+                    </div>
+                    
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+                        <button id="btnVerificarPagamento" onclick="verificarPagamento(true)" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
                             🔄 Verificar Pagamento
                         </button>
                     </div>
                 </div>
                 
                 <script>
-                // Verificar status do pagamento automaticamente
-                function verificarPagamento() {
-                    fetch('?page=comercial_degust_public&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>', {
+                let intervaloVerificacao = null;
+                
+                // Verificar status do pagamento automaticamente (mesma lógica da página de inscritos)
+                function verificarPagamento(mostrarLoading = false) {
+                    const statusContainer = document.getElementById('statusPagamentoContainer');
+                    const statusTexto = document.getElementById('statusPagamentoTexto');
+                    const btnVerificar = document.getElementById('btnVerificarPagamento');
+                    
+                    if (mostrarLoading) {
+                        statusContainer.style.display = 'block';
+                        statusTexto.innerHTML = '⏳ Verificando pagamento...';
+                        statusTexto.style.color = '#6b7280';
+                        btnVerificar.disabled = true;
+                        btnVerificar.style.opacity = '0.6';
+                    }
+                    
+                    const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
+                    const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
+                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                    
+                    fetch(verificarUrl, {
                         method: 'GET',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest'
@@ -754,21 +866,52 @@ if ($_POST && !$inscricoes_encerradas) {
                     })
                     .then(response => response.json())
                     .then(data => {
-                        if (data.status === 'pago') {
-                            // Pagamento confirmado - redirecionar ou mostrar mensagem
-                            window.location.href = '?page=comercial_degust_public&pagamento_confirmado=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                        if (mostrarLoading) {
+                            btnVerificar.disabled = false;
+                            btnVerificar.style.opacity = '1';
+                        }
+                        
+                        statusContainer.style.display = 'block';
+                        
+                        if (data.pago && data.status === 'pago') {
+                            // Pagamento confirmado!
+                            statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
+                            statusTexto.style.color = '#059669';
+                            
+                            // Parar verificação automática
+                            if (intervaloVerificacao) {
+                                clearInterval(intervaloVerificacao);
+                                intervaloVerificacao = null;
+                            }
+                            
+                            // Recarregar página após 2 segundos para mostrar confirmação completa
+                            setTimeout(() => {
+                                window.location.href = baseUrl + '&qr_code=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                            }, 2000);
+                        } else {
+                            // Ainda aguardando
+                            const statusText = data.status_text || 'Aguardando';
+                            statusTexto.innerHTML = `⏳ Status: <strong>${statusText}</strong>`;
+                            statusTexto.style.color = data.status === 'expirado' ? '#dc2626' : '#f59e0b';
                         }
                     })
                     .catch(error => {
                         console.error('Erro ao verificar pagamento:', error);
+                        if (mostrarLoading) {
+                            btnVerificar.disabled = false;
+                            btnVerificar.style.opacity = '1';
+                        }
+                        statusContainer.style.display = 'block';
+                        statusTexto.innerHTML = '❌ Erro ao verificar. Tente novamente.';
+                        statusTexto.style.color = '#dc2626';
                     });
                 }
                 
-                // Auto-refresh a cada 10 segundos para verificar pagamento
-                setInterval(verificarPagamento, 10000);
+                // Auto-refresh a cada 10 segundos para verificar pagamento automaticamente
+                intervaloVerificacao = setInterval(() => verificarPagamento(false), 10000);
                 
-                // Verificar imediatamente também
-                verificarPagamento();
+                // Verificar imediatamente também (sem mostrar loading na primeira vez)
+                setTimeout(() => verificarPagamento(false), 2000);
                 </script>
                 
                 <?php
