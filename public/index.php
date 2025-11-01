@@ -156,6 +156,7 @@ $routes = [
   'verificar_inscricao_checkout' => 'verificar_inscricao_checkout.php',
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
   'analisar_pagamentos_qrcode' => 'analisar_pagamentos_qrcode.php',
+  'verificar_pagamento_1real' => 'verificar_pagamento_1real.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'login' => 'login.php', // Rota de login
   
