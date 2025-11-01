@@ -173,6 +173,7 @@ $routes = [
   'analisar_pagamentos_qrcode' => 'analisar_pagamentos_qrcode.php',
   'verificar_pagamento_1real' => 'verificar_pagamento_1real.php',
   'processar_pagamento_manual' => 'processar_pagamento_manual.php',
+  'processar_pagamento_automatico' => 'processar_pagamento_automatico.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'login' => 'login.php', // Rota de login
   
