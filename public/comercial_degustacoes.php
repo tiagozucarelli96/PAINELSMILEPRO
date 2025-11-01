@@ -970,17 +970,22 @@ ob_start();
                         form.querySelector('[name="campos_json"]').value = d.campos_json || '[]';
                         
                         // Verificar se local está nas opções, senão mostrar campo customizado
-                        const localSelect = form.querySelector('[name="local"]');
-                        const localCustom = form.querySelector('[name="local_custom"]');
+                        const localSelect = document.getElementById('localSelectModal');
+                        const localCustom = document.getElementById('localCustomModal');
                         if (localSelect && localCustom) {
                             const localValue = d.local || '';
-                            if (localSelect.querySelector(`option[value="${localValue}"]`)) {
+                            const option = localSelect.querySelector(`option[value="${localValue}"]`);
+                            if (option) {
                                 localSelect.value = localValue;
                                 localCustom.style.display = 'none';
+                                localCustom.required = false;
+                                localSelect.required = true;
                             } else {
                                 localSelect.value = '';
                                 localCustom.value = localValue;
                                 localCustom.style.display = 'block';
+                                localCustom.required = true;
+                                localSelect.required = false;
                             }
                         }
                         
