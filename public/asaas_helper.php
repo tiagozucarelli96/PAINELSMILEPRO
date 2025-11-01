@@ -440,7 +440,7 @@ class AsaasHelper {
         
         // Formato do QR Code (opcional)
         if (!empty($data['format'])) {
-            $payload['format'] = $data['format']; // ALL, BASE64, IMAGE
+            $payload['format'] = $data['format']; // ALL, BASE64, IMAGE, PAYLOAD
         }
         
         // IMPORTANTE: API aceita APENAS UM tipo de expiração (data OU segundos, não ambos)

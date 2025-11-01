@@ -186,14 +186,14 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         // Criar QR Code PIX estático (com payload para copia e cola)
         $descricao = substr("Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa), 0, 37); // Máximo 37 caracteres
         
-        // Especificar format como BASE64 ou não especificar para obter payload
+        // Especificar format como PAYLOAD para obter o código PIX copia e cola
         $qr_code_data = [
             'addressKey' => ASAAS_PIX_ADDRESS_KEY,
             'description' => $descricao,
             'value' => $valor_total,
             'expirationDate' => date('Y-m-d H:i:s', strtotime('+1 hour')),
             'allowsMultiplePayments' => false,
-            'format' => 'BASE64' // Forçar formato BASE64 para obter payload
+            'format' => 'PAYLOAD' // Formato PAYLOAD para obter código copia e cola
         ];
         
         $qr_response = $asaasHelper->createStaticQrCode($qr_code_data);
@@ -212,24 +212,32 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         
         // Atualizar inscrição com QR Code
         $update_fields = ["pagamento_status = 'aguardando'"];
-        $update_params = [':id' => $inscricao_id, ':qr_code_id' => $qr_code_id, ':payload' => $qr_payload];
+        $update_params = [':id' => $inscricao_id];
         
-        // Verificar colunas dinamicamente
+        // Verificar colunas dinamicamente ANTES de adicionar aos parâmetros
         try {
             $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                                        WHERE table_name = 'comercial_inscricoes' 
-                                       AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'valor_total', 'valor_pago')");
+                                       AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'qr_code_image', 'valor_total', 'valor_pago')");
             $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
             
+            // Adicionar asaas_qr_code_id se a coluna existir
             if (in_array('asaas_qr_code_id', $check_columns)) {
                 $update_fields[] = "asaas_qr_code_id = :qr_code_id";
+                $update_params[':qr_code_id'] = $qr_code_id;
             }
+            
+            // Adicionar payload se a coluna existir (prioridade para qr_code_payload)
             if (in_array('qr_code_payload', $check_columns)) {
                 $update_fields[] = "qr_code_payload = :payload";
+                $update_params[':payload'] = $qr_payload;
             } elseif (in_array('qr_code_image', $check_columns)) {
                 // Se não tem payload mas tem image, usar image (pode ser usado para armazenar payload)
                 $update_fields[] = "qr_code_image = :payload";
+                $update_params[':payload'] = $qr_payload;
             }
+            
+            // Adicionar valor se a coluna existir
             if (in_array('valor_total', $check_columns)) {
                 $update_fields[] = "valor_total = :valor";
                 $update_params[':valor'] = $valor_total;
