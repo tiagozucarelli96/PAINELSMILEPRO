@@ -550,25 +550,25 @@ includeSidebar('Comercial');
     <!-- Funcionalidades Principais -->
     <div class="funcionalidades-grid">
         <!-- Degustações -->
-        <a href="index.php?page=comercial_degustacoes" class="funcionalidade-card">
+        <div class="funcionalidade-card" style="cursor: default;">
             <div class="funcionalidade-card-header">
                 <span class="funcionalidade-card-icon">🍽️</span>
                 <div class="funcionalidade-card-title">Degustações</div>
                 <div class="funcionalidade-card-subtitle">Gerenciar degustações e eventos</div>
             </div>
-            <div class="funcionalidade-card-content" onclick="event.stopPropagation();">
-                <a href="index.php?page=comercial_degustacao_editar" class="funcionalidade-card-item" style="text-decoration: none; color: inherit; display: block;" onclick="event.stopPropagation();">
+            <div class="funcionalidade-card-content">
+                <a href="index.php?page=comercial_degustacao_editar" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">➕</span>
                     <span class="funcionalidade-item-text">Criar Nova Degustação</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
-                <div class="funcionalidade-card-item" onclick="event.stopPropagation(); window.location.href='index.php?page=comercial_degustacoes';">
+                <a href="index.php?page=comercial_degustacoes" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">📋</span>
                     <span class="funcionalidade-item-text">Ver Todas as Degustações</span>
                     <span class="funcionalidade-item-arrow">→</span>
-                </div>
+                </a>
             </div>
-        </a>
+        </div>
         
         <!-- Inscrições -->
         <a href="index.php?page=comercial_degust_inscricoes" class="funcionalidade-card">
