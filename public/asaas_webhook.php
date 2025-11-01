@@ -46,9 +46,10 @@ if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !
 // 8. Verificar método HTTP ANTES de incluir arquivos
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para métodos errados
+    // Retornar 'success' para não pausar fila
     http_response_code(200);
     header('Content-Type: application/json', true);
-    echo json_encode(['status' => 'warning', 'message' => 'Method not allowed. Use POST.']);
+    echo json_encode(['status' => 'success', 'message' => 'Webhook endpoint active. POST method required for processing.']);
     exit;
 }
 
@@ -124,8 +125,8 @@ if (empty($input)) {
     http_response_code(200);
     header('Content-Type: application/json', true);
     echo json_encode([
-        'status' => 'warning', 
-        'message' => 'Empty input received',
+        'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
+        'message' => 'Webhook received (empty input - may be test)',
         'note' => 'Asaas may be testing the webhook endpoint'
     ]);
     exit;
@@ -166,16 +167,15 @@ if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data =
     if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data === false) {
         // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
         // Logar erro mas retornar 200 para não pausar fila
+        // CRÍTICO: Retornar 'success' mesmo com JSON inválido
+        // O Asaas interpreta qualquer coisa diferente de 'success' como falha
+        // Logamos o erro mas retornamos sucesso para não pausar fila
         http_response_code(200);
         header('Content-Type: application/json', true);
         echo json_encode([
-            'status' => 'warning', 
-            'message' => 'Invalid JSON received but logged',
-            'json_error' => $error_msg,
-            'json_error_code' => $json_error,
-            'json_error_name' => $json_error === 4 ? 'JSON_ERROR_SYNTAX' : 'UNKNOWN',
-            'input_length' => strlen($input),
-            'note' => 'Check logs for complete input data'
+            'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
+            'message' => 'Webhook received (JSON parsing issue logged)',
+            'note' => 'JSON error logged. Check logs for details. Returning success to avoid queue pause.'
         ]);
         exit;
     }
