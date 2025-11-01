@@ -2332,15 +2332,19 @@ ob_start();
                 
                 modalBody.innerHTML = `
                     <div style="text-align: center;">
-                        <h3 style="margin: 0 0 1rem 0; color: #10b981;">✅ ${qtdAdicionada == 1 ? 'Pessoa Adicionada' : qtdAdicionada + ' Pessoas Adicionadas'} com Sucesso!</h3>
+                        <h3 style="margin: 0 0 1rem 0; color: #3b82f6;">⏳ QR Code Gerado para Adição de ${qtdAdicionada == 1 ? 'Pessoa' : qtdAdicionada + ' Pessoas'}</h3>
+                        <div style="background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+                            <p style="margin: 0.5rem 0; font-weight: 600; color: #1e40af;">⚠️ IMPORTANTE: Os valores serão aplicados APENAS após confirmação do pagamento</p>
+                            <p style="margin: 0.5rem 0; font-size: 0.875rem; color: #64748b;">Após o pagamento, o sistema atualizará automaticamente:</p>
+                        </div>
                         <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
                             <p style="margin: 0.5rem 0;"><strong>Participante:</strong> ${nomeInscrito}</p>
-                            <p style="margin: 0.5rem 0;"><strong>Quantidade anterior:</strong> ${data.qtd_pessoas_antes} pessoa(s)</p>
-                            <p style="margin: 0.5rem 0;"><strong>Quantidade adicionada:</strong> ${qtdAdicionada} pessoa(s)</p>
-                            <p style="margin: 0.5rem 0;"><strong>Quantidade atual:</strong> ${data.qtd_pessoas_nova} pessoa(s)</p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade atual:</strong> ${data.qtd_pessoas_antes} pessoa(s)</p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade a adicionar:</strong> ${qtdAdicionada} pessoa(s) <span style="color: #f59e0b; font-weight: 600;">(pendente)</span></p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade após pagamento:</strong> ${data.qtd_pessoas_nova} pessoa(s)</p>
                             <p style="margin: 0.5rem 0;"><strong>Valor por pessoa:</strong> R$ ${valorPorPessoa.toFixed(2).replace('.', ',')}</p>
-                            <p style="margin: 0.5rem 0;"><strong>Valor total adicional:</strong> R$ ${data.valor.toFixed(2).replace('.', ',')}</p>
-                            <p style="margin: 0.5rem 0;"><strong>Valor total da inscrição:</strong> R$ ${data.valor_total_novo.toFixed(2).replace('.', ',')}</p>
+                            <p style="margin: 0.5rem 0;"><strong>Valor a pagar (adicional):</strong> R$ ${data.valor.toFixed(2).replace('.', ',')}</p>
+                            <p style="margin: 0.5rem 0; font-size: 0.875rem; color: #6b7280;">⏰ QR Code expira em 1 hora. Se não pagar, os valores pendentes serão cancelados.</p>
                         </div>
                         <div style="background: #fff; border: 2px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin: 1rem 0;">
                             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151;">Código PIX (Copiar e Colar):</label>
