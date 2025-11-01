@@ -49,7 +49,11 @@ $error_message = '';
 
 // Verificar pagamento via AJAX se solicitado (ANTES de qualquer HTML)
 if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
+    // Headers para evitar cache do navegador e servidor
     header('Content-Type: application/json');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
     
     require_once __DIR__ . '/conexao.php';
     $check_id = (int)$_GET['inscricao_id'];
@@ -777,15 +781,29 @@ if ($_POST && !$inscricoes_encerradas) {
                     $pagamento_status = 'aguardando';
                 }
             } else {
-                // Se está na sessão, buscar status do banco
+                // Se está na sessão, SEMPRE buscar status atualizado do banco para garantir dados mais recentes
                 try {
                     $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
                     $stmt->execute([':id' => $qr_inscricao_id]);
                     $status_data = $stmt->fetch(PDO::FETCH_ASSOC);
                     $pagamento_status = $status_data['pagamento_status'] ?? 'aguardando';
                 } catch (Exception $e) {
+                    error_log("Erro ao buscar status do pagamento: " . $e->getMessage());
                     $pagamento_status = 'aguardando';
                 }
+            }
+            
+            // SEMPRE verificar status novamente para garantir que está atualizado (mesma lógica da página de inscritos)
+            try {
+                $stmt_check = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
+                $stmt_check->execute([':id' => $qr_inscricao_id]);
+                $status_check = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                if ($status_check) {
+                    $pagamento_status = $status_check['pagamento_status'] ?? $pagamento_status;
+                }
+            } catch (Exception $e) {
+                // Se der erro, manter status anterior
+                error_log("Erro na verificação final de status: " . $e->getMessage());
             }
             
             // Se já foi pago, não mostrar QR Code, mostrar confirmação
@@ -922,16 +940,30 @@ if ($_POST && !$inscricoes_encerradas) {
                     
                     const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
                     const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
-                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                    // Adicionar timestamp para evitar cache do navegador
+                    const timestamp = new Date().getTime();
+                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>&_t=' + timestamp;
                     
                     fetch(verificarUrl, {
                         method: 'GET',
                         headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        },
+                        cache: 'no-store' // Forçar sem cache
                     })
-                    .then(response => response.json())
+                    .then(response => {
+                        // Verificar se a resposta é JSON válida
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
                     .then(data => {
+                        console.log('✅ Resposta da verificação:', data); // Debug
+                        
                         if (mostrarLoading) {
                             btnVerificar.disabled = false;
                             btnVerificar.style.opacity = '1';
@@ -939,7 +971,8 @@ if ($_POST && !$inscricoes_encerradas) {
                         
                         statusContainer.style.display = 'block';
                         
-                        if (data.pago && data.status === 'pago') {
+                        // Verificar se o pagamento foi confirmado
+                        if (data.pago === true || data.status === 'pago') {
                             // Pagamento confirmado!
                             statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
                             statusTexto.style.color = '#059669';
@@ -962,7 +995,8 @@ if ($_POST && !$inscricoes_encerradas) {
                         }
                     })
                     .catch(error => {
-                        console.error('Erro ao verificar pagamento:', error);
+                        console.error('❌ Erro ao verificar pagamento:', error);
+                        console.error('URL tentada:', verificarUrl);
                         if (mostrarLoading) {
                             btnVerificar.disabled = false;
                             btnVerificar.style.opacity = '1';
@@ -970,6 +1004,12 @@ if ($_POST && !$inscricoes_encerradas) {
                         statusContainer.style.display = 'block';
                         statusTexto.innerHTML = '❌ Erro ao verificar. Tente novamente.';
                         statusTexto.style.color = '#dc2626';
+                        
+                        // Em caso de erro, tentar recarregar página após 5 segundos para forçar atualização
+                        setTimeout(() => {
+                            console.log('🔄 Recarregando página após erro...');
+                            window.location.reload(true); // force reload sem cache
+                        }, 5000);
                     });
                 }
                 
