@@ -74,20 +74,48 @@ function logWebhook($data) {
 
 // Obter dados do webhook
 $input = file_get_contents('php://input');
+
+// Log do INPUT BRUTO ANTES de tentar decodificar (para debug)
+logWebhook([
+    'method' => $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
+    'content_type' => $_SERVER['CONTENT_TYPE'] ?? 'UNKNOWN',
+    'content_length' => strlen($input),
+    'raw_input_preview' => substr($input, 0, 500), // Primeiros 500 caracteres
+    'has_input' => !empty($input)
+]);
+
+// Tentar decodificar JSON
 $webhook_data = json_decode($input, true);
+$json_error = json_last_error();
 
-// Log do webhook recebido
-logWebhook(['raw_input_length' => strlen($input), 'parsed_data' => $webhook_data]);
-
-if (!$webhook_data) {
+if ($json_error !== JSON_ERROR_NONE) {
+    // Log do erro de JSON detalhado
+    logWebhook([
+        'json_error' => $json_error,
+        'json_error_message' => json_last_error_msg(),
+        'input_first_500' => substr($input, 0, 500)
+    ]);
+    
     // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
     // Logar erro mas retornar 200 para não pausar fila
-    logWebhook("⚠️ JSON inválido recebido: " . substr($input, 0, 200));
     http_response_code(200);
     header('Content-Type: application/json', true);
-    echo json_encode(['status' => 'warning', 'message' => 'Invalid JSON received but logged']);
+    echo json_encode([
+        'status' => 'warning', 
+        'message' => 'Invalid JSON received but logged',
+        'json_error' => json_last_error_msg()
+    ]);
     exit;
 }
+
+// Log do webhook recebido e decodificado com sucesso
+logWebhook([
+    'webhook_received' => true,
+    'event' => $webhook_data['event'] ?? 'UNKNOWN',
+    'event_id' => $webhook_data['id'] ?? 'NO_ID',
+    'has_payment' => isset($webhook_data['payment']),
+    'has_checkout' => isset($webhook_data['checkout'])
+]);
 
 try {
     // IDEMPOTÊNCIA: Verificar se evento já foi processado
