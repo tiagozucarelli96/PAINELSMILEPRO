@@ -64,8 +64,30 @@ if ($_POST && isset($_POST['action'])) {
     }
 }
 
+// Verificar quais colunas de valor existem
+$check_valor_cols = $pdo->query("
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'comercial_inscricoes' 
+    AND column_name IN ('valor_total', 'valor_pago')
+");
+$valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+$has_valor_total = in_array('valor_total', $valor_columns);
+$has_valor_pago = in_array('valor_pago', $valor_columns);
+
+// Montar expressão de valor dinamicamente
+if ($has_valor_total && $has_valor_pago) {
+    $valor_expr = "COALESCE(i.valor_total, i.valor_pago, 0) as valor";
+} elseif ($has_valor_total) {
+    $valor_expr = "COALESCE(i.valor_total, 0) as valor";
+} elseif ($has_valor_pago) {
+    $valor_expr = "COALESCE(i.valor_pago, 0) as valor";
+} else {
+    $valor_expr = "0 as valor";
+}
+
 // Buscar todas as inscrições
-$stmt = $pdo->query("
+$sql = "
     SELECT 
         i.id,
         i.nome,
@@ -73,7 +95,7 @@ $stmt = $pdo->query("
         i.pagamento_status,
         i.asaas_qr_code_id,
         i.asaas_payment_id,
-        COALESCE(i.valor_total, i.valor_pago, 0) as valor,
+        $valor_expr,
         i.criado_em,
         d.nome as degustacao_nome,
         d.id as degustacao_id,
@@ -82,7 +104,8 @@ $stmt = $pdo->query("
     LEFT JOIN comercial_degustacoes d ON i.degustacao_id = d.id
     ORDER BY i.id DESC
     LIMIT 20
-");
+";
+$stmt = $pdo->query($sql);
 $inscricoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 ?>

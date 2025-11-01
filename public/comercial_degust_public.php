@@ -54,11 +54,33 @@ if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
     require_once __DIR__ . '/conexao.php';
     $check_id = (int)$_GET['inscricao_id'];
     
+    // Verificar quais colunas de valor existem
+    $check_valor_cols = $pdo->query("
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'comercial_inscricoes' 
+        AND column_name IN ('valor_total', 'valor_pago')
+    ");
+    $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+    $has_valor_total = in_array('valor_total', $valor_columns);
+    $has_valor_pago = in_array('valor_pago', $valor_columns);
+    
+    // Montar expressão de valor dinamicamente
+    if ($has_valor_total && $has_valor_pago) {
+        $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_pago";
+    } elseif ($has_valor_total) {
+        $valor_expr = "COALESCE(valor_total, 0) as valor_pago";
+    } elseif ($has_valor_pago) {
+        $valor_expr = "COALESCE(valor_pago, 0) as valor_pago";
+    } else {
+        $valor_expr = "0 as valor_pago";
+    }
+    
     // Buscar status de pagamento e valor (mesma lógica da página de inscritos)
     $stmt = $pdo->prepare("
         SELECT 
             pagamento_status,
-            COALESCE(valor_total, valor_pago, 0) as valor_pago
+            $valor_expr
         FROM comercial_inscricoes 
         WHERE id = :id
     ");
@@ -707,12 +729,34 @@ if ($_POST && !$inscricoes_encerradas) {
             // Se não estiver na sessão, buscar do banco
             if (empty($qr_code_image)) {
                 try {
+                    // Verificar quais colunas de valor existem
+                    $check_valor_cols = $pdo->query("
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'comercial_inscricoes' 
+                        AND column_name IN ('valor_total', 'valor_pago')
+                    ");
+                    $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+                    $has_valor_total = in_array('valor_total', $valor_columns);
+                    $has_valor_pago = in_array('valor_pago', $valor_columns);
+                    
+                    // Montar expressão de valor dinamicamente
+                    if ($has_valor_total && $has_valor_pago) {
+                        $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_total";
+                    } elseif ($has_valor_total) {
+                        $valor_expr = "COALESCE(valor_total, 0) as valor_total";
+                    } elseif ($has_valor_pago) {
+                        $valor_expr = "COALESCE(valor_pago, 0) as valor_total";
+                    } else {
+                        $valor_expr = "0 as valor_total";
+                    }
+                    
                     // Buscar também pagamento_status para verificar se já foi pago
                     $stmt = $pdo->prepare("
                         SELECT 
                             qr_code_image, 
                             asaas_qr_code_id, 
-                            COALESCE(valor_total, valor_pago, 0) as valor_total,
+                            $valor_expr,
                             pagamento_status
                         FROM comercial_inscricoes 
                         WHERE id = :id
@@ -748,7 +792,29 @@ if ($_POST && !$inscricoes_encerradas) {
             if ($pagamento_status === 'pago') {
                 // Buscar valor pago para exibir
                 try {
-                    $stmt = $pdo->prepare("SELECT COALESCE(valor_total, valor_pago, 0) as valor_pago FROM comercial_inscricoes WHERE id = :id");
+                    // Verificar quais colunas de valor existem
+                    $check_valor_cols = $pdo->query("
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'comercial_inscricoes' 
+                        AND column_name IN ('valor_total', 'valor_pago')
+                    ");
+                    $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+                    $has_valor_total = in_array('valor_total', $valor_columns);
+                    $has_valor_pago = in_array('valor_pago', $valor_columns);
+                    
+                    // Montar expressão de valor dinamicamente
+                    if ($has_valor_total && $has_valor_pago) {
+                        $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_pago";
+                    } elseif ($has_valor_total) {
+                        $valor_expr = "COALESCE(valor_total, 0) as valor_pago";
+                    } elseif ($has_valor_pago) {
+                        $valor_expr = "COALESCE(valor_pago, 0) as valor_pago";
+                    } else {
+                        $valor_expr = "0 as valor_pago";
+                    }
+                    
+                    $stmt = $pdo->prepare("SELECT $valor_expr FROM comercial_inscricoes WHERE id = :id");
                     $stmt->execute([':id' => $qr_inscricao_id]);
                     $valor_data = $stmt->fetch(PDO::FETCH_ASSOC);
                     $valor_pago = $valor_data['valor_pago'] ?? $qr_code_value;
