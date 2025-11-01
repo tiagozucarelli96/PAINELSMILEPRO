@@ -11,7 +11,15 @@ require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
 // Verificar permissões
-if (!lc_can_access_comercial()) {
+$tem_permissao = lc_can_access_comercial();
+$debug_info[] = "🔍 DEBUG: Verificação de permissão - lc_can_access_comercial() = " . ($tem_permissao ? 'true' : 'false');
+$debug_info[] = "🔍 DEBUG: Sessão logado = " . (isset($_SESSION['logado']) ? var_export($_SESSION['logado'], true) : 'NÃO DEFINIDO');
+$debug_info[] = "🔍 DEBUG: Sessão id = " . (isset($_SESSION['id']) ? var_export($_SESSION['id'], true) : 'NÃO DEFINIDO');
+
+if (!$tem_permissao) {
+    $debug_info[] = "❌ DEBUG: SEM PERMISSÃO - Redirecionando para dashboard";
+    // Log antes de redirecionar
+    error_log("⚠️ comercial_realizar_degustacao.php: Sem permissão para acessar. Sessão logado: " . ($_SESSION['logado'] ?? 'N/A'));
     header('Location: index.php?page=dashboard&error=permission_denied');
     exit;
 }

@@ -220,13 +220,23 @@ require __DIR__ . '/permissoes_boot.php';
 $file = $routes[$page] ?? null;
 $path = $file ? (__DIR__.'/'.$file) : null;
 
-// Debug: log quando rota não encontrada (apenas em desenvolvimento)
-if (!$file && $page && getenv('APP_DEBUG') === '1') {
-  error_log("Rota não encontrada: page='$page', routes disponíveis: " . implode(', ', array_keys($routes)));
+// Debug: log quando rota não encontrada
+if (!$file && $page) {
+  error_log("⚠️ Rota não encontrada: page='$page'");
+  if (getenv('APP_DEBUG') === '1') {
+    error_log("Rotas disponíveis: " . implode(', ', array_keys($routes)));
+  }
+  // Se rota não existe, redirecionar para dashboard ao invés de 404
+  header('Location: index.php?page=dashboard&error=route_not_found');
+  exit;
 }
 
 if ($path && is_file($path)) {
   require $path;
+  exit;
+} else if ($path) {
+  error_log("⚠️ Arquivo da rota não encontrado: $path para page='$page'");
+  header('Location: index.php?page=dashboard&error=file_not_found');
   exit;
 }
 
