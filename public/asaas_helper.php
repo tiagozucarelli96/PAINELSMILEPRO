@@ -124,10 +124,11 @@ class AsaasHelper {
             'User-Agent: PainelSmilePRO/1.0'
         ];
         
-        // Log para debug
+        // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
-        error_log("Asaas API Key (primeiros 30 chars): " . substr($this->api_key, 0, 30) . "...");
-        error_log("Asaas API Key (últimos 20 chars): ..." . substr($this->api_key, -20));
+        error_log("Asaas API Key COMPLETA: " . $this->api_key);
+        error_log("Asaas API Key - Tamanho: " . strlen($this->api_key) . " caracteres");
+        error_log("Asaas API Key - Contém \$: " . (strpos($this->api_key, '$') !== false ? 'SIM' : 'NÃO'));
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,
