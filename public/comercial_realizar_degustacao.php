@@ -603,8 +603,13 @@ includeSidebar('Comercial');
     
     console.log('🚀 Script JavaScript iniciado');
     
-    const API_ENDPOINT = 'api_relatorio_degustacao.php';
+    // Construir caminho absoluto para a API baseado na URL atual
+    const currentPath = window.location.pathname;
+    const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+    const API_ENDPOINT = basePath + 'api_relatorio_degustacao.php';
     console.log('📡 API Endpoint:', API_ENDPOINT);
+    console.log('📁 Base Path:', basePath);
+    console.log('📍 Current Path:', currentPath);
     
     const selectDegustacao = document.getElementById('selectDegustacao');
     const relatorioContainer = document.getElementById('relatorioContainer');
