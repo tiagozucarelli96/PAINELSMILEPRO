@@ -47,6 +47,23 @@ $aceita_lista_espera = $degustacao['lista_espera'] && $lotado;
 $success_message = '';
 $error_message = '';
 
+// Verificar pagamento via AJAX se solicitado (ANTES de qualquer HTML)
+if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
+    header('Content-Type: application/json');
+    
+    require_once __DIR__ . '/conexao.php';
+    $check_id = (int)$_GET['inscricao_id'];
+    $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
+    $stmt->execute([':id' => $check_id]);
+    $status = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    echo json_encode([
+        'status' => $status['pagamento_status'] ?? 'aguardando',
+        'inscricao_id' => $check_id
+    ]);
+    exit;
+}
+
 if ($_POST && !$inscricoes_encerradas) {
     try {
         $nome = trim($_POST['nome'] ?? '');
@@ -755,22 +772,6 @@ if ($_POST && !$inscricoes_encerradas) {
                 </script>
                 
                 <?php
-                // Verificar pagamento via AJAX se solicitado
-                if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
-                    header('Content-Type: application/json');
-                    
-                    $check_id = (int)$_GET['inscricao_id'];
-                    $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
-                    $stmt->execute([':id' => $check_id]);
-                    $status = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    echo json_encode([
-                        'status' => $status['pagamento_status'] ?? 'aguardando',
-                        'inscricao_id' => $check_id
-                    ]);
-                    exit;
-                }
-                
                 // Exibir mensagem de confirmação se pagamento foi confirmado
                 if (isset($_GET['pagamento_confirmado'])): ?>
                     <div class="alert alert-success" style="margin-top: 20px;">
