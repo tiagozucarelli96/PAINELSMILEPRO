@@ -146,15 +146,24 @@ class AsaasHelper {
         error_log("Asaas API Key - Tamanho limpa: " . strlen($api_key_clean) . " caracteres");
         error_log("Asaas API Key - Contém \$ no início: " . (strpos($this->api_key, '$') === 0 ? 'SIM' : 'NÃO'));
         
+        // Log da URL completa antes de fazer a requisição
+        error_log("AsaasHelper - URL completa: $endpoint");
+        
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_VERBOSE => false
         ]);
+        
+        // Log dos headers que serão enviados (debug)
+        error_log("AsaasHelper - Headers que serão enviados: " . json_encode($headers, JSON_UNESCAPED_SLASHES));
         
         if ($data && in_array($method, ['POST', 'PUT', 'PATCH'])) {
             $json_data = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
