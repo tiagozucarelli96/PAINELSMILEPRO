@@ -805,20 +805,27 @@ if ($_POST && !$inscricoes_encerradas) {
             z-index: 10000;
             padding: 20px;
             box-sizing: border-box;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal[style*="flex"],
+        .modal[style*="block"] {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         
         .modal-content {
             background: white;
             border-radius: 12px;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            max-width: 500px;
-            width: 100%;
+            max-width: 600px;
+            width: calc(100% - 40px);
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            margin: 0 auto;
-            top: 50%;
-            transform: translateY(-50%);
+            margin: 0;
         }
         
         .modal-header {
