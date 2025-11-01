@@ -537,57 +537,86 @@ function gerarPDF() {
     alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
 }
 
-// Auto-submit quando selecionar degustação
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔍 DOM carregado');
-    
+// Função para configurar o select - pode ser chamada múltiplas vezes
+function configurarSelectDegustacao() {
     const selectDegustacao = document.getElementById('selectDegustacao');
     const formDegustacao = document.getElementById('formDegustacao');
     
-    if (selectDegustacao) {
-        console.log('✅ Select encontrado');
-        
-        selectDegustacao.addEventListener('change', function() {
-            const selectedValue = this.value;
-            console.log('🔍 Select mudou para:', selectedValue);
-            
-            if (selectedValue && selectedValue !== '') {
-                if (formDegustacao) {
-                    console.log('✅ Formulário encontrado, submetendo...');
-                    formDegustacao.submit();
-                } else {
-                    console.error('❌ Formulário não encontrado!');
-                }
-            } else {
-                console.log('⚠️ Valor vazio selecionado');
-            }
-        });
-        
-        // Log do valor inicial
-        if (selectDegustacao.value && selectDegustacao.value !== '') {
-            console.log('✅ Degustação já selecionada no carregamento:', selectDegustacao.value);
-        } else {
-            console.log('ℹ️ Nenhuma degustação selecionada inicialmente');
-        }
-    } else {
-        console.error('❌ Select não encontrado!');
+    if (!selectDegustacao) {
+        console.error('❌ Select não encontrado! Tentando novamente em 100ms...');
+        setTimeout(configurarSelectDegustacao, 100);
+        return;
     }
     
-    // Verificar se relatório deve aparecer
-    const relatorioContainer = document.querySelector('.relatorio-container');
-    if (relatorioContainer) {
-        console.log('✅ Relatório encontrado no DOM');
-    } else {
-        console.log('⚠️ Relatório NÃO encontrado no DOM');
-        const degustacaoId = new URLSearchParams(window.location.search).get('degustacao_id');
-        if (degustacaoId && degustacaoId > 0) {
-            console.error('❌ ERRO: degustacao_id existe mas relatório não aparece!');
-            console.error('❌ Possíveis causas:');
-            console.error('   1. Degustação não encontrada no banco');
-            console.error('   2. Nenhum inscrito confirmado');
-            console.error('   3. Erro na query SQL');
-            console.error('   4. Condição PHP não foi satisfeita');
+    console.log('✅ Select encontrado!');
+    
+    // Remover listener anterior se existir
+    const newSelect = selectDegustacao.cloneNode(true);
+    selectDegustacao.parentNode.replaceChild(newSelect, selectDegustacao);
+    
+    // Adicionar novo listener
+    const selectAtual = document.getElementById('selectDegustacao');
+    
+    selectAtual.addEventListener('change', function() {
+        const selectedValue = this.value;
+        console.log('🔍 Select mudou para:', selectedValue);
+        
+        if (selectedValue && selectedValue !== '') {
+            const form = this.closest('form') || document.getElementById('formDegustacao');
+            if (form) {
+                console.log('✅ Formulário encontrado, submetendo...');
+                form.submit();
+            } else {
+                console.error('❌ Formulário não encontrado!');
+                alert('Erro: Formulário não encontrado. Recarregue a página.');
+            }
+        } else {
+            console.log('⚠️ Valor vazio selecionado');
         }
+    });
+    
+    // Log do valor inicial
+    if (selectAtual.value && selectAtual.value !== '') {
+        console.log('✅ Degustação já selecionada no carregamento:', selectAtual.value);
+    } else {
+        console.log('ℹ️ Nenhuma degustação selecionada inicialmente');
     }
-});
+}
+
+// Tentar configurar quando DOM estiver pronto
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🔍 DOM carregado (DOMContentLoaded)');
+        configurarSelectDegustacao();
+        verificarRelatorio();
+    });
+} else {
+    // DOM já está pronto
+    console.log('🔍 DOM já estava pronto');
+    configurarSelectDegustacao();
+    verificarRelatorio();
+}
+
+// Função para verificar se relatório apareceu
+function verificarRelatorio() {
+    setTimeout(function() {
+        const relatorioContainer = document.querySelector('.relatorio-container');
+        if (relatorioContainer) {
+            console.log('✅ Relatório encontrado no DOM');
+        } else {
+            console.log('⚠️ Relatório NÃO encontrado no DOM');
+            const degustacaoId = new URLSearchParams(window.location.search).get('degustacao_id');
+            if (degustacaoId && parseInt(degustacaoId) > 0) {
+                console.error('❌ ERRO: degustacao_id existe mas relatório não aparece!');
+                console.error('❌ degustacao_id =', degustacaoId);
+                console.error('❌ Possíveis causas:');
+                console.error('   1. Degustação não encontrada no banco');
+                console.error('   2. Nenhum inscrito confirmado');
+                console.error('   3. Erro na query SQL');
+                console.error('   4. Condição PHP não foi satisfeita');
+                console.error('   5. Verifique o painel de debug amarelo na página');
+            }
+        }
+    }, 500); // Aguardar 500ms para garantir que tudo foi renderizado
+}
 </script>
