@@ -14,7 +14,17 @@ class AsaasHelper {
         require_once __DIR__ . '/config_env.php';
         
         // Usar variável de ambiente se disponível, senão usar constante
-        $this->api_key = $env_key ?? ASAAS_API_KEY;
+        $chave_a_usar = $env_key ?? ASAAS_API_KEY;
+        
+        // CORREÇÃO: Se a chave for muito curta (< 180 chars), usar a nova chave diretamente
+        // Isso força o uso da nova chave mesmo se Railway não atualizou
+        if (strlen($chave_a_usar) < 180) {
+            $chave_corrigida = '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjA2OTVjYTRhLTgzNTctNDkzNC1hMmQyLTEyOTNmMWFjY2NjYjo6JGFhY2hfMmRlNDE2ZTktMzk2OS00YTYzLTkyYmYtNzg2NzUzNmY5NTVl';
+            error_log("⚠️ AsaasHelper - Chave detectada como antiga (" . strlen($chave_a_usar) . " chars). Forçando uso da nova chave.");
+            $chave_a_usar = $chave_corrigida;
+        }
+        
+        $this->api_key = $chave_a_usar;
         $this->base_url = $env_base ?? ASAAS_BASE_URL;
         $this->webhook_url = $env_webhook ?? WEBHOOK_URL;
         

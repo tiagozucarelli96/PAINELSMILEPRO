@@ -152,6 +152,7 @@ $routes = [
   'test_asaas_key' => 'test_asaas_key.php',
   'test_asaas_debug' => 'test_asaas_debug.php',
   'comparar_chave_asaas' => 'comparar_chave_asaas.php',
+  'forcar_chave_asaas' => 'forcar_chave_asaas.php',
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
