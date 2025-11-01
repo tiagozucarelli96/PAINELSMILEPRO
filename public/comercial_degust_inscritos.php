@@ -759,7 +759,7 @@ ob_start();
                                 📄 Contrato
                             </button>
                             <?php if ($inscricao['fechou_contrato'] !== 'sim' && $inscricao['pagamento_status'] !== 'pago'): ?>
-                                <form method="POST" style="display: inline;" onsubmit="return confirmarGerarPagamento(event)">
+                                <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>" style="display: inline;" onsubmit="return confirmarGerarPagamento(event)">
                                     <input type="hidden" name="action" value="gerar_pagamento">
                                     <input type="hidden" name="inscricao_id" value="<?= $inscricao['id'] ?>">
                                     <button type="submit" class="btn-sm" style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
@@ -788,7 +788,7 @@ ob_start();
             <button class="close-btn" onclick="closeComparecimentoModal()">&times;</button>
         </div>
         
-        <form method="POST">
+        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
             <input type="hidden" name="action" value="marcar_comparecimento">
             <input type="hidden" name="inscricao_id" id="comparecimentoInscricaoId">
             
