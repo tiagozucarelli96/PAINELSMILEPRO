@@ -144,7 +144,7 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         $payment_data = [
             'customer_id' => $customer_id,
             'value' => $valor_total,
-            'description' => "Degustação: {$degustacao['nome']} - " . ucfirst($tipo_festa) . " ({$qtd_pessoas} pessoas)",
+            'description' => "Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa) . " ({$qtd_pessoas} pessoas)",
             'external_reference' => 'inscricao_' . $inscricao_id,
             'success_url' => "{$protocol}://{$host}/index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=payment_created",
             'customer_data' => $customer_data
@@ -901,11 +901,20 @@ ob_start();
     });
     
     // Confirmar geração de pagamento
-    function confirmarGerarPagamento(event) {
+    async function confirmarGerarPagamento(event) {
         event.preventDefault();
         const form = event.target;
-        if (confirm('Deseja gerar link de pagamento para este inscrito?')) {
-            form.submit();
+        
+        // Usar customConfirm se disponível, senão usar confirm nativo
+        if (typeof customConfirm === 'function') {
+            const confirmado = await customConfirm('Deseja gerar link de pagamento para este inscrito?', '💳 Gerar Pagamento');
+            if (confirmado) {
+                form.submit();
+            }
+        } else {
+            if (confirm('Deseja gerar link de pagamento para este inscrito?')) {
+                form.submit();
+            }
         }
         return false;
     }
