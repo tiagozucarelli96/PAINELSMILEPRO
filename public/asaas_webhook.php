@@ -540,6 +540,33 @@ try {
             $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'expirado' WHERE id = :id");
             $stmt->execute([':id' => $inscricao['id']]);
             
+            // Limpar valores pendentes se este QR Code for adicional pendente
+            try {
+                $check_pending = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'comercial_inscricoes' 
+                    AND column_name = 'qr_code_adicional_id'
+                ");
+                if ($check_pending->rowCount() > 0 && $pix_qr_code_id) {
+                    $stmt_clear = $pdo->prepare("
+                        UPDATE comercial_inscricoes 
+                        SET qtd_pessoas_pendente = NULL,
+                            valor_adicional_pendente = NULL,
+                            qr_code_adicional_id = NULL,
+                            qr_code_adicional_expira_em = NULL
+                        WHERE id = :id AND qr_code_adicional_id = :qr_code_id
+                    ");
+                    $stmt_clear->execute([':id' => $inscricao['id'], ':qr_code_id' => $pix_qr_code_id]);
+                    
+                    if ($stmt_clear->rowCount() > 0) {
+                        logWebhook("Valores pendentes cancelados (QR Code expirado) para inscrição ID: " . $inscricao['id']);
+                    }
+                }
+            } catch (Exception $e) {
+                logWebhook("Erro ao limpar valores pendentes expirados: " . $e->getMessage());
+            }
+            
             logWebhook("Pagamento vencido para inscrição ID: " . $inscricao['id']);
             break;
             
