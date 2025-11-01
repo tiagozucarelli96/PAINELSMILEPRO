@@ -503,41 +503,27 @@ includeSidebar('Comercial');
             </div>
         </form>
         
-        <!-- Info Box (será atualizado via AJAX) -->
-        <div class="info-box" id="infoBox" style="display: none;">
+    </div>
+    
+    <!-- Info Box e Relatório (renderizado pelo PHP quando há degustacao_id) -->
+    <?php if ($degustacao_id > 0 && isset($degustacao)): ?>
+        <!-- Info Box -->
+        <div class="info-box" style="display: block;">
             <div class="info-row">
                 <span class="info-label">Inscrições Confirmadas:</span>
-                <span class="info-value" id="totalInscritos">0</span>
+                <span class="info-value"><?= count($inscritos) ?></span>
             </div>
             <div class="info-row">
                 <span class="info-label">Total de Mesas:</span>
-                <span class="info-value" id="totalMesas">0</span>
+                <span class="info-value"><?= count($inscritos) ?></span>
             </div>
             <div class="info-row">
                 <span class="info-label">Total de Pessoas:</span>
-                <span class="info-value" id="totalPessoas">0</span>
+                <span class="info-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></span>
             </div>
         </div>
         
-        <!-- Loading indicator -->
-        <div id="loadingIndicator" style="display: none; text-align: center; padding: 2rem; color: #6b7280;">
-            <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
-            <p>Carregando relatório...</p>
-        </div>
-        
-        <style>
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-        </style>
-    </div>
-    
-    <!-- Relatório (será renderizado via JavaScript) -->
-    <div id="relatorioContainer"></div>
-    
-    <!-- Versão PHP removida - agora tudo é AJAX -->
-    <?php if (false): // Desabilitado - usando AJAX ?>
+        <!-- Relatório -->
         <div class="relatorio-container">
             <div class="relatorio-header">
                 <h2 class="relatorio-titulo"><?= h($degustacao['nome']) ?></h2>
@@ -551,10 +537,10 @@ includeSidebar('Comercial');
                         <span class="relatorio-info-value"><?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
                     </div>
                     <?php if (!empty($degustacao['local'])): ?>
-                        <div class="relatorio-info-item">
-                            <span class="relatorio-info-label">📍 Local</span>
-                            <span class="relatorio-info-value"><?= h($degustacao['local']) ?></span>
-                        </div>
+                    <div class="relatorio-info-item">
+                        <span class="relatorio-info-label">📍 Local</span>
+                        <span class="relatorio-info-value"><?= h($degustacao['local']) ?></span>
+                    </div>
                     <?php endif; ?>
                     <div class="relatorio-info-item">
                         <span class="relatorio-info-label">👥 Total de Pessoas</span>
@@ -570,15 +556,16 @@ includeSidebar('Comercial');
                     </div>
                 <?php else: ?>
                     <?php foreach ($inscritos as $index => $inscrito): ?>
+                        <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
                         <div class="mesa-card">
                             <div class="mesa-header">
                                 <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
-                                <span class="mesa-pessoas"><?= $inscrito['qtd_pessoas'] ?> <?= $inscrito['qtd_pessoas'] == 1 ? 'pessoa' : 'pessoas' ?></span>
+                                <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
                             </div>
                             <div class="inscrito-info">
                                 <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
                                 <?php if (!empty($inscrito['tipo_festa'])): ?>
-                                    <span class="inscrito-tipo"><?= ucfirst($inscrito['tipo_festa']) ?></span>
+                                <span class="inscrito-tipo"><?= h(ucfirst($inscrito['tipo_festa'])) ?></span>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -595,40 +582,31 @@ includeSidebar('Comercial');
                 </button>
             </div>
         </div>
+    <?php elseif ($degustacao_id > 0 && !isset($degustacao)): ?>
+        <div class="error-panel">
+            ⚠️ <strong>Atenção:</strong> Degustação selecionada mas dados não encontrados. Verifique o painel de debug acima.
+        </div>
     <?php else: ?>
-        <?php if ($degustacao_id > 0): ?>
-            <div class="error-panel">
-                ⚠️ <strong>Atenção:</strong> Degustação selecionada mas dados não encontrados. Verifique o painel de debug acima.
-            </div>
-        <?php endif; ?>
+        <div style="text-align: center; padding: 3rem; color: #6b7280; background: white; border: 1px solid #e5e7eb; border-radius: 12px; margin-top: 2rem;">
+            <p style="font-size: 1.125rem; margin: 0;">Selecione uma degustação e clique em "Gerar Relatório" para visualizar os dados.</p>
+        </div>
     <?php endif; ?>
 </div>
 
 <script>
-// SOLUÇÃO SIMPLIFICADA: Carregar relatório apenas quando degustacao_id estiver na URL ou quando formulário for submetido
+// SOLUÇÃO 100% SERVER-SIDE: Formulário tradicional GET, relatório renderizado pelo PHP
+// Sem AJAX, sem eventos change complexos - funciona sempre
 (function() {
     'use strict';
     
-    console.log('🚀 Script JavaScript iniciado (versão simplificada)');
-    
-    // Verificar se há degustacao_id na URL ao carregar a página
-    const urlParams = new URLSearchParams(window.location.search);
-    const degustacaoIdUrl = urlParams.get('degustacao_id');
-    
-    console.log('🔍 degustacao_id na URL:', degustacaoIdUrl);
-    
-    // Se há degustacao_id na URL, carregar relatório automaticamente via PHP (não AJAX)
-    // O PHP já vai renderizar o relatório se degustacao_id > 0
-    
-    // Se não há degustacao_id, apenas mostrar mensagem
-    if (!degustacaoIdUrl || degustacaoIdUrl === '') {
-        console.log('ℹ️ Nenhuma degustação selecionada ainda');
-        // Formulário será submetido quando usuário selecionar e clicar em "Gerar Relatório"
-    } else {
-        console.log('✅ degustacao_id encontrado na URL, relatório deve ser renderizado pelo PHP');
-    }
+    // Função simples para gerar PDF (placeholder)
     function gerarPDF() {
         alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
     }
+    
+    // Tornar função global
+    window.gerarPDF = gerarPDF;
+    
+    console.log('✅ Página "Realizar Degustação" carregada. Formulário tradicional GET - funciona sempre.');
 })();
 </script>
