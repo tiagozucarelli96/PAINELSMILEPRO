@@ -590,9 +590,9 @@ ob_start();
                         
                         <div class="card-actions">
                             <?php if (lc_can_edit_degustacoes()): ?>
-                            <a href="index.php?page=comercial_degustacao_editar&id=<?= $degustacao['id'] ?>" class="btn-sm btn-edit">
+                            <button type="button" onclick="abrirModalEditar(<?= $degustacao['id'] ?>)" class="btn-sm btn-edit" style="cursor: pointer;">
                                 ✏️ Editar
-                            </a>
+                            </button>
                             <?php endif; ?>
                             
                             <?php if (lc_can_manage_inscritos()): ?>
@@ -925,7 +925,344 @@ ob_start();
             }
             window.location.href = url;
         }
+        
+        // Modal de Edição
+        function abrirModalEditar(degustacaoId) {
+            const modal = document.getElementById('modalEditarDegustacao');
+            const form = document.getElementById('formEditarDegustacao');
+            
+            // Limpar formulário
+            form.reset();
+            form.querySelector('[name="id"]').value = degustacaoId;
+            
+            // Mostrar loading
+            const loadingDiv = modal.querySelector('.modal-loading');
+            const formDiv = modal.querySelector('.modal-form');
+            if (loadingDiv) loadingDiv.style.display = 'block';
+            if (formDiv) formDiv.style.display = 'none';
+            
+            modal.classList.add('active');
+            
+            // Buscar dados via AJAX
+            fetch(`comercial_degustacao_api.php?action=get&id=${degustacaoId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        const d = data.data;
+                        
+                        // Preencher campos
+                        form.querySelector('[name="nome"]').value = d.nome || '';
+                        form.querySelector('[name="data"]').value = d.data || '';
+                        form.querySelector('[name="hora_inicio"]').value = d.hora_inicio || '';
+                        form.querySelector('[name="hora_fim"]').value = d.hora_fim || '';
+                        form.querySelector('[name="local"]').value = d.local || '';
+                        form.querySelector('[name="capacidade"]').value = d.capacidade || 50;
+                        form.querySelector('[name="data_limite"]').value = d.data_limite || '';
+                        form.querySelector('[name="lista_espera"]').checked = d.lista_espera || false;
+                        form.querySelector('[name="preco_casamento"]').value = d.preco_casamento || 150.00;
+                        form.querySelector('[name="incluidos_casamento"]').value = d.incluidos_casamento || 2;
+                        form.querySelector('[name="preco_15anos"]').value = d.preco_15anos || 180.00;
+                        form.querySelector('[name="incluidos_15anos"]').value = d.incluidos_15anos || 3;
+                        form.querySelector('[name="preco_extra"]').value = d.preco_extra || 50.00;
+                        form.querySelector('[name="instrutivo_html"]').value = d.instrutivo_html || '';
+                        form.querySelector('[name="email_confirmacao_html"]').value = d.email_confirmacao_html || '';
+                        form.querySelector('[name="msg_sucesso_html"]').value = d.msg_sucesso_html || '';
+                        form.querySelector('[name="campos_json"]').value = d.campos_json || '[]';
+                        
+                        // Verificar se local está nas opções, senão mostrar campo customizado
+                        const localSelect = form.querySelector('[name="local"]');
+                        const localCustom = form.querySelector('[name="local_custom"]');
+                        if (localSelect && localCustom) {
+                            const localValue = d.local || '';
+                            if (localSelect.querySelector(`option[value="${localValue}"]`)) {
+                                localSelect.value = localValue;
+                                localCustom.style.display = 'none';
+                            } else {
+                                localSelect.value = '';
+                                localCustom.value = localValue;
+                                localCustom.style.display = 'block';
+                            }
+                        }
+                        
+                        // Mostrar formulário
+                        if (loadingDiv) loadingDiv.style.display = 'none';
+                        if (formDiv) formDiv.style.display = 'block';
+                    } else {
+                        customAlert(data.error || 'Erro ao carregar dados da degustação', 'Erro');
+                        fecharModalEditar();
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro:', error);
+                    customAlert('Erro ao carregar dados da degustação', 'Erro');
+                    fecharModalEditar();
+                });
+        }
+        
+        function fecharModalEditar() {
+            const modal = document.getElementById('modalEditarDegustacao');
+            modal.classList.remove('active');
+        }
+        
+        // Controle do campo local customizado
+        document.addEventListener('change', function(e) {
+            if (e.target.name === 'local') {
+                const localSelect = e.target;
+                const localCustom = localSelect.closest('form')?.querySelector('[name="local_custom"]');
+                if (localCustom) {
+                    if (localSelect.value === '' || localSelect.value === null) {
+                        localCustom.style.display = 'block';
+                        localCustom.required = true;
+                        localSelect.required = false;
+                    } else {
+                        localCustom.style.display = 'none';
+                        localCustom.required = false;
+                        localSelect.required = true;
+                    }
+                }
+            }
+        });
+        
+        // Salvar via AJAX
+        const formEditar = document.getElementById('formEditarDegustacao');
+        if (formEditar) {
+            formEditar.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const form = this;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = '💾 Salvando...';
+            
+            // Coletar dados do formulário
+            const formData = new FormData(form);
+            formData.append('action', 'update');
+            
+            // Se local_custom tem valor, usar ele ao invés de local
+            const localCustom = form.querySelector('[name="local_custom"]');
+            if (localCustom && localCustom.style.display !== 'none' && localCustom.value.trim()) {
+                formData.set('local_custom', localCustom.value.trim());
+            }
+            
+            try {
+                const response = await fetch('comercial_degustacao_api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    customAlert(data.message || 'Degustação atualizada com sucesso!', '✅ Sucesso');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    customAlert(data.error || 'Erro ao salvar degustação', '❌ Erro');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                customAlert('Erro ao salvar degustação', '❌ Erro');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+            });
+        }
     </script>
+    
+    <!-- Modal de Edição -->
+    <div id="modalEditarDegustacao" class="modal-editar-degustacao" onclick="if(event.target === this) fecharModalEditar()">
+        <div class="modal-editar-content" onclick="event.stopPropagation()">
+            <div class="modal-editar-header">
+                <h2>✏️ Editar Degustação</h2>
+                <button type="button" class="modal-editar-close" onclick="fecharModalEditar()">&times;</button>
+            </div>
+            
+            <div class="modal-loading" style="text-align: center; padding: 40px;">
+                <div style="font-size: 18px; color: #6b7280;">Carregando dados...</div>
+            </div>
+            
+            <div class="modal-form" style="display: none;">
+                <form id="formEditarDegustacao">
+                    <input type="hidden" name="id" value="">
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Nome da Degustação *</label>
+                            <input type="text" name="nome" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Data *</label>
+                            <input type="date" name="data" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Hora Início *</label>
+                            <input type="time" name="hora_inicio" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Hora Fim *</label>
+                            <input type="time" name="hora_fim" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Local *</label>
+                        <select name="local" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            <option value="">Selecione um local...</option>
+                            <option value="Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690">Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
+                            <option value="Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690">Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
+                        </select>
+                        <input type="text" name="local_custom" placeholder="Ou digite um local personalizado..." style="display: none; width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Capacidade *</label>
+                            <input type="number" name="capacidade" required min="1" value="50" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Data Limite de Inscrição *</label>
+                            <input type="date" name="data_limite" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" name="lista_espera" style="width: 18px; height: 18px;">
+                            <span style="font-weight: 600; color: #374151;">Aceitar Lista de Espera</span>
+                        </label>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                        <h3 style="font-size: 16px; font-weight: 600; color: #1e3a8a; margin-bottom: 15px;">💰 Preços</h3>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Preço Casamento (R$)</label>
+                                <input type="number" name="preco_casamento" step="0.01" min="0" value="150.00" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Pessoas Incluídas (Casamento)</label>
+                                <input type="number" name="incluidos_casamento" min="1" value="2" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Preço 15 Anos (R$)</label>
+                                <input type="number" name="preco_15anos" step="0.01" min="0" value="180.00" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Pessoas Incluídas (15 Anos)</label>
+                                <input type="number" name="incluidos_15anos" min="1" value="3" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Preço por Pessoa Extra (R$)</label>
+                                <input type="number" name="preco_extra" step="0.01" min="0" value="50.00" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                        <h3 style="font-size: 16px; font-weight: 600; color: #1e3a8a; margin-bottom: 15px;">📝 Textos</h3>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Instruções do Dia (HTML)</label>
+                            <textarea name="instrutivo_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">E-mail de Confirmação (HTML)</label>
+                            <textarea name="email_confirmacao_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Mensagem de Sucesso (HTML)</label>
+                            <textarea name="msg_sucesso_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                        </div>
+                    </div>
+                    
+                    <input type="hidden" name="campos_json" value="[]">
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                        <button type="button" onclick="fecharModalEditar()" style="padding: 12px 24px; background: #e5e7eb; color: #374151; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">Cancelar</button>
+                        <button type="submit" style="padding: 12px 24px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">💾 Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .modal-editar-degustacao {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .modal-editar-degustacao.active {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+        
+        .modal-editar-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            margin: auto;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .modal-editar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .modal-editar-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
+        
+        .modal-editar-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: #6b7280;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .modal-editar-close:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .modal-form {
+            padding: 30px;
+        }
+    </style>
 </div>
 
 <?php
