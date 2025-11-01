@@ -69,7 +69,7 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 $status_filter = $_GET['status'] ?? '';
 $search = trim($_GET['search'] ?? '');
 
-$where = ['i.event_id = :event_id'];
+$where = ['i.degustacao_id = :event_id'];
 $params = [':event_id' => $event_id];
 
 if ($status_filter) {
