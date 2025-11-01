@@ -123,9 +123,22 @@ if ($_POST && !$inscricoes_encerradas) {
         $me_event_id = (int)($_POST['me_event_id'] ?? 0);
         
         // Montar SQL dinamicamente baseado nas colunas existentes
-        $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', 'celular', 
+        // Verificar se coluna é telefone ou celular
+        try {
+            $check_col = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                       WHERE table_name = 'comercial_inscricoes' 
+                                       AND column_name IN ('telefone', 'celular')");
+            $telefone_col = $check_col->fetchColumn();
+            $telefone_col = $telefone_col ?: 'telefone'; // Default para telefone
+        } catch (PDOException $e) {
+            $telefone_col = 'telefone';
+        }
+        
+        $telefone = $_POST['telefone'] ?? $_POST['celular'] ?? '';
+        
+        $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', $telefone_col, 
                    'dados_json', 'qtd_pessoas', 'tipo_festa', 'extras', 'pagamento_status', 'valor_pago', 'ip_origem', 'user_agent_origem'];
-        $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':celular',
+        $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':telefone',
                     ':dados_json', ':qtd_pessoas', ':tipo_festa', ':extras', ':pagamento_status', ':valor_pago', ':ip_origem', ':user_agent_origem'];
         $params = [
             ':degustacao_id' => $degustacao['id'],
@@ -133,7 +146,7 @@ if ($_POST && !$inscricoes_encerradas) {
             ':fechou_contrato' => $fechou_contrato,
             ':nome' => $nome,
             ':email' => $email,
-            ':celular' => $celular,
+            ':telefone' => $telefone,
             ':dados_json' => json_encode($dados_json),
             ':qtd_pessoas' => $qtd_pessoas,
             ':tipo_festa' => $tipo_festa,
@@ -185,7 +198,7 @@ if ($_POST && !$inscricoes_encerradas) {
                 $customer_data = [
                     'name' => $nome,
                     'email' => $email,
-                    'phone' => $celular,
+                    'phone' => $telefone,
                     'external_reference' => 'inscricao_' . $inscricao_id
                 ];
                 
@@ -499,20 +512,54 @@ if ($_POST && !$inscricoes_encerradas) {
             <form method="POST" id="inscricaoForm">
                 <h2 style="margin-bottom: 20px; color: #1e3a8a;">📝 Inscrição</h2>
                 
-                <!-- Dados Básicos -->
+                <!-- Já fechou contrato? (PRIMEIRO) -->
+                <div class="form-group">
+                    <label class="form-label">Já fechou seu evento conosco? *</label>
+                    <div class="form-radio-group">
+                        <div class="form-radio">
+                            <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim" required onchange="toggleContratoInfo()">
+                            <label for="fechou_sim">Sim, já fechei</label>
+                        </div>
+                        <div class="form-radio">
+                            <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao" required onchange="toggleContratoInfo()">
+                            <label for="fechou_nao">Não, ainda não fechei</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Buscar Evento (se já fechou) -->
+                <div id="buscaEventoContainer" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <span style="font-weight: 600; color: #0c4a6e;">🔍 Busque seu evento cadastrado</span>
+                    </div>
+                    <button type="button" onclick="abrirModalBuscaME()" class="btn-secondary" style="width: 100%; padding: 12px 20px; white-space: nowrap;">
+                        🔍 Buscar Evento
+                    </button>
+                    <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 8px;">
+                        💡 Se você já fechou evento conosco, busque aqui e seus dados serão preenchidos automaticamente
+                    </small>
+                    
+                    <!-- Informações do evento encontrado -->
+                    <div id="meEventInfo" class="alert alert-success hidden" style="margin-top: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 16px;">✅ Evento encontrado!</h4>
+                        <div id="meEventDetails"></div>
+                    </div>
+                </div>
+                
+                <!-- Dados Básicos (preenchidos automaticamente ou manualmente) -->
                 <div class="form-group">
                     <label class="form-label">Nome Completo *</label>
-                    <input type="text" name="nome" class="form-input" required>
+                    <input type="text" name="nome" id="nomeInput" class="form-input" required>
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">E-mail *</label>
-                    <input type="email" name="email" class="form-input" required>
+                    <input type="email" name="email" id="emailInput" class="form-input" required>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Celular</label>
-                    <input type="tel" name="celular" class="form-input">
+                    <label class="form-label">Celular *</label>
+                    <input type="tel" name="telefone" id="telefoneInput" class="form-input" required>
                 </div>
                 
                 <!-- Tipo de Festa -->
@@ -556,50 +603,11 @@ if ($_POST && !$inscricoes_encerradas) {
                     </div>
                 </div>
                 
-                <!-- Já fechou contrato? -->
-                <div class="form-group">
-                    <label class="form-label">Já fechou seu evento conosco? *</label>
-                    <div class="form-radio-group">
-                        <div class="form-radio">
-                            <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim" required onchange="toggleContratoInfo()">
-                            <label for="fechou_sim">Sim, já fechei</label>
-                        </div>
-                        <div class="form-radio">
-                            <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao" required onchange="toggleContratoInfo()">
-                            <label for="fechou_nao">Não, ainda não fechei</label>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Informações do Contrato (se já fechou) -->
-                <div id="contratoInfo" class="hidden">
-                    <div class="form-group">
-                        <label class="form-label">Nome completo do titular do contrato *</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" name="nome_titular_contrato" id="nomeTitularInput" class="form-input" style="flex: 1;">
-                            <button type="button" onclick="abrirModalBuscaME()" class="btn-secondary" style="padding: 12px 20px; white-space: nowrap;">
-                                🔍 Buscar na ME
-                            </button>
-                        </div>
-                        <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
-                            💡 Clique em "Buscar na ME" para verificar se você já tem contrato cadastrado
-                        </small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">3 primeiros dígitos do CPF do titular *</label>
-                        <input type="text" name="cpf_3_digitos" id="cpf3DigitosInput" class="form-input" maxlength="3" pattern="[0-9]{3}" placeholder="Ex: 123">
-                    </div>
-                    
-                    <!-- CPF completo (oculto, preenchido automaticamente após validação) -->
-                    <input type="hidden" name="me_cliente_cpf" id="meClienteCpfHidden">
-                    <input type="hidden" name="me_event_id" id="meEventIdHidden">
-                    
-                    <div id="meEventInfo" class="alert alert-success hidden" style="margin-top: 15px;">
-                        <h4 style="margin: 0 0 10px 0;">✅ Contrato encontrado!</h4>
-                        <div id="meEventDetails"></div>
-                    </div>
-                </div>
+                <!-- Campos ocultos para dados da ME -->
+                <input type="hidden" name="nome_titular_contrato" id="nomeTitularHidden">
+                <input type="hidden" name="cpf_3_digitos" id="cpf3DigitosHidden">
+                <input type="hidden" name="me_cliente_cpf" id="meClienteCpfHidden">
+                <input type="hidden" name="me_event_id" id="meEventIdHidden">
                 
                 <!-- Campos dinâmicos do Form Builder -->
                 <?php
@@ -674,7 +682,7 @@ if ($_POST && !$inscricoes_encerradas) {
     <div id="modalBuscaME" class="modal" style="display: none;" onclick="if(event.target === this) fecharModalBuscaME()">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
             <div class="modal-header">
-                <h3 class="modal-title">🔍 Buscar Contrato na ME Eventos</h3>
+                <h3 class="modal-title">🔍 Buscar Evento</h3>
                 <button class="close-btn" onclick="fecharModalBuscaME()">&times;</button>
             </div>
             
@@ -748,6 +756,8 @@ if ($_POST && !$inscricoes_encerradas) {
             z-index: 10000;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
         }
         
         .modal-content {
@@ -755,9 +765,11 @@ if ($_POST && !$inscricoes_encerradas) {
             border-radius: 12px;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
             max-width: 500px;
-            width: 90%;
+            width: 100%;
             max-height: 90vh;
             overflow-y: auto;
+            position: relative;
+            margin: auto;
         }
         
         .modal-header {
@@ -879,28 +891,6 @@ if ($_POST && !$inscricoes_encerradas) {
             document.getElementById('extrasHidden').value = extras;
         }
         
-        function toggleContratoInfo() {
-            const fechouSim = document.getElementById('fechou_sim').checked;
-            const contratoInfo = document.getElementById('contratoInfo');
-            
-            if (fechouSim) {
-                contratoInfo.classList.remove('hidden');
-                document.getElementById('nomeTitularInput').required = true;
-                document.getElementById('cpf3DigitosInput').required = true;
-            } else {
-                contratoInfo.classList.add('hidden');
-                document.getElementById('nomeTitularInput').required = false;
-                document.getElementById('cpf3DigitosInput').required = false;
-                document.getElementById('meEventInfo').classList.add('hidden');
-                
-                // Limpar campos
-                document.getElementById('nomeTitularInput').value = '';
-                document.getElementById('cpf3DigitosInput').value = '';
-                document.getElementById('meClienteCpfHidden').value = '';
-                document.getElementById('meEventIdHidden').value = '';
-                clienteSelecionadoME = null;
-            }
-        }
         
         // Calcular preço quando tipo de festa mudar
         document.querySelectorAll('input[name="tipo_festa"]').forEach(radio => {
@@ -920,6 +910,25 @@ if ($_POST && !$inscricoes_encerradas) {
             document.getElementById('buscaMELoading').style.display = 'none';
             document.getElementById('buscaMEValidarCPF').style.display = 'none';
             clienteSelecionadoME = null;
+        }
+        
+        function toggleContratoInfo() {
+            const fechouSim = document.getElementById('fechou_sim').checked;
+            const buscaContainer = document.getElementById('buscaEventoContainer');
+            
+            if (fechouSim) {
+                buscaContainer.classList.remove('hidden');
+            } else {
+                buscaContainer.classList.add('hidden');
+                document.getElementById('meEventInfo').classList.add('hidden');
+                
+                // Limpar campos ocultos
+                document.getElementById('nomeTitularHidden').value = '';
+                document.getElementById('cpf3DigitosHidden').value = '';
+                document.getElementById('meClienteCpfHidden').value = '';
+                document.getElementById('meEventIdHidden').value = '';
+                clienteSelecionadoME = null;
+            }
         }
         
         function fecharModalBuscaME() {
@@ -1025,21 +1034,31 @@ if ($_POST && !$inscricoes_encerradas) {
                     throw new Error(data.error || 'CPF não confere ou cliente não encontrado');
                 }
                 
-                // CPF validado com sucesso! Preencher campos
+                // CPF validado com sucesso! Preencher campos automaticamente
                 const evento = data.evento;
                 
-                document.getElementById('nomeTitularInput').value = evento.nome_cliente;
-                document.getElementById('cpf3DigitosInput').value = cpf.substring(0, 3);
+                // Preencher campos principais automaticamente
+                document.getElementById('nomeInput').value = evento.nome_cliente;
+                
+                // Tentar buscar email e telefone do evento (se disponível na resposta da API)
+                // Por enquanto, preenchemos apenas o nome, pois a API pode não retornar email/telefone
+                // Se a API retornar, descomente abaixo:
+                // if (evento.email) document.getElementById('emailInput').value = evento.email;
+                // if (evento.telefone || evento.celular) document.getElementById('telefoneInput').value = evento.telefone || evento.celular;
+                
+                // Preencher campos ocultos
+                document.getElementById('nomeTitularHidden').value = evento.nome_cliente;
+                document.getElementById('cpf3DigitosHidden').value = cpf.substring(0, 3);
                 document.getElementById('meClienteCpfHidden').value = cpf;
                 document.getElementById('meEventIdHidden').value = evento.id || '';
                 
                 // Mostrar informações do evento
                 const eventDetails = `
-                    <div style="margin-top: 10px;">
-                        <div><strong>Evento:</strong> ${escapeHtml(evento.nome_evento)}</div>
-                        <div><strong>Data:</strong> ${formatarData(evento.data_evento)}</div>
-                        <div><strong>Tipo:</strong> ${escapeHtml(evento.tipo_evento)}</div>
-                        ${evento.local_evento ? `<div><strong>Local:</strong> ${escapeHtml(evento.local_evento)}</div>` : ''}
+                    <div style="margin-top: 10px; font-size: 14px;">
+                        <div style="margin-bottom: 5px;"><strong>📅 Evento:</strong> ${escapeHtml(evento.nome_evento)}</div>
+                        <div style="margin-bottom: 5px;"><strong>📆 Data:</strong> ${formatarData(evento.data_evento)}</div>
+                        <div style="margin-bottom: 5px;"><strong>🎉 Tipo:</strong> ${escapeHtml(evento.tipo_evento)}</div>
+                        ${evento.local_evento ? `<div><strong>📍 Local:</strong> ${escapeHtml(evento.local_evento)}</div>` : ''}
                     </div>
                 `;
                 
