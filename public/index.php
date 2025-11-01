@@ -176,6 +176,11 @@ require __DIR__ . '/permissoes_boot.php';
 $file = $routes[$page] ?? null;
 $path = $file ? (__DIR__.'/'.$file) : null;
 
+// Debug: log quando rota não encontrada (apenas em desenvolvimento)
+if (!$file && $page && getenv('APP_DEBUG') === '1') {
+  error_log("Rota não encontrada: page='$page', routes disponíveis: " . implode(', ', array_keys($routes)));
+}
+
 if ($path && is_file($path)) {
   require $path;
   exit;
@@ -184,4 +189,7 @@ if ($path && is_file($path)) {
 /* 404 simples */
 http_response_code(404);
 header('Content-Type: text/plain; charset=utf-8');
-echo "404 - Rota não encontrada";
+echo "404 - Rota não encontrada para '".htmlspecialchars($page, ENT_QUOTES, 'UTF-8')."'";
+if (getenv('APP_DEBUG') === '1') {
+  echo "\n\nRotas disponíveis: " . implode(', ', array_keys($routes));
+}
