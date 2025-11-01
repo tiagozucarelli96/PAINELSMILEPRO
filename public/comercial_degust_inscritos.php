@@ -156,17 +156,20 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Erro ao criar pagamento no ASAAS");
         }
         
-        // Atualizar inscrição
-        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET 
-            asaas_payment_id = :payment_id, 
-            pagamento_status = 'aguardando',
-            valor_pago = :valor_pago
-            WHERE id = :id");
-        $stmt->execute([
-            ':payment_id' => $payment_response['id'],
-            ':valor_pago' => $valor_total,
-            ':id' => $inscricao_id
-        ]);
+        // Atualizar inscrição (verificar se colunas existem)
+        $update_fields = ["pagamento_status = 'aguardando'"];
+        $update_params = [':id' => $inscricao_id];
+        
+        if ($has_asaas_payment_id) {
+            $update_fields[] = "asaas_payment_id = :payment_id";
+            $update_fields[] = "valor_pago = :valor_pago";
+            $update_params[':payment_id'] = $payment_response['id'];
+            $update_params[':valor_pago'] = $valor_total;
+        }
+        
+        $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
+        $stmt = $pdo->prepare($update_sql);
+        $stmt->execute($update_params);
         
         // Redirecionar para página de pagamento
         header("Location: comercial_pagamento.php?payment_id={$payment_response['id']}&inscricao_id={$inscricao_id}");
@@ -198,6 +201,20 @@ if ($search) {
     $params[':search'] = "%$search%";
 }
 
+// Verificar se as colunas de pagamento Asaas existem
+$has_asaas_payment_id = false;
+$has_valor_pago = false;
+try {
+    $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                         WHERE table_name = 'comercial_inscricoes' 
+                         AND column_name IN ('asaas_payment_id', 'valor_pago')");
+    $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $has_asaas_payment_id = in_array('asaas_payment_id', $columns);
+    $has_valor_pago = in_array('valor_pago', $columns);
+} catch (PDOException $e) {
+    error_log("Erro ao verificar colunas: " . $e->getMessage());
+}
+
 // Buscar inscrições
 $sql = "SELECT i.*, 
                CASE WHEN i.fechou_contrato = 'sim' THEN 'Sim' 
@@ -206,9 +223,9 @@ $sql = "SELECT i.*,
                CASE WHEN i.pagamento_status = 'pago' THEN 'Pago' 
                     WHEN i.pagamento_status = 'aguardando' THEN 'Aguardando' 
                     WHEN i.pagamento_status = 'expirado' THEN 'Expirado' 
-                    ELSE 'N/A' END as pagamento_text,
-               i.asaas_payment_id,
-               i.valor_pago
+                    ELSE 'N/A' END as pagamento_text" . 
+        ($has_asaas_payment_id ? ", i.asaas_payment_id" : ", NULL::text as asaas_payment_id") . 
+        ($has_valor_pago ? ", i.valor_pago" : ", NULL::numeric as valor_pago") . "
         FROM comercial_inscricoes i
         WHERE " . implode(' AND ', $where) . "
         ORDER BY i.criado_em DESC";
