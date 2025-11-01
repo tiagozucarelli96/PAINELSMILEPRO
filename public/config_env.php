@@ -18,6 +18,8 @@ define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? '0');
 define('ASAAS_API_KEY', $_ENV['ASAAS_API_KEY'] ?? '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjA2OTVjYTRhLTgzNTctNDkzNC1hMmQyLTEyOTNmMWFjY2NjYjo6JGFhY2hfMmRlNDE2ZTktMzk2OS00YTYzLTkyYmYtNzg2NzUzNmY5NTVl');
 define('ASAAS_BASE_URL', $_ENV['ASAAS_BASE_URL'] ?? 'https://api.asaas.com/v3');
 define('WEBHOOK_URL', $_ENV['WEBHOOK_URL'] ?? 'https://seudominio.railway.app/public/asaas_webhook.php');
+// Chave PIX para QR Codes estáticos (chave aleatória do Asaas)
+define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? '');
 
 // Configurações de E-mail SMTP
 define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? '');

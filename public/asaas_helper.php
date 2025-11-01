@@ -401,6 +401,64 @@ class AsaasHelper {
     }
     
     /**
+     * Criar QR Code PIX estático
+     * Documentação: https://docs.asaas.com/docs/qr-code-estatico
+     * 
+     * @param array $data - Dados do QR Code
+     *   - addressKey: Chave PIX (obrigatório)
+     *   - description: Descrição do pagamento
+     *   - value: Valor do pagamento
+     *   - format: Formato do QR Code (opcional, padrão: "ALL")
+     *   - expirationDate: Data de expiração (opcional, formato: "YYYY-MM-DD HH:mm:ss")
+     *   - expirationSeconds: Expiração em segundos (opcional, alternativa a expirationDate)
+     * 
+     * @return array Resposta com id e payload (QR Code em Base64)
+     */
+    public function createStaticQrCode($data) {
+        $endpoint = $this->base_url . '/pix/qrCodes/static';
+        
+        // Validar campos obrigatórios
+        if (empty($data['addressKey'])) {
+            throw new Exception('addressKey é obrigatório para criar QR Code estático');
+        }
+        
+        if (empty($data['value']) || $data['value'] <= 0) {
+            throw new Exception('value deve ser maior que zero');
+        }
+        
+        // Montar payload
+        $payload = [
+            'addressKey' => $data['addressKey'],
+            'description' => $data['description'] ?? '',
+            'value' => (float)$data['value'],
+            'format' => $data['format'] ?? 'ALL' // ALL, BASE64, IMAGE
+        ];
+        
+        // Data de expiração (se informada)
+        if (!empty($data['expirationDate'])) {
+            $payload['expirationDate'] = $data['expirationDate'];
+        } elseif (!empty($data['expirationSeconds'])) {
+            $payload['expirationSeconds'] = (int)$data['expirationSeconds'];
+        }
+        
+        // Fazer requisição
+        $response = $this->makeRequest('POST', $endpoint, $payload);
+        
+        return $response;
+    }
+    
+    /**
+     * Listar cobranças geradas por um QR Code estático
+     * 
+     * @param string $qr_code_id - ID do QR Code estático
+     * @return array Lista de cobranças
+     */
+    public function getPaymentsByStaticQrCode($qr_code_id) {
+        $endpoint = $this->base_url . '/payments?pixQrCodeId=' . urlencode($qr_code_id);
+        return $this->makeRequest('GET', $endpoint);
+    }
+    
+    /**
      * Calcular valor total baseado nas opções
      */
     public function calculateTotal($tipo_festa, $qtd_pessoas, $precos) {

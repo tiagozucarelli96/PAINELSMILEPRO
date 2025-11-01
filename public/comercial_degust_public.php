@@ -251,49 +251,93 @@ if ($_POST && !$inscricoes_encerradas) {
                 }
                 
                 // ============================================
-                // VERSÃO FUNCIONANDO (SEM customerData)
-                // Esta versão funciona perfeitamente - usar apenas campos mínimos
-                // Se nova versão der erro, reverter para esta
+                // QR CODE ESTÁTICO (TESTE - MAIS PRÁTICO)
+                // Exibe QR Code direto na página, cliente paga sem sair
                 // ============================================
                 
-                // Criar Checkout conforme documentação Asaas
-                $checkout_data = [
-                    'billingTypes' => ['PIX'], // Apenas PIX por enquanto
-                    'chargeTypes' => ['DETACHED'], // Pagamento único (à vista)
-                    'callback' => [
-                        'cancelUrl' => $current_url . '&cancelado=1',
-                        'expiredUrl' => $current_url . '&expirado=1',
-                        // IMPORTANTE: Removido placeholder {checkout} - Asaas pode não aceitar
-                        // Usaremos apenas inscricao_id e buscaremos checkout_id no banco
-                        'successUrl' => $base_url . '/comercial_pagamento.php?inscricao_id=' . $inscricao_id
-                    ],
-                    'items' => [
-                        [
-                            'name' => "Degustação: {$degustacao['nome']}",
-                            'description' => $descricao_item,
-                            'quantity' => 1,
-                            'value' => (float)$valor_total  // Float, não string
-                        ]
-                    ],
-                    'minutesToExpire' => 60, // Link válido por 1 hora
-                    'externalReference' => 'inscricao_' . $inscricao_id
-                    // Removido customerData - usar apenas campos mínimos como no teste de R$ 10,00
-                ];
+                // Obter chave PIX do Asaas (deve estar configurada em ASAAS_PIX_ADDRESS_KEY)
+                require_once __DIR__ . '/config_env.php';
+                $pix_address_key = $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? ASAAS_PIX_ADDRESS_KEY ?? '';
                 
-                // ============================================
-                // NOVA VERSÃO COM customerData (TESTE)
-                // Descomentar abaixo para testar pré-preenchimento de dados
-                // Se der erro, voltar para versão acima (sem customerData)
-                // ============================================
-                /*
-                // Dados do cliente para pré-preencher (customerData)
-                // Esta versão tenta pré-preencher dados do cliente no checkout
-                $cpf_cliente = '';
-                if (!empty($_POST['me_cliente_cpf'])) {
-                    $cpf_cliente = preg_replace('/\D/', '', $_POST['me_cliente_cpf']); // Apenas números
+                if (empty($pix_address_key)) {
+                    throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
                 }
                 
-                $checkout_data_com_customer = [
+                // Criar QR Code estático
+                $qr_code_data = [
+                    'addressKey' => $pix_address_key,
+                    'description' => $descricao_item,
+                    'value' => (float)$valor_total,
+                    'format' => 'ALL', // Retorna payload completo + imagem
+                    'expirationSeconds' => 3600 // 1 hora de validade
+                ];
+                
+                $qr_code_response = $asaasHelper->createStaticQrCode($qr_code_data);
+                
+                if ($qr_code_response && isset($qr_code_response['id'])) {
+                    $qr_code_id = $qr_code_response['id'];
+                    $qr_code_payload = $qr_code_response['payload'] ?? ''; // Base64 da imagem
+                    
+                    error_log("✅ QR Code estático criado: $qr_code_id");
+                    
+                    // Verificar/criar colunas necessárias
+                    try {
+                        $check_columns = $pdo->query("
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'comercial_inscricoes' 
+                            AND column_name IN ('asaas_qr_code_id', 'qr_code_image')
+                        ");
+                        $existing_columns = $check_columns->fetchAll(PDO::FETCH_COLUMN);
+                        
+                        if (!in_array('asaas_qr_code_id', $existing_columns)) {
+                            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN asaas_qr_code_id VARCHAR(255) NULL");
+                        }
+                        if (!in_array('qr_code_image', $existing_columns)) {
+                            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN qr_code_image TEXT NULL");
+                        }
+                    } catch (Exception $e) {
+                        error_log("Erro ao verificar/criar colunas: " . $e->getMessage());
+                    }
+                    
+                    // Salvar QR Code na inscrição
+                    $update_fields = [
+                        "pagamento_status = 'aguardando'",
+                        "asaas_qr_code_id = :qr_code_id",
+                        "qr_code_image = :qr_code_image"
+                    ];
+                    $update_params = [
+                        ':id' => $inscricao_id,
+                        ':qr_code_id' => $qr_code_id,
+                        ':qr_code_image' => $qr_code_payload
+                    ];
+                    
+                    $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
+                    $stmt = $pdo->prepare($update_sql);
+                    $stmt->execute($update_params);
+                    
+                    error_log("✅ Inscrição ID $inscricao_id atualizada com QR Code: $qr_code_id");
+                    
+                    // Armazenar dados do QR Code em variáveis para exibir na página
+                    $_SESSION['qr_code_inscricao_id'] = $inscricao_id;
+                    $_SESSION['qr_code_id'] = $qr_code_id;
+                    $_SESSION['qr_code_image'] = $qr_code_payload;
+                    $_SESSION['qr_code_value'] = $valor_total;
+                    
+                    // Redirecionar para mesma página com flag de QR Code
+                    header("Location: " . $current_url . "&qr_code=1&inscricao_id=" . $inscricao_id);
+                    exit;
+                } else {
+                    throw new Exception("Erro ao criar QR Code: resposta inválida do Asaas");
+                }
+                
+                // ============================================
+                // OPÇÃO 2: CHECKOUT (VERSÃO FUNCIONANDO - BACKUP)
+                // Se QR Code der erro, descomentar e comentar opção acima
+                // ============================================
+                /*
+                // Criar Checkout conforme documentação Asaas
+                $checkout_data = [
                     'billingTypes' => ['PIX'],
                     'chargeTypes' => ['DETACHED'],
                     'callback' => [
@@ -310,105 +354,28 @@ if ($_POST && !$inscricoes_encerradas) {
                         ]
                     ],
                     'minutesToExpire' => 60,
-                    'externalReference' => 'inscricao_' . $inscricao_id,
-                    // Descomentar customerData abaixo se quiser testar pré-preenchimento
-                    // 'customerData' => [
-                    //     'name' => $nome,
-                    //     'email' => $email,
-                    //     'phone' => preg_replace('/\D/', '', $telefone),
-                    //     'cpfCnpj' => $cpf_cliente
-                    // ]
+                    'externalReference' => 'inscricao_' . $inscricao_id
                 ];
                 
-                // Para testar, trocar $checkout_data por $checkout_data_com_customer abaixo
-                */
-                
-                // Criar checkout no Asaas
                 $checkout_response = $asaasHelper->createCheckout($checkout_data);
                 
                 if ($checkout_response && isset($checkout_response['id'])) {
                     $checkout_id_asaas = $checkout_response['id'];
                     
-                    // Verificar se colunas existem antes de atualizar
+                    // Salvar checkout_id
                     try {
-                        $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                                   WHERE table_name = 'comercial_inscricoes' 
-                                                   AND column_name IN ('asaas_payment_id', 'asaas_checkout_id', 'valor_pago')");
-                        $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
-                        $has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
-                        $has_asaas_checkout_id = in_array('asaas_checkout_id', $check_columns);
-                        $has_valor_pago = in_array('valor_pago', $check_columns);
-                        
-                        // Se asaas_checkout_id não existe, tentar criar
-                        if (!$has_asaas_checkout_id) {
-                            try {
-                                $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN asaas_checkout_id VARCHAR(255)");
-                                $has_asaas_checkout_id = true;
-                                error_log("Coluna asaas_checkout_id criada automaticamente para inscrição ID: $inscricao_id");
-                            } catch (PDOException $e) {
-                                error_log("Erro ao criar coluna asaas_checkout_id: " . $e->getMessage());
-                            }
-                        }
-                    } catch (PDOException $e) {
-                        error_log("Erro ao verificar colunas: " . $e->getMessage());
-                        $has_asaas_payment_id = false;
-                        $has_asaas_checkout_id = false;
-                        $has_valor_pago = false;
-                    }
+                        $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN IF NOT EXISTS asaas_checkout_id VARCHAR(255) NULL");
+                    } catch (Exception $e) {}
                     
-                    // Atualizar inscrição com checkout_id do Asaas
-                    $update_fields = ["pagamento_status = 'aguardando'"];
-                    $update_params = [':id' => $inscricao_id];
+                    $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'aguardando', asaas_checkout_id = :checkout_id WHERE id = :id")
+                        ->execute([':checkout_id' => $checkout_id_asaas, ':id' => $inscricao_id]);
                     
-                    if ($has_asaas_checkout_id) {
-                        $update_fields[] = "asaas_checkout_id = :checkout_id";
-                        $update_params[':checkout_id'] = $checkout_id_asaas;
-                    } elseif ($has_asaas_payment_id) {
-                        // Fallback: usar payment_id se checkout_id não existir
-                        $update_fields[] = "asaas_payment_id = :payment_id";
-                        $update_params[':payment_id'] = $checkout_id_asaas;
-                    }
-                    
-                    if ($has_valor_pago) {
-                        $update_fields[] = "valor_pago = :valor_pago";
-                        $update_params[':valor_pago'] = $valor_total;
-                    }
-                    
-                    // Log antes de atualizar
-                    error_log("Atualizando inscrição ID $inscricao_id com checkout_id: $checkout_id_asaas");
-                    error_log("Campos a atualizar: " . implode(', ', $update_fields));
-                    
-                    $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
-                    $stmt = $pdo->prepare($update_sql);
-                    $stmt->execute($update_params);
-                    
-                    // Verificar se atualizou
-                    $rows_updated = $stmt->rowCount();
-                    if ($rows_updated > 0) {
-                        error_log("✅ Inscrição ID $inscricao_id atualizada com sucesso! checkout_id: $checkout_id_asaas");
-                    } else {
-                        error_log("⚠️ Nenhuma linha atualizada para inscrição ID $inscricao_id");
-                    }
-                    
-                    // Verificar se realmente foi salvo
-                    $verify_stmt = $pdo->prepare("SELECT asaas_checkout_id, asaas_payment_id FROM comercial_inscricoes WHERE id = :id");
-                    $verify_stmt->execute([':id' => $inscricao_id]);
-                    $verify = $verify_stmt->fetch(PDO::FETCH_ASSOC);
-                    error_log("Verificação pós-update - checkout_id: " . ($verify['asaas_checkout_id'] ?? 'NULL') . ", payment_id: " . ($verify['asaas_payment_id'] ?? 'NULL'));
-                    
-                    // Redirecionar para o Checkout Asaas
                     if (isset($checkout_response['checkoutUrl'])) {
                         header("Location: " . $checkout_response['checkoutUrl']);
-                    exit;
-                } else {
-                        // Fallback: construir URL manualmente
-                        $checkout_url = 'https://asaas.com/checkoutSession/show?id=' . $checkout_response['id'];
-                        header("Location: " . $checkout_url);
                         exit;
                     }
-                } else {
-                    throw new Exception("Erro ao criar checkout no Asaas");
                 }
+                */
                 
             } catch (Exception $e) {
                 $error_message = "Erro ao processar pagamento: " . $e->getMessage();
@@ -652,6 +619,74 @@ if ($_POST && !$inscricoes_encerradas) {
                 ❌ <?= h($error_message) ?>
             </div>
         <?php endif; ?>
+        
+        <?php 
+        // Exibir QR Code PIX se foi gerado
+        $show_qr_code = isset($_GET['qr_code']) && $_GET['qr_code'] == '1';
+        $qr_inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
+        
+        if ($show_qr_code && $qr_inscricao_id > 0) {
+            // Buscar dados do QR Code (da sessão ou do banco)
+            $qr_code_image = $_SESSION['qr_code_image'] ?? '';
+            $qr_code_id = $_SESSION['qr_code_id'] ?? '';
+            $qr_code_value = $_SESSION['qr_code_value'] ?? 0;
+            
+            // Se não estiver na sessão, buscar do banco
+            if (empty($qr_code_image)) {
+                try {
+                    $stmt = $pdo->prepare("SELECT qr_code_image, asaas_qr_code_id, valor_total FROM comercial_inscricoes WHERE id = :id");
+                    $stmt->execute([':id' => $qr_inscricao_id]);
+                    $qr_data = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($qr_data) {
+                        $qr_code_image = $qr_data['qr_code_image'] ?? '';
+                        $qr_code_id = $qr_data['asaas_qr_code_id'] ?? '';
+                        $qr_code_value = $qr_data['valor_total'] ?? 0;
+                    }
+                } catch (Exception $e) {
+                    error_log("Erro ao buscar QR Code: " . $e->getMessage());
+                }
+            }
+            
+            if (!empty($qr_code_image)): ?>
+                <div class="qr-code-container" style="background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <h2 style="color: #1e40af; margin-bottom: 20px;">💰 Pague com PIX</h2>
+                    <p style="color: #6b7280; margin-bottom: 15px; font-size: 16px;">
+                        Escaneie o QR Code abaixo com o app do seu banco para finalizar o pagamento
+                    </p>
+                    
+                    <div style="background: white; padding: 20px; border-radius: 8px; display: inline-block; margin: 20px 0;">
+                        <img src="data:image/png;base64,<?= $qr_code_image ?>" 
+                             alt="QR Code PIX" 
+                             style="max-width: 300px; width: 100%; height: auto;">
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
+                        <p style="margin: 0; font-size: 24px; font-weight: 700; color: #1e40af;">
+                            R$ <?= number_format($qr_code_value, 2, ',', '.') ?>
+                        </p>
+                    </div>
+                    
+                    <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+                        ⏱️ Este QR Code expira em 1 hora<br>
+                        💡 Após o pagamento, sua inscrição será confirmada automaticamente
+                    </p>
+                    
+                    <div style="margin-top: 20px;">
+                        <button onclick="window.location.reload()" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px;">
+                            🔄 Verificar Pagamento
+                        </button>
+                    </div>
+                </div>
+                
+                <script>
+                // Auto-refresh a cada 10 segundos para verificar pagamento
+                setTimeout(function() {
+                    window.location.reload();
+                }, 10000);
+                </script>
+            <?php endif; ?>
+        <?php } ?>
         
         <?php if ($inscricoes_encerradas): ?>
             <div class="alert alert-warning">
