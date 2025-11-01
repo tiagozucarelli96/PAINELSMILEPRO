@@ -55,8 +55,24 @@ if ($checkout_id && $inscricao_id) {
     }
 }
 
-if (!$payment_id || !$inscricao_id) {
-    die('Parâmetros inválidos');
+// Se veio apenas com inscricao_id (do checkout Asaas), já foi processado acima
+// Agora só precisa de payment_id OU inscricao_id para continuar
+if (!$inscricao_id) {
+    die('Parâmetros inválidos - inscricao_id é obrigatório');
+}
+
+// Se não tem payment_id mas tem inscricao_id, buscar payment_id no banco
+if (!$payment_id && $inscricao_id) {
+    try {
+        $stmt = $pdo->prepare("SELECT asaas_payment_id FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        $inscricao_data = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($inscricao_data && !empty($inscricao_data['asaas_payment_id'])) {
+            $payment_id = $inscricao_data['asaas_payment_id'];
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar payment_id: " . $e->getMessage());
+    }
 }
 
 // Buscar dados da inscrição

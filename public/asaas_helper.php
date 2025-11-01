@@ -347,14 +347,21 @@ class AsaasHelper {
         }
         
         // Dados do cliente (opcional - pré-preenche formulário)
+        // IMPORTANTE: Se customerData for informado, cpfCnpj é obrigatório (mesmo que vazio)
         if (!empty($data['customerData'])) {
             $customerData = $data['customerData'];
             $payload['customerData'] = [
                 'name' => $customerData['name'] ?? '',
                 'email' => $customerData['email'] ?? '',
                 'phone' => $customerData['phone'] ?? '',
-                'cpfCnpj' => $customerData['cpfCnpj'] ?? ''
+                'cpfCnpj' => $customerData['cpfCnpj'] ?? '' // Obrigatório quando usando customerData (mesmo que vazio)
             ];
+            
+            // Se cpfCnpj não foi informado e estamos usando customerData, enviar string vazia
+            // Isso evita erro 400 "cpfCnpj deve ser informado"
+            if (!isset($customerData['cpfCnpj'])) {
+                $payload['customerData']['cpfCnpj'] = '';
+            }
             
             // Endereço (opcional)
             if (!empty($customerData['address'])) {

@@ -241,10 +241,18 @@ if ($_POST && !$inscricoes_encerradas) {
                 $current_url = $base_url . $_SERVER['REQUEST_URI'];
                 
                 // Dados do cliente para pré-preencher (customerData)
+                // IMPORTANTE: Conforme documentação Asaas, cpfCnpj é obrigatório quando usando customerData
+                // Pegar CPF se foi informado no formulário (ME Events)
+                $cpf_cliente = '';
+                if (!empty($_POST['me_cliente_cpf'])) {
+                    $cpf_cliente = preg_replace('/\D/', '', $_POST['me_cliente_cpf']); // Apenas números
+                }
+                
                 $customerData = [
                     'name' => $nome,
                     'email' => $email,
                     'phone' => preg_replace('/\D/', '', $telefone), // Apenas números
+                    'cpfCnpj' => $cpf_cliente // Obrigatório quando usando customerData (pode ser vazio)
                 ];
                 
                 // Descrição detalhada do item
@@ -357,8 +365,8 @@ if ($_POST && !$inscricoes_encerradas) {
                     // Redirecionar para o Checkout Asaas
                     if (isset($checkout_response['checkoutUrl'])) {
                         header("Location: " . $checkout_response['checkoutUrl']);
-                        exit;
-                    } else {
+                    exit;
+                } else {
                         // Fallback: construir URL manualmente
                         $checkout_url = 'https://asaas.com/checkoutSession/show?id=' . $checkout_response['id'];
                         header("Location: " . $checkout_url);
