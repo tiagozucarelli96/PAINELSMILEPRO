@@ -928,12 +928,32 @@ ob_start();
         
         // Modal de Edição
         function abrirModalEditar(degustacaoId) {
+            console.log('🔓 Abrindo modal de edição para ID:', degustacaoId);
+            
             const modal = document.getElementById('modalEditarDegustacao');
+            if (!modal) {
+                console.error('❌ Modal modalEditarDegustacao não encontrado!');
+                alert('Erro: Modal não encontrado. Recarregue a página.');
+                return;
+            }
+            
             const form = document.getElementById('formEditarDegustacao');
+            if (!form) {
+                console.error('❌ Formulário formEditarDegustacao não encontrado no modal!');
+                alert('Erro: Formulário não encontrado. Recarregue a página.');
+                return;
+            }
+            
+            console.log('✅ Modal e formulário encontrados');
             
             // Limpar formulário
             form.reset();
-            form.querySelector('[name="id"]').value = degustacaoId;
+            const idInput = form.querySelector('[name="id"]');
+            if (idInput) {
+                idInput.value = degustacaoId;
+            } else {
+                console.error('❌ Campo id não encontrado no formulário!');
+            }
             
             // Mostrar loading
             const loadingDiv = modal.querySelector('.modal-loading');
@@ -1026,12 +1046,30 @@ ob_start();
             }
         }
         
-        // Salvar via AJAX
-        const formEditar = document.getElementById('formEditarDegustacao');
-        if (formEditar) {
+        // CRÍTICO: Adicionar listener de submit dinamicamente quando o modal for aberto
+        // e garantir que funcione mesmo se o DOM ainda não estiver pronto
+        function configurarFormularioEdicao() {
+            const formEditar = document.getElementById('formEditarDegustacao');
+            if (!formEditar) {
+                console.warn('⚠️ Formulário ainda não encontrado, tentando novamente...');
+                // Tentar novamente em breve
+                setTimeout(configurarFormularioEdicao, 100);
+                return;
+            }
+            
+            // Remover listeners antigos se existirem
+            const newForm = formEditar.cloneNode(true);
+            formEditar.parentNode.replaceChild(newForm, formEditar);
+            
+            const formAtual = document.getElementById('formEditarDegustacao');
+            if (!formAtual) {
+                console.error('❌ Erro ao clonar formulário');
+                return;
+            }
+            
             console.log('✅ Formulário de edição encontrado, adicionando listener...');
             
-            formEditar.addEventListener('submit', async function(e) {
+            formAtual.addEventListener('submit', async function(e) {
             e.preventDefault();
             e.stopPropagation();
             
@@ -1142,8 +1180,31 @@ ob_start();
             });
             
             console.log('✅ Listener de submit adicionado ao formulário de edição');
+        }
+        
+        // Configurar quando DOM estiver pronto
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log('✅ DOMContentLoaded - configurando formulário...');
+                configurarFormularioEdicao();
+            });
         } else {
-            console.error('❌ Formulário formEditarDegustacao não encontrado!');
+            // DOM já está pronto
+            console.log('✅ DOM já pronto - configurando formulário...');
+            configurarFormularioEdicao();
+        }
+        
+        // CRÍTICO: Reconfigurar quando o modal for aberto (para garantir que funciona)
+        // Sobrescrever função abrirModalEditar para garantir listener
+        const abrirModalOriginal = window.abrirModalEditar;
+        if (abrirModalOriginal) {
+            window.abrirModalEditar = function(degustacaoId) {
+                abrirModalOriginal(degustacaoId);
+                // Reconfigurar formulário após modal ser aberto
+                setTimeout(() => {
+                    configurarFormularioEdicao();
+                }, 200);
+            };
         }
     </script>
     
