@@ -2268,13 +2268,35 @@ ob_start();
             const data = await response.json();
             
             if (data.success) {
+                // Restaurar botão ANTES de mostrar o modal
+                if (btnAdicionar) {
+                    btnAdicionar.disabled = false;
+                    btnAdicionar.textContent = '➕ Adicionar Pessoa';
+                }
+                
                 // Mostrar modal com QR Code
                 const modal = document.getElementById('cobrancaModal');
                 const modalBody = document.getElementById('cobrancaModalBody');
                 
+                if (!modal || !modalBody) {
+                    console.error('❌ Modal não encontrado!');
+                    alert('❌ Erro: Modal não encontrado. Mas a pessoa foi adicionada com sucesso! Recarregue a página para ver as alterações.');
+                    window.location.reload();
+                    return;
+                }
+                
                 modal.style.display = 'flex';
+                modal.classList.add('active');
+                
                 const qtdAdicionada = data.qtd_adicionada || 1;
                 const valorPorPessoa = data.valor_por_pessoa || 50.00;
+                const payload = data.payload || '';
+                
+                if (!payload) {
+                    console.error('❌ Payload vazio na resposta:', data);
+                    alert('⚠️ Código PIX gerado mas não foi possível exibir. Verifique os logs.');
+                }
+                
                 modalBody.innerHTML = `
                     <div style="text-align: center;">
                         <h3 style="margin: 0 0 1rem 0; color: #10b981;">✅ ${qtdAdicionada == 1 ? 'Pessoa Adicionada' : qtdAdicionada + ' Pessoas Adicionadas'} com Sucesso!</h3>
@@ -2290,12 +2312,12 @@ ob_start();
                         <div style="background: #fff; border: 2px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin: 1rem 0;">
                             <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151;">Código PIX (Copiar e Colar):</label>
                             <textarea id="pixCodeAdicional" readonly 
-                                      style="width: 100%; min-height: 80px; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 0.875rem; resize: vertical;"
-                                      onclick="this.select()">${data.payload}</textarea>
+                                      style="width: 100%; min-height: 80px; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 0.875rem; resize: vertical; word-break: break-all;"
+                                      onclick="this.select()">${payload}</textarea>
                         </div>
                         <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
                             <button type="button" 
-                                    onclick="copiarCodigoPix('${data.payload.replace(/'/g, "\\'")}')" 
+                                    onclick="copiarCodigoPix('${payload.replace(/'/g, "\\'").replace(/"/g, '&quot;')}')" 
                                     style="flex: 1; padding: 0.75rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
                                 📋 Copiar Código PIX
                             </button>
@@ -2307,6 +2329,8 @@ ob_start();
                         </div>
                     </div>
                 `;
+                
+                console.log('✅ Modal exibido com sucesso. Payload tamanho:', payload.length);
             } else {
                 alert('❌ Erro: ' + (data.message || data.error || 'Erro desconhecido'));
                 if (btnAdicionar) {
