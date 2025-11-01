@@ -240,21 +240,6 @@ if ($_POST && !$inscricoes_encerradas) {
                 $base_url = "https://{$_SERVER['HTTP_HOST']}";
                 $current_url = $base_url . $_SERVER['REQUEST_URI'];
                 
-                // Dados do cliente para pré-preencher (customerData)
-                // IMPORTANTE: Conforme documentação Asaas, cpfCnpj é obrigatório quando usando customerData
-                // Pegar CPF se foi informado no formulário (ME Events)
-                $cpf_cliente = '';
-                if (!empty($_POST['me_cliente_cpf'])) {
-                    $cpf_cliente = preg_replace('/\D/', '', $_POST['me_cliente_cpf']); // Apenas números
-                }
-                
-                $customerData = [
-                    'name' => $nome,
-                    'email' => $email,
-                    'phone' => preg_replace('/\D/', '', $telefone), // Apenas números
-                    'cpfCnpj' => $cpf_cliente // Obrigatório quando usando customerData (pode ser vazio)
-                ];
-                
                 // Descrição detalhada do item
                 $incluidos = $tipo_festa === 'casamento' ? $degustacao['incluidos_casamento'] : $degustacao['incluidos_15anos'];
                 $extras = max(0, $qtd_pessoas - $incluidos);
@@ -281,12 +266,12 @@ if ($_POST && !$inscricoes_encerradas) {
                             'name' => "Degustação: {$degustacao['nome']}",
                             'description' => $descricao_item,
                             'quantity' => 1,
-                            'value' => $valor_total
+                            'value' => (float)$valor_total  // Float, não string
                         ]
                     ],
                     'minutesToExpire' => 60, // Link válido por 1 hora
-                    'customerData' => $customerData,
                     'externalReference' => 'inscricao_' . $inscricao_id
+                    // Removido customerData - usar apenas campos mínimos como no teste de R$ 10,00
                 ];
                 
                 // Criar checkout no Asaas
