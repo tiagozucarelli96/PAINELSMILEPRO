@@ -76,16 +76,36 @@ require_once __DIR__ . '/core/helpers.php';
 // ============================================
 
 // Obter dados do webhook
+// IMPORTANTE: Asaas pode enviar como form data (application/x-www-form-urlencoded)
+// ou como JSON bruto (application/json)
+$content_type = $_SERVER['CONTENT_TYPE'] ?? '';
 $input = file_get_contents('php://input');
 
 // Log do INPUT BRUTO ANTES de tentar decodificar (para debug)
 logWebhook([
     'method' => $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
-    'content_type' => $_SERVER['CONTENT_TYPE'] ?? 'UNKNOWN',
+    'content_type' => $content_type,
     'content_length' => strlen($input),
     'raw_input_preview' => substr($input, 0, 500), // Primeiros 500 caracteres
-    'has_input' => !empty($input)
+    'has_input' => !empty($input),
+    'has_post_data' => !empty($_POST)
 ]);
+
+// Se for form data (application/x-www-form-urlencoded), extrair o parâmetro 'data'
+if (strpos($content_type, 'application/x-www-form-urlencoded') !== false) {
+    // Asaas envia como form data com parâmetro 'data'
+    if (isset($_POST['data'])) {
+        $input = $_POST['data'];
+        logWebhook(['extracted_from_form' => true, 'extracted_length' => strlen($input)]);
+    } elseif (!empty($input) && strpos($input, 'data=') === 0) {
+        // Se veio no raw input como 'data=...', extrair
+        parse_str($input, $parsed);
+        if (isset($parsed['data'])) {
+            $input = $parsed['data'];
+            logWebhook(['extracted_from_parsed' => true, 'extracted_length' => strlen($input)]);
+        }
+    }
+}
 
 // Tentar decodificar JSON
 $webhook_data = json_decode($input, true);
