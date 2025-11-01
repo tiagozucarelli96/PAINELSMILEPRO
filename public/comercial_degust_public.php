@@ -1173,8 +1173,26 @@ if ($_POST && !$inscricoes_encerradas) {
                 
                 // Preencher campos principais automaticamente
                 document.getElementById('nomeInput').value = evento.nome_cliente || '';
-                if (evento.email) document.getElementById('emailInput').value = evento.email;
-                if (evento.telefone || evento.celular) document.getElementById('telefoneInput').value = evento.telefone || evento.celular;
+                
+                // Preencher email (buscar em múltiplos campos possíveis)
+                const emailVal = evento.email || evento.emailCliente || evento.cliente_email || evento.contato_email || '';
+                if (emailVal) {
+                    document.getElementById('emailInput').value = emailVal;
+                    console.log('Email preenchido:', emailVal);
+                } else {
+                    console.warn('Email não encontrado na resposta da API ME Eventos');
+                }
+                
+                // Preencher telefone/celular (buscar em múltiplos campos possíveis)
+                const telefoneVal = evento.telefone || evento.celular || evento.telefoneCliente || 
+                                   evento.celularCliente || evento.cliente_telefone || evento.cliente_celular || 
+                                   evento.contato_telefone || evento.telefone_contato || '';
+                if (telefoneVal) {
+                    document.getElementById('telefoneInput').value = telefoneVal;
+                    console.log('Telefone preenchido:', telefoneVal);
+                } else {
+                    console.warn('Telefone não encontrado na resposta da API ME Eventos');
+                }
                 
                 // Preencher campos ocultos
                 document.getElementById('nomeTitularHidden').value = evento.nome_cliente || '';
