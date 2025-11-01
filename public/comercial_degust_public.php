@@ -240,14 +240,22 @@ if ($_POST && !$inscricoes_encerradas) {
                 $base_url = "https://{$_SERVER['HTTP_HOST']}";
                 $current_url = $base_url . $_SERVER['REQUEST_URI'];
                 
-                // Descrição detalhada do item
+                // Descrição detalhada do item (máximo 37 caracteres conforme API Asaas)
                 $incluidos = $tipo_festa === 'casamento' ? $degustacao['incluidos_casamento'] : $degustacao['incluidos_15anos'];
                 $extras = max(0, $qtd_pessoas - $incluidos);
-                $descricao_item = "Degustação {$degustacao['nome']} - {$tipo_festa}";
-                if ($extras > 0) {
-                    $descricao_item .= " ({$incluidos} pessoas incluídas + {$extras} extras)";
+                
+                // Montar descrição curta (API Asaas limita a 37 caracteres)
+                $descricao_base = "Degustação: {$degustacao['nome']}";
+                // Se a descrição for muito longa, encurtar
+                if (mb_strlen($descricao_base) > 37) {
+                    $descricao_item = mb_substr($descricao_base, 0, 34) . '...';
                 } else {
-                    $descricao_item .= " ({$incluidos} pessoas incluídas)";
+                    $descricao_item = $descricao_base;
+                    // Tentar adicionar tipo de festa se couber
+                    $com_tipo = "{$descricao_item} - {$tipo_festa}";
+                    if (mb_strlen($com_tipo) <= 37) {
+                        $descricao_item = $com_tipo;
+                    }
                 }
                 
                 // ============================================
