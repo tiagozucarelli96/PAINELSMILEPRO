@@ -52,20 +52,23 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 9. Incluir arquivos necessários (mas NUNCA incluir index.php ou router)
+// 9. Definir função de log ANTES de incluir arquivos (para garantir que sempre funcione)
+function logWebhook($data) {
+    $log_file = __DIR__ . '/logs/asaas_webhook.log';
+    if (!is_dir(dirname($log_file))) {
+        @mkdir(dirname($log_file), 0755, true);
+    }
+    $log = date('Y-m-d H:i:s') . " - " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
+    @file_put_contents($log_file, $log, FILE_APPEND | LOCK_EX);
+}
+
+// Log imediato de que o webhook foi chamado
+logWebhook(['webhook_called' => true, 'request_uri' => $_SERVER['REQUEST_URI'] ?? 'UNKNOWN', 'method' => $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN']);
+
+// 10. Incluir arquivos necessários (mas NUNCA incluir index.php ou router)
 // NUNCA incluir arquivos que façam verificação de autenticação
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
-
-// Log do webhook para debug
-function logWebhook($data) {
-    $log = date('Y-m-d H:i:s') . " - " . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
-    $log_file = __DIR__ . '/logs/asaas_webhook.log';
-    if (!is_dir(dirname($log_file))) {
-        mkdir(dirname($log_file), 0755, true);
-    }
-    file_put_contents($log_file, $log, FILE_APPEND | LOCK_EX);
-}
 
 // ============================================
 // HEADERS JÁ FORAM DEFINIDOS NO INÍCIO DO ARQUIVO
