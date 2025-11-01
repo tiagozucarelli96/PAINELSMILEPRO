@@ -450,12 +450,13 @@ try {
                 ");
                 $pending_cols = $check_pending->fetchAll(PDO::FETCH_COLUMN);
                 
-                if (in_array('qr_code_adicional_id', $pending_cols)) {
+                if (in_array('qr_code_adicional_id', $pending_cols) && $pix_qr_code_id) {
                     // Verificar se este QR Code é um adicional pendente
                     $stmt_check = $pdo->prepare("
                         SELECT qtd_pessoas_pendente, valor_adicional_pendente, qr_code_adicional_id 
                         FROM comercial_inscricoes 
                         WHERE id = :id AND qr_code_adicional_id = :qr_code_id
+                        AND qtd_pessoas_pendente IS NOT NULL
                     ");
                     $stmt_check->execute([
                         ':id' => $inscricao['id'],
@@ -463,7 +464,7 @@ try {
                     ]);
                     $pendente_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
                     
-                    if ($pendente_data && $pendente_data['qr_code_adicional_id'] === $pix_qr_code_id) {
+                    if ($pendente_data) {
                         // Este é um pagamento de adicional pendente - aplicar os valores
                         $qtd_pendente = (int)($pendente_data['qtd_pessoas_pendente'] ?? 0);
                         $valor_pendente = (float)($pendente_data['valor_adicional_pendente'] ?? 0);
