@@ -50,7 +50,7 @@ if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
     header('Location: index.php?page=dashboard');
   } else {
-    header('Location: login.php');
+    header('Location: index.php?page=login');
   }
   exit;
 }
