@@ -157,6 +157,7 @@ $routes = [
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
   'analisar_pagamentos_qrcode' => 'analisar_pagamentos_qrcode.php',
   'verificar_pagamento_1real' => 'verificar_pagamento_1real.php',
+  'processar_pagamento_manual' => 'processar_pagamento_manual.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'login' => 'login.php', // Rota de login
   
