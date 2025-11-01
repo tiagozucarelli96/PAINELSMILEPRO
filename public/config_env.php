@@ -16,7 +16,7 @@ define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? '0');
 
 // Configurações ASAAS
 define('ASAAS_API_KEY', $_ENV['ASAAS_API_KEY'] ?? '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjM1NjNiMzIwLTYxNDktNDkwNC1iMGMzLWFkZDA0ZTUxOTE4Yjo6JGFhY2hfNWMxN2U5OGQtNTJmMy00ODUwLWI1ZWItZWM5YzM5N2QzOGMw');
-define('ASAAS_BASE_URL', $_ENV['ASAAS_BASE_URL'] ?? 'https://www.asaas.com/api/v3');
+define('ASAAS_BASE_URL', $_ENV['ASAAS_BASE_URL'] ?? 'https://api.asaas.com/v3');
 define('WEBHOOK_URL', $_ENV['WEBHOOK_URL'] ?? 'https://seudominio.railway.app/public/asaas_webhook.php');
 
 // Configurações de E-mail SMTP
