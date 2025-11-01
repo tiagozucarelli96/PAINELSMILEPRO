@@ -915,7 +915,7 @@ if ($_POST && !$inscricoes_encerradas) {
                     </div>
                     
                     <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button id="btnVerificarPagamento" onclick="verificarPagamento(true)" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
+                        <button id="btnVerificarPagamento" onclick="verificarPagamento()" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
                             🔄 Verificar Pagamento
                         </button>
                     </div>
@@ -924,20 +924,8 @@ if ($_POST && !$inscricoes_encerradas) {
                 <script>
                 let intervaloVerificacao = null;
                 
-                // Verificar status do pagamento automaticamente (mesma lógica da página de inscritos)
-                function verificarPagamento(mostrarLoading = false) {
-                    const statusContainer = document.getElementById('statusPagamentoContainer');
-                    const statusTexto = document.getElementById('statusPagamentoTexto');
-                    const btnVerificar = document.getElementById('btnVerificarPagamento');
-                    
-                    if (mostrarLoading) {
-                        statusContainer.style.display = 'block';
-                        statusTexto.innerHTML = '⏳ Verificando pagamento...';
-                        statusTexto.style.color = '#6b7280';
-                        btnVerificar.disabled = true;
-                        btnVerificar.style.opacity = '0.6';
-                    }
-                    
+                // Verificação SILENCIOSA em background (sem mostrar erros ou tocar no botão)
+                function verificarPagamentoSilencioso() {
                     const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
                     const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
                     // Adicionar timestamp para evitar cache do navegador
@@ -955,23 +943,80 @@ if ($_POST && !$inscricoes_encerradas) {
                         cache: 'no-store' // Forçar sem cache
                     })
                     .then(response => {
-                        // Verificar se a resposta é JSON válida
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
                         return response.json();
                     })
                     .then(data => {
-                        console.log('✅ Resposta da verificação:', data); // Debug
-                        
-                        if (mostrarLoading) {
-                            btnVerificar.disabled = false;
-                            btnVerificar.style.opacity = '1';
+                        // Se pagamento confirmado, mostrar confirmação e recarregar
+                        if (data.pago === true || data.status === 'pago') {
+                            const statusContainer = document.getElementById('statusPagamentoContainer');
+                            const statusTexto = document.getElementById('statusPagamentoTexto');
+                            
+                            // Parar verificação automática
+                            if (intervaloVerificacao) {
+                                clearInterval(intervaloVerificacao);
+                                intervaloVerificacao = null;
+                            }
+                            
+                            // Mostrar confirmação
+                            statusContainer.style.display = 'block';
+                            statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
+                            statusTexto.style.color = '#059669';
+                            
+                            // Recarregar página após 2 segundos para mostrar confirmação completa
+                            setTimeout(() => {
+                                window.location.href = baseUrl + '&qr_code=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                            }, 2000);
                         }
+                        // Se não estiver pago, não fazer nada (verificação silenciosa)
+                    })
+                    .catch(error => {
+                        // Erro silencioso - apenas logar no console, não mostrar ao usuário
+                        console.log('🔍 Verificação automática (sem erros visíveis):', error.message);
+                        // Não fazer nada visualmente para não confundir o cliente
+                    });
+                }
+                
+                // Verificação MANUAL quando o usuário clica no botão (com feedback visual)
+                function verificarPagamento() {
+                    const statusContainer = document.getElementById('statusPagamentoContainer');
+                    const statusTexto = document.getElementById('statusPagamentoTexto');
+                    const btnVerificar = document.getElementById('btnVerificarPagamento');
+                    
+                    // Mostrar loading
+                    statusContainer.style.display = 'block';
+                    statusTexto.innerHTML = '⏳ Verificando pagamento...';
+                    statusTexto.style.color = '#6b7280';
+                    btnVerificar.disabled = true;
+                    btnVerificar.style.opacity = '0.6';
+                    
+                    const url = '<?= $_SERVER['REQUEST_URI'] ?? '' ?>';
+                    const baseUrl = url.split('?')[0] + '?t=<?= urlencode($token) ?>';
+                    const timestamp = new Date().getTime();
+                    const verificarUrl = baseUrl + '&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>&_t=' + timestamp;
+                    
+                    fetch(verificarUrl, {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        },
+                        cache: 'no-store'
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        btnVerificar.disabled = false;
+                        btnVerificar.style.opacity = '1';
                         
-                        statusContainer.style.display = 'block';
-                        
-                        // Verificar se o pagamento foi confirmado
                         if (data.pago === true || data.status === 'pago') {
                             // Pagamento confirmado!
                             statusTexto.innerHTML = `✅ <strong>Pagamento Confirmado!</strong><br>R$ ${parseFloat(data.valor_pago || 0).toFixed(2).replace('.', ',')}`;
@@ -983,7 +1028,7 @@ if ($_POST && !$inscricoes_encerradas) {
                                 intervaloVerificacao = null;
                             }
                             
-                            // Recarregar página após 2 segundos para mostrar confirmação completa
+                            // Recarregar página após 2 segundos
                             setTimeout(() => {
                                 window.location.href = baseUrl + '&qr_code=1&inscricao_id=<?= $qr_inscricao_id ?>';
                             }, 2000);
@@ -995,29 +1040,18 @@ if ($_POST && !$inscricoes_encerradas) {
                         }
                     })
                     .catch(error => {
-                        console.error('❌ Erro ao verificar pagamento:', error);
-                        console.error('URL tentada:', verificarUrl);
-                        if (mostrarLoading) {
-                            btnVerificar.disabled = false;
-                            btnVerificar.style.opacity = '1';
-                        }
-                        statusContainer.style.display = 'block';
+                        btnVerificar.disabled = false;
+                        btnVerificar.style.opacity = '1';
                         statusTexto.innerHTML = '❌ Erro ao verificar. Tente novamente.';
                         statusTexto.style.color = '#dc2626';
-                        
-                        // Em caso de erro, tentar recarregar página após 5 segundos para forçar atualização
-                        setTimeout(() => {
-                            console.log('🔄 Recarregando página após erro...');
-                            window.location.reload(true); // force reload sem cache
-                        }, 5000);
                     });
                 }
                 
-                // Auto-refresh a cada 10 segundos para verificar pagamento automaticamente
-                intervaloVerificacao = setInterval(() => verificarPagamento(false), 10000);
+                // Verificação automática SILENCIOSA a cada 10 segundos (em background, sem tocar no botão)
+                intervaloVerificacao = setInterval(() => verificarPagamentoSilencioso(), 10000);
                 
-                // Verificar imediatamente também (sem mostrar loading na primeira vez)
-                setTimeout(() => verificarPagamento(false), 2000);
+                // Verificar imediatamente também (silenciosamente)
+                setTimeout(() => verificarPagamentoSilencioso(), 2000);
                 </script>
                 
                 <?php
