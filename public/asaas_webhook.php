@@ -28,13 +28,10 @@ ini_set('session.auto_start', '0');
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
-// 6. Definir headers corretos IMEDIATAMENTE (antes de qualquer include)
+// 6. Definir HTTP 200 IMEDIATAMENTE (antes de qualquer include)
+// CRÍTICO: Asaas só precisa do código HTTP 200, nada mais
+// NÃO definir headers, NÃO definir Content-Type, APENAS o código HTTP
 http_response_code(200);
-header('Content-Type: application/json', true);
-header('Cache-Control: no-cache, no-store, must-revalidate', true);
-header('X-Content-Type-Options: nosniff', true);
-header('Access-Control-Allow-Origin: *', true);
-header('Access-Control-Allow-Methods: POST', true);
 
 // 7. Verificar se está sendo acessado via router (logar mas NÃO recusar)
 // IMPORTANTE: Asaas exige HTTP 200, então mesmo se acessado via router, retornar 200
