@@ -1,6 +1,18 @@
 <?php
 // asaas_webhook.php — Webhook para receber notificações do ASAAS (Checkout e Pagamentos)
 // Documentação: https://docs.asaas.com/docs/eventos-para-checkout
+
+// CRÍTICO: Este arquivo deve ser acessado DIRETAMENTE, não via index.php
+// Garantir que não há sessão ou autenticação necessária
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close(); // Fechar sessão se estiver aberta
+}
+
+// Desabilitar output buffering que pode causar problemas
+if (ob_get_level()) {
+    ob_end_clean();
+}
+
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 
@@ -15,21 +27,28 @@ function logWebhook($data) {
 }
 
 // IMPORTANTE: Webhook deve responder sem redirecionamentos
-// Desabilitar qualquer redirect automático
-if (function_exists('header_remove')) {
-    header_remove('Location');
-}
+// Limpar TODOS os headers que podem causar redirect
+header_remove('Location');
+header_remove('Refresh');
+header_remove('X-Redirect');
+
+// Desabilitar qualquer auto-redirect
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 
 // Verificar se é POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    header('Content-Type: application/json');
+    header('Content-Type: application/json', true);
+    header('Cache-Control: no-cache, no-store, must-revalidate', true);
     echo json_encode(['status' => 'error', 'message' => 'Method not allowed']);
     exit;
 }
 
-// Garantir que sempre retorna JSON
-header('Content-Type: application/json');
+// Garantir que sempre retorna JSON - SEM REDIRECTS
+header('Content-Type: application/json', true);
+header('Cache-Control: no-cache, no-store, must-revalidate', true);
+header('X-Content-Type-Options: nosniff', true);
 
 // Obter dados do webhook
 $input = file_get_contents('php://input');
