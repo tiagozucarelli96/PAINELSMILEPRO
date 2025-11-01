@@ -734,80 +734,80 @@ ob_start();
 
 <!-- Modal de Comparecimento -->
 <div class="modal" id="comparecimentoModal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Marcar Comparecimento</h3>
-                <button class="close-btn" onclick="closeComparecimentoModal()">&times;</button>
-            </div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Marcar Comparecimento</h3>
+            <button class="close-btn" onclick="closeComparecimentoModal()">&times;</button>
+        </div>
+        
+        <form method="POST">
+            <input type="hidden" name="action" value="marcar_comparecimento">
+            <input type="hidden" name="inscricao_id" id="comparecimentoInscricaoId">
             
-            <form method="POST">
-                <input type="hidden" name="action" value="marcar_comparecimento">
-                <input type="hidden" name="inscricao_id" id="comparecimentoInscricaoId">
-                
-                <div class="form-group">
-                    <div class="form-radio-group">
-                        <div class="form-radio">
-                            <input type="radio" name="compareceu" value="1" id="compareceu_sim">
-                            <label for="compareceu_sim">Compareceu</label>
-                        </div>
-                        <div class="form-radio">
-                            <input type="radio" name="compareceu" value="0" id="compareceu_nao">
-                            <label for="compareceu_nao">Não compareceu</label>
-                        </div>
+            <div class="form-group">
+                <div class="form-radio-group">
+                    <div class="form-radio">
+                        <input type="radio" name="compareceu" value="1" id="compareceu_sim">
+                        <label for="compareceu_sim">Compareceu</label>
+                    </div>
+                    <div class="form-radio">
+                        <input type="radio" name="compareceu" value="0" id="compareceu_nao">
+                        <label for="compareceu_nao">Não compareceu</label>
                     </div>
                 </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn-cancel" onclick="closeComparecimentoModal()">Cancelar</button>
-                    <button type="submit" class="btn-save">Salvar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Modal de Contrato -->
-    <div class="modal" id="contratoModal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Status do Contrato</h3>
-                <button class="close-btn" onclick="closeContratoModal()">&times;</button>
             </div>
             
-            <form method="POST">
-                <input type="hidden" name="action" value="marcar_fechou_contrato">
-                <input type="hidden" name="inscricao_id" id="contratoInscricaoId">
-                
-                <div class="form-group">
-                    <label class="form-label">Fechou contrato?</label>
-                    <div class="form-radio-group">
-                        <div class="form-radio">
-                            <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim">
-                            <label for="fechou_sim">Sim</label>
-                        </div>
-                        <div class="form-radio">
-                            <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao">
-                            <label for="fechou_nao">Não</label>
-                        </div>
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" onclick="closeComparecimentoModal()">Cancelar</button>
+                <button type="submit" class="btn-save">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal de Contrato -->
+<div class="modal" id="contratoModal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">Status do Contrato</h3>
+            <button class="close-btn" onclick="closeContratoModal()">&times;</button>
+        </div>
+        
+        <form method="POST">
+            <input type="hidden" name="action" value="marcar_fechou_contrato">
+            <input type="hidden" name="inscricao_id" id="contratoInscricaoId">
+            
+            <div class="form-group">
+                <label class="form-label">Fechou contrato?</label>
+                <div class="form-radio-group">
+                    <div class="form-radio">
+                        <input type="radio" name="fechou_contrato" value="sim" id="fechou_sim">
+                        <label for="fechou_sim">Sim</label>
+                    </div>
+                    <div class="form-radio">
+                        <input type="radio" name="fechou_contrato" value="nao" id="fechou_nao">
+                        <label for="fechou_nao">Não</label>
                     </div>
                 </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Nome do titular do contrato</label>
-                    <input type="text" name="nome_titular_contrato" class="form-input" id="nomeTitular">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">3 primeiros dígitos do CPF</label>
-                    <input type="text" name="cpf_3_digitos" class="form-input" maxlength="3" pattern="[0-9]{3}">
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn-cancel" onclick="closeContratoModal()">Cancelar</button>
-                    <button type="submit" class="btn-save">Salvar</button>
-                </div>
-            </form>
-        </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Nome do titular do contrato</label>
+                <input type="text" name="nome_titular_contrato" class="form-input" id="nomeTitular">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">3 primeiros dígitos do CPF</label>
+                <input type="text" name="cpf_3_digitos" class="form-input" maxlength="3" pattern="[0-9]{3}">
+            </div>
+            
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" onclick="closeContratoModal()">Cancelar</button>
+                <button type="submit" class="btn-save">Salvar</button>
+            </div>
+        </form>
     </div>
+</div>
 
 <script>
         function searchInscritos(query = '') {
