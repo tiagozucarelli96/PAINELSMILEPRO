@@ -77,6 +77,7 @@ $routes = [
   // Comercial
   'comercial_degustacoes' => 'comercial_degustacoes.php',
   'comercial_inscritos' => 'comercial_degust_inscritos.php',
+  'fix_token_publico_degustacoes' => 'fix_token_publico_degustacoes.php',
   'comercial_inscritos_todos' => 'comercial_degust_inscritos.php',
   'comercial_degust_inscritos' => 'comercial_degust_inscritos.php',
   'comercial_degust_inscricoes' => 'comercial_degust_inscricoes.php',
