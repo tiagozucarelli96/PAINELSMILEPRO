@@ -1,14 +1,15 @@
 <?php
 // analisar_pagamentos_qrcode.php — Análise de pagamentos via QR Code estático
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/helpers.php';
 
-// Verificar autenticação
-if (!isset($_SESSION['user_id'])) {
+// Verificar autenticação - usar padrão do sistema (logado)
+if (empty($_SESSION['logado']) || ($_SESSION['logado'] ?? 0) != 1) {
     header('Location: index.php?page=login');
     exit;
 }
+
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
 
 // Verificar se coluna asaas_qr_code_id existe
 try {

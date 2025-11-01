@@ -2,6 +2,7 @@
 // verificar_webhook_qrcode.php — Script para verificar se inscrição foi atualizada via QR Code
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
+// Verificar autenticação - usar padrão do sistema (logado)
 // Verificar se está sendo acessado diretamente (não via index.php)
 $direct_access = !isset($_GET['page']);
 
@@ -10,8 +11,8 @@ if ($direct_access) {
     require_once __DIR__ . '/conexao.php';
     require_once __DIR__ . '/core/helpers.php';
     
-    // Verificar autenticação apenas se não for acesso público
-    if (!isset($_SESSION['user_id']) && !isset($_SESSION['logado'])) {
+    // Verificar autenticação
+    if (empty($_SESSION['logado']) || ($_SESSION['logado'] ?? 0) != 1) {
         // Tentar carregar via index.php para autenticação
         header('Location: index.php?page=verificar_webhook_qrcode' . (isset($_GET['pix_qr_code_id']) ? '&pix_qr_code_id=' . urlencode($_GET['pix_qr_code_id']) : ''));
         exit;
@@ -22,7 +23,7 @@ if ($direct_access) {
     require_once __DIR__ . '/core/helpers.php';
     
     // Verificar autenticação
-    if (!isset($_SESSION['user_id'])) {
+    if (empty($_SESSION['logado']) || ($_SESSION['logado'] ?? 0) != 1) {
         header('Location: index.php?page=login');
         exit;
     }
