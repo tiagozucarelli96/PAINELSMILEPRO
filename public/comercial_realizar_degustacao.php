@@ -427,7 +427,7 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação -->
     <div class="selecao-container">
-        <form method="GET" action="" id="formDegustacao">
+        <form method="GET" action="" id="formDegustacao" name="formDegustacao">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             
             <div class="form-group">
