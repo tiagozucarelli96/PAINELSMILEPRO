@@ -1453,17 +1453,42 @@ ob_start();
             
             // Verificar se a resposta é JSON válido
             let data;
-            const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                data = await response.json();
+            const contentType = response.headers.get('content-type') || '';
+            
+            // Sempre ler como texto primeiro para detectar HTML
+            const textResponse = await response.text();
+            
+            if (contentType.includes('application/json')) {
+                try {
+                    console.log('Resposta bruta do servidor (primeiros 500 chars):', textResponse.substring(0, 500));
+                    data = JSON.parse(textResponse);
+                } catch (parseError) {
+                    console.error('❌ Erro ao fazer parse do JSON:', parseError);
+                    console.error('Resposta completa (primeiros 1000 chars):', textResponse.substring(0, 1000));
+                    
+                    // Detectar HTML
+                    const trimmed = textResponse.trim();
+                    if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+                        throw new Error('Servidor retornou HTML em vez de JSON. Isso geralmente indica um erro PHP ou redirecionamento para página de login. Verifique os logs do servidor.');
+                    }
+                    
+                    throw new Error('Resposta do servidor não é JSON válido. Erro de parse: ' + parseError.message);
+                }
             } else {
-                const textResponse = await response.text();
-                console.error('Resposta não é JSON:', textResponse);
-                throw new Error('Resposta do servidor inválida. Não é JSON. Status: ' + response.status);
+                console.error('❌ Resposta não é JSON. Content-Type:', contentType);
+                console.error('Resposta completa (primeiros 1000 chars):', textResponse.substring(0, 1000));
+                
+                // Detectar HTML
+                const trimmed = textResponse.trim();
+                if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+                    throw new Error('Servidor retornou HTML em vez de JSON. Isso geralmente indica um erro PHP ou redirecionamento para página de login. Verifique os logs do servidor.');
+                }
+                
+                throw new Error('Resposta do servidor inválida. Esperado JSON, recebido: ' + contentType + ' (Status: ' + response.status + ')');
             }
             
             // Log detalhado para debug
-            console.log('Resposta do servidor:', data);
+            console.log('✅ Resposta do servidor (parseada):', data);
             
             if (data.success && data.payload) {
                 // Buscar dados completos da inscrição para mostrar no modal
