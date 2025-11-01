@@ -414,6 +414,31 @@ includeSidebar('Comercial');
         </form>
     </div>
     
+    <!-- Debug Info (temporário para identificar problema) -->
+    <?php if (isset($_GET['degustacao_id'])): ?>
+        <div style="background: #fef3c7; padding: 1rem; margin: 1rem 0; border-radius: 8px; font-size: 0.875rem; border-left: 4px solid #f59e0b;">
+            <strong>🔍 Debug:</strong><br>
+            Degustação ID na URL: <code><?= htmlspecialchars($_GET['degustacao_id'] ?? 'não definido') ?></code><br>
+            Degustação encontrada: <?= $degustacao_selecionada ? '✅ SIM' : '❌ NÃO' ?><br>
+            Mostrar relatório: <?= $mostrar_relatorio ? '✅ SIM' : '❌ NÃO' ?><br>
+            Total inscritos: <?= $total_inscritos ?><br>
+            Total pessoas: <?= $total_pessoas ?><br>
+            Total mesas: <?= $total_mesas ?><br>
+            <?php if ($degustacao_selecionada): ?>
+                <br><strong>Dados da degustação:</strong><br>
+                Nome: <?= h($degustacao_selecionada['nome']) ?><br>
+                Data: <?= $degustacao_selecionada['data'] ?><br>
+                Hora: <?= $degustacao_selecionada['hora_inicio'] ?><br>
+            <?php endif; ?>
+            <?php if (!empty($inscritos)): ?>
+                <br><strong>Primeiros 3 inscritos:</strong><br>
+                <?php foreach (array_slice($inscritos, 0, 3) as $i): ?>
+                    - <?= h($i['nome']) ?> (<?= $i['qtd_pessoas'] ?> pessoas)<br>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+    
     <!-- Relatório -->
     <?php if ($mostrar_relatorio && $degustacao_selecionada): ?>
         <div class="relatorio-container">
