@@ -96,13 +96,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         }
         
         // Construir data_evento combinando data + hora_inicio (para coluna data_evento TIMESTAMP)
+        // IMPORTANTE: Sempre construir no PHP para evitar ambiguidade de tipos no PostgreSQL
         $data_evento = null;
         if ($data && $hora_inicio) {
             try {
-                $data_evento = date('Y-m-d H:i:s', strtotime($data . ' ' . $hora_inicio));
+                // Combinar data (YYYY-MM-DD) + hora_inicio (HH:MM) em TIMESTAMP
+                $data_evento = $data . ' ' . $hora_inicio . ':00'; // Adicionar segundos
             } catch (Exception $e) {
                 error_log("Erro ao construir data_evento: " . $e->getMessage());
+                // Fallback: usar data com hora 00:00:00
+                $data_evento = $data . ' 00:00:00';
             }
+        } else {
+            // Fallback seguro se não tiver data ou hora
+            $data_evento = $data ? $data . ' 00:00:00' : date('Y-m-d H:i:s');
         }
         
         if ($is_edit) {
@@ -110,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             // IMPORTANTE: A tabela usa 'titulo', 'nome' e 'data_evento', vamos atualizar todos
             $sql = "UPDATE comercial_degustacoes SET 
                     nome = :nome, titulo = :nome, data = :data, 
-                    data_evento = COALESCE(:data_evento, (data || ' ' || hora_inicio)::timestamp),
+                    data_evento = :data_evento::timestamp,
                     hora_inicio = :hora_inicio, hora_fim = :hora_fim,
                     local = :local, capacidade = :capacidade, data_limite = :data_limite, lista_espera = :lista_espera,
                     preco_casamento = :preco_casamento, incluidos_casamento = :incluidos_casamento,
@@ -131,14 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         } else {
             // Criar nova degustação
             // IMPORTANTE: A tabela tem 'titulo' e 'data_evento' como NOT NULL, então precisamos inserir em ambos
-            // Se data_evento for null, usar COALESCE para construir a partir de data + hora_inicio
+            // Construir data_evento no PHP evita ambiguidade de tipos no PostgreSQL
             $sql = "INSERT INTO comercial_degustacoes 
                     (nome, titulo, data, data_evento, hora_inicio, hora_fim, local, capacidade, data_limite, lista_espera,
                      preco_casamento, incluidos_casamento, preco_15anos, incluidos_15anos, preco_extra,
                      instrutivo_html, email_confirmacao_html, msg_sucesso_html, campos_json, status, criado_por)
                     VALUES 
-                    (:nome, :nome, :data, 
-                     COALESCE(:data_evento, (:data || ' ' || :hora_inicio)::timestamp),
+                    (:nome, :nome, :data, :data_evento::timestamp,
                      :hora_inicio, :hora_fim, :local, :capacidade, :data_limite, :lista_espera,
                      :preco_casamento, :incluidos_casamento, :preco_15anos, :incluidos_15anos, :preco_extra,
                      :instrutivo_html, :email_confirmacao_html, :msg_sucesso_html, :campos_json, 'rascunho', :criado_por)";
