@@ -795,19 +795,20 @@ if ($_POST && !$inscricoes_encerradas) {
     
     <style>
         .modal {
-            display: none;
+            display: none !important;
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
             background: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(4px);
             z-index: 10000;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            overflow: hidden;
         }
         
         .modal[style*="flex"],
@@ -816,7 +817,6 @@ if ($_POST && !$inscricoes_encerradas) {
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            flex-direction: row !important;
         }
         
         .modal-content {
@@ -825,11 +825,14 @@ if ($_POST && !$inscricoes_encerradas) {
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
             max-width: 600px;
             width: 90%;
-            max-width: 90vw;
+            max-width: calc(100vw - 40px);
             max-height: 90vh;
             overflow-y: auto;
-            position: relative;
-            margin: auto;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            margin: 0;
             animation: modalFadeIn 0.3s ease-out;
         }
         
