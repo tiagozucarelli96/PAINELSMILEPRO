@@ -313,4 +313,9 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
             }, 2000);
         }
     </script>
+    
+    <!-- Custom Modals CSS -->
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <!-- Custom Modals JS -->
+    <script src="assets/js/custom_modals.js"></script>
 <?php endSidebar(); ?>

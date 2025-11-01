@@ -13,7 +13,7 @@ if (!lc_can_manage_inscritos()) {
 
 $event_id = (int)($_GET['event_id'] ?? 0);
 if (!$event_id) {
-    header('Location: comercial_degustacoes.php?error=invalid_event');
+    header('Location: index.php?page=comercial_degustacoes&error=invalid_event');
     exit;
 }
 
@@ -23,7 +23,7 @@ $stmt->execute([':id' => $event_id]);
 $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$degustacao) {
-    header('Location: comercial_degustacoes.php?error=event_not_found');
+    header('Location: index.php?page=comercial_degustacoes&error=event_not_found');
     exit;
 }
 
@@ -761,9 +761,14 @@ $stats = [
         
         document.getElementById('contratoModal').addEventListener('click', function(e) {
             if (e.target === this) {
-                closeContratoModal();
-            }
-        });
-    </script>
+            closeContratoModal();
+        }
+    });
+</script>
+
+<!-- Custom Modals CSS -->
+<link rel="stylesheet" href="assets/css/custom_modals.css">
+<!-- Custom Modals JS -->
+<script src="assets/js/custom_modals.js"></script>
 </body>
 </html>

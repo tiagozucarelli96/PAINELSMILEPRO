@@ -36,16 +36,32 @@ $degustacao_id = (int)($_POST['degustacao_id'] ?? $_GET['id'] ?? 0);
 if ($action === 'publicar' && $degustacao_id > 0) {
     try {
         // Verificar se degustação existe e está em rascunho
-        $stmt = $pdo->prepare("SELECT id, status, nome FROM comercial_degustacoes WHERE id = :id");
+        $stmt = $pdo->prepare("SELECT id, status, nome, token_publico FROM comercial_degustacoes WHERE id = :id");
         $stmt->execute([':id' => $degustacao_id]);
         $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$degustacao) {
             $error_message = "Degustação não encontrada!";
         } else {
-            // Atualizar status para publicado
-            $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado' WHERE id = :id");
-            $stmt->execute([':id' => $degustacao_id]);
+            // Gerar token_publico se ainda não existir
+            $token_publico = $degustacao['token_publico'];
+            if (empty($token_publico)) {
+                try {
+                    $stmt_token = $pdo->query("SELECT lc_gerar_token_publico()");
+                    $token_publico = $stmt_token->fetchColumn();
+                } catch (Exception $e) {
+                    // Se a função não existir, gerar token manualmente
+                    $token_publico = bin2hex(random_bytes(32));
+                    error_log("Função lc_gerar_token_publico() não encontrada, usando token manual: " . $token_publico);
+                }
+            }
+            
+            // Atualizar status para publicado e token_publico
+            $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado', token_publico = :token WHERE id = :id");
+            $stmt->execute([
+                ':token' => $token_publico,
+                ':id' => $degustacao_id
+            ]);
             $success_message = "Degustação publicada com sucesso!";
             
             // Redirecionar após publicação
@@ -580,7 +596,7 @@ ob_start();
                             <?php endif; ?>
                             
                             <?php if (lc_can_manage_inscritos()): ?>
-                            <a href="index.php?page=comercial_degust_inscritos&degustacao_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
+                            <a href="index.php?page=comercial_degust_inscritos&event_id=<?= $degustacao['id'] ?>" class="btn-sm btn-secondary">
                                 👥 Inscritos
                             </a>
                             <?php endif; ?>

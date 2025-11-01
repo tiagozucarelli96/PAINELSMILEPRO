@@ -763,12 +763,23 @@ ob_start();
                 <div class="form-actions">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
                     <?php if ($is_edit): ?>
+                    <?php 
+                    // Buscar token_publico se não estiver definido
+                    if (empty($token_publico) && isset($degustacao['token_publico'])) {
+                        $token_publico = $degustacao['token_publico'];
+                    }
+                    ?>
                     <?php if (!empty($token_publico)): ?>
-                    <a href="comercial_degust_public.php?t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary" target="_blank">
+                    <a href="index.php?page=comercial_degust_public&t=<?= htmlspecialchars($token_publico, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary" target="_blank">
                         🔗 Ver Link Público
                     </a>
+                    <?php else: ?>
+                    <span style="color: #6b7280; font-size: 14px; padding: 8px;">
+                        ℹ️ Link público será gerado automaticamente ao publicar
+                    </span>
                     <?php endif; ?>
                     <?php endif; ?>
+                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary">❌ Cancelar</a>
                 </div>
             </form>
         </div>
@@ -957,17 +968,23 @@ ob_start();
             }
         });
         
+        // Variável global para armazenar os campos do formulário
         let fields = [];
+        
+        // Carregar campos iniciais se estiver editando
+        <?php if ($is_edit && isset($degustacao['campos_json'])): ?>
         try {
-            const camposJsonStr = <?= $is_edit ? json_encode($degustacao['campos_json'] ?? '[]') : "'[]'" ?>;
-            if (camposJsonStr && camposJsonStr !== '[]' && camposJsonStr !== '') {
+            const camposJsonStr = <?= json_encode($degustacao['campos_json']) ?>;
+            if (camposJsonStr && camposJsonStr !== '[]' && camposJsonStr !== '' && camposJsonStr !== null) {
                 const parsed = JSON.parse(camposJsonStr);
                 fields = Array.isArray(parsed) ? parsed : [];
+                console.log('Campos carregados:', fields.length);
             }
         } catch (e) {
             console.warn('Erro ao parsear campos_json:', e);
             fields = [];
         }
+        <?php endif; ?>
         
         function showTab(tabName) {
             // Esconder todas as tabs
@@ -1139,13 +1156,12 @@ ob_start();
             // Aguardar um pouco mais para garantir que tabs estão renderizadas
             setTimeout(function() {
                 waitForElement('fieldsList', function() {
-                    // Verificar se a tab está visível antes de renderizar
-                    const tabCampos = document.getElementById('campos');
+                    // Verificar se a tab existe antes de renderizar (não precisa estar visível)
                     const fieldsList = document.getElementById('fieldsList');
                     
-                    if (fieldsList && tabCampos) {
-        // Carregar campos iniciais
-        renderFields();
+                    if (fieldsList) {
+                        // Renderizar campos já carregados (carregamento é feito no início do script)
+                        renderFields();
                     }
                 });
             }, 200);

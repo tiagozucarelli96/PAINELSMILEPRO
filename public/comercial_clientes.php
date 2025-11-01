@@ -434,6 +434,10 @@ setPageTitle('Comercial clientes');
     </script>
 </div>
 
+<!-- Custom Modals CSS -->
+<link rel="stylesheet" href="assets/css/custom_modals.css">
+<!-- Custom Modals JS -->
+<script src="assets/js/custom_modals.js"></script>
 
 <?php
 // Finalizar sidebar

@@ -686,6 +686,11 @@ includeSidebar('Comercial');
     <?php endif; ?>
 </div>
 
+<!-- Custom Modals CSS -->
+<link rel="stylesheet" href="assets/css/custom_modals.css">
+<!-- Custom Modals JS -->
+<script src="assets/js/custom_modals.js"></script>
+
 <script>
     function filtrarPeriodo() {
         const periodo = document.getElementById('filtroPeriodo').value;
