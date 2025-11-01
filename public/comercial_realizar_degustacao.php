@@ -462,7 +462,7 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação -->
     <div class="selecao-container">
-        <form method="GET" action="index.php" id="formDegustacao" name="formDegustacao">
+        <form method="GET" action="index.php" id="formDegustacao" name="formDegustacao" onsubmit="return true;">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             
             <div class="form-group">
@@ -613,48 +613,58 @@ function configurarSelectDegustacao() {
         const selectedValue = this.value;
         console.log('🔍 Select mudou para:', selectedValue);
         
-        // IMPORTANTE: Prevenir comportamento padrão se houver
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (selectedValue && selectedValue !== '') {
-            const form = this.closest('form') || document.getElementById('formDegustacao');
-            if (form) {
-                console.log('✅ Formulário encontrado');
-                
-                // Garantir que o action está correto
-                if (!form.action || form.action === '' || form.action === window.location.pathname) {
-                    form.action = 'index.php';
-                }
-                
-                // O select já tem name="degustacao_id", então o valor será enviado automaticamente
-                // Mas vamos garantir que está correto
-                console.log('🔍 Form action:', form.action);
-                console.log('🔍 Form method:', form.method);
-                console.log('🔍 Select value:', selectedValue);
-                console.log('🔍 Select name:', this.name);
-                
-                // Construir URL manualmente para garantir que funcione
-                const url = new URL(form.action, window.location.origin);
-                url.searchParams.set('page', 'comercial_realizar_degustacao');
-                url.searchParams.set('degustacao_id', selectedValue);
-                
-                console.log('🔍 URL final que será acessada:', url.toString());
-                console.log('✅ Redirecionando...');
-                
-                // Redirecionar diretamente em vez de submit
-                window.location.href = url.toString();
-            } else {
-                console.error('❌ Formulário não encontrado!');
-                alert('Erro: Formulário não encontrado. Recarregue a página.');
-            }
-        } else {
-            console.log('⚠️ Valor vazio selecionado');
-            // Se selecionou vazio, remover degustacao_id da URL
-            const url = new URL(window.location.href);
-            url.searchParams.delete('degustacao_id');
-            window.location.href = url.toString();
+        const form = this.closest('form') || document.getElementById('formDegustacao');
+        if (!form) {
+            console.error('❌ Formulário não encontrado!');
+            return;
         }
+        
+        console.log('✅ Formulário encontrado');
+        console.log('🔍 Form action:', form.action);
+        console.log('🔍 Form method:', form.method);
+        console.log('🔍 Select name:', this.name);
+        console.log('🔍 Select value:', selectedValue);
+        
+        // Usar submit nativo do formulário GET
+        // O formulário já está configurado corretamente:
+        // - method="GET"
+        // - action="index.php"
+        // - input hidden com page="comercial_realizar_degustacao"
+        // - select com name="degustacao_id"
+        
+        // Apenas garantir que o action está correto
+        if (!form.action || form.action === '') {
+            form.action = 'index.php';
+        }
+        
+        // Garantir que o input hidden 'page' existe
+        let pageInput = form.querySelector('input[name="page"]');
+        if (!pageInput) {
+            pageInput = document.createElement('input');
+            pageInput.type = 'hidden';
+            pageInput.name = 'page';
+            pageInput.value = 'comercial_realizar_degustacao';
+            form.appendChild(pageInput);
+        }
+        
+        // Garantir que o select está no formulário e tem o name correto
+        if (this.name !== 'degustacao_id') {
+            this.name = 'degustacao_id';
+        }
+        
+        // Log da URL que será construída pelo navegador
+        const formData = new FormData(form);
+        const urlParams = new URLSearchParams();
+        for (const [key, value] of formData.entries()) {
+            urlParams.append(key, value);
+        }
+        const finalUrl = form.action + '?' + urlParams.toString();
+        console.log('🔍 URL final que será acessada:', finalUrl);
+        console.log('✅ Submetendo formulário...');
+        
+        // Submeter o formulário explicitamente
+        // Como é um formulário GET, o navegador vai navegar para a URL construída
+        form.submit();
     });
     
     // Log do valor inicial
