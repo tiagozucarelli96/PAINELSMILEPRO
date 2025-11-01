@@ -2135,6 +2135,102 @@ ob_start();
         }
     }
     
+    // Adicionar pessoa e gerar cobrança adicional
+    async function adicionarPessoa(inscricaoId, nomeInscrito) {
+        const confirmacao = await customConfirm(
+            `➕ Adicionar uma pessoa à inscrição de "${nomeInscrito}"?\n\n` +
+            `• Será gerado um QR Code de R$ 50,00 para a pessoa adicional\n` +
+            `• A quantidade de pessoas será incrementada\n` +
+            `• O valor total da inscrição será atualizado`,
+            'Adicionar Pessoa'
+        );
+        
+        if (!confirmacao) {
+            return;
+        }
+        
+        const btnAdicionar = document.getElementById('btnAdicionarPessoa_' + inscricaoId);
+        if (btnAdicionar) {
+            btnAdicionar.disabled = true;
+            btnAdicionar.textContent = '⏳ Adicionando...';
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('action', 'adicionar_pessoa');
+            formData.append('inscricao_id', inscricaoId);
+            
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                cache: 'no-store'
+            });
+            
+            if (!response.ok) {
+                throw new Error('Erro HTTP: ' + response.status);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error('Resposta não é JSON. Resposta recebida: ' + text.substring(0, 200));
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Mostrar modal com QR Code
+                const modal = document.getElementById('cobrancaModal');
+                const modalBody = document.getElementById('cobrancaModalBody');
+                
+                modal.style.display = 'flex';
+                modalBody.innerHTML = `
+                    <div style="text-align: center;">
+                        <h3 style="margin: 0 0 1rem 0; color: #10b981;">✅ Pessoa Adicionada com Sucesso!</h3>
+                        <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+                            <p style="margin: 0.5rem 0;"><strong>Participante:</strong> ${nomeInscrito}</p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade anterior:</strong> ${data.qtd_pessoas_antes} pessoa(s)</p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade atual:</strong> ${data.qtd_pessoas_nova} pessoa(s)</p>
+                            <p style="margin: 0.5rem 0;"><strong>Valor adicional:</strong> R$ ${data.valor.toFixed(2).replace('.', ',')}</p>
+                            <p style="margin: 0.5rem 0;"><strong>Valor total da inscrição:</strong> R$ ${data.valor_total_novo.toFixed(2).replace('.', ',')}</p>
+                        </div>
+                        <div style="background: #fff; border: 2px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin: 1rem 0;">
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151;">Código PIX (Copiar e Colar):</label>
+                            <textarea id="pixCodeAdicional" readonly 
+                                      style="width: 100%; min-height: 80px; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 0.875rem; resize: vertical;"
+                                      onclick="this.select()">${data.payload}</textarea>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                            <button type="button" 
+                                    onclick="copiarCodigoPix('${data.payload.replace(/'/g, "\\'")}')" 
+                                    style="flex: 1; padding: 0.75rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                📋 Copiar Código PIX
+                            </button>
+                            <button type="button" 
+                                    onclick="closeCobrancaModal(); window.location.reload();" 
+                                    style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                ✅ Concluído
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                alert('❌ Erro: ' + (data.message || data.error || 'Erro desconhecido'));
+                if (btnAdicionar) {
+                    btnAdicionar.disabled = false;
+                    btnAdicionar.textContent = '➕ Adicionar Pessoa';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao adicionar pessoa:', error);
+            alert('❌ Erro ao adicionar pessoa: ' + error.message);
+            if (btnAdicionar) {
+                btnAdicionar.disabled = false;
+                btnAdicionar.textContent = '➕ Adicionar Pessoa';
+            }
+        }
+    }
+    
     // Copiar código PIX para área de transferência
     async function copiarCodigoPix(pixCode) {
         try {
