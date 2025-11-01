@@ -101,19 +101,36 @@ if ($_POST && !$inscricoes_encerradas) {
             throw new Exception("Já existe uma inscrição com este e-mail para esta degustação");
         }
         
-        // Inserir inscrição (removido me_event_id que não existe na tabela)
-        $sql = "INSERT INTO comercial_inscricoes 
-                (degustacao_id, status, fechou_contrato, nome_titular_contrato, nome, email, celular, 
-                 dados_json, qtd_pessoas, tipo_festa, extras, pagamento_status, valor_pago, ip_origem, user_agent_origem)
-                VALUES 
-                (:degustacao_id, :status, :fechou_contrato, :nome_titular_contrato, :nome, :email, :celular,
-                 :dados_json, :qtd_pessoas, :tipo_festa, :extras, :pagamento_status, :valor_pago, :ip_origem, :user_agent_origem)";
+        // Verificar se colunas existem antes de inserir
+        try {
+            $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                       WHERE table_name = 'comercial_inscricoes' 
+                                       AND column_name IN ('nome_titular_contrato', 'cpf_3_digitos', 'me_event_id', 'me_cliente_cpf')");
+            $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
+            $has_nome_titular = in_array('nome_titular_contrato', $check_columns);
+            $has_cpf_3 = in_array('cpf_3_digitos', $check_columns);
+            $has_me_event_id = in_array('me_event_id', $check_columns);
+            $has_me_cpf = in_array('me_cliente_cpf', $check_columns);
+        } catch (PDOException $e) {
+            $has_nome_titular = false;
+            $has_cpf_3 = false;
+            $has_me_event_id = false;
+            $has_me_cpf = false;
+        }
         
+        $cpf_3_digitos = substr(preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? ''), 0, 3);
+        $me_cliente_cpf = preg_replace('/\D/', '', $_POST['me_cliente_cpf'] ?? '');
+        $me_event_id = (int)($_POST['me_event_id'] ?? 0);
+        
+        // Montar SQL dinamicamente baseado nas colunas existentes
+        $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', 'celular', 
+                   'dados_json', 'qtd_pessoas', 'tipo_festa', 'extras', 'pagamento_status', 'valor_pago', 'ip_origem', 'user_agent_origem'];
+        $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':celular',
+                    ':dados_json', ':qtd_pessoas', ':tipo_festa', ':extras', ':pagamento_status', ':valor_pago', ':ip_origem', ':user_agent_origem'];
         $params = [
             ':degustacao_id' => $degustacao['id'],
             ':status' => $status,
             ':fechou_contrato' => $fechou_contrato,
-            ':nome_titular_contrato' => $nome_titular_contrato,
             ':nome' => $nome,
             ':email' => $email,
             ':celular' => $celular,
@@ -126,6 +143,34 @@ if ($_POST && !$inscricoes_encerradas) {
             ':ip_origem' => $_SERVER['REMOTE_ADDR'] ?? null,
             ':user_agent_origem' => $_SERVER['HTTP_USER_AGENT'] ?? null
         ];
+        
+        // Adicionar colunas opcionais se existirem
+        if ($has_nome_titular) {
+            $campos[] = 'nome_titular_contrato';
+            $valores[] = ':nome_titular_contrato';
+            $params[':nome_titular_contrato'] = $nome_titular_contrato;
+        }
+        
+        if ($has_cpf_3) {
+            $campos[] = 'cpf_3_digitos';
+            $valores[] = ':cpf_3_digitos';
+            $params[':cpf_3_digitos'] = $cpf_3_digitos;
+        }
+        
+        if ($has_me_event_id && $me_event_id > 0) {
+            $campos[] = 'me_event_id';
+            $valores[] = ':me_event_id';
+            $params[':me_event_id'] = $me_event_id;
+        }
+        
+        if ($has_me_cpf && !empty($me_cliente_cpf)) {
+            $campos[] = 'me_cliente_cpf';
+            $valores[] = ':me_cliente_cpf';
+            $params[':me_cliente_cpf'] = $me_cliente_cpf;
+        }
+        
+        // Montar SQL final
+        $sql = "INSERT INTO comercial_inscricoes (" . implode(', ', $campos) . ") VALUES (" . implode(', ', $valores) . ")";
         
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -530,16 +575,28 @@ if ($_POST && !$inscricoes_encerradas) {
                 <div id="contratoInfo" class="hidden">
                     <div class="form-group">
                         <label class="form-label">Nome completo do titular do contrato *</label>
-                        <input type="text" name="nome_titular_contrato" class="form-input">
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" name="nome_titular_contrato" id="nomeTitularInput" class="form-input" style="flex: 1;">
+                            <button type="button" onclick="abrirModalBuscaME()" class="btn-secondary" style="padding: 12px 20px; white-space: nowrap;">
+                                🔍 Buscar na ME
+                            </button>
+                        </div>
+                        <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
+                            💡 Clique em "Buscar na ME" para verificar se você já tem contrato cadastrado
+                        </small>
                     </div>
                     
                     <div class="form-group">
                         <label class="form-label">3 primeiros dígitos do CPF do titular *</label>
-                        <input type="text" name="cpf_3_digitos" class="form-input" maxlength="3" pattern="[0-9]{3}">
+                        <input type="text" name="cpf_3_digitos" id="cpf3DigitosInput" class="form-input" maxlength="3" pattern="[0-9]{3}" placeholder="Ex: 123">
                     </div>
                     
-                    <div id="meEventInfo" class="alert alert-success hidden">
-                        <h4>✅ Contrato encontrado!</h4>
+                    <!-- CPF completo (oculto, preenchido automaticamente após validação) -->
+                    <input type="hidden" name="me_cliente_cpf" id="meClienteCpfHidden">
+                    <input type="hidden" name="me_event_id" id="meEventIdHidden">
+                    
+                    <div id="meEventInfo" class="alert alert-success hidden" style="margin-top: 15px;">
+                        <h4 style="margin: 0 0 10px 0;">✅ Contrato encontrado!</h4>
                         <div id="meEventDetails"></div>
                     </div>
                 </div>
@@ -613,6 +670,152 @@ if ($_POST && !$inscricoes_encerradas) {
         <?php endif; ?>
     </div>
     
+    <!-- Modal de Busca ME Eventos -->
+    <div id="modalBuscaME" class="modal" style="display: none;" onclick="if(event.target === this) fecharModalBuscaME()">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title">🔍 Buscar Contrato na ME Eventos</h3>
+                <button class="close-btn" onclick="fecharModalBuscaME()">&times;</button>
+            </div>
+            
+            <div style="padding: 20px;">
+                <!-- Busca por Nome -->
+                <div id="buscaMEPorNome">
+                    <div class="form-group">
+                        <label class="form-label">Digite o nome do titular do contrato</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="buscaMENome" class="form-input" placeholder="Ex: João Silva" style="flex: 1;">
+                            <button type="button" onclick="buscarClienteME()" class="btn-primary" style="padding: 12px 24px;">
+                                🔍 Buscar
+                            </button>
+                        </div>
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 5px;">
+                            Digite pelo menos 3 caracteres para buscar
+                        </small>
+                    </div>
+                    
+                    <div id="buscaMELoading" style="display: none; text-align: center; padding: 20px; color: #64748b;">
+                        <div>⏳ Buscando...</div>
+                    </div>
+                    
+                    <div id="buscaMEResultados" style="margin-top: 15px;"></div>
+                </div>
+                
+                <!-- Validação de CPF -->
+                <div id="buscaMEValidarCPF" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                    <div class="form-group">
+                        <label class="form-label">Cliente selecionado:</label>
+                        <div style="padding: 10px; background: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 6px; font-weight: 600; color: #0c4a6e;">
+                            <span id="nomeClienteSelecionado"></span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Digite seu CPF completo para confirmar *</label>
+                        <input type="text" id="buscaMECpf" class="form-input" placeholder="000.000.000-00" maxlength="14" 
+                               oninput="this.value = this.value.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')">
+                        <small style="color: #6b7280; font-size: 12px; display: block; margin-top: 5px;">
+                            🔒 Seus dados estão seguros. O CPF será usado apenas para confirmação.
+                        </small>
+                    </div>
+                    
+                    <div id="buscaMEValidarLoading" style="display: none; text-align: center; padding: 10px; color: #64748b;">
+                        ⏳ Validando CPF...
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button type="button" onclick="fecharModalBuscaME()" class="btn-cancel" style="flex: 1;">
+                            Cancelar
+                        </button>
+                        <button type="button" onclick="validarCPFME()" class="btn-save" style="flex: 1;">
+                            ✅ Confirmar CPF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin: 0;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6b7280;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+        }
+        
+        .close-btn:hover {
+            background: #f3f4f6;
+        }
+        
+        .cliente-item-me:hover {
+            background: #e0f2fe !important;
+            border-color: #0ea5e9 !important;
+            transform: translateX(2px);
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+    </style>
+    
     <script>
         const PRECOS = {
             casamento: {
@@ -682,12 +885,20 @@ if ($_POST && !$inscricoes_encerradas) {
             
             if (fechouSim) {
                 contratoInfo.classList.remove('hidden');
-                document.querySelector('input[name="nome_titular_contrato"]').required = true;
-                document.querySelector('input[name="cpf_3_digitos"]').required = true;
+                document.getElementById('nomeTitularInput').required = true;
+                document.getElementById('cpf3DigitosInput').required = true;
             } else {
                 contratoInfo.classList.add('hidden');
-                document.querySelector('input[name="nome_titular_contrato"]').required = false;
-                document.querySelector('input[name="cpf_3_digitos"]').required = false;
+                document.getElementById('nomeTitularInput').required = false;
+                document.getElementById('cpf3DigitosInput').required = false;
+                document.getElementById('meEventInfo').classList.add('hidden');
+                
+                // Limpar campos
+                document.getElementById('nomeTitularInput').value = '';
+                document.getElementById('cpf3DigitosInput').value = '';
+                document.getElementById('meClienteCpfHidden').value = '';
+                document.getElementById('meEventIdHidden').value = '';
+                clienteSelecionadoME = null;
             }
         }
         
@@ -698,15 +909,176 @@ if ($_POST && !$inscricoes_encerradas) {
             });
         });
         
-        // Buscar contrato na ME Eventos quando nome do titular for preenchido
-        document.querySelector('input[name="nome_titular_contrato"]').addEventListener('blur', function() {
-            const nome = this.value.trim();
-            const cpf3 = document.querySelector('input[name="cpf_3_digitos"]').value.trim();
+        // Variáveis globais para busca ME
+        let clienteSelecionadoME = null;
+        
+        // Função para abrir modal de busca ME
+        function abrirModalBuscaME() {
+            document.getElementById('modalBuscaME').style.display = 'flex';
+            document.getElementById('buscaMENome').value = '';
+            document.getElementById('buscaMEResultados').innerHTML = '';
+            document.getElementById('buscaMELoading').style.display = 'none';
+            document.getElementById('buscaMEValidarCPF').style.display = 'none';
+            clienteSelecionadoME = null;
+        }
+        
+        function fecharModalBuscaME() {
+            document.getElementById('modalBuscaME').style.display = 'none';
+        }
+        
+        // Buscar cliente na ME Eventos
+        async function buscarClienteME() {
+            const nome = document.getElementById('buscaMENome').value.trim();
             
-            if (nome && cpf3 && cpf3.length === 3) {
-                // TODO: Implementar busca na ME Eventos
-                // Por enquanto, simular sucesso
+            if (nome.length < 3) {
+                alert('Digite pelo menos 3 caracteres para buscar');
+                return;
+            }
+            
+            const loadingDiv = document.getElementById('buscaMELoading');
+            const resultadosDiv = document.getElementById('buscaMEResultados');
+            
+            loadingDiv.style.display = 'block';
+            resultadosDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch(`me_buscar_cliente.php?nome=${encodeURIComponent(nome)}`);
+                const data = await response.json();
+                
+                loadingDiv.style.display = 'none';
+                
+                if (!data.ok) {
+                    throw new Error(data.error || 'Erro ao buscar cliente');
+                }
+                
+                if (!data.clientes || data.clientes.length === 0) {
+                    resultadosDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">Nenhum cliente encontrado com este nome.</div>';
+                    return;
+                }
+                
+                // Mostrar lista de clientes encontrados
+                let html = '<div style="margin-bottom: 10px; font-weight: 600; color: #374151;">Cliente(s) encontrado(s):</div>';
+                html += '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">';
+                
+                data.clientes.forEach((cliente, index) => {
+                    html += `
+                        <div class="cliente-item-me" onclick="selecionarClienteME('${cliente.nome_cliente.replace(/'/g, "\\'")}', ${cliente.quantidade_eventos})" 
+                             style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: #f8fafc;">
+                            <div style="font-weight: 600; color: #1e3a8a;">${escapeHtml(cliente.nome_cliente)}</div>
+                            <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">${cliente.quantidade_eventos} evento(s) encontrado(s)</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                resultadosDiv.innerHTML = html;
+                
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                resultadosDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc2626;">Erro: ${error.message}</div>`;
+            }
+        }
+        
+        // Selecionar cliente da lista
+        function selecionarClienteME(nomeCliente, qtdEventos) {
+            clienteSelecionadoME = { nome: nomeCliente, eventos: qtdEventos };
+            
+            // Esconder resultados e mostrar validação de CPF
+            document.getElementById('buscaMEResultados').innerHTML = '';
+            document.getElementById('buscaMEValidarCPF').style.display = 'block';
+            document.getElementById('nomeClienteSelecionado').textContent = nomeCliente;
+        }
+        
+        // Validar CPF do cliente
+        async function validarCPFME() {
+            if (!clienteSelecionadoME) {
+                alert('Selecione um cliente primeiro');
+                return;
+            }
+            
+            const cpf = document.getElementById('buscaMECpf').value.replace(/\D/g, '');
+            
+            if (cpf.length !== 11) {
+                alert('CPF deve ter 11 dígitos');
+                return;
+            }
+            
+            const loadingDiv = document.getElementById('buscaMEValidarLoading');
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch('me_buscar_cliente.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        nome_cliente: clienteSelecionadoME.nome,
+                        cpf: cpf
+                    })
+                });
+                
+                const data = await response.json();
+                loadingDiv.style.display = 'none';
+                
+                if (!data.ok) {
+                    throw new Error(data.error || 'CPF não confere ou cliente não encontrado');
+                }
+                
+                // CPF validado com sucesso! Preencher campos
+                const evento = data.evento;
+                
+                document.getElementById('nomeTitularInput').value = evento.nome_cliente;
+                document.getElementById('cpf3DigitosInput').value = cpf.substring(0, 3);
+                document.getElementById('meClienteCpfHidden').value = cpf;
+                document.getElementById('meEventIdHidden').value = evento.id || '';
+                
+                // Mostrar informações do evento
+                const eventDetails = `
+                    <div style="margin-top: 10px;">
+                        <div><strong>Evento:</strong> ${escapeHtml(evento.nome_evento)}</div>
+                        <div><strong>Data:</strong> ${formatarData(evento.data_evento)}</div>
+                        <div><strong>Tipo:</strong> ${escapeHtml(evento.tipo_evento)}</div>
+                        ${evento.local_evento ? `<div><strong>Local:</strong> ${escapeHtml(evento.local_evento)}</div>` : ''}
+                    </div>
+                `;
+                
+                document.getElementById('meEventDetails').innerHTML = eventDetails;
                 document.getElementById('meEventInfo').classList.remove('hidden');
+                
+                // Fechar modal
+                fecharModalBuscaME();
+                
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                alert('Erro ao validar CPF: ' + error.message);
+            }
+        }
+        
+        function formatarData(data) {
+            if (!data) return '';
+            const d = new Date(data + 'T00:00:00');
+            return d.toLocaleDateString('pt-BR');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Permitir busca ao pressionar Enter
+        document.getElementById('buscaMENome')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                buscarClienteME();
+            }
+        });
+        
+        document.getElementById('buscaMECpf')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                validarCPFME();
+            }
+        });
                 document.getElementById('meEventDetails').innerHTML = `
                     <p><strong>Nome:</strong> ${nome}</p>
                     <p><strong>CPF:</strong> ${cpf3}***.***.***-**</p>
