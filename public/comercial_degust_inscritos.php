@@ -730,11 +730,10 @@ ob_start();
                     </div>
                 <?php endforeach; ?>
             </div>
-        </div>
-    </div>
-    
-    <!-- Modal de Comparecimento -->
-    <div class="modal" id="comparecimentoModal" style="display: none;">
+</div>
+
+<!-- Modal de Comparecimento -->
+<div class="modal" id="comparecimentoModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Marcar Comparecimento</h3>
@@ -809,8 +808,8 @@ ob_start();
             </form>
         </div>
     </div>
-    
-    <script>
+
+<script>
         function searchInscritos(query = '') {
             if (query === '') {
                 query = document.querySelector('.search-input').value;
@@ -938,8 +937,7 @@ ob_start();
     }
     </script>
     
-    <script src="assets/js/custom_modals.js"></script>
-</div>
+<script src="assets/js/custom_modals.js"></script>
 
 <?php
 $conteudo = ob_get_clean();
