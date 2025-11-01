@@ -504,7 +504,7 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação - VERSÃO SIMPLIFICADA -->
     <div class="selecao-container">
-        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
+        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;" onsubmit="return true;">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
@@ -640,6 +640,26 @@ includeSidebar('Comercial');
     
     // Tornar função global
     window.gerarPDF = gerarPDF;
+    
+    // Garantir que formulário não seja interceptado por outros scripts
+    const form = document.getElementById('formSelecaoDegustacao');
+    if (form) {
+        // Remover qualquer listener antigo
+        const newForm = form.cloneNode(true);
+        form.parentNode.replaceChild(newForm, form);
+        
+        console.log('✅ Formulário "Realizar Degustação" configurado. Método GET tradicional.');
+        
+        // Log quando formulário for submetido (para debug)
+        const formAtual = document.getElementById('formSelecaoDegustacao');
+        if (formAtual) {
+            formAtual.addEventListener('submit', function(e) {
+                const degustacaoId = this.querySelector('[name="degustacao_id"]').value;
+                console.log('📤 Formulário sendo submetido com degustacao_id:', degustacaoId);
+                console.log('📍 URL será: index.php?page=comercial_realizar_degustacao&degustacao_id=' + degustacaoId);
+            });
+        }
+    }
     
     console.log('✅ Página "Realizar Degustação" carregada. Formulário tradicional GET - funciona sempre.');
 })();
