@@ -861,8 +861,12 @@ ob_start();
                 </div>
                 
                 <!-- Campos ocultos -->
-                <?php if ($is_edit && isset($degustacao) && isset($degustacao['id'])): ?>
+                <?php if ($is_edit && $event_id > 0): ?>
+                <input type="hidden" name="event_id" id="event_id" value="<?= $event_id ?>">
+                <?php elseif (isset($degustacao) && isset($degustacao['id'])): ?>
                 <input type="hidden" name="event_id" id="event_id" value="<?= (int)$degustacao['id'] ?>">
+                <?php elseif ($event_id > 0): ?>
+                <input type="hidden" name="event_id" id="event_id" value="<?= $event_id ?>">
                 <?php endif; ?>
                 <input type="hidden" name="campos_json" id="camposJson" value="<?= ($is_edit && isset($degustacao) && isset($degustacao['campos_json'])) ? h($degustacao['campos_json']) : '[]' ?>">
                 
