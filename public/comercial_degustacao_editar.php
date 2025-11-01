@@ -39,28 +39,29 @@ error_log("is_edit: " . ($is_edit ? 'true' : 'false'));
 $degustacao = null;
 if ($is_edit && $event_id > 0) {
     try {
+        error_log("Buscando degustação com ID: $event_id");
     $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
     $stmt->execute([':id' => $event_id]);
     $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+    
         error_log("Degustação encontrada: " . ($degustacao ? 'SIM' : 'NÃO'));
         if ($degustacao) {
             error_log("Nome: " . ($degustacao['nome'] ?? 'N/A'));
             error_log("Token público: " . (isset($degustacao['token_publico']) ? 'SIM' : 'NÃO'));
-        }
-    
-    if (!$degustacao) {
+            error_log("Status: " . ($degustacao['status'] ?? 'N/A'));
+        } else {
             error_log("Degustação não encontrada no banco com ID: $event_id");
             header('Location: index.php?page=comercial_degustacoes&error=not_found');
         exit;
     }
     } catch (Exception $e) {
         error_log("Erro ao buscar degustação: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
         header('Location: index.php?page=comercial_degustacoes&error=' . urlencode('Erro ao buscar degustação: ' . $e->getMessage()));
         exit;
     }
 } else {
-    error_log("Modo de criação - não é edição");
+    error_log("Modo de criação - não é edição (event_id = $event_id)");
 }
 
 // Buscar campos padrão
