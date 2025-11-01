@@ -61,18 +61,17 @@ if ($action === 'marcar_contrato_comparecimento' && $inscricao_id > 0) {
     try {
         $fechou_contrato = isset($_POST['fechou_contrato']) && $_POST['fechou_contrato'] === '1' ? 'sim' : 'nao';
         $compareceu = isset($_POST['compareceu']) && $_POST['compareceu'] === '1' ? 1 : 0;
-        $nome_titular = trim($_POST['nome_titular_contrato'] ?? '');
         
         // Se marcou contrato, atualizar também comparecimento para 1
         if ($fechou_contrato === 'sim') {
             $compareceu = 1;
         }
         
-        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET fechou_contrato = :fechou_contrato, compareceu = :compareceu, nome_titular_contrato = :nome_titular WHERE id = :id");
+        // Não solicita mais nome do titular
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET fechou_contrato = :fechou_contrato, compareceu = :compareceu WHERE id = :id");
         $stmt->execute([
             ':fechou_contrato' => $fechou_contrato,
             ':compareceu' => $compareceu,
-            ':nome_titular' => $nome_titular,
             ':id' => $inscricao_id
         ]);
         
@@ -100,17 +99,10 @@ if ($action === 'marcar_comparecimento' && $inscricao_id > 0) {
 if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
     try {
         $fechou_contrato = $_POST['fechou_contrato'] ?? 'nao';
-        $nome_titular = trim($_POST['nome_titular_contrato'] ?? '');
-        $cpf_3_digitos = trim($_POST['cpf_3_digitos'] ?? '');
-        
-        if ($fechou_contrato === 'sim' && (!$nome_titular || !$cpf_3_digitos)) {
-            throw new Exception("Preencha o nome do titular e os 3 dígitos do CPF");
-        }
-        
-        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET fechou_contrato = :fechou_contrato, nome_titular_contrato = :nome_titular WHERE id = :id");
+        // Não solicita mais nome do titular nem CPF
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET fechou_contrato = :fechou_contrato WHERE id = :id");
         $stmt->execute([
             ':fechou_contrato' => $fechou_contrato,
-            ':nome_titular' => $nome_titular,
             ':id' => $inscricao_id
         ]);
         
@@ -1024,7 +1016,7 @@ ob_start();
                                 <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                                     <input type="checkbox" 
                                            <?= $fechou ? 'checked' : '' ?>
-                                           onchange="marcarContrato(<?= $inscricao['id'] ?>, this.checked, '<?= h($inscricao['nome_titular_contrato'] ?? '') ?>')"
+                                           onchange="marcarContrato(<?= $inscricao['id'] ?>, this.checked)"
                                            style="width: 18px; height: 18px; cursor: pointer;">
                                     <span style="font-size: 12px; color: <?= $fechou ? '#10b981' : '#6b7280' ?>; font-weight: 500;">
                                         <?= $fechou ? 'Sim' : 'Não' ?>
@@ -1066,10 +1058,10 @@ ob_start();
                                     <?php endif; ?>
                                     
                                     <button type="button" class="btn-sm btn-danger" 
-                                            onclick="return excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>');"
+                                            onclick="excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>').catch(err => console.error('Erro ao excluir:', err));"
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                         🗑️ Excluir
-                            </button>
+                                    </button>
                         </div>
                             </td>
                         </tr>
@@ -1656,51 +1648,27 @@ ob_start();
         }
     });
     
-    // Marcar contrato
+    // Marcar contrato (sem solicitar nome do titular)
     function marcarContrato(inscricaoId, checked, nomeTitularAtual) {
-        if (checked) {
-            const nomeTitular = prompt('Nome do titular do contrato:', nomeTitularAtual || '');
-            if (nomeTitular === null || nomeTitular.trim() === '') {
-                // Cancelou ou não preencheu, desmarcar checkbox
-                event.target.checked = false;
-                return;
+        const formData = new FormData();
+        formData.append('action', 'marcar_fechou_contrato');
+        formData.append('inscricao_id', inscricaoId);
+        formData.append('fechou_contrato', checked ? 'sim' : 'nao');
+        // Não envia mais nome_titular_contrato nem cpf_3_digitos
+        
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            window.location.reload();
+        }).catch(() => {
+            alert('❌ Erro ao atualizar. Tente novamente.');
+            // Reverter checkbox em caso de erro
+            const checkbox = document.querySelector(`input[type="checkbox"][onchange*="marcarContrato(${inscricaoId}"]`);
+            if (checkbox) {
+                checkbox.checked = !checked;
             }
-            
-            const formData = new FormData();
-            formData.append('action', 'marcar_fechou_contrato');
-            formData.append('inscricao_id', inscricaoId);
-            formData.append('fechou_contrato', 'sim');
-            formData.append('nome_titular_contrato', nomeTitular.trim());
-            formData.append('cpf_3_digitos', '');
-            
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            }).then(() => {
-                window.location.reload();
-            }).catch(() => {
-                alert('❌ Erro ao atualizar. Tente novamente.');
-                event.target.checked = false;
-            });
-        } else {
-            // Desmarcar contrato
-            const formData = new FormData();
-            formData.append('action', 'marcar_fechou_contrato');
-            formData.append('inscricao_id', inscricaoId);
-            formData.append('fechou_contrato', 'nao');
-            formData.append('nome_titular_contrato', '');
-            formData.append('cpf_3_digitos', '');
-            
-            fetch(window.location.href, {
-                method: 'POST',
-                body: formData
-            }).then(() => {
-                window.location.reload();
-            }).catch(() => {
-                alert('❌ Erro ao atualizar. Tente novamente.');
-                event.target.checked = true;
-            });
-        }
+        });
     }
     
     // Marcar comparecimento
@@ -1721,11 +1689,13 @@ ob_start();
         });
     }
     
-    // Excluir inscrito - Função completamente recriada para garantir confirmação
-    function excluirInscrito(inscricaoId, nomeInscrito) {
-        // IMPORTANTE: Sempre confirmar ANTES de qualquer ação
+    // Excluir inscrito - Usando customConfirm para melhor UX
+    async function excluirInscrito(inscricaoId, nomeInscrito) {
+        // IMPORTANTE: Sempre confirmar ANTES de qualquer ação usando customConfirm
         const mensagem = '⚠️ Tem certeza que deseja excluir o inscrito "' + nomeInscrito + '"?\n\nEsta ação não pode ser desfeita.';
-        const confirmacao = window.confirm(mensagem);
+        
+        // Usar customConfirm (retorna Promise) em vez de confirm() padrão
+        const confirmacao = await customConfirm(mensagem, 'Confirmar Exclusão');
         
         // Se não confirmou, não faz nada
         if (!confirmacao) {
