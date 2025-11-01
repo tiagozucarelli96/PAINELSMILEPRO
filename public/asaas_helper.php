@@ -7,9 +7,16 @@ class AsaasHelper {
     
     public function __construct() {
         require_once __DIR__ . '/config_env.php';
-        $this->api_key = ASAAS_API_KEY;
-        $this->base_url = ASAAS_BASE_URL;
-        $this->webhook_url = WEBHOOK_URL;
+        
+        // Priorizar variável de ambiente sobre constante
+        $this->api_key = $_ENV['ASAAS_API_KEY'] ?? getenv('ASAAS_API_KEY') ?: ASAAS_API_KEY;
+        $this->base_url = $_ENV['ASAAS_BASE_URL'] ?? getenv('ASAAS_BASE_URL') ?: ASAAS_BASE_URL;
+        $this->webhook_url = $_ENV['WEBHOOK_URL'] ?? getenv('WEBHOOK_URL') ?: WEBHOOK_URL;
+        
+        // Log para debug (primeiros e últimos caracteres apenas)
+        $key_preview = substr($this->api_key, 0, 30) . '...' . substr($this->api_key, -10);
+        error_log("AsaasHelper inicializado - API Key preview: $key_preview");
+        error_log("AsaasHelper - Fonte da chave: " . (isset($_ENV['ASAAS_API_KEY']) ? 'ENV' : (getenv('ASAAS_API_KEY') ? 'getenv' : 'CONSTANTE')));
     }
     
     /**
