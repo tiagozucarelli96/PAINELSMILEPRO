@@ -347,9 +347,13 @@ class AsaasHelper {
         }
         
         // Dados do cliente (opcional - pré-preenche formulário)
-        // IMPORTANTE: Se customerData for informado, cpfCnpj é obrigatório (mesmo que vazio)
+        // IMPORTANTE: Conforme documentação Asaas, quando usando customerData, todos os campos básicos devem estar presentes
+        // Campos obrigatórios: name, email, phone, cpfCnpj
+        // Campos de endereço são opcionais, mas se incluídos devem ter todos os campos
         if (!empty($data['customerData'])) {
             $customerData = $data['customerData'];
+            
+            // Campos obrigatórios - sempre presentes (mesmo que vazios)
             $payload['customerData'] = [
                 'name' => $customerData['name'] ?? '',
                 'email' => $customerData['email'] ?? '',
@@ -357,15 +361,20 @@ class AsaasHelper {
                 'cpfCnpj' => $customerData['cpfCnpj'] ?? '' // Obrigatório quando usando customerData (mesmo que vazio)
             ];
             
-            // Se cpfCnpj não foi informado e estamos usando customerData, enviar string vazia
-            // Isso evita erro 400 "cpfCnpj deve ser informado"
-            if (!isset($customerData['cpfCnpj'])) {
+            // Garantir que cpfCnpj sempre esteja presente (evita erro 400)
+            if (!isset($customerData['cpfCnpj']) || $customerData['cpfCnpj'] === null) {
                 $payload['customerData']['cpfCnpj'] = '';
             }
             
-            // Endereço (opcional)
-            if (!empty($customerData['address'])) {
-                $payload['customerData']['address'] = $customerData['address'];
+            // Endereço (opcional, mas se informado, deve incluir todos os campos)
+            // Se algum campo de endereço foi informado, incluir todos (mesmo que vazios)
+            if (!empty($customerData['address']) || 
+                !empty($customerData['addressNumber']) || 
+                !empty($customerData['postalCode']) || 
+                !empty($customerData['province']) || 
+                !empty($customerData['city'])) {
+                
+                $payload['customerData']['address'] = $customerData['address'] ?? '';
                 $payload['customerData']['addressNumber'] = $customerData['addressNumber'] ?? '';
                 $payload['customerData']['complement'] = $customerData['complement'] ?? '';
                 $payload['customerData']['postalCode'] = $customerData['postalCode'] ?? '';
