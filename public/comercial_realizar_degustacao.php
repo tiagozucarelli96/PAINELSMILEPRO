@@ -601,26 +601,44 @@ includeSidebar('Comercial');
 (function() {
     'use strict';
     
+    console.log('🚀 Script JavaScript iniciado');
+    
     const API_ENDPOINT = 'api_relatorio_degustacao.php';
+    console.log('📡 API Endpoint:', API_ENDPOINT);
+    
     const selectDegustacao = document.getElementById('selectDegustacao');
     const relatorioContainer = document.getElementById('relatorioContainer');
     const infoBox = document.getElementById('infoBox');
     const loadingIndicator = document.getElementById('loadingIndicator');
     
+    console.log('🔍 Elementos DOM:', {
+        selectDegustacao: !!selectDegustacao,
+        relatorioContainer: !!relatorioContainer,
+        infoBox: !!infoBox,
+        loadingIndicator: !!loadingIndicator
+    });
+    
     // Função para carregar relatório via AJAX
     async function carregarRelatorio(degustacaoId) {
+        console.log('📥 carregarRelatorio chamado com degustacaoId:', degustacaoId);
+        
         if (!degustacaoId || degustacaoId === '') {
+            console.log('⚠️ degustacaoId vazio, limpando relatório');
             relatorioContainer.innerHTML = '';
             infoBox.style.display = 'none';
             return;
         }
         
+        console.log('🔄 Iniciando carregamento do relatório...');
         loadingIndicator.style.display = 'block';
         relatorioContainer.innerHTML = '';
         infoBox.style.display = 'none';
         
+        const url = `${API_ENDPOINT}?degustacao_id=${degustacaoId}`;
+        console.log('🌐 Fazendo requisição AJAX para:', url);
+        
         try {
-            const response = await fetch(`${API_ENDPOINT}?degustacao_id=${degustacaoId}`, {
+            const response = await fetch(url, {
                 method: 'GET',
                 cache: 'no-store',
                 headers: {
@@ -639,10 +657,18 @@ includeSidebar('Comercial');
             }
             
             const data = await response.json();
+            console.log('✅ Resposta recebida:', data);
             
             if (!data.success) {
+                console.error('❌ API retornou success=false:', data.error);
                 throw new Error(data.error || 'Erro desconhecido');
             }
+            
+            console.log('✅ Dados recebidos:', {
+                degustacao: data.degustacao?.nome,
+                total_inscritos: data.total_inscritos,
+                total_pessoas: data.total_pessoas
+            });
             
             // Atualizar info box
             document.getElementById('totalInscritos').textContent = data.total_inscritos;
@@ -651,15 +677,19 @@ includeSidebar('Comercial');
             infoBox.style.display = 'block';
             
             // Renderizar relatório
+            console.log('🎨 Renderizando relatório...');
             renderizarRelatorio(data.degustacao, data.inscritos);
+            console.log('✅ Relatório renderizado com sucesso');
             
             // Atualizar URL sem recarregar página
             const url = new URL(window.location);
             url.searchParams.set('degustacao_id', degustacaoId);
             window.history.pushState({degustacao_id: degustacaoId}, '', url);
+            console.log('🔗 URL atualizada:', url.toString());
             
         } catch (error) {
-            console.error('Erro ao carregar relatório:', error);
+            console.error('❌ Erro ao carregar relatório:', error);
+            console.error('❌ Stack trace:', error.stack);
             relatorioContainer.innerHTML = `
                 <div class="error-panel" style="padding: 2rem; text-align: center; background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px; color: #991b1b;">
                     <p><strong>❌ Erro ao carregar relatório:</strong></p>
@@ -759,13 +789,20 @@ includeSidebar('Comercial');
     
     // Configurar select quando DOM estiver pronto
     function init() {
+        console.log('🔧 Função init() chamada');
+        console.log('🔍 Estado do DOM:', document.readyState);
+        
         if (!selectDegustacao) {
+            console.warn('⚠️ Select não encontrado, tentando novamente em 100ms...');
             setTimeout(init, 100);
             return;
         }
         
+        console.log('✅ Select encontrado! Valor atual:', selectDegustacao.value);
+        
         // Listener para mudança no select
         selectDegustacao.addEventListener('change', function() {
+            console.log('🔄 Select mudou! Novo valor:', this.value);
             carregarRelatorio(this.value);
         });
         
@@ -774,17 +811,33 @@ includeSidebar('Comercial');
         const degustacaoIdUrl = urlParams.get('degustacao_id');
         const degustacaoIdSelect = selectDegustacao.value;
         
+        console.log('🔍 Verificando degustacao_id:', {
+            naURL: degustacaoIdUrl,
+            noSelect: degustacaoIdSelect,
+            urlCompleta: window.location.href
+        });
+        
         if (degustacaoIdUrl && degustacaoIdUrl !== '') {
+            console.log('✅ degustacao_id encontrado na URL:', degustacaoIdUrl);
             selectDegustacao.value = degustacaoIdUrl;
             carregarRelatorio(degustacaoIdUrl);
         } else if (degustacaoIdSelect && degustacaoIdSelect !== '') {
+            console.log('✅ degustacao_id encontrado no select:', degustacaoIdSelect);
             carregarRelatorio(degustacaoIdSelect);
+        } else {
+            console.log('ℹ️ Nenhum degustacao_id encontrado, aguardando seleção do usuário');
         }
     }
     
+    console.log('🔧 Configurando inicialização...');
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        console.log('⏳ DOM ainda carregando, aguardando DOMContentLoaded...');
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ DOMContentLoaded disparado');
+            init();
+        });
     } else {
+        console.log('✅ DOM já pronto, iniciando imediatamente');
         init();
     }
 })();
