@@ -69,10 +69,31 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 $status_filter = $_GET['status'] ?? '';
 $search = trim($_GET['search'] ?? '');
 
-// Verificar se a coluna é degustacao_id ou event_id
-// Por padrão, usar event_id (conforme schema oficial)
-$where = ['i.event_id = :event_id'];
+// Verificar se a coluna é degustacao_id ou event_id (pode haver inconsistência na tabela)
+// Tentar primeiro com event_id, depois com degustacao_id se necessário
+$where = [];
 $params = [':event_id' => $event_id];
+
+// Tentar detectar qual coluna existe
+try {
+    // Primeiro tentar event_id (schema oficial)
+    $test_stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE event_id = :event_id LIMIT 1");
+    $test_stmt->execute([':event_id' => $event_id]);
+    $where = ['i.event_id = :event_id'];
+    error_log("Usando coluna event_id para buscar inscrições");
+} catch (Exception $e) {
+    // Se falhar, tentar degustacao_id
+    try {
+        $test_stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :event_id LIMIT 1");
+        $test_stmt->execute([':event_id' => $event_id]);
+        $where = ['i.degustacao_id = :event_id'];
+        error_log("Usando coluna degustacao_id para buscar inscrições");
+    } catch (Exception $e2) {
+        // Se ambos falharem, usar COALESCE para tentar ambos
+        $where = ['(i.event_id = :event_id OR i.degustacao_id = :event_id)'];
+        error_log("Usando COALESCE para tentar ambas as colunas");
+    }
+}
 
 // Log para debug
 error_log("Buscando inscrições para degustação ID: $event_id");
