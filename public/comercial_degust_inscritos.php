@@ -37,7 +37,10 @@ if ($action === 'marcar_comparecimento' && $inscricao_id > 0) {
         $compareceu = isset($_POST['compareceu']) ? 1 : 0;
         $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET compareceu = :compareceu WHERE id = :id");
         $stmt->execute([':compareceu' => $compareceu, ':id' => $inscricao_id]);
-        $success_message = "Comparecimento atualizado com sucesso!";
+        
+        // Redirecionar para evitar reenvio de formulário
+        header("Location: index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=comparecimento_atualizado");
+        exit;
     } catch (Exception $e) {
         $error_message = "Erro ao atualizar comparecimento: " . $e->getMessage();
     }
@@ -60,7 +63,9 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
             ':id' => $inscricao_id
         ]);
         
-        $success_message = "Status de contrato atualizado com sucesso!";
+        // Redirecionar para evitar reenvio de formulário
+        header("Location: index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=contrato_atualizado");
+        exit;
     } catch (Exception $e) {
         $error_message = "Erro ao atualizar contrato: " . $e->getMessage();
     }
@@ -806,7 +811,7 @@ ob_start();
             <button class="close-btn" onclick="closeContratoModal()">&times;</button>
         </div>
         
-        <form method="POST">
+        <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>">
             <input type="hidden" name="action" value="marcar_fechou_contrato">
             <input type="hidden" name="inscricao_id" id="contratoInscricaoId">
             
