@@ -281,21 +281,44 @@ if (isset($_GET['get_pix_payload'])) {
     $insc_id = (int)$_GET['get_pix_payload'];
     
     try {
-        $stmt = $pdo->prepare("SELECT qr_code_payload, qr_code_image, asaas_qr_code_id FROM comercial_inscricoes WHERE id = :id");
+        // Verificar quais colunas de valor existem
+        $check_valor_cols = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('valor_total', 'valor_pago')
+        ");
+        $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+        $has_valor_total = in_array('valor_total', $valor_columns);
+        $has_valor_pago = in_array('valor_pago', $valor_columns);
+        
+        // Montar SELECT dinamicamente
+        $select_fields = ['qr_code_payload', 'qr_code_image', 'asaas_qr_code_id'];
+        if ($has_valor_total) {
+            $select_fields[] = 'valor_total as valor';
+        } elseif ($has_valor_pago) {
+            $select_fields[] = 'valor_pago as valor';
+        }
+        
+        $sql = "SELECT " . implode(', ', $select_fields) . " FROM comercial_inscricoes WHERE id = :id";
+        $stmt = $pdo->prepare($sql);
         $stmt->execute([':id' => $insc_id]);
         $data = $stmt->fetch(PDO::FETCH_ASSOC);
         
         $payload = $data['qr_code_payload'] ?? $data['qr_code_image'] ?? '';
+        $valor = isset($data['valor']) ? (float)$data['valor'] : 0;
         
         echo json_encode([
             'success' => !empty($payload),
-            'payload' => $payload
+            'payload' => $payload,
+            'valor' => $valor
         ]);
         exit;
     } catch (Exception $e) {
         echo json_encode([
             'success' => false,
             'payload' => '',
+            'valor' => 0,
             'error' => $e->getMessage()
         ]);
         exit;
