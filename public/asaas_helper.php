@@ -132,15 +132,19 @@ class AsaasHelper {
         // Testar SEM o $ primeiro (mais comum conforme documentação)
         $api_key_to_use = trim($api_key_without_dollar);
         
-        // Asaas API v3 - Formato conforme documentação oficial
-        // Documentação: https://docs.asaas.com/docs/autenticacao-1
-        // Formato: header "access_token" (algumas versões aceitam espaço, outras não)
-        // Vamos usar SEM espaço após dois pontos (formato mais comum)
+        // Asaas API v3 - Formato EXATO conforme documentação oficial
+        // Documentação: https://docs.asaas.com/docs/checkout-asaas
+        // Headers obrigatórios:
+        //   "Content-Type": "application/json"
+        //   "User-Agent": "nome_da_sua_aplicação"
+        //   "access_token": "sua_api_key"
+        // 
+        // Em headers HTTP cURL, o formato é: "Nome: Valor" (com espaço após dois pontos)
         
         $headers = [
-            'access_token:' . $api_key_to_use,  // SEM espaço após dois pontos
             'Content-Type: application/json',
-            'Accept: application/json'
+            'User-Agent: PainelSmilePRO/1.0',
+            'access_token: ' . $api_key_to_use  // COM espaço após dois pontos (formato HTTP padrão)
         ];
         
         // Log detalhado para debug
