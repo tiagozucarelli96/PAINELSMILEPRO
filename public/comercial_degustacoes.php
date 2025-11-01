@@ -1048,28 +1048,40 @@ ob_start();
         
         // CRÍTICO: Adicionar listener de submit dinamicamente quando o modal for aberto
         // e garantir que funcione mesmo se o DOM ainda não estiver pronto
+        let tentativasConfiguracao = 0;
+        const MAX_TENTATIVAS = 5; // Limitar a 5 tentativas
+        let configurado = false; // Flag para evitar múltiplas configurações
+        
         function configurarFormularioEdicao() {
-            const formEditar = document.getElementById('formEditarDegustacao');
-            if (!formEditar) {
-                console.warn('⚠️ Formulário ainda não encontrado, tentando novamente...');
-                // Tentar novamente em breve
-                setTimeout(configurarFormularioEdicao, 100);
+            // Evitar múltiplas configurações simultâneas
+            if (configurado) {
                 return;
             }
             
-            // Remover listeners antigos se existirem
-            const newForm = formEditar.cloneNode(true);
-            formEditar.parentNode.replaceChild(newForm, formEditar);
+            const formEditar = document.getElementById('formEditarDegustacao');
+            if (!formEditar) {
+                tentativasConfiguracao++;
+                if (tentativasConfiguracao < MAX_TENTATIVAS) {
+                    // Tentar novamente em breve, mas limitado
+                    setTimeout(configurarFormularioEdicao, 200);
+                } else {
+                    console.warn('⚠️ Formulário não encontrado após ' + MAX_TENTATIVAS + ' tentativas. Será configurado quando o modal for aberto.');
+                }
+                return;
+            }
             
-            const formAtual = document.getElementById('formEditarDegustacao');
-            if (!formAtual) {
-                console.error('❌ Erro ao clonar formulário');
+            // Marcar como configurado para evitar tentativas duplicadas
+            configurado = true;
+            
+            // Verificar se já tem listener (evitar duplicatas)
+            if (formEditar.dataset.listenerAdicionado === 'true') {
+                console.log('✅ Listener já foi adicionado anteriormente');
                 return;
             }
             
             console.log('✅ Formulário de edição encontrado, adicionando listener...');
             
-            formAtual.addEventListener('submit', async function(e) {
+            formEditar.addEventListener('submit', async function(e) {
             e.preventDefault();
             e.stopPropagation();
             
@@ -1179,20 +1191,31 @@ ob_start();
             }
             });
             
+            // Marcar que listener foi adicionado
+            formEditar.dataset.listenerAdicionado = 'true';
+            
             console.log('✅ Listener de submit adicionado ao formulário de edição');
         }
         
-        // Configurar quando DOM estiver pronto
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                console.log('✅ DOMContentLoaded - configurando formulário...');
+        // Configurar quando DOM estiver pronto (apenas uma vez)
+        let configuracaoInicialFeita = false;
+        function tentarConfiguracaoInicial() {
+            if (configuracaoInicialFeita) return;
+            configuracaoInicialFeita = true;
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    console.log('✅ DOMContentLoaded - configurando formulário...');
+                    configurarFormularioEdicao();
+                });
+            } else {
+                // DOM já está pronto
+                console.log('✅ DOM já pronto - configurando formulário...');
                 configurarFormularioEdicao();
-            });
-        } else {
-            // DOM já está pronto
-            console.log('✅ DOM já pronto - configurando formulário...');
-            configurarFormularioEdicao();
+            }
         }
+        
+        tentarConfiguracaoInicial();
         
         // CRÍTICO: Reconfigurar quando o modal for aberto (para garantir que funciona)
         // Sobrescrever função abrirModalEditar para garantir listener
@@ -1200,10 +1223,14 @@ ob_start();
         if (abrirModalOriginal) {
             window.abrirModalEditar = function(degustacaoId) {
                 abrirModalOriginal(degustacaoId);
-                // Reconfigurar formulário após modal ser aberto
+                // Reconfigurar formulário após modal ser aberto (resetar flag)
                 setTimeout(() => {
-                    configurarFormularioEdicao();
-                }, 200);
+                    const form = document.getElementById('formEditarDegustacao');
+                    if (form) {
+                        configurado = false; // Resetar para permitir reconfiguração
+                        configurarFormularioEdicao();
+                    }
+                }, 300);
             };
         }
     </script>
