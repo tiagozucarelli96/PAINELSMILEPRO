@@ -154,6 +154,10 @@ try {
                 // NOTA: A API ME Eventos pode não retornar CPF por segurança
                 // Será necessário verificar se há campo de CPF na resposta
                 
+                // Buscar email e telefone do cliente se disponível na API
+                $email = $e['emailCliente'] ?? $e['email'] ?? $e['cliente_email'] ?? '';
+                $telefone = $e['telefoneCliente'] ?? $e['telefone'] ?? $e['celular'] ?? $e['cliente_telefone'] ?? $e['cliente_celular'] ?? '';
+                
                 $evento_encontrado = [
                     'id' => $e['id'] ?? null,
                     'nome_cliente' => $nomeCliente,
@@ -162,7 +166,10 @@ try {
                     'hora_evento' => $e['horaevento'] ?? '',
                     'tipo_evento' => $e['tipoEvento'] ?? '',
                     'local_evento' => $e['localevento'] ?? '',
-                    'convidados' => $e['convidados'] ?? 0
+                    'convidados' => $e['convidados'] ?? 0,
+                    'email' => $email,
+                    'telefone' => $telefone,
+                    'celular' => $telefone // Alias para compatibilidade
                 ];
                 
                 // Se a API retornar CPF, validar aqui

@@ -567,23 +567,28 @@ if ($_POST && !$inscricoes_encerradas) {
                     <label class="form-label">Tipo de Festa *</label>
                     <div class="form-radio-group">
                         <div class="form-radio">
-                            <input type="radio" name="tipo_festa" value="casamento" id="casamento" required onchange="autoPreencherPessoas()">
-                            <label for="casamento">Casamento (R$ <?= number_format($degustacao['preco_casamento'], 2, ',', '.') ?> - <?= $degustacao['incluidos_casamento'] ?> pessoas incluídas)</label>
+                            <input type="radio" name="tipo_festa" value="casamento" id="casamento" required onchange="mostrarPessoasIncluidas()">
+                            <label for="casamento">Casamento (R$ <?= number_format($degustacao['preco_casamento'], 2, ',', '.') ?>)</label>
                         </div>
                         <div class="form-radio">
-                            <input type="radio" name="tipo_festa" value="15anos" id="15anos" required onchange="autoPreencherPessoas()">
-                            <label for="15anos">15 Anos (R$ <?= number_format($degustacao['preco_15anos'], 2, ',', '.') ?> - <?= $degustacao['incluidos_15anos'] ?> pessoas incluídas)</label>
+                            <input type="radio" name="tipo_festa" value="15anos" id="15anos" required onchange="mostrarPessoasIncluidas()">
+                            <label for="15anos">15 Anos (R$ <?= number_format($degustacao['preco_15anos'], 2, ',', '.') ?>)</label>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Quantidade de Pessoas -->
                 <div class="form-group">
-                    <label class="form-label">Quantidade de Pessoas *</label>
-                    <input type="number" name="qtd_pessoas" id="qtdPessoasInput" class="form-input" min="1" required onchange="calcularPreco()">
+                    <label class="form-label">Quantidade de Pessoas Adicionais *</label>
+                    <input type="number" name="qtd_pessoas" id="qtdPessoasInput" class="form-input" min="0" value="0" required onchange="calcularPreco()">
                     <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
-                        💡 Quantidade padrão preenchida automaticamente baseada no tipo de festa escolhido
+                        💡 Digite quantas pessoas adicionais além das incluídas no valor base
                     </small>
+                    <div id="pessoasIncluidasInfo" style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px; display: none;">
+                        <span style="font-weight: 600; color: #0c4a6e;">ℹ️ Total incluído no valor base:</span>
+                        <span id="totalIncluido" style="color: #0369a1; font-weight: 600;"></span>
+                        <span style="color: #0369a1;"> pessoas</span>
+                    </div>
                 </div>
                 
                 <!-- Informações de Preço -->
@@ -769,7 +774,8 @@ if ($_POST && !$inscricoes_encerradas) {
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            margin: auto;
+            margin: 0 auto;
+            transform: translate(0, 0);
         }
         
         .modal-header {
@@ -841,27 +847,33 @@ if ($_POST && !$inscricoes_encerradas) {
             extra: <?= $degustacao['preco_extra'] ?>
         };
         
-        // Auto-preenchimento de quantidade de pessoas baseado no tipo de festa
-        function autoPreencherPessoas() {
+        // Mostrar pessoas incluídas baseado no tipo de festa
+        function mostrarPessoasIncluidas() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
-            if (!tipoFesta) return;
+            if (!tipoFesta) {
+                document.getElementById('pessoasIncluidasInfo').style.display = 'none';
+                return;
+            }
             
-            const qtdPadrao = tipoFesta.value === 'casamento' ? 
+            const incluidos = tipoFesta.value === 'casamento' ? 
                 PRECOS.casamento.incluidos : 
                 PRECOS['15anos'].incluidos;
             
-            const qtdPessoasInput = document.getElementById('qtdPessoasInput');
-            qtdPessoasInput.value = qtdPadrao;
+            document.getElementById('totalIncluido').textContent = incluidos;
+            document.getElementById('pessoasIncluidasInfo').style.display = 'block';
             
-            // Calcular preço automaticamente após preencher
+            // Campo quantidade sempre começa em 0 (extras)
+            document.getElementById('qtdPessoasInput').value = 0;
+            
+            // Calcular preço automaticamente
             calcularPreco();
         }
         
         function calcularPreco() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
-            const qtdPessoas = parseInt(document.getElementById('qtdPessoasInput').value) || 0;
+            const qtdExtras = parseInt(document.getElementById('qtdPessoasInput').value) || 0;
             
-            if (!tipoFesta || qtdPessoas === 0) {
+            if (!tipoFesta) {
                 document.getElementById('priceInfo').style.display = 'none';
                 return;
             }
@@ -871,13 +883,16 @@ if ($_POST && !$inscricoes_encerradas) {
             const incluidos = precoInfo.incluidos;
             const precoExtra = PRECOS.extra;
             
-            const extras = Math.max(0, qtdPessoas - incluidos);
-            const valorTotal = precoBase + (extras * precoExtra);
+            // Total de pessoas = incluídos + extras
+            const totalPessoas = incluidos + qtdExtras;
+            
+            // Valor total = base + (extras * preço extra)
+            const valorTotal = precoBase + (qtdExtras * precoExtra);
             
             document.getElementById('precoBase').textContent = 'R$ ' + precoBase.toFixed(2).replace('.', ',');
             
-            if (extras > 0) {
-                document.getElementById('extrasInfo').textContent = extras + ' pessoa(s) extra(s) x R$ ' + precoExtra.toFixed(2).replace('.', ',') + ' = R$ ' + (extras * precoExtra).toFixed(2).replace('.', ',');
+            if (qtdExtras > 0) {
+                document.getElementById('extrasInfo').textContent = qtdExtras + ' pessoa(s) extra(s) x R$ ' + precoExtra.toFixed(2).replace('.', ',') + ' = R$ ' + (qtdExtras * precoExtra).toFixed(2).replace('.', ',');
             } else {
                 document.getElementById('extrasInfo').textContent = '0 pessoa(s) extra(s) (dentro do valor base)';
             }
@@ -886,17 +901,27 @@ if ($_POST && !$inscricoes_encerradas) {
             
             document.getElementById('priceInfo').style.display = 'block';
             
-            // Atualizar campos ocultos para o formulário
+            // Atualizar campos ocultos para o formulário (total de pessoas = incluídos + extras)
             document.getElementById('valorTotalHidden').value = valorTotal;
-            document.getElementById('extrasHidden').value = extras;
+            document.getElementById('extrasHidden').value = qtdExtras;
+            
+            // Atualizar campo qtd_pessoas com o total (incluídos + extras)
+            document.getElementById('qtdPessoasInput').setAttribute('data-total', totalPessoas);
         }
         
         
-        // Calcular preço quando tipo de festa mudar
+        // Mostrar pessoas incluídas quando tipo de festa mudar
         document.querySelectorAll('input[name="tipo_festa"]').forEach(radio => {
             radio.addEventListener('change', function() {
-                autoPreencherPessoas();
+                mostrarPessoasIncluidas();
             });
+        });
+        
+        // Ao submeter, garantir que qtd_pessoas seja o total (incluídos + extras)
+        document.getElementById('inscricaoForm')?.addEventListener('submit', function(e) {
+            const qtdPessoasInput = document.getElementById('qtdPessoasInput');
+            const totalPessoas = parseInt(qtdPessoasInput.getAttribute('data-total')) || parseInt(qtdPessoasInput.value) || 0;
+            qtdPessoasInput.value = totalPessoas;
         });
         
         // Inicializar texto do botão baseado na seleção inicial
@@ -1055,23 +1080,58 @@ if ($_POST && !$inscricoes_encerradas) {
                 loadingDiv.style.display = 'none';
                 
                 if (!data.ok) {
-                    throw new Error(data.error || 'CPF não confere ou cliente não encontrado');
+                    // Limpar mensagem de evento encontrado anterior
+                    document.getElementById('meEventInfo').classList.add('hidden');
+                    document.getElementById('meEventDetails').innerHTML = '';
+                    
+                    // Limpar campos preenchidos anteriormente
+                    document.getElementById('nomeInput').value = '';
+                    document.getElementById('emailInput').value = '';
+                    document.getElementById('telefoneInput').value = '';
+                    document.getElementById('nomeTitularHidden').value = '';
+                    document.getElementById('cpf3DigitosHidden').value = '';
+                    document.getElementById('meClienteCpfHidden').value = '';
+                    document.getElementById('meEventIdHidden').value = '';
+                    
+                    // Mostrar erro
+                    const errorMsg = data.error || 'CPF não confere ou cliente não encontrado';
+                    document.getElementById('buscaMEResultados').innerHTML = `
+                        <div style="padding: 20px; text-align: center; background: #fef2f2; border: 2px solid #dc2626; border-radius: 8px; color: #991b1b;">
+                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
+                            <h4 style="margin: 0 0 10px 0; color: #991b1b;">Dados incorretos</h4>
+                            <p style="margin: 0; line-height: 1.6;">
+                                ${escapeHtml(errorMsg)}<br>
+                                <strong>Por favor, verifique:</strong><br>
+                                • O nome digitado está correto?<br>
+                                • O CPF está de acordo com o contrato?<br>
+                                <small style="display: block; margin-top: 10px; opacity: 0.8;">
+                                    Você pode tentar novamente clicando em "Buscar Evento"
+                                </small>
+                            </p>
+                        </div>
+                    `;
+                    
+                    // Voltar para tela de busca
+                    document.getElementById('buscaMEValidarCPF').style.display = 'none';
+                    document.getElementById('buscaMENome').value = clienteSelecionadoME.nome;
+                    clienteSelecionadoME = null;
+                    
+                    throw new Error(errorMsg);
                 }
                 
                 // CPF validado com sucesso! Preencher campos automaticamente
                 const evento = data.evento;
                 
-                // Preencher campos principais automaticamente
-                document.getElementById('nomeInput').value = evento.nome_cliente;
+                // Limpar mensagem de erro anterior se existir
+                document.getElementById('meEventInfo').classList.add('hidden');
                 
-                // Tentar buscar email e telefone do evento (se disponível na resposta da API)
-                // Por enquanto, preenchemos apenas o nome, pois a API pode não retornar email/telefone
-                // Se a API retornar, descomente abaixo:
-                // if (evento.email) document.getElementById('emailInput').value = evento.email;
-                // if (evento.telefone || evento.celular) document.getElementById('telefoneInput').value = evento.telefone || evento.celular;
+                // Preencher campos principais automaticamente
+                document.getElementById('nomeInput').value = evento.nome_cliente || '';
+                if (evento.email) document.getElementById('emailInput').value = evento.email;
+                if (evento.telefone || evento.celular) document.getElementById('telefoneInput').value = evento.telefone || evento.celular;
                 
                 // Preencher campos ocultos
-                document.getElementById('nomeTitularHidden').value = evento.nome_cliente;
+                document.getElementById('nomeTitularHidden').value = evento.nome_cliente || '';
                 document.getElementById('cpf3DigitosHidden').value = cpf.substring(0, 3);
                 document.getElementById('meClienteCpfHidden').value = cpf;
                 document.getElementById('meEventIdHidden').value = evento.id || '';
@@ -1079,9 +1139,9 @@ if ($_POST && !$inscricoes_encerradas) {
                 // Mostrar informações do evento
                 const eventDetails = `
                     <div style="margin-top: 10px; font-size: 14px;">
-                        <div style="margin-bottom: 5px;"><strong>📅 Evento:</strong> ${escapeHtml(evento.nome_evento)}</div>
+                        <div style="margin-bottom: 5px;"><strong>📅 Evento:</strong> ${escapeHtml(evento.nome_evento || 'N/A')}</div>
                         <div style="margin-bottom: 5px;"><strong>📆 Data:</strong> ${formatarData(evento.data_evento)}</div>
-                        <div style="margin-bottom: 5px;"><strong>🎉 Tipo:</strong> ${escapeHtml(evento.tipo_evento)}</div>
+                        <div style="margin-bottom: 5px;"><strong>🎉 Tipo:</strong> ${escapeHtml(evento.tipo_evento || 'N/A')}</div>
                         ${evento.local_evento ? `<div><strong>📍 Local:</strong> ${escapeHtml(evento.local_evento)}</div>` : ''}
                     </div>
                 `;
