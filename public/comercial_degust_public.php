@@ -263,13 +263,17 @@ if ($_POST && !$inscricoes_encerradas) {
                     throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
                 }
                 
-                // Criar QR Code estático
+                // Criar QR Code estático conforme modelo Asaas
+                // Calcula data de expiração (1 hora a partir de agora)
+                $expiration_date = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                
                 $qr_code_data = [
                     'addressKey' => $pix_address_key,
                     'description' => $descricao_item,
                     'value' => (float)$valor_total,
-                    'format' => 'ALL', // Retorna payload completo + imagem
-                    'expirationSeconds' => 3600 // 1 hora de validade
+                    'expirationDate' => $expiration_date, // Formato: "YYYY-MM-DD HH:mm:ss"
+                    'expirationSeconds' => 3600, // 1 hora (3600 segundos)
+                    'allowsMultiplePayments' => true // Permite múltiplos pagamentos (conforme modelo)
                 ];
                 
                 $qr_code_response = $asaasHelper->createStaticQrCode($qr_code_data);

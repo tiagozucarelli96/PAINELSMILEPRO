@@ -426,18 +426,30 @@ class AsaasHelper {
             throw new Exception('value deve ser maior que zero');
         }
         
-        // Montar payload
+        // Montar payload conforme documentação Asaas
         $payload = [
             'addressKey' => $data['addressKey'],
             'description' => $data['description'] ?? '',
-            'value' => (float)$data['value'],
-            'format' => $data['format'] ?? 'ALL' // ALL, BASE64, IMAGE
+            'allowsMultiplePayments' => $data['allowsMultiplePayments'] ?? true // Permite múltiplos pagamentos
         ];
+        
+        // Valor (obrigatório se especificado)
+        if (isset($data['value']) && $data['value'] > 0) {
+            $payload['value'] = (float)$data['value'];
+        }
+        
+        // Formato do QR Code (opcional)
+        if (!empty($data['format'])) {
+            $payload['format'] = $data['format']; // ALL, BASE64, IMAGE
+        }
         
         // Data de expiração (se informada)
         if (!empty($data['expirationDate'])) {
-            $payload['expirationDate'] = $data['expirationDate'];
-        } elseif (!empty($data['expirationSeconds'])) {
+            $payload['expirationDate'] = $data['expirationDate']; // Formato: "YYYY-MM-DD HH:mm:ss"
+        }
+        
+        // Expiração em segundos (alternativa a expirationDate)
+        if (!empty($data['expirationSeconds'])) {
             $payload['expirationSeconds'] = (int)$data['expirationSeconds'];
         }
         
