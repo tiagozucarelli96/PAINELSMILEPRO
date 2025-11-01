@@ -17,15 +17,40 @@ if (!lc_can_access_comercial()) {
 }
 
 $pdo = $GLOBALS['pdo'];
-$degustacao_id = isset($_GET['degustacao_id']) ? (int)$_GET['degustacao_id'] : 0;
 $degustacao = null;
 $inscritos = [];
 $error_message = '';
 $debug_info = [];
 
-// Log inicial
+// Log inicial - VERIFICAR $_GET ANTES DE PROCESSAR
 $debug_info[] = "🔍 DEBUG: Script iniciado";
-$debug_info[] = "🔍 DEBUG: degustacao_id na URL = " . ($degustacao_id > 0 ? $degustacao_id : 'VAZIO');
+$debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET);
+$debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degustacao_id']) ? $_GET['degustacao_id'] : 'NÃO EXISTE');
+$debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? $_GET['page'] : 'NÃO EXISTE');
+$debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? $_REQUEST['degustacao_id'] : 'NÃO EXISTE');
+$debug_info[] = "🔍 DEBUG: REQUEST_URI = " . ($_SERVER['REQUEST_URI'] ?? 'NÃO DEFINIDO');
+$debug_info[] = "🔍 DEBUG: QUERY_STRING = " . ($_SERVER['QUERY_STRING'] ?? 'NÃO DEFINIDO');
+
+// Tentar obter degustacao_id de múltiplas formas
+$degustacao_id = 0;
+if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] !== '') {
+    $degustacao_id = (int)$_GET['degustacao_id'];
+    $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_GET = {$degustacao_id}";
+} elseif (isset($_REQUEST['degustacao_id']) && $_REQUEST['degustacao_id'] !== '') {
+    $degustacao_id = (int)$_REQUEST['degustacao_id'];
+    $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_REQUEST = {$degustacao_id}";
+} else {
+    // Tentar parsear da QUERY_STRING
+    parse_str($_SERVER['QUERY_STRING'] ?? '', $query_params);
+    if (isset($query_params['degustacao_id']) && $query_params['degustacao_id'] !== '') {
+        $degustacao_id = (int)$query_params['degustacao_id'];
+        $debug_info[] = "✅ DEBUG: degustacao_id obtido de QUERY_STRING = {$degustacao_id}";
+    } else {
+        $debug_info[] = "⚠️ DEBUG: degustacao_id NÃO encontrado em nenhum lugar";
+    }
+}
+
+$debug_info[] = "🔍 DEBUG: degustacao_id FINAL = " . ($degustacao_id > 0 ? $degustacao_id : 'VAZIO/0');
 
 // Buscar todas as degustações
 try {
