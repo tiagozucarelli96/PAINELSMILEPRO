@@ -34,7 +34,8 @@ try {
     // Ignorar erro
 }
 
-ob_start();
+// Incluir sidebar ANTES do conteúdo
+includeSidebar('Logístico');
 ?>
 
 <style>
@@ -327,11 +328,6 @@ ob_start();
     </div>
 </div>
 
-<?php
-$conteudo = ob_get_clean();
-includeSidebar('Logístico');
-?>
-<?= $conteudo ?>
 <?php
 endSidebar();
 ?>
