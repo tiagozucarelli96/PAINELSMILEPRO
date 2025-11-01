@@ -118,8 +118,35 @@ try {
             throw new Exception('Campos obrigatórios não preenchidos');
         }
         
-        // Construir data_evento
-        $data_evento = $data . ' ' . $hora_inicio . ':00';
+        // Normalizar formato da hora (remover segundos se existirem)
+        $hora_inicio_clean = preg_replace('/:00$/', '', $hora_inicio); // Remove :00 do final se existir
+        $hora_fim_clean = preg_replace('/:00$/', '', $hora_fim); // Remove :00 do final se existir
+        
+        // Garantir que hora tenha formato HH:MM
+        if (!preg_match('/^\d{2}:\d{2}$/', $hora_inicio_clean)) {
+            // Se não tiver formato correto, tentar extrair HH:MM
+            if (preg_match('/(\d{2}:\d{2})/', $hora_inicio, $matches)) {
+                $hora_inicio_clean = $matches[1];
+            } else {
+                throw new Exception('Formato de hora início inválido: ' . $hora_inicio);
+            }
+        }
+        
+        if (!preg_match('/^\d{2}:\d{2}$/', $hora_fim_clean)) {
+            if (preg_match('/(\d{2}:\d{2})/', $hora_fim, $matches)) {
+                $hora_fim_clean = $matches[1];
+            } else {
+                throw new Exception('Formato de hora fim inválido: ' . $hora_fim);
+            }
+        }
+        
+        // Construir data_evento no formato correto: YYYY-MM-DD HH:MM:SS
+        $data_evento = $data . ' ' . $hora_inicio_clean . ':00';
+        
+        // Validar formato da data
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+            throw new Exception('Formato de data inválido: ' . $data);
+        }
         
         $capacidade = (int)($_POST['capacidade'] ?? 50);
         $data_limite = $_POST['data_limite'] ?? '';
@@ -161,8 +188,8 @@ try {
             ':nome' => $nome,
             ':data' => $data,
             ':data_evento' => $data_evento,
-            ':hora_inicio' => $hora_inicio,
-            ':hora_fim' => $hora_fim,
+            ':hora_inicio' => $hora_inicio_clean,
+            ':hora_fim' => $hora_fim_clean,
             ':local' => $local,
             ':capacidade' => $capacidade,
             ':data_limite' => $data_limite ?: null,
