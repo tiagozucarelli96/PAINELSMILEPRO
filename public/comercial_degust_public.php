@@ -36,7 +36,7 @@ if ($agora > $data_limite) {
 }
 
 // Verificar capacidade
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE event_id = :id AND status = 'confirmado'");
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id AND status = 'confirmado'");
 $stmt->execute([':id' => $degustacao['id']]);
 $inscritos_count = $stmt->fetchColumn();
 
@@ -95,22 +95,22 @@ if ($_POST && !$inscricoes_encerradas) {
         }
         
         // Verificar se já existe inscrição com este e-mail
-        $stmt = $pdo->prepare("SELECT id FROM comercial_inscricoes WHERE event_id = :event_id AND email = :email");
-        $stmt->execute([':event_id' => $degustacao['id'], ':email' => $email]);
+        $stmt = $pdo->prepare("SELECT id FROM comercial_inscricoes WHERE degustacao_id = :degustacao_id AND email = :email");
+        $stmt->execute([':degustacao_id' => $degustacao['id'], ':email' => $email]);
         if ($stmt->fetch()) {
             throw new Exception("Já existe uma inscrição com este e-mail para esta degustação");
         }
         
         // Inserir inscrição
         $sql = "INSERT INTO comercial_inscricoes 
-                (event_id, status, fechou_contrato, me_event_id, nome_titular_contrato, nome, email, celular, 
+                (degustacao_id, status, fechou_contrato, me_event_id, nome_titular_contrato, nome, email, celular, 
                  dados_json, qtd_pessoas, tipo_festa, extras, pagamento_status, valor_pago, ip_origem, user_agent_origem)
                 VALUES 
-                (:event_id, :status, :fechou_contrato, :me_event_id, :nome_titular_contrato, :nome, :email, :celular,
+                (:degustacao_id, :status, :fechou_contrato, :me_event_id, :nome_titular_contrato, :nome, :email, :celular,
                  :dados_json, :qtd_pessoas, :tipo_festa, :extras, :pagamento_status, :valor_pago, :ip_origem, :user_agent_origem)";
         
         $params = [
-            ':event_id' => $degustacao['id'],
+            ':degustacao_id' => $degustacao['id'],
             ':status' => $status,
             ':fechou_contrato' => $fechou_contrato,
             ':me_event_id' => null,
