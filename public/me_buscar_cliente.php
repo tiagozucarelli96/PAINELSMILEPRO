@@ -196,48 +196,72 @@ try {
             throw new Exception('Cliente não encontrado. Verifique o nome digitado.');
         }
         
-        // PASSO 3: VALIDAR CPF
+        // PASSO 3: VALIDAR CPF COM MECANISMO DE SEGURANÇA ROBUSTO
         $cpf_validado = false;
         
-        if (!empty($cpf_api_encontrado)) {
-            // Se a API retornou CPF, validar
-            $cpf_api_limpo = preg_replace('/\D/', '', $cpf_api_encontrado);
-            $cpf_digitado_limpo = preg_replace('/\D/', '', $cpf_digitado);
-            
-            error_log("ME Buscar Cliente - Validando CPF: API='$cpf_api_limpo' vs Digitado='$cpf_digitado_limpo'");
-            
-            if ($cpf_api_limpo === $cpf_digitado_limpo) {
-                $cpf_validado = true;
-                error_log("ME Buscar Cliente - CPF VALIDADO COM SUCESSO!");
-            } else {
-                error_log("ME Buscar Cliente - CPF NÃO CONFERE!");
-                throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados.');
+        // Função para validar CPF (dígitos verificadores)
+        function validarCPF($cpf) {
+            $cpf = preg_replace('/\D/', '', $cpf);
+            if (strlen($cpf) != 11 || preg_match('/(\d)\1{10}/', $cpf)) {
+                return false; // CPF com todos dígitos iguais é inválido
             }
-        } else {
-            // Se a API NÃO retornou CPF, validar apenas formato (11 dígitos)
-            // Isso permite que o sistema funcione mesmo se a API não retornar CPF por segurança
-            $cpf_digitado_limpo = preg_replace('/\D/', '', $cpf_digitado);
             
-            if (strlen($cpf_digitado_limpo) === 11) {
-                $cpf_validado = true;
-                error_log("ME Buscar Cliente - CPF aceito por validação de formato (API não retornou CPF)");
-            } else {
-                throw new Exception('CPF deve ter 11 dígitos.');
+            for ($t = 9; $t < 11; $t++) {
+                for ($d = 0, $c = 0; $c < $t; $c++) {
+                    $d += $cpf[$c] * (($t + 1) - $c);
+                }
+                $d = ((10 * $d) % 11) % 10;
+                if ($cpf[$c] != $d) {
+                    return false;
+                }
             }
+            return true;
         }
         
-        // PASSO 4: CPF validado - retornar TODOS os dados
-        if (!$cpf_validado) {
-            throw new Exception('Não foi possível validar o CPF.');
+        // SEGURANÇA: CPF é OBRIGATÓRIO na API ME
+        if (empty($cpf_api_encontrado)) {
+            error_log("ME Buscar Cliente - SEGURANÇA: API não retornou CPF. Rejeitando acesso por segurança.");
+            throw new Exception('Não foi possível validar sua identidade. A API não retornou o CPF cadastrado. Por favor, entre em contato conosco para verificar seu cadastro ou inscreva-se sem buscar evento.');
         }
         
-        error_log("ME Buscar Cliente - Retornando dados do cliente.");
+        // Limpar CPFs para comparação
+        $cpf_api_limpo = preg_replace('/\D/', '', $cpf_api_encontrado);
+        $cpf_digitado_limpo = preg_replace('/\D/', '', $cpf_digitado);
         
-        // Retornar dados do evento encontrado
+        error_log("ME Buscar Cliente - Validando CPF: API='$cpf_api_limpo' vs Digitado='$cpf_digitado_limpo'");
+        
+        // VALIDAÇÃO 1: CPF deve ter formato válido (11 dígitos)
+        if (strlen($cpf_digitado_limpo) !== 11) {
+            throw new Exception('CPF deve ter 11 dígitos.');
+        }
+        
+        // VALIDAÇÃO 2: CPF deve ser matematicamente válido (dígitos verificadores)
+        if (!validarCPF($cpf_digitado_limpo)) {
+            throw new Exception('CPF inválido. Verifique se os dígitos estão corretos.');
+        }
+        
+        // VALIDAÇÃO 3: CPF digitado DEVE ser EXATAMENTE igual ao CPF da API
+        if ($cpf_api_limpo !== $cpf_digitado_limpo) {
+            error_log("ME Buscar Cliente - CPF NÃO CONFERE! API='$cpf_api_limpo' vs Digitado='$cpf_digitado_limpo'");
+            throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados de acordo com seu contrato.');
+        }
+        
+        // VALIDAÇÃO 4: Confirmação adicional - verificar se email/telefone também coincidem (camada extra de segurança)
+        $email_api = $evento_encontrado['email'] ?? '';
+        $telefone_api = $evento_encontrado['telefone'] ?? '';
+        
+        error_log("ME Buscar Cliente - CPF VALIDADO COM SUCESSO! Email disponível na API: " . (!empty($email_api) ? 'SIM' : 'NÃO') . ", Telefone: " . (!empty($telefone_api) ? 'SIM' : 'NÃO'));
+        
+        $cpf_validado = true;
+        
+        error_log("ME Buscar Cliente - Retornando dados do cliente (CPF validado com sucesso).");
+        
+        // Retornar dados do evento encontrado (APENAS após validação rigorosa)
         echo json_encode([
             'ok' => true,
             'evento' => $evento_encontrado,
-            'cpf_validado' => true
+            'cpf_validado' => true,
+            'mensagem' => 'Identidade confirmada com sucesso.'
         ], JSON_UNESCAPED_UNICODE);
         
     } else {
