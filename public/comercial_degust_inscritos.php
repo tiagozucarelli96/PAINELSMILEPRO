@@ -833,8 +833,10 @@ ob_start();
         }
         
         function openComparecimentoModal(inscricaoId, compareceu) {
+            const modal = document.getElementById('comparecimentoModal');
             document.getElementById('comparecimentoInscricaoId').value = inscricaoId;
-            document.getElementById('comparecimentoModal').classList.add('active');
+            modal.style.display = 'flex';
+            modal.classList.add('active');
             
             if (compareceu) {
                 document.getElementById('compareceu_sim').checked = true;
