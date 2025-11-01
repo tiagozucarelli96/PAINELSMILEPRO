@@ -276,29 +276,65 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         
         $qr_result = $asaasHelper->createStaticQrCode($qr_code_data);
         
+        // Log detalhado da resposta para debug
+        error_log("📋 Resposta completa do Asaas (adicionar pessoa): " . json_encode($qr_result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        
         // Corrigir verificação de erro
         if (!$qr_result) {
+            error_log("❌ ERRO: Resposta do Asaas é null/vazia");
             throw new Exception("Erro ao gerar QR Code: Resposta vazia do Asaas");
         }
         
         // Verificar se tem 'success' na resposta
         if (isset($qr_result['success']) && $qr_result['success'] === false) {
             $error_msg = $qr_result['error'] ?? ($qr_result['message'] ?? 'Erro desconhecido ao gerar QR Code');
+            error_log("❌ ERRO: Asaas retornou success=false: " . $error_msg);
             throw new Exception("Erro ao gerar QR Code: {$error_msg}");
         }
         
         // Se não tem 'success', verificar se tem 'id' (formato alternativo da resposta)
         if (!isset($qr_result['success']) && !isset($qr_result['id'])) {
             $error_msg = $qr_result['error'] ?? ($qr_result['message'] ?? 'Resposta inválida do Asaas');
+            error_log("❌ ERRO: Resposta do Asaas não tem 'id' nem 'success'. Campos disponíveis: " . implode(', ', array_keys($qr_result)));
+            error_log("❌ ERRO: Resposta completa: " . json_encode($qr_result));
             throw new Exception("Erro ao gerar QR Code: {$error_msg}");
         }
         
         $qr_code_id = $qr_result['id'] ?? '';
-        $qr_code_payload = $qr_result['payload'] ?? '';
+        error_log("✅ QR Code ID obtido: {$qr_code_id}");
+        
+        // O Asaas pode retornar o payload em diferentes campos dependendo do format
+        // Tentar múltiplos campos possíveis
+        $qr_code_payload = '';
+        if (isset($qr_result['payload']) && !empty($qr_result['payload'])) {
+            $qr_code_payload = $qr_result['payload'];
+            error_log("✅ Payload encontrado em 'payload' (tamanho: " . strlen($qr_code_payload) . " chars)");
+        } elseif (isset($qr_result['pixCopyPaste']) && !empty($qr_result['pixCopyPaste'])) {
+            $qr_code_payload = $qr_result['pixCopyPaste'];
+            error_log("✅ Payload encontrado em 'pixCopyPaste' (tamanho: " . strlen($qr_code_payload) . " chars)");
+        } elseif (isset($qr_result['encodedImage']) && !empty($qr_result['encodedImage'])) {
+            $qr_code_payload = $qr_result['encodedImage'];
+            error_log("✅ Payload encontrado em 'encodedImage' (tamanho: " . strlen($qr_code_payload) . " chars)");
+        } else {
+            error_log("⚠️ AVISO: Payload não encontrado em campos esperados. Campos disponíveis: " . implode(', ', array_keys($qr_result)));
+            error_log("⚠️ AVISO: Tentando usar primeiro campo que contenha string longa...");
+            
+            // Última tentativa: buscar qualquer campo que seja uma string longa (provavelmente o payload)
+            foreach ($qr_result as $key => $value) {
+                if (is_string($value) && strlen($value) > 50) {
+                    $qr_code_payload = $value;
+                    error_log("✅ Payload encontrado no campo '{$key}' (tamanho: " . strlen($qr_code_payload) . " chars)");
+                    break;
+                }
+            }
+        }
         
         if (empty($qr_code_payload)) {
-            throw new Exception("QR Code gerado mas payload não retornado");
+            error_log("❌ ERRO CRÍTICO: Payload vazio após todas as tentativas. Resposta completa: " . json_encode($qr_result));
+            throw new Exception("QR Code gerado mas payload não retornado. ID: {$qr_code_id}. Verifique os logs.");
         }
+        
+        error_log("✅ Payload final obtido com sucesso (tamanho: " . strlen($qr_code_payload) . " chars, primeiros 50 chars: " . substr($qr_code_payload, 0, 50) . "...)");
         
         // Atualizar inscrição com novo QR Code (substituir o anterior, pois é uma cobrança adicional)
         $check_qr_cols = $pdo->query("
