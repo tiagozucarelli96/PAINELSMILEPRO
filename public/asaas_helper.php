@@ -117,20 +117,22 @@ class AsaasHelper {
         // Asaas API v3 - Testar diferentes formatos de autenticação
         // A API Asaas pode aceitar diferentes formatos, vamos testar o mais comum
         
-        // IMPORTANTE: Remover $ do início da chave se existir (pode estar vindo do ENV com $)
+        // IMPORTANTE: A chave do Asaas pode vir com $ do ENV, mas a API NÃO aceita o $ no header
+        // Chaves de produção: $aact_prod_... (com $)
+        // Chaves de sandbox: $aact_hmlg_... (com $)
+        // Mas no header access_token, devemos enviar SEM o $
         $api_key_clean = $this->api_key;
         if (strpos($api_key_clean, '$') === 0) {
             $api_key_clean = substr($api_key_clean, 1);
-            error_log("AsaasHelper - Removido \$ do início da chave");
+            error_log("AsaasHelper - Removido \$ do início da chave para envio no header");
         }
         
         // Asaas API v3 - Formato correto conforme documentação oficial
         // Documentação: https://docs.asaas.com/docs/autenticacao-1
-        // Formato oficial: header "access_token" (sem espaço antes dos dois pontos)
-        // NOTA: A chave deve incluir o $ se for de produção ($aact_prod_...)
+        // Formato: header "access_token" com valor da chave (SEM $ e SEM espaço após dois pontos)
         
         $headers = [
-            'access_token:' . $api_key_clean,  // SEM espaço após os dois pontos (formato oficial)
+            'access_token:' . trim($api_key_clean),  // SEM espaço após dois pontos, chave limpa
             'Content-Type: application/json',
             'Accept: application/json'
         ];
