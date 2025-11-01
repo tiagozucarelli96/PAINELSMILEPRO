@@ -117,28 +117,36 @@ class AsaasHelper {
         // Asaas API v3 - Testar diferentes formatos de autenticação
         // A API Asaas pode aceitar diferentes formatos, vamos testar o mais comum
         
-        // IMPORTANTE: A chave do Asaas pode vir com $ do ENV, mas a API NÃO aceita o $ no header
-        // Chaves de produção: $aact_prod_... (com $)
-        // Chaves de sandbox: $aact_hmlg_... (com $)
-        // Mas no header access_token, devemos enviar SEM o $
-        $api_key_clean = $this->api_key;
-        if (strpos($api_key_clean, '$') === 0) {
-            $api_key_clean = substr($api_key_clean, 1);
-            error_log("AsaasHelper - Removido \$ do início da chave para envio no header");
+        // IMPORTANTE: A chave do Asaas pode vir com $ do ENV
+        // Conforme documentação: chaves de produção começam com $aact_prod_
+        // A API Asaas aceita a chave COM ou SEM o $, mas vamos testar ambos os formatos
+        $api_key_original = $this->api_key;
+        $api_key_without_dollar = $api_key_original;
+        
+        // Remover $ se existir no início
+        if (strpos($api_key_without_dollar, '$') === 0) {
+            $api_key_without_dollar = substr($api_key_without_dollar, 1);
+            error_log("AsaasHelper - Chave original tem \$ no início. Versão sem \$ criada para teste.");
         }
         
-        // Asaas API v3 - Formato correto conforme documentação oficial
+        // Testar SEM o $ primeiro (mais comum conforme documentação)
+        $api_key_to_use = trim($api_key_without_dollar);
+        
+        // Asaas API v3 - Formato conforme documentação oficial
         // Documentação: https://docs.asaas.com/docs/autenticacao-1
-        // Formato: header "access_token" com valor da chave (SEM $ e SEM espaço após dois pontos)
+        // Formato: header "access_token" (algumas versões aceitam espaço, outras não)
+        // Vamos usar SEM espaço após dois pontos (formato mais comum)
         
         $headers = [
-            'access_token:' . trim($api_key_clean),  // SEM espaço após dois pontos, chave limpa
+            'access_token:' . $api_key_to_use,  // SEM espaço após dois pontos
             'Content-Type: application/json',
             'Accept: application/json'
         ];
         
-        // Log do header que será enviado (apenas primeiros caracteres por segurança)
-        error_log("AsaasHelper - Header access_token (primeiros 40 chars): " . substr('access_token: ' . $api_key_clean, 0, 40) . "...");
+        // Log detalhado para debug
+        error_log("AsaasHelper - Chave ORIGINAL (primeiros 30): " . substr($api_key_original, 0, 30) . "...");
+        error_log("AsaasHelper - Chave LIMPA (sem \$) (primeiros 30): " . substr($api_key_to_use, 0, 30) . "...");
+        error_log("AsaasHelper - Header access_token (primeiros 50 chars): " . substr('access_token:' . $api_key_to_use, 0, 50) . "...");
         
         // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
