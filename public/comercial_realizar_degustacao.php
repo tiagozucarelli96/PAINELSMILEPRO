@@ -609,40 +609,51 @@ function configurarSelectDegustacao() {
     // Adicionar novo listener
     const selectAtual = document.getElementById('selectDegustacao');
     
-    selectAtual.addEventListener('change', function() {
+    selectAtual.addEventListener('change', function(e) {
         const selectedValue = this.value;
         console.log('🔍 Select mudou para:', selectedValue);
+        
+        // IMPORTANTE: Prevenir comportamento padrão se houver
+        e.preventDefault();
+        e.stopPropagation();
         
         if (selectedValue && selectedValue !== '') {
             const form = this.closest('form') || document.getElementById('formDegustacao');
             if (form) {
-                console.log('✅ Formulário encontrado, submetendo...');
+                console.log('✅ Formulário encontrado');
                 
                 // Garantir que o action está correto
                 if (!form.action || form.action === '' || form.action === window.location.pathname) {
                     form.action = 'index.php';
                 }
                 
-                // Adicionar degustacao_id ao formulário se não estiver
-                let degustacaoInput = form.querySelector('input[name="degustacao_id"]');
-                if (!degustacaoInput) {
-                    degustacaoInput = document.createElement('input');
-                    degustacaoInput.type = 'hidden';
-                    degustacaoInput.name = 'degustacao_id';
-                    form.appendChild(degustacaoInput);
-                }
-                degustacaoInput.value = selectedValue;
-                
+                // O select já tem name="degustacao_id", então o valor será enviado automaticamente
+                // Mas vamos garantir que está correto
                 console.log('🔍 Form action:', form.action);
-                console.log('🔍 degustacao_id a ser enviado:', selectedValue);
+                console.log('🔍 Form method:', form.method);
+                console.log('🔍 Select value:', selectedValue);
+                console.log('🔍 Select name:', this.name);
                 
-                form.submit();
+                // Construir URL manualmente para garantir que funcione
+                const url = new URL(form.action, window.location.origin);
+                url.searchParams.set('page', 'comercial_realizar_degustacao');
+                url.searchParams.set('degustacao_id', selectedValue);
+                
+                console.log('🔍 URL final que será acessada:', url.toString());
+                console.log('✅ Redirecionando...');
+                
+                // Redirecionar diretamente em vez de submit
+                window.location.href = url.toString();
             } else {
                 console.error('❌ Formulário não encontrado!');
                 alert('Erro: Formulário não encontrado. Recarregue a página.');
             }
         } else {
             console.log('⚠️ Valor vazio selecionado');
+            // Se selecionou vazio, remover degustacao_id da URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete('degustacao_id');
+            window.location.href = url.toString();
         }
     });
     
