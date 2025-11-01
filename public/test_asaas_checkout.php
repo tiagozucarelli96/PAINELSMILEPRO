@@ -5,9 +5,18 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/asaas_helper.php';
 
-// Verificar autenticação
-if (!isset($_SESSION['user_id'])) {
-    die('Acesso negado. Faça login primeiro.');
+// Verificar autenticação (padrão do sistema)
+$uid = $_SESSION['user_id'] ?? $_SESSION['id'] ?? null;
+$logadoFlag = $_SESSION['logado'] ?? $_SESSION['logged_in'] ?? $_SESSION['auth'] ?? null;
+$estaLogado = filter_var($logadoFlag, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+if ($estaLogado === null) { 
+    $estaLogado = in_array((string)$logadoFlag, ['1','true','on','yes'], true); 
+}
+
+if (!$uid || !is_numeric($uid) || !$estaLogado) {
+    // Redirecionar para login se não estiver logado
+    header('Location: index.php?page=login');
+    exit;
 }
 
 header('Content-Type: text/html; charset=utf-8');
