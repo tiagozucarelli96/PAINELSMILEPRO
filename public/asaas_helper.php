@@ -114,11 +114,19 @@ class AsaasHelper {
     private function makeRequest($method, $endpoint, $data = null) {
         $ch = curl_init();
         
-        // Asaas API v3 - Formato correto conforme documentação oficial
-        // A API Asaas usa 'access_token' como nome do header (sem ':' antes)
-        // Formato correto: access_token: {chave}
+        // Asaas API v3 - Testar diferentes formatos de autenticação
+        // A API Asaas pode aceitar diferentes formatos, vamos testar o mais comum
+        
+        // IMPORTANTE: Remover $ do início da chave se existir (pode estar vindo do ENV com $)
+        $api_key_clean = $this->api_key;
+        if (strpos($api_key_clean, '$') === 0) {
+            $api_key_clean = substr($api_key_clean, 1);
+            error_log("AsaasHelper - Removido \$ do início da chave");
+        }
+        
+        // Formato 1: access_token como header (formato oficial Asaas)
         $headers = [
-            'access_token: ' . $this->api_key,
+            'access_token: ' . $api_key_clean,
             'Content-Type: application/json',
             'Accept: application/json',
             'User-Agent: PainelSmilePRO/1.0'
@@ -126,9 +134,11 @@ class AsaasHelper {
         
         // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
-        error_log("Asaas API Key COMPLETA: " . $this->api_key);
-        error_log("Asaas API Key - Tamanho: " . strlen($this->api_key) . " caracteres");
-        error_log("Asaas API Key - Contém \$: " . (strpos($this->api_key, '$') !== false ? 'SIM' : 'NÃO'));
+        error_log("Asaas API Key ORIGINAL: " . $this->api_key);
+        error_log("Asaas API Key LIMPA (sem \$): " . $api_key_clean);
+        error_log("Asaas API Key - Tamanho original: " . strlen($this->api_key) . " caracteres");
+        error_log("Asaas API Key - Tamanho limpa: " . strlen($api_key_clean) . " caracteres");
+        error_log("Asaas API Key - Contém \$ no início: " . (strpos($this->api_key, '$') === 0 ? 'SIM' : 'NÃO'));
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,
