@@ -197,15 +197,27 @@ class AsaasHelper {
         if ($http_code >= 400) {
             error_log("Asaas API Error Response: " . json_encode($decoded_response, JSON_UNESCAPED_UNICODE));
             
-            // Tentar extrair mensagem de erro de diferentes formatos da API Asaas
+            // Extrair código e mensagem de erro conforme documentação oficial Asaas
+            // Documentação: https://docs.asaas.com/docs/erros-de-autenticacao
+            $error_code = null;
             $error_message = 'Erro desconhecido';
+            $error_details = [];
+            
             if (isset($decoded_response['errors']) && is_array($decoded_response['errors'])) {
-                if (isset($decoded_response['errors'][0]['description'])) {
-                    $error_message = $decoded_response['errors'][0]['description'];
-                } elseif (isset($decoded_response['errors'][0]['message'])) {
-                    $error_message = $decoded_response['errors'][0]['message'];
-                } elseif (is_string($decoded_response['errors'][0])) {
-                    $error_message = $decoded_response['errors'][0];
+                $first_error = $decoded_response['errors'][0];
+                
+                // Extrair código do erro (ex: invalid_environment, access_token_not_found, etc)
+                if (isset($first_error['code'])) {
+                    $error_code = $first_error['code'];
+                }
+                
+                // Extrair mensagem/description
+                if (isset($first_error['description'])) {
+                    $error_message = $first_error['description'];
+                } elseif (isset($first_error['message'])) {
+                    $error_message = $first_error['message'];
+                } elseif (is_string($first_error)) {
+                    $error_message = $first_error;
                 }
             } elseif (isset($decoded_response['message'])) {
                 $error_message = $decoded_response['message'];
@@ -213,7 +225,36 @@ class AsaasHelper {
                 $error_message = is_string($decoded_response['error']) ? $decoded_response['error'] : json_encode($decoded_response['error']);
             }
             
-            throw new Exception("Erro ASAAS ($http_code): $error_message");
+            // Mensagens específicas baseadas nos códigos de erro da documentação
+            $helpful_message = $error_message;
+            if ($error_code) {
+                switch ($error_code) {
+                    case 'invalid_environment':
+                        $helpful_message = $error_message . ' | Use chave de produção ($aact_prod_...) em api.asaas.com e chave de sandbox ($aact_hmlg_...) em api-sandbox.asaas.com';
+                        break;
+                    
+                    case 'access_token_not_found':
+                        $helpful_message = $error_message . ' | Verifique se o header "access_token" está sendo enviado corretamente';
+                        break;
+                    
+                    case 'invalid_access_token_format':
+                        $helpful_message = $error_message . ' | Verifique se não copiou espaços extras. Chaves de produção começam com $aact_prod_ e sandbox com $aact_hmlg_';
+                        break;
+                    
+                    case 'invalid_access_token':
+                        $helpful_message = $error_message . ' | Confirme se a chave está correta e não foi desabilitada, expirada ou excluída no painel Asaas';
+                        break;
+                }
+            }
+            
+            // Formato da exceção: código HTTP, código de erro (se houver) e mensagem
+            $exception_message = "Erro ASAAS ($http_code)";
+            if ($error_code) {
+                $exception_message .= " [$error_code]";
+            }
+            $exception_message .= ": $helpful_message";
+            
+            throw new Exception($exception_message);
         }
         
         return $decoded_response;

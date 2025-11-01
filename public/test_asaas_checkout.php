@@ -141,28 +141,79 @@ header('Content-Type: text/html; charset=utf-8');
             
         } catch (Exception $e) {
             echo '<p class="error">❌ Erro ao criar checkout:</p>';
-            echo '<div class="code">' . h($e->getMessage()) . '</div>';
+            $error_msg = $e->getMessage();
+            echo '<div class="code">' . h($error_msg) . '</div>';
             
-            // Verificar se é erro 401
-            if (strpos($e->getMessage(), '401') !== false || strpos($e->getMessage(), 'inválida') !== false) {
+            // Detectar tipo específico de erro baseado nos códigos da API Asaas
+            $error_code = null;
+            if (preg_match('/\[([^\]]+)\]/', $error_msg, $matches)) {
+                $error_code = $matches[1];
+            }
+            
+            // Mensagens específicas baseadas na documentação oficial do Asaas
+            if (strpos($error_msg, '401') !== false || strpos($error_msg, 'inválida') !== false) {
                 echo '<div class="section" style="background: #fef2f2; border-color: #dc2626;">';
-                echo '<h3>🔴 Erro 401 - Chave de API Inválida</h3>';
-                echo '<p><strong>Possíveis causas:</strong></p>';
-                echo '<ul>';
-                echo '<li>A chave no Railway está incorreta ou expirada</li>';
-                echo '<li>A chave não está sendo carregada do ENV corretamente</li>';
-                echo '<li>A chave está sendo enviada com formato incorreto no header</li>';
-                echo '<li>A chave é de sandbox mas está tentando usar em produção (ou vice-versa)</li>';
-                echo '</ul>';
-                echo '<p><strong>Como resolver:</strong></p>';
-                echo '<ol>';
-                echo '<li>Acesse o painel do Asaas</li>';
-                echo '<li>Vá em <strong>Integrações > Chaves de API</strong></li>';
-                echo '<li>Gere uma NOVA chave de API</li>';
-                echo '<li>Copie a chave COMPLETA (incluindo o $ no início se houver)</li>';
-                echo '<li>Cole no Railway na variável <code>ASAAS_API_KEY</code></li>';
-                echo '<li>Faça um redeploy no Railway</li>';
-                echo '</ol>';
+                echo '<h3>🔴 Erro 401 - Autenticação Falhou</h3>';
+                
+                // Mensagens específicas para cada código de erro
+                if ($error_code === 'invalid_environment') {
+                    echo '<p><strong>Erro:</strong> Uso de chave em ambiente incorreto</p>';
+                    echo '<p>A chave de API informada não pertence a este ambiente.</p>';
+                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<ul>';
+                    echo '<li>Use chave de <strong>Produção</strong> (<code>$aact_prod_...</code>) nos endpoints de produção (<code>api.asaas.com</code>)</li>';
+                    echo '<li>Use chave de <strong>Sandbox</strong> (<code>$aact_hmlg_...</code>) nos endpoints de sandbox (<code>api-sandbox.asaas.com</code>)</li>';
+                    echo '</ul>';
+                    
+                } elseif ($error_code === 'access_token_not_found') {
+                    echo '<p><strong>Erro:</strong> Cabeçalho de autenticação ausente</p>';
+                    echo '<p>O cabeçalho de autenticação <code>access_token</code> é obrigatório e não foi encontrado na requisição.</p>';
+                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<ul>';
+                    echo '<li>Garanta que o cabeçalho <code>access_token</code> está sendo enviado corretamente em todas as requisições</li>';
+                    echo '<li>Verifique se os headers estão no formato correto: <code>access_token: sua_chave_aqui</code></li>';
+                    echo '</ul>';
+                    
+                } elseif ($error_code === 'invalid_access_token_format') {
+                    echo '<p><strong>Erro:</strong> Formato da chave incorreto</p>';
+                    echo '<p>O valor fornecido não parece ser uma chave de API válida do Asaas.</p>';
+                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<ul>';
+                    echo '<li>Verifique se você não copiou espaços extras ou caracteres a mais</li>';
+                    echo '<li>Chaves de produção começam com <code>$aact_prod_</code></li>';
+                    echo '<li>Chaves de Sandbox começam com <code>$aact_hmlg_</code></li>';
+                    echo '</ul>';
+                    
+                } elseif ($error_code === 'invalid_access_token') {
+                    echo '<p><strong>Erro:</strong> Chave de API inválida ou revogada</p>';
+                    echo '<p>A chave de API fornecida é inválida.</p>';
+                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<ul>';
+                    echo '<li>Confirme se o valor da chave de API está correto</li>';
+                    echo '<li>Verifique se ela não foi desabilitada, expirada ou excluída no painel Asaas</li>';
+                    echo '<li>Acesse <strong>Asaas > Integrações > Chaves de API</strong> e gere uma nova chave se necessário</li>';
+                    echo '</ul>';
+                    
+                } else {
+                    // Erro 401 genérico
+                    echo '<p><strong>Possíveis causas:</strong></p>';
+                    echo '<ul>';
+                    echo '<li>A chave no Railway está incorreta ou expirada</li>';
+                    echo '<li>A chave não está sendo carregada do ENV corretamente</li>';
+                    echo '<li>A chave está sendo enviada com formato incorreto no header</li>';
+                    echo '<li>A chave é de sandbox mas está tentando usar em produção (ou vice-versa)</li>';
+                    echo '</ul>';
+                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<ol>';
+                    echo '<li>Acesse o painel do Asaas</li>';
+                    echo '<li>Vá em <strong>Integrações > Chaves de API</strong></li>';
+                    echo '<li>Gere uma NOVA chave de API</li>';
+                    echo '<li>Copie a chave COMPLETA (incluindo o $ no início se houver)</li>';
+                    echo '<li>Cole no Railway na variável <code>ASAAS_API_KEY</code></li>';
+                    echo '<li>Faça um redeploy no Railway</li>';
+                    echo '</ol>';
+                }
+                
                 echo '</div>';
             }
         }
