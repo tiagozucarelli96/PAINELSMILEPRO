@@ -277,9 +277,32 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
                 // Se expirado ou inválido, continuar o fluxo para gerar novo QR Code
                 if ($qr_code_expirado) {
                     error_log("QR Code {$qr_code_id} expirado. Gerando novo QR Code...");
-                    // Limpar QR Code antigo antes de gerar novo
-                    $update_clear = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_qr_code_id = NULL, qr_code_payload = NULL WHERE id = :id");
-                    $update_clear->execute([':id' => $inscricao_id]);
+                    // Limpar QR Code antigo antes de gerar novo (verificando colunas dinamicamente)
+                    try {
+                        $check_clear_cols = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                        WHERE table_name = 'comercial_inscricoes' 
+                                                        AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'qr_code_image')");
+                        $clear_columns = $check_clear_cols->fetchAll(PDO::FETCH_COLUMN);
+                        
+                        $clear_fields = [];
+                        if (in_array('asaas_qr_code_id', $clear_columns)) {
+                            $clear_fields[] = "asaas_qr_code_id = NULL";
+                        }
+                        if (in_array('qr_code_payload', $clear_columns)) {
+                            $clear_fields[] = "qr_code_payload = NULL";
+                        } elseif (in_array('qr_code_image', $clear_columns)) {
+                            $clear_fields[] = "qr_code_image = NULL";
+                        }
+                        
+                        if (!empty($clear_fields)) {
+                            $update_clear_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $clear_fields) . " WHERE id = :id";
+                            $update_clear = $pdo->prepare($update_clear_sql);
+                            $update_clear->execute([':id' => $inscricao_id]);
+                            error_log("QR Code antigo limpo com sucesso");
+                        }
+                    } catch (Exception $e_clear) {
+                        error_log("Erro ao limpar QR Code antigo (não crítico): " . $e_clear->getMessage());
+                    }
                     // Continuar o fluxo para gerar novo QR Code
                 }
                 
@@ -287,12 +310,31 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
                 error_log("Erro ao verificar status do QR Code no Asaas: " . $e->getMessage());
                 // Em caso de erro na verificação, assumir que pode estar expirado e permitir gerar novo
                 error_log("Assumindo QR Code pode estar expirado e permitindo gerar novo...");
-                // Limpar QR Code antigo antes de gerar novo
+                // Limpar QR Code antigo antes de gerar novo (verificando colunas dinamicamente)
                 try {
-                    $update_clear = $pdo->prepare("UPDATE comercial_inscricoes SET asaas_qr_code_id = NULL, qr_code_payload = NULL WHERE id = :id");
-                    $update_clear->execute([':id' => $inscricao_id]);
+                    $check_clear_cols = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                    WHERE table_name = 'comercial_inscricoes' 
+                                                    AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'qr_code_image')");
+                    $clear_columns = $check_clear_cols->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    $clear_fields = [];
+                    if (in_array('asaas_qr_code_id', $clear_columns)) {
+                        $clear_fields[] = "asaas_qr_code_id = NULL";
+                    }
+                    if (in_array('qr_code_payload', $clear_columns)) {
+                        $clear_fields[] = "qr_code_payload = NULL";
+                    } elseif (in_array('qr_code_image', $clear_columns)) {
+                        $clear_fields[] = "qr_code_image = NULL";
+                    }
+                    
+                    if (!empty($clear_fields)) {
+                        $update_clear_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $clear_fields) . " WHERE id = :id";
+                        $update_clear = $pdo->prepare($update_clear_sql);
+                        $update_clear->execute([':id' => $inscricao_id]);
+                        error_log("QR Code antigo limpo com sucesso (fallback)");
+                    }
                 } catch (Exception $e2) {
-                    error_log("Erro ao limpar QR Code antigo: " . $e2->getMessage());
+                    error_log("Erro ao limpar QR Code antigo (não crítico): " . $e2->getMessage());
                 }
                 // Continuar o fluxo para gerar novo QR Code
             }
