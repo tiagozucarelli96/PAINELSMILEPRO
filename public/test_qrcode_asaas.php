@@ -1,15 +1,16 @@
 <?php
 // test_qrcode_asaas.php — Teste rápido de QR Code estático Asaas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/asaas_helper.php';
 
-// Verificar autenticação
-if (!isset($_SESSION['user_id'])) {
+// Verificar autenticação - usar mesmo padrão que outras páginas de teste
+if (empty($_SESSION['logado']) || ($_SESSION['logado'] ?? 0) != 1) {
     header('Location: index.php?page=login');
     exit;
 }
+
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/asaas_helper.php';
 
 $qr_code_image = null;
 $qr_code_id = null;
