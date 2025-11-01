@@ -60,6 +60,14 @@ if (strpos($request_uri, 'cron_') !== false || strpos($request_uri, '/cron_') !=
 }
 
 /* sem ?page -> manda para login ou dashboard */
+// CRÍTICO: Garantir que todos os parâmetros GET sejam preservados
+// Parsear QUERY_STRING manualmente para não perder parâmetros extras (como degustacao_id)
+if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
+    parse_str($_SERVER['QUERY_STRING'], $parsed_query);
+    // Mesclar com $_GET para garantir que temos todos os parâmetros
+    $_GET = array_merge($parsed_query, $_GET);
+}
+
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {

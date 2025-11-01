@@ -504,8 +504,8 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação - VERSÃO SIMPLIFICADA -->
     <div class="selecao-container">
-        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;" onsubmit="return true;">
-            <input type="hidden" name="page" value="comercial_realizar_degustacao">
+        <!-- CORREÇÃO: Incluir page diretamente na URL de action para garantir que todos os parâmetros sejam preservados -->
+        <form method="GET" action="index.php?page=comercial_realizar_degustacao" id="formSelecaoDegustacao" style="margin-bottom: 2rem;" onsubmit="return true;">
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label class="form-label">Selecione a Degustação</label>
