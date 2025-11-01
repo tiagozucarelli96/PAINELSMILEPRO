@@ -34,6 +34,7 @@ if (isset($_GET['success'])) {
         'comparecimento_atualizado' => 'Comparecimento atualizado com sucesso!',
         'contrato_atualizado' => 'Status de contrato atualizado com sucesso!',
         'payment_created' => 'Link de pagamento gerado com sucesso!',
+        'inscrito_excluido' => 'Inscrito excluído com sucesso!',
         default => 'Operação realizada com sucesso!'
     };
 }
@@ -41,6 +42,46 @@ if (isset($_GET['success'])) {
 // Processar ações
 $action = $_POST['action'] ?? '';
 $inscricao_id = (int)($_POST['inscricao_id'] ?? 0);
+
+// Ação de excluir inscrito
+if ($action === 'excluir_inscrito' && $inscricao_id > 0) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        
+        header("Location: index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=inscrito_excluido");
+        exit;
+    } catch (Exception $e) {
+        $error_message = "Erro ao excluir inscrito: " . $e->getMessage();
+    }
+}
+
+// Ação unificada: marcar contrato e comparecimento (checkbox única)
+if ($action === 'marcar_contrato_comparecimento' && $inscricao_id > 0) {
+    try {
+        $fechou_contrato = isset($_POST['fechou_contrato']) && $_POST['fechou_contrato'] === '1' ? 'sim' : 'nao';
+        $compareceu = isset($_POST['compareceu']) && $_POST['compareceu'] === '1' ? 1 : 0;
+        $nome_titular = trim($_POST['nome_titular_contrato'] ?? '');
+        
+        // Se marcou contrato, atualizar também comparecimento para 1
+        if ($fechou_contrato === 'sim') {
+            $compareceu = 1;
+        }
+        
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET fechou_contrato = :fechou_contrato, compareceu = :compareceu, nome_titular_contrato = :nome_titular WHERE id = :id");
+        $stmt->execute([
+            ':fechou_contrato' => $fechou_contrato,
+            ':compareceu' => $compareceu,
+            ':nome_titular' => $nome_titular,
+            ':id' => $inscricao_id
+        ]);
+        
+        header("Location: index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=contrato_atualizado");
+        exit;
+    } catch (Exception $e) {
+        $error_message = "Erro ao atualizar: " . $e->getMessage();
+    }
+}
 
 if ($action === 'marcar_comparecimento' && $inscricao_id > 0) {
     try {
@@ -84,6 +125,7 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
     try {
         require_once __DIR__ . '/asaas_helper.php';
+        require_once __DIR__ . '/config_env.php';
         
         // Buscar inscrição
         $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE id = :id");
@@ -94,17 +136,17 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Inscrição não encontrada");
         }
         
-        // Verificar se já tem pagamento
-        if (!empty($inscricao['asaas_payment_id'])) {
-            // Verificar status do pagamento existente
-            $asaasHelper = new AsaasHelper();
-            $payment_data = $asaasHelper->getPaymentStatus($inscricao['asaas_payment_id']);
-            
-            if ($payment_data && in_array($payment_data['status'], ['PENDING', 'OVERDUE'])) {
-                // Pagamento ainda pendente, redirecionar para página de pagamento
-                header("Location: comercial_pagamento.php?payment_id={$inscricao['asaas_payment_id']}&inscricao_id={$inscricao_id}");
-                exit;
-            }
+        // Verificar se já tem QR Code
+        if (!empty($inscricao['asaas_qr_code_id'])) {
+            // Retornar JSON com o payload existente
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => true,
+                'qr_code_id' => $inscricao['asaas_qr_code_id'],
+                'payload' => $inscricao['qr_code_payload'] ?? '',
+                'message' => 'QR Code já existe'
+            ]);
+            exit;
         }
         
         // Verificar se fechou contrato
@@ -141,73 +183,113 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Valor inválido para pagamento");
         }
         
-        // Criar customer no ASAAS
-        $customer_data = [
-            'name' => $inscricao['nome'],
-            'email' => $inscricao['email'],
-            'phone' => $inscricao['celular'] ?? '',
-            'external_reference' => 'inscricao_' . $inscricao_id
-        ];
+        // Criar QR Code PIX estático (com payload para copia e cola)
+        $descricao = substr("Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa), 0, 37); // Máximo 37 caracteres
         
-        $customer = $asaasHelper->createCustomer($customer_data);
-        $customer_id = $customer['id'];
-        
-        // Criar pagamento
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $host = $_SERVER['HTTP_HOST'] ?? '';
-        
-        $payment_data = [
-            'customer_id' => $customer_id,
+        // Não especificar format para obter todos os campos incluindo payload
+        $qr_code_data = [
+            'addressKey' => ASAAS_PIX_ADDRESS_KEY,
+            'description' => $descricao,
             'value' => $valor_total,
-            'description' => "Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa) . " ({$qtd_pessoas} pessoas)",
-            'external_reference' => 'inscricao_' . $inscricao_id,
-            'success_url' => "{$protocol}://{$host}/index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=payment_created",
-            'customer_data' => $customer_data
+            'expirationDate' => date('Y-m-d H:i:s', strtotime('+1 hour')),
+            'allowsMultiplePayments' => false
         ];
         
-        $payment_response = $asaasHelper->createPixPayment($payment_data);
+        $qr_response = $asaasHelper->createStaticQrCode($qr_code_data);
         
-        if (!$payment_response || !isset($payment_response['id'])) {
-            throw new Exception("Erro ao criar pagamento no ASAAS");
+        if (!$qr_response || !isset($qr_response['id'])) {
+            throw new Exception("Erro ao criar QR Code no ASAAS");
         }
         
-        // Verificar novamente se colunas existem (aqui dentro da função)
+        $qr_code_id = $qr_response['id'];
+        // O Asaas retorna o payload no campo 'payload' independente do format
+        $qr_payload = $qr_response['payload'] ?? '';
+        
+        if (empty($qr_payload)) {
+            throw new Exception("QR Code criado mas payload não retornado. Verifique a configuração do Asaas.");
+        }
+        
+        // Atualizar inscrição com QR Code
+        $update_fields = ["pagamento_status = 'aguardando'"];
+        $update_params = [':id' => $inscricao_id, ':qr_code_id' => $qr_code_id, ':payload' => $qr_payload];
+        
+        // Verificar colunas dinamicamente
         try {
             $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                                        WHERE table_name = 'comercial_inscricoes' 
-                                       AND column_name IN ('asaas_payment_id', 'valor_pago')");
+                                       AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'valor_total', 'valor_pago')");
             $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
-            $local_has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
-            $local_has_valor_pago = in_array('valor_pago', $check_columns);
+            
+            if (in_array('asaas_qr_code_id', $check_columns)) {
+                $update_fields[] = "asaas_qr_code_id = :qr_code_id";
+            }
+            if (in_array('qr_code_payload', $check_columns)) {
+                $update_fields[] = "qr_code_payload = :payload";
+            } elseif (in_array('qr_code_image', $check_columns)) {
+                // Se não tem payload mas tem image, usar image (pode ser usado para armazenar payload)
+                $update_fields[] = "qr_code_image = :payload";
+            }
+            if (in_array('valor_total', $check_columns)) {
+                $update_fields[] = "valor_total = :valor";
+                $update_params[':valor'] = $valor_total;
+            } elseif (in_array('valor_pago', $check_columns)) {
+                $update_fields[] = "valor_pago = :valor";
+                $update_params[':valor'] = $valor_total;
+            }
         } catch (PDOException $e) {
-            $local_has_asaas_payment_id = false;
-            $local_has_valor_pago = false;
-        }
-        
-        // Atualizar inscrição (verificar se colunas existem)
-        $update_fields = ["pagamento_status = 'aguardando'"];
-        $update_params = [':id' => $inscricao_id];
-        
-        if ($local_has_asaas_payment_id) {
-            $update_fields[] = "asaas_payment_id = :payment_id";
-            $update_params[':payment_id'] = $payment_response['id'];
-        }
-        
-        if ($local_has_valor_pago) {
-            $update_fields[] = "valor_pago = :valor_pago";
-            $update_params[':valor_pago'] = $valor_total;
+            error_log("Erro ao verificar colunas: " . $e->getMessage());
         }
         
         $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
         $stmt = $pdo->prepare($update_sql);
         $stmt->execute($update_params);
         
-        // Redirecionar para página de pagamento
-        header("Location: comercial_pagamento.php?payment_id={$payment_response['id']}&inscricao_id={$inscricao_id}");
+        // Retornar JSON com payload para copiar
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'qr_code_id' => $qr_code_id,
+            'payload' => $qr_payload,
+            'valor' => $valor_total,
+            'message' => 'QR Code gerado com sucesso'
+        ]);
         exit;
         
     } catch (Exception $e) {
-        $error_message = "Erro ao gerar pagamento: " . $e->getMessage();
+        header('Content-Type: application/json');
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'message' => $e->getMessage()
+        ]);
+        exit;
+    }
+}
+
+// Endpoint para buscar payload PIX
+if (isset($_GET['get_pix_payload'])) {
+    header('Content-Type: application/json');
+    $insc_id = (int)$_GET['get_pix_payload'];
+    
+    try {
+        $stmt = $pdo->prepare("SELECT qr_code_payload, qr_code_image, asaas_qr_code_id FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $insc_id]);
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $payload = $data['qr_code_payload'] ?? $data['qr_code_image'] ?? '';
+        
+        echo json_encode([
+            'success' => !empty($payload),
+            'payload' => $payload
+        ]);
+        exit;
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'payload' => '',
+            'error' => $e->getMessage()
+        ]);
+        exit;
     }
 }
 
@@ -246,6 +328,22 @@ try {
     error_log("Erro ao verificar colunas: " . $e->getMessage());
 }
 
+// Verificar colunas de QR Code
+$has_qr_code_payload = false;
+$has_qr_code_image = false;
+$has_qr_code_id = false;
+try {
+    $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                         WHERE table_name = 'comercial_inscricoes' 
+                         AND column_name IN ('qr_code_payload', 'qr_code_image', 'asaas_qr_code_id')");
+    $qr_columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $has_qr_code_payload = in_array('qr_code_payload', $qr_columns);
+    $has_qr_code_image = in_array('qr_code_image', $qr_columns);
+    $has_qr_code_id = in_array('asaas_qr_code_id', $qr_columns);
+} catch (PDOException $e) {
+    error_log("Erro ao verificar colunas QR Code: " . $e->getMessage());
+}
+
 // Buscar inscrições
 $sql = "SELECT i.*, 
                CASE WHEN i.fechou_contrato = 'sim' THEN 'Sim' 
@@ -256,7 +354,10 @@ $sql = "SELECT i.*,
                     WHEN i.pagamento_status = 'expirado' THEN 'Expirado' 
                     ELSE 'N/A' END as pagamento_text" . 
         ($has_asaas_payment_id ? ", i.asaas_payment_id" : ", NULL::text as asaas_payment_id") . 
-        ($has_valor_pago ? ", i.valor_pago" : ", NULL::numeric as valor_pago") . "
+        ($has_valor_pago ? ", i.valor_pago" : ", NULL::numeric as valor_pago") .
+        ($has_qr_code_payload ? ", i.qr_code_payload" : ", NULL::text as qr_code_payload") .
+        ($has_qr_code_image ? ", i.qr_code_image" : ", NULL::text as qr_code_image") .
+        ($has_qr_code_id ? ", i.asaas_qr_code_id" : ", NULL::text as asaas_qr_code_id") . "
         FROM comercial_inscricoes i
         WHERE " . implode(' AND ', $where) . "
         ORDER BY i.criado_em DESC";
@@ -279,7 +380,7 @@ $stats = [
     'confirmados' => count(array_filter($inscricoes, fn($i) => $i['status'] === 'confirmado')),
     'lista_espera' => count(array_filter($inscricoes, fn($i) => $i['status'] === 'lista_espera')),
     'fechou_contrato' => count(array_filter($inscricoes, fn($i) => $i['fechou_contrato'] === 'sim')),
-    'compareceram' => count(array_filter($inscricoes, fn($i) => $i['compareceu'] ?? false))
+        'compareceram' => count(array_filter($inscricoes, fn($i) => ($i['compareceu'] ?? 0) == 1))
 ];
 
 // Iniciar buffer de saída
@@ -416,6 +517,9 @@ ob_start();
             border: 1px solid #e5e7eb;
             border-radius: 8px;
             overflow: hidden;
+            display: table;
+            width: 100%;
+            border-collapse: collapse;
         }
         
         .table-header {
@@ -424,15 +528,24 @@ ob_start();
             border-bottom: 1px solid #e5e7eb;
             font-weight: 600;
             color: #374151;
+            display: table-row;
+        }
+        
+        .table-header-cell {
+            display: table-cell;
+            padding: 15px 20px;
+            border-right: 1px solid #e5e7eb;
+            vertical-align: middle;
+        }
+        
+        .table-header-cell:last-child {
+            border-right: none;
         }
         
         .table-row {
             padding: 15px 20px;
             border-bottom: 1px solid #e5e7eb;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
-            gap: 15px;
-            align-items: center;
+            display: table-row;
         }
         
         .table-row:hover {
@@ -441,6 +554,17 @@ ob_start();
         
         .table-row:last-child {
             border-bottom: none;
+        }
+        
+        .table-cell {
+            display: table-cell;
+            padding: 15px 20px;
+            border-right: 1px solid #e5e7eb;
+            vertical-align: middle;
+        }
+        
+        .table-cell:last-child {
+            border-right: none;
         }
         
         .participant-info {
@@ -718,66 +842,97 @@ ob_start();
             </div>
             
             <!-- Tabela de Inscritos -->
-            <div class="inscritos-table">
-                <div class="table-header">
-                    <div style="grid-column: 1;">Participante</div>
-                    <div style="grid-column: 2;">Status</div>
-                    <div style="grid-column: 3;">Tipo de Festa</div>
-                    <div style="grid-column: 4;">Pessoas</div>
-                    <div style="grid-column: 5;">Fechou Contrato</div>
-                    <div style="grid-column: 6;">Pagamento</div>
-                    <div style="grid-column: 7;">Ações</div>
-                </div>
-                
-                <?php foreach ($inscricoes as $inscricao): ?>
-                    <div class="table-row">
-                        <div class="participant-info">
-                            <div class="participant-name"><?= h($inscricao['nome']) ?></div>
-                            <div class="participant-email"><?= h($inscricao['email']) ?></div>
-                        </div>
-                        
-                        <div><?= getStatusBadge($inscricao['status']) ?></div>
-                        
-                        <div><?= ucfirst($inscricao['tipo_festa']) ?></div>
-                        
-                        <div><?= $inscricao['qtd_pessoas'] ?> pessoas</div>
-                        
-                        <div><?= $inscricao['fechou_contrato_text'] ?></div>
-                        
-                        <div>
-                            <div style="margin-bottom: 5px;"><?= $inscricao['pagamento_text'] ?></div>
-                            <?php if ($inscricao['valor_pago'] && $inscricao['valor_pago'] > 0): ?>
-                                <div style="font-size: 0.875rem; color: #6b7280;">R$ <?= number_format($inscricao['valor_pago'], 2, ',', '.') ?></div>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                            <button class="btn-sm btn-edit" onclick="openComparecimentoModal(<?= $inscricao['id'] ?>, <?= $inscricao['compareceu'] ? 'true' : 'false' ?>)">
-                                ✅ Comparecimento
-                            </button>
-                            <button class="btn-sm btn-success" onclick="openContratoModal(<?= $inscricao['id'] ?>, '<?= $inscricao['fechou_contrato'] ?>', '<?= h($inscricao['nome_titular_contrato']) ?>')">
-                                📄 Contrato
-                            </button>
-                            <?php if ($inscricao['fechou_contrato'] !== 'sim' && $inscricao['pagamento_status'] !== 'pago'): ?>
-                                <form method="POST" action="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id ?>" style="display: inline;" onsubmit="return confirmarGerarPagamento(event)">
-                                    <input type="hidden" name="action" value="gerar_pagamento">
-                                    <input type="hidden" name="inscricao_id" value="<?= $inscricao['id'] ?>">
-                                    <button type="submit" class="btn-sm" style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                                        💳 Gerar Pagamento
+            <table class="inscritos-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr class="table-header">
+                        <th class="table-header-cell" style="text-align: left; width: 20%;">Participante</th>
+                        <th class="table-header-cell" style="text-align: center; width: 10%;">Status</th>
+                        <th class="table-header-cell" style="text-align: center; width: 10%;">Tipo de Festa</th>
+                        <th class="table-header-cell" style="text-align: center; width: 8%;">Pessoas</th>
+                        <th class="table-header-cell" style="text-align: center; width: 12%;">Contrato/Comparecimento</th>
+                        <th class="table-header-cell" style="text-align: center; width: 12%;">Pagamento</th>
+                        <th class="table-header-cell" style="text-align: center; width: 28%;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($inscricoes as $inscricao): ?>
+                        <tr class="table-row">
+                            <td class="table-cell">
+                                <div class="participant-info">
+                                    <div class="participant-name"><?= h($inscricao['nome']) ?></div>
+                                    <div class="participant-email"><?= h($inscricao['email']) ?></div>
+                                </div>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <?= getStatusBadge($inscricao['status']) ?>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <?= ucfirst($inscricao['tipo_festa'] ?? 'N/A') ?>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <?= $inscricao['qtd_pessoas'] ?? 0 ?> pessoas
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <?php 
+                                $fechou = $inscricao['fechou_contrato'] === 'sim';
+                                $compareceu = ($inscricao['compareceu'] ?? 0) == 1;
+                                ?>
+                                <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" 
+                                           <?= ($fechou || $compareceu) ? 'checked' : '' ?>
+                                           onchange="marcarContratoComparecimento(<?= $inscricao['id'] ?>, this.checked, '<?= h($inscricao['nome_titular_contrato'] ?? '') ?>')"
+                                           style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="font-size: 12px; color: <?= ($fechou || $compareceu) ? '#10b981' : '#6b7280' ?>;">
+                                        <?= ($fechou || $compareceu) ? '✓ Fechou/Compareceu' : 'Não fechou' ?>
+                                    </span>
+                                </label>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <div style="margin-bottom: 5px;"><?= $inscricao['pagamento_text'] ?? 'N/A' ?></div>
+                                <?php if (isset($inscricao['valor_pago']) && $inscricao['valor_pago'] > 0): ?>
+                                    <div style="font-size: 0.875rem; color: #6b7280;">R$ <?= number_format($inscricao['valor_pago'], 2, ',', '.') ?></div>
+                                <?php endif; ?>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;">
+                                    <?php if ($inscricao['fechou_contrato'] !== 'sim' && $inscricao['pagamento_status'] !== 'pago'): ?>
+                                        <button class="btn-sm" 
+                                                style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                                onclick="gerarPagamentoPix(<?= $inscricao['id'] ?>)"
+                                                id="btnPix_<?= $inscricao['id'] ?>">
+                                            💳 Gerar PIX
+                                        </button>
+                                        <button class="btn-sm" 
+                                                style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; display: none;"
+                                                onclick="copiarPix(<?= $inscricao['id'] ?>)"
+                                                id="btnCopiar_<?= $inscricao['id'] ?>">
+                                            📋 Copiar PIX
+                                        </button>
+                                    <?php elseif (!empty($inscricao['qr_code_payload']) || !empty($inscricao['asaas_qr_code_id'])): ?>
+                                        <button class="btn-sm" 
+                                                style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                                onclick="copiarPix(<?= $inscricao['id'] ?>, '<?= h($inscricao['qr_code_payload'] ?? '') ?>')">
+                                            📋 Copiar PIX
+                                        </button>
+                                    <?php endif; ?>
+                                    
+                                    <button class="btn-sm btn-danger" 
+                                            onclick="excluirInscrito(<?= $inscricao['id'] ?>, '<?= h($inscricao['nome']) ?>')"
+                                            style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                        🗑️ Excluir
                                     </button>
-                                </form>
-                            <?php elseif ($inscricao['pagamento_status'] === 'aguardando' && !empty($inscricao['asaas_payment_id'])): ?>
-                                <a href="comercial_pagamento.php?payment_id=<?= $inscricao['asaas_payment_id'] ?>&inscricao_id=<?= $inscricao['id'] ?>" 
-                                   class="btn-sm" 
-                                   style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; display: inline-block;"
-                                   target="_blank">
-                                    🔗 Ver Pagamento
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
 </div>
 
 <!-- Modal de Comparecimento -->
@@ -965,23 +1120,154 @@ ob_start();
         }
     });
     
-    // Confirmar geração de pagamento
-    async function confirmarGerarPagamento(event) {
-        event.preventDefault();
-        const form = event.target;
+    // Gerar pagamento PIX e mostrar botão copiar
+    async function gerarPagamentoPix(inscricaoId) {
+        const btnPix = document.getElementById('btnPix_' + inscricaoId);
+        const btnCopiar = document.getElementById('btnCopiar_' + inscricaoId);
         
-        // Usar customConfirm se disponível, senão usar confirm nativo
-        if (typeof customConfirm === 'function') {
-            const confirmado = await customConfirm('Deseja gerar link de pagamento para este inscrito?', '💳 Gerar Pagamento');
-            if (confirmado) {
-                form.submit();
+        btnPix.disabled = true;
+        btnPix.textContent = '⏳ Gerando...';
+        
+        try {
+            const formData = new FormData();
+            formData.append('action', 'gerar_pagamento');
+            formData.append('inscricao_id', inscricaoId);
+            
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Armazenar payload globalmente para copiar depois
+                window['pixPayload_' + inscricaoId] = data.payload;
+                
+                // Mostrar botão copiar e esconder gerar
+                btnPix.style.display = 'none';
+                if (btnCopiar) {
+                    btnCopiar.style.display = 'inline-block';
+                }
+                
+                alert('✅ QR Code PIX gerado com sucesso! Clique em "Copiar PIX" para enviar ao cliente.');
+            } else {
+                alert('❌ Erro: ' + (data.message || 'Não foi possível gerar o QR Code'));
+                btnPix.disabled = false;
+                btnPix.textContent = '💳 Gerar PIX';
             }
-        } else {
-            if (confirm('Deseja gerar link de pagamento para este inscrito?')) {
-                form.submit();
+        } catch (error) {
+            console.error('Erro ao gerar PIX:', error);
+            alert('❌ Erro ao gerar PIX. Tente novamente.');
+            btnPix.disabled = false;
+            btnPix.textContent = '💳 Gerar PIX';
+        }
+    }
+    
+    // Copiar código PIX para área de transferência
+    async function copiarPix(inscricaoId, payload = null) {
+        let pixCode = payload || window['pixPayload_' + inscricaoId];
+        
+        if (!pixCode) {
+            // Buscar do servidor se não tiver
+            try {
+                const response = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
+                const data = await response.json();
+                pixCode = data.payload;
+            } catch (e) {
+                alert('❌ Código PIX não encontrado. Gere o pagamento primeiro.');
+                return;
             }
         }
-        return false;
+        
+        if (pixCode) {
+            navigator.clipboard.writeText(pixCode).then(() => {
+                alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+            }).catch(() => {
+                // Fallback para navegadores antigos
+                const textArea = document.createElement('textarea');
+                textArea.value = pixCode;
+                textArea.style.position = 'fixed';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+            });
+        } else {
+            alert('❌ Código PIX não encontrado. Gere o pagamento primeiro.');
+        }
+    }
+    
+    // Marcar contrato e comparecimento (checkbox única)
+    function marcarContratoComparecimento(inscricaoId, checked, nomeTitularAtual) {
+        if (checked) {
+            const nomeTitular = prompt('Nome do titular do contrato:', nomeTitularAtual || '');
+            if (nomeTitular === null) {
+                // Cancelou, desmarcar checkbox
+                event.target.checked = false;
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'marcar_contrato_comparecimento');
+            formData.append('inscricao_id', inscricaoId);
+            formData.append('fechou_contrato', checked ? '1' : '0');
+            formData.append('compareceu', checked ? '1' : '0');
+            formData.append('nome_titular_contrato', nomeTitular.trim());
+            
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            }).then(() => {
+                window.location.reload();
+            }).catch(() => {
+                alert('❌ Erro ao atualizar. Tente novamente.');
+                event.target.checked = !checked;
+            });
+        } else {
+            // Desmarcar
+            const formData = new FormData();
+            formData.append('action', 'marcar_contrato_comparecimento');
+            formData.append('inscricao_id', inscricaoId);
+            formData.append('fechou_contrato', '0');
+            formData.append('compareceu', '0');
+            formData.append('nome_titular_contrato', '');
+            
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            }).then(() => {
+                window.location.reload();
+            }).catch(() => {
+                alert('❌ Erro ao atualizar. Tente novamente.');
+                event.target.checked = checked;
+            });
+        }
+    }
+    
+    // Excluir inscrito
+    function excluirInscrito(inscricaoId, nome) {
+        if (confirm('⚠️ Tem certeza que deseja excluir o inscrito "' + nome + '"?\n\nEsta ação não pode ser desfeita.')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = window.location.href;
+            
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = 'excluir_inscrito';
+            
+            const idInput = document.createElement('input');
+            idInput.type = 'hidden';
+            idInput.name = 'inscricao_id';
+            idInput.value = inscricaoId;
+            
+            form.appendChild(actionInput);
+            form.appendChild(idInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
     }
     </script>
     
