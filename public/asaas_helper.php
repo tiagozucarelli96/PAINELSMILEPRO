@@ -114,20 +114,15 @@ class AsaasHelper {
     private function makeRequest($method, $endpoint, $data = null) {
         $ch = curl_init();
         
-        // Asaas API v3 - Tentar múltiplos formatos de autenticação
-        // Formato 1: access_token como header (formato antigo)
-        // Formato 2: Authorization Bearer (formato mais comum)
-        // Formato 3: access_token como query parameter
-        
-        // Primeiro tentar como header access_token
+        // Asaas API v3 - Formato correto conforme documentação oficial
+        // A API Asaas usa 'access_token' como nome do header (sem ':' antes)
+        // Formato correto: access_token: {chave}
         $headers = [
             'access_token: ' . $this->api_key,
             'Content-Type: application/json',
-            'Accept: application/json'
+            'Accept: application/json',
+            'User-Agent: PainelSmilePRO/1.0'
         ];
-        
-        // Também adicionar Authorization Bearer (formato mais comum em APIs modernas)
-        $headers[] = 'Authorization: Bearer ' . $this->api_key;
         
         // Log para debug
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
