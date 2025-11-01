@@ -43,8 +43,12 @@ if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !
 // 8. Verificar método HTTP ANTES de incluir arquivos
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     // IMPORTANTE: Asaas exige HTTP 200 sempre
-    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    // Garantir que resposta é enviada
     http_response_code(200);
+    if (ob_get_level()) {
+        ob_end_flush();
+    }
+    flush();
     exit;
 }
 
@@ -117,8 +121,12 @@ if (empty($input)) {
         'content_type' => $_SERVER['CONTENT_TYPE'] ?? 'UNKNOWN'
     ]);
     
-    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    // Garantir HTTP 200 e enviar resposta
     http_response_code(200);
+    if (ob_get_level()) {
+        ob_end_flush();
+    }
+    flush();
     exit;
 }
 
@@ -161,6 +169,10 @@ if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data =
         // O Asaas só verifica o código HTTP (200), não o conteúdo JSON
         // Erro foi logado - retornar 200 para não pausar fila
         http_response_code(200);
+        if (ob_get_level()) {
+            ob_end_flush();
+        }
+        flush();
         exit;
     }
 }
@@ -191,8 +203,12 @@ try {
             // Se erro for violação de constraint único (evento já processado)
             if ($e->getCode() == 23505 || strpos($e->getMessage(), 'duplicate key') !== false || strpos($e->getMessage(), 'UNIQUE constraint') !== false) {
                 logWebhook("Evento já processado (idempotência): $event_id");
-                // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+                // Retornar APENAS HTTP 200
                 http_response_code(200);
+                if (ob_get_level()) {
+                    ob_end_flush();
+                }
+                flush();
                 exit;
             }
             // Se for outro erro, logar mas continuar processamento
@@ -281,11 +297,17 @@ try {
             ob_end_clean();
         }
         
-        // Remover TODOS os headers
+        // Remover TODOS os headers desnecessários
         header_remove();
         
-        // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+        // Garantir HTTP 200 e enviar resposta imediatamente
         http_response_code(200);
+        
+        // Garantir que output é enviado (mesmo vazio)
+        if (ob_get_level()) {
+            ob_end_flush();
+        }
+        flush();
         
         logWebhook("✅ Checkout webhook processado com sucesso - Evento: $event");
         exit;
@@ -357,6 +379,10 @@ try {
             // O Asaas só verifica o código HTTP (200), não o conteúdo JSON
             // Pagamento foi recebido - isso é sucesso, mesmo sem inscrição vinculada
             http_response_code(200);
+            if (ob_get_level()) {
+                ob_end_flush();
+            }
+            flush();
             exit;
     }
     
@@ -417,16 +443,20 @@ try {
             ob_end_clean();
         }
         
-        // Remover TODOS os headers que podem causar redirect ou problema
+        // Remover TODOS os headers desnecessários
         header_remove();
         
-        // Definir headers corretos - APENAS HTTP 200
+        // Garantir HTTP 200 e enviar resposta imediatamente
         http_response_code(200); // CRÍTICO: Deve ser exatamente 200
         
-        // Log de sucesso
-        logWebhook("✅ Webhook processado com sucesso - Evento: $event, Inscrição ID: " . ($inscricao['id'] ?? 'N/A'));
+        // Garantir que output é enviado (mesmo vazio)
+        if (ob_get_level()) {
+            ob_end_flush();
+        }
+        flush();
         
-        // Retornar APENAS HTTP 200 - sem corpo JSON (Asaas só precisa do código)
+        // Log de sucesso (após enviar resposta)
+        logWebhook("✅ Webhook processado com sucesso - Evento: $event, Inscrição ID: " . ($inscricao['id'] ?? 'N/A'));
         exit;
     }
     
@@ -441,8 +471,14 @@ try {
     
     header_remove();
     
-    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    // Garantir HTTP 200 e enviar resposta imediatamente
     http_response_code(200);
+    
+    // Garantir que output é enviado
+    if (ob_get_level()) {
+        ob_end_flush();
+    }
+    flush();
     
 } catch (Exception $e) {
     // IMPORTANTE: Mesmo em caso de erro, retornar 200 para não pausar a fila
@@ -456,6 +492,12 @@ try {
     
     header_remove();
     
-    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    // Garantir HTTP 200 e enviar resposta imediatamente
     http_response_code(200);
+    
+    // Garantir que output é enviado
+    if (ob_get_level()) {
+        ob_end_flush();
+    }
+    flush();
 }
