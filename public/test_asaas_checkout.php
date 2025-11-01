@@ -87,12 +87,63 @@ header('Content-Type: text/html; charset=utf-8');
     require_once __DIR__ . '/config_env.php';
     $const_key = ASAAS_API_KEY;
     
-    echo '<p><strong>Chave do ENV ($_ENV):</strong> ' . ($env_key ? ('<span class="success">✓ Encontrada</span> - Primeiros 30: ' . substr($env_key, 0, 30) . '...') : '<span class="error">✗ Não encontrada</span>') . '</p>';
+    // Determinar qual chave está sendo usada
+    $chave_usada = $env_key ?? $const_key;
+    $fonte = $env_key ? 'Variável de Ambiente (Railway)' : 'Constante (config_env.php)';
+    
+    echo '<p><strong>Chave do ENV ($_ENV):</strong> ' . ($env_key ? ('<span class="success">✓ Encontrada</span> - Primeiros 30: ' . substr($env_key, 0, 30) . '...') : '<span class="error">✗ Não encontrada (usando constante)</span>') . '</p>';
     echo '<p><strong>Chave da Constante:</strong> Primeiros 30: ' . substr($const_key, 0, 30) . '...</p>';
-    echo '<p><strong>Tamanho ENV:</strong> ' . ($env_key ? strlen($env_key) . ' caracteres' : 'N/A') . '</p>';
-    echo '<p><strong>Tamanho Constante:</strong> ' . strlen($const_key) . ' caracteres</p>';
-    echo '<p><strong>Tem $ no início (ENV):</strong> ' . ($env_key && strpos($env_key, '$') === 0 ? 'SIM' : 'NÃO') . '</p>';
-    echo '<p><strong>Tem $ no início (Constante):</strong> ' . (strpos($const_key, '$') === 0 ? 'SIM' : 'NÃO') . '</p>';
+    echo '<p><strong>📌 Chave que será usada:</strong> <span class="info">' . $fonte . '</span></p>';
+    echo '<p><strong>Tamanho da chave usada:</strong> ' . strlen($chave_usada) . ' caracteres</p>';
+    
+    // Validações importantes
+    echo '<h3>Validações da Chave:</h3>';
+    echo '<ul>';
+    
+    // Verificar formato
+    $tem_dolar = strpos($chave_usada, '$') === 0;
+    $comeca_prod = strpos($chave_usada, '$aact_prod_') === 0;
+    $comeca_hmlg = strpos($chave_usada, '$aact_hmlg_') === 0;
+    
+    echo '<li><strong>Começa com $:</strong> ' . ($tem_dolar ? '✅ SIM' : '❌ NÃO (deve começar com $)') . '</li>';
+    echo '<li><strong>Formato Produção ($aact_prod_):</strong> ' . ($comeca_prod ? '✅ SIM' : '❌ NÃO') . '</li>';
+    echo '<li><strong>Formato Sandbox ($aact_hmlg_):</strong> ' . ($comeca_hmlg ? '⚠️ SIM (chave de sandbox em produção?)' : '✅ NÃO') . '</li>';
+    
+    // Verificar espaços
+    $tem_espacos = preg_match('/\s/', $chave_usada);
+    echo '<li><strong>Contém espaços:</strong> ' . ($tem_espacos ? '❌ SIM (remova espaços!)' : '✅ NÃO') . '</li>';
+    
+    // Verificar tamanho mínimo
+    $tamanho_ok = strlen($chave_usada) > 50;
+    echo '<li><strong>Tamanho mínimo (>50 chars):</strong> ' . ($tamanho_ok ? '✅ OK' : '❌ Muito curta') . '</li>';
+    
+    echo '</ul>';
+    
+    // Avisos importantes
+    if (!$env_key) {
+        echo '<div style="background: #fef3c7; border: 1px solid #f59e0b; padding: 15px; border-radius: 6px; margin: 15px 0;">';
+        echo '<p><strong>⚠️ ATENÇÃO:</strong> A chave não está vindo da variável de ambiente do Railway!</p>';
+        echo '<p>O sistema está usando a constante do <code>config_env.php</code>, que pode estar desatualizada.</p>';
+        echo '<p><strong>Ação necessária:</strong></p>';
+        echo '<ol>';
+        echo '<li>Acesse o painel do Railway</li>';
+        echo '<li>Vá em <strong>Variables</strong> (ou <strong>Settings > Environment Variables</strong>)</li>';
+        echo '<li>Adicione ou atualize a variável <code>ASAAS_API_KEY</code> com a chave correta do Asaas</li>';
+        echo '<li>Faça um <strong>redeploy</strong> do serviço</li>';
+        echo '</ol>';
+        echo '</div>';
+    }
+    
+    if (!$comeca_prod && !$comeca_hmlg) {
+        echo '<div style="background: #fee2e2; border: 1px solid #dc2626; padding: 15px; border-radius: 6px; margin: 15px 0;">';
+        echo '<p><strong>❌ ERRO:</strong> A chave não está no formato correto!</p>';
+        echo '<p>Chaves válidas devem começar com:</p>';
+        echo '<ul>';
+        echo '<li><code>$aact_prod_...</code> para produção</li>';
+        echo '<li><code>$aact_hmlg_...</code> para sandbox</li>';
+        echo '</ul>';
+        echo '</div>';
+    }
     
     // Criar instância do helper
     $helper = new AsaasHelper();
