@@ -123,39 +123,81 @@ if ($_POST && !$inscricoes_encerradas) {
         $me_event_id = (int)($_POST['me_event_id'] ?? 0);
         
         // Montar SQL dinamicamente baseado nas colunas existentes
-        // Verificar se coluna é telefone ou celular
+        // Verificar quais colunas existem na tabela
         try {
-            $check_col = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                       WHERE table_name = 'comercial_inscricoes' 
-                                       AND column_name IN ('telefone', 'celular')");
-            $telefone_col = $check_col->fetchColumn();
-            $telefone_col = $telefone_col ?: 'telefone'; // Default para telefone
+            $check_all_cols = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                           WHERE table_name = 'comercial_inscricoes'");
+            $existing_columns = $check_all_cols->fetchAll(PDO::FETCH_COLUMN);
         } catch (PDOException $e) {
-            $telefone_col = 'telefone';
+            $existing_columns = [];
         }
+        
+        // Verificar se coluna é telefone ou celular
+        $telefone_col = in_array('telefone', $existing_columns) ? 'telefone' : 
+                       (in_array('celular', $existing_columns) ? 'celular' : 'telefone');
         
         $telefone = $_POST['telefone'] ?? $_POST['celular'] ?? '';
         
-        $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', $telefone_col, 
-                   'dados_json', 'qtd_pessoas', 'tipo_festa', 'extras', 'pagamento_status', 'valor_pago', 'ip_origem', 'user_agent_origem'];
-        $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':telefone',
-                    ':dados_json', ':qtd_pessoas', ':tipo_festa', ':extras', ':pagamento_status', ':valor_pago', ':ip_origem', ':user_agent_origem'];
+        // Campos obrigatórios (sempre existem)
+        $campos = ['degustacao_id', 'status', 'fechou_contrato', 'nome', 'email', 'dados_json'];
+        $valores = [':degustacao_id', ':status', ':fechou_contrato', ':nome', ':email', ':dados_json'];
         $params = [
             ':degustacao_id' => $degustacao['id'],
             ':status' => $status,
             ':fechou_contrato' => $fechou_contrato,
             ':nome' => $nome,
             ':email' => $email,
-            ':telefone' => $telefone,
-            ':dados_json' => json_encode($dados_json),
-            ':qtd_pessoas' => $qtd_pessoas,
-            ':tipo_festa' => $tipo_festa,
-            ':extras' => $extras,
-            ':pagamento_status' => $fechou_contrato === 'sim' ? 'nao_aplicavel' : 'aguardando',
-            ':valor_pago' => $fechou_contrato === 'sim' ? 0 : $valor_total,
-            ':ip_origem' => $_SERVER['REMOTE_ADDR'] ?? null,
-            ':user_agent_origem' => $_SERVER['HTTP_USER_AGENT'] ?? null
+            ':dados_json' => json_encode($dados_json)
         ];
+        
+        // Campos opcionais - adicionar apenas se existirem na tabela
+        if (in_array($telefone_col, $existing_columns)) {
+            $campos[] = $telefone_col;
+            $valores[] = ':telefone';
+            $params[':telefone'] = $telefone;
+        }
+        
+        if (in_array('qtd_pessoas', $existing_columns)) {
+            $campos[] = 'qtd_pessoas';
+            $valores[] = ':qtd_pessoas';
+            $params[':qtd_pessoas'] = $qtd_pessoas;
+        }
+        
+        if (in_array('tipo_festa', $existing_columns)) {
+            $campos[] = 'tipo_festa';
+            $valores[] = ':tipo_festa';
+            $params[':tipo_festa'] = $tipo_festa;
+        }
+        
+        if (in_array('extras', $existing_columns)) {
+            $campos[] = 'extras';
+            $valores[] = ':extras';
+            $params[':extras'] = $extras;
+        }
+        
+        if (in_array('pagamento_status', $existing_columns)) {
+            $campos[] = 'pagamento_status';
+            $valores[] = ':pagamento_status';
+            $params[':pagamento_status'] = $fechou_contrato === 'sim' ? 'nao_aplicavel' : 'aguardando';
+        }
+        
+        if (in_array('valor_pago', $existing_columns)) {
+            $campos[] = 'valor_pago';
+            $valores[] = ':valor_pago';
+            $params[':valor_pago'] = $fechou_contrato === 'sim' ? 0 : $valor_total;
+        }
+        
+        if (in_array('ip_origem', $existing_columns)) {
+            $campos[] = 'ip_origem';
+            $valores[] = ':ip_origem';
+            $params[':ip_origem'] = $_SERVER['REMOTE_ADDR'] ?? null;
+        }
+        
+        if (in_array('user_agent_origem', $existing_columns)) {
+            $campos[] = 'user_agent_origem';
+            $valores[] = ':user_agent_origem';
+            $params[':user_agent_origem'] = $_SERVER['HTTP_USER_AGENT'] ?? null;
+        }
         
         // Adicionar colunas opcionais se existirem
         if ($has_nome_titular) {
