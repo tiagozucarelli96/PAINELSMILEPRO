@@ -702,6 +702,76 @@ includeSidebar('Agenda');
     </div>
 
     <script>
+        // Função auxiliar para escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Modal customizado de alerta
+        function customAlert(mensagem, titulo = 'Aviso') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'custom-alert-overlay';
+                overlay.innerHTML = `
+                    <div class="custom-alert">
+                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
+                        <div class="custom-alert-actions">
+                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolveCustomAlert();
+                    }
+                });
+                
+                window.resolveCustomAlert = () => {
+                    overlay.remove();
+                    resolve();
+                };
+            });
+        }
+        
+        // Modal customizado de confirmação
+        async function customConfirm(mensagem, titulo = 'Confirmar') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'custom-alert-overlay';
+                overlay.innerHTML = `
+                    <div class="custom-alert">
+                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
+                        <div class="custom-alert-actions">
+                            <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
+                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolve(false);
+                    }
+                });
+                
+                window.resolveCustomConfirm = (resultado) => {
+                    overlay.remove();
+                    resolve(resultado);
+                };
+            });
+        }
+        
         let calendar;
         let currentFilters = {};
         
@@ -936,7 +1006,7 @@ includeSidebar('Agenda');
             const fim = document.getElementById('fim').value;
             
             if (!responsavel) {
-                alert('Selecione um responsável primeiro');
+                customAlert('Selecione um responsável primeiro', '⚠️ Validação');
                 return;
             }
             
@@ -1131,27 +1201,31 @@ includeSidebar('Agenda');
         }
         
         // Excluir evento
-        function deleteEvent() {
-            if (confirm('Tem certeza que deseja excluir este evento?')) {
-                const eventId = document.getElementById('eventId').value;
-                
-                fetch('agenda.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `acao=excluir_evento&evento_id=${eventId}`
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        calendar.refetchEvents();
-                        closeEventModal();
-                    } else {
-                        alert('Erro ao excluir evento: ' + data.error);
-                    }
-                });
-            }
+        async function deleteEvent() {
+            const confirmado = await customConfirm('Tem certeza que deseja excluir este evento?', '⚠️ Confirmar Exclusão');
+            if (!confirmado) return;
+            
+            const eventId = document.getElementById('eventId').value;
+            
+            fetch('agenda.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `acao=excluir_evento&evento_id=${eventId}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    calendar.refetchEvents();
+                    closeEventModal();
+                } else {
+                    customAlert('Erro ao excluir evento: ' + data.error, '❌ Erro');
+                }
+            })
+            .catch(error => {
+                customAlert('Erro de conexão: ' + error.message, '❌ Erro');
+            });
         }
         
         // Submeter formulário
@@ -1276,14 +1350,14 @@ includeSidebar('Agenda');
                             document.getElementById('forceBtn').style.display = 'block';
                         }
                     } else {
-                        alert('Erro: ' + data.error);
+                        customAlert('Erro: ' + data.error, '❌ Erro');
                     }
                 }
             })
             .catch(error => {
                 console.error('Erro na requisição:', error);
                 submitBtn.innerHTML = '❌ Erro de Rede';
-                alert('Erro de conexão: ' + error.message);
+                customAlert('Erro de conexão: ' + error.message, '❌ Erro');
                 setTimeout(() => {
                     submitBtn.innerHTML = originalText;
                     submitBtn.disabled = false;

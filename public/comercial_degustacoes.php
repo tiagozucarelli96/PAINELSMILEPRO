@@ -622,7 +622,7 @@ ob_start();
                                     <button type="submit" class="btn-sm btn-secondary">📋 Duplicar</button>
                                 </form>
                                 
-                                <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja apagar esta degustação?')">
+                                <form method="POST" style="display: inline;" onsubmit="return confirmarExclusao(event)">
                                     <input type="hidden" name="action" value="apagar">
                                     <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-danger">🗑️ Apagar</button>
@@ -633,7 +633,191 @@ ob_start();
                 <?php endforeach; ?>
     </div>
     
+    <style>
+        /* Modais customizados - substituem alert/confirm nativos */
+        .custom-alert-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 0.2s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .custom-alert {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            padding: 0;
+            max-width: 400px;
+            width: 90%;
+            animation: slideUp 0.3s;
+            overflow: hidden;
+        }
+        
+        .custom-alert-header {
+            padding: 1.5rem;
+            background: #3b82f6;
+            color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .custom-alert-body {
+            padding: 1.5rem;
+            color: #374151;
+            line-height: 1.6;
+        }
+        
+        .custom-alert-actions {
+            padding: 1rem 1.5rem;
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .custom-alert-btn {
+            padding: 0.625rem 1.25rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+        }
+        
+        .custom-alert-btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .custom-alert-btn-primary:hover {
+            background: #2563eb;
+        }
+        
+        .custom-alert-btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .custom-alert-btn-secondary:hover {
+            background: #e5e7eb;
+        }
+        
+        .custom-alert-btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .custom-alert-btn-danger:hover {
+            background: #dc2626;
+        }
+    </style>
+    
     <script>
+        // Função auxiliar para escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Modal customizado de alerta
+        function customAlert(mensagem, titulo = 'Aviso') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'custom-alert-overlay';
+                overlay.innerHTML = `
+                    <div class="custom-alert">
+                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
+                        <div class="custom-alert-actions">
+                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolveCustomAlert();
+                    }
+                });
+                
+                window.resolveCustomAlert = () => {
+                    overlay.remove();
+                    resolve();
+                };
+            });
+        }
+        
+        // Modal customizado de confirmação
+        async function customConfirm(mensagem, titulo = 'Confirmar') {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.className = 'custom-alert-overlay';
+                overlay.innerHTML = `
+                    <div class="custom-alert">
+                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
+                        <div class="custom-alert-actions">
+                            <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
+                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay) {
+                        overlay.remove();
+                        resolve(false);
+                    }
+                });
+                
+                window.resolveCustomConfirm = (resultado) => {
+                    overlay.remove();
+                    resolve(resultado);
+                };
+            });
+        }
+        
+        // Função para confirmar exclusão
+        async function confirmarExclusao(event) {
+            event.preventDefault();
+            const form = event.target;
+            const confirmado = await customConfirm('Tem certeza que deseja apagar esta degustação?', '⚠️ Confirmar Exclusão');
+            if (confirmado) {
+                form.submit();
+            }
+            return false;
+        }
+        
         function searchDegustacoes(query = '') {
             if (query === '') {
                 const input = document.getElementById('searchInput');
