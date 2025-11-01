@@ -1,7 +1,7 @@
 <?php
 /**
  * comercial_realizar_degustacao.php — Relatório para realização de degustação
- * Versão simplificada e funcional
+ * Versão com logs detalhados para debug
  */
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -21,6 +21,11 @@ $degustacao_id = isset($_GET['degustacao_id']) ? (int)$_GET['degustacao_id'] : 0
 $degustacao = null;
 $inscritos = [];
 $error_message = '';
+$debug_info = [];
+
+// Log inicial
+$debug_info[] = "🔍 DEBUG: Script iniciado";
+$debug_info[] = "🔍 DEBUG: degustacao_id na URL = " . ($degustacao_id > 0 ? $degustacao_id : 'VAZIO');
 
 // Buscar todas as degustações
 try {
@@ -29,13 +34,17 @@ try {
         FROM comercial_degustacoes
         ORDER BY data DESC, hora_inicio DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
+    $debug_info[] = "✅ DEBUG: Degustações encontradas = " . count($degustacoes);
 } catch (Exception $e) {
     $degustacoes = [];
     $error_message = "Erro ao buscar degustações: " . $e->getMessage();
+    $debug_info[] = "❌ DEBUG: Erro ao buscar degustações - " . $e->getMessage();
 }
 
 // Se selecionou uma degustação, buscar dados
 if ($degustacao_id > 0) {
+    $debug_info[] = "🔍 DEBUG: Processando degustacao_id = {$degustacao_id}";
+    
     try {
         // Buscar degustação
         $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
@@ -43,29 +52,67 @@ if ($degustacao_id > 0) {
         $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($degustacao) {
+            $debug_info[] = "✅ DEBUG: Degustação encontrada - ID: {$degustacao['id']}, Nome: {$degustacao['nome']}";
+            
             // Verificar qual coluna usar
-            $check_col = $pdo->query("
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'comercial_inscricoes' 
-                AND column_name IN ('degustacao_id', 'event_id')
-                LIMIT 1
-            ");
-            $col_result = $check_col->fetch(PDO::FETCH_ASSOC);
-            $coluna_id = ($col_result && $col_result['column_name'] == 'degustacao_id') ? 'degustacao_id' : 'event_id';
+            try {
+                $check_col = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'comercial_inscricoes' 
+                    AND column_name IN ('degustacao_id', 'event_id')
+                    LIMIT 1
+                ");
+                $col_result = $check_col->fetch(PDO::FETCH_ASSOC);
+                
+                if ($col_result) {
+                    $coluna_id = ($col_result['column_name'] == 'degustacao_id') ? 'degustacao_id' : 'event_id';
+                    $debug_info[] = "✅ DEBUG: Coluna usada = {$coluna_id}";
+                } else {
+                    $coluna_id = 'degustacao_id'; // Padrão
+                    $debug_info[] = "⚠️ DEBUG: Nenhuma coluna encontrada, usando padrão degustacao_id";
+                }
+            } catch (Exception $e) {
+                $coluna_id = 'degustacao_id'; // Padrão
+                $debug_info[] = "⚠️ DEBUG: Erro ao verificar coluna - {$e->getMessage()}, usando padrão degustacao_id";
+            }
             
             // Buscar inscritos confirmados
-            $sql = "SELECT id, nome, qtd_pessoas, tipo_festa 
-                    FROM comercial_inscricoes 
-                    WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
-                    ORDER BY nome ASC";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([':deg_id' => $degustacao_id]);
-            $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            try {
+                $sql = "SELECT id, nome, qtd_pessoas, tipo_festa 
+                        FROM comercial_inscricoes 
+                        WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
+                        ORDER BY nome ASC";
+                $debug_info[] = "🔍 DEBUG: SQL = {$sql}";
+                $debug_info[] = "🔍 DEBUG: Parâmetro deg_id = {$degustacao_id}";
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([':deg_id' => $degustacao_id]);
+                $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                $debug_info[] = "✅ DEBUG: Inscritos encontrados = " . count($inscritos);
+                
+                if (count($inscritos) > 0) {
+                    $debug_info[] = "📋 DEBUG: Primeiros 3 inscritos:";
+                    foreach (array_slice($inscritos, 0, 3) as $idx => $insc) {
+                        $debug_info[] = "   - {$insc['nome']} ({$insc['qtd_pessoas']} pessoas)";
+                    }
+                } else {
+                    $debug_info[] = "⚠️ DEBUG: Nenhum inscrito confirmado encontrado";
+                }
+            } catch (Exception $e) {
+                $error_message = "Erro ao buscar inscritos: " . $e->getMessage();
+                $debug_info[] = "❌ DEBUG: Erro ao buscar inscritos - " . $e->getMessage();
+            }
+        } else {
+            $debug_info[] = "❌ DEBUG: Degustação NÃO encontrada com ID = {$degustacao_id}";
         }
     } catch (Exception $e) {
         $error_message = "Erro ao buscar dados: " . $e->getMessage();
+        $debug_info[] = "❌ DEBUG: Erro geral - " . $e->getMessage();
     }
+} else {
+    $debug_info[] = "ℹ️ DEBUG: Nenhuma degustação selecionada ainda (degustacao_id = 0 ou vazio)";
 }
 
 includeSidebar('Comercial');
@@ -93,6 +140,44 @@ includeSidebar('Comercial');
     color: #6b7280;
     font-size: 1rem;
     margin: 0;
+}
+
+.debug-panel {
+    background: #fef3c7;
+    border: 2px solid #f59e0b;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.debug-panel h3 {
+    margin: 0 0 1rem 0;
+    color: #92400e;
+    font-size: 1rem;
+}
+
+.debug-item {
+    margin: 0.25rem 0;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid #fde68a;
+}
+
+.debug-item:last-child {
+    border-bottom: none;
+}
+
+.error-panel {
+    background: #fee2e2;
+    border: 2px solid #fca5a5;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    color: #991b1b;
 }
 
 .selecao-container {
@@ -306,7 +391,8 @@ includeSidebar('Comercial');
 
 @media print {
     .selecao-container,
-    .acoes-relatorio {
+    .acoes-relatorio,
+    .debug-panel {
         display: none;
     }
     
@@ -323,20 +409,30 @@ includeSidebar('Comercial');
         <p class="page-subtitle">Selecione uma degustação para gerar o relatório de mesas e inscritos</p>
     </div>
     
+    <!-- Painel de Debug -->
+    <?php if (!empty($debug_info)): ?>
+        <div class="debug-panel">
+            <h3>🔍 Log de Debug (desenvolvimento)</h3>
+            <?php foreach ($debug_info as $log): ?>
+                <div class="debug-item"><?= h($log) ?></div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+    
     <?php if ($error_message): ?>
-        <div style="background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; color: #991b1b;">
-            ❌ <?= h($error_message) ?>
+        <div class="error-panel">
+            ❌ <strong>Erro:</strong> <?= h($error_message) ?>
         </div>
     <?php endif; ?>
     
     <!-- Seleção de Degustação -->
     <div class="selecao-container">
-        <form method="GET" action="">
+        <form method="GET" action="" id="formDegustacao">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             
             <div class="form-group">
                 <label class="form-label">Selecione a Degustação</label>
-                <select name="degustacao_id" class="form-select" id="selectDegustacao" onchange="this.form.submit()">
+                <select name="degustacao_id" class="form-select" id="selectDegustacao">
                     <option value="">-- Selecione uma degustação --</option>
                     <?php foreach ($degustacoes as $deg): ?>
                         <option value="<?= $deg['id'] ?>" <?= $degustacao_id == $deg['id'] ? 'selected' : '' ?>>
@@ -424,11 +520,74 @@ includeSidebar('Comercial');
                 </button>
             </div>
         </div>
+    <?php else: ?>
+        <?php if ($degustacao_id > 0): ?>
+            <div class="error-panel">
+                ⚠️ <strong>Atenção:</strong> Degustação selecionada mas dados não encontrados. Verifique o painel de debug acima.
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 
 <script>
+console.log('🔍 Script JavaScript carregado');
+console.log('🔍 degustacao_id na URL:', new URLSearchParams(window.location.search).get('degustacao_id'));
+
 function gerarPDF() {
     alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
 }
+
+// Auto-submit quando selecionar degustação
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔍 DOM carregado');
+    
+    const selectDegustacao = document.getElementById('selectDegustacao');
+    const formDegustacao = document.getElementById('formDegustacao');
+    
+    if (selectDegustacao) {
+        console.log('✅ Select encontrado');
+        
+        selectDegustacao.addEventListener('change', function() {
+            const selectedValue = this.value;
+            console.log('🔍 Select mudou para:', selectedValue);
+            
+            if (selectedValue && selectedValue !== '') {
+                if (formDegustacao) {
+                    console.log('✅ Formulário encontrado, submetendo...');
+                    formDegustacao.submit();
+                } else {
+                    console.error('❌ Formulário não encontrado!');
+                }
+            } else {
+                console.log('⚠️ Valor vazio selecionado');
+            }
+        });
+        
+        // Log do valor inicial
+        if (selectDegustacao.value && selectDegustacao.value !== '') {
+            console.log('✅ Degustação já selecionada no carregamento:', selectDegustacao.value);
+        } else {
+            console.log('ℹ️ Nenhuma degustação selecionada inicialmente');
+        }
+    } else {
+        console.error('❌ Select não encontrado!');
+    }
+    
+    // Verificar se relatório deve aparecer
+    const relatorioContainer = document.querySelector('.relatorio-container');
+    if (relatorioContainer) {
+        console.log('✅ Relatório encontrado no DOM');
+    } else {
+        console.log('⚠️ Relatório NÃO encontrado no DOM');
+        const degustacaoId = new URLSearchParams(window.location.search).get('degustacao_id');
+        if (degustacaoId && degustacaoId > 0) {
+            console.error('❌ ERRO: degustacao_id existe mas relatório não aparece!');
+            console.error('❌ Possíveis causas:');
+            console.error('   1. Degustação não encontrada no banco');
+            console.error('   2. Nenhum inscrito confirmado');
+            console.error('   3. Erro na query SQL');
+            console.error('   4. Condição PHP não foi satisfeita');
+        }
+    }
+});
 </script>
