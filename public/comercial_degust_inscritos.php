@@ -69,13 +69,12 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 $status_filter = $_GET['status'] ?? '';
 $search = trim($_GET['search'] ?? '');
 
-// Verificar se a coluna é degustacao_id ou event_id
-// Usar OR para tentar ambas as colunas (mais robusto)
-$where = ['(i.event_id = :event_id OR i.degustacao_id = :event_id)'];
+// A tabela comercial_inscricoes usa degustacao_id (conforme código existente em comercial_degust_public.php)
+$where = ['i.degustacao_id = :event_id'];
 $params = [':event_id' => $event_id];
 
 // Log para debug
-error_log("Buscando inscrições para degustação ID: $event_id (tentando ambas as colunas event_id e degustacao_id)");
+error_log("Buscando inscrições para degustação ID: $event_id usando coluna degustacao_id");
 
 if ($status_filter) {
     $where[] = 'i.status = :status';
