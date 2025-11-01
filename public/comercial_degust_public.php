@@ -264,7 +264,9 @@ if ($_POST && !$inscricoes_encerradas) {
                     'callback' => [
                         'cancelUrl' => $current_url . '&cancelado=1',
                         'expiredUrl' => $current_url . '&expirado=1',
-                        'successUrl' => $base_url . '/comercial_pagamento.php?checkout_id={checkout}&inscricao_id=' . $inscricao_id
+                        // IMPORTANTE: Removido placeholder {checkout} - Asaas pode não aceitar
+                        // Usaremos apenas inscricao_id e buscaremos checkout_id no banco
+                        'successUrl' => $base_url . '/comercial_pagamento.php?inscricao_id=' . $inscricao_id
                     ],
                     'items' => [
                         [
