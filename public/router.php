@@ -14,6 +14,14 @@ if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
 if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
     // Arquivos de cron, webhook e páginas públicas devem ser servidos diretamente SEM redirecionamento
     $public_files = ['comercial_degust_public.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php'];
+    
+    // Verificação ESPECIAL para webhooks - SEM conexão automática, eles gerenciam sua própria conexão
+    if (strpos($path, 'asaas_webhook.php') !== false || basename($file) === 'asaas_webhook.php') {
+        // Webhook deve ser servido DIRETAMENTE sem injeção de conexão (ele faz isso internamente)
+        require $file;
+        exit;
+    }
+    
     if (strpos($path, 'cron') !== false || strpos($path, '/cron') !== false || 
         strpos($path, 'webhook') !== false || strpos($path, '/webhook') !== false ||
         in_array(basename($file), $public_files)) {
