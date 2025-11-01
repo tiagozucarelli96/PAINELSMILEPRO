@@ -857,6 +857,51 @@ ob_start();
             return false;
         }
         
+        // Função para copiar link público
+        function copiarLinkPublico(degustacaoId) {
+            const input = document.getElementById('link-publico-' + degustacaoId);
+            if (!input) {
+                customAlert('Campo de link não encontrado', 'Erro');
+                return;
+            }
+            
+            input.select();
+            input.setSelectionRange(0, 99999); // Para dispositivos móveis
+            
+            try {
+                document.execCommand('copy');
+                // Feedback visual
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copiado!';
+                btn.style.background = '#10b981';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                }, 2000);
+            } catch (err) {
+                // Fallback para navegadores modernos
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(input.value).then(() => {
+                        const btn = event.target;
+                        const originalText = btn.textContent;
+                        btn.textContent = '✅ Copiado!';
+                        btn.style.background = '#10b981';
+                        
+                        setTimeout(() => {
+                            btn.textContent = originalText;
+                            btn.style.background = '';
+                        }, 2000);
+                    }).catch(() => {
+                        customAlert('Erro ao copiar link', 'Erro');
+                    });
+                } else {
+                    customAlert('Erro ao copiar link. Seu navegador pode não suportar esta ação.', 'Erro');
+                }
+            }
+        }
+        
         function searchDegustacoes(query = '') {
             if (query === '') {
                 const input = document.getElementById('searchInput');
