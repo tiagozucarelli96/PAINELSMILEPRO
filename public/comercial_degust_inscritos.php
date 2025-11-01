@@ -186,13 +186,14 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         // Criar QR Code PIX estático (com payload para copia e cola)
         $descricao = substr("Degustação: {$degustacao_info['nome']} - " . ucfirst($tipo_festa), 0, 37); // Máximo 37 caracteres
         
-        // Não especificar format para obter todos os campos incluindo payload
+        // Especificar format como BASE64 ou não especificar para obter payload
         $qr_code_data = [
             'addressKey' => ASAAS_PIX_ADDRESS_KEY,
             'description' => $descricao,
             'value' => $valor_total,
             'expirationDate' => date('Y-m-d H:i:s', strtotime('+1 hour')),
-            'allowsMultiplePayments' => false
+            'allowsMultiplePayments' => false,
+            'format' => 'BASE64' // Forçar formato BASE64 para obter payload
         ];
         
         $qr_response = $asaasHelper->createStaticQrCode($qr_code_data);
@@ -849,7 +850,8 @@ ob_start();
                         <th class="table-header-cell" style="text-align: center; width: 10%;">Status</th>
                         <th class="table-header-cell" style="text-align: center; width: 10%;">Tipo de Festa</th>
                         <th class="table-header-cell" style="text-align: center; width: 8%;">Pessoas</th>
-                        <th class="table-header-cell" style="text-align: center; width: 12%;">Contrato/Comparecimento</th>
+                        <th class="table-header-cell" style="text-align: center; width: 14%;">Contrato</th>
+                        <th class="table-header-cell" style="text-align: center; width: 14%;">Comparecimento</th>
                         <th class="table-header-cell" style="text-align: center; width: 12%;">Pagamento</th>
                         <th class="table-header-cell" style="text-align: center; width: 28%;">Ações</th>
                     </tr>
@@ -865,7 +867,11 @@ ob_start();
                             </td>
                             
                             <td class="table-cell" style="text-align: center;">
-                                <?= getStatusBadge($inscricao['status']) ?>
+                                <?php if ($inscricao['status'] === 'confirmado'): ?>
+                                    <span style="color: #10b981; font-weight: 600;">✓</span>
+                                <?php else: ?>
+                                    <?= getStatusBadge($inscricao['status']) ?>
+                                <?php endif; ?>
                             </td>
                             
                             <td class="table-cell" style="text-align: center;">
@@ -873,21 +879,35 @@ ob_start();
                             </td>
                             
                             <td class="table-cell" style="text-align: center;">
-                                <?= $inscricao['qtd_pessoas'] ?? 0 ?> pessoas
+                                <?= $inscricao['qtd_pessoas'] ?? 0 ?>
                             </td>
                             
                             <td class="table-cell" style="text-align: center;">
                                 <?php 
                                 $fechou = $inscricao['fechou_contrato'] === 'sim';
+                                ?>
+                                <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" 
+                                           <?= $fechou ? 'checked' : '' ?>
+                                           onchange="marcarContrato(<?= $inscricao['id'] ?>, this.checked, '<?= h($inscricao['nome_titular_contrato'] ?? '') ?>')"
+                                           style="width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="font-size: 12px; color: <?= $fechou ? '#10b981' : '#6b7280' ?>;">
+                                        <?= $fechou ? '✓ Sim' : 'Não' ?>
+                                    </span>
+                                </label>
+                            </td>
+                            
+                            <td class="table-cell" style="text-align: center;">
+                                <?php 
                                 $compareceu = ($inscricao['compareceu'] ?? 0) == 1;
                                 ?>
                                 <label style="display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
                                     <input type="checkbox" 
-                                           <?= ($fechou || $compareceu) ? 'checked' : '' ?>
-                                           onchange="marcarContratoComparecimento(<?= $inscricao['id'] ?>, this.checked, '<?= h($inscricao['nome_titular_contrato'] ?? '') ?>')"
+                                           <?= $compareceu ? 'checked' : '' ?>
+                                           onchange="marcarComparecimento(<?= $inscricao['id'] ?>, this.checked)"
                                            style="width: 18px; height: 18px; cursor: pointer;">
-                                    <span style="font-size: 12px; color: <?= ($fechou || $compareceu) ? '#10b981' : '#6b7280' ?>;">
-                                        <?= ($fechou || $compareceu) ? '✓ Fechou/Compareceu' : 'Não fechou' ?>
+                                    <span style="font-size: 12px; color: <?= $compareceu ? '#10b981' : '#6b7280' ?>;">
+                                        <?= $compareceu ? '✓ Sim' : 'Não' ?>
                                     </span>
                                 </label>
                             </td>
@@ -901,23 +921,11 @@ ob_start();
                             
                             <td class="table-cell" style="text-align: center;">
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;">
-                                    <?php if ($inscricao['fechou_contrato'] !== 'sim' && $inscricao['pagamento_status'] !== 'pago'): ?>
-                                        <button class="btn-sm" 
-                                                style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                                                onclick="gerarPagamentoPix(<?= $inscricao['id'] ?>)"
-                                                id="btnPix_<?= $inscricao['id'] ?>">
-                                            💳 Gerar PIX
-                                        </button>
-                                        <button class="btn-sm" 
-                                                style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; display: none;"
-                                                onclick="copiarPix(<?= $inscricao['id'] ?>)"
-                                                id="btnCopiar_<?= $inscricao['id'] ?>">
-                                            📋 Copiar PIX
-                                        </button>
-                                    <?php elseif (!empty($inscricao['qr_code_payload']) || !empty($inscricao['asaas_qr_code_id'])): ?>
+                                    <?php if ($inscricao['pagamento_status'] !== 'pago'): ?>
                                         <button class="btn-sm" 
                                                 style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                                                onclick="copiarPix(<?= $inscricao['id'] ?>, '<?= h($inscricao['qr_code_payload'] ?? '') ?>')">
+                                                onclick="copiarPix(<?= $inscricao['id'] ?>)"
+                                                id="btnCopiar_<?= $inscricao['id'] ?>">
                                             📋 Copiar PIX
                                         </button>
                                     <?php endif; ?>
@@ -1164,57 +1172,107 @@ ob_start();
         }
     }
     
-    // Copiar código PIX para área de transferência
-    async function copiarPix(inscricaoId, payload = null) {
-        let pixCode = payload || window['pixPayload_' + inscricaoId];
+    // Gerar novo QR Code PIX (payload) para degustações não pagas e copiar
+    async function copiarPix(inscricaoId) {
+        const btnCopiar = document.getElementById('btnCopiar_' + inscricaoId);
         
-        if (!pixCode) {
-            // Buscar do servidor se não tiver
-            try {
-                const response = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
-                const data = await response.json();
-                pixCode = data.payload;
-            } catch (e) {
-                alert('❌ Código PIX não encontrado. Gere o pagamento primeiro.');
-                return;
-            }
+        if (btnCopiar) {
+            btnCopiar.disabled = true;
+            btnCopiar.textContent = '⏳ Gerando...';
         }
         
-        if (pixCode) {
-            navigator.clipboard.writeText(pixCode).then(() => {
-                alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
-            }).catch(() => {
-                // Fallback para navegadores antigos
-                const textArea = document.createElement('textarea');
-                textArea.value = pixCode;
-                textArea.style.position = 'fixed';
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+        try {
+            // Gerar novo QR Code PIX com payload
+            const formData = new FormData();
+            formData.append('action', 'gerar_pagamento');
+            formData.append('inscricao_id', inscricaoId);
+            
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
             });
-        } else {
-            alert('❌ Código PIX não encontrado. Gere o pagamento primeiro.');
+            
+            const data = await response.json();
+            
+            if (data.success && data.payload) {
+                // Copiar payload para área de transferência
+                const pixCode = data.payload;
+                
+                navigator.clipboard.writeText(pixCode).then(() => {
+                    alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+                    if (btnCopiar) {
+                        btnCopiar.disabled = false;
+                        btnCopiar.textContent = '📋 Copiar PIX';
+                    }
+                    // Recarregar para atualizar status
+                    window.location.reload();
+                }).catch(() => {
+                    // Fallback para navegadores antigos
+                    const textArea = document.createElement('textarea');
+                    textArea.value = pixCode;
+                    textArea.style.position = 'fixed';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+                    if (btnCopiar) {
+                        btnCopiar.disabled = false;
+                        btnCopiar.textContent = '📋 Copiar PIX';
+                    }
+                    window.location.reload();
+                });
+            } else {
+                // Se já existe, tentar buscar
+                try {
+                    const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
+                    const data2 = await response2.json();
+                    if (data2.payload) {
+                        navigator.clipboard.writeText(data2.payload).then(() => {
+                            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+                            if (btnCopiar) {
+                                btnCopiar.disabled = false;
+                                btnCopiar.textContent = '📋 Copiar PIX';
+                            }
+                        });
+                        return;
+                    }
+                } catch (e) {
+                    // Ignorar erro
+                }
+                
+                alert('❌ Erro: ' + (data.message || 'Não foi possível gerar o código PIX'));
+                if (btnCopiar) {
+                    btnCopiar.disabled = false;
+                    btnCopiar.textContent = '📋 Copiar PIX';
+                }
+            }
+        } catch (error) {
+            console.error('Erro ao gerar/copiar PIX:', error);
+            alert('❌ Erro ao gerar PIX. Tente novamente.');
+            if (btnCopiar) {
+                btnCopiar.disabled = false;
+                btnCopiar.textContent = '📋 Copiar PIX';
+            }
         }
     }
     
-    // Marcar contrato e comparecimento (checkbox única)
-    function marcarContratoComparecimento(inscricaoId, checked, nomeTitularAtual) {
+    // Marcar contrato
+    function marcarContrato(inscricaoId, checked, nomeTitularAtual) {
         if (checked) {
             const nomeTitular = prompt('Nome do titular do contrato:', nomeTitularAtual || '');
-            if (nomeTitular === null) {
-                // Cancelou, desmarcar checkbox
+            if (nomeTitular === null || nomeTitular.trim() === '') {
+                // Cancelou ou não preencheu, desmarcar checkbox
                 event.target.checked = false;
                 return;
             }
             
             const formData = new FormData();
-            formData.append('action', 'marcar_contrato_comparecimento');
+            formData.append('action', 'marcar_fechou_contrato');
             formData.append('inscricao_id', inscricaoId);
-            formData.append('fechou_contrato', checked ? '1' : '0');
-            formData.append('compareceu', checked ? '1' : '0');
+            formData.append('fechou_contrato', 'sim');
             formData.append('nome_titular_contrato', nomeTitular.trim());
+            formData.append('cpf_3_digitos', '');
             
             fetch(window.location.href, {
                 method: 'POST',
@@ -1223,16 +1281,16 @@ ob_start();
                 window.location.reload();
             }).catch(() => {
                 alert('❌ Erro ao atualizar. Tente novamente.');
-                event.target.checked = !checked;
+                event.target.checked = false;
             });
         } else {
-            // Desmarcar
+            // Desmarcar contrato
             const formData = new FormData();
-            formData.append('action', 'marcar_contrato_comparecimento');
+            formData.append('action', 'marcar_fechou_contrato');
             formData.append('inscricao_id', inscricaoId);
-            formData.append('fechou_contrato', '0');
-            formData.append('compareceu', '0');
+            formData.append('fechou_contrato', 'nao');
             formData.append('nome_titular_contrato', '');
+            formData.append('cpf_3_digitos', '');
             
             fetch(window.location.href, {
                 method: 'POST',
@@ -1241,9 +1299,27 @@ ob_start();
                 window.location.reload();
             }).catch(() => {
                 alert('❌ Erro ao atualizar. Tente novamente.');
-                event.target.checked = checked;
+                event.target.checked = true;
             });
         }
+    }
+    
+    // Marcar comparecimento
+    function marcarComparecimento(inscricaoId, checked) {
+        const formData = new FormData();
+        formData.append('action', 'marcar_comparecimento');
+        formData.append('inscricao_id', inscricaoId);
+        formData.append('compareceu', checked ? '1' : '0');
+        
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        }).then(() => {
+            window.location.reload();
+        }).catch(() => {
+            alert('❌ Erro ao atualizar. Tente novamente.');
+            event.target.checked = !checked;
+        });
     }
     
     // Excluir inscrito
