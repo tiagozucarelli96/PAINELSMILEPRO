@@ -124,13 +124,19 @@ class AsaasHelper {
             error_log("AsaasHelper - Removido \$ do início da chave");
         }
         
-        // Formato 1: access_token como header (formato oficial Asaas)
+        // Asaas API v3 - Formato correto conforme documentação
+        // Opção 1: access_token como header customizado
+        // Opção 2: Authorization Bearer (algumas versões aceitam)
+        // Vamos tentar access_token primeiro (formato oficial)
+        
         $headers = [
             'access_token: ' . $api_key_clean,
             'Content-Type: application/json',
-            'Accept: application/json',
-            'User-Agent: PainelSmilePRO/1.0'
+            'Accept: application/json'
         ];
+        
+        // Log do header que será enviado (apenas primeiros caracteres por segurança)
+        error_log("AsaasHelper - Header access_token (primeiros 40 chars): " . substr('access_token: ' . $api_key_clean, 0, 40) . "...");
         
         // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
