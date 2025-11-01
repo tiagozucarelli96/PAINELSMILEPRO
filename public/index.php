@@ -106,6 +106,7 @@ $routes = [
   'comercial_pagamento' => 'comercial_pagamento.php',
   'comercial_inscritos_cadastrados' => 'comercial_inscritos_cadastrados.php',
   'comercial_lista_espera' => 'comercial_lista_espera.php',
+  'comercial_realizar_degustacao' => 'comercial_realizar_degustacao.php',
 
   // Logístico
   'lc_index' => 'lc_index.php',
