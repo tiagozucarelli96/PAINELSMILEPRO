@@ -1004,24 +1004,22 @@ ob_start();
             modal.classList.remove('active');
         }
         
-        // Controle do campo local customizado
-        document.addEventListener('change', function(e) {
-            if (e.target.name === 'local') {
-                const localSelect = e.target;
-                const localCustom = localSelect.closest('form')?.querySelector('[name="local_custom"]');
-                if (localCustom) {
-                    if (localSelect.value === '' || localSelect.value === null) {
-                        localCustom.style.display = 'block';
-                        localCustom.required = true;
-                        localSelect.required = false;
-                    } else {
-                        localCustom.style.display = 'none';
-                        localCustom.required = false;
-                        localSelect.required = true;
-                    }
-                }
+        // Controle do campo local customizado no modal
+        function toggleLocalCustomModal(select) {
+            const localCustom = document.getElementById('localCustomModal');
+            if (!localCustom) return;
+            
+            if (select.value === '' || select.value === null) {
+                localCustom.style.display = 'block';
+                localCustom.required = true;
+                select.required = false;
+            } else {
+                localCustom.style.display = 'none';
+                localCustom.required = false;
+                localCustom.value = '';
+                select.required = true;
             }
-        });
+        }
         
         // Salvar via AJAX
         const formEditar = document.getElementById('formEditarDegustacao');
@@ -1113,12 +1111,12 @@ ob_start();
                     
                     <div style="margin-bottom: 15px;">
                         <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Local *</label>
-                        <select name="local" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        <select name="local" id="localSelectModal" required style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;" onchange="toggleLocalCustomModal(this)">
                             <option value="">Selecione um local...</option>
                             <option value="Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690">Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
                             <option value="Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690">Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
                         </select>
-                        <input type="text" name="local_custom" placeholder="Ou digite um local personalizado..." style="display: none; width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+                        <input type="text" name="local_custom" id="localCustomModal" placeholder="Ou digite um local personalizado..." style="display: none; width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
