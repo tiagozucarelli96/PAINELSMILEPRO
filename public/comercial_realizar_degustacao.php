@@ -803,34 +803,92 @@ includeSidebar('Comercial');
             return;
         }
         
-        console.log('✅ Select encontrado! Valor atual:', selectDegustacao.value);
+        const currentValue = selectDegustacao.value;
+        const selectedOption = selectDegustacao.options[selectDegustacao.selectedIndex];
+        const selectedText = selectedOption ? selectedOption.text : '';
+        
+        console.log('✅ Select encontrado!', {
+            valorAtual: currentValue,
+            selectedIndex: selectDegustacao.selectedIndex,
+            textoSelecionado: selectedText,
+            totalOpcoes: selectDegustacao.options.length,
+            primeiraOpcaoValue: selectDegustacao.options[0]?.value,
+            primeiraOpcaoText: selectDegustacao.options[0]?.text
+        });
         
         // Listener para mudança no select
         selectDegustacao.addEventListener('change', function() {
-            console.log('🔄 Select mudou! Novo valor:', this.value);
-            carregarRelatorio(this.value);
+            const newValue = this.value;
+            const newText = this.options[this.selectedIndex]?.text || '';
+            console.log('🔄 Select mudou!', {
+                novoValor: newValue,
+                novoTexto: newText,
+                selectedIndex: this.selectedIndex
+            });
+            
+            if (newValue && newValue !== '') {
+                carregarRelatorio(newValue);
+            } else {
+                console.log('⚠️ Valor vazio, não carregando relatório');
+                relatorioContainer.innerHTML = '';
+                infoBox.style.display = 'none';
+            }
         });
         
         // Verificar se há degustacao_id na URL ou no select
         const urlParams = new URLSearchParams(window.location.search);
         const degustacaoIdUrl = urlParams.get('degustacao_id');
-        const degustacaoIdSelect = selectDegustacao.value;
+        
+        // CRÍTICO: Verificar se o select já tem um valor selecionado (pode ter vindo do PHP)
+        let degustacaoIdSelect = currentValue;
+        
+        // Se o valor estiver vazio mas há uma opção selecionada (índice > 0), pegar o valor dela
+        if ((!degustacaoIdSelect || degustacaoIdSelect === '') && selectDegustacao.selectedIndex > 0) {
+            degustacaoIdSelect = selectDegustacao.options[selectDegustacao.selectedIndex].value;
+            console.log('🔧 Valor recuperado do selectedIndex:', degustacaoIdSelect);
+        }
         
         console.log('🔍 Verificando degustacao_id:', {
             naURL: degustacaoIdUrl,
             noSelect: degustacaoIdSelect,
+            selectedIndex: selectDegustacao.selectedIndex,
             urlCompleta: window.location.href
         });
         
-        if (degustacaoIdUrl && degustacaoIdUrl !== '') {
+        // Prioridade: URL > Select já selecionado
+        if (degustacaoIdUrl && degustacaoIdUrl !== '' && degustacaoIdUrl !== '0') {
             console.log('✅ degustacao_id encontrado na URL:', degustacaoIdUrl);
             selectDegustacao.value = degustacaoIdUrl;
+            // Atualizar URL sem recarregar
+            const url = new URL(window.location);
+            url.searchParams.set('degustacao_id', degustacaoIdUrl);
+            window.history.pushState({degustacao_id: degustacaoIdUrl}, '', url);
             carregarRelatorio(degustacaoIdUrl);
-        } else if (degustacaoIdSelect && degustacaoIdSelect !== '') {
-            console.log('✅ degustacao_id encontrado no select:', degustacaoIdSelect);
+        } else if (degustacaoIdSelect && degustacaoIdSelect !== '' && degustacaoIdSelect !== '0') {
+            console.log('✅ degustacao_id encontrado no select (já selecionado):', degustacaoIdSelect);
+            // Garantir que o valor está setado no select
+            if (selectDegustacao.value !== degustacaoIdSelect) {
+                selectDegustacao.value = degustacaoIdSelect;
+                console.log('🔧 Valor do select corrigido para:', degustacaoIdSelect);
+            }
+            // Atualizar URL sem recarregar
+            const url = new URL(window.location);
+            url.searchParams.set('degustacao_id', degustacaoIdSelect);
+            window.history.pushState({degustacao_id: degustacaoIdSelect}, '', url);
             carregarRelatorio(degustacaoIdSelect);
         } else {
             console.log('ℹ️ Nenhum degustacao_id encontrado, aguardando seleção do usuário');
+            console.log('🔍 Estado completo do select:', {
+                value: selectDegustacao.value,
+                selectedIndex: selectDegustacao.selectedIndex,
+                optionsCount: selectDegustacao.options.length,
+                allOptions: Array.from(selectDegustacao.options).map((opt, idx) => ({
+                    index: idx,
+                    value: opt.value,
+                    text: opt.text,
+                    selected: opt.selected
+                }))
+            });
         }
     }
     
