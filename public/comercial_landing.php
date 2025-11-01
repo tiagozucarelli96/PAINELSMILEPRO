@@ -557,19 +557,14 @@ includeSidebar('Comercial');
                 <div class="funcionalidade-card-subtitle">Gerenciar degustações e eventos</div>
             </div>
             <div class="funcionalidade-card-content">
-                <div class="funcionalidade-card-item">
+                <a href="index.php?page=comercial_degustacao_editar" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">➕</span>
                     <span class="funcionalidade-item-text">Criar Nova Degustação</span>
                     <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
+                </a>
+                <div class="funcionalidade-card-item" onclick="event.stopPropagation(); window.location.href='index.php?page=comercial_degustacoes';">
                     <span class="funcionalidade-item-icon">📋</span>
                     <span class="funcionalidade-item-text">Ver Todas as Degustações</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">✏️</span>
-                    <span class="funcionalidade-item-text">Editar e Publicar</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </div>
             </div>
@@ -628,62 +623,6 @@ includeSidebar('Comercial');
         </a>
     </div>
     
-    <!-- Degustações Recentes -->
-    <?php if (!empty($degustacoes_recentes)): ?>
-    <div class="degustacoes-recentes">
-        <div class="degustacoes-recentes-header">
-            <h2 class="degustacoes-recentes-title">📅 Próximas Degustações</h2>
-            <a href="index.php?page=comercial_degustacoes" class="degustacoes-recentes-link">Ver todas →</a>
-        </div>
-        
-        <div>
-            <?php foreach ($degustacoes_recentes as $degustacao): ?>
-                <div class="degustacao-item">
-                    <div class="degustacao-info">
-                        <div class="degustacao-nome"><?= h($degustacao['nome']) ?></div>
-                        <div class="degustacao-meta">
-                            <span>📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
-                            <?php if (!empty($degustacao['hora_inicio'])): ?>
-                                <span>🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
-                            <?php endif; ?>
-                            <?php if (!empty($degustacao['local'])): ?>
-                                <span>📍 <?= h($degustacao['local']) ?></span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    
-                    <div class="degustacao-stats">
-                        <div class="degustacao-stat">
-                            <div class="degustacao-stat-value"><?= $degustacao['inscritos_confirmados'] ?></div>
-                            <div class="degustacao-stat-label">Inscritos</div>
-                        </div>
-                        <div class="degustacao-stat">
-                            <div class="degustacao-stat-value"><?= $degustacao['capacidade'] ?? 0 ?></div>
-                            <div class="degustacao-stat-label">Capacidade</div>
-                        </div>
-                    </div>
-                    
-                    <a href="index.php?page=comercial_degust_inscritos&degustacao_id=<?= $degustacao['id'] ?>" class="degustacao-action">
-                        Ver Inscritos
-                    </a>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="degustacoes-recentes">
-        <div class="empty-state">
-            <div class="empty-state-icon">📅</div>
-            <h3>Nenhuma degustação ativa</h3>
-            <p>Crie uma nova degustação para começar</p>
-            <?php if (lc_can_edit_degustacoes()): ?>
-                <a href="index.php?page=comercial_degustacao_editar" class="degustacao-action" style="display: inline-block; margin-top: 1rem;">
-                    ➕ Nova Degustação
-                </a>
-            <?php endif; ?>
-        </div>
-    </div>
-    <?php endif; ?>
 </div>
 
 <!-- Custom Modals CSS -->
