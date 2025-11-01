@@ -465,15 +465,25 @@ includeSidebar('Comercial');
         <p class="page-subtitle">Selecione uma degustação para gerar o relatório de mesas e inscritos</p>
     </div>
     
-    <!-- Painel de Debug -->
-    <?php if (!empty($debug_info)): ?>
-        <div class="debug-panel">
-            <h3>🔍 Log de Debug (desenvolvimento)</h3>
+    <!-- Painel de Debug - SEMPRE VISÍVEL para ajudar -->
+    <div class="debug-panel">
+        <h3>🔍 Log de Debug</h3>
+        <?php if (!empty($debug_info)): ?>
             <?php foreach ($debug_info as $log): ?>
                 <div class="debug-item"><?= h($log) ?></div>
             <?php endforeach; ?>
+        <?php else: ?>
+            <div class="debug-item">Nenhuma informação de debug disponível.</div>
+        <?php endif; ?>
+        
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #fde68a;">
+            <strong>URL atual:</strong> <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;"><?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'N/A') ?></code>
+            <br>
+            <strong>degustacao_id na URL:</strong> <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;"><?= $degustacao_id > 0 ? $degustacao_id : 'NÃO ENCONTRADO' ?></code>
+            <br>
+            <strong>Formulário:</strong> Se você selecionou uma degustação e clicou em "Gerar Relatório", o valor deve aparecer acima.
         </div>
-    <?php endif; ?>
+    </div>
     
     <?php if ($error_message): ?>
         <div class="error-panel">
