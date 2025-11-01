@@ -197,16 +197,30 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
             throw new Exception("Degustação não encontrada");
         }
         
-        // Valor adicional por pessoa (R$50,00)
-        $valor_adicional = (float)($degustacao_info['preco_extra'] ?? 50.00);
+        // Quantidade de pessoas a adicionar (vem do formulário)
+        $qtd_adicionar = isset($_POST['qtd_pessoas']) ? (int)$_POST['qtd_pessoas'] : 1;
         
-        if ($valor_adicional <= 0) {
+        if ($qtd_adicionar <= 0) {
+            throw new Exception("Quantidade de pessoas inválida (deve ser pelo menos 1)");
+        }
+        
+        if ($qtd_adicionar > 10) {
+            throw new Exception("Quantidade máxima de pessoas por vez é 10");
+        }
+        
+        // Valor adicional por pessoa (R$50,00)
+        $valor_adicional_por_pessoa = (float)($degustacao_info['preco_extra'] ?? 50.00);
+        
+        if ($valor_adicional_por_pessoa <= 0) {
             throw new Exception("Preço adicional inválido");
         }
         
+        // Calcular valor total adicional
+        $valor_adicional_total = $valor_adicional_por_pessoa * $qtd_adicionar;
+        
         // Incrementar quantidade de pessoas
         $qtd_pessoas_atual = (int)($inscricao['qtd_pessoas'] ?? 1);
-        $qtd_pessoas_nova = $qtd_pessoas_atual + 1;
+        $qtd_pessoas_nova = $qtd_pessoas_atual + $qtd_adicionar;
         
         // Atualizar quantidade de pessoas na inscrição
         $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET qtd_pessoas = :qtd WHERE id = :id");
@@ -231,7 +245,7 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
             $valor_atual = (float)($inscricao['valor_pago'] ?? 0);
         }
         
-        $valor_novo = $valor_atual + $valor_adicional;
+        $valor_novo = $valor_atual + $valor_adicional_total;
         
         if (in_array('valor_total', $valor_columns)) {
             $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET valor_total = :valor WHERE id = :id");
@@ -247,14 +261,14 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
             ]);
         }
         
-        // Gerar QR Code apenas para o valor adicional
+        // Gerar QR Code apenas para o valor adicional total
         $asaasHelper = new AsaasHelper();
         $descricao = substr("Adicional: {$degustacao_info['nome']}", 0, 37); // Máximo 37 caracteres
         
         $qr_code_data = [
             'addressKey' => ASAAS_PIX_ADDRESS_KEY,
             'description' => $descricao,
-            'value' => $valor_adicional,
+            'value' => $valor_adicional_total,
             'expirationDate' => date('Y-m-d H:i:s', strtotime('+1 hour')),
             'allowsMultiplePayments' => false,
             'format' => 'PAYLOAD'
@@ -262,8 +276,20 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         
         $qr_result = $asaasHelper->createStaticQrCode($qr_code_data);
         
-        if (!$qr_result || !$qr_result['success']) {
-            $error_msg = $qr_result['error'] ?? 'Erro desconhecido ao gerar QR Code';
+        // Corrigir verificação de erro
+        if (!$qr_result) {
+            throw new Exception("Erro ao gerar QR Code: Resposta vazia do Asaas");
+        }
+        
+        // Verificar se tem 'success' na resposta
+        if (isset($qr_result['success']) && $qr_result['success'] === false) {
+            $error_msg = $qr_result['error'] ?? ($qr_result['message'] ?? 'Erro desconhecido ao gerar QR Code');
+            throw new Exception("Erro ao gerar QR Code: {$error_msg}");
+        }
+        
+        // Se não tem 'success', verificar se tem 'id' (formato alternativo da resposta)
+        if (!isset($qr_result['success']) && !isset($qr_result['id'])) {
+            $error_msg = $qr_result['error'] ?? ($qr_result['message'] ?? 'Resposta inválida do Asaas');
             throw new Exception("Erro ao gerar QR Code: {$error_msg}");
         }
         
@@ -319,10 +345,12 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         
         returnJson([
             'success' => true,
-            'message' => 'Pessoa adicionada com sucesso! QR Code gerado para o valor adicional.',
+            'message' => $qtd_adicionar == 1 ? 'Pessoa adicionada com sucesso!' : "{$qtd_adicionar} pessoas adicionadas com sucesso!",
             'qr_code_id' => $qr_code_id,
             'payload' => $qr_code_payload,
-            'valor' => $valor_adicional,
+            'valor' => $valor_adicional_total,
+            'valor_por_pessoa' => $valor_adicional_por_pessoa,
+            'qtd_adicionada' => $qtd_adicionar,
             'qtd_pessoas_antes' => $qtd_pessoas_atual,
             'qtd_pessoas_nova' => $qtd_pessoas_nova,
             'valor_total_novo' => $valor_novo
@@ -2137,13 +2165,37 @@ ob_start();
     
     // Adicionar pessoa e gerar cobrança adicional
     async function adicionarPessoa(inscricaoId, nomeInscrito) {
-        const confirmacao = await customConfirm(
-            `➕ Adicionar uma pessoa à inscrição de "${nomeInscrito}"?\n\n` +
-            `• Será gerado um QR Code de R$ 50,00 para a pessoa adicional\n` +
-            `• A quantidade de pessoas será incrementada\n` +
-            `• O valor total da inscrição será atualizado`,
-            'Adicionar Pessoa'
+        // Perguntar quantas pessoas adicionar
+        const qtdInput = prompt(
+            `➕ Adicionar pessoas à inscrição de "${nomeInscrito}"\n\n` +
+            `Quantas pessoas deseja adicionar?\n` +
+            `(Valor: R$ 50,00 por pessoa)\n\n` +
+            `Digite um número entre 1 e 10:`,
+            '1'
         );
+        
+        if (!qtdInput || qtdInput.trim() === '') {
+            return; // Usuário cancelou
+        }
+        
+        const qtdPessoas = parseInt(qtdInput.trim());
+        
+        if (isNaN(qtdPessoas) || qtdPessoas <= 0) {
+            alert('❌ Por favor, digite um número válido maior que zero.');
+            return;
+        }
+        
+        if (qtdPessoas > 10) {
+            alert('❌ A quantidade máxima permitida é 10 pessoas por vez.');
+            return;
+        }
+        
+        const valorTotal = qtdPessoas * 50.00;
+        const mensagemConfirmacao = qtdPessoas == 1 
+            ? `Adicionar 1 pessoa à inscrição de "${nomeInscrito}"?\n\n• Valor: R$ 50,00\n• Será gerado um QR Code para o pagamento`
+            : `Adicionar ${qtdPessoas} pessoas à inscrição de "${nomeInscrito}"?\n\n• Valor por pessoa: R$ 50,00\n• Total: R$ ${valorTotal.toFixed(2).replace('.', ',')}\n• Será gerado um QR Code para o pagamento`;
+        
+        const confirmacao = await customConfirm(mensagemConfirmacao, 'Confirmar Adição de Pessoas');
         
         if (!confirmacao) {
             return;
@@ -2159,6 +2211,7 @@ ob_start();
             const formData = new FormData();
             formData.append('action', 'adicionar_pessoa');
             formData.append('inscricao_id', inscricaoId);
+            formData.append('qtd_pessoas', qtdPessoas);
             
             const response = await fetch(window.location.href, {
                 method: 'POST',
@@ -2184,14 +2237,18 @@ ob_start();
                 const modalBody = document.getElementById('cobrancaModalBody');
                 
                 modal.style.display = 'flex';
+                const qtdAdicionada = data.qtd_adicionada || 1;
+                const valorPorPessoa = data.valor_por_pessoa || 50.00;
                 modalBody.innerHTML = `
                     <div style="text-align: center;">
-                        <h3 style="margin: 0 0 1rem 0; color: #10b981;">✅ Pessoa Adicionada com Sucesso!</h3>
+                        <h3 style="margin: 0 0 1rem 0; color: #10b981;">✅ ${qtdAdicionada == 1 ? 'Pessoa Adicionada' : qtdAdicionada + ' Pessoas Adicionadas'} com Sucesso!</h3>
                         <div style="background: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
                             <p style="margin: 0.5rem 0;"><strong>Participante:</strong> ${nomeInscrito}</p>
                             <p style="margin: 0.5rem 0;"><strong>Quantidade anterior:</strong> ${data.qtd_pessoas_antes} pessoa(s)</p>
+                            <p style="margin: 0.5rem 0;"><strong>Quantidade adicionada:</strong> ${qtdAdicionada} pessoa(s)</p>
                             <p style="margin: 0.5rem 0;"><strong>Quantidade atual:</strong> ${data.qtd_pessoas_nova} pessoa(s)</p>
-                            <p style="margin: 0.5rem 0;"><strong>Valor adicional:</strong> R$ ${data.valor.toFixed(2).replace('.', ',')}</p>
+                            <p style="margin: 0.5rem 0;"><strong>Valor por pessoa:</strong> R$ ${valorPorPessoa.toFixed(2).replace('.', ',')}</p>
+                            <p style="margin: 0.5rem 0;"><strong>Valor total adicional:</strong> R$ ${data.valor.toFixed(2).replace('.', ',')}</p>
                             <p style="margin: 0.5rem 0;"><strong>Valor total da inscrição:</strong> R$ ${data.valor_total_novo.toFixed(2).replace('.', ',')}</p>
                         </div>
                         <div style="background: #fff; border: 2px solid #e5e7eb; border-radius: 8px; padding: 1.5rem; margin: 1rem 0;">
