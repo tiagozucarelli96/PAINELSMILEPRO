@@ -1075,45 +1075,87 @@ ob_start();
         // IMPORTANTE: Esta função NÃO bloqueia o submit - apenas prepara os campos
         window.prepararLocalAntesDoSubmit = function(e) {
             try {
+                // Garantir que temos o evento e o formulário
+                if (!e) {
+                    console.warn('prepararLocalAntesDoSubmit: evento não fornecido');
+                    return true;
+                }
+                
+                const form = e.target || e.currentTarget || document.getElementById('degustacaoForm');
+                if (!form) {
+                    console.warn('prepararLocalAntesDoSubmit: formulário não encontrado');
+                    return true;
+                }
+                
                 const select = document.getElementById('localSelect');
                 const custom = document.getElementById('localCustom');
                 
                 if (!select || !custom) {
+                    console.log('prepararLocalAntesDoSubmit: campos de local não encontrados, prosseguindo normalmente');
                     return true; // Prosseguir normalmente
                 }
                 
                 const selectValue = select.value || '';
                 const customValue = custom.value ? custom.value.trim() : '';
-                const customVisible = custom.style.display !== 'none';
+                const customVisible = custom.style.display !== 'none' && custom.offsetParent !== null;
+                
+                // Limpar inputs hidden antigos se existirem
+                const existingHidden = form.querySelector('input[name="local"][type="hidden"]');
+                if (existingHidden) {
+                    existingHidden.remove();
+                }
                 
                 // Se custom está visível e tem valor, usar ele
                 if (customVisible && customValue) {
+                    console.log('prepararLocalAntesDoSubmit: usando local customizado:', customValue);
+                    
                     // Adicionar input hidden com valor
                     const hidden = document.createElement('input');
                     hidden.type = 'hidden';
                     hidden.name = 'local';
                     hidden.value = customValue;
-                    e.target.appendChild(hidden);
+                    form.appendChild(hidden);
                     
-                    // Desabilitar select
+                    // Desabilitar select temporariamente (será reabilitado no submit)
                     select.disabled = true;
-                    select.required = false;
+                    select.removeAttribute('required');
+                    const originalSelectName = select.name;
                     select.name = 'local_disabled';
                     
-                    // Desabilitar custom
+                    // Desabilitar custom temporariamente
                     custom.disabled = true;
+                    custom.removeAttribute('required');
+                    const originalCustomName = custom.name;
                     custom.name = 'local_custom_disabled';
+                    
+                    // Restaurar nomes após um breve delay (para permitir submit)
+                    setTimeout(() => {
+                        select.name = originalSelectName;
+                        custom.name = originalCustomName;
+                    }, 100);
                 } else if (selectValue) {
+                    console.log('prepararLocalAntesDoSubmit: usando local do select:', selectValue);
+                    
                     // Se select tem valor, desabilitar custom
                     custom.disabled = true;
-                    custom.required = false;
+                    custom.removeAttribute('required');
+                    const originalCustomName = custom.name;
                     custom.name = 'local_custom_disabled';
+                    
+                    // Restaurar nome após breve delay
+                    setTimeout(() => {
+                        custom.name = originalCustomName;
+                    }, 100);
+                } else {
+                    console.warn('prepararLocalAntesDoSubmit: nenhum local selecionado ou preenchido');
                 }
                 
                 // SEMPRE retornar true - nunca bloquear
+                console.log('prepararLocalAntesDoSubmit: prosseguindo com submit');
                 return true;
             } catch (err) {
                 console.error('Erro em prepararLocalAntesDoSubmit:', err);
+                console.error('Stack:', err.stack);
                 return true; // Em caso de erro, prosseguir
             }
         };
@@ -1124,6 +1166,49 @@ ob_start();
             const modal = document.getElementById('fieldModal');
             if (modal) {
                 modal.classList.remove('active');
+            }
+            
+            // Adicionar listener adicional no formulário para garantir que submit funciona
+            const form = document.getElementById('degustacaoForm');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    console.log('📤 Formulário sendo submetido...');
+                    
+                    // Validar formulário nativo do HTML5
+                    if (!form.checkValidity()) {
+                        console.warn('⚠️ Validação HTML5 falhou');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // Mostrar mensagem de validação
+                        const firstInvalid = form.querySelector(':invalid');
+                        if (firstInvalid) {
+                            firstInvalid.focus();
+                            firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            alert('Por favor, preencha todos os campos obrigatórios corretamente.');
+                        }
+                        
+                        form.classList.add('was-validated');
+                        return false;
+                    }
+                    
+                    console.log('✅ Validação HTML5 passou, prosseguindo com submit');
+                    
+                    // Chamar prepararLocalAntesDoSubmit
+                    const prepararResult = prepararLocalAntesDoSubmit(e);
+                    if (!prepararResult) {
+                        console.warn('⚠️ prepararLocalAntesDoSubmit retornou false');
+                        e.preventDefault();
+                        return false;
+                    }
+                    
+                    console.log('✅ Preparação concluída, submetendo formulário');
+                    return true;
+                }, false);
+                
+                console.log('✅ Listener de submit adicionado ao formulário');
+            } else {
+                console.error('❌ Formulário degustacaoForm não encontrado!');
             }
         });
         
