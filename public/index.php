@@ -184,6 +184,11 @@ $routes = [
 $public_pages = ['comercial_degust_public', 'asaas_webhook', 'webhook_me_eventos', 'login'];
 $is_public_page = in_array($page, $public_pages);
 
+// Debug: verificar se rota existe antes de verificar login
+if (getenv('APP_DEBUG') === '1' && !empty($page) && !isset($routes[$page])) {
+  error_log("⚠️ Rota não encontrada: '$page'. Rotas disponíveis: " . implode(', ', array_keys($routes)));
+}
+
 if (empty($_SESSION['logado']) && !$is_public_page) {
   // Se não tem rota definida, usar login.php direto
   if (empty($routes[$page]) && file_exists(__DIR__ . '/login.php')) {
