@@ -261,13 +261,14 @@ class AsaasHelper {
             'items' => []
         ];
         
-        // Adicionar items (obrigatório)
+        // Adicionar items (obrigatório) - formato exato da documentação
         foreach ($data['items'] as $item) {
+            // IMPORTANTE: value deve ser numérico (float), não string formatada
             $payload['items'][] = [
                 'name' => $item['name'],
                 'description' => $item['description'] ?? '',
-                'quantity' => $item['quantity'] ?? 1,
-                'value' => number_format((float)($item['value'] ?? 0), 2, '.', '')
+                'quantity' => (int)($item['quantity'] ?? 1),
+                'value' => (float)($item['value'] ?? 0)  // Float, não string formatada
             ];
         }
         
