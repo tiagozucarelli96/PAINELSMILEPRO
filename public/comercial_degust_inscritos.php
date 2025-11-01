@@ -880,7 +880,7 @@ ob_start();
                         <th class="table-header-cell" style="text-align: center; width: 10%;">Status</th>
                         <th class="table-header-cell" style="text-align: center; width: 10%;">Tipo de Festa</th>
                         <th class="table-header-cell" style="text-align: center; width: 8%;">Pessoas</th>
-                        <th class="table-header-cell" style="text-align: center; width: 14%;">Contrato</th>
+                        <th class="table-header-cell" style="text-align: center; width: 14%;">Contratado</th>
                         <th class="table-header-cell" style="text-align: center; width: 14%;">Comparecimento</th>
                         <th class="table-header-cell" style="text-align: center; width: 12%;">Pagamento</th>
                         <th class="table-header-cell" style="text-align: center; width: 28%;">Ações</th>
@@ -921,8 +921,8 @@ ob_start();
                                            <?= $fechou ? 'checked' : '' ?>
                                            onchange="marcarContrato(<?= $inscricao['id'] ?>, this.checked, '<?= h($inscricao['nome_titular_contrato'] ?? '') ?>')"
                                            style="width: 18px; height: 18px; cursor: pointer;">
-                                    <span style="font-size: 12px; color: <?= $fechou ? '#10b981' : '#6b7280' ?>;">
-                                        <?= $fechou ? '✓ Sim' : 'Não' ?>
+                                    <span style="font-size: 12px; color: <?= $fechou ? '#10b981' : '#6b7280' ?>; font-weight: 500;">
+                                        <?= $fechou ? 'Sim' : 'Não' ?>
                                     </span>
                                 </label>
                             </td>
@@ -936,8 +936,8 @@ ob_start();
                                            <?= $compareceu ? 'checked' : '' ?>
                                            onchange="marcarComparecimento(<?= $inscricao['id'] ?>, this.checked)"
                                            style="width: 18px; height: 18px; cursor: pointer;">
-                                    <span style="font-size: 12px; color: <?= $compareceu ? '#10b981' : '#6b7280' ?>;">
-                                        <?= $compareceu ? '✓ Sim' : 'Não' ?>
+                                    <span style="font-size: 12px; color: <?= $compareceu ? '#10b981' : '#6b7280' ?>; font-weight: 500;">
+                                        <?= $compareceu ? 'Sim' : 'Não' ?>
                                     </span>
                                 </label>
                             </td>
