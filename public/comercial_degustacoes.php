@@ -1029,50 +1029,121 @@ ob_start();
         // Salvar via AJAX
         const formEditar = document.getElementById('formEditarDegustacao');
         if (formEditar) {
+            console.log('✅ Formulário de edição encontrado, adicionando listener...');
+            
             formEditar.addEventListener('submit', async function(e) {
             e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('📤 Submit do formulário de edição detectado!');
             
             const form = this;
             const submitBtn = form.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            submitBtn.disabled = true;
-            submitBtn.textContent = '💾 Salvando...';
+            const originalText = submitBtn ? submitBtn.textContent : 'Salvar';
+            
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '💾 Salvando...';
+            }
+            
+            // Validar formulário HTML5
+            if (!form.checkValidity()) {
+                console.warn('⚠️ Validação HTML5 falhou');
+                const firstInvalid = form.querySelector(':invalid');
+                if (firstInvalid) {
+                    firstInvalid.focus();
+                    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                form.classList.add('was-validated');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+                await customAlert('Por favor, preencha todos os campos obrigatórios corretamente.', '⚠️ Validação');
+                return false;
+            }
+            
+            console.log('✅ Validação HTML5 passou');
             
             // Coletar dados do formulário
             const formData = new FormData(form);
+            
+            // Log dos dados antes de enviar
+            console.log('📋 Dados do formulário:', {
+                id: formData.get('id'),
+                nome: formData.get('nome'),
+                data: formData.get('data'),
+                local: formData.get('local'),
+                local_custom: formData.get('local_custom')
+            });
+            
             formData.append('action', 'update');
             
             // Se local_custom tem valor, usar ele ao invés de local
             const localCustom = form.querySelector('[name="local_custom"]');
             if (localCustom && localCustom.style.display !== 'none' && localCustom.value.trim()) {
+                console.log('📍 Usando local customizado:', localCustom.value.trim());
                 formData.set('local_custom', localCustom.value.trim());
             }
             
             try {
+                console.log('🌐 Enviando requisição para comercial_degustacao_api.php...');
+                
                 const response = await fetch('comercial_degustacao_api.php', {
                     method: 'POST',
                     body: formData
                 });
                 
+                console.log('📥 Resposta recebida:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    ok: response.ok,
+                    contentType: response.headers.get('content-type')
+                });
+                
+                // Verificar se a resposta é JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('❌ Resposta não é JSON:', text.substring(0, 200));
+                    throw new Error('Resposta do servidor não é JSON: ' + text.substring(0, 200));
+                }
+                
                 const data = await response.json();
+                console.log('📦 Dados recebidos:', data);
                 
                 if (data.success) {
-                    customAlert(data.message || 'Degustação atualizada com sucesso!', '✅ Sucesso');
+                    console.log('✅ Salvamento bem-sucedido!');
+                    await customAlert(data.message || 'Degustação atualizada com sucesso!', '✅ Sucesso');
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
                 } else {
-                    customAlert(data.error || 'Erro ao salvar degustação', '❌ Erro');
+                    console.error('❌ Salvamento falhou:', data.error);
+                    await customAlert(data.error || 'Erro ao salvar degustação', '❌ Erro');
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Erro ao processar salvamento:', error);
+                console.error('Stack:', error.stack);
+                await customAlert(
+                    'Erro ao salvar degustação: ' + (error.message || 'Erro desconhecido') + 
+                    '\n\nVerifique o console para mais detalhes.',
+                    '❌ Erro'
+                );
+                if (submitBtn) {
                     submitBtn.disabled = false;
                     submitBtn.textContent = originalText;
                 }
-            } catch (error) {
-                console.error('Erro:', error);
-                customAlert('Erro ao salvar degustação', '❌ Erro');
-                submitBtn.disabled = false;
-                submitBtn.textContent = originalText;
             }
             });
+            
+            console.log('✅ Listener de submit adicionado ao formulário de edição');
+        } else {
+            console.error('❌ Formulário formEditarDegustacao não encontrado!');
         }
     </script>
     
