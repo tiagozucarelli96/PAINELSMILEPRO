@@ -333,7 +333,7 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Chave PIX não configurada. Configure ASAAS_PIX_ADDRESS_KEY no Railway.");
         }
         
-        // Calcular valor (AsaasHelper já foi instanciado acima)
+        // Calcular valor (AsaasHelper já foi instanciado acima quando verificamos QR Code existente)
         $precos = [
             'casamento' => (float)($degustacao_info['preco_casamento'] ?? 150.00),
             '15anos' => (float)($degustacao_info['preco_15anos'] ?? 180.00),
