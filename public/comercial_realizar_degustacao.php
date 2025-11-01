@@ -52,6 +52,18 @@ if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] > 0) {
         $degustacao_selecionada = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($degustacao_selecionada) {
+            // Verificar qual coluna existe na tabela comercial_inscricoes
+            $check_col = $pdo->query("
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'comercial_inscricoes' 
+                AND column_name IN ('degustacao_id', 'event_id')
+            ");
+            $colunas = $check_col->fetchAll(PDO::FETCH_COLUMN);
+            $coluna_id = in_array('degustacao_id', $colunas) ? 'degustacao_id' : 'event_id';
+            
+            error_log("Buscando inscritos - Degustação ID: {$degustacao_id}, Coluna usada: {$coluna_id}");
+            
             // Buscar inscritos confirmados
             $stmt = $pdo->prepare("
                 SELECT 
@@ -62,16 +74,20 @@ if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] > 0) {
                     tipo_festa,
                     status
                 FROM comercial_inscricoes
-                WHERE degustacao_id = :deg_id
+                WHERE {$coluna_id} = :deg_id
                 AND status = 'confirmado'
                 ORDER BY nome ASC
             ");
             $stmt->execute([':deg_id' => $degustacao_id]);
             $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
+            error_log("Inscritos encontrados: " . count($inscritos));
+            
             $total_inscritos = count($inscritos);
             $total_mesas = $total_inscritos; // Cada inscrição = uma mesa
             $total_pessoas = array_sum(array_column($inscritos, 'qtd_pessoas'));
+            
+            error_log("Total inscritos: {$total_inscritos}, Total mesas: {$total_mesas}, Total pessoas: {$total_pessoas}");
             
             // Mostrar relatório automaticamente quando selecionar degustação
             $mostrar_relatorio = true;
@@ -467,17 +483,20 @@ function gerarPDF() {
 }
 
 // Auto-submit quando selecionar degustação
-document.getElementById('selectDegustacao').addEventListener('change', function() {
-    if (this.value) {
-        // Adicionar parâmetro gerar=1 para mostrar relatório
-        const form = this.closest('form');
-        const gerarInput = document.createElement('input');
-        gerarInput.type = 'hidden';
-        gerarInput.name = 'gerar';
-        gerarInput.value = '1';
-        form.appendChild(gerarInput);
-        form.submit();
-    }
-});
+const selectDegustacao = document.getElementById('selectDegustacao');
+if (selectDegustacao) {
+    selectDegustacao.addEventListener('change', function() {
+        console.log('Select mudou para:', this.value);
+        if (this.value) {
+            const form = this.closest('form');
+            if (form) {
+                console.log('Submetendo formulário...');
+                form.submit();
+            } else {
+                console.error('Formulário não encontrado');
+            }
+        }
+    });
+}
 </script>
 
