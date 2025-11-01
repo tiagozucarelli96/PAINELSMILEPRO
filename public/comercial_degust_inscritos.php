@@ -115,6 +115,41 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
 }
 
 if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
+    // CRÍTICO: Limpar qualquer output anterior (HTML, whitespace, etc)
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Definir headers ANTES de qualquer output
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    // Função auxiliar para retornar JSON e sair
+    function returnJson($data, $httpCode = 200) {
+        http_response_code($httpCode);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    
+    // Capturar erros fatais
+    register_shutdown_function(function() {
+        $error = error_get_last();
+        if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Erro fatal do servidor',
+                'error_type' => 'Erro Fatal',
+                'error_details' => 'Erro: ' . $error['message'] . ' em ' . $error['file'] . ':' . $error['line'],
+                'message' => 'Erro interno do servidor. Verifique os logs.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    });
+    
     try {
         require_once __DIR__ . '/asaas_helper.php';
         require_once __DIR__ . '/config_env.php';
@@ -145,16 +180,13 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         // Verificar se já tem QR Code
         if (!empty($inscricao['asaas_qr_code_id'])) {
             error_log("QR Code já existe para inscrição {$inscricao_id}: " . $inscricao['asaas_qr_code_id']);
-            // Retornar JSON com o payload existente
-            header('Content-Type: application/json');
-            echo json_encode([
+            returnJson([
                 'success' => true,
                 'qr_code_id' => $inscricao['asaas_qr_code_id'],
                 'payload' => $inscricao['qr_code_payload'] ?? $inscricao['qr_code_image'] ?? '',
                 'valor' => $inscricao['valor_total'] ?? $inscricao['valor_pago'] ?? 0,
                 'message' => 'QR Code já existe'
             ]);
-            exit;
         }
         
         // Verificar se fechou contrato
@@ -310,24 +342,20 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
         $stmt->execute($update_params);
         
         // Retornar JSON com payload para copiar
-        header('Content-Type: application/json');
-        echo json_encode([
+        error_log("=== SUCESSO na geração de cobrança PIX ===");
+        returnJson([
             'success' => true,
             'qr_code_id' => $qr_code_id,
             'payload' => $qr_payload,
             'valor' => $valor_total,
             'message' => 'QR Code gerado com sucesso'
         ]);
-        exit;
         
     } catch (Exception $e) {
         error_log("=== ERRO FINAL ao gerar cobrança PIX ===");
         error_log("Mensagem: " . $e->getMessage());
         error_log("Arquivo: " . $e->getFile() . " | Linha: " . $e->getLine());
         error_log("Stack trace: " . $e->getTraceAsString());
-        
-        header('Content-Type: application/json');
-        http_response_code(400);
         
         $error_message = $e->getMessage();
         $error_type = 'Sistema';
@@ -354,7 +382,7 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             $error_details = $error_message;
         }
         
-        echo json_encode([
+        returnJson([
             'success' => false,
             'message' => $error_message,
             'error' => $error_message,
@@ -367,8 +395,26 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
                 'line' => $e->getLine(),
                 'trace' => explode("\n", substr($e->getTraceAsString(), 0, 500)) // Limitar tamanho
             ]
-        ]);
-        exit;
+        ], 400);
+    } catch (Throwable $e) {
+        // Capturar qualquer erro não Exception (Error, ParseError, etc)
+        error_log("=== ERRO FATAL ao gerar cobrança PIX ===");
+        error_log("Tipo: " . get_class($e));
+        error_log("Mensagem: " . $e->getMessage());
+        error_log("Arquivo: " . $e->getFile() . " | Linha: " . $e->getLine());
+        
+        returnJson([
+            'success' => false,
+            'message' => 'Erro fatal: ' . $e->getMessage(),
+            'error' => $e->getMessage(),
+            'error_type' => 'Erro Fatal',
+            'error_details' => get_class($e) . ': ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine(),
+            'debug' => [
+                'inscricao_id' => $inscricao_id ?? null,
+                'event_id' => $event_id ?? null,
+                'type' => get_class($e)
+            ]
+        ], 500);
     }
 }
 
