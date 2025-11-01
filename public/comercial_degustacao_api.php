@@ -2,25 +2,45 @@
 /**
  * API para Degustações - Buscar e Atualizar via AJAX
  */
+// CRÍTICO: Limpar qualquer output anterior
+while (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
-header('Content-Type: application/json');
+// CRÍTICO: Garantir que sempre retornamos JSON
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+// Função helper para retornar JSON e sair
+function returnJson($data, $httpCode = 200) {
+    http_response_code($httpCode);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+// Log para debug (remover em produção)
+error_log("=== API Degustação ===");
+error_log("REQUEST_METHOD: " . ($_SERVER['REQUEST_METHOD'] ?? 'N/A'));
+error_log("ACTION: " . ($_GET['action'] ?? $_POST['action'] ?? 'N/A'));
+error_log("POST data: " . json_encode($_POST));
 
 // Verificar login
 if (!isset($_SESSION['id']) && !isset($_SESSION['id_usuario'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Não autenticado']);
-    exit;
+    error_log("❌ Não autenticado");
+    returnJson(['success' => false, 'error' => 'Não autenticado'], 401);
 }
 
 // Verificar permissões
 if (!lc_can_edit_degustacoes()) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Sem permissão']);
-    exit;
+    error_log("❌ Sem permissão");
+    returnJson(['success' => false, 'error' => 'Sem permissão'], 403);
 }
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -71,9 +91,11 @@ try {
             'token_publico' => $degustacao['token_publico'] ?? ''
         ];
         
-        echo json_encode(['success' => true, 'data' => $data]);
+        error_log("✅ Degustação encontrada: ID {$data['id']}");
+        returnJson(['success' => true, 'data' => $data]);
         
     } elseif ($action === 'update') {
+        error_log("🔄 Atualizando degustação...");
         // Atualizar degustação
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
@@ -157,20 +179,31 @@ try {
             ':id' => $id
         ];
         
+        error_log("📝 Executando SQL UPDATE para ID: {$id}");
+        error_log("📋 Parâmetros: " . json_encode(array_keys($params)));
+        
         $stmt = $pdo->prepare($sql);
         if (!$stmt->execute($params)) {
             $errorInfo = $stmt->errorInfo();
+            error_log("❌ Erro PDO: " . json_encode($errorInfo));
             throw new Exception("Erro ao salvar: " . ($errorInfo[2] ?? 'Erro desconhecido'));
         }
         
-        echo json_encode(['success' => true, 'message' => 'Degustação atualizada com sucesso!']);
+        error_log("✅ Degustação atualizada com sucesso! ID: {$id}");
+        returnJson(['success' => true, 'message' => 'Degustação atualizada com sucesso!']);
         
     } else {
-        throw new Exception('Ação inválida');
+        error_log("❌ Ação inválida: {$action}");
+        throw new Exception('Ação inválida: ' . $action);
     }
     
 } catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    error_log("❌ Exceção: " . $e->getMessage());
+    error_log("Stack: " . $e->getTraceAsString());
+    returnJson(['success' => false, 'error' => $e->getMessage()], 400);
+} catch (Throwable $e) {
+    error_log("❌ Erro fatal: " . $e->getMessage());
+    error_log("Stack: " . $e->getTraceAsString());
+    returnJson(['success' => false, 'error' => 'Erro interno: ' . $e->getMessage()], 500);
 }
 
