@@ -36,12 +36,11 @@ header('X-Content-Type-Options: nosniff', true);
 header('Access-Control-Allow-Origin: *', true);
 header('Access-Control-Allow-Methods: POST', true);
 
-// 7. Verificar se está sendo acessado via router (NÃO PERMITIR)
-// Se houver parâmetro 'page' ou estiver via index.php, recusar
+// 7. Verificar se está sendo acessado via router (logar mas NÃO recusar)
+// IMPORTANTE: Asaas exige HTTP 200, então mesmo se acessado via router, retornar 200
 if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Webhook must be accessed directly, not via router']);
-    exit;
+    // Logar aviso mas continuar processamento (não pode retornar 400)
+    error_log("⚠️ Webhook acessado via router (não recomendado) - mas processando mesmo assim");
 }
 
 // 8. Verificar método HTTP ANTES de incluir arquivos
@@ -78,8 +77,12 @@ $webhook_data = json_decode($input, true);
 logWebhook(['raw_input_length' => strlen($input), 'parsed_data' => $webhook_data]);
 
 if (!$webhook_data) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
+    // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
+    // Logar erro mas retornar 200 para não pausar fila
+    logWebhook("⚠️ JSON inválido recebido: " . substr($input, 0, 200));
+    http_response_code(200);
+    header('Content-Type: application/json', true);
+    echo json_encode(['status' => 'warning', 'message' => 'Invalid JSON received but logged']);
     exit;
 }
 
