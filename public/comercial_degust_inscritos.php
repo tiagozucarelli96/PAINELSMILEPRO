@@ -84,14 +84,22 @@ if ($action === 'marcar_contrato_comparecimento' && $inscricao_id > 0) {
 
 if ($action === 'marcar_comparecimento' && $inscricao_id > 0) {
     try {
-        $compareceu = isset($_POST['compareceu']) ? 1 : 0;
+        // CORRIGIDO: Verificar o valor explicitamente, não apenas se existe
+        // Quando enviamos '0', isset() retorna true mas precisamos verificar o valor
+        $compareceu = (isset($_POST['compareceu']) && $_POST['compareceu'] === '1') ? 1 : 0;
+        
+        error_log("Atualizando comparecimento - Inscrição ID: {$inscricao_id}, Compareceu: {$compareceu}, POST: " . json_encode($_POST));
+        
         $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET compareceu = :compareceu WHERE id = :id");
         $stmt->execute([':compareceu' => $compareceu, ':id' => $inscricao_id]);
+        
+        error_log("Comparecimento atualizado com sucesso");
         
         // Redirecionar para evitar reenvio de formulário
         header("Location: index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=comparecimento_atualizado");
         exit;
     } catch (Exception $e) {
+        error_log("ERRO ao atualizar comparecimento: " . $e->getMessage());
         $error_message = "Erro ao atualizar comparecimento: " . $e->getMessage();
     }
 }
@@ -1744,19 +1752,37 @@ ob_start();
     
     // Marcar comparecimento
     function marcarComparecimento(inscricaoId, checked) {
+        // Encontrar o checkbox que foi clicado para poder revertê-lo em caso de erro
+        const checkbox = document.querySelector(`input[type="checkbox"][onchange*="marcarComparecimento(${inscricaoId}"]`);
+        const originalChecked = checkbox ? checkbox.checked : checked;
+        
         const formData = new FormData();
         formData.append('action', 'marcar_comparecimento');
         formData.append('inscricao_id', inscricaoId);
         formData.append('compareceu', checked ? '1' : '0');
         
+        console.log('Atualizando comparecimento:', {
+            inscricaoId: inscricaoId,
+            checked: checked,
+            valorEnviado: checked ? '1' : '0'
+        });
+        
         fetch(window.location.href, {
             method: 'POST',
             body: formData
-        }).then(() => {
+        }).then((response) => {
+            if (!response.ok) {
+                throw new Error('Erro HTTP: ' + response.status);
+            }
+            // Recarregar página para atualizar o estado
             window.location.reload();
-        }).catch(() => {
-            alert('❌ Erro ao atualizar. Tente novamente.');
-            event.target.checked = !checked;
+        }).catch((error) => {
+            console.error('Erro ao atualizar comparecimento:', error);
+            alert('❌ Erro ao atualizar comparecimento. Tente novamente.');
+            // Reverter checkbox ao estado original
+            if (checkbox) {
+                checkbox.checked = !checked;
+            }
         });
     }
     
