@@ -18,26 +18,44 @@ class AsaasHelper {
     public function createPixPayment($data) {
         $endpoint = $this->base_url . '/payments';
         
+        // Verificar se tem customer_id ou precisa criar
+        $customer_id = $data['customer_id'] ?? null;
+        
+        // Se não tem customer_id, criar customer
+        if (!$customer_id && isset($data['customer_data'])) {
+            $customer = $this->createCustomer($data['customer_data']);
+            if (!$customer || !isset($customer['id'])) {
+                throw new Exception('Erro ao criar cliente no ASAAS');
+            }
+            $customer_id = $customer['id'];
+        }
+        
+        if (!$customer_id) {
+            throw new Exception('customer_id ou customer_data é obrigatório');
+        }
+        
         $payload = [
-            'customer' => $data['customer_id'] ?? null,
+            'customer' => $customer_id,
             'billingType' => 'PIX',
             'value' => number_format($data['value'], 2, '.', ''),
             'dueDate' => $data['due_date'] ?? date('Y-m-d', strtotime('+3 days')),
             'description' => $data['description'] ?? 'Degustação GRUPO Smile EVENTOS',
-            'externalReference' => $data['external_reference'] ?? null,
-            'callback' => [
-                'successUrl' => $data['success_url'] ?? '',
-                'autoRedirect' => true
-            ],
-            'webhook' => [
-                'url' => $this->webhook_url
-            ]
+            'externalReference' => $data['external_reference'] ?? null
         ];
         
-        // Se não tem customer_id, criar customer
-        if (!$data['customer_id']) {
-            $customer = $this->createCustomer($data['customer_data']);
-            $payload['customer'] = $customer['id'];
+        // Adicionar callback se fornecido
+        if (!empty($data['success_url'])) {
+            $payload['callback'] = [
+                'successUrl' => $data['success_url'],
+                'autoRedirect' => true
+            ];
+        }
+        
+        // Adicionar webhook se configurado
+        if ($this->webhook_url) {
+            $payload['webhook'] = [
+                'url' => $this->webhook_url
+            ];
         }
         
         return $this->makeRequest('POST', $endpoint, $payload);
@@ -82,10 +100,16 @@ class AsaasHelper {
     private function makeRequest($method, $endpoint, $data = null) {
         $ch = curl_init();
         
+        // Asaas API v3 usa access_token no header (não Authorization Bearer)
         $headers = [
             'access_token: ' . $this->api_key,
-            'Content-Type: application/json'
+            'Content-Type: application/json',
+            'Accept: application/json'
         ];
+        
+        // Log para debug (remover em produção)
+        error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
+        error_log("Asaas API Key (primeiros 20 chars): " . substr($this->api_key, 0, 20) . "...");
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,
@@ -107,13 +131,33 @@ class AsaasHelper {
         curl_close($ch);
         
         if ($error) {
+            error_log("Asaas API cURL Error: $error");
             throw new Exception("Erro cURL: $error");
         }
         
         $decoded_response = json_decode($response, true);
         
+        // Log da resposta para debug
+        error_log("Asaas API Response - HTTP Code: $http_code");
         if ($http_code >= 400) {
-            $error_message = $decoded_response['errors'][0]['description'] ?? 'Erro desconhecido';
+            error_log("Asaas API Error Response: " . json_encode($decoded_response, JSON_UNESCAPED_UNICODE));
+            
+            // Tentar extrair mensagem de erro de diferentes formatos da API Asaas
+            $error_message = 'Erro desconhecido';
+            if (isset($decoded_response['errors']) && is_array($decoded_response['errors'])) {
+                if (isset($decoded_response['errors'][0]['description'])) {
+                    $error_message = $decoded_response['errors'][0]['description'];
+                } elseif (isset($decoded_response['errors'][0]['message'])) {
+                    $error_message = $decoded_response['errors'][0]['message'];
+                } elseif (is_string($decoded_response['errors'][0])) {
+                    $error_message = $decoded_response['errors'][0];
+                }
+            } elseif (isset($decoded_response['message'])) {
+                $error_message = $decoded_response['message'];
+            } elseif (isset($decoded_response['error'])) {
+                $error_message = is_string($decoded_response['error']) ? $decoded_response['error'] : json_encode($decoded_response['error']);
+            }
+            
             throw new Exception("Erro ASAAS ($http_code): $error_message");
         }
         
