@@ -29,7 +29,11 @@ $event_id = (int)($_GET['id'] ?? 0);
 $is_edit = $event_id > 0;
 
 error_log("=== EDITAR DEGUSTAÇÃO ===");
-error_log("event_id: $event_id, is_edit: " . ($is_edit ? 'true' : 'false'));
+error_log("REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'N/A'));
+error_log("GET params: " . json_encode($_GET));
+error_log("event_id recebido: " . ($_GET['id'] ?? 'NÃO ENVIADO'));
+error_log("event_id convertido: $event_id");
+error_log("is_edit: " . ($is_edit ? 'true' : 'false'));
 
 // Buscar degustação para edição
 $degustacao = null;
