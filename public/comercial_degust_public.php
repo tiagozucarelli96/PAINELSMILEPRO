@@ -899,6 +899,18 @@ if ($_POST && !$inscricoes_encerradas) {
             });
         });
         
+        // Inicializar texto do botão baseado na seleção inicial
+        document.addEventListener('DOMContentLoaded', function() {
+            const fechouNao = document.getElementById('fechou_nao');
+            if (fechouNao && fechouNao.checked) {
+                const btnSubmit = document.getElementById('btnSubmitInscricao');
+                if (btnSubmit) {
+                    btnSubmit.innerHTML = '💳 Realizar Pagamento';
+                    btnSubmit.style.background = 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)';
+                }
+            }
+        });
+        
         // Variáveis globais para busca ME
         let clienteSelecionadoME = null;
         
@@ -915,9 +927,15 @@ if ($_POST && !$inscricoes_encerradas) {
         function toggleContratoInfo() {
             const fechouSim = document.getElementById('fechou_sim').checked;
             const buscaContainer = document.getElementById('buscaEventoContainer');
+            const btnSubmit = document.getElementById('btnSubmitInscricao');
             
             if (fechouSim) {
                 buscaContainer.classList.remove('hidden');
+                // Se já fechou contrato, mudar texto do botão
+                if (btnSubmit) {
+                    btnSubmit.innerHTML = '✅ Inscrever-se';
+                    btnSubmit.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                }
             } else {
                 buscaContainer.classList.add('hidden');
                 document.getElementById('meEventInfo').classList.add('hidden');
@@ -928,6 +946,12 @@ if ($_POST && !$inscricoes_encerradas) {
                 document.getElementById('meClienteCpfHidden').value = '';
                 document.getElementById('meEventIdHidden').value = '';
                 clienteSelecionadoME = null;
+                
+                // Se não fechou contrato, mudar texto do botão para "Realizar Pagamento"
+                if (btnSubmit) {
+                    btnSubmit.innerHTML = '💳 Realizar Pagamento';
+                    btnSubmit.style.background = 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)';
+                }
             }
         }
         

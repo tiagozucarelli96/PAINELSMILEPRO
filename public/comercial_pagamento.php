@@ -338,8 +338,21 @@ if ($payment_data && $payment_data['status'] === 'CONFIRMED') {
             <?php endif; ?>
         </div>
         
+        <!-- Instrução para o usuário -->
+        <div style="background: #f0f9ff; border: 2px solid #0ea5e9; border-radius: 12px; padding: 20px; margin-top: 30px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 15px;">⏳</div>
+            <h3 style="color: #0c4a6e; margin: 0 0 10px 0; font-size: 18px;">Aguardando confirmação do pagamento</h3>
+            <p style="color: #0369a1; margin: 0; line-height: 1.6;">
+                <strong>📱 Após realizar o pagamento PIX:</strong><br>
+                Esta página será atualizada automaticamente e você será redirecionado para a confirmação da sua inscrição.<br>
+                <small style="display: block; margin-top: 10px; opacity: 0.8;">
+                    ⚡ A verificação acontece automaticamente a cada 10 segundos
+                </small>
+            </p>
+        </div>
+        
         <!-- Verificação de Status -->
-        <div class="status-check">
+        <div class="status-check" style="margin-top: 20px;">
             <p><span class="loading"></span>Verificando status do pagamento...</p>
         </div>
     </div>
@@ -362,16 +375,43 @@ if ($payment_data && $payment_data['status'] === 'CONFIRMED') {
         }
         
         // Verificar status do pagamento a cada 10 segundos
+        let checkCount = 0;
         function checkPaymentStatus() {
+            checkCount++;
+            const statusCheckDiv = document.querySelector('.status-check p');
+            
+            // Atualizar mensagem para mostrar que está verificando
+            if (statusCheckDiv) {
+                statusCheckDiv.innerHTML = '<span class="loading"></span>Verificando status do pagamento... (' + checkCount + 'ª verificação)';
+            }
+            
             fetch(`comercial_check_payment.php?payment_id=<?= $payment_id ?>&inscricao_id=<?= $inscricao_id ?>`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'CONFIRMED' || data.status === 'RECEIVED') {
-                        window.location.href = `comercial_sucesso.php?inscricao_id=<?= $inscricao_id ?>`;
+                        // Mostrar mensagem de sucesso antes de redirecionar
+                        if (statusCheckDiv) {
+                            statusCheckDiv.innerHTML = '<span style="color: #10b981;">✅</span> Pagamento confirmado! Redirecionando...';
+                            statusCheckDiv.style.color = '#10b981';
+                            statusCheckDiv.style.fontWeight = '600';
+                        }
+                        
+                        // Pequeno delay para usuário ver a confirmação
+                        setTimeout(() => {
+                            window.location.href = `comercial_sucesso.php?inscricao_id=<?= $inscricao_id ?>`;
+                        }, 1500);
+                    } else if (data.status === 'PENDING') {
+                        // Pagamento ainda pendente, continuar verificando
+                        if (statusCheckDiv) {
+                            statusCheckDiv.innerHTML = '<span class="loading"></span>Aguardando confirmação do pagamento...';
+                        }
                     }
                 })
                 .catch(error => {
                     console.log('Erro ao verificar status:', error);
+                    if (statusCheckDiv) {
+                        statusCheckDiv.innerHTML = '<span style="color: #dc2626;">⚠️</span> Erro ao verificar status. Tentando novamente...';
+                    }
                 });
         }
         
