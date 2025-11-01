@@ -2,6 +2,7 @@
 // comercial_degust_inscritos.php — Lista de inscritos de uma degustação específica
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 
@@ -120,22 +121,14 @@ $stats = [
     'compareceram' => count(array_filter($inscricoes, fn($i) => $i['compareceu'] ?? false))
 ];
 
-
-
+// Iniciar buffer de saída
+ob_start();
 ?>
-
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscritos - <?= h($degustacao['nome']) ?> - GRUPO Smile EVENTOS</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<style>
         .inscritos-container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 0;
         }
         
         .page-header {
@@ -478,34 +471,29 @@ $stats = [
             cursor: pointer;
         }
     </style>
-</head>
-<body>
-    <?php if (is_file(__DIR__.'/sidebar.php')) { include __DIR__.'/sidebar.php'; } ?>
-    
-    <div class="main-content">
-        <div class="inscritos-container">
-            <!-- Header -->
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <div>
-                    <a href="index.php?page=comercial" style="color: #3b82f6; text-decoration: none; font-size: 0.875rem; margin-bottom: 0.5rem; display: inline-block;">← Voltar para Comercial</a>
-                    <h1 class="page-title" style="margin: 0;">👥 Inscritos - <?= h($degustacao['nome']) ?></h1>
-                </div>
-                <div style="display: flex; gap: 0.75rem;">
-                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151; border-radius: 8px; text-decoration: none; font-weight: 500;">← Degustações</a>
-                    <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">📊 Exportar CSV</button>
-                </div>
-            </div>
+
+<div class="inscritos-container">
+    <!-- Header -->
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding: 1.25rem 1.5rem; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 2px solid #e5e7eb;">
+        <div>
+            <h1 class="page-title" style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e3a8a;">👥 Inscrições da Degustação</h1>
+            <div style="margin-top: 0.5rem; font-size: 1.125rem; font-weight: 600; color: #1e3a8a;"><?= h($degustacao['nome']) ?></div>
+        </div>
+        <div style="display: flex; gap: 0.75rem;">
+            <a href="index.php?page=comercial_degustacoes" class="btn-secondary" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151; border-radius: 8px; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 0.5rem;">← Degustações</a>
+            <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3); display: inline-flex; align-items: center; gap: 0.5rem;">📊 Exportar CSV</button>
+        </div>
+    </div>
             
-            <!-- Informações do Evento -->
-            <div class="event-info">
-                <h2 class="event-title"><?= h($degustacao['nome']) ?></h2>
-                <div class="event-details">
-                    📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?> 
-                    🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?>
-                    📍 <?= h($degustacao['local']) ?>
-                    👥 Capacidade: <?= $degustacao['capacidade'] ?> pessoas
-                </div>
-            </div>
+    <!-- Informações do Evento -->
+    <div class="event-info" style="background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+        <div style="color: #6b7280; font-size: 14px; line-height: 1.8;">
+            <div style="margin-bottom: 8px;">📅 <strong>Data:</strong> <?= date('d/m/Y', strtotime($degustacao['data'])) ?></div>
+            <div style="margin-bottom: 8px;">🕐 <strong>Horário:</strong> <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?> - <?= date('H:i', strtotime($degustacao['hora_fim'])) ?></div>
+            <div style="margin-bottom: 8px;">📍 <strong>Local:</strong> <?= h($degustacao['local']) ?></div>
+            <div>👥 <strong>Capacidade:</strong> <?= $degustacao['capacidade'] ?> pessoas</div>
+        </div>
+    </div>
             
             <!-- Mensagens -->
             <?php if (isset($success_message)): ?>
