@@ -1109,27 +1109,72 @@ if ($_POST && !$inscricoes_encerradas) {
                     document.getElementById('meClienteCpfHidden').value = '';
                     document.getElementById('meEventIdHidden').value = '';
                     
-                    // Mostrar erro
-                    const errorMsg = data.error || 'CPF não confere ou cliente não encontrado';
+                    // Mostrar erro com mensagem clara e orientações
+                    const errorMsg = data.error || 'Erro ao validar dados';
+                    
+                    // Determinar tipo de erro para mensagem específica
+                    let tipoErro = 'geral';
+                    let instrucoes = '';
+                    
+                    if (errorMsg.includes('CPF não confere') || errorMsg.includes('não confere com o cadastro')) {
+                        tipoErro = 'cpf';
+                        instrucoes = `
+                            <strong style="color: #991b1b;">O CPF digitado não corresponde ao cadastrado.</strong><br>
+                            • Verifique o CPF conforme consta no seu contrato<br>
+                            • Digite apenas os números, sem pontos ou traços<br>
+                            • Certifique-se de não ter invertido números<br>
+                        `;
+                    } else if (errorMsg.includes('CPF inválido') || errorMsg.includes('dígitos verificadores')) {
+                        tipoErro = 'cpf_invalido';
+                        instrucoes = `
+                            <strong style="color: #991b1b;">O CPF digitado é inválido matematicamente.</strong><br>
+                            • Verifique se todos os dígitos estão corretos<br>
+                            • O CPF deve ter 11 dígitos válidos<br>
+                        `;
+                    } else if (errorMsg.includes('não retornou o CPF')) {
+                        tipoErro = 'sem_cpf_api';
+                        instrucoes = `
+                            <strong style="color: #991b1b;">Não foi possível validar sua identidade automaticamente.</strong><br>
+                            • Nossa API não retornou o CPF cadastrado<br>
+                            • Você pode se inscrever normalmente selecionando "Não, ainda não fechei"<br>
+                            • Ou entre em contato conosco para verificar seu cadastro<br>
+                        `;
+                    } else {
+                        instrucoes = `
+                            <strong style="color: #991b1b;">Por favor, verifique:</strong><br>
+                            • O nome digitado está correto e completo?<br>
+                            • O CPF está de acordo com o contrato?<br>
+                            • Você está usando os mesmos dados do cadastro?<br>
+                        `;
+                    }
+                    
                     document.getElementById('buscaMEResultados').innerHTML = `
-                        <div style="padding: 20px; text-align: center; background: #fef2f2; border: 2px solid #dc2626; border-radius: 8px; color: #991b1b;">
-                            <div style="font-size: 32px; margin-bottom: 10px;">❌</div>
-                            <h4 style="margin: 0 0 10px 0; color: #991b1b;">Dados incorretos</h4>
-                            <p style="margin: 0; line-height: 1.6;">
-                                ${escapeHtml(errorMsg)}<br>
-                                <strong>Por favor, verifique:</strong><br>
-                                • O nome digitado está correto?<br>
-                                • O CPF está de acordo com o contrato?<br>
-                                <small style="display: block; margin-top: 10px; opacity: 0.8;">
-                                    Você pode tentar novamente clicando em "Buscar Evento"
-                                </small>
+                        <div style="padding: 24px; text-align: center; background: #fef2f2; border: 2px solid #dc2626; border-radius: 12px; color: #991b1b; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                            <div style="font-size: 48px; margin-bottom: 16px;">🔒</div>
+                            <h3 style="margin: 0 0 16px 0; color: #991b1b; font-size: 20px;">Validação de Identidade</h3>
+                            <p style="margin: 0 0 16px 0; line-height: 1.8; font-size: 15px;">
+                                ${escapeHtml(errorMsg)}
                             </p>
+                            <div style="margin: 16px 0; padding: 16px; background: #fee2e2; border-radius: 8px; text-align: left; font-size: 14px; line-height: 1.8;">
+                                ${instrucoes}
+                            </div>
+                            <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #fca5a5;">
+                                <small style="color: #991b1b; opacity: 0.8; display: block; margin-bottom: 12px;">
+                                    Você pode tentar novamente ou se inscrever sem buscar evento
+                                </small>
+                                <button type="button" onclick="document.getElementById('buscaMEValidarCPF').style.display='none'; document.getElementById('buscaMENome').value='${clienteSelecionadoME ? escapeHtml(clienteSelecionadoME.nome) : ''}'; clienteSelecionadoME=null;" 
+                                        style="background: #dc2626; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                    🔄 Tentar Novamente
+                                </button>
+                            </div>
                         </div>
                     `;
                     
                     // Voltar para tela de busca
                     document.getElementById('buscaMEValidarCPF').style.display = 'none';
-                    document.getElementById('buscaMENome').value = clienteSelecionadoME.nome;
+                    if (clienteSelecionadoME) {
+                        document.getElementById('buscaMENome').value = clienteSelecionadoME.nome;
+                    }
                     clienteSelecionadoME = null;
                     
                     throw new Error(errorMsg);
