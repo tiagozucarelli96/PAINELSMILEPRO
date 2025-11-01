@@ -570,7 +570,17 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
 
 // Endpoint para buscar payload PIX
 if (isset($_GET['get_pix_payload'])) {
-    header('Content-Type: application/json');
+    // CRÍTICO: Limpar qualquer output anterior (HTML, whitespace, etc)
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Definir headers ANTES de qualquer output
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
     $insc_id = (int)$_GET['get_pix_payload'];
     
     try {
@@ -586,17 +596,45 @@ if (isset($_GET['get_pix_payload'])) {
         $has_valor_pago = in_array('valor_pago', $valor_columns);
         
         // Montar SELECT dinamicamente
-        $select_fields = ['qr_code_payload', 'qr_code_image', 'asaas_qr_code_id'];
+        $select_fields = [];
+        
+        // Verificar colunas de payload existem
+        $check_payload_cols = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('qr_code_payload', 'qr_code_image', 'asaas_qr_code_id')
+        ");
+        $payload_columns = $check_payload_cols->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (in_array('qr_code_payload', $payload_columns)) {
+            $select_fields[] = 'qr_code_payload';
+        }
+        if (in_array('qr_code_image', $payload_columns)) {
+            $select_fields[] = 'qr_code_image';
+        }
+        if (in_array('asaas_qr_code_id', $payload_columns)) {
+            $select_fields[] = 'asaas_qr_code_id';
+        }
+        
         if ($has_valor_total) {
             $select_fields[] = 'valor_total as valor';
         } elseif ($has_valor_pago) {
             $select_fields[] = 'valor_pago as valor';
         }
         
+        if (empty($select_fields)) {
+            throw new Exception('Nenhuma coluna de payload encontrada');
+        }
+        
         $sql = "SELECT " . implode(', ', $select_fields) . " FROM comercial_inscricoes WHERE id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':id' => $insc_id]);
         $data = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$data) {
+            throw new Exception('Inscrição não encontrada');
+        }
         
         $payload = $data['qr_code_payload'] ?? $data['qr_code_image'] ?? '';
         $valor = isset($data['valor']) ? (float)$data['valor'] : 0;
@@ -605,15 +643,16 @@ if (isset($_GET['get_pix_payload'])) {
             'success' => !empty($payload),
             'payload' => $payload,
             'valor' => $valor
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     } catch (Exception $e) {
+        http_response_code(400);
         echo json_encode([
             'success' => false,
             'payload' => '',
             'valor' => 0,
             'error' => $e->getMessage()
-        ]);
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 }
@@ -1641,9 +1680,31 @@ ob_start();
             console.log('✅ Resposta do servidor (parseada):', data);
             
             if (data.success && data.payload) {
-                // Buscar dados completos da inscrição para mostrar no modal
-                const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
-                const data2 = await response2.json();
+                // Dados já estão na resposta inicial, não precisa buscar novamente
+                // Mas se precisar buscar, fazer com tratamento de erro adequado
+                let data2 = { valor: data.valor || 0, payload: data.payload };
+                
+                // Tentar buscar dados atualizados apenas se necessário
+                try {
+                    const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
+                    
+                    // Verificar se é JSON válido
+                    const contentType = response2.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const textResponse2 = await response2.text();
+                        try {
+                            const parsed = JSON.parse(textResponse2);
+                            if (parsed.payload) {
+                                data2 = parsed;
+                            }
+                        } catch (e) {
+                            console.warn('Erro ao parsear resposta do get_pix_payload, usando dados iniciais:', e);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Erro ao buscar payload completo, usando dados iniciais:', e);
+                    // Usar dados já recebidos da primeira resposta
+                }
                 
                 const valorFormatado = new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
@@ -1691,10 +1752,27 @@ ob_start();
                     btnGerar.textContent = '💳 Gerar Cobrança';
                 }
             } else {
-                // Se já existe, buscar dados existentes
+                // Se já existe, buscar dados existentes (com tratamento de erro robusto)
                 try {
                     const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
-                    const data2 = await response2.json();
+                    
+                    // Verificar se é JSON válido antes de parsear
+                    const contentType2 = response2.headers.get('content-type') || '';
+                    let data2;
+                    
+                    if (contentType2.includes('application/json')) {
+                        const textResponse2 = await response2.text();
+                        try {
+                            data2 = JSON.parse(textResponse2);
+                        } catch (parseError) {
+                            console.error('Erro ao parsear JSON do get_pix_payload:', parseError);
+                            throw new Error('Resposta inválida do servidor');
+                        }
+                    } else {
+                        const textResponse2 = await response2.text();
+                        console.error('Resposta não é JSON:', textResponse2.substring(0, 500));
+                        throw new Error('Servidor retornou HTML em vez de JSON');
+                    }
                     
                     if (data2.payload) {
                         const valorFormatado = new Intl.NumberFormat('pt-BR', {
