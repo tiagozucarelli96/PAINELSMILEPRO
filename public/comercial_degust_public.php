@@ -669,7 +669,7 @@ if ($_POST && !$inscricoes_encerradas) {
                 <input type="hidden" name="valor_total" id="valorTotalHidden" value="0">
                 <input type="hidden" name="extras" id="extrasHidden" value="0">
                 
-                <button type="submit" class="btn-submit" id="submitBtn">
+                <button type="submit" class="btn-submit" id="btnSubmitInscricao">
                     <?= $lotado && $aceita_lista_espera ? '📋 Inscrever na Lista de Espera' : '✅ Inscrever-se' ?>
                 </button>
             </form>
