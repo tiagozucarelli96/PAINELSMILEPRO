@@ -276,9 +276,17 @@ try {
                 break;
         }
         
-        // Resposta de sucesso
+        // Resposta de sucesso - GARANTIR que não há redirect
         http_response_code(200);
-        echo json_encode(['status' => 'success', 'message' => 'Payment webhook processed', 'event' => $event]);
+        header('Content-Type: application/json', true);
+        header_remove('Location');
+        echo json_encode([
+            'status' => 'success', 
+            'message' => 'Payment webhook processed', 
+            'event' => $event,
+            'inscricao_id' => $inscricao['id'] ?? null,
+            'pix_qr_code_id' => $pix_qr_code_id ?? null
+        ]);
         exit;
     }
     

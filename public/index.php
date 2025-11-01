@@ -154,6 +154,7 @@ $routes = [
   'comparar_chave_asaas' => 'comparar_chave_asaas.php',
   'forcar_chave_asaas' => 'forcar_chave_asaas.php',
   'verificar_inscricao_checkout' => 'verificar_inscricao_checkout.php',
+  'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
