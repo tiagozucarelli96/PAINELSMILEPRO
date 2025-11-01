@@ -32,12 +32,33 @@ $debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degusta
 $debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? var_export($_GET['page'], true) : 'NÃO EXISTE');
 $debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? var_export($_REQUEST['degustacao_id'], true) : 'NÃO EXISTE');
 
-// CRÍTICO: Se o router consumiu degustacao_id, tentar recuperar da URL
+// CRÍTICO: Tentar recuperar degustacao_id de múltiplas fontes ANTES de processar
+// 1. Tentar da QUERY_STRING
 if (!isset($_GET['degustacao_id']) && isset($_SERVER['QUERY_STRING'])) {
     parse_str($_SERVER['QUERY_STRING'], $parsed_query);
-    if (isset($parsed_query['degustacao_id'])) {
+    if (isset($parsed_query['degustacao_id']) && !empty($parsed_query['degustacao_id'])) {
         $_GET['degustacao_id'] = $parsed_query['degustacao_id'];
-        $debug_info[] = "⚠️ DEBUG: degustacao_id recuperado da QUERY_STRING via parse_str";
+        $debug_info[] = "✅ DEBUG: degustacao_id recuperado da QUERY_STRING via parse_str = " . $_GET['degustacao_id'];
+    }
+}
+
+// 2. Tentar do REQUEST_URI diretamente (última tentativa)
+if (!isset($_GET['degustacao_id']) && isset($_SERVER['REQUEST_URI'])) {
+    $request_uri = $_SERVER['REQUEST_URI'];
+    // Procurar por degustacao_id= na URI
+    if (preg_match('/degustacao_id[=:](\d+)/', $request_uri, $matches)) {
+        $_GET['degustacao_id'] = $matches[1];
+        $debug_info[] = "✅ DEBUG: degustacao_id recuperado do REQUEST_URI via regex = " . $_GET['degustacao_id'];
+    } elseif (strpos($request_uri, 'degustacao_id=') !== false) {
+        // Parsear manualmente se houver degustacao_id na URI
+        $parts = parse_url($request_uri);
+        if (isset($parts['query'])) {
+            parse_str($parts['query'], $uri_params);
+            if (isset($uri_params['degustacao_id']) && !empty($uri_params['degustacao_id'])) {
+                $_GET['degustacao_id'] = $uri_params['degustacao_id'];
+                $debug_info[] = "✅ DEBUG: degustacao_id recuperado do REQUEST_URI via parse_url = " . $_GET['degustacao_id'];
+            }
+        }
     }
 }
 
