@@ -147,6 +147,7 @@ $routes = [
   'webhook_me_eventos' => 'webhook_me_eventos.php',
   'contab_link' => 'contab_link.php',
   'contab_gerar_link' => 'contab_gerar_link.php',
+  'test_asaas_key' => 'test_asaas_key.php',
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
