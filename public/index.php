@@ -155,17 +155,23 @@ $routes = [
   'forcar_chave_asaas' => 'forcar_chave_asaas.php',
   'verificar_inscricao_checkout' => 'verificar_inscricao_checkout.php',
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
+  'login' => 'login.php', // Rota de login
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
 ];
 
 /* exige login - EXCETO para páginas públicas */
-$public_pages = ['comercial_degust_public', 'asaas_webhook', 'webhook_me_eventos'];
+$public_pages = ['comercial_degust_public', 'asaas_webhook', 'webhook_me_eventos', 'login'];
 $is_public_page = in_array($page, $public_pages);
 
 if (empty($_SESSION['logado']) && !$is_public_page) {
-  header('Location: login.php');
+  // Se não tem rota definida, usar login.php direto
+  if (empty($routes[$page]) && file_exists(__DIR__ . '/login.php')) {
+    require __DIR__ . '/login.php';
+    exit;
+  }
+  header('Location: index.php?page=login');
   exit;
 }
 
