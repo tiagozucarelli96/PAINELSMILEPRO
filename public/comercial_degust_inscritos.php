@@ -218,18 +218,40 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         // Calcular valor total adicional
         $valor_adicional_total = $valor_adicional_por_pessoa * $qtd_adicionar;
         
-        // Incrementar quantidade de pessoas
+        // IMPORTANTE: NÃO atualizar qtd_pessoas e valor_total imediatamente
+        // Só atualizar quando o pagamento for confirmado (via webhook)
+        
+        // Verificar/criar colunas para valores pendentes
+        $check_pending_cols = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('qtd_pessoas_pendente', 'valor_adicional_pendente', 'qr_code_adicional_id', 'qr_code_adicional_expira_em')
+        ");
+        $pending_columns = $check_pending_cols->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Criar colunas se não existirem
+        if (!in_array('qtd_pessoas_pendente', $pending_columns)) {
+            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN qtd_pessoas_pendente INTEGER DEFAULT NULL");
+            error_log("✅ Coluna qtd_pessoas_pendente criada");
+        }
+        if (!in_array('valor_adicional_pendente', $pending_columns)) {
+            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN valor_adicional_pendente NUMERIC(10,2) DEFAULT NULL");
+            error_log("✅ Coluna valor_adicional_pendente criada");
+        }
+        if (!in_array('qr_code_adicional_id', $pending_columns)) {
+            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN qr_code_adicional_id VARCHAR(255) DEFAULT NULL");
+            error_log("✅ Coluna qr_code_adicional_id criada");
+        }
+        if (!in_array('qr_code_adicional_expira_em', $pending_columns)) {
+            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN qr_code_adicional_expira_em TIMESTAMP DEFAULT NULL");
+            error_log("✅ Coluna qr_code_adicional_expira_em criada");
+        }
+        
+        // Calcular valores atuais (sem incluir pendentes)
         $qtd_pessoas_atual = (int)($inscricao['qtd_pessoas'] ?? 1);
         $qtd_pessoas_nova = $qtd_pessoas_atual + $qtd_adicionar;
         
-        // Atualizar quantidade de pessoas na inscrição
-        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET qtd_pessoas = :qtd WHERE id = :id");
-        $stmt->execute([
-            ':qtd' => $qtd_pessoas_nova,
-            ':id' => $inscricao_id
-        ]);
-        
-        // Atualizar valor total (verificar colunas dinamicamente)
         $check_valor_cols = $pdo->query("
             SELECT column_name 
             FROM information_schema.columns 
@@ -247,19 +269,24 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         
         $valor_novo = $valor_atual + $valor_adicional_total;
         
-        if (in_array('valor_total', $valor_columns)) {
-            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET valor_total = :valor WHERE id = :id");
-            $stmt->execute([
-                ':valor' => $valor_novo,
-                ':id' => $inscricao_id
-            ]);
-        } elseif (in_array('valor_pago', $valor_columns)) {
-            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET valor_pago = :valor WHERE id = :id");
-            $stmt->execute([
-                ':valor' => $valor_novo,
-                ':id' => $inscricao_id
-            ]);
-        }
+        // Salvar apenas nos campos PENDENTES (não atualizar valores reais ainda)
+        $data_expiracao = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $update_pending = [];
+        $update_pending_params = [':id' => $inscricao_id];
+        
+        $update_pending[] = "qtd_pessoas_pendente = :qtd_pendente";
+        $update_pending_params[':qtd_pendente'] = $qtd_adicionar;
+        
+        $update_pending[] = "valor_adicional_pendente = :valor_pendente";
+        $update_pending_params[':valor_pendente'] = $valor_adicional_total;
+        
+        $update_pending[] = "qr_code_adicional_expira_em = :expira_em";
+        $update_pending_params[':expira_em'] = $data_expiracao;
+        
+        $stmt_pending = $pdo->prepare("UPDATE comercial_inscricoes SET " . implode(', ', $update_pending) . " WHERE id = :id");
+        $stmt_pending->execute($update_pending_params);
+        
+        error_log("💾 Valores pendentes salvos: qtd={$qtd_adicionar}, valor={$valor_adicional_total}, expira em {$data_expiracao}");
         
         // Gerar QR Code apenas para o valor adicional total
         $asaasHelper = new AsaasHelper();
@@ -348,12 +375,17 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         $update_fields = [];
         $update_params = [':id' => $inscricao_id];
         
-        if (in_array('asaas_qr_code_id', $qr_columns)) {
-            $update_fields[] = "asaas_qr_code_id = :qr_code_id";
-            $update_params[':qr_code_id'] = $qr_code_id;
+        // Salvar QR Code adicional nos campos específicos (não substituir o QR Code principal)
+        // Verificar se coluna qr_code_adicional_id existe (já criamos acima)
+        if (in_array('qr_code_adicional_id', $pending_columns) || true) { // true porque acabamos de criar
+            $update_fields[] = "qr_code_adicional_id = :qr_code_adicional_id";
+            $update_params[':qr_code_adicional_id'] = $qr_code_id;
         }
         
+        // Salvar payload do QR Code adicional (usar campo temporário ou existente)
         if (in_array('qr_code_payload', $qr_columns)) {
+            // Para QR Code adicional, vamos salvar em um campo separado se existir
+            // Por enquanto, vamos usar qr_code_payload mesmo (será substituído quando pagar)
             $update_fields[] = "qr_code_payload = :payload";
             $update_params[':payload'] = $qr_code_payload;
         } elseif (in_array('qr_code_image', $qr_columns)) {
@@ -381,15 +413,16 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
         
         returnJson([
             'success' => true,
-            'message' => $qtd_adicionar == 1 ? 'Pessoa adicionada com sucesso!' : "{$qtd_adicionar} pessoas adicionadas com sucesso!",
+            'message' => $qtd_adicionar == 1 ? 'QR Code gerado! Após o pagamento, a pessoa será adicionada automaticamente.' : "QR Code gerado! Após o pagamento, {$qtd_adicionar} pessoas serão adicionadas automaticamente.",
             'qr_code_id' => $qr_code_id,
             'payload' => $qr_code_payload,
             'valor' => $valor_adicional_total,
             'valor_por_pessoa' => $valor_adicional_por_pessoa,
             'qtd_adicionada' => $qtd_adicionar,
             'qtd_pessoas_antes' => $qtd_pessoas_atual,
-            'qtd_pessoas_nova' => $qtd_pessoas_nova,
-            'valor_total_novo' => $valor_novo
+            'qtd_pessoas_nova' => $qtd_pessoas_nova, // Mostrar apenas para preview - não será aplicado até pagar
+            'valor_total_novo' => $valor_novo, // Mostrar apenas para preview - não será aplicado até pagar
+            'observacao' => 'Os valores serão aplicados automaticamente quando o pagamento for confirmado. Se não pagar em 1 hora, os valores pendentes serão cancelados.'
         ]);
         
     } catch (Throwable $e) {

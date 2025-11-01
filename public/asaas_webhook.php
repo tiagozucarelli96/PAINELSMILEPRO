@@ -439,6 +439,92 @@ try {
             $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'pago' WHERE id = :id");
             $stmt->execute([':id' => $inscricao['id']]);
             
+            // CRÍTICO: Verificar se há valores pendentes de "adicionar pessoa" e aplicá-los
+            try {
+                // Verificar se colunas de pendentes existem
+                $check_pending = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'comercial_inscricoes' 
+                    AND column_name IN ('qtd_pessoas_pendente', 'valor_adicional_pendente', 'qr_code_adicional_id')
+                ");
+                $pending_cols = $check_pending->fetchAll(PDO::FETCH_COLUMN);
+                
+                if (in_array('qr_code_adicional_id', $pending_cols)) {
+                    // Verificar se este QR Code é um adicional pendente
+                    $stmt_check = $pdo->prepare("
+                        SELECT qtd_pessoas_pendente, valor_adicional_pendente, qr_code_adicional_id 
+                        FROM comercial_inscricoes 
+                        WHERE id = :id AND qr_code_adicional_id = :qr_code_id
+                    ");
+                    $stmt_check->execute([
+                        ':id' => $inscricao['id'],
+                        ':qr_code_id' => $pix_qr_code_id
+                    ]);
+                    $pendente_data = $stmt_check->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($pendente_data && $pendente_data['qr_code_adicional_id'] === $pix_qr_code_id) {
+                        // Este é um pagamento de adicional pendente - aplicar os valores
+                        $qtd_pendente = (int)($pendente_data['qtd_pessoas_pendente'] ?? 0);
+                        $valor_pendente = (float)($pendente_data['valor_adicional_pendente'] ?? 0);
+                        
+                        if ($qtd_pendente > 0 || $valor_pendente > 0) {
+                            logWebhook("Aplicando valores pendentes: qtd={$qtd_pendente}, valor={$valor_pendente} para inscrição ID: " . $inscricao['id']);
+                            
+                            // Buscar valores atuais
+                            $check_valor = $pdo->query("
+                                SELECT column_name 
+                                FROM information_schema.columns 
+                                WHERE table_name = 'comercial_inscricoes' 
+                                AND column_name IN ('qtd_pessoas', 'valor_total', 'valor_pago')
+                            ");
+                            $valor_cols = $check_valor->fetchAll(PDO::FETCH_COLUMN);
+                            
+                            // Atualizar quantidade de pessoas
+                            $stmt_qtd = $pdo->prepare("
+                                UPDATE comercial_inscricoes 
+                                SET qtd_pessoas = qtd_pessoas + :qtd 
+                                WHERE id = :id
+                            ");
+                            $stmt_qtd->execute([':qtd' => $qtd_pendente, ':id' => $inscricao['id']]);
+                            
+                            // Atualizar valor
+                            if (in_array('valor_total', $valor_cols)) {
+                                $stmt_valor = $pdo->prepare("
+                                    UPDATE comercial_inscricoes 
+                                    SET valor_total = valor_total + :valor 
+                                    WHERE id = :id
+                                ");
+                                $stmt_valor->execute([':valor' => $valor_pendente, ':id' => $inscricao['id']]);
+                            } elseif (in_array('valor_pago', $valor_cols)) {
+                                $stmt_valor = $pdo->prepare("
+                                    UPDATE comercial_inscricoes 
+                                    SET valor_pago = valor_pago + :valor 
+                                    WHERE id = :id
+                                ");
+                                $stmt_valor->execute([':valor' => $valor_pendente, ':id' => $inscricao['id']]);
+                            }
+                            
+                            // Limpar campos pendentes
+                            $stmt_clear = $pdo->prepare("
+                                UPDATE comercial_inscricoes 
+                                SET qtd_pessoas_pendente = NULL,
+                                    valor_adicional_pendente = NULL,
+                                    qr_code_adicional_id = NULL,
+                                    qr_code_adicional_expira_em = NULL
+                                WHERE id = :id
+                            ");
+                            $stmt_clear->execute([':id' => $inscricao['id']]);
+                            
+                            logWebhook("✅ Valores pendentes aplicados com sucesso para inscrição ID: " . $inscricao['id']);
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                logWebhook("Erro ao processar valores pendentes: " . $e->getMessage());
+                // Não falhar o webhook por causa disso
+            }
+            
             // Enviar e-mail de confirmação
             if (class_exists('ComercialEmailHelper')) {
                 require_once __DIR__ . '/comercial_email_helper.php';
