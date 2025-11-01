@@ -155,6 +155,7 @@ $routes = [
   'forcar_chave_asaas' => 'forcar_chave_asaas.php',
   'verificar_inscricao_checkout' => 'verificar_inscricao_checkout.php',
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
+  'analisar_pagamentos_qrcode' => 'analisar_pagamentos_qrcode.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'login' => 'login.php', // Rota de login
   
