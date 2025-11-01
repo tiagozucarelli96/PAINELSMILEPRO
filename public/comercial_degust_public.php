@@ -987,7 +987,10 @@ if ($_POST && !$inscricoes_encerradas) {
         
         // Função para abrir modal de busca ME
         function abrirModalBuscaME() {
-            document.getElementById('modalBuscaME').style.display = 'flex';
+            const modal = document.getElementById('modalBuscaME');
+            modal.style.display = 'flex';
+            modal.style.alignItems = 'center';
+            modal.style.justifyContent = 'center';
             document.getElementById('buscaMENome').value = '';
             document.getElementById('buscaMEResultados').innerHTML = '';
             document.getElementById('buscaMELoading').style.display = 'none';
@@ -1027,7 +1030,10 @@ if ($_POST && !$inscricoes_encerradas) {
         }
         
         function fecharModalBuscaME() {
-            document.getElementById('modalBuscaME').style.display = 'none';
+            const modal = document.getElementById('modalBuscaME');
+            modal.style.display = 'none';
+            modal.style.alignItems = '';
+            modal.style.justifyContent = '';
         }
         
         // Buscar cliente na ME Eventos
