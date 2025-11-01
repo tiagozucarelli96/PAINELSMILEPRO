@@ -24,12 +24,22 @@ $debug_info = [];
 
 // Log inicial - VERIFICAR $_GET ANTES DE PROCESSAR
 $debug_info[] = "🔍 DEBUG: Script iniciado";
-$debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET);
-$debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degustacao_id']) ? $_GET['degustacao_id'] : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? $_GET['page'] : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? $_REQUEST['degustacao_id'] : 'NÃO EXISTE');
 $debug_info[] = "🔍 DEBUG: REQUEST_URI = " . ($_SERVER['REQUEST_URI'] ?? 'NÃO DEFINIDO');
 $debug_info[] = "🔍 DEBUG: QUERY_STRING = " . ($_SERVER['QUERY_STRING'] ?? 'NÃO DEFINIDO');
+$debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET, JSON_UNESCAPED_UNICODE);
+$debug_info[] = "🔍 DEBUG: \$_REQUEST completo = " . json_encode($_REQUEST, JSON_UNESCAPED_UNICODE);
+$debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degustacao_id']) ? var_export($_GET['degustacao_id'], true) : 'NÃO EXISTE');
+$debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? var_export($_GET['page'], true) : 'NÃO EXISTE');
+$debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? var_export($_REQUEST['degustacao_id'], true) : 'NÃO EXISTE');
+
+// CRÍTICO: Se o router consumiu degustacao_id, tentar recuperar da URL
+if (!isset($_GET['degustacao_id']) && isset($_SERVER['QUERY_STRING'])) {
+    parse_str($_SERVER['QUERY_STRING'], $parsed_query);
+    if (isset($parsed_query['degustacao_id'])) {
+        $_GET['degustacao_id'] = $parsed_query['degustacao_id'];
+        $debug_info[] = "⚠️ DEBUG: degustacao_id recuperado da QUERY_STRING via parse_str";
+    }
+}
 
 // Tentar obter degustacao_id de múltiplas formas
 $degustacao_id = 0;
