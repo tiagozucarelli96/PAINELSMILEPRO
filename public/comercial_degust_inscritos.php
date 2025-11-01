@@ -104,6 +104,14 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $inscricoes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Log para debug
+error_log("SQL executado: " . $sql);
+error_log("Parâmetros: " . json_encode($params));
+error_log("Inscrições encontradas: " . count($inscricoes));
+if (count($inscricoes) > 0) {
+    error_log("Primeira inscrição: " . json_encode($inscricoes[0]));
+}
+
 // Estatísticas
 $stats = [
     'total' => count($inscricoes),
