@@ -124,6 +124,7 @@ $stats = [
 // Iniciar buffer de saída
 ob_start();
 ?>
+<link rel="stylesheet" href="assets/css/custom_modals.css">
 <style>
         .inscritos-container {
             max-width: 1400px;
@@ -764,11 +765,14 @@ ob_start();
             closeContratoModal();
         }
     });
-</script>
+    </script>
+    
+    <script src="assets/js/custom_modals.js"></script>
+</div>
 
-<!-- Custom Modals CSS -->
-<link rel="stylesheet" href="assets/css/custom_modals.css">
-<!-- Custom Modals JS -->
-<script src="assets/js/custom_modals.js"></script>
-</body>
-</html>
+<?php
+$conteudo = ob_get_clean();
+includeSidebar('Inscrições - ' . h($degustacao['nome']));
+echo $conteudo;
+endSidebar();
+?>
