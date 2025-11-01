@@ -28,6 +28,16 @@ if (!$degustacao) {
     exit;
 }
 
+// Processar mensagens de sucesso via GET
+if (isset($_GET['success'])) {
+    $success_message = match($_GET['success']) {
+        'comparecimento_atualizado' => 'Comparecimento atualizado com sucesso!',
+        'contrato_atualizado' => 'Status de contrato atualizado com sucesso!',
+        'payment_created' => 'Link de pagamento gerado com sucesso!',
+        default => 'Operação realizada com sucesso!'
+    };
+}
+
 // Processar ações
 $action = $_POST['action'] ?? '';
 $inscricao_id = (int)($_POST['inscricao_id'] ?? 0);
