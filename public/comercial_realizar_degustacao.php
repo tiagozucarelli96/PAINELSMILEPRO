@@ -462,7 +462,24 @@ includeSidebar('Comercial');
     </div>
     
     <!-- Relatório -->
-    <?php if ($degustacao && $degustacao_id > 0): ?>
+    <?php 
+    // Debug: verificar condições ANTES do if
+    $debug_info[] = "🔍 DEBUG: ===== VERIFICAÇÃO FINAL PARA MOSTRAR RELATÓRIO =====";
+    $debug_info[] = "🔍 DEBUG: degustacao_id na variável = {$degustacao_id}";
+    $debug_info[] = "🔍 DEBUG: degustacao é null? " . (is_null($degustacao) ? 'SIM' : 'NÃO');
+    $debug_info[] = "🔍 DEBUG: degustacao é false? " . ($degustacao === false ? 'SIM' : 'NÃO');
+    $debug_info[] = "🔍 DEBUG: degustacao existe? " . ($degustacao ? 'SIM (tem dados)' : 'NÃO (null ou false)');
+    $debug_info[] = "🔍 DEBUG: degustacao_id > 0? " . ($degustacao_id > 0 ? 'SIM (' . $degustacao_id . ')' : 'NÃO');
+    $condicao_final = ($degustacao && $degustacao_id > 0);
+    $debug_info[] = "🔍 DEBUG: Condição (\$degustacao && \$degustacao_id > 0) = " . ($condicao_final ? 'VERDADEIRO ✅' : 'FALSO ❌');
+    if ($degustacao) {
+        $debug_info[] = "📋 DEBUG: Dados da degustação encontrada:";
+        $debug_info[] = "   - ID: " . ($degustacao['id'] ?? 'NÃO TEM');
+        $debug_info[] = "   - Nome: " . ($degustacao['nome'] ?? 'NÃO TEM');
+    }
+    ?>
+    
+    <?php if ($condicao_final): ?>
         <div class="relatorio-container">
             <div class="relatorio-header">
                 <h2 class="relatorio-titulo"><?= h($degustacao['nome']) ?></h2>
