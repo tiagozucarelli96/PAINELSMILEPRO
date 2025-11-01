@@ -837,15 +837,15 @@ ob_start();
                 </div>
                 
                 <!-- Campos ocultos -->
-                <?php if ($is_edit && isset($degustacao['id'])): ?>
+                <?php if ($is_edit && isset($degustacao) && isset($degustacao['id'])): ?>
                 <input type="hidden" name="event_id" id="event_id" value="<?= (int)$degustacao['id'] ?>">
                 <?php endif; ?>
-                <input type="hidden" name="campos_json" id="camposJson" value="<?= $is_edit && isset($degustacao['campos_json']) ? h($degustacao['campos_json']) : '[]' ?>">
+                <input type="hidden" name="campos_json" id="camposJson" value="<?= ($is_edit && isset($degustacao) && isset($degustacao['campos_json'])) ? h($degustacao['campos_json']) : '[]' ?>">
                 
                 <!-- Ações -->
                 <div class="form-actions">
                     <button type="submit" class="btn-primary">💾 Salvar</button>
-                    <?php if ($is_edit): ?>
+                    <?php if ($is_edit && isset($degustacao)): ?>
                     <?php 
                     // Buscar token_publico se não estiver definido
                     if (empty($token_publico) && isset($degustacao['token_publico'])) {
