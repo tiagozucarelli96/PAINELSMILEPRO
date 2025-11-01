@@ -122,6 +122,222 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
     }
 }
 
+// Ação para adicionar pessoa e gerar cobrança adicional
+if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
+    // CRÍTICO: Limpar qualquer output anterior (HTML, whitespace, etc)
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Definir headers ANTES de qualquer output
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    
+    // Função auxiliar para retornar JSON e sair
+    function returnJson($data, $httpCode = 200) {
+        http_response_code($httpCode);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+    
+    // Capturar erros fatais
+    register_shutdown_function(function() {
+        $error = error_get_last();
+        if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Erro fatal do servidor',
+                'message' => 'Erro interno do servidor. Verifique os logs.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    });
+    
+    try {
+        require_once __DIR__ . '/asaas_helper.php';
+        require_once __DIR__ . '/config_env.php';
+        
+        // Buscar inscrição
+        $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$inscricao) {
+            throw new Exception("Inscrição não encontrada");
+        }
+        
+        // Verificar se fechou contrato (não precisa pagar adicional)
+        if ($inscricao['fechou_contrato'] === 'sim') {
+            returnJson([
+                'success' => false,
+                'error' => 'Cliente já fechou contrato',
+                'message' => 'Cliente já fechou contrato, não é necessário pagamento adicional.'
+            ], 400);
+        }
+        
+        // Buscar dados da degustação para pegar o preço extra
+        $check_col = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('degustacao_id', 'event_id')
+        ");
+        $colunas = $check_col->fetchAll(PDO::FETCH_COLUMN);
+        $coluna_id = in_array('degustacao_id', $colunas) ? 'degustacao_id' : 'event_id';
+        
+        $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao[$coluna_id]]);
+        $degustacao_info = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$degustacao_info) {
+            throw new Exception("Degustação não encontrada");
+        }
+        
+        // Valor adicional por pessoa (R$50,00)
+        $valor_adicional = (float)($degustacao_info['preco_extra'] ?? 50.00);
+        
+        if ($valor_adicional <= 0) {
+            throw new Exception("Preço adicional inválido");
+        }
+        
+        // Incrementar quantidade de pessoas
+        $qtd_pessoas_atual = (int)($inscricao['qtd_pessoas'] ?? 1);
+        $qtd_pessoas_nova = $qtd_pessoas_atual + 1;
+        
+        // Atualizar quantidade de pessoas na inscrição
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET qtd_pessoas = :qtd WHERE id = :id");
+        $stmt->execute([
+            ':qtd' => $qtd_pessoas_nova,
+            ':id' => $inscricao_id
+        ]);
+        
+        // Atualizar valor total (verificar colunas dinamicamente)
+        $check_valor_cols = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('valor_total', 'valor_pago')
+        ");
+        $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
+        
+        $valor_atual = 0;
+        if (in_array('valor_total', $valor_columns)) {
+            $valor_atual = (float)($inscricao['valor_total'] ?? 0);
+        } elseif (in_array('valor_pago', $valor_columns)) {
+            $valor_atual = (float)($inscricao['valor_pago'] ?? 0);
+        }
+        
+        $valor_novo = $valor_atual + $valor_adicional;
+        
+        if (in_array('valor_total', $valor_columns)) {
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET valor_total = :valor WHERE id = :id");
+            $stmt->execute([
+                ':valor' => $valor_novo,
+                ':id' => $inscricao_id
+            ]);
+        } elseif (in_array('valor_pago', $valor_columns)) {
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET valor_pago = :valor WHERE id = :id");
+            $stmt->execute([
+                ':valor' => $valor_novo,
+                ':id' => $inscricao_id
+            ]);
+        }
+        
+        // Gerar QR Code apenas para o valor adicional
+        $asaasHelper = new AsaasHelper();
+        $descricao = substr("Adicional: {$degustacao_info['nome']}", 0, 37); // Máximo 37 caracteres
+        
+        $qr_code_data = [
+            'addressKey' => ASAAS_PIX_ADDRESS_KEY,
+            'description' => $descricao,
+            'value' => $valor_adicional,
+            'expirationDate' => date('Y-m-d H:i:s', strtotime('+1 hour')),
+            'allowsMultiplePayments' => false,
+            'format' => 'PAYLOAD'
+        ];
+        
+        $qr_result = $asaasHelper->createStaticQrCode($qr_code_data);
+        
+        if (!$qr_result || !$qr_result['success']) {
+            $error_msg = $qr_result['error'] ?? 'Erro desconhecido ao gerar QR Code';
+            throw new Exception("Erro ao gerar QR Code: {$error_msg}");
+        }
+        
+        $qr_code_id = $qr_result['id'] ?? '';
+        $qr_code_payload = $qr_result['payload'] ?? '';
+        
+        if (empty($qr_code_payload)) {
+            throw new Exception("QR Code gerado mas payload não retornado");
+        }
+        
+        // Atualizar inscrição com novo QR Code (substituir o anterior, pois é uma cobrança adicional)
+        $check_qr_cols = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name IN ('asaas_qr_code_id', 'qr_code_payload', 'qr_code_image')
+        ");
+        $qr_columns = $check_qr_cols->fetchAll(PDO::FETCH_COLUMN);
+        
+        $update_fields = [];
+        $update_params = [':id' => $inscricao_id];
+        
+        if (in_array('asaas_qr_code_id', $qr_columns)) {
+            $update_fields[] = "asaas_qr_code_id = :qr_code_id";
+            $update_params[':qr_code_id'] = $qr_code_id;
+        }
+        
+        if (in_array('qr_code_payload', $qr_columns)) {
+            $update_fields[] = "qr_code_payload = :payload";
+            $update_params[':payload'] = $qr_code_payload;
+        } elseif (in_array('qr_code_image', $qr_columns)) {
+            $update_fields[] = "qr_code_image = :payload";
+            $update_params[':payload'] = $qr_code_payload;
+        }
+        
+        if (!empty($update_fields)) {
+            $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
+            $update_stmt = $pdo->prepare($update_sql);
+            $update_stmt->execute($update_params);
+        }
+        
+        // Resetar status de pagamento para aguardando (novo pagamento)
+        $check_status_col = $pdo->query("
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'comercial_inscricoes' 
+            AND column_name = 'pagamento_status'
+        ");
+        if ($check_status_col->fetchColumn()) {
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'aguardando' WHERE id = :id");
+            $stmt->execute([':id' => $inscricao_id]);
+        }
+        
+        returnJson([
+            'success' => true,
+            'message' => 'Pessoa adicionada com sucesso! QR Code gerado para o valor adicional.',
+            'qr_code_id' => $qr_code_id,
+            'payload' => $qr_code_payload,
+            'valor' => $valor_adicional,
+            'qtd_pessoas_antes' => $qtd_pessoas_atual,
+            'qtd_pessoas_nova' => $qtd_pessoas_nova,
+            'valor_total_novo' => $valor_novo
+        ]);
+        
+    } catch (Throwable $e) {
+        error_log("ERRO ao adicionar pessoa: " . $e->getMessage());
+        returnJson([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'message' => 'Erro ao adicionar pessoa: ' . $e->getMessage()
+        ], 400);
+    }
+}
+
 if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
     // CRÍTICO: Limpar qualquer output anterior (HTML, whitespace, etc)
     while (ob_get_level()) {
@@ -1289,7 +1505,17 @@ ob_start();
                                                 onclick="gerarCobranca(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
                                                 id="btnGerarCobranca_<?= $inscricao['id'] ?>">
                                             💳 Gerar Cobrança
-                            </button>
+                                        </button>
+                                    <?php endif; ?>
+                                    
+                                    <?php if ($inscricao['fechou_contrato'] !== 'sim'): ?>
+                                        <button type="button" class="btn-sm" 
+                                                style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                                onclick="adicionarPessoa(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
+                                                id="btnAdicionarPessoa_<?= $inscricao['id'] ?>"
+                                                title="Adicionar uma pessoa e gerar QR Code de R$ 50,00">
+                                            ➕ Adicionar Pessoa
+                                        </button>
                                     <?php endif; ?>
                                     
                                     <button type="button" class="btn-sm btn-danger" 

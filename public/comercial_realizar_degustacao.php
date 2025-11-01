@@ -65,19 +65,28 @@ if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] > 0) {
             error_log("Buscando inscritos - Degustação ID: {$degustacao_id}, Coluna usada: {$coluna_id}");
             
             // Buscar inscritos confirmados
-            $stmt = $pdo->prepare("
-                SELECT 
-                    id,
-                    nome,
-                    email,
-                    qtd_pessoas,
-                    tipo_festa,
-                    status
-                FROM comercial_inscricoes
-                WHERE {$coluna_id} = :deg_id
-                AND status = 'confirmado'
-                ORDER BY nome ASC
+            // Verificar se a coluna email existe
+            $check_email_col = $pdo->query("
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'comercial_inscricoes' 
+                AND column_name = 'email'
             ");
+            $has_email = $check_email_col->fetchColumn() !== false;
+            
+            // Montar query dinamicamente
+            $select_fields = ['id', 'nome', 'qtd_pessoas', 'tipo_festa', 'status'];
+            if ($has_email) {
+                $select_fields[] = 'email';
+            }
+            
+            $sql = "SELECT " . implode(', ', $select_fields) . " 
+                    FROM comercial_inscricoes
+                    WHERE {$coluna_id} = :deg_id
+                    AND status = 'confirmado'
+                    ORDER BY nome ASC";
+            
+            $stmt = $pdo->prepare($sql);
             $stmt->execute([':deg_id' => $degustacao_id]);
             $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
@@ -378,7 +387,7 @@ includeSidebar('Comercial');
             
             <div class="form-group">
                 <label class="form-label">Selecione a Degustação</label>
-                <select name="degustacao_id" class="form-select" id="selectDegustacao" onchange="this.form.submit()">
+                <select name="degustacao_id" class="form-select" id="selectDegustacao">
                     <option value="">-- Selecione uma degustação --</option>
                     <?php foreach ($degustacoes as $deg): ?>
                         <option value="<?= $deg['id'] ?>" 
@@ -406,11 +415,6 @@ includeSidebar('Comercial');
                 </div>
             <?php endif; ?>
             
-            <?php if ($degustacao_selecionada && !$mostrar_relatorio): ?>
-                <button type="submit" name="gerar" value="1" class="btn-gerar" onclick="this.closest('form').submit()">
-                    📊 Gerar Informações
-                </button>
-            <?php endif; ?>
         </form>
     </div>
     
@@ -440,7 +444,7 @@ includeSidebar('Comercial');
     <?php endif; ?>
     
     <!-- Relatório -->
-    <?php if ($mostrar_relatorio && $degustacao_selecionada): ?>
+    <?php if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] > 0 && $degustacao_selecionada && $mostrar_relatorio): ?>
         <div class="relatorio-container">
             <div class="relatorio-header">
                 <h2 class="relatorio-titulo"><?= h($degustacao_selecionada['nome']) ?></h2>
@@ -508,20 +512,27 @@ function gerarPDF() {
 }
 
 // Auto-submit quando selecionar degustação
-const selectDegustacao = document.getElementById('selectDegustacao');
-if (selectDegustacao) {
-    selectDegustacao.addEventListener('change', function() {
-        console.log('Select mudou para:', this.value);
-        if (this.value) {
-            const form = this.closest('form');
-            if (form) {
-                console.log('Submetendo formulário...');
-                form.submit();
-            } else {
-                console.error('Formulário não encontrado');
+document.addEventListener('DOMContentLoaded', function() {
+    const selectDegustacao = document.getElementById('selectDegustacao');
+    if (selectDegustacao) {
+        selectDegustacao.addEventListener('change', function() {
+            console.log('Select mudou para:', this.value);
+            if (this.value) {
+                const form = this.closest('form');
+                if (form) {
+                    console.log('Submetendo formulário...');
+                    form.submit();
+                } else {
+                    console.error('Formulário não encontrado');
+                }
             }
+        });
+        
+        // Garantir que o relatório seja exibido se já houver uma degustação selecionada
+        if (selectDegustacao.value && selectDegustacao.value !== '') {
+            console.log('Degustação já selecionada no carregamento:', selectDegustacao.value);
         }
-    });
-}
+    }
+});
 </script>
 
