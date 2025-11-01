@@ -106,6 +106,83 @@ function customConfirm(mensagem, titulo = 'Confirmar') {
     });
 }
 
+// Modal customizado de prompt (input)
+function customPrompt(mensagem, valorPadrao = '', titulo = 'Informação') {
+    return new Promise((resolve) => {
+        // Remover qualquer modal anterior
+        const existing = document.querySelector('.custom-prompt-overlay');
+        if (existing) {
+            existing.remove();
+        }
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'custom-prompt-overlay';
+        const inputId = 'custom-prompt-input-' + Date.now();
+        overlay.innerHTML = `
+            <div class="custom-alert">
+                <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                <div class="custom-alert-body">
+                    <div style="margin-bottom: 1rem;">${escapeHtml(mensagem)}</div>
+                    <input type="text" id="${inputId}" class="custom-prompt-input" value="${escapeHtml(valorPadrao)}" placeholder="Digite aqui..." style="width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem;">
+                </div>
+                <div class="custom-alert-actions">
+                    <button class="custom-alert-btn custom-alert-btn-secondary" onclick="if (window.resolveCustomPrompt) { window.resolveCustomPrompt(null); }">Cancelar</button>
+                    <button class="custom-alert-btn custom-alert-btn-primary" onclick="
+                        const input = document.getElementById('${inputId}');
+                        if (window.resolveCustomPrompt) { window.resolveCustomPrompt(input ? input.value : null); }
+                    ">OK</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.remove();
+                if (window.resolveCustomPrompt) {
+                    window.resolveCustomPrompt(null);
+                }
+            }
+        });
+        
+        window.resolveCustomPrompt = (resultado) => {
+            overlay.remove();
+            delete window.resolveCustomPrompt;
+            resolve(resultado);
+        };
+        
+        // Foco no input
+        setTimeout(() => {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.focus();
+                input.select();
+                
+                // Permitir Enter para confirmar
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (window.resolveCustomPrompt) {
+                            window.resolveCustomPrompt(input.value);
+                        }
+                    }
+                });
+                
+                // Permitir Escape para cancelar
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        if (window.resolveCustomPrompt) {
+                            window.resolveCustomPrompt(null);
+                        }
+                    }
+                });
+            }
+        }, 100);
+    });
+}
+
 // Sobrescrever alert() e confirm() globais (opcional, pode ser removido se não desejar)
 if (typeof window.originalAlert === 'undefined') {
     window.originalAlert = window.alert;
@@ -121,6 +198,14 @@ if (typeof window.originalConfirm === 'undefined') {
         // Mas podemos fazer um log para informar o desenvolvedor
         console.warn('Use customConfirm() em vez de confirm() para melhor UX');
         return customConfirm(mensagem, 'Confirmar');
+    };
+}
+
+if (typeof window.originalPrompt === 'undefined') {
+    window.originalPrompt = window.prompt;
+    window.prompt = function(mensagem, valorPadrao) {
+        console.warn('Use customPrompt() em vez de prompt() para melhor UX');
+        return customPrompt(mensagem, valorPadrao || '', 'Informação');
     };
 }
 

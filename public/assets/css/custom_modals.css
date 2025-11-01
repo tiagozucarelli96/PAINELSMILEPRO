@@ -106,6 +106,38 @@
     transform: translateY(0);
 }
 
+/* Prompt customizado (usa as mesmas classes do alert, mas com input) */
+.custom-prompt-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s;
+    backdrop-filter: blur(2px);
+}
+
+.custom-prompt-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-family: inherit;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.custom-prompt-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 .custom-alert-btn-secondary {
     background: #f3f4f6;
     color: #374151;

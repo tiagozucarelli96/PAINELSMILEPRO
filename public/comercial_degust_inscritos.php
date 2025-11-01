@@ -1912,15 +1912,15 @@ ob_start();
                     btnCopiar.style.display = 'inline-block';
                 }
                 
-                alert('✅ QR Code PIX gerado com sucesso! Clique em "Copiar PIX" para enviar ao cliente.');
+                await customAlert('✅ QR Code PIX gerado com sucesso! Clique em "Copiar PIX" para enviar ao cliente.', 'Sucesso');
             } else {
-                alert('❌ Erro: ' + (data.message || 'Não foi possível gerar o QR Code'));
+                await customAlert('❌ Erro: ' + (data.message || 'Não foi possível gerar o QR Code'), 'Erro');
                 btnPix.disabled = false;
                 btnPix.textContent = '💳 Gerar PIX';
             }
         } catch (error) {
             console.error('Erro ao gerar PIX:', error);
-            alert('❌ Erro ao gerar PIX. Tente novamente.');
+            await customAlert('❌ Erro ao gerar PIX. Tente novamente.', 'Erro');
             btnPix.disabled = false;
             btnPix.textContent = '💳 Gerar PIX';
         }
@@ -2234,13 +2234,14 @@ ob_start();
     
     // Adicionar pessoa e gerar cobrança adicional
     async function adicionarPessoa(inscricaoId, nomeInscrito) {
-        // Perguntar quantas pessoas adicionar
-        const qtdInput = prompt(
-            `➕ Adicionar pessoas à inscrição de "${nomeInscrito}"\n\n` +
-            `Quantas pessoas deseja adicionar?\n` +
-            `(Valor: R$ 50,00 por pessoa)\n\n` +
+        // Usar modal customizado para perguntar quantidade (em vez de prompt)
+        const qtdInput = await customPrompt(
+            `➕ Adicionar pessoas à inscrição de "${nomeInscrito}"<br><br>` +
+            `Quantas pessoas deseja adicionar?<br>` +
+            `(Valor: R$ 50,00 por pessoa)<br><br>` +
             `Digite um número entre 1 e 10:`,
-            '1'
+            '1',
+            'Adicionar Pessoas'
         );
         
         if (!qtdInput || qtdInput.trim() === '') {
@@ -2250,12 +2251,12 @@ ob_start();
         const qtdPessoas = parseInt(qtdInput.trim());
         
         if (isNaN(qtdPessoas) || qtdPessoas <= 0) {
-            alert('❌ Por favor, digite um número válido maior que zero.');
+            await customAlert('❌ Por favor, digite um número válido maior que zero.', 'Valor Inválido');
             return;
         }
         
         if (qtdPessoas > 10) {
-            alert('❌ A quantidade máxima permitida é 10 pessoas por vez.');
+            await customAlert('❌ A quantidade máxima permitida é 10 pessoas por vez.', 'Limite Excedido');
             return;
         }
         
@@ -2313,7 +2314,7 @@ ob_start();
                 
                 if (!modal || !modalBody) {
                     console.error('❌ Modal não encontrado!');
-                    alert('❌ Erro: Modal não encontrado. Mas a pessoa foi adicionada com sucesso! Recarregue a página para ver as alterações.');
+                    await customAlert('❌ Erro: Modal não encontrado. Mas a pessoa foi adicionada com sucesso! Recarregue a página para ver as alterações.', 'Aviso');
                     window.location.reload();
                     return;
                 }
@@ -2327,7 +2328,7 @@ ob_start();
                 
                 if (!payload) {
                     console.error('❌ Payload vazio na resposta:', data);
-                    alert('⚠️ Código PIX gerado mas não foi possível exibir. Verifique os logs.');
+                    await customAlert('⚠️ Código PIX gerado mas não foi possível exibir. Verifique os logs.', 'Aviso');
                 }
                 
                 modalBody.innerHTML = `
@@ -2369,7 +2370,7 @@ ob_start();
                 
                 console.log('✅ Modal exibido com sucesso. Payload tamanho:', payload.length);
             } else {
-                alert('❌ Erro: ' + (data.message || data.error || 'Erro desconhecido'));
+                await customAlert('❌ Erro: ' + (data.message || data.error || 'Erro desconhecido'), 'Erro');
                 if (btnAdicionar) {
                     btnAdicionar.disabled = false;
                     btnAdicionar.textContent = '➕ Adicionar Pessoa';
@@ -2377,7 +2378,7 @@ ob_start();
             }
         } catch (error) {
             console.error('Erro ao adicionar pessoa:', error);
-            alert('❌ Erro ao adicionar pessoa: ' + error.message);
+            await customAlert('❌ Erro ao adicionar pessoa: ' + error.message, 'Erro');
             if (btnAdicionar) {
                 btnAdicionar.disabled = false;
                 btnAdicionar.textContent = '➕ Adicionar Pessoa';
@@ -2389,7 +2390,7 @@ ob_start();
     async function copiarCodigoPix(pixCode) {
         try {
             await navigator.clipboard.writeText(pixCode);
-            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+            await customAlert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.', 'Copiado');
         } catch (e) {
             // Fallback para navegadores antigos
             const textArea = document.createElement('textarea');
@@ -2400,7 +2401,7 @@ ob_start();
             textArea.select();
             document.execCommand('copy');
             document.body.removeChild(textArea);
-            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+            await customAlert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.', 'Copiado');
         }
     }
     
@@ -2436,8 +2437,8 @@ ob_start();
             body: formData
         }).then(() => {
             window.location.reload();
-        }).catch(() => {
-            alert('❌ Erro ao atualizar. Tente novamente.');
+        }).catch(async () => {
+            await customAlert('❌ Erro ao atualizar. Tente novamente.', 'Erro');
             // Reverter checkbox em caso de erro
             const checkbox = document.querySelector(`input[type="checkbox"][onchange*="marcarContrato(${inscricaoId}"]`);
             if (checkbox) {
@@ -2472,9 +2473,9 @@ ob_start();
             }
             // Recarregar página para atualizar o estado
             window.location.reload();
-        }).catch((error) => {
+        }).catch(async (error) => {
             console.error('Erro ao atualizar comparecimento:', error);
-            alert('❌ Erro ao atualizar comparecimento. Tente novamente.');
+            await customAlert('❌ Erro ao atualizar comparecimento. Tente novamente.', 'Erro');
             // Reverter checkbox ao estado original
             if (checkbox) {
                 checkbox.checked = !checked;
@@ -2522,6 +2523,7 @@ ob_start();
     }
     </script>
     
+<link rel="stylesheet" href="assets/css/custom_modals.css">
 <script src="assets/js/custom_modals.js"></script>
 
 <?php
