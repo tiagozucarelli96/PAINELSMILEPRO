@@ -240,8 +240,15 @@ ob_start();
 <link rel="stylesheet" href="assets/css/custom_modals.css">
 <style>
         .inscritos-container {
-            max-width: 1400px;
-            margin: 0 auto;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* Garantir que não haja espaços extras ou duplicações */
+        body {
+            margin: 0;
             padding: 0;
         }
         
@@ -478,7 +485,7 @@ ob_start();
         }
         
         .modal {
-            display: none;
+            display: none !important;
             position: fixed;
             top: 0;
             left: 0;
@@ -486,12 +493,15 @@ ob_start();
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
         }
         
         .modal.active {
-            display: flex;
+            display: flex !important;
             align-items: center;
             justify-content: center;
+            opacity: 1;
         }
         
         .modal-content {
@@ -757,7 +767,7 @@ ob_start();
     </div>
     
     <!-- Modal de Contrato -->
-    <div class="modal" id="contratoModal">
+    <div class="modal" id="contratoModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Status do Contrato</h3>
