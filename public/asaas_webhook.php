@@ -45,11 +45,9 @@ if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !
 
 // 8. Verificar método HTTP ANTES de incluir arquivos
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para métodos errados
-    // Retornar 'success' para não pausar fila
+    // IMPORTANTE: Asaas exige HTTP 200 sempre
+    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
     http_response_code(200);
-    header('Content-Type: application/json', true);
-    echo json_encode(['status' => 'success', 'message' => 'Webhook endpoint active. POST method required for processing.']);
     exit;
 }
 
@@ -122,13 +120,8 @@ if (empty($input)) {
         'content_type' => $_SERVER['CONTENT_TYPE'] ?? 'UNKNOWN'
     ]);
     
+    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
     http_response_code(200);
-    header('Content-Type: application/json', true);
-    echo json_encode([
-        'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
-        'message' => 'Webhook received (empty input - may be test)',
-        'note' => 'Asaas may be testing the webhook endpoint'
-    ]);
     exit;
 }
 
@@ -167,16 +160,10 @@ if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data =
     if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data === false) {
         // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
         // Logar erro mas retornar 200 para não pausar fila
-        // CRÍTICO: Retornar 'success' mesmo com JSON inválido
-        // O Asaas interpreta qualquer coisa diferente de 'success' como falha
-        // Logamos o erro mas retornamos sucesso para não pausar fila
+        // CRÍTICO: Retornar APENAS HTTP 200
+        // O Asaas só verifica o código HTTP (200), não o conteúdo JSON
+        // Erro foi logado - retornar 200 para não pausar fila
         http_response_code(200);
-        header('Content-Type: application/json', true);
-        echo json_encode([
-            'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
-            'message' => 'Webhook received (JSON parsing issue logged)',
-            'note' => 'JSON error logged. Check logs for details. Returning success to avoid queue pause.'
-        ]);
         exit;
     }
 }
@@ -300,14 +287,10 @@ try {
         // Remover TODOS os headers
         header_remove();
         
-        // Definir headers corretos
+        // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
         http_response_code(200);
-        header('Content-Type: application/json', true);
-        header('Cache-Control: no-cache, no-store, must-revalidate', true);
         
         logWebhook("✅ Checkout webhook processado com sucesso - Evento: $event");
-        
-        echo json_encode(['status' => 'success', 'message' => 'Checkout webhook processed', 'event' => $event]);
         exit;
     }
     
@@ -373,19 +356,10 @@ try {
                 'action' => 'Returning success to avoid queue pause'
             ]);
             
-            // CRÍTICO: Retornar HTTP 200 com status 'success' 
-            // O Asaas só aceita 200 como sucesso - qualquer warning pode ser interpretado como erro
-            // O pagamento FOI RECEBIDO - isso é sucesso, mesmo sem inscrição vinculada
+            // CRÍTICO: Retornar APENAS HTTP 200
+            // O Asaas só verifica o código HTTP (200), não o conteúdo JSON
+            // Pagamento foi recebido - isso é sucesso, mesmo sem inscrição vinculada
             http_response_code(200);
-            header('Content-Type: application/json', true);
-            echo json_encode([
-                'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
-                'message' => 'Payment received and processed',
-                'payment_id' => $payment_id,
-                'pix_qr_code_id' => $pix_qr_code_id,
-                'inscription_linked' => false,
-                'note' => 'Payment received successfully. No inscription found to link (may be test QR code).'
-            ]);
             exit;
     }
     
@@ -439,7 +413,7 @@ try {
         
         // CRÍTICO: Asaas só aceita HTTP 200 como sucesso
         // Qualquer outro código (3xx, 4xx, 5xx) pausa a fila após 15 tentativas
-        // GARANTIR que retorna EXATAMENTE 200 com JSON válido
+        // GARANTIR que retorna EXATAMENTE 200
         
         // Limpar qualquer output anterior
         if (ob_get_level()) {
@@ -449,26 +423,13 @@ try {
         // Remover TODOS os headers que podem causar redirect ou problema
         header_remove();
         
-        // Definir headers corretos
+        // Definir headers corretos - APENAS HTTP 200
         http_response_code(200); // CRÍTICO: Deve ser exatamente 200
-        header('Content-Type: application/json', true);
-        header('Cache-Control: no-cache, no-store, must-revalidate', true);
-        header('Pragma: no-cache', true);
-        header('Expires: 0', true);
         
         // Log de sucesso
         logWebhook("✅ Webhook processado com sucesso - Evento: $event, Inscrição ID: " . ($inscricao['id'] ?? 'N/A'));
         
-        // Retornar resposta JSON válida
-        $response = [
-            'status' => 'success', 
-            'message' => 'Payment webhook processed', 
-            'event' => $event,
-            'inscricao_id' => $inscricao['id'] ?? null,
-            'pix_qr_code_id' => $pix_qr_code_id ?? null
-        ];
-        
-        echo json_encode($response);
+        // Retornar APENAS HTTP 200 - sem corpo JSON (Asaas só precisa do código)
         exit;
     }
     
@@ -482,10 +443,9 @@ try {
     }
     
     header_remove();
-    http_response_code(200); // SEMPRE 200, mesmo para eventos não reconhecidos
-    header('Content-Type: application/json', true);
     
-    echo json_encode(['status' => 'success', 'message' => 'Event received but not processed', 'event' => $event]);
+    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    http_response_code(200);
     
 } catch (Exception $e) {
     // IMPORTANTE: Mesmo em caso de erro, retornar 200 para não pausar a fila
@@ -498,13 +458,7 @@ try {
     }
     
     header_remove();
-    http_response_code(200); // Retornar 200 mesmo com erro para não pausar fila
-    header('Content-Type: application/json', true);
     
-    // Logar erro mas retornar sucesso
-    echo json_encode([
-        'status' => 'success', 
-        'message' => 'Webhook received (error logged)', 
-        'event' => $webhook_data['event'] ?? 'UNKNOWN'
-    ]);
+    // Retornar APENAS HTTP 200 - sem corpo (Asaas só verifica o código HTTP)
+    http_response_code(200);
 }
