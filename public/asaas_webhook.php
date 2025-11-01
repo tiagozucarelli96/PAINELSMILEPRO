@@ -111,29 +111,54 @@ if (empty($input)) {
     exit;
 }
 
-if ($json_error !== JSON_ERROR_NONE || $webhook_data === null) {
-    // Log do erro de JSON detalhado
+// Verificar erro de JSON (código 4 = JSON_ERROR_SYNTAX)
+if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data === false) {
+    // Obter mensagem de erro ANTES de fazer qualquer outra operação que possa limpar o erro
+    $error_msg = json_last_error_msg();
+    
+    // Log do erro de JSON detalhado - INCLUIR INPUT COMPLETO para debug
     logWebhook([
         'json_error_code' => $json_error,
-        'json_error_message' => json_last_error_msg(),
+        'json_error_name' => $json_error === 4 ? 'JSON_ERROR_SYNTAX' : 'UNKNOWN',
+        'json_error_message' => $error_msg,
         'input_length' => strlen($input),
+        'input_complete' => $input, // LOG COMPLETO para ver o problema
         'input_first_500' => substr($input, 0, 500),
         'input_last_200' => substr($input, -200),
-        'is_null' => ($webhook_data === null)
+        'is_null' => ($webhook_data === null),
+        'is_false' => ($webhook_data === false),
+        'decoded_result' => var_export($webhook_data, true)
     ]);
     
-    // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
-    // Logar erro mas retornar 200 para não pausar fila
-    http_response_code(200);
-    header('Content-Type: application/json', true);
-    echo json_encode([
-        'status' => 'warning', 
-        'message' => 'Invalid JSON received but logged',
-        'json_error' => json_last_error_msg(),
-        'json_error_code' => $json_error,
-        'input_length' => strlen($input)
-    ]);
-    exit;
+    // Tentar corrigir encoding comum (se houver problema de charset)
+    $input_fixed = $input;
+    if (!mb_check_encoding($input, 'UTF-8')) {
+        $input_fixed = mb_convert_encoding($input, 'UTF-8', 'UTF-8');
+        $webhook_data_fixed = json_decode($input_fixed, true);
+        if ($webhook_data_fixed !== null) {
+            logWebhook(['fixed' => 'Encoding corrigido com sucesso']);
+            $webhook_data = $webhook_data_fixed;
+            $json_error = JSON_ERROR_NONE;
+        }
+    }
+    
+    // Se ainda tiver erro após tentar corrigir
+    if ($json_error !== JSON_ERROR_NONE || $webhook_data === null || $webhook_data === false) {
+        // IMPORTANTE: Asaas exige HTTP 200 sempre, mesmo para erros
+        // Logar erro mas retornar 200 para não pausar fila
+        http_response_code(200);
+        header('Content-Type: application/json', true);
+        echo json_encode([
+            'status' => 'warning', 
+            'message' => 'Invalid JSON received but logged',
+            'json_error' => $error_msg,
+            'json_error_code' => $json_error,
+            'json_error_name' => $json_error === 4 ? 'JSON_ERROR_SYNTAX' : 'UNKNOWN',
+            'input_length' => strlen($input),
+            'note' => 'Check logs for complete input data'
+        ]);
+        exit;
+    }
 }
 
 // Log do webhook recebido e decodificado com sucesso
