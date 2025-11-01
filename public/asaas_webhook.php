@@ -352,83 +352,89 @@ try {
         
         // PRIORIDADE 2: Buscar inscrição pelo payment_id do ASAAS (se não encontrou por QR Code)
         if (!$inscricao) {
-            $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE asaas_payment_id = :payment_id");
-            $stmt->execute([':payment_id' => $payment_id]);
-            $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE asaas_payment_id = :payment_id");
+    $stmt->execute([':payment_id' => $payment_id]);
+    $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($inscricao) {
                 logWebhook("Inscrição encontrada via payment_id: ID=" . $inscricao['id']);
             }
         }
-        
-        if (!$inscricao) {
+    
+    if (!$inscricao) {
+            // IMPORTANTE: Logar aviso mas RETORNAR SUCESSO para não pausar fila
+            // O pagamento foi recebido pelo Asaas - isso é um sucesso!
+            // Apenas não temos inscrição vinculada (pode ser QR Code de teste)
             logWebhook([
-                'warning' => 'Inscrição não encontrada',
+                'info' => 'Pagamento recebido mas inscrição não encontrada',
                 'payment_id' => $payment_id,
                 'pix_qr_code_id' => $pix_qr_code_id,
-                'note' => 'Este pagamento pode ter sido feito via QR Code de teste (que não cria inscrição no banco)'
+                'note' => 'Este pagamento pode ter sido feito via QR Code de teste (que não cria inscrição no banco)',
+                'action' => 'Returning success to avoid queue pause'
             ]);
             
-            // IMPORTANTE: Mesmo sem inscrição, retornar 200 para não pausar fila
-            // O pagamento foi recebido pelo Asaas, apenas não temos inscrição vinculada
+            // CRÍTICO: Retornar HTTP 200 com status 'success' 
+            // O Asaas só aceita 200 como sucesso - qualquer warning pode ser interpretado como erro
+            // O pagamento FOI RECEBIDO - isso é sucesso, mesmo sem inscrição vinculada
             http_response_code(200);
             header('Content-Type: application/json', true);
             echo json_encode([
-                'status' => 'warning', 
-                'message' => "Inscrição não encontrada para payment_id: $payment_id" . ($pix_qr_code_id ? " ou qr_code_id: $pix_qr_code_id" : ""),
-                'note' => 'Payment received but no inscription linked. Use processar_pagamento_manual to link manually if needed.',
+                'status' => 'success',  // MUDAR PARA SUCCESS - não warning!
+                'message' => 'Payment received and processed',
                 'payment_id' => $payment_id,
-                'pix_qr_code_id' => $pix_qr_code_id
+                'pix_qr_code_id' => $pix_qr_code_id,
+                'inscription_linked' => false,
+                'note' => 'Payment received successfully. No inscription found to link (may be test QR code).'
             ]);
             exit;
-        }
-        
-        // Buscar dados da degustação
+    }
+    
+    // Buscar dados da degustação
         $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :degustacao_id");
         $stmt->execute([':degustacao_id' => $inscricao['degustacao_id']]);
-        $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$degustacao) {
-            throw new Exception("Degustação não encontrada");
-        }
-        
+    $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$degustacao) {
+        throw new Exception("Degustação não encontrada");
+    }
+    
         // Processar diferentes tipos de eventos de pagamento
-        switch ($event) {
-            case 'PAYMENT_CONFIRMED':
-            case 'PAYMENT_RECEIVED':
-                // Pagamento confirmado
-                $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'pago' WHERE id = :id");
-                $stmt->execute([':id' => $inscricao['id']]);
-                
-                // Enviar e-mail de confirmação
-                if (class_exists('ComercialEmailHelper')) {
-                    require_once __DIR__ . '/comercial_email_helper.php';
-                    $emailHelper = new ComercialEmailHelper();
-                    $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
-                }
-                
-                logWebhook("Pagamento confirmado para inscrição ID: " . $inscricao['id']);
-                break;
-                
-            case 'PAYMENT_OVERDUE':
-                // Pagamento vencido
-                $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'expirado' WHERE id = :id");
-                $stmt->execute([':id' => $inscricao['id']]);
-                
-                logWebhook("Pagamento vencido para inscrição ID: " . $inscricao['id']);
-                break;
-                
-            case 'PAYMENT_DELETED':
-                // Pagamento deletado
-                $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'expirado' WHERE id = :id");
-                $stmt->execute([':id' => $inscricao['id']]);
-                
-                logWebhook("Pagamento deletado para inscrição ID: " . $inscricao['id']);
-                break;
-                
-            default:
+    switch ($event) {
+        case 'PAYMENT_CONFIRMED':
+        case 'PAYMENT_RECEIVED':
+            // Pagamento confirmado
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'pago' WHERE id = :id");
+            $stmt->execute([':id' => $inscricao['id']]);
+            
+            // Enviar e-mail de confirmação
+            if (class_exists('ComercialEmailHelper')) {
+                require_once __DIR__ . '/comercial_email_helper.php';
+                $emailHelper = new ComercialEmailHelper();
+                $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
+            }
+            
+            logWebhook("Pagamento confirmado para inscrição ID: " . $inscricao['id']);
+            break;
+            
+        case 'PAYMENT_OVERDUE':
+            // Pagamento vencido
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'expirado' WHERE id = :id");
+            $stmt->execute([':id' => $inscricao['id']]);
+            
+            logWebhook("Pagamento vencido para inscrição ID: " . $inscricao['id']);
+            break;
+            
+        case 'PAYMENT_DELETED':
+            // Pagamento deletado
+            $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'expirado' WHERE id = :id");
+            $stmt->execute([':id' => $inscricao['id']]);
+            
+            logWebhook("Pagamento deletado para inscrição ID: " . $inscricao['id']);
+            break;
+            
+        default:
                 logWebhook("Evento de pagamento não tratado: $event");
-                break;
+            break;
         }
         
         // CRÍTICO: Asaas só aceita HTTP 200 como sucesso
