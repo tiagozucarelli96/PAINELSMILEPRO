@@ -122,11 +122,18 @@ class AsaasHelper {
         // "A chave de API deve ser utilizada EXATAMENTE como foi gerada, 
         //  incluindo o prefixo $aact_prod_ para chaves de produção"
         // 
-        // Ou seja: usar a chave COM o $ no header!
+        // CORREÇÃO: Algumas vezes o Railway remove o $ ao salvar no ENV
+        // Vamos garantir que o $ esteja presente se a chave começar com aact_prod_ ou aact_hmlg_
         $api_key_original = $this->api_key;
         $api_key_to_use = trim($api_key_original);
         
-        // NÃO remover o $ - a documentação diz para usar exatamente como gerada
+        // Se a chave não começar com $ mas começar com aact_prod_ ou aact_hmlg_, adicionar $
+        if (strpos($api_key_to_use, '$') !== 0) {
+            if (strpos($api_key_to_use, 'aact_prod_') === 0 || strpos($api_key_to_use, 'aact_hmlg_') === 0) {
+                $api_key_to_use = '$' . $api_key_to_use;
+                error_log("AsaasHelper - Adicionado \$ ao início da chave (Railway pode ter removido)");
+            }
+        }
         
         // Asaas API v3 - Formato EXATO conforme documentação oficial
         // Documentação: https://docs.asaas.com/docs/autenticacao-1
