@@ -885,25 +885,6 @@ if ($_POST && !$inscricoes_encerradas) {
             transform: scale(1.1);
         }
         
-        .close-btn {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #6b7280;
-            padding: 0;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-        }
-        
-        .close-btn:hover {
-            background: #f3f4f6;
-        }
-        
         .cliente-item-me:hover {
             background: #e0f2fe !important;
             border-color: #0ea5e9 !important;
