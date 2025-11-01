@@ -483,59 +483,46 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação -->
     <div class="selecao-container">
-        <form method="GET" action="index.php" id="formDegustacao" name="formDegustacao" onsubmit="return true;">
-            <input type="hidden" name="page" value="comercial_realizar_degustacao">
-            
-            <div class="form-group">
-                <label class="form-label">Selecione a Degustação</label>
-                <select name="degustacao_id" class="form-select" id="selectDegustacao">
-                    <option value="">-- Selecione uma degustação --</option>
-                    <?php foreach ($degustacoes as $deg): ?>
-                        <option value="<?= $deg['id'] ?>" <?= $degustacao_id == $deg['id'] ? 'selected' : '' ?>>
-                            <?= h($deg['nome']) ?> - <?= date('d/m/Y', strtotime($deg['data'])) ?> - <?= date('H:i', strtotime($deg['hora_inicio'])) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+        <div class="form-group">
+            <label class="form-label">Selecione a Degustação</label>
+            <select class="form-select" id="selectDegustacao">
+                <option value="">-- Selecione uma degustação --</option>
+                <?php foreach ($degustacoes as $deg): ?>
+                    <option value="<?= $deg['id'] ?>" <?= $degustacao_id == $deg['id'] ? 'selected' : '' ?>>
+                        <?= h($deg['nome']) ?> - <?= date('d/m/Y', strtotime($deg['data'])) ?> - <?= date('H:i', strtotime($deg['hora_inicio'])) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        
+        <!-- Info Box (será atualizado via AJAX) -->
+        <div class="info-box" id="infoBox" style="display: none;">
+            <div class="info-row">
+                <span class="info-label">Inscrições Confirmadas:</span>
+                <span class="info-value" id="totalInscritos">0</span>
             </div>
-            
-            <?php if ($degustacao): ?>
-                <div class="info-box">
-                    <div class="info-row">
-                        <span class="info-label">Inscrições Confirmadas:</span>
-                        <span class="info-value"><?= count($inscritos) ?></span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Total de Mesas:</span>
-                        <span class="info-value"><?= count($inscritos) ?></span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Total de Pessoas:</span>
-                        <span class="info-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></span>
-                    </div>
-                </div>
-            <?php endif; ?>
-        </form>
+            <div class="info-row">
+                <span class="info-label">Total de Mesas:</span>
+                <span class="info-value" id="totalMesas">0</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Total de Pessoas:</span>
+                <span class="info-value" id="totalPessoas">0</span>
+            </div>
+        </div>
+        
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" style="display: none; text-align: center; padding: 2rem; color: #6b7280;">
+            <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1rem;"></div>
+            <p>Carregando relatório...</p>
+        </div>
     </div>
     
-    <!-- Relatório -->
-    <?php 
-    // Debug: verificar condições ANTES do if
-    $debug_info[] = "🔍 DEBUG: ===== VERIFICAÇÃO FINAL PARA MOSTRAR RELATÓRIO =====";
-    $debug_info[] = "🔍 DEBUG: degustacao_id na variável = {$degustacao_id}";
-    $debug_info[] = "🔍 DEBUG: degustacao é null? " . (is_null($degustacao) ? 'SIM' : 'NÃO');
-    $debug_info[] = "🔍 DEBUG: degustacao é false? " . ($degustacao === false ? 'SIM' : 'NÃO');
-    $debug_info[] = "🔍 DEBUG: degustacao existe? " . ($degustacao ? 'SIM (tem dados)' : 'NÃO (null ou false)');
-    $debug_info[] = "🔍 DEBUG: degustacao_id > 0? " . ($degustacao_id > 0 ? 'SIM (' . $degustacao_id . ')' : 'NÃO');
-    $condicao_final = ($degustacao && $degustacao_id > 0);
-    $debug_info[] = "🔍 DEBUG: Condição (\$degustacao && \$degustacao_id > 0) = " . ($condicao_final ? 'VERDADEIRO ✅' : 'FALSO ❌');
-    if ($degustacao) {
-        $debug_info[] = "📋 DEBUG: Dados da degustação encontrada:";
-        $debug_info[] = "   - ID: " . ($degustacao['id'] ?? 'NÃO TEM');
-        $debug_info[] = "   - Nome: " . ($degustacao['nome'] ?? 'NÃO TEM');
-    }
-    ?>
+    <!-- Relatório (será renderizado via JavaScript) -->
+    <div id="relatorioContainer"></div>
     
-    <?php if ($condicao_final): ?>
+    <!-- Versão PHP removida - agora tudo é AJAX -->
+    <?php if (false): // Desabilitado - usando AJAX ?>
         <div class="relatorio-container">
             <div class="relatorio-header">
                 <h2 class="relatorio-titulo"><?= h($degustacao['nome']) ?></h2>
@@ -603,133 +590,195 @@ includeSidebar('Comercial');
 </div>
 
 <script>
-console.log('🔍 Script JavaScript carregado');
-console.log('🔍 degustacao_id na URL:', new URLSearchParams(window.location.search).get('degustacao_id'));
-
-function gerarPDF() {
-    alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
-}
-
-// Função para configurar o select - pode ser chamada múltiplas vezes
-function configurarSelectDegustacao() {
+// Solução definitiva: AJAX independente do router
+(function() {
+    'use strict';
+    
+    const API_ENDPOINT = 'api_relatorio_degustacao.php';
     const selectDegustacao = document.getElementById('selectDegustacao');
-    const formDegustacao = document.getElementById('formDegustacao');
+    const relatorioContainer = document.getElementById('relatorioContainer');
+    const infoBox = document.getElementById('infoBox');
+    const loadingIndicator = document.getElementById('loadingIndicator');
     
-    if (!selectDegustacao) {
-        console.error('❌ Select não encontrado! Tentando novamente em 100ms...');
-        setTimeout(configurarSelectDegustacao, 100);
-        return;
-    }
-    
-    console.log('✅ Select encontrado!');
-    
-    // Remover listener anterior se existir
-    const newSelect = selectDegustacao.cloneNode(true);
-    selectDegustacao.parentNode.replaceChild(newSelect, selectDegustacao);
-    
-    // Adicionar novo listener
-    const selectAtual = document.getElementById('selectDegustacao');
-    
-    selectAtual.addEventListener('change', function(e) {
-        const selectedValue = this.value;
-        console.log('🔍 Select mudou para:', selectedValue);
-        
-        const form = this.closest('form') || document.getElementById('formDegustacao');
-        if (!form) {
-            console.error('❌ Formulário não encontrado!');
+    // Função para carregar relatório via AJAX
+    async function carregarRelatorio(degustacaoId) {
+        if (!degustacaoId || degustacaoId === '') {
+            relatorioContainer.innerHTML = '';
+            infoBox.style.display = 'none';
             return;
         }
         
-        console.log('✅ Formulário encontrado');
-        console.log('🔍 Form action:', form.action);
-        console.log('🔍 Form method:', form.method);
-        console.log('🔍 Select name:', this.name);
-        console.log('🔍 Select value:', selectedValue);
+        loadingIndicator.style.display = 'block';
+        relatorioContainer.innerHTML = '';
+        infoBox.style.display = 'none';
         
-        // Usar submit nativo do formulário GET
-        // O formulário já está configurado corretamente:
-        // - method="GET"
-        // - action="index.php"
-        // - input hidden com page="comercial_realizar_degustacao"
-        // - select com name="degustacao_id"
-        
-        // Apenas garantir que o action está correto
-        if (!form.action || form.action === '') {
-            form.action = 'index.php';
-        }
-        
-        // Garantir que o input hidden 'page' existe
-        let pageInput = form.querySelector('input[name="page"]');
-        if (!pageInput) {
-            pageInput = document.createElement('input');
-            pageInput.type = 'hidden';
-            pageInput.name = 'page';
-            pageInput.value = 'comercial_realizar_degustacao';
-            form.appendChild(pageInput);
-        }
-        
-        // Garantir que o select está no formulário e tem o name correto
-        if (this.name !== 'degustacao_id') {
-            this.name = 'degustacao_id';
-        }
-        
-        // Log da URL que será construída pelo navegador
-        const formData = new FormData(form);
-        const urlParams = new URLSearchParams();
-        for (const [key, value] of formData.entries()) {
-            urlParams.append(key, value);
-        }
-        const finalUrl = form.action + '?' + urlParams.toString();
-        console.log('🔍 URL final que será acessada:', finalUrl);
-        console.log('✅ Submetendo formulário...');
-        
-        // Submeter o formulário explicitamente
-        // Como é um formulário GET, o navegador vai navegar para a URL construída
-        form.submit();
-    });
-    
-    // Log do valor inicial
-    if (selectAtual.value && selectAtual.value !== '') {
-        console.log('✅ Degustação já selecionada no carregamento:', selectAtual.value);
-    } else {
-        console.log('ℹ️ Nenhuma degustação selecionada inicialmente');
-    }
-}
-
-// Tentar configurar quando DOM estiver pronto
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('🔍 DOM carregado (DOMContentLoaded)');
-        configurarSelectDegustacao();
-        verificarRelatorio();
-    });
-} else {
-    // DOM já está pronto
-    console.log('🔍 DOM já estava pronto');
-    configurarSelectDegustacao();
-    verificarRelatorio();
-}
-
-// Função para verificar se relatório apareceu
-function verificarRelatorio() {
-    setTimeout(function() {
-        const relatorioContainer = document.querySelector('.relatorio-container');
-        if (relatorioContainer) {
-            console.log('✅ Relatório encontrado no DOM');
-        } else {
-            console.log('⚠️ Relatório NÃO encontrado no DOM');
-            const degustacaoId = new URLSearchParams(window.location.search).get('degustacao_id');
-            if (degustacaoId && parseInt(degustacaoId) > 0) {
-                console.error('❌ ERRO: degustacao_id existe mas relatório não aparece!');
-                console.error('❌ degustacao_id =', degustacaoId);
-                console.error('❌ Possíveis causas:');
-                console.error('   1. Degustação não encontrada no banco');
-                console.error('   2. Nenhum inscrito confirmado');
-                console.error('   3. Erro na query SQL');
-                console.error('   4. Condição PHP não foi satisfeita');
-                console.error('   5. Verifique o painel de debug amarelo na página');
+        try {
+            const response = await fetch(`${API_ENDPOINT}?degustacao_id=${degustacaoId}`, {
+                method: 'GET',
+                cache: 'no-store',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Erro HTTP: ${response.status}`);
             }
+            
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error('Resposta não é JSON: ' + text.substring(0, 100));
+            }
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Erro desconhecido');
+            }
+            
+            // Atualizar info box
+            document.getElementById('totalInscritos').textContent = data.total_inscritos;
+            document.getElementById('totalMesas').textContent = data.total_inscritos;
+            document.getElementById('totalPessoas').textContent = data.total_pessoas;
+            infoBox.style.display = 'block';
+            
+            // Renderizar relatório
+            renderizarRelatorio(data.degustacao, data.inscritos);
+            
+            // Atualizar URL sem recarregar página
+            const url = new URL(window.location);
+            url.searchParams.set('degustacao_id', degustacaoId);
+            window.history.pushState({degustacao_id: degustacaoId}, '', url);
+            
+        } catch (error) {
+            console.error('Erro ao carregar relatório:', error);
+            relatorioContainer.innerHTML = `
+                <div class="error-panel" style="padding: 2rem; text-align: center; background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px; color: #991b1b;">
+                    <p><strong>❌ Erro ao carregar relatório:</strong></p>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        } finally {
+            loadingIndicator.style.display = 'none';
         }
-    }, 500); // Aguardar 500ms para garantir que tudo foi renderizado
-}
+    }
+    
+    // Função para renderizar o relatório
+    function renderizarRelatorio(degustacao, inscritos) {
+        const dataFormatada = new Date(degustacao.data).toLocaleDateString('pt-BR');
+        const horaFormatada = new Date('2000-01-01 ' + degustacao.hora_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const totalPessoas = inscritos.reduce((sum, insc) => sum + (parseInt(insc.qtd_pessoas) || 1), 0);
+        
+        let html = `
+            <div class="relatorio-container">
+                <div class="relatorio-header">
+                    <h2 class="relatorio-titulo">${escapeHtml(degustacao.nome)}</h2>
+                    <div class="relatorio-info">
+                        <div class="relatorio-info-item">
+                            <span class="relatorio-info-label">📅 Data</span>
+                            <span class="relatorio-info-value">${dataFormatada}</span>
+                        </div>
+                        <div class="relatorio-info-item">
+                            <span class="relatorio-info-label">🕐 Horário de Início</span>
+                            <span class="relatorio-info-value">${horaFormatada}</span>
+                        </div>
+                        ${degustacao.local ? `
+                        <div class="relatorio-info-item">
+                            <span class="relatorio-info-label">📍 Local</span>
+                            <span class="relatorio-info-value">${escapeHtml(degustacao.local)}</span>
+                        </div>
+                        ` : ''}
+                        <div class="relatorio-info-item">
+                            <span class="relatorio-info-label">👥 Total de Pessoas</span>
+                            <span class="relatorio-info-value">${totalPessoas}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mesas-grid">
+        `;
+        
+        if (inscritos.length === 0) {
+            html += `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #6b7280;">
+                        <p style="font-size: 1.125rem;">Nenhum inscrito confirmado encontrado para esta degustação.</p>
+                    </div>
+            `;
+        } else {
+            inscritos.forEach((inscrito, index) => {
+                const qtdPessoas = parseInt(inscrito.qtd_pessoas) || 1;
+                html += `
+                    <div class="mesa-card">
+                        <div class="mesa-header">
+                            <span class="mesa-numero">Mesa ${index + 1}</span>
+                            <span class="mesa-pessoas">${qtdPessoas} ${qtdPessoas === 1 ? 'pessoa' : 'pessoas'}</span>
+                        </div>
+                        <div class="inscrito-info">
+                            <div class="inscrito-nome">${escapeHtml(inscrito.nome)}</div>
+                            ${inscrito.tipo_festa ? `<span class="inscrito-tipo">${escapeHtml(inscrito.tipo_festa.charAt(0).toUpperCase() + inscrito.tipo_festa.slice(1))}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        html += `
+                </div>
+                
+                <div class="acoes-relatorio">
+                    <button type="button" class="btn-acao btn-impressao" onclick="window.print()">
+                        🖨️ Imprimir
+                    </button>
+                    <button type="button" class="btn-acao btn-pdf" onclick="gerarPDF()">
+                        📄 Gerar PDF
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        relatorioContainer.innerHTML = html;
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    function gerarPDF() {
+        alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
+    }
+    
+    // Configurar select quando DOM estiver pronto
+    function init() {
+        if (!selectDegustacao) {
+            setTimeout(init, 100);
+            return;
+        }
+        
+        // Listener para mudança no select
+        selectDegustacao.addEventListener('change', function() {
+            carregarRelatorio(this.value);
+        });
+        
+        // Verificar se há degustacao_id na URL ou no select
+        const urlParams = new URLSearchParams(window.location.search);
+        const degustacaoIdUrl = urlParams.get('degustacao_id');
+        const degustacaoIdSelect = selectDegustacao.value;
+        
+        if (degustacaoIdUrl && degustacaoIdUrl !== '') {
+            selectDegustacao.value = degustacaoIdUrl;
+            carregarRelatorio(degustacaoIdUrl);
+        } else if (degustacaoIdSelect && degustacaoIdSelect !== '') {
+            carregarRelatorio(degustacaoIdSelect);
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
 </script>
