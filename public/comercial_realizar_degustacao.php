@@ -439,7 +439,6 @@ includeSidebar('Comercial');
                         <div class="inscrito-info">
                             <div>
                                 <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
-                                <div class="inscrito-email"><?= h($inscrito['email']) ?></div>
                             </div>
                             <?php if ($inscrito['tipo_festa']): ?>
                                 <span class="inscrito-tipo"><?= ucfirst($inscrito['tipo_festa']) ?></span>
