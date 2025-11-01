@@ -114,16 +114,25 @@ class AsaasHelper {
     private function makeRequest($method, $endpoint, $data = null) {
         $ch = curl_init();
         
-        // Asaas API v3 usa access_token no header (não Authorization Bearer)
+        // Asaas API v3 - Tentar múltiplos formatos de autenticação
+        // Formato 1: access_token como header (formato antigo)
+        // Formato 2: Authorization Bearer (formato mais comum)
+        // Formato 3: access_token como query parameter
+        
+        // Primeiro tentar como header access_token
         $headers = [
             'access_token: ' . $this->api_key,
             'Content-Type: application/json',
             'Accept: application/json'
         ];
         
-        // Log para debug (remover em produção)
+        // Também adicionar Authorization Bearer (formato mais comum em APIs modernas)
+        $headers[] = 'Authorization: Bearer ' . $this->api_key;
+        
+        // Log para debug
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
-        error_log("Asaas API Key (primeiros 20 chars): " . substr($this->api_key, 0, 20) . "...");
+        error_log("Asaas API Key (primeiros 30 chars): " . substr($this->api_key, 0, 30) . "...");
+        error_log("Asaas API Key (últimos 20 chars): ..." . substr($this->api_key, -20));
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,
@@ -131,11 +140,14 @@ class AsaasHelper {
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_TIMEOUT => 30
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_VERBOSE => false
         ]);
         
         if ($data && in_array($method, ['POST', 'PUT', 'PATCH'])) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            $json_data = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
+            error_log("Asaas API Request Body: " . substr($json_data, 0, 200) . "...");
         }
         
         $response = curl_exec($ch);
