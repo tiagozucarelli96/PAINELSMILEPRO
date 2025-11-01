@@ -283,6 +283,8 @@ if ($_POST && !$inscricoes_encerradas) {
                 $checkout_response = $asaasHelper->createCheckout($checkout_data);
                 
                 if ($checkout_response && isset($checkout_response['id'])) {
+                    $checkout_id_asaas = $checkout_response['id'];
+                    
                     // Verificar se colunas existem antes de atualizar
                     try {
                         $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
@@ -292,7 +294,19 @@ if ($_POST && !$inscricoes_encerradas) {
                         $has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
                         $has_asaas_checkout_id = in_array('asaas_checkout_id', $check_columns);
                         $has_valor_pago = in_array('valor_pago', $check_columns);
+                        
+                        // Se asaas_checkout_id não existe, tentar criar
+                        if (!$has_asaas_checkout_id) {
+                            try {
+                                $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN asaas_checkout_id VARCHAR(255)");
+                                $has_asaas_checkout_id = true;
+                                error_log("Coluna asaas_checkout_id criada automaticamente para inscrição ID: $inscricao_id");
+                            } catch (PDOException $e) {
+                                error_log("Erro ao criar coluna asaas_checkout_id: " . $e->getMessage());
+                            }
+                        }
                     } catch (PDOException $e) {
+                        error_log("Erro ao verificar colunas: " . $e->getMessage());
                         $has_asaas_payment_id = false;
                         $has_asaas_checkout_id = false;
                         $has_valor_pago = false;
@@ -304,11 +318,11 @@ if ($_POST && !$inscricoes_encerradas) {
                     
                     if ($has_asaas_checkout_id) {
                         $update_fields[] = "asaas_checkout_id = :checkout_id";
-                        $update_params[':checkout_id'] = $checkout_response['id'];
+                        $update_params[':checkout_id'] = $checkout_id_asaas;
                     } elseif ($has_asaas_payment_id) {
                         // Fallback: usar payment_id se checkout_id não existir
                         $update_fields[] = "asaas_payment_id = :payment_id";
-                        $update_params[':payment_id'] = $checkout_response['id'];
+                        $update_params[':payment_id'] = $checkout_id_asaas;
                     }
                     
                     if ($has_valor_pago) {
@@ -316,9 +330,27 @@ if ($_POST && !$inscricoes_encerradas) {
                         $update_params[':valor_pago'] = $valor_total;
                     }
                     
+                    // Log antes de atualizar
+                    error_log("Atualizando inscrição ID $inscricao_id com checkout_id: $checkout_id_asaas");
+                    error_log("Campos a atualizar: " . implode(', ', $update_fields));
+                    
                     $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
                     $stmt = $pdo->prepare($update_sql);
                     $stmt->execute($update_params);
+                    
+                    // Verificar se atualizou
+                    $rows_updated = $stmt->rowCount();
+                    if ($rows_updated > 0) {
+                        error_log("✅ Inscrição ID $inscricao_id atualizada com sucesso! checkout_id: $checkout_id_asaas");
+                    } else {
+                        error_log("⚠️ Nenhuma linha atualizada para inscrição ID $inscricao_id");
+                    }
+                    
+                    // Verificar se realmente foi salvo
+                    $verify_stmt = $pdo->prepare("SELECT asaas_checkout_id, asaas_payment_id FROM comercial_inscricoes WHERE id = :id");
+                    $verify_stmt->execute([':id' => $inscricao_id]);
+                    $verify = $verify_stmt->fetch(PDO::FETCH_ASSOC);
+                    error_log("Verificação pós-update - checkout_id: " . ($verify['asaas_checkout_id'] ?? 'NULL') . ", payment_id: " . ($verify['asaas_payment_id'] ?? 'NULL'));
                     
                     // Redirecionar para o Checkout Asaas
                     if (isset($checkout_response['checkoutUrl'])) {
