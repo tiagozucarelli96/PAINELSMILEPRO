@@ -66,6 +66,117 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
     }
 }
 
+if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
+    try {
+        require_once __DIR__ . '/asaas_helper.php';
+        
+        // Buscar inscrição
+        $stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$inscricao) {
+            throw new Exception("Inscrição não encontrada");
+        }
+        
+        // Verificar se já tem pagamento
+        if (!empty($inscricao['asaas_payment_id'])) {
+            // Verificar status do pagamento existente
+            $asaasHelper = new AsaasHelper();
+            $payment_data = $asaasHelper->getPaymentStatus($inscricao['asaas_payment_id']);
+            
+            if ($payment_data && in_array($payment_data['status'], ['PENDING', 'OVERDUE'])) {
+                // Pagamento ainda pendente, redirecionar para página de pagamento
+                header("Location: comercial_pagamento.php?payment_id={$inscricao['asaas_payment_id']}&inscricao_id={$inscricao_id}");
+                exit;
+            }
+        }
+        
+        // Verificar se fechou contrato
+        if ($inscricao['fechou_contrato'] === 'sim') {
+            throw new Exception("Cliente já fechou contrato, não é necessário pagamento");
+        }
+        
+        // Buscar dados da degustação para calcular valor
+        $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+        $stmt->execute([':id' => $event_id]);
+        $degustacao_info = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$degustacao_info) {
+            throw new Exception("Degustação não encontrada");
+        }
+        
+        // Calcular valor
+        $asaasHelper = new AsaasHelper();
+        $precos = [
+            'casamento' => (float)($degustacao_info['preco_casamento'] ?? 150.00),
+            '15anos' => (float)($degustacao_info['preco_15anos'] ?? 180.00),
+            'incluidos_casamento' => (int)($degustacao_info['incluidos_casamento'] ?? 2),
+            'incluidos_15anos' => (int)($degustacao_info['incluidos_15anos'] ?? 3),
+            'extra' => (float)($degustacao_info['preco_extra'] ?? 50.00)
+        ];
+        
+        $tipo_festa = $inscricao['tipo_festa'] ?? 'casamento';
+        $qtd_pessoas = (int)($inscricao['qtd_pessoas'] ?? 1);
+        
+        $valor_info = $asaasHelper->calculateTotal($tipo_festa, $qtd_pessoas, $precos);
+        $valor_total = $valor_info['valor_total'];
+        
+        if ($valor_total <= 0) {
+            throw new Exception("Valor inválido para pagamento");
+        }
+        
+        // Criar customer no ASAAS
+        $customer_data = [
+            'name' => $inscricao['nome'],
+            'email' => $inscricao['email'],
+            'phone' => $inscricao['celular'] ?? '',
+            'external_reference' => 'inscricao_' . $inscricao_id
+        ];
+        
+        $customer = $asaasHelper->createCustomer($customer_data);
+        $customer_id = $customer['id'];
+        
+        // Criar pagamento
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        
+        $payment_data = [
+            'customer_id' => $customer_id,
+            'value' => $valor_total,
+            'description' => "Degustação: {$degustacao['nome']} - " . ucfirst($tipo_festa) . " ({$qtd_pessoas} pessoas)",
+            'external_reference' => 'inscricao_' . $inscricao_id,
+            'success_url' => "{$protocol}://{$host}/index.php?page=comercial_degust_inscritos&event_id={$event_id}&success=payment_created",
+            'customer_data' => $customer_data
+        ];
+        
+        $payment_response = $asaasHelper->createPixPayment($payment_data);
+        
+        if (!$payment_response || !isset($payment_response['id'])) {
+            throw new Exception("Erro ao criar pagamento no ASAAS");
+        }
+        
+        // Atualizar inscrição
+        $stmt = $pdo->prepare("UPDATE comercial_inscricoes SET 
+            asaas_payment_id = :payment_id, 
+            pagamento_status = 'aguardando',
+            valor_pago = :valor_pago
+            WHERE id = :id");
+        $stmt->execute([
+            ':payment_id' => $payment_response['id'],
+            ':valor_pago' => $valor_total,
+            ':id' => $inscricao_id
+        ]);
+        
+        // Redirecionar para página de pagamento
+        header("Location: comercial_pagamento.php?payment_id={$payment_response['id']}&inscricao_id={$inscricao_id}");
+        exit;
+        
+    } catch (Exception $e) {
+        $error_message = "Erro ao gerar pagamento: " . $e->getMessage();
+    }
+}
+
 // Filtros
 $status_filter = $_GET['status'] ?? '';
 $search = trim($_GET['search'] ?? '');
@@ -95,7 +206,9 @@ $sql = "SELECT i.*,
                CASE WHEN i.pagamento_status = 'pago' THEN 'Pago' 
                     WHEN i.pagamento_status = 'aguardando' THEN 'Aguardando' 
                     WHEN i.pagamento_status = 'expirado' THEN 'Expirado' 
-                    ELSE 'N/A' END as pagamento_text
+                    ELSE 'N/A' END as pagamento_text,
+               i.asaas_payment_id,
+               i.valor_pago
         FROM comercial_inscricoes i
         WHERE " . implode(' AND ', $where) . "
         ORDER BY i.criado_em DESC";
@@ -573,15 +686,36 @@ ob_start();
                         
                         <div><?= $inscricao['fechou_contrato_text'] ?></div>
                         
-                        <div><?= $inscricao['pagamento_text'] ?></div>
+                        <div>
+                            <div style="margin-bottom: 5px;"><?= $inscricao['pagamento_text'] ?></div>
+                            <?php if ($inscricao['valor_pago'] && $inscricao['valor_pago'] > 0): ?>
+                                <div style="font-size: 0.875rem; color: #6b7280;">R$ <?= number_format($inscricao['valor_pago'], 2, ',', '.') ?></div>
+                            <?php endif; ?>
+                        </div>
                         
-                        <div style="display: flex; gap: 5px;">
+                        <div style="display: flex; gap: 5px; flex-wrap: wrap;">
                             <button class="btn-sm btn-edit" onclick="openComparecimentoModal(<?= $inscricao['id'] ?>, <?= $inscricao['compareceu'] ? 'true' : 'false' ?>)">
                                 ✅ Comparecimento
                             </button>
                             <button class="btn-sm btn-success" onclick="openContratoModal(<?= $inscricao['id'] ?>, '<?= $inscricao['fechou_contrato'] ?>', '<?= h($inscricao['nome_titular_contrato']) ?>')">
                                 📄 Contrato
                             </button>
+                            <?php if ($inscricao['fechou_contrato'] !== 'sim' && $inscricao['pagamento_status'] !== 'pago'): ?>
+                                <form method="POST" style="display: inline;" onsubmit="return confirmarGerarPagamento(event)">
+                                    <input type="hidden" name="action" value="gerar_pagamento">
+                                    <input type="hidden" name="inscricao_id" value="<?= $inscricao['id'] ?>">
+                                    <button type="submit" class="btn-sm" style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                                        💳 Gerar Pagamento
+                                    </button>
+                                </form>
+                            <?php elseif ($inscricao['pagamento_status'] === 'aguardando' && !empty($inscricao['asaas_payment_id'])): ?>
+                                <a href="comercial_pagamento.php?payment_id=<?= $inscricao['asaas_payment_id'] ?>&inscricao_id=<?= $inscricao['id'] ?>" 
+                                   class="btn-sm" 
+                                   style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; display: inline-block;"
+                                   target="_blank">
+                                    🔗 Ver Pagamento
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -765,6 +899,16 @@ ob_start();
             closeContratoModal();
         }
     });
+    
+    // Confirmar geração de pagamento
+    function confirmarGerarPagamento(event) {
+        event.preventDefault();
+        const form = event.target;
+        if (confirm('Deseja gerar link de pagamento para este inscrito?')) {
+            form.submit();
+        }
+        return false;
+    }
     </script>
     
     <script src="assets/js/custom_modals.js"></script>
