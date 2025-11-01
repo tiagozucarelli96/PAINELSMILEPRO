@@ -62,36 +62,8 @@ if (!$tem_permissao) {
     // Removido: header('Location: index.php?page=dashboard&error=permission_denied'); exit;
 }
 
-$pdo = $GLOBALS['pdo'];
-$degustacao = null;
-$inscritos = [];
-$error_message = '';
-$debug_info = [];
-
-// CRÍTICO: Parsear QUERY_STRING MANUALMENTE antes de tudo para garantir que pegamos todos os parâmetros
-// O problema pode ser que o router está limpando ou não passando todos os parâmetros GET
-if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
-    parse_str($_SERVER['QUERY_STRING'], $parsed_all);
-    // Mesclar com $_GET para garantir que temos tudo
-    $_GET = array_merge($parsed_all, $_GET);
-    $_REQUEST = array_merge($parsed_all, $_REQUEST);
-}
-
-// Log inicial - VERIFICAR $_GET ANTES DE PROCESSAR
-$debug_info[] = "🔍 DEBUG: Script iniciado";
-$debug_info[] = "🔍 DEBUG: REQUEST_URI = " . ($_SERVER['REQUEST_URI'] ?? 'NÃO DEFINIDO');
-$debug_info[] = "🔍 DEBUG: QUERY_STRING = " . ($_SERVER['QUERY_STRING'] ?? 'NÃO DEFINIDO');
-$debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET, JSON_UNESCAPED_UNICODE);
-$debug_info[] = "🔍 DEBUG: \$_REQUEST completo = " . json_encode($_REQUEST, JSON_UNESCAPED_UNICODE);
-$debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degustacao_id']) ? var_export($_GET['degustacao_id'], true) : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? var_export($_GET['page'], true) : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? var_export($_REQUEST['degustacao_id'], true) : 'NÃO EXISTE');
-
-// Verificar se degustacao_id foi encontrado
-$debug_info[] = "🔍 DEBUG: \$_GET['degustacao_id'] = " . (isset($_GET['degustacao_id']) ? var_export($_GET['degustacao_id'], true) : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_GET['page'] = " . (isset($_GET['page']) ? var_export($_GET['page'], true) : 'NÃO EXISTE');
-$debug_info[] = "🔍 DEBUG: \$_REQUEST completo = " . json_encode($_REQUEST, JSON_UNESCAPED_UNICODE);
-$debug_info[] = "🔍 DEBUG: \$_REQUEST['degustacao_id'] = " . (isset($_REQUEST['degustacao_id']) ? var_export($_REQUEST['degustacao_id'], true) : 'NÃO EXISTE');
+// Continuar processamento mesmo sem permissão para mostrar debug
+// Mas só processar dados se tiver permissão
 
 // 2. Tentar do REQUEST_URI diretamente (última tentativa)
 if (!isset($_GET['degustacao_id']) && isset($_SERVER['REQUEST_URI'])) {
