@@ -1079,9 +1079,6 @@ if ($_POST && !$inscricoes_encerradas) {
                 validarCPFME();
             }
         });
-                `;
-            }
-        });
     </script>
 </body>
 </html>
