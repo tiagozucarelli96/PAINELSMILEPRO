@@ -250,6 +250,12 @@ if ($_POST && !$inscricoes_encerradas) {
                     $descricao_item .= " ({$incluidos} pessoas incluídas)";
                 }
                 
+                // ============================================
+                // VERSÃO FUNCIONANDO (SEM customerData)
+                // Esta versão funciona perfeitamente - usar apenas campos mínimos
+                // Se nova versão der erro, reverter para esta
+                // ============================================
+                
                 // Criar Checkout conforme documentação Asaas
                 $checkout_data = [
                     'billingTypes' => ['PIX'], // Apenas PIX por enquanto
@@ -273,6 +279,49 @@ if ($_POST && !$inscricoes_encerradas) {
                     'externalReference' => 'inscricao_' . $inscricao_id
                     // Removido customerData - usar apenas campos mínimos como no teste de R$ 10,00
                 ];
+                
+                // ============================================
+                // NOVA VERSÃO COM customerData (TESTE)
+                // Descomentar abaixo para testar pré-preenchimento de dados
+                // Se der erro, voltar para versão acima (sem customerData)
+                // ============================================
+                /*
+                // Dados do cliente para pré-preencher (customerData)
+                // Esta versão tenta pré-preencher dados do cliente no checkout
+                $cpf_cliente = '';
+                if (!empty($_POST['me_cliente_cpf'])) {
+                    $cpf_cliente = preg_replace('/\D/', '', $_POST['me_cliente_cpf']); // Apenas números
+                }
+                
+                $checkout_data_com_customer = [
+                    'billingTypes' => ['PIX'],
+                    'chargeTypes' => ['DETACHED'],
+                    'callback' => [
+                        'cancelUrl' => $current_url . '&cancelado=1',
+                        'expiredUrl' => $current_url . '&expirado=1',
+                        'successUrl' => $base_url . '/comercial_pagamento.php?inscricao_id=' . $inscricao_id
+                    ],
+                    'items' => [
+                        [
+                            'name' => "Degustação: {$degustacao['nome']}",
+                            'description' => $descricao_item,
+                            'quantity' => 1,
+                            'value' => (float)$valor_total
+                        ]
+                    ],
+                    'minutesToExpire' => 60,
+                    'externalReference' => 'inscricao_' . $inscricao_id,
+                    // Descomentar customerData abaixo se quiser testar pré-preenchimento
+                    // 'customerData' => [
+                    //     'name' => $nome,
+                    //     'email' => $email,
+                    //     'phone' => preg_replace('/\D/', '', $telefone),
+                    //     'cpfCnpj' => $cpf_cliente
+                    // ]
+                ];
+                
+                // Para testar, trocar $checkout_data por $checkout_data_com_customer abaixo
+                */
                 
                 // Criar checkout no Asaas
                 $checkout_response = $asaasHelper->createCheckout($checkout_data);
