@@ -10,6 +10,36 @@ $payment_id = $_GET['payment_id'] ?? '';
 $inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
 
 // Verificar se veio do Checkout Asaas (sucesso)
+// Se veio apenas com inscricao_id, buscar checkout_id no banco e processar
+if ($inscricao_id && !$checkout_id && !$payment_id) {
+    try {
+        // Buscar checkout_id salvo no banco
+        $stmt = $pdo->prepare("SELECT asaas_checkout_id, asaas_payment_id, pagamento_status FROM comercial_inscricoes WHERE id = :id");
+        $stmt->execute([':id' => $inscricao_id]);
+        $inscricao_checkout = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($inscricao_checkout) {
+            // Usar checkout_id se existir, senão usar payment_id
+            $checkout_id = $inscricao_checkout['asaas_checkout_id'] ?? '';
+            $payment_id = $inscricao_checkout['asaas_payment_id'] ?? '';
+            
+            // Se status ainda está aguardando e temos checkout_id, atualizar para pago
+            // (cliente veio do redirect do Asaas após pagar)
+            if ($inscricao_checkout['pagamento_status'] === 'aguardando' && ($checkout_id || $payment_id)) {
+                $stmt_update = $pdo->prepare("UPDATE comercial_inscricoes SET pagamento_status = 'pago' WHERE id = :id");
+                $stmt_update->execute([':id' => $inscricao_id]);
+                
+                // Redirecionar para página de sucesso
+                header("Location: comercial_sucesso.php?inscricao_id={$inscricao_id}");
+                exit;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar checkout_id da inscrição: " . $e->getMessage());
+    }
+}
+
+// Verificar se veio com checkout_id na URL (compatibilidade)
 if ($checkout_id && $inscricao_id) {
     // Checkout Asaas redireciona automaticamente para successUrl quando pago
     // Atualizar status da inscrição para pago
