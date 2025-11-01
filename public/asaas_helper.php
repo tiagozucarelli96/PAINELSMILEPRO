@@ -149,8 +149,7 @@ class AsaasHelper {
         
         // Log para debug - mostrar chave completa para verificar se está correta
         error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
-        error_log("Asaas API Key ORIGINAL: " . $api_key_original);
-        error_log("Asaas API Key LIMPA (sem \$): " . $api_key_to_use);
+        error_log("Asaas API Key (exatamente como será enviada): " . $api_key_to_use);
         error_log("Asaas API Key - Tamanho original: " . strlen($api_key_original) . " caracteres");
         error_log("Asaas API Key - Tamanho limpa: " . strlen($api_key_to_use) . " caracteres");
         error_log("Asaas API Key - Contém \$ no início: " . (strpos($api_key_original, '$') === 0 ? 'SIM' : 'NÃO'));
