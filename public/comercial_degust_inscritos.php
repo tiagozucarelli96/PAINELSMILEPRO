@@ -156,14 +156,30 @@ if ($action === 'gerar_pagamento' && $inscricao_id > 0) {
             throw new Exception("Erro ao criar pagamento no ASAAS");
         }
         
+        // Verificar novamente se colunas existem (aqui dentro da função)
+        try {
+            $check_stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                       WHERE table_name = 'comercial_inscricoes' 
+                                       AND column_name IN ('asaas_payment_id', 'valor_pago')");
+            $check_columns = $check_stmt->fetchAll(PDO::FETCH_COLUMN);
+            $local_has_asaas_payment_id = in_array('asaas_payment_id', $check_columns);
+            $local_has_valor_pago = in_array('valor_pago', $check_columns);
+        } catch (PDOException $e) {
+            $local_has_asaas_payment_id = false;
+            $local_has_valor_pago = false;
+        }
+        
         // Atualizar inscrição (verificar se colunas existem)
         $update_fields = ["pagamento_status = 'aguardando'"];
         $update_params = [':id' => $inscricao_id];
         
-        if ($has_asaas_payment_id) {
+        if ($local_has_asaas_payment_id) {
             $update_fields[] = "asaas_payment_id = :payment_id";
-            $update_fields[] = "valor_pago = :valor_pago";
             $update_params[':payment_id'] = $payment_response['id'];
+        }
+        
+        if ($local_has_valor_pago) {
+            $update_fields[] = "valor_pago = :valor_pago";
             $update_params[':valor_pago'] = $valor_total;
         }
         
