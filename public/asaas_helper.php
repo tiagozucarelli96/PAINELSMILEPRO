@@ -6,17 +6,24 @@ class AsaasHelper {
     private $webhook_url;
     
     public function __construct() {
+        // Priorizar variável de ambiente sobre constante (ANTES de carregar config_env.php)
+        $env_key = $_ENV['ASAAS_API_KEY'] ?? getenv('ASAAS_API_KEY') ?: null;
+        $env_base = $_ENV['ASAAS_BASE_URL'] ?? getenv('ASAAS_BASE_URL') ?: null;
+        $env_webhook = $_ENV['WEBHOOK_URL'] ?? getenv('WEBHOOK_URL') ?: null;
+        
         require_once __DIR__ . '/config_env.php';
         
-        // Priorizar variável de ambiente sobre constante
-        $this->api_key = $_ENV['ASAAS_API_KEY'] ?? getenv('ASAAS_API_KEY') ?: ASAAS_API_KEY;
-        $this->base_url = $_ENV['ASAAS_BASE_URL'] ?? getenv('ASAAS_BASE_URL') ?: ASAAS_BASE_URL;
-        $this->webhook_url = $_ENV['WEBHOOK_URL'] ?? getenv('WEBHOOK_URL') ?: WEBHOOK_URL;
+        // Usar variável de ambiente se disponível, senão usar constante
+        $this->api_key = $env_key ?? ASAAS_API_KEY;
+        $this->base_url = $env_base ?? ASAAS_BASE_URL;
+        $this->webhook_url = $env_webhook ?? WEBHOOK_URL;
         
         // Log para debug (primeiros e últimos caracteres apenas)
         $key_preview = substr($this->api_key, 0, 30) . '...' . substr($this->api_key, -10);
+        $fonte = $env_key ? 'ENV_VAR' : 'CONSTANTE';
         error_log("AsaasHelper inicializado - API Key preview: $key_preview");
-        error_log("AsaasHelper - Fonte da chave: " . (isset($_ENV['ASAAS_API_KEY']) ? 'ENV' : (getenv('ASAAS_API_KEY') ? 'getenv' : 'CONSTANTE')));
+        error_log("AsaasHelper - Fonte da chave: $fonte");
+        error_log("AsaasHelper - Chave completa (para debug): " . $this->api_key);
     }
     
     /**
