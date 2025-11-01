@@ -211,7 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
 // Buscar token público se for edição
 $token_publico = '';
 if ($is_edit && $degustacao) {
-    $token_publico = $degustacao['token_publico'];
+    $token_publico = $degustacao['token_publico'] ?? '';
 }
 
 // Criar conteúdo da página
