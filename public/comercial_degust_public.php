@@ -264,16 +264,19 @@ if ($_POST && !$inscricoes_encerradas) {
                 }
                 
                 // Criar QR Code estático conforme modelo Asaas
-                // Calcula data de expiração (1 hora a partir de agora)
+                // Calcula data de expiração: data/hora atual + 1 hora
                 $expiration_date = date('Y-m-d H:i:s', strtotime('+1 hour'));
+                
+                // Valor total já foi calculado anteriormente (base + extras)
+                // $valor_total contém: preco_base + (extras * preco_extra)
                 
                 $qr_code_data = [
                     'addressKey' => $pix_address_key,
                     'description' => $descricao_item,
-                    'value' => (float)$valor_total,
-                    'expirationDate' => $expiration_date, // Formato: "YYYY-MM-DD HH:mm:ss"
-                    'expirationSeconds' => 3600, // 1 hora (3600 segundos)
+                    'value' => (float)$valor_total, // Valor total: base + adicional
+                    'expirationDate' => $expiration_date, // Data/hora de expiração (1 hora a partir de agora)
                     'allowsMultiplePayments' => true // Permite múltiplos pagamentos (conforme modelo)
+                    // NÃO enviar expirationSeconds quando usar expirationDate (API aceita apenas um)
                 ];
                 
                 $qr_code_response = $asaasHelper->createStaticQrCode($qr_code_data);

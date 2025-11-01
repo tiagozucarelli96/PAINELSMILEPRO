@@ -433,7 +433,7 @@ class AsaasHelper {
             'allowsMultiplePayments' => $data['allowsMultiplePayments'] ?? true // Permite múltiplos pagamentos
         ];
         
-        // Valor (obrigatório se especificado)
+        // Valor (obrigatório - base + adicional)
         if (isset($data['value']) && $data['value'] > 0) {
             $payload['value'] = (float)$data['value'];
         }
@@ -443,13 +443,12 @@ class AsaasHelper {
             $payload['format'] = $data['format']; // ALL, BASE64, IMAGE
         }
         
-        // Data de expiração (se informada)
+        // IMPORTANTE: API aceita APENAS UM tipo de expiração (data OU segundos, não ambos)
+        // Priorizar expirationDate se informado
         if (!empty($data['expirationDate'])) {
             $payload['expirationDate'] = $data['expirationDate']; // Formato: "YYYY-MM-DD HH:mm:ss"
-        }
-        
-        // Expiração em segundos (alternativa a expirationDate)
-        if (!empty($data['expirationSeconds'])) {
+        } elseif (!empty($data['expirationSeconds'])) {
+            // Só usar expirationSeconds se expirationDate não foi informado
             $payload['expirationSeconds'] = (int)$data['expirationSeconds'];
         }
         
