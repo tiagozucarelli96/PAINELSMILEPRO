@@ -152,8 +152,11 @@ $routes = [
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
 ];
 
-/* exige login */
-if (empty($_SESSION['logado'])) {
+/* exige login - EXCETO para páginas públicas */
+$public_pages = ['comercial_degust_public', 'asaas_webhook', 'webhook_me_eventos'];
+$is_public_page = in_array($page, $public_pages);
+
+if (empty($_SESSION['logado']) && !$is_public_page) {
   header('Location: login.php');
   exit;
 }
