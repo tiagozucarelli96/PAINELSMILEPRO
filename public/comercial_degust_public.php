@@ -735,7 +735,7 @@ if ($_POST && !$inscricoes_encerradas) {
                 <button class="close-btn" onclick="fecharModalBuscaME()">&times;</button>
             </div>
             
-            <div style="padding: 20px;">
+            <div style="padding: 24px; background: #f9fafb;">
                 <!-- Busca por Nome -->
                 <div id="buscaMEPorNome">
                     <div class="form-group">
@@ -799,48 +799,90 @@ if ($_POST && !$inscricoes_encerradas) {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
             z-index: 10000;
-            padding: 20px;
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
-            align-items: center;
-            justify-content: center;
+            overflow: hidden;
         }
         
         .modal[style*="flex"],
-        .modal[style*="block"] {
+        .modal[style*="block"],
+        .modal[style*="display: flex"] {
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
+            flex-direction: row !important;
         }
         
         .modal-content {
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
             max-width: 600px;
-            width: calc(100% - 40px);
+            width: 90%;
+            max-width: 90vw;
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            margin: 0;
+            margin: auto;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+        
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
         }
         
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 20px;
+            padding: 24px;
             border-bottom: 1px solid #e5e7eb;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            border-radius: 16px 16px 0 0;
         }
         
         .modal-title {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 700;
-            color: #1e3a8a;
+            color: white;
             margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .close-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 28px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            line-height: 1;
+        }
+        
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
         }
         
         .close-btn {
