@@ -315,6 +315,8 @@ if ($_POST && !$inscricoes_encerradas) {
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= h($degustacao['nome']) ?> - GRUPO Smile EVENTOS</title>
@@ -803,13 +805,6 @@ if ($_POST && !$inscricoes_encerradas) {
             z-index: 10000;
             padding: 20px;
             box-sizing: border-box;
-            overflow: auto;
-        }
-        
-        .modal[style*="flex"] {
-            display: flex !important;
-            align-items: center;
-            justify-content: center;
         }
         
         .modal-content {
@@ -821,7 +816,9 @@ if ($_POST && !$inscricoes_encerradas) {
             max-height: 90vh;
             overflow-y: auto;
             position: relative;
-            margin: auto;
+            margin: 0 auto;
+            top: 50%;
+            transform: translateY(-50%);
         }
         
         .modal-header {
@@ -1030,10 +1027,7 @@ if ($_POST && !$inscricoes_encerradas) {
         }
         
         function fecharModalBuscaME() {
-            const modal = document.getElementById('modalBuscaME');
-            modal.style.display = 'none';
-            modal.style.alignItems = '';
-            modal.style.justifyContent = '';
+            document.getElementById('modalBuscaME').style.display = 'none';
         }
         
         // Buscar cliente na ME Eventos
@@ -1041,7 +1035,11 @@ if ($_POST && !$inscricoes_encerradas) {
             const nome = document.getElementById('buscaMENome').value.trim();
             
             if (nome.length < 3) {
-                alert('Digite pelo menos 3 caracteres para buscar');
+                if (typeof customAlert === 'function') {
+                    customAlert('Digite pelo menos 3 caracteres para buscar', '⚠️ Validação');
+                } else {
+                    alert('Digite pelo menos 3 caracteres para buscar');
+                }
                 return;
             }
             
@@ -1083,10 +1081,15 @@ if ($_POST && !$inscricoes_encerradas) {
                 html += '</div>';
                 resultadosDiv.innerHTML = html;
                 
-            } catch (error) {
-                loadingDiv.style.display = 'none';
-                resultadosDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc2626;">Erro: ${error.message}</div>`;
-            }
+                } catch (error) {
+                    loadingDiv.style.display = 'none';
+                    const errorMsg = error.message || 'Erro ao buscar cliente';
+                    if (typeof customAlert === 'function') {
+                        customAlert(errorMsg, '❌ Erro');
+                    } else {
+                        resultadosDiv.innerHTML = `<div style="padding: 20px; text-align: center; color: #dc2626;">Erro: ${escapeHtml(errorMsg)}</div>`;
+                    }
+                }
         }
         
         // Selecionar cliente da lista
@@ -1102,14 +1105,22 @@ if ($_POST && !$inscricoes_encerradas) {
         // Validar CPF do cliente
         async function validarCPFME() {
             if (!clienteSelecionadoME) {
-                alert('Selecione um cliente primeiro');
+                if (typeof customAlert === 'function') {
+                    customAlert('Selecione um cliente primeiro', '⚠️ Validação');
+                } else {
+                    alert('Selecione um cliente primeiro');
+                }
                 return;
             }
             
             const cpf = document.getElementById('buscaMECpf').value.replace(/\D/g, '');
             
             if (cpf.length !== 11) {
-                alert('CPF deve ter 11 dígitos');
+                if (typeof customAlert === 'function') {
+                    customAlert('CPF deve ter 11 dígitos', '⚠️ Validação');
+                } else {
+                    alert('CPF deve ter 11 dígitos');
+                }
                 return;
             }
             
@@ -1224,7 +1235,12 @@ if ($_POST && !$inscricoes_encerradas) {
                 
             } catch (error) {
                 loadingDiv.style.display = 'none';
-                alert('Erro ao validar CPF: ' + error.message);
+                const errorMsg = 'Erro ao validar CPF: ' + error.message;
+                if (typeof customAlert === 'function') {
+                    customAlert(errorMsg, '❌ Erro');
+                } else {
+                    alert(errorMsg);
+                }
             }
         }
         
