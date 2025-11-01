@@ -1737,7 +1737,15 @@ if ($current_page === 'dashboard') {
             // o conteúdo já foi renderizado via PHP, não fazer nada
             // Para agenda, o conteúdo também já foi renderizado via PHP após sidebar_unified.php
             // NOTA: Comercial usa comercial_landing.php via index.php, não precisa renderizar aqui
-            if (!['dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'agenda', 'demandas', 'demandas_quadro'].includes(currentPage)) {
+            // NOTA: Páginas que usam includeSidebar/endSidebar já renderizam o conteúdo, não carregar via AJAX
+            const pagesWithOwnRender = [
+                'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
+                'agenda', 'demandas', 'demandas_quadro',
+                'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
+                'comercial_degust_public', 'comercial_pagamento'
+            ];
+            
+            if (!pagesWithOwnRender.includes(currentPage)) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
