@@ -255,12 +255,38 @@ header('Content-Type: text/html; charset=utf-8');
                 } elseif ($error_code === 'invalid_access_token') {
                     echo '<p><strong>Erro:</strong> Chave de API inválida ou revogada</p>';
                     echo '<p>A chave de API fornecida é inválida.</p>';
-                    echo '<p><strong>Como resolver:</strong></p>';
+                    echo '<p><strong>⚠️ IMPORTANTE - Verificações necessárias:</strong></p>';
+                    echo '<ol>';
+                    echo '<li><strong>Verificar no painel Asaas:</strong><ul>';
+                    echo '<li>Acesse: <a href="https://www.asaas.com" target="_blank">https://www.asaas.com</a></li>';
+                    echo '<li>Vá em <strong>Integrações > Chaves de API</strong></li>';
+                    echo '<li>Verifique se a chave que está no Railway corresponde EXATAMENTE à chave listada no painel</li>';
+                    echo '<li>Verifique se a chave está <strong>ATIVA</strong> (não desabilitada, expirada ou excluída)</li>';
+                    echo '<li>Verifique se você está usando a chave do ambiente correto (Produção vs Sandbox)</li>';
+                    echo '</ul></li>';
+                    echo '<li><strong>Comparar chaves:</strong><ul>';
+                    echo '<li>Copie a chave EXATA do painel Asaas (com o $)</li>';
+                    echo '<li>Compare caracter por caracter com o que está no Railway</li>';
+                    echo '<li>Verifique se não há espaços extras no início ou fim</li>';
+                    echo '</ul></li>';
+                    echo '<li><strong>Gerar nova chave (se necessário):</strong><ul>';
+                    echo '<li>Se a chave foi desabilitada/expirada, gere uma nova no painel Asaas</li>';
+                    echo '<li>Copie a NOVA chave completa (com o $)</li>';
+                    echo '<li>Atualize no Railway e faça redeploy</li>';
+                    echo '</ul></li>';
+                    echo '</ol>';
+                    
+                    // Mostrar informações úteis para debug
+                    echo '<div style="background: #f3f4f6; border: 1px solid #9ca3af; padding: 15px; border-radius: 6px; margin: 15px 0;">';
+                    echo '<p><strong>🔍 Informações de Debug:</strong></p>';
+                    echo '<p>Verifique os logs do Railway para ver exatamente o que está sendo enviado.</p>';
+                    echo '<p>O log mostrará:</p>';
                     echo '<ul>';
-                    echo '<li>Confirme se o valor da chave de API está correto</li>';
-                    echo '<li>Verifique se ela não foi desabilitada, expirada ou excluída no painel Asaas</li>';
-                    echo '<li>Acesse <strong>Asaas > Integrações > Chaves de API</strong> e gere uma nova chave se necessário</li>';
+                    echo '<li>A chave completa que está sendo usada</li>';
+                    echo '<li>Os headers que estão sendo enviados</li>';
+                    echo '<li>A resposta completa da API Asaas</li>';
                     echo '</ul>';
+                    echo '</div>';
                     
                 } else {
                     // Erro 401 genérico

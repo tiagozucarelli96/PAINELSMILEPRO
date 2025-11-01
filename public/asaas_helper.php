@@ -150,19 +150,26 @@ class AsaasHelper {
             'access_token: ' . $api_key_to_use  // COM espaço após dois pontos, COM $ se a chave tiver
         ];
         
-        // Log detalhado para debug
-        error_log("AsaasHelper - Chave usada (primeiros 35): " . substr($api_key_to_use, 0, 35) . "...");
-        error_log("AsaasHelper - Header access_token (primeiros 50 chars): " . substr('access_token: ' . $api_key_to_use, 0, 50) . "...");
-        
-        // Log para debug - mostrar chave completa para verificar se está correta
-        error_log("Asaas API Request - Method: $method, Endpoint: $endpoint");
-        error_log("Asaas API Key (exatamente como será enviada): " . $api_key_to_use);
-        error_log("Asaas API Key - Tamanho original: " . strlen($api_key_original) . " caracteres");
-        error_log("Asaas API Key - Tamanho limpa: " . strlen($api_key_to_use) . " caracteres");
-        error_log("Asaas API Key - Contém \$ no início: " . (strpos($api_key_original, '$') === 0 ? 'SIM' : 'NÃO'));
-        
-        // Log da URL completa antes de fazer a requisição
-        error_log("AsaasHelper - URL completa: $endpoint");
+        // Log MUITO detalhado para debug do problema 401
+        error_log("=== ASAAS API REQUEST DEBUG ===");
+        error_log("Method: $method");
+        error_log("Endpoint: $endpoint");
+        error_log("Chave original (primeiros 40): " . substr($api_key_original, 0, 40) . "...");
+        error_log("Chave final usada (primeiros 40): " . substr($api_key_to_use, 0, 40) . "...");
+        error_log("Tamanho original: " . strlen($api_key_original) . " chars");
+        error_log("Tamanho final: " . strlen($api_key_to_use) . " chars");
+        error_log("Começa com \$: " . (strpos($api_key_to_use, '$') === 0 ? 'SIM' : 'NÃO'));
+        error_log("Header access_token completo (primeiros 60): " . substr('access_token: ' . $api_key_to_use, 0, 60) . "...");
+        error_log("Todos os headers que serão enviados:");
+        foreach ($headers as $h) {
+            // Não mostrar a chave completa por segurança, mas mostrar formato
+            if (strpos($h, 'access_token:') === 0) {
+                $chave_header = substr($h, 13);
+                error_log("  - access_token: [" . substr($chave_header, 0, 15) . "..." . substr($chave_header, -10) . "] (total: " . strlen($chave_header) . " chars)");
+            } else {
+                error_log("  - $h");
+            }
+        }
         
         curl_setopt_array($ch, [
             CURLOPT_URL => $endpoint,

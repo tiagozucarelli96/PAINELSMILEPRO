@@ -150,6 +150,7 @@ $routes = [
   'contab_link' => 'contab_link.php',
   'contab_gerar_link' => 'contab_gerar_link.php',
   'test_asaas_key' => 'test_asaas_key.php',
+  'test_asaas_debug' => 'test_asaas_debug.php',
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
