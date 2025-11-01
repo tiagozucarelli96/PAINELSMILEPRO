@@ -462,7 +462,7 @@ includeSidebar('Comercial');
     
     <!-- Seleção de Degustação -->
     <div class="selecao-container">
-        <form method="GET" action="" id="formDegustacao" name="formDegustacao">
+        <form method="GET" action="index.php" id="formDegustacao" name="formDegustacao">
             <input type="hidden" name="page" value="comercial_realizar_degustacao">
             
             <div class="form-group">
@@ -617,6 +617,25 @@ function configurarSelectDegustacao() {
             const form = this.closest('form') || document.getElementById('formDegustacao');
             if (form) {
                 console.log('✅ Formulário encontrado, submetendo...');
+                
+                // Garantir que o action está correto
+                if (!form.action || form.action === '' || form.action === window.location.pathname) {
+                    form.action = 'index.php';
+                }
+                
+                // Adicionar degustacao_id ao formulário se não estiver
+                let degustacaoInput = form.querySelector('input[name="degustacao_id"]');
+                if (!degustacaoInput) {
+                    degustacaoInput = document.createElement('input');
+                    degustacaoInput.type = 'hidden';
+                    degustacaoInput.name = 'degustacao_id';
+                    form.appendChild(degustacaoInput);
+                }
+                degustacaoInput.value = selectedValue;
+                
+                console.log('🔍 Form action:', form.action);
+                console.log('🔍 degustacao_id a ser enviado:', selectedValue);
+                
                 form.submit();
             } else {
                 console.error('❌ Formulário não encontrado!');
