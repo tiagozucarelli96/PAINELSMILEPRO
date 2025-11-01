@@ -35,21 +35,21 @@ error_log("event_id: $event_id, is_edit: " . ($is_edit ? 'true' : 'false'));
 $degustacao = null;
 if ($is_edit && $event_id > 0) {
     try {
-        $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
-        $stmt->execute([':id' => $event_id]);
-        $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+    $stmt->execute([':id' => $event_id]);
+    $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         error_log("Degustação encontrada: " . ($degustacao ? 'SIM' : 'NÃO'));
         if ($degustacao) {
             error_log("Nome: " . ($degustacao['nome'] ?? 'N/A'));
             error_log("Token público: " . (isset($degustacao['token_publico']) ? 'SIM' : 'NÃO'));
         }
-        
-        if (!$degustacao) {
+    
+    if (!$degustacao) {
             error_log("Degustação não encontrada no banco com ID: $event_id");
             header('Location: index.php?page=comercial_degustacoes&error=not_found');
-            exit;
-        }
+        exit;
+    }
     } catch (Exception $e) {
         error_log("Erro ao buscar degustação: " . $e->getMessage());
         header('Location: index.php?page=comercial_degustacoes&error=' . urlencode('Erro ao buscar degustação: ' . $e->getMessage()));
@@ -239,12 +239,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         $error_message = "Erro: " . $e->getMessage();
         error_log("ERRO ao processar formulário: " . $e->getMessage());
         error_log("Stack trace: " . $e->getTraceAsString());
+        
+        // IMPORTANTE: Se houve erro e estamos em modo edição, recarregar a degustação
+        // porque ela pode não ter sido carregada antes do processamento do POST
+        if ($is_edit && $event_id > 0 && !isset($degustacao)) {
+            error_log("Recarregando degustação após erro no POST...");
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+                $stmt->execute([':id' => $event_id]);
+                $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($degustacao) {
+                    error_log("Degustação recarregada com sucesso após erro");
+                } else {
+                    error_log("Falha ao recarregar degustação após erro");
+                }
+            } catch (Exception $e2) {
+                error_log("Erro ao recarregar degustação: " . $e2->getMessage());
+            }
+        }
     }
 }
 
 // Buscar token público se for edição
 $token_publico = '';
-if ($is_edit && $degustacao) {
+if ($is_edit && isset($degustacao) && $degustacao) {
     $token_publico = $degustacao['token_publico'] ?? '';
 }
 
@@ -624,9 +642,24 @@ ob_start();
             <!-- Header -->
             <div class="page-header">
                 <h1 class="page-title"><?= $is_edit ? '✏️ Editar' : '➕ Nova' ?> Degustação</h1>
+                <?php 
+                // Debug info
+                error_log("=== RENDERIZANDO PÁGINA ===");
+                error_log("is_edit: " . ($is_edit ? 'true' : 'false'));
+                error_log("event_id: " . ($_GET['id'] ?? 'N/A'));
+                error_log("degustacao existe: " . (isset($degustacao) ? 'SIM' : 'NÃO'));
+                if (isset($degustacao)) {
+                    error_log("degustacao['id']: " . ($degustacao['id'] ?? 'N/A'));
+                    error_log("degustacao['nome']: " . ($degustacao['nome'] ?? 'N/A'));
+                }
+                ?>
                 <?php if ($is_edit && isset($degustacao['id'])): ?>
                     <div style="font-size: 0.875rem; color: #6b7280; margin-top: 0.5rem;">
                         ID: <?= (int)$degustacao['id'] ?> | Status: <?= h($degustacao['status'] ?? 'N/A') ?>
+                    </div>
+                <?php elseif ($is_edit): ?>
+                    <div style="font-size: 0.875rem; color: #ef4444; margin-top: 0.5rem;">
+                        ⚠️ AVISO: Modo edição detectado, mas degustação não carregada. ID na URL: <?= htmlspecialchars($_GET['id'] ?? 'N/A') ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -635,6 +668,7 @@ ob_start();
                 <div class="alert alert-error" style="margin-bottom: 20px; padding: 1rem; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b;">
                     ⚠️ Erro: Degustação não encontrada ou não foi possível carregar os dados.
                     <br><small>Verifique se o ID está correto na URL: id=<?= htmlspecialchars($_GET['id'] ?? 'N/A') ?></small>
+                    <br><small>Debug: event_id = <?= $event_id ?>, is_edit = <?= $is_edit ? 'true' : 'false' ?></small>
                 </div>
             <?php endif; ?>
             
@@ -671,33 +705,33 @@ ob_start();
                         <div class="form-group">
                             <label class="form-label">Nome da Degustação *</label>
                             <input type="text" name="nome" class="form-input" required 
-                                   value="<?= $is_edit ? h($degustacao['nome'] ?? $degustacao['titulo'] ?? '') : '' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? h($degustacao['nome'] ?? $degustacao['titulo'] ?? '') : '' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Data *</label>
                             <input type="date" name="data" class="form-input" required 
-                                   value="<?= $is_edit ? $degustacao['data'] : '' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['data'] : '' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Hora Início *</label>
                             <input type="time" name="hora_inicio" class="form-input" required 
-                                   value="<?= $is_edit ? $degustacao['hora_inicio'] : '' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['hora_inicio'] : '' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Hora Fim *</label>
                             <input type="time" name="hora_fim" class="form-input" required 
-                                   value="<?= $is_edit ? $degustacao['hora_fim'] : '' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['hora_fim'] : '' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Local *</label>
                             <select name="local" id="localSelect" class="form-input" required>
                                 <option value="">Selecione um local...</option>
-                                <option value="Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && $degustacao['local'] === 'Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
-                                <option value="Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && $degustacao['local'] === 'Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
+                                <option value="Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && isset($degustacao) && $degustacao['local'] === 'Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Garden: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
+                                <option value="Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690" <?= ($is_edit && isset($degustacao) && $degustacao['local'] === 'Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690') ? 'selected' : '' ?>>Espaço Cristal: R. Padre Eugênio, 511 - Jardim Jacinto, Jacareí - SP, 12322-690</option>
                             </select>
                             <input type="text" name="local_custom" id="localCustom" class="form-input" 
                                    style="margin-top: 10px; display: none;" 
@@ -710,13 +744,13 @@ ob_start();
                         <div class="form-group">
                             <label class="form-label">Capacidade *</label>
                             <input type="number" name="capacidade" class="form-input" required min="1" 
-                                   value="<?= $is_edit ? $degustacao['capacidade'] : '50' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['capacidade'] : '50' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Data Limite de Inscrição *</label>
                             <input type="date" name="data_limite" id="dataLimite" class="form-input" required 
-                                   value="<?= $is_edit ? $degustacao['data_limite'] : '' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['data_limite'] : '' ?>">
                             <small style="color: #6b7280; margin-top: 5px; display: block;">
                                 ⚠️ Após esta data, o link público será bloqueado para novas inscrições, mas a degustação permanecerá ativa
                             </small>
@@ -726,7 +760,7 @@ ob_start();
                             <label class="form-label">Aceitar Lista de Espera</label>
                             <div class="form-checkbox">
                                 <input type="checkbox" name="lista_espera" id="lista_espera" 
-                                       <?= ($is_edit && $degustacao['lista_espera']) || !$is_edit ? 'checked' : '' ?>>
+                                       <?= ($is_edit && isset($degustacao) && $degustacao['lista_espera']) || !$is_edit ? 'checked' : '' ?>>
                                 <label for="lista_espera">Permitir lista de espera quando lotado</label>
                             </div>
                         </div>
@@ -737,31 +771,31 @@ ob_start();
                         <div class="form-group">
                             <label class="form-label">Preço Casamento (R$)</label>
                             <input type="number" name="preco_casamento" class="form-input" step="0.01" min="0" 
-                                   value="<?= $is_edit ? $degustacao['preco_casamento'] : '150.00' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['preco_casamento'] : '150.00' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Pessoas Incluídas (Casamento)</label>
                             <input type="number" name="incluidos_casamento" class="form-input" min="1" 
-                                   value="<?= $is_edit ? $degustacao['incluidos_casamento'] : '2' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['incluidos_casamento'] : '2' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Preço 15 Anos (R$)</label>
                             <input type="number" name="preco_15anos" class="form-input" step="0.01" min="0" 
-                                   value="<?= $is_edit ? $degustacao['preco_15anos'] : '180.00' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['preco_15anos'] : '180.00' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Pessoas Incluídas (15 Anos)</label>
                             <input type="number" name="incluidos_15anos" class="form-input" min="1" 
-                                   value="<?= $is_edit ? $degustacao['incluidos_15anos'] : '3' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['incluidos_15anos'] : '3' ?>">
                         </div>
                         
                         <div class="form-group">
                             <label class="form-label">Preço por Pessoa Extra (R$)</label>
                             <input type="number" name="preco_extra" class="form-input" step="0.01" min="0" 
-                                   value="<?= $is_edit ? $degustacao['preco_extra'] : '50.00' ?>">
+                                   value="<?= ($is_edit && isset($degustacao)) ? $degustacao['preco_extra'] : '50.00' ?>">
                         </div>
                     </div>
                 </div>
@@ -788,17 +822,17 @@ ob_start();
                 <div id="textos" class="tab-content">
                     <div class="form-group full-width">
                         <label class="form-label">Instruções do Dia (HTML)</label>
-                        <textarea name="instrutivo_html" class="form-textarea" placeholder="Instruções que aparecerão no topo da página pública..."><?= $is_edit ? h($degustacao['instrutivo_html']) : '' ?></textarea>
+                        <textarea name="instrutivo_html" class="form-textarea" placeholder="Instruções que aparecerão no topo da página pública..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['instrutivo_html']) : '' ?></textarea>
                     </div>
                     
                     <div class="form-group full-width">
                         <label class="form-label">E-mail de Confirmação (HTML)</label>
-                        <textarea name="email_confirmacao_html" class="form-textarea" placeholder="Conteúdo do e-mail de confirmação..."><?= $is_edit ? h($degustacao['email_confirmacao_html']) : '' ?></textarea>
+                        <textarea name="email_confirmacao_html" class="form-textarea" placeholder="Conteúdo do e-mail de confirmação..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['email_confirmacao_html']) : '' ?></textarea>
                     </div>
                     
                     <div class="form-group full-width">
                         <label class="form-label">Mensagem de Sucesso (HTML)</label>
-                        <textarea name="msg_sucesso_html" class="form-textarea" placeholder="Mensagem exibida após inscrição..."><?= $is_edit ? h($degustacao['msg_sucesso_html']) : '' ?></textarea>
+                        <textarea name="msg_sucesso_html" class="form-textarea" placeholder="Mensagem exibida após inscrição..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['msg_sucesso_html']) : '' ?></textarea>
                     </div>
                 </div>
                 
@@ -1045,7 +1079,7 @@ ob_start();
         let fields = [];
         
         // Carregar campos iniciais se estiver editando
-        <?php if ($is_edit && isset($degustacao['campos_json'])): ?>
+        <?php if ($is_edit && isset($degustacao) && isset($degustacao['campos_json'])): ?>
         try {
             const camposJsonStr = <?= json_encode($degustacao['campos_json']) ?>;
             if (camposJsonStr && camposJsonStr !== '[]' && camposJsonStr !== '' && camposJsonStr !== null) {
@@ -1234,13 +1268,13 @@ ob_start();
                     
                     if (fieldsList) {
                         // Renderizar campos já carregados (carregamento é feito no início do script)
-                        renderFields();
+        renderFields();
                     }
                 });
             }, 200);
             
             // Se local atual não está nas opções, mostrar campo customizado
-            const localAtual = <?= $is_edit ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
+            const localAtual = <?= ($is_edit && isset($degustacao)) ? json_encode($degustacao['local'] ?? '') : 'null' ?>;
             const select = document.getElementById('localSelect');
             const localCustom = document.getElementById('localCustom');
             
