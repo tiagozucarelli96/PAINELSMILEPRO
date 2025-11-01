@@ -727,11 +727,57 @@ if ($_POST && !$inscricoes_encerradas) {
                 </div>
                 
                 <script>
+                // Verificar status do pagamento automaticamente
+                function verificarPagamento() {
+                    fetch('?page=comercial_degust_public&verificar_pagamento=1&inscricao_id=<?= $qr_inscricao_id ?>', {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'pago') {
+                            // Pagamento confirmado - redirecionar ou mostrar mensagem
+                            window.location.href = '?page=comercial_degust_public&pagamento_confirmado=1&inscricao_id=<?= $qr_inscricao_id ?>';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro ao verificar pagamento:', error);
+                    });
+                }
+                
                 // Auto-refresh a cada 10 segundos para verificar pagamento
-                setTimeout(function() {
-                    window.location.reload();
-                }, 10000);
+                setInterval(verificarPagamento, 10000);
+                
+                // Verificar imediatamente também
+                verificarPagamento();
                 </script>
+                
+                <?php
+                // Verificar pagamento via AJAX se solicitado
+                if (isset($_GET['verificar_pagamento']) && isset($_GET['inscricao_id'])) {
+                    header('Content-Type: application/json');
+                    
+                    $check_id = (int)$_GET['inscricao_id'];
+                    $stmt = $pdo->prepare("SELECT pagamento_status FROM comercial_inscricoes WHERE id = :id");
+                    $stmt->execute([':id' => $check_id]);
+                    $status = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    echo json_encode([
+                        'status' => $status['pagamento_status'] ?? 'aguardando',
+                        'inscricao_id' => $check_id
+                    ]);
+                    exit;
+                }
+                
+                // Exibir mensagem de confirmação se pagamento foi confirmado
+                if (isset($_GET['pagamento_confirmado'])): ?>
+                    <div class="alert alert-success" style="margin-top: 20px;">
+                        <h3>✅ Pagamento Confirmado!</h3>
+                        <p>Sua inscrição foi confirmada com sucesso. Você receberá um e-mail de confirmação em breve.</p>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         <?php } ?>
         
