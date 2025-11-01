@@ -35,13 +35,15 @@ if ($agora > $data_limite) {
     $inscricoes_encerradas = false;
 }
 
-// Verificar capacidade
+// Verificar capacidade (IMPORTANTE: contar apenas confirmados, não lista_espera)
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id AND status = 'confirmado'");
 $stmt->execute([':id' => $degustacao['id']]);
 $inscritos_count = $stmt->fetchColumn();
 
+// Degustação está lotada quando confirmados >= capacidade
 $lotado = $inscritos_count >= $degustacao['capacidade'];
-$aceita_lista_espera = $degustacao['lista_espera'] && $lotado;
+// Aceita lista de espera APENAS se degustação aceita E está lotada
+$aceita_lista_espera = ($degustacao['lista_espera'] ?? false) && $lotado;
 
 // Processar inscrição
 $success_message = '';
@@ -158,11 +160,19 @@ if ($_POST && !$inscricoes_encerradas) {
             $valor_total = $preco_base + ($extras * $degustacao['preco_extra']);
         }
         
-        // Determinar status
+        // Determinar status baseado na capacidade (verificar novamente ANTES de inserir para evitar condições de corrida)
+        // IMPORTANTE: Re-verificar capacidade aqui porque pode ter mudado entre a primeira verificação e o INSERT
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = :id AND status = 'confirmado'");
+        $stmt->execute([':id' => $degustacao['id']]);
+        $inscritos_atual = $stmt->fetchColumn();
+        
+        $lotado_atual = $inscritos_atual >= $degustacao['capacidade'];
+        $aceita_lista_espera_atual = ($degustacao['lista_espera'] ?? false) && $lotado_atual;
+        
         $status = 'confirmado';
-        if ($lotado && !$aceita_lista_espera) {
+        if ($lotado_atual && !$aceita_lista_espera_atual) {
             throw new Exception("Degustação lotada e não aceita lista de espera");
-        } elseif ($lotado && $aceita_lista_espera) {
+        } elseif ($lotado_atual && $aceita_lista_espera_atual) {
             $status = 'lista_espera';
         }
         

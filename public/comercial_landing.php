@@ -571,30 +571,30 @@ includeSidebar('Comercial');
         </div>
         
         <!-- Inscrições -->
-        <a href="index.php?page=comercial_degust_inscricoes" class="funcionalidade-card">
+        <div class="funcionalidade-card" style="cursor: default;">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
                 <span class="funcionalidade-card-icon">👥</span>
                 <div class="funcionalidade-card-title">Inscrições</div>
                 <div class="funcionalidade-card-subtitle">Visualizar e gerenciar inscrições</div>
             </div>
             <div class="funcionalidade-card-content">
-                <div class="funcionalidade-card-item">
+                <a href="index.php?page=comercial_inscritos_cadastrados" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📋</span>
+                    <span class="funcionalidade-item-text">Inscritos Cadastrados</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=comercial_degust_inscricoes" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">📝</span>
                     <span class="funcionalidade-item-text">Todas as Inscrições</span>
                     <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">✅</span>
-                    <span class="funcionalidade-item-text">Confirmadas</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
+                </a>
+                <a href="index.php?page=comercial_lista_espera" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">⏳</span>
                     <span class="funcionalidade-item-text">Lista de Espera</span>
                     <span class="funcionalidade-item-arrow">→</span>
-                </div>
+                </a>
             </div>
-        </a>
+        </div>
         
         <!-- Funil de Conversão -->
         <a href="index.php?page=comercial_clientes" class="funcionalidade-card">
