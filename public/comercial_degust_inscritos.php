@@ -961,7 +961,7 @@ ob_start();
                                     <?php endif; ?>
                                     
                                     <button type="button" class="btn-sm btn-danger" 
-                                            onclick="excluirInscrito(event, <?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
+                                            onclick="return excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>');"
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                         🗑️ Excluir
                                     </button>
@@ -1555,25 +1555,22 @@ ob_start();
         });
     }
     
-    // Excluir inscrito
-    function excluirInscrito(event, inscricaoId, nome) {
-        // Prevenir qualquer ação padrão
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
+    // Excluir inscrito - Função completamente recriada para garantir confirmação
+    function excluirInscrito(inscricaoId, nomeInscrito) {
+        // IMPORTANTE: Sempre confirmar ANTES de qualquer ação
+        const mensagem = '⚠️ Tem certeza que deseja excluir o inscrito "' + nomeInscrito + '"?\n\nEsta ação não pode ser desfeita.';
+        const confirmacao = window.confirm(mensagem);
         
-        // Confirmar exclusão
-        const confirmacao = confirm('⚠️ Tem certeza que deseja excluir o inscrito "' + nome + '"?\n\nEsta ação não pode ser desfeita.');
-        
+        // Se não confirmou, não faz nada
         if (!confirmacao) {
-            return false; // Usuário cancelou
+            return false;
         }
         
-        // Criar e submeter formulário apenas após confirmação
+        // Apenas se confirmou, criar e submeter formulário
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = window.location.href;
+        form.style.display = 'none';
         
         const actionInput = document.createElement('input');
         actionInput.type = 'hidden';
@@ -1588,6 +1585,8 @@ ob_start();
         form.appendChild(actionInput);
         form.appendChild(idInput);
         document.body.appendChild(form);
+        
+        // Submeter formulário
         form.submit();
         
         return false;
