@@ -362,10 +362,24 @@ try {
         }
         
         if (!$inscricao) {
-            logWebhook("⚠️ Inscrição não encontrada para payment_id: $payment_id" . ($pix_qr_code_id ? " ou qr_code_id: $pix_qr_code_id" : ""));
-            // Não lançar exceção para não quebrar o webhook - apenas logar
+            logWebhook([
+                'warning' => 'Inscrição não encontrada',
+                'payment_id' => $payment_id,
+                'pix_qr_code_id' => $pix_qr_code_id,
+                'note' => 'Este pagamento pode ter sido feito via QR Code de teste (que não cria inscrição no banco)'
+            ]);
+            
+            // IMPORTANTE: Mesmo sem inscrição, retornar 200 para não pausar fila
+            // O pagamento foi recebido pelo Asaas, apenas não temos inscrição vinculada
             http_response_code(200);
-            echo json_encode(['status' => 'warning', 'message' => "Inscrição não encontrada para payment_id: $payment_id"]);
+            header('Content-Type: application/json', true);
+            echo json_encode([
+                'status' => 'warning', 
+                'message' => "Inscrição não encontrada para payment_id: $payment_id" . ($pix_qr_code_id ? " ou qr_code_id: $pix_qr_code_id" : ""),
+                'note' => 'Payment received but no inscription linked. Use processar_pagamento_manual to link manually if needed.',
+                'payment_id' => $payment_id,
+                'pix_qr_code_id' => $pix_qr_code_id
+            ]);
             exit;
         }
         
