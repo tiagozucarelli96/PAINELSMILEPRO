@@ -124,13 +124,13 @@ class AsaasHelper {
             error_log("AsaasHelper - Removido \$ do início da chave");
         }
         
-        // Asaas API v3 - Formato correto conforme documentação
-        // Opção 1: access_token como header customizado
-        // Opção 2: Authorization Bearer (algumas versões aceitam)
-        // Vamos tentar access_token primeiro (formato oficial)
+        // Asaas API v3 - Formato correto conforme documentação oficial
+        // Documentação: https://docs.asaas.com/docs/autenticacao-1
+        // Formato oficial: header "access_token" (sem espaço antes dos dois pontos)
+        // NOTA: A chave deve incluir o $ se for de produção ($aact_prod_...)
         
         $headers = [
-            'access_token: ' . $api_key_clean,
+            'access_token:' . $api_key_clean,  // SEM espaço após os dois pontos (formato oficial)
             'Content-Type: application/json',
             'Accept: application/json'
         ];
