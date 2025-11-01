@@ -212,7 +212,10 @@ try {
                 exit;
             }
             // Se erro for "tabela não existe" (42P01), tentar criar a tabela automaticamente
-            if ($e->getCode() == 42P01 || strpos($e->getMessage(), 'does not exist') !== false || strpos($e->getMessage(), 'relation') !== false) {
+            // Verificar pelo código SQLSTATE (string) ou pela mensagem de erro
+            $error_code = $e->getCode();
+            $error_msg = $e->getMessage();
+            if ($error_code == '42P01' || $error_code == 42703 || strpos($error_msg, 'does not exist') !== false || strpos($error_msg, 'relation') !== false || strpos($error_msg, 'undefined table') !== false) {
                 try {
                     // Tentar criar a tabela
                     $pdo->exec("
