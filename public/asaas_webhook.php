@@ -164,8 +164,22 @@ try {
                 break;
         }
         
-        // Resposta de sucesso
+        // CRÍTICO: Asaas só aceita HTTP 200 como sucesso
+        // Limpar qualquer output anterior
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Remover TODOS os headers
+        header_remove();
+        
+        // Definir headers corretos
         http_response_code(200);
+        header('Content-Type: application/json', true);
+        header('Cache-Control: no-cache, no-store, must-revalidate', true);
+        
+        logWebhook("✅ Checkout webhook processado com sucesso - Evento: $event");
+        
         echo json_encode(['status' => 'success', 'message' => 'Checkout webhook processed', 'event' => $event]);
         exit;
     }
@@ -276,27 +290,74 @@ try {
                 break;
         }
         
-        // Resposta de sucesso - GARANTIR que não há redirect
-        http_response_code(200);
+        // CRÍTICO: Asaas só aceita HTTP 200 como sucesso
+        // Qualquer outro código (3xx, 4xx, 5xx) pausa a fila após 15 tentativas
+        // GARANTIR que retorna EXATAMENTE 200 com JSON válido
+        
+        // Limpar qualquer output anterior
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Remover TODOS os headers que podem causar redirect ou problema
+        header_remove();
+        
+        // Definir headers corretos
+        http_response_code(200); // CRÍTICO: Deve ser exatamente 200
         header('Content-Type: application/json', true);
-        header_remove('Location');
-        echo json_encode([
+        header('Cache-Control: no-cache, no-store, must-revalidate', true);
+        header('Pragma: no-cache', true);
+        header('Expires: 0', true);
+        
+        // Log de sucesso
+        logWebhook("✅ Webhook processado com sucesso - Evento: $event, Inscrição ID: " . ($inscricao['id'] ?? 'N/A'));
+        
+        // Retornar resposta JSON válida
+        $response = [
             'status' => 'success', 
             'message' => 'Payment webhook processed', 
             'event' => $event,
             'inscricao_id' => $inscricao['id'] ?? null,
             'pix_qr_code_id' => $pix_qr_code_id ?? null
-        ]);
+        ];
+        
+        echo json_encode($response);
         exit;
     }
     
-    // Evento não reconhecido
-    logWebhook("Evento não reconhecido: $event");
-    http_response_code(200);
+    // Evento não reconhecido - MAS RETORNAR 200 para não pausar fila
+    // Asaas só aceita 200 como sucesso, qualquer outro código pausa a fila
+    logWebhook("⚠️ Evento não reconhecido mas retornando 200: $event");
+    
+    // Limpar output
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header_remove();
+    http_response_code(200); // SEMPRE 200, mesmo para eventos não reconhecidos
+    header('Content-Type: application/json', true);
+    
     echo json_encode(['status' => 'success', 'message' => 'Event received but not processed', 'event' => $event]);
     
 } catch (Exception $e) {
-    logWebhook("Erro no webhook: " . $e->getMessage() . " | Stack: " . $e->getTraceAsString());
-    http_response_code(500);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    // IMPORTANTE: Mesmo em caso de erro, retornar 200 para não pausar a fila
+    // O erro será logado, mas não deve quebrar o webhook
+    logWebhook("❌ Erro no webhook: " . $e->getMessage() . " | Stack: " . $e->getTraceAsString());
+    
+    // Limpar output
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header_remove();
+    http_response_code(200); // Retornar 200 mesmo com erro para não pausar fila
+    header('Content-Type: application/json', true);
+    
+    // Logar erro mas retornar sucesso
+    echo json_encode([
+        'status' => 'success', 
+        'message' => 'Webhook received (error logged)', 
+        'event' => $webhook_data['event'] ?? 'UNKNOWN'
+    ]);
 }
