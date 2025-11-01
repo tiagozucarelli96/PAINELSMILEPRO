@@ -10,6 +10,14 @@ require_once __DIR__ . '/lc_permissions_enhanced.php';
 if (!isset($pdo)) {
     global $pdo;
 }
+// Garantir acesso ao $pdo global se necessário
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof PDO) {
+        $pdo = $GLOBALS['pdo'];
+    } else {
+        require_once __DIR__ . '/conexao.php';
+    }
+}
 
 // Verificar permissões
 if (!lc_can_edit_degustacoes()) {
@@ -20,17 +28,35 @@ if (!lc_can_edit_degustacoes()) {
 $event_id = (int)($_GET['id'] ?? 0);
 $is_edit = $event_id > 0;
 
+error_log("=== EDITAR DEGUSTAÇÃO ===");
+error_log("event_id: $event_id, is_edit: " . ($is_edit ? 'true' : 'false'));
+
 // Buscar degustação para edição
 $degustacao = null;
-if ($is_edit) {
-    $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
-    $stmt->execute([':id' => $event_id]);
-    $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$degustacao) {
-        header('Location: index.php?page=comercial_degustacoes&error=not_found');
+if ($is_edit && $event_id > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+        $stmt->execute([':id' => $event_id]);
+        $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        error_log("Degustação encontrada: " . ($degustacao ? 'SIM' : 'NÃO'));
+        if ($degustacao) {
+            error_log("Nome: " . ($degustacao['nome'] ?? 'N/A'));
+            error_log("Token público: " . (isset($degustacao['token_publico']) ? 'SIM' : 'NÃO'));
+        }
+        
+        if (!$degustacao) {
+            error_log("Degustação não encontrada no banco com ID: $event_id");
+            header('Location: index.php?page=comercial_degustacoes&error=not_found');
+            exit;
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar degustação: " . $e->getMessage());
+        header('Location: index.php?page=comercial_degustacoes&error=' . urlencode('Erro ao buscar degustação: ' . $e->getMessage()));
         exit;
     }
+} else {
+    error_log("Modo de criação - não é edição");
 }
 
 // Buscar campos padrão
@@ -112,7 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
             $data_evento = $data ? $data . ' 00:00:00' : date('Y-m-d H:i:s');
         }
         
-        if ($is_edit) {
+        // Verificar se é edição e obter o ID
+        $is_edit_mode = isset($_POST['event_id']) && (int)$_POST['event_id'] > 0;
+        $edit_id = $is_edit_mode ? (int)$_POST['event_id'] : (isset($_GET['id']) ? (int)$_GET['id'] : 0);
+        
+        error_log("Modo edição detectado: " . ($is_edit_mode ? 'SIM' : 'NÃO') . ", ID: $edit_id");
+        
+        if ($is_edit_mode && $edit_id > 0) {
             // Atualizar degustação existente
             // IMPORTANTE: A tabela usa 'titulo', 'nome' e 'data_evento', vamos atualizar todos
             $sql = "UPDATE comercial_degustacoes SET 
@@ -133,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
                 ':preco_casamento' => $preco_casamento, ':incluidos_casamento' => $incluidos_casamento,
                 ':preco_15anos' => $preco_15anos, ':incluidos_15anos' => $incluidos_15anos, ':preco_extra' => $preco_extra,
                 ':instrutivo_html' => $instrutivo_html, ':email_confirmacao_html' => $email_confirmacao_html,
-                ':msg_sucesso_html' => $msg_sucesso_html, ':campos_json' => $campos_json, ':id' => $event_id
+                ':msg_sucesso_html' => $msg_sucesso_html, ':campos_json' => $campos_json, ':id' => $edit_id
             ];
         } else {
             // Criar nova degustação
@@ -173,9 +205,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         
         error_log("Salvamento bem-sucedido!");
         
-        if (!$is_edit) {
+        if (!$is_edit_mode) {
             $event_id = (int)$pdo->lastInsertId();
             error_log("Nova degustação criada com ID: $event_id");
+        } else {
+            error_log("Degustação atualizada com ID: $edit_id");
         }
         
         // Salvar como padrão se solicitado
@@ -188,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST)) {
         }
         
         // Redirecionar após sucesso - IMPORTANTE: limpar output antes
-        $success_msg = $is_edit ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
+        $success_msg = $is_edit_mode ? "Degustação atualizada com sucesso!" : "Degustação criada com sucesso!";
         $redirect_url = 'index.php?page=comercial_degustacoes&success=' . urlencode($success_msg);
         
         error_log("Redirecionando para: $redirect_url");
@@ -590,7 +624,19 @@ ob_start();
             <!-- Header -->
             <div class="page-header">
                 <h1 class="page-title"><?= $is_edit ? '✏️ Editar' : '➕ Nova' ?> Degustação</h1>
+                <?php if ($is_edit && isset($degustacao['id'])): ?>
+                    <div style="font-size: 0.875rem; color: #6b7280; margin-top: 0.5rem;">
+                        ID: <?= (int)$degustacao['id'] ?> | Status: <?= h($degustacao['status'] ?? 'N/A') ?>
+                    </div>
+                <?php endif; ?>
             </div>
+            
+            <?php if ($is_edit && !isset($degustacao)): ?>
+                <div class="alert alert-error" style="margin-bottom: 20px; padding: 1rem; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; color: #991b1b;">
+                    ⚠️ Erro: Degustação não encontrada ou não foi possível carregar os dados.
+                    <br><small>Verifique se o ID está correto na URL: id=<?= htmlspecialchars($_GET['id'] ?? 'N/A') ?></small>
+                </div>
+            <?php endif; ?>
             
             <!-- Mensagens -->
             <?php if (isset($_GET['success'])): ?>
@@ -757,7 +803,10 @@ ob_start();
                 </div>
                 
                 <!-- Campos ocultos -->
-                <input type="hidden" name="campos_json" id="camposJson" value="<?= $is_edit ? h($degustacao['campos_json']) : '[]' ?>">
+                <?php if ($is_edit && isset($degustacao['id'])): ?>
+                <input type="hidden" name="event_id" id="event_id" value="<?= (int)$degustacao['id'] ?>">
+                <?php endif; ?>
+                <input type="hidden" name="campos_json" id="camposJson" value="<?= $is_edit && isset($degustacao['campos_json']) ? h($degustacao['campos_json']) : '[]' ?>">
                 
                 <!-- Ações -->
                 <div class="form-actions">
