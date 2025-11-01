@@ -930,11 +930,11 @@ ob_start();
                             <td class="table-cell" style="text-align: center;">
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;">
                                     <?php if ($inscricao['pagamento_status'] !== 'pago'): ?>
-                                        <button class="btn-sm" 
+                                        <button type="button" class="btn-sm" 
                                                 style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                                                onclick="copiarPix(<?= $inscricao['id'] ?>)"
-                                                id="btnCopiar_<?= $inscricao['id'] ?>">
-                                            📋 Copiar PIX
+                                                onclick="gerarCobranca(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
+                                                id="btnGerarCobranca_<?= $inscricao['id'] ?>">
+                                            💳 Gerar Cobrança
                                         </button>
                                     <?php endif; ?>
                                     
@@ -983,6 +983,75 @@ ob_start();
         </form>
     </div>
 </div>
+
+<!-- Modal de Cobrança PIX -->
+<div class="modal" id="cobrancaModal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title">💳 Cobrança PIX</h3>
+            <button class="close-btn" onclick="closeCobrancaModal()">&times;</button>
+        </div>
+        
+        <div class="modal-body" id="cobrancaModalBody">
+            <div style="text-align: center; padding: 2rem;">
+                <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                <p style="margin-top: 1rem; color: #64748b;">Gerando cobrança...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.pix-code-container {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875rem;
+    color: #1e293b;
+}
+
+.pix-code-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.detail-item {
+    padding: 0.75rem;
+    background: #f8fafc;
+    border-radius: 6px;
+}
+
+.detail-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 0.25rem;
+}
+
+.detail-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+</style>
 
 <!-- Modal de Contrato -->
 <div class="modal" id="contratoModal" style="display: none;">
@@ -1180,13 +1249,25 @@ ob_start();
         }
     }
     
-    // Gerar novo QR Code PIX (payload) para degustações não pagas e copiar
-    async function copiarPix(inscricaoId) {
-        const btnCopiar = document.getElementById('btnCopiar_' + inscricaoId);
+    // Gerar cobrança PIX e mostrar modal com detalhes
+    async function gerarCobranca(inscricaoId, nomeInscrito) {
+        const btnGerar = document.getElementById('btnGerarCobranca_' + inscricaoId);
+        const modal = document.getElementById('cobrancaModal');
+        const modalBody = document.getElementById('cobrancaModalBody');
         
-        if (btnCopiar) {
-            btnCopiar.disabled = true;
-            btnCopiar.textContent = '⏳ Gerando...';
+        // Abrir modal com loading
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+        modalBody.innerHTML = `
+            <div style="text-align: center; padding: 2rem;">
+                <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                <p style="margin-top: 1rem; color: #64748b;">Gerando cobrança...</p>
+            </div>
+        `;
+        
+        if (btnGerar) {
+            btnGerar.disabled = true;
+            btnGerar.textContent = '⏳ Gerando...';
         }
         
         try {
@@ -1203,67 +1284,189 @@ ob_start();
             const data = await response.json();
             
             if (data.success && data.payload) {
-                // Copiar payload para área de transferência
-                const pixCode = data.payload;
+                // Buscar dados completos da inscrição para mostrar no modal
+                const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
+                const data2 = await response2.json();
                 
-                navigator.clipboard.writeText(pixCode).then(() => {
-                    alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
-                    if (btnCopiar) {
-                        btnCopiar.disabled = false;
-                        btnCopiar.textContent = '📋 Copiar PIX';
-                    }
-                    // Recarregar para atualizar status
-                    window.location.reload();
-                }).catch(() => {
-                    // Fallback para navegadores antigos
-                    const textArea = document.createElement('textarea');
-                    textArea.value = pixCode;
-                    textArea.style.position = 'fixed';
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
-                    if (btnCopiar) {
-                        btnCopiar.disabled = false;
-                        btnCopiar.textContent = '📋 Copiar PIX';
-                    }
-                    window.location.reload();
-                });
+                const valorFormatado = new Intl.NumberFormat('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                }).format(data.valor || data2.valor || 0);
+                
+                // Mostrar modal com detalhes
+                modalBody.innerHTML = `
+                    <div style="padding: 1rem;">
+                        <div class="details-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Participante</div>
+                                <div class="detail-value">${nomeInscrito}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Valor</div>
+                                <div class="detail-value">${valorFormatado}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin: 1rem 0;">
+                            <div class="detail-label">Código PIX (Copia e Cola)</div>
+                            <div class="pix-code-container">
+                                <div id="pixCodeText">${data.payload}</div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                            <button type="button" 
+                                    onclick="copiarCodigoPix('${data.payload.replace(/'/g, "\\'")}')" 
+                                    style="flex: 1; padding: 0.75rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                📋 Copiar Código PIX
+                            </button>
+                            <button type="button" 
+                                    onclick="closeCobrancaModal(); window.location.reload();" 
+                                    style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                ✅ Concluído
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                if (btnGerar) {
+                    btnGerar.disabled = false;
+                    btnGerar.textContent = '💳 Gerar Cobrança';
+                }
             } else {
-                // Se já existe, tentar buscar
+                // Se já existe, buscar dados existentes
                 try {
                     const response2 = await fetch('?event_id=<?= $event_id ?>&get_pix_payload=' + inscricaoId);
                     const data2 = await response2.json();
+                    
                     if (data2.payload) {
-                        navigator.clipboard.writeText(data2.payload).then(() => {
-                            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
-                            if (btnCopiar) {
-                                btnCopiar.disabled = false;
-                                btnCopiar.textContent = '📋 Copiar PIX';
-                            }
-                        });
+                        const valorFormatado = new Intl.NumberFormat('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL'
+                        }).format(data2.valor || 0);
+                        
+                        modalBody.innerHTML = `
+                            <div style="padding: 1rem;">
+                                <div class="details-grid">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Participante</div>
+                                        <div class="detail-value">${nomeInscrito}</div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <div class="detail-label">Valor</div>
+                                        <div class="detail-value">${valorFormatado}</div>
+                                    </div>
+                                </div>
+                                
+                                <div style="margin: 1rem 0;">
+                                    <div class="detail-label">Código PIX (Copia e Cola)</div>
+                                    <div class="pix-code-container">
+                                        <div id="pixCodeText">${data2.payload}</div>
+                                    </div>
+                                </div>
+                                
+                                <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+                                    <button type="button" 
+                                            onclick="copiarCodigoPix('${data2.payload.replace(/'/g, "\\'")}')" 
+                                            style="flex: 1; padding: 0.75rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                        📋 Copiar Código PIX
+                                    </button>
+                                    <button type="button" 
+                                            onclick="closeCobrancaModal()" 
+                                            style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                        Fechar
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        
+                        if (btnGerar) {
+                            btnGerar.disabled = false;
+                            btnGerar.textContent = '💳 Gerar Cobrança';
+                        }
                         return;
                     }
                 } catch (e) {
-                    // Ignorar erro
+                    console.error('Erro ao buscar payload:', e);
                 }
                 
-                alert('❌ Erro: ' + (data.message || 'Não foi possível gerar o código PIX'));
-                if (btnCopiar) {
-                    btnCopiar.disabled = false;
-                    btnCopiar.textContent = '📋 Copiar PIX';
+                modalBody.innerHTML = `
+                    <div style="padding: 2rem; text-align: center;">
+                        <div style="color: #ef4444; font-size: 3rem; margin-bottom: 1rem;">❌</div>
+                        <p style="color: #1e293b; font-weight: 600; margin-bottom: 0.5rem;">Erro ao gerar cobrança</p>
+                        <p style="color: #64748b; font-size: 0.875rem;">${data.message || 'Não foi possível gerar o código PIX'}</p>
+                        <button type="button" 
+                                onclick="closeCobrancaModal()" 
+                                style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                            Fechar
+                        </button>
+                    </div>
+                `;
+                
+                if (btnGerar) {
+                    btnGerar.disabled = false;
+                    btnGerar.textContent = '💳 Gerar Cobrança';
                 }
             }
         } catch (error) {
-            console.error('Erro ao gerar/copiar PIX:', error);
-            alert('❌ Erro ao gerar PIX. Tente novamente.');
-            if (btnCopiar) {
-                btnCopiar.disabled = false;
-                btnCopiar.textContent = '📋 Copiar PIX';
+            console.error('Erro ao gerar cobrança:', error);
+            modalBody.innerHTML = `
+                <div style="padding: 2rem; text-align: center;">
+                    <div style="color: #ef4444; font-size: 3rem; margin-bottom: 1rem;">❌</div>
+                    <p style="color: #1e293b; font-weight: 600; margin-bottom: 0.5rem;">Erro ao gerar cobrança</p>
+                    <p style="color: #64748b; font-size: 0.875rem;">Ocorreu um erro inesperado. Tente novamente.</p>
+                    <button type="button" 
+                            onclick="closeCobrancaModal()" 
+                            style="margin-top: 1.5rem; padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                        Fechar
+                    </button>
+                </div>
+            `;
+            
+            if (btnGerar) {
+                btnGerar.disabled = false;
+                btnGerar.textContent = '💳 Gerar Cobrança';
             }
         }
     }
+    
+    // Copiar código PIX para área de transferência
+    async function copiarCodigoPix(pixCode) {
+        try {
+            await navigator.clipboard.writeText(pixCode);
+            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+        } catch (e) {
+            // Fallback para navegadores antigos
+            const textArea = document.createElement('textarea');
+            textArea.value = pixCode;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            alert('✅ Código PIX copiado! Cole no aplicativo do banco do cliente.');
+        }
+    }
+    
+    // Fechar modal de cobrança
+    function closeCobrancaModal() {
+        const modal = document.getElementById('cobrancaModal');
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+    }
+    
+    // Fechar modal ao clicar fora
+    document.addEventListener('DOMContentLoaded', function() {
+        const cobrancaModal = document.getElementById('cobrancaModal');
+        if (cobrancaModal) {
+            cobrancaModal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeCobrancaModal();
+                }
+            });
+        }
+    });
     
     // Marcar contrato
     function marcarContrato(inscricaoId, checked, nomeTitularAtual) {
