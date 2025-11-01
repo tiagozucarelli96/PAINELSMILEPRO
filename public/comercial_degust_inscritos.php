@@ -734,7 +734,7 @@ ob_start();
     </div>
     
     <!-- Modal de Comparecimento -->
-    <div class="modal" id="comparecimentoModal">
+    <div class="modal" id="comparecimentoModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">Marcar Comparecimento</h3>
@@ -844,13 +844,17 @@ ob_start();
         }
         
         function closeComparecimentoModal() {
-            document.getElementById('comparecimentoModal').classList.remove('active');
+            const modal = document.getElementById('comparecimentoModal');
+            modal.classList.remove('active');
+            modal.style.display = 'none';
         }
         
         function openContratoModal(inscricaoId, fechouContrato, nomeTitular) {
+            const modal = document.getElementById('contratoModal');
             document.getElementById('contratoInscricaoId').value = inscricaoId;
-            document.getElementById('nomeTitular').value = nomeTitular;
-            document.getElementById('contratoModal').classList.add('active');
+            document.getElementById('nomeTitular').value = nomeTitular || '';
+            modal.style.display = 'flex';
+            modal.classList.add('active');
             
             if (fechouContrato === 'sim') {
                 document.getElementById('fechou_sim').checked = true;
@@ -860,7 +864,9 @@ ob_start();
         }
         
         function closeContratoModal() {
-            document.getElementById('contratoModal').classList.remove('active');
+            const modal = document.getElementById('contratoModal');
+            modal.classList.remove('active');
+            modal.style.display = 'none';
         }
         
         function exportCSV() {
