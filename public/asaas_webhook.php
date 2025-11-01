@@ -36,13 +36,21 @@ header('X-Content-Type-Options: nosniff', true);
 header('Access-Control-Allow-Origin: *', true);
 header('Access-Control-Allow-Methods: POST', true);
 
-// 7. Verificar método HTTP ANTES de incluir arquivos
+// 7. Verificar se está sendo acessado via router (NÃO PERMITIR)
+// Se houver parâmetro 'page' ou estiver via index.php, recusar
+if (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Webhook must be accessed directly, not via router']);
+    exit;
+}
+
+// 8. Verificar método HTTP ANTES de incluir arquivos
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['status' => 'error', 'message' => 'Method not allowed. Use POST.']);
     exit;
 }
 
-// 8. Incluir arquivos necessários (mas NUNCA incluir index.php ou router)
+// 9. Incluir arquivos necessários (mas NUNCA incluir index.php ou router)
 // NUNCA incluir arquivos que façam verificação de autenticação
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
