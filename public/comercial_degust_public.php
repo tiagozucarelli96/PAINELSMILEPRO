@@ -1079,11 +1079,6 @@ if ($_POST && !$inscricoes_encerradas) {
                 validarCPFME();
             }
         });
-                document.getElementById('meEventDetails').innerHTML = `
-                    <p><strong>Nome:</strong> ${nome}</p>
-                    <p><strong>CPF:</strong> ${cpf3}***.***.***-**</p>
-                    <p><strong>Evento:</strong> Casamento - 15/06/2024</p>
-                    <p><strong>Local:</strong> Espaço Eventos</p>
                 `;
             }
         });
