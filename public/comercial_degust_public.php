@@ -283,6 +283,7 @@ if ($_POST && !$inscricoes_encerradas) {
                     'description' => $descricao_item,
                     'value' => (float)$valor_total, // Valor total: base + adicional
                     'expirationDate' => $expiration_date, // Data/hora de expiração (1 hora a partir de agora)
+                    'format' => 'IMAGE', // Solicitar formato de imagem (Base64)
                     'allowsMultiplePayments' => true // Permite múltiplos pagamentos (conforme modelo)
                     // NÃO enviar expirationSeconds quando usar expirationDate (API aceita apenas um)
                 ];
@@ -682,9 +683,29 @@ if ($_POST && !$inscricoes_encerradas) {
                     </p>
                     
                     <div style="background: white; padding: 20px; border-radius: 8px; display: inline-block; margin: 20px 0;">
-                        <img src="data:image/png;base64,<?= $qr_code_image ?>" 
-                             alt="QR Code PIX" 
-                             style="max-width: 300px; width: 100%; height: auto;">
+                        <?php 
+                        // Garantir que o Base64 está no formato correto
+                        // Se já tem o prefixo data:image, usar direto, senão adicionar
+                        if (strpos($qr_code_image, 'data:image') === 0) {
+                            $img_src = $qr_code_image;
+                        } elseif (!empty($qr_code_image)) {
+                            // Adicionar prefixo se não tiver
+                            $img_src = 'data:image/png;base64,' . $qr_code_image;
+                        } else {
+                            $img_src = '';
+                        }
+                        ?>
+                        <?php if (!empty($img_src)): ?>
+                            <img src="<?= h($img_src) ?>" 
+                                 alt="QR Code PIX" 
+                                 style="max-width: 300px; width: 100%; height: auto;">
+                        <?php else: ?>
+                            <div style="padding: 40px; text-align: center; color: #6b7280;">
+                                <p>⚠️ QR Code não encontrado</p>
+                                <p style="font-size: 12px; margin-top: 10px;">ID: <?= h($qr_code_id ?? 'N/A') ?></p>
+                                <p style="font-size: 12px;">Verifique os logs do servidor para mais detalhes.</p>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     
                     <div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-radius: 8px;">
