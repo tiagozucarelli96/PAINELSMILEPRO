@@ -727,12 +727,12 @@ if ($_POST && !$inscricoes_encerradas) {
         <?php endif; ?>
     </div>
     
-    <!-- Modal de Busca ME Eventos -->
-    <div id="modalBuscaME" class="modal" style="display: none;" onclick="if(event.target === this) fecharModalBuscaME()">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
-            <div class="modal-header">
-                <h3 class="modal-title">🔍 Buscar Evento</h3>
-                <button class="close-btn" onclick="fecharModalBuscaME()">&times;</button>
+    <!-- Modal de Busca ME Eventos - RECRIADO PARA CENTRALIZAÇÃO -->
+    <div id="modalBuscaME" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 99999; margin: 0; padding: 0; overflow: hidden;" onclick="if(event.target === this) fecharModalBuscaME()">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-width: 600px; width: calc(100% - 40px); max-width: calc(100vw - 40px); max-height: 90vh; overflow-y: auto; margin: 0; padding: 0;" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 24px; border-bottom: 1px solid #e5e7eb; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 16px 16px 0 0;">
+                <h3 style="font-size: 20px; font-weight: 700; color: white; margin: 0; display: flex; align-items: center; gap: 8px;">🔍 Buscar Evento</h3>
+                <button onclick="fecharModalBuscaME()" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; font-size: 28px; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; line-height: 1;">&times;</button>
             </div>
             
             <div style="padding: 24px; background: #f9fafb;">
@@ -794,98 +794,13 @@ if ($_POST && !$inscricoes_encerradas) {
     </div>
     
     <style>
-        .modal {
-            display: none !important;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(4px);
-            z-index: 10000;
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        .modal[style*="flex"],
-        .modal[style*="block"],
-        .modal[style*="display: flex"] {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            max-width: 600px;
-            width: 90%;
-            max-width: calc(100vw - 40px);
-            max-height: 90vh;
-            overflow-y: auto;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            margin: 0;
-            animation: modalFadeIn 0.3s ease-out;
-        }
-        
-        @keyframes modalFadeIn {
-            from {
-                opacity: 0;
-                transform: scale(0.95) translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1) translateY(0);
-            }
-        }
-        
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 24px;
-            border-bottom: 1px solid #e5e7eb;
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            border-radius: 16px 16px 0 0;
-        }
-        
-        .modal-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: white;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .close-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            color: white;
-            font-size: 28px;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+        .cliente-item-me {
+            padding: 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            line-height: 1;
-        }
-        
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.1);
+            transition: all 0.2s;
+            background: #f8fafc;
         }
         
         .cliente-item-me:hover {
@@ -1015,17 +930,19 @@ if ($_POST && !$inscricoes_encerradas) {
         // Variáveis globais para busca ME
         let clienteSelecionadoME = null;
         
-        // Função para abrir modal de busca ME
+        // Função para abrir modal de busca ME - SIMPLIFICADA
         function abrirModalBuscaME() {
             const modal = document.getElementById('modalBuscaME');
-            modal.style.display = 'flex';
-            modal.style.alignItems = 'center';
-            modal.style.justifyContent = 'center';
+            modal.style.display = 'block';
             document.getElementById('buscaMENome').value = '';
             document.getElementById('buscaMEResultados').innerHTML = '';
             document.getElementById('buscaMELoading').style.display = 'none';
             document.getElementById('buscaMEValidarCPF').style.display = 'none';
             clienteSelecionadoME = null;
+            // Focar no campo de busca
+            setTimeout(() => {
+                document.getElementById('buscaMENome')?.focus();
+            }, 100);
         }
         
         function toggleContratoInfo() {
@@ -1060,7 +977,10 @@ if ($_POST && !$inscricoes_encerradas) {
         }
         
         function fecharModalBuscaME() {
-            document.getElementById('modalBuscaME').style.display = 'none';
+            const modal = document.getElementById('modalBuscaME');
+            if (modal) {
+                modal.style.display = 'none';
+            }
         }
         
         // Buscar cliente na ME Eventos
