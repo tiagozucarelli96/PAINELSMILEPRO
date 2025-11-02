@@ -495,6 +495,30 @@ if ($user_id > 0) {
         }
     </style>
 
+<style>
+        /* Prevenir flash de conteúdo não posicionado */
+        body:not(.sidebar-ready) .users-container {
+            visibility: hidden;
+            opacity: 0;
+        }
+        
+        body.sidebar-ready .users-container {
+            visibility: visible;
+            opacity: 1;
+            transition: opacity 0.2s ease-in;
+        }
+    </style>
+
+<script>
+        // Marcar body como pronto quando a sidebar estiver carregada
+        document.addEventListener('DOMContentLoaded', function() {
+            // Pequeno delay para garantir que o CSS da sidebar foi aplicado
+            setTimeout(function() {
+                document.body.classList.add('sidebar-ready');
+            }, 50);
+        });
+    </script>
+
 <div class="users-container">
             <!-- Header -->
             <div class="page-header">
