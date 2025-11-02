@@ -254,12 +254,19 @@ if ($user_id > 0) {
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
+            z-index: 1 !important;
         }
         
-        /* Garantir que main-content está correto */
+        /* Garantir que main-content está correto e acima da sidebar */
         .main-content {
             position: relative !important;
             left: auto !important;
+            z-index: 1 !important;
+        }
+        
+        /* Sidebar deve ter z-index maior para ficar acima */
+        .sidebar {
+            z-index: 1000 !important;
         }
         
         .users-container {
@@ -272,6 +279,7 @@ if ($user_id > 0) {
             position: relative !important;
             left: 0 !important;
             margin-left: 0 !important;
+            z-index: 1 !important;
         }
         
         @media (max-width: 1400px) {
@@ -916,20 +924,40 @@ if ($user_id > 0) {
                         usersContainer.style.setProperty('left', 'auto', 'important');
                         usersContainer.style.setProperty('margin-left', 'auto', 'important');
                         
-                        // Verificar o elemento pai
-                        const parent = usersContainer.parentElement;
-                        if (parent) {
+                        // Verificar o elemento pai e TODOS os ancestrais
+                        let parent = usersContainer.parentElement;
+                        let level = 0;
+                        while (parent && level < 5) {
                             const parentRect = parent.getBoundingClientRect();
                             const parentStyle = window.getComputedStyle(parent);
-                            console.log('Parent:', parent.className || parent.id);
-                            console.log('Parent left:', parentRect.left);
-                            console.log('Parent position:', parentStyle.position);
+                            console.log(`Parent level ${level}:`, parent.className || parent.id || parent.tagName);
+                            console.log(`Parent ${level} left:`, parentRect.left);
+                            console.log(`Parent ${level} position:`, parentStyle.position);
+                            console.log(`Parent ${level} margin-left:`, parentStyle.marginLeft);
                             
-                            if (parentRect.left < sidebarRect.right) {
-                                console.error('❌ Parent também está por baixo da sidebar!');
+                            if (sidebarRect && parentRect.left < sidebarRect.right) {
+                                console.error(`❌ Parent level ${level} está por baixo da sidebar!`);
                                 parent.style.setProperty('position', 'relative', 'important');
                                 parent.style.setProperty('left', 'auto', 'important');
+                                parent.style.setProperty('margin-left', '0', 'important');
+                                parent.style.setProperty('padding-left', '0', 'important');
+                                
+                                // Se for pageContent, garantir que está dentro do main-content
+                                if (parent.id === 'pageContent') {
+                                    const mainContent = parent.parentElement;
+                                    if (mainContent && mainContent.classList.contains('main-content')) {
+                                        const mainRect = mainContent.getBoundingClientRect();
+                                        console.log('Main-content rect:', mainRect);
+                                        if (mainRect.left >= 280) {
+                                            // Main-content está correto, pageContent deve herdar
+                                            console.log('Main-content está correto, pageContent deve seguir');
+                                        }
+                                    }
+                                }
                             }
+                            
+                            parent = parent.parentElement;
+                            level++;
                         }
                     }
                 }
