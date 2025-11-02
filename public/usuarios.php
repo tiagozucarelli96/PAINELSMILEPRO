@@ -1181,7 +1181,7 @@ ob_start();
                                 <span>✏️</span>
                                 <span>Editar</span>
                             </button>
-                            <button class="btn-delete" type="button" onclick="event.preventDefault(); event.stopPropagation(); deleteUser(<?= $user['id'] ?>);">
+                            <button class="btn-delete" type="button" onclick="event.preventDefault(); event.stopPropagation(); deleteUser(<?= $user['id'] ?>, event);">
                                 <span>🗑️</span>
                                 <span>Excluir</span>
                             </button>
@@ -1334,15 +1334,21 @@ ob_start();
     <script>
         // Abrir modal
         function openModal(userId = 0, evt = null) {
-            console.log('openModal chamado com userId:', userId);
+            // Garantir que userId é um número
+            userId = parseInt(userId) || 0;
+            console.log('openModal chamado com userId:', userId, 'evt:', evt);
             
             // Prevenir navegação padrão se vier de um link ou botão
-            if (evt) {
-                evt.preventDefault();
-                evt.stopPropagation();
-            } else if (typeof event !== 'undefined' && event) {
-                event.preventDefault();
-                event.stopPropagation();
+            try {
+                if (evt && evt.preventDefault) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                } else if (typeof event !== 'undefined' && event && event.preventDefault) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            } catch (e) {
+                console.warn('Erro ao prevenir default:', e);
             }
             
             const modal = document.getElementById('userModal');
@@ -1557,8 +1563,23 @@ ob_start();
         }
         
         // Excluir usuário
-        function deleteUser(userId) {
-            console.log('deleteUser chamado com userId:', userId);
+        function deleteUser(userId, evt = null) {
+            // Garantir que userId é um número
+            userId = parseInt(userId) || 0;
+            console.log('deleteUser chamado com userId:', userId, 'evt:', evt);
+            
+            // Prevenir navegação padrão se houver evento
+            try {
+                if (evt && evt.preventDefault) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                } else if (typeof event !== 'undefined' && event && event.preventDefault) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            } catch (e) {
+                console.warn('Erro ao prevenir default:', e);
+            }
             
             if (!userId || userId <= 0) {
                 console.error('ID de usuário inválido:', userId);
