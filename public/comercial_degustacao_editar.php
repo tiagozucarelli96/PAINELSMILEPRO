@@ -23,7 +23,7 @@ if (!isset($pdo) || !($pdo instanceof PDO)) {
 if (!lc_can_edit_degustacoes()) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         header('Location: index.php?page=dashboard&error=permission_denied');
-        exit;
+    exit;
     }
     // Se for POST, deixar o erro ser capturado no try/catch abaixo
 }
@@ -869,18 +869,27 @@ ob_start();
                 <!-- Tab Textos -->
                 <div id="textos" class="tab-content">
                     <div class="form-group full-width">
-                        <label class="form-label">Instruções do Dia (HTML)</label>
-                        <textarea name="instrutivo_html" class="form-textarea" placeholder="Instruções que aparecerão no topo da página pública..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['instrutivo_html']) : '' ?></textarea>
+                        <label class="form-label">Instruções do Dia</label>
+                        <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                            Use o editor abaixo para formatar o texto que aparecerá no topo da página pública de inscrição.
+                        </small>
+                        <textarea id="instrutivo_html" name="instrutivo_html" style="min-height: 400px;"><?= ($is_edit && isset($degustacao)) ? h($degustacao['instrutivo_html']) : '' ?></textarea>
                     </div>
                     
                     <div class="form-group full-width">
-                        <label class="form-label">E-mail de Confirmação (HTML)</label>
-                        <textarea name="email_confirmacao_html" class="form-textarea" placeholder="Conteúdo do e-mail de confirmação..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['email_confirmacao_html']) : '' ?></textarea>
+                        <label class="form-label">E-mail de Confirmação</label>
+                        <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                            Conteúdo do e-mail de confirmação enviado após a inscrição.
+                        </small>
+                        <textarea id="email_confirmacao_html" name="email_confirmacao_html" style="min-height: 300px;"><?= ($is_edit && isset($degustacao)) ? h($degustacao['email_confirmacao_html']) : '' ?></textarea>
                     </div>
                     
                     <div class="form-group full-width">
-                        <label class="form-label">Mensagem de Sucesso (HTML)</label>
-                        <textarea name="msg_sucesso_html" class="form-textarea" placeholder="Mensagem exibida após inscrição..."><?= ($is_edit && isset($degustacao)) ? h($degustacao['msg_sucesso_html']) : '' ?></textarea>
+                        <label class="form-label">Mensagem de Sucesso</label>
+                        <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                            Mensagem exibida após inscrição bem-sucedida.
+                        </small>
+                        <textarea id="msg_sucesso_html" name="msg_sucesso_html" style="min-height: 200px;"><?= ($is_edit && isset($degustacao)) ? h($degustacao['msg_sucesso_html']) : '' ?></textarea>
                     </div>
                 </div>
                 
@@ -1381,6 +1390,31 @@ ob_start();
         }
         
         // Aguardar DOM estar pronto
+        // Inicializar TinyMCE para os campos de texto rico
+        if (typeof tinymce !== 'undefined') {
+            tinymce.init({
+                selector: '#instrutivo_html, #email_confirmacao_html, #msg_sucesso_html',
+                height: 400,
+                menubar: false,
+                plugins: [
+                    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                    'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
+                ],
+                toolbar: 'undo redo | formatselect | ' +
+                    'bold italic underline strikethrough | forecolor backcolor | ' +
+                    'alignleft aligncenter alignright alignjustify | ' +
+                    'bullist numlist outdent indent | ' +
+                    'removeformat | help | fullscreen',
+                language: 'pt_BR',
+                content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; }',
+                branding: false,
+                promotion: false
+            });
+        } else {
+            console.warn('TinyMCE não carregado. Usando textarea simples.');
+        }
+        
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => initializeForm(), 100);
