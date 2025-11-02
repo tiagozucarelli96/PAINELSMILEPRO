@@ -1,219 +1,214 @@
 <?php
-// cadastros.php — Página do módulo Cadastros com cards internos
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+// cadastros.php — Página principal de Cadastros
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
-$nomeUser = $_SESSION['nome'] ?? 'Usuário';
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 ?>
 
-<div class="page-container">
-    <div class="page-header">
-        <h1 class="page-title">📝 Cadastros</h1>
-        <p class="page-subtitle">Gestão de cadastros básicos</p>
+<style>
+/* Container Principal */
+.page-logistico-landing {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+/* Header */
+.page-logistico-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.page-logistico-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e3a8a;
+    margin: 0 0 0.5rem 0;
+}
+
+.page-logistico-header p {
+    font-size: 1.125rem;
+    color: #64748b;
+    margin: 0;
+}
+
+/* Cards de Funcionalidades */
+.funcionalidades-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    align-items: stretch;
+}
+
+.funcionalidade-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.funcionalidade-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    border-color: #3b82f6;
+}
+
+.funcionalidade-card-header {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    padding: 1.5rem;
+}
+
+.funcionalidade-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    display: block;
+}
+
+.funcionalidade-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.funcionalidade-card-subtitle {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+.funcionalidade-card-content {
+    padding: 1.25rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+}
+
+.funcionalidade-card-content::after {
+    content: '→';
+    display: block;
+    margin-top: 1rem;
+    color: #64748b;
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+</style>
+
+<div class="page-logistico-landing">
+    <!-- Header -->
+    <div class="page-logistico-header">
+        <h1>📝 Cadastros</h1>
+        <p>Gestão de usuários e fornecedores</p>
     </div>
     
-    <div class="cards-grid">
-        <!-- Usuários e Permissões -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">👥</div>
-                <div class="card-title">Usuários e Permissões</div>
-                <div class="card-subtitle">Gerenciar usuários e permissões</div>
+    <!-- Funcionalidades Principais -->
+    <div class="funcionalidades-grid">
+        <!-- Usuários -->
+        <a href="index.php?page=usuarios" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">👥</span>
+                <div class="funcionalidade-card-title">Usuários</div>
+                <div class="funcionalidade-card-subtitle">Gerenciar usuários e permissões</div>
             </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
-                    <div class="item-icon">👤</div>
-                    <div class="item-text">Usuários</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
-                    <div class="item-icon">🔒</div>
-                    <div class="item-text">Permissões</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=usuarios'">
-                    <div class="item-icon">👔</div>
-                    <div class="item-text">Perfis</div>
-                    <div class="item-arrow">→</div>
-                </div>
-            </div>
-        </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
-        <!-- Cadastros Básicos -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">📋</div>
-                <div class="card-title">Cadastros Básicos</div>
-                <div class="card-subtitle">Categorias, insumos e unidades</div>
+        <!-- Fornecedores -->
+        <a href="index.php?page=config_fornecedores" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
+                <span class="funcionalidade-card-icon">🏢</span>
+                <div class="funcionalidade-card-title">Fornecedores</div>
+                <div class="funcionalidade-card-subtitle">Cadastro e gestão de fornecedores</div>
             </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=config_categorias'">
-                    <div class="item-icon">📁</div>
-                    <div class="item-text">Categorias</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=config_insumos'">
-                    <div class="item-icon">📦</div>
-                    <div class="item-text">Insumos</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=config_insumos'">
-                    <div class="item-icon">📏</div>
-                    <div class="item-text">Unidades</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=config_fornecedores'">
-                    <div class="item-icon">🏢</div>
-                    <div class="item-text">Fornecedores</div>
-                    <div class="item-arrow">→</div>
-                </div>
-            </div>
-        </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
-        <!-- Configurações do Sistema -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">⚙️</div>
-                <div class="card-title">Configurações do Sistema</div>
-                <div class="card-subtitle">Configurações gerais</div>
+        <!-- Insumos -->
+        <a href="index.php?page=config_insumos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <span class="funcionalidade-card-icon">📦</span>
+                <div class="funcionalidade-card-title">Insumos</div>
+                <div class="funcionalidade-card-subtitle">Configurar insumos e categorias</div>
             </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
-                    <div class="item-icon">🔧</div>
-                    <div class="item-text">Configurações</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=verificacao_completa_erros'">
-                    <div class="item-icon">🔍</div>
-                    <div class="item-text">Diagnóstico</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
-                    <div class="item-icon">🔗</div>
-                    <div class="item-text">Integrações</div>
-                    <div class="item-arrow">→</div>
-                </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Categorias -->
+        <a href="index.php?page=config_categorias" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">📋</span>
+                <div class="funcionalidade-card-title">Categorias</div>
+                <div class="funcionalidade-card-subtitle">Organizar categorias de produtos</div>
             </div>
-        </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Fichas -->
+        <a href="index.php?page=config_fichas" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">
+                <span class="funcionalidade-card-icon">📄</span>
+                <div class="funcionalidade-card-title">Fichas</div>
+                <div class="funcionalidade-card-subtitle">Configurar fichas técnicas</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Itens -->
+        <a href="index.php?page=config_itens" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
+                <span class="funcionalidade-card-icon">🔧</span>
+                <div class="funcionalidade-card-title">Itens</div>
+                <div class="funcionalidade-card-subtitle">Configurar itens e produtos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Itens Fixos -->
+        <a href="index.php?page=config_itens_fixos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #ec4899, #db2777);">
+                <span class="funcionalidade-card-icon">📌</span>
+                <div class="funcionalidade-card-title">Itens Fixos</div>
+                <div class="funcionalidade-card-subtitle">Configurar itens fixos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
     </div>
 </div>
 
-<style>
-.page-container {
-    padding: 20px;
-    max-width: 1400px;
-    margin: 0 auto;
+<?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+// Verificar se houve algum erro no buffer
+if (ob_get_level() > 0) {
+    ob_end_clean();
 }
 
-.page-header {
-    text-align: center;
-    margin-bottom: 40px;
-}
-
-.page-title {
-    font-size: 2.5em;
-    font-weight: 700;
-    color: #1e3a8a;
-    margin-bottom: 10px;
-}
-
-.page-subtitle {
-    font-size: 1.2em;
-    color: #64748b;
-}
-
-.cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 30px;
-}
-
-.card {
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    transition: all 0.3s ease;
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
-
-.card-header {
-    background: linear-gradient(135deg, #1e3a8a, #1e40af);
-    color: white;
-    padding: 25px;
-    text-align: center;
-}
-
-.card-icon {
-    font-size: 2.5em;
-    margin-bottom: 15px;
-}
-
-.card-title {
-    font-size: 1.4em;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.card-subtitle {
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-.card-content {
-    padding: 20px;
-}
-
-.card-item {
-    display: flex;
-    align-items: center;
-    padding: 15px;
-    margin-bottom: 10px;
-    background: #f8fafc;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.card-item:hover {
-    background: #e2e8f0;
-    transform: translateX(5px);
-}
-
-.card-item:last-child {
-    margin-bottom: 0;
-}
-
-.item-icon {
-    font-size: 1.5em;
-    margin-right: 15px;
-    width: 30px;
-    text-align: center;
-}
-
-.item-text {
-    flex: 1;
-    font-weight: 500;
-    color: #1e293b;
-}
-
-.item-arrow {
-    color: #64748b;
-    font-weight: bold;
-    font-size: 1.2em;
-}
-
-@media (max-width: 768px) {
-    .cards-grid {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-    
-    .page-title {
-        font-size: 2em;
-    }
-}
-</style>
+includeSidebar('Cadastros');
+echo $conteudo;
+endSidebar();
+?>

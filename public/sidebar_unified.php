@@ -1667,27 +1667,22 @@ if ($current_page === 'dashboard') {
             <div id="pageContent">
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
-                // NOTA: 'logistico' agora usa lc_index.php que gerencia seu próprio conteúdo
-                if (in_array($current_page, ['dashboard', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 'demandas', 'demandas_quadro'])) {
+                // NOTA: 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo' agora usam
+                // arquivos separados que gerenciam seu próprio conteúdo via includeSidebar
+                if (in_array($current_page, ['dashboard', 'demandas', 'demandas_quadro'])) {
                     // O conteúdo já foi definido nas variáveis acima
                     if ($current_page === 'dashboard' && !empty($dashboard_content)) {
                         echo $dashboard_content;
-                    } elseif ($current_page === 'configuracoes' && !empty($configuracoes_content)) {
-                        echo $configuracoes_content;
-                    } elseif ($current_page === 'cadastros' && !empty($cadastros_content)) {
-                        echo $cadastros_content;
-                    } elseif ($current_page === 'financeiro' && !empty($financeiro_content)) {
-                        echo $financeiro_content;
-                    } elseif ($current_page === 'administrativo' && !empty($administrativo_content)) {
-                        echo $administrativo_content;
                     }
                 }
-                // 'logistico' não renderiza aqui - lc_index.php gerencia seu próprio conteúdo via echo $conteudo
+                // Outras páginas (logistico, configuracoes, cadastros, financeiro, administrativo) 
+                // não renderizam aqui - seus arquivos PHP gerenciam seu próprio conteúdo via echo $conteudo
                 
                 // Fechar divs apenas se for página especial que já renderizou o conteúdo
-                // NOTA: comercial agora usa comercial_landing.php que gerencia seus próprios divs
-                // NOTA: logistico agora usa lc_index.php que gerencia seus próprios divs
-                if (in_array($current_page, ['dashboard', 'configuracoes', 'cadastros', 'financeiro', 'administrativo'])) {
+                // NOTA: comercial usa comercial_landing.php que gerencia seus próprios divs
+                // NOTA: logistico, configuracoes, cadastros, financeiro, administrativo agora 
+                // usam arquivos separados que gerenciam seus próprios divs
+                if (in_array($current_page, ['dashboard'])) {
                     echo '</div>'; // fecha #pageContent
                     echo '</div>'; // fecha .main-content
                 }

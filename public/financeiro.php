@@ -1,221 +1,184 @@
 <?php
-// financeiro.php — Página do módulo Financeiro com cards internos
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+// financeiro.php — Página principal do Financeiro
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
-$nomeUser = $_SESSION['nome'] ?? 'Usuário';
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 ?>
 
-<div class="page-container">
-    <div class="page-header">
-        <h1 class="page-title">💰 Financeiro</h1>
-        <p class="page-subtitle">Gestão financeira e pagamentos</p>
-    </div>
-    
-    <div class="cards-grid">
-        <!-- Pagamentos -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">💰</div>
-                <div class="card-title">Pagamentos</div>
-                <div class="card-subtitle">Gestão de pagamentos</div>
-            </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
-                    <div class="item-icon">💸</div>
-                    <div class="item-text">Solicitar Pagamento</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
-                    <div class="item-icon">📊</div>
-                    <div class="item-text">Painel Financeiro</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
-                    <div class="item-icon">👥</div>
-                    <div class="item-text">Freelancers</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=config_fornecedores'">
-                    <div class="item-icon">🏢</div>
-                    <div class="item-text">Fornecedores</div>
-                    <div class="item-arrow">→</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Contabilidade -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">📊</div>
-                <div class="card-title">Contabilidade</div>
-                <div class="card-subtitle">Gestão contábil</div>
-            </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=contab_link'">
-                    <div class="item-icon">📄</div>
-                    <div class="item-text">Portal Contábil</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=contab_gerar_link'">
-                    <div class="item-icon">🔗</div>
-                    <div class="item-text">Gerar Links</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=notas_fiscais'">
-                    <div class="item-icon">📋</div>
-                    <div class="item-text">Notas Fiscais</div>
-                    <div class="item-arrow">→</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Relatórios Financeiros -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-icon">📈</div>
-                <div class="card-title">Relatórios Financeiros</div>
-                <div class="card-subtitle">Análises e relatórios</div>
-            </div>
-            <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
-                    <div class="item-icon">📊</div>
-                    <div class="item-text">Relatórios</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=pagamentos'">
-                    <div class="item-icon">💰</div>
-                    <div class="item-text">Fluxo de Caixa</div>
-                    <div class="item-arrow">→</div>
-                </div>
-                <div class="card-item" onclick="window.location.href='index.php?page=admin_pagamentos'">
-                    <div class="item-icon">📋</div>
-                    <div class="item-text">Extratos</div>
-                    <div class="item-arrow">→</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <style>
-.page-container {
-    padding: 20px;
+/* Container Principal */
+.page-logistico-landing {
+    width: 100%;
     max-width: 1400px;
     margin: 0 auto;
+    padding: 1.5rem;
 }
 
-.page-header {
+/* Header */
+.page-logistico-header {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 2rem;
 }
 
-.page-title {
-    font-size: 2.5em;
+.page-logistico-header h1 {
+    font-size: 2rem;
     font-weight: 700;
     color: #1e3a8a;
-    margin-bottom: 10px;
+    margin: 0 0 0.5rem 0;
 }
 
-.page-subtitle {
-    font-size: 1.2em;
+.page-logistico-header p {
+    font-size: 1.125rem;
     color: #64748b;
+    margin: 0;
 }
 
-.cards-grid {
+/* Cards de Funcionalidades */
+.funcionalidades-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 30px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    align-items: stretch;
 }
 
-.card {
+.funcionalidade-card {
     background: white;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
     overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
     transition: all 0.3s ease;
-}
-
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-}
-
-.card-header {
-    background: linear-gradient(135deg, #1e3a8a, #1e40af);
-    color: white;
-    padding: 25px;
-    text-align: center;
-}
-
-.card-icon {
-    font-size: 2.5em;
-    margin-bottom: 15px;
-}
-
-.card-title {
-    font-size: 1.4em;
-    font-weight: 600;
-    margin-bottom: 8px;
-}
-
-.card-subtitle {
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-.card-content {
-    padding: 20px;
-}
-
-.card-item {
-    display: flex;
-    align-items: center;
-    padding: 15px;
-    margin-bottom: 10px;
-    background: #f8fafc;
-    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
-.card-item:hover {
-    background: #e2e8f0;
-    transform: translateX(5px);
+.funcionalidade-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    border-color: #3b82f6;
 }
 
-.card-item:last-child {
-    margin-bottom: 0;
+.funcionalidade-card-header {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    padding: 1.5rem;
 }
 
-.item-icon {
-    font-size: 1.5em;
-    margin-right: 15px;
-    width: 30px;
+.funcionalidade-card-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    display: block;
+}
+
+.funcionalidade-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.funcionalidade-card-subtitle {
+    font-size: 0.875rem;
+    opacity: 0.9;
+}
+
+.funcionalidade-card-content {
+    padding: 1.25rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     text-align: center;
 }
 
-.item-text {
-    flex: 1;
-    font-weight: 500;
-    color: #1e293b;
-}
-
-.item-arrow {
+.funcionalidade-card-content::after {
+    content: '→';
+    display: block;
+    margin-top: 1rem;
     color: #64748b;
     font-weight: bold;
-    font-size: 1.2em;
-}
-
-@media (max-width: 768px) {
-    .cards-grid {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-    
-    .page-title {
-        font-size: 2em;
-    }
+    font-size: 1.5rem;
 }
 </style>
 
+<div class="page-logistico-landing">
+    <!-- Header -->
+    <div class="page-logistico-header">
+        <h1>💰 Financeiro</h1>
+        <p>Pagamentos e solicitações</p>
+    </div>
+    
+    <!-- Funcionalidades Principais -->
+    <div class="funcionalidades-grid">
+        <!-- Solicitações -->
+        <a href="index.php?page=pagamentos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">💳</span>
+                <div class="funcionalidade-card-title">Solicitações</div>
+                <div class="funcionalidade-card-subtitle">Gerenciar solicitações de pagamento</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Painel Admin -->
+        <a href="index.php?page=pagamentos_painel" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
+                <span class="funcionalidade-card-icon">📋</span>
+                <div class="funcionalidade-card-title">Painel Admin</div>
+                <div class="funcionalidade-card-subtitle">Painel administrativo de pagamentos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Solicitar -->
+        <a href="index.php?page=pagamentos_solicitar" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <span class="funcionalidade-card-icon">➕</span>
+                <div class="funcionalidade-card-title">Solicitar</div>
+                <div class="funcionalidade-card-subtitle">Criar nova solicitação de pagamento</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
+        <!-- Freelancers -->
+        <a href="index.php?page=freelancer_cadastro" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">👤</span>
+                <div class="funcionalidade-card-title">Freelancers</div>
+                <div class="funcionalidade-card-subtitle">Cadastro de freelancers</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+    </div>
+</div>
 
+<?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+// Verificar se houve algum erro no buffer
+if (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+includeSidebar('Financeiro');
+echo $conteudo;
+endSidebar();
+?>
