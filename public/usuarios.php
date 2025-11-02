@@ -40,6 +40,20 @@ $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
 // AJAX: Retornar dados do usuário em JSON
 // IMPORTANTE: Processar ANTES de qualquer output buffer
 if ($action === 'get_user' && !empty($_GET['id'])) {
+    // Verificar sessão ANTES de qualquer output
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        // Retornar JSON de erro em vez de redirecionar
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        if (headers_sent() === false) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-cache, must-revalidate');
+        }
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada ou sem permissão. Por favor, recarregue a página.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
     // Garantir que não há output buffer ativo
     if (ob_get_level() > 0) {
         ob_end_clean();
@@ -58,6 +72,9 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($user) {
+            // Remover senha do resultado
+            unset($user['senha']);
+            
             // Converter valores boolean/smallint para boolean conforme esperado pelo JS
             foreach ($user as $key => $value) {
                 if (strpos($key, 'perm_') === 0) {
@@ -87,7 +104,7 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
             echo json_encode(['success' => false, 'message' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
         }
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }
@@ -1425,23 +1442,47 @@ ob_start();
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
-                        'Cache-Control': 'no-cache'
+                        'Cache-Control': 'no-cache',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
-                    cache: 'no-cache'
+                    cache: 'no-cache',
+                    credentials: 'same-origin'
                 })
                     .then(response => {
-                        if (!response.ok) {
+                        // Verificar se a resposta é realmente JSON
+                        const contentType = response.headers.get('content-type');
+                        if (!contentType || !contentType.includes('application/json')) {
                             return response.text().then(text => {
-                                console.error('Erro HTTP:', response.status, text);
-                                throw new Error('Erro na resposta do servidor: ' + response.status);
+                                console.error('Resposta não é JSON. Content-Type:', contentType);
+                                console.error('Resposta recebida:', text.substring(0, 200));
+                                
+                                // Se recebeu HTML (provavelmente página de login), informar sobre sessão
+                                if (text.includes('<!DOCTYPE html') || text.includes('Painel Smile - Login')) {
+                                    throw new Error('Sessão expirada. Por favor, recarregue a página e faça login novamente.');
+                                }
+                                
+                                throw new Error('Resposta do servidor não é JSON. Status: ' + response.status);
                             });
                         }
+                        
+                        if (!response.ok) {
+                            return response.text().then(text => {
+                                console.error('Erro HTTP:', response.status, text.substring(0, 200));
+                                try {
+                                    const jsonError = JSON.parse(text);
+                                    throw new Error(jsonError.message || 'Erro na resposta do servidor: ' + response.status);
+                                } catch (e) {
+                                    throw new Error('Erro na resposta do servidor: ' + response.status);
+                                }
+                            });
+                        }
+                        
                         return response.text().then(text => {
                             try {
                                 return JSON.parse(text);
                             } catch (e) {
-                                console.error('Erro ao parsear JSON:', text);
-                                throw new Error('Resposta não é JSON válido');
+                                console.error('Erro ao parsear JSON:', text.substring(0, 200));
+                                throw new Error('Resposta não é JSON válido. Verifique se sua sessão está ativa.');
                             }
                         });
                     })
