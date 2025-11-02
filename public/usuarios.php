@@ -94,10 +94,16 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
 
 // Ação: Excluir usuário
 if ($action === 'delete' && $user_id > 0) {
+    // Garantir que não há output buffer ativo antes do redirect
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
     try {
         // Verificar se não é o próprio usuário logado
         if ($user_id == ($_SESSION['usuario_id'] ?? 0)) {
-            $error_message = "Você não pode excluir seu próprio usuário!";
+            header('Location: index.php?page=usuarios&error=' . urlencode('Você não pode excluir seu próprio usuário!'));
+            exit;
         } else {
             $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = :id");
             $stmt->execute([':id' => $user_id]);
@@ -106,11 +112,13 @@ if ($action === 'delete' && $user_id > 0) {
                 header('Location: index.php?page=usuarios&success=' . urlencode('Usuário excluído com sucesso!'));
                 exit;
             } else {
-                $error_message = "Usuário não encontrado.";
+                header('Location: index.php?page=usuarios&error=' . urlencode('Usuário não encontrado.'));
+                exit;
             }
         }
     } catch (Exception $e) {
-        $error_message = "Erro ao excluir usuário: " . $e->getMessage();
+        header('Location: index.php?page=usuarios&error=' . urlencode('Erro ao excluir usuário: ' . $e->getMessage()));
+        exit;
     }
 }
 
@@ -206,8 +214,14 @@ if ($action === 'save') {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
+        // Garantir que não há output buffer ativo antes do redirect
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
         // Redirecionar para evitar reenvio do formulário
         $redirectUrl = 'index.php?page=usuarios';
+        $search = $_GET['search'] ?? $_POST['search'] ?? '';
         if ($search) {
             $redirectUrl .= '&search=' . urlencode($search);
         }
