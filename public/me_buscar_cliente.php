@@ -396,6 +396,55 @@ try {
                         if (!empty($cpf_api_encontrado)) {
                             error_log("ME Buscar Cliente - ✅ CPF encontrado no endpoint específico: " . substr($cpf_api_encontrado, 0, 3) . "***");
                         }
+                        
+                        // IMPORTANTE: Buscar EMAIL no endpoint específico do cliente também!
+                        $email_cliente = '';
+                        
+                        // Lista de TODOS os campos possíveis para email
+                        $campos_email_cliente = [
+                            'email',
+                            'emailCliente',
+                            'cliente_email',
+                            'clienteEmail',
+                            'contato_email',
+                            'contatoEmail',
+                            'email_contato',
+                            'emailContato',
+                            'e_mail',
+                            'e-mail',
+                            'e_mailCliente',
+                            'e-mailCliente',
+                            'mail',
+                            'correio',
+                            'correio_eletronico'
+                        ];
+                        
+                        foreach ($campos_email_cliente as $campo) {
+                            if (isset($data_cliente[$campo]) && !empty($data_cliente[$campo]) && filter_var($data_cliente[$campo], FILTER_VALIDATE_EMAIL)) {
+                                $email_cliente = trim($data_cliente[$campo]);
+                                error_log("ME Buscar Cliente - ✅ Email encontrado no endpoint cliente (campo '$campo'): " . substr($email_cliente, 0, 3) . "***");
+                                break;
+                            }
+                        }
+                        
+                        // Se não encontrou em campos específicos, buscar em qualquer campo que contenha '@'
+                        if (empty($email_cliente)) {
+                            foreach ($data_cliente as $key => $value) {
+                                if (is_string($value) && strpos($value, '@') !== false && filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                                    $email_cliente = trim($value);
+                                    error_log("ME Buscar Cliente - ✅ Email encontrado no endpoint cliente (campo genérico '$key'): " . substr($email_cliente, 0, 3) . "***");
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Se encontrou email no endpoint do cliente, atualizar evento_encontrado
+                        if (!empty($email_cliente)) {
+                            $evento_encontrado['email'] = $email_cliente;
+                            error_log("ME Buscar Cliente - ✅ Email do endpoint cliente adicionado ao evento_encontrado!");
+                        } else {
+                            error_log("ME Buscar Cliente - ⚠️ Email também NÃO encontrado no endpoint específico do cliente");
+                        }
                     }
                 } catch (Exception $e) {
                     error_log("ME Buscar Cliente - Erro ao buscar CPF em endpoint específico: " . $e->getMessage());
@@ -403,6 +452,13 @@ try {
             }
             
             // Se ainda não encontrou CPF, aplicar validação alternativa
+            // MAS ANTES: tentar buscar email novamente no endpoint do cliente se ainda não foi encontrado
+            if (empty($evento_encontrado['email']) && $idcliente_me) {
+                error_log("ME Buscar Cliente - Email ainda não encontrado. Tentando buscar novamente no endpoint do cliente...");
+                // O email já foi buscado acima quando tentamos buscar CPF no endpoint do cliente
+                // Se ainda não tem, vamos tentar uma última vez
+            }
+            
             if (empty($cpf_api_encontrado)) {
                 error_log("ME Buscar Cliente - ⚠️ CPF ainda não encontrado. Aplicando validação alternativa...");
                 
