@@ -31,3 +31,5 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_perm_financeiro ON usuarios(perm_finance
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_administrativo ON usuarios(perm_administrativo) WHERE perm_administrativo = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_rh ON usuarios(perm_rh) WHERE perm_rh = TRUE;
 
+
+

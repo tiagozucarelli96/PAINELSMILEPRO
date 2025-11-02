@@ -1602,7 +1602,7 @@ ob_start();
                                                 onclick="gerarCobranca(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
                                                 id="btnGerarCobranca_<?= $inscricao['id'] ?>">
                                             💳 Gerar Cobrança
-                                        </button>
+                            </button>
                                     <?php endif; ?>
                                     
                                     <?php if ($inscricao['fechou_contrato'] !== 'sim'): ?>
@@ -1619,7 +1619,7 @@ ob_start();
                                             onclick="excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>').catch(err => console.error('Erro ao excluir:', err));"
                                             style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">
                                         🗑️ Excluir
-                                    </button>
+                            </button>
                         </div>
                             </td>
                         </tr>
