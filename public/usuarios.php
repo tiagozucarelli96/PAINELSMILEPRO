@@ -33,20 +33,24 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
     exit;
 }
 
-// Suprimir warnings durante renderização
-error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
-@ini_set('display_errors', 0);
-
-// Criar conteúdo da página usando output buffering
-ob_start();
-
-// Processar ações
+// Processar ações ANTES de qualquer output
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
 
 // AJAX: Retornar dados do usuário em JSON
+// IMPORTANTE: Processar ANTES de qualquer output buffer
 if ($action === 'get_user' && !empty($_GET['id'])) {
-    header('Content-Type: application/json');
+    // Garantir que não há output buffer ativo
+    if (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
+    // Limpar qualquer output anterior
+    if (headers_sent() === false) {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-cache, must-revalidate');
+    }
+    
     try {
         $id = (int)$_GET['id'];
         $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = :id");
@@ -54,12 +58,36 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($user) {
-            echo json_encode(['success' => true, 'user' => $user]);
+            // Converter valores boolean/smallint para boolean conforme esperado pelo JS
+            foreach ($user as $key => $value) {
+                if (strpos($key, 'perm_') === 0) {
+                    // Converter smallint (0/1) ou boolean (t/f) ou string ('1'/'0') para boolean
+                    if ($value === null || $value === '') {
+                        $user[$key] = false;
+                    } elseif (is_numeric($value)) {
+                        $user[$key] = ((int)$value) === 1;
+                    } elseif (is_bool($value)) {
+                        $user[$key] = $value;
+                    } elseif (is_string($value)) {
+                        $user[$key] = in_array(strtolower($value), ['1', 't', 'true', 'yes', 'on'], true);
+                    } else {
+                        $user[$key] = false;
+                    }
+                }
+            }
+            
+            $response = json_encode(['success' => true, 'user' => $user], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($response === false) {
+                $error_msg = json_last_error_msg();
+                echo json_encode(['success' => false, 'message' => 'Erro ao serializar JSON: ' . $error_msg], JSON_UNESCAPED_UNICODE);
+            } else {
+                echo $response;
+            }
         } else {
-            echo json_encode(['success' => false, 'message' => 'Usuário não encontrado']);
+            echo json_encode(['success' => false, 'message' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
         }
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }
@@ -1003,12 +1031,29 @@ if ($user_id > 0) {
                 form.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
                 
                 // Buscar dados do usuário via AJAX
-                fetch('?action=get_user&id=' + userId)
+                fetch('?action=get_user&id=' + userId, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    cache: 'no-cache'
+                })
                     .then(response => {
                         if (!response.ok) {
-                            throw new Error('Erro na resposta do servidor');
+                            return response.text().then(text => {
+                                console.error('Erro HTTP:', response.status, text);
+                                throw new Error('Erro na resposta do servidor: ' + response.status);
+                            });
                         }
-                        return response.json();
+                        return response.text().then(text => {
+                            try {
+                                return JSON.parse(text);
+                            } catch (e) {
+                                console.error('Erro ao parsear JSON:', text);
+                                throw new Error('Resposta não é JSON válido');
+                            }
+                        });
                     })
                     .then(data => {
                         // Restaurar formulário - simplesmente restaurar o HTML
