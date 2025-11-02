@@ -1392,38 +1392,64 @@ ob_start();
             checkElement();
         }
         
-        // Aguardar DOM estar pronto
-        // Inicializar TinyMCE para os campos de texto rico
-        if (typeof tinymce !== 'undefined') {
-            tinymce.init({
-                selector: '#instrutivo_html, #email_confirmacao_html, #msg_sucesso_html',
-                height: 400,
-                menubar: false,
-                plugins: [
-                    'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                    'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                    'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
-                ],
-                toolbar: 'undo redo | formatselect | ' +
-                    'bold italic underline strikethrough | forecolor backcolor | ' +
-                    'alignleft aligncenter alignright alignjustify | ' +
-                    'bullist numlist outdent indent | ' +
-                    'removeformat | help | fullscreen',
-                language: 'pt_BR',
-                content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; }',
-                branding: false,
-                promotion: false
-            });
-        } else {
-            console.warn('TinyMCE não carregado. Usando textarea simples.');
+        // Função para inicializar TinyMCE
+        function initTinyMCE() {
+            if (typeof tinymce !== 'undefined') {
+                tinymce.init({
+                    selector: '#instrutivo_html, #email_confirmacao_html, #msg_sucesso_html',
+                    height: 400,
+                    menubar: false,
+                    plugins: [
+                        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+                        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+                        'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
+                    ],
+                    toolbar: 'undo redo | formatselect | ' +
+                        'bold italic underline strikethrough | forecolor backcolor | ' +
+                        'alignleft aligncenter alignright alignjustify | ' +
+                        'bullist numlist outdent indent | ' +
+                        'removeformat | help | fullscreen',
+                    language: 'pt_BR',
+                    content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; }',
+                    branding: false,
+                    promotion: false,
+                    setup: function(editor) {
+                        // Salvar conteúdo do TinyMCE antes do submit do form
+                        editor.on('change', function() {
+                            editor.save();
+                        });
+                    }
+                });
+            } else {
+                console.warn('TinyMCE não carregado. Usando textarea simples.');
+            }
         }
         
+        // Aguardar DOM e TinyMCE estarem prontos
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(() => initializeForm(), 100);
+                // Aguardar TinyMCE carregar
+                if (typeof tinymce === 'undefined') {
+                    setTimeout(function() {
+                        initTinyMCE();
+                        setTimeout(() => initializeForm(), 100);
+                    }, 500);
+                } else {
+                    initTinyMCE();
+                    setTimeout(() => initializeForm(), 100);
+                }
             });
         } else {
-            setTimeout(() => initializeForm(), 100);
+            // DOM já está pronto
+            if (typeof tinymce === 'undefined') {
+                setTimeout(function() {
+                    initTinyMCE();
+                    setTimeout(() => initializeForm(), 100);
+                }, 500);
+            } else {
+                initTinyMCE();
+                setTimeout(() => initializeForm(), 100);
+            }
         }
         
         function initializeForm() {
