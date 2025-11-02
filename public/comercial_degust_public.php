@@ -1748,12 +1748,28 @@ if ($_POST && !$inscricoes_encerradas) {
                 }
                 
                 // Preencher email (buscar em múltiplos campos possíveis)
-                const emailVal = evento.email || evento.emailCliente || evento.cliente_email || evento.contato_email || '';
+                // IMPORTANTE: Verificar TODOS os campos possíveis que podem conter email
+                const emailVal = evento.email || 
+                                evento.emailCliente || 
+                                evento.cliente_email || 
+                                evento.clienteEmail ||
+                                evento.contato_email ||
+                                evento.contatoEmail ||
+                                evento.email_contato ||
+                                evento.emailContato ||
+                                evento.e_mail ||
+                                evento['e-mail'] ||
+                                evento.e_mailCliente ||
+                                '';
+                
                 if (emailInput && emailVal) {
                     emailInput.value = emailVal;
                     console.log('✅ Email preenchido:', emailVal);
+                    console.log('   Campo usado:', Object.keys(evento).find(k => evento[k] === emailVal) || 'email padrão');
                 } else if (emailInput) {
                     console.warn('⚠️ Email não encontrado na resposta da API ME Eventos');
+                    console.log('   Campos disponíveis no evento:', Object.keys(evento));
+                    console.log('   Valores do evento:', evento);
                 } else {
                     console.error('❌ Campo emailInput não encontrado!');
                 }

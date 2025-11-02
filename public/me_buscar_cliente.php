@@ -165,6 +165,23 @@ try {
                 error_log("ME Buscar Cliente - TODOS os campos disponíveis: " . json_encode(array_keys($e), JSON_UNESCAPED_UNICODE));
                 error_log("ME Buscar Cliente - CPF encontrado na API: " . ($cpf_api ?: 'NÃO ENCONTRADO'));
                 
+                // Log TODOS os campos que podem conter email (para debug)
+                $campos_email_candidatos = [];
+                foreach ($e as $key => $value) {
+                    $key_lower = strtolower($key);
+                    if (strpos($key_lower, 'email') !== false || strpos($key_lower, 'e-mail') !== false || strpos($key_lower, 'e_mail') !== false) {
+                        $campos_email_candidatos[$key] = $value;
+                    }
+                }
+                if (!empty($campos_email_candidatos)) {
+                    error_log("ME Buscar Cliente - Campos com 'email' encontrados: " . json_encode($campos_email_candidatos, JSON_UNESCAPED_UNICODE));
+                } else {
+                    error_log("ME Buscar Cliente - ⚠️ NENHUM campo com 'email' encontrado na resposta da API!");
+                }
+                
+                // Log TODOS os valores do evento para debug completo
+                error_log("ME Buscar Cliente - RESPOSTA COMPLETA do evento (primeiros 2000 caracteres): " . substr(json_encode($e, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), 0, 2000));
+                
                 // Extrair TODOS os dados da API (independente do CPF)
                 $cpf_api_encontrado = $cpf_api;
                 
@@ -181,9 +198,53 @@ try {
                     $telefone_limpo = '';
                 }
                 
-                $email = $e['emailCliente'] ?? $e['email'] ?? $e['cliente_email'] ?? 
-                        $e['emailCliente'] ?? $e['contato_email'] ?? $e['email_contato'] ?? 
-                        $e['e_mail'] ?? $e['e_mailCliente'] ?? '';
+                // Buscar email em TODOS os campos possíveis (incluindo variações)
+                // IMPORTANTE: Verificar TODOS os campos que podem conter email
+                $email = '';
+                
+                // Tentar campos mais comuns primeiro
+                $campos_email = [
+                    'email',
+                    'emailCliente',
+                    'emailCliente',
+                    'cliente_email',
+                    'clienteEmail',
+                    'emailCliente',
+                    'contato_email',
+                    'contatoEmail',
+                    'email_contato',
+                    'emailContato',
+                    'e_mail',
+                    'e-mail',
+                    'e_mailCliente',
+                    'e-mailCliente',
+                    'mail',
+                    'correio',
+                    'correio_eletronico'
+                ];
+                
+                foreach ($campos_email as $campo) {
+                    if (isset($e[$campo]) && !empty($e[$campo]) && filter_var($e[$campo], FILTER_VALIDATE_EMAIL)) {
+                        $email = trim($e[$campo]);
+                        error_log("ME Buscar Cliente - ✅ Email encontrado no campo '$campo': " . substr($email, 0, 3) . "***");
+                        break;
+                    }
+                }
+                
+                // Se não encontrou em campos específicos, buscar em qualquer campo que contenha '@'
+                if (empty($email)) {
+                    foreach ($e as $key => $value) {
+                        if (is_string($value) && strpos($value, '@') !== false && filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                            $email = trim($value);
+                            error_log("ME Buscar Cliente - ✅ Email encontrado no campo genérico '$key': " . substr($email, 0, 3) . "***");
+                            break;
+                        }
+                    }
+                }
+                
+                if (empty($email)) {
+                    error_log("ME Buscar Cliente - ⚠️ Email NÃO encontrado em nenhum campo da resposta da API");
+                }
                 
                 $evento_encontrado = [
                     'id' => $e['id'] ?? null,
