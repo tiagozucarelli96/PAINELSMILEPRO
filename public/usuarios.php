@@ -261,7 +261,16 @@ if ($user_id > 0) {
         .main-content {
             position: relative !important;
             left: auto !important;
+            margin-left: 280px !important;
+            width: calc(100% - 280px) !important;
             z-index: 1 !important;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+            }
         }
         
         /* Sidebar deve ter z-index maior para ficar acima */
@@ -897,8 +906,24 @@ if ($user_id > 0) {
                 // Verificar se pageContent está por baixo da sidebar
                 if (sidebar && pageRect.left < 280) {
                     console.error('❌ PageContent está por baixo da sidebar!');
+                    console.log('PageContent parent:', pageContent.parentElement?.className);
+                    
+                    // Verificar se o main-content está correto
+                    const mainContentParent = pageContent.closest('.main-content');
+                    if (mainContentParent) {
+                        const mainRect = mainContentParent.getBoundingClientRect();
+                        console.log('Main-content parent rect:', mainRect);
+                        if (mainRect.left < 280) {
+                            console.error('❌ Main-content também está por baixo da sidebar!');
+                            mainContentParent.style.setProperty('margin-left', '280px', 'important');
+                            mainContentParent.style.setProperty('width', 'calc(100% - 280px)', 'important');
+                            mainContentParent.style.setProperty('position', 'relative', 'important');
+                            mainContentParent.style.setProperty('left', 'auto', 'important');
+                        }
+                    }
+                    
                     pageContent.style.setProperty('position', 'relative', 'important');
-                    pageContent.style.setProperty('left', '0', 'important');
+                    pageContent.style.setProperty('left', 'auto', 'important');
                     pageContent.style.setProperty('margin-left', '0', 'important');
                     pageContent.style.setProperty('padding-left', '0', 'important');
                 }
