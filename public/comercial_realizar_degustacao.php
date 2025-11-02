@@ -663,9 +663,6 @@ if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
                 </div>
 
                 <div class="actions-bar no-print">
-                    <button type="button" class="btn btn-secondary" onclick="window.print()">
-                        🖨️ Imprimir
-                    </button>
                     <button type="button" class="btn btn-secondary" onclick="gerarPDF()">
                         📄 Gerar PDF
                     </button>
@@ -686,18 +683,12 @@ if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
 
     <script>
         function gerarPDF() {
-            const url = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'pdf=1';
-            window.open(url, '_blank');
+            // Adicionar parâmetro pdf=1 à URL atual e recarregar na mesma aba
+            // O servidor vai detectar e gerar o PDF automaticamente
+            const url = new URL(window.location.href);
+            url.searchParams.set('pdf', '1');
+            window.location.href = url.toString();
         }
-
-        // Adicionar classe para ocultar elementos na impressão
-        const style = document.createElement('style');
-        style.textContent = `
-            @media print {
-                .no-print { display: none !important; }
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 </body>
 </html>
