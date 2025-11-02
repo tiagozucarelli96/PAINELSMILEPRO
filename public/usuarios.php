@@ -245,6 +245,19 @@ if ($user_id > 0) {
             box-sizing: border-box;
         }
         
+        /* Garantir que main-content respeite a sidebar */
+        .main-content {
+            margin-left: 280px !important;
+            width: calc(100% - 280px) !important;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+            }
+        }
+        
         .users-container {
             max-width: 100%;
             margin: 0 auto;
