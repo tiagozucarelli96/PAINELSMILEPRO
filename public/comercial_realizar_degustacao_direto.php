@@ -6,8 +6,9 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_integration.php';
-require_once __DIR__ . '/lc_permissions_enhanced.php';
+// REMOVER sidebar e permissões para teste - causavam redirecionamento
+// require_once __DIR__ . '/sidebar_integration.php';
+// require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
 // BYPASS: Permitir acesso temporário para teste
@@ -99,7 +100,8 @@ if ($degustacao_id > 0) {
     }
 }
 
-includeSidebar('Comercial');
+// REMOVER includeSidebar - estava causando redirecionamento para dashboard
+// includeSidebar('Comercial');
 ?>
 
 <!DOCTYPE html>
@@ -107,17 +109,93 @@ includeSidebar('Comercial');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realizar Degustação - VERSÃO DIRETA</title>
+    <title>Realizar Degustação - VERSÃO DIRETA (SEM SIDEBAR)</title>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 1400px; margin: 0 auto; padding: 2rem; background: #f5f5f5; }
-        .debug-box { background: #fff3cd; border: 2px solid #ffc107; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; 
+            max-width: 1400px; 
+            margin: 0 auto; 
+            padding: 2rem; 
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        h1 { color: #1e40af; margin-bottom: 1rem; }
+        .debug-box { 
+            background: #fff3cd; 
+            border: 2px solid #ffc107; 
+            padding: 1rem; 
+            margin: 1rem 0; 
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .debug-box h3 { margin-top: 0; }
+        .debug-box h4 { margin-top: 1rem; margin-bottom: 0.5rem; }
         .debug-box pre { margin: 0.5rem 0; font-size: 0.875rem; }
-        .form-box { background: white; padding: 2rem; border-radius: 12px; margin: 1rem 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .form-box { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 12px; 
+            margin: 1rem 0; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+        }
         .form-group { display: flex; gap: 1rem; align-items: flex-end; }
-        select, button { padding: 12px; font-size: 1rem; border-radius: 8px; border: 1px solid #ddd; }
-        button { background: #3b82f6; color: white; border: none; cursor: pointer; font-weight: 600; }
-        .relatorio { background: white; padding: 2rem; border-radius: 12px; margin-top: 2rem; }
-        .mesa-card { background: #f8fafc; padding: 1rem; margin: 0.5rem 0; border-radius: 8px; border: 1px solid #e5e7eb; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 600; color: #374151; }
+        select, button { 
+            padding: 12px; 
+            font-size: 1rem; 
+            border-radius: 8px; 
+            border: 1px solid #ddd; 
+        }
+        select { width: 100%; }
+        button { 
+            background: #3b82f6; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        button:hover { background: #2563eb; }
+        .relatorio { 
+            background: white; 
+            padding: 2rem; 
+            border-radius: 12px; 
+            margin-top: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .relatorio h2 { color: #1e40af; margin-top: 0; }
+        .relatorio h3 { color: #374151; margin-top: 1.5rem; }
+        .mesa-card { 
+            background: #f8fafc; 
+            padding: 1rem; 
+            margin: 0.5rem 0; 
+            border-radius: 8px; 
+            border: 1px solid #e5e7eb;
+        }
+        .mesa-card strong { color: #1e40af; }
+        code { 
+            background: #f3f4f6; 
+            padding: 2px 6px; 
+            border-radius: 4px; 
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .info-box {
+            margin-top: 1rem; 
+            padding: 1rem; 
+            background: #e3f2fd; 
+            border-radius: 8px;
+            border: 1px solid #90caf9;
+        }
+        .error-box {
+            background: #fee; 
+            color: #c00; 
+            padding: 1rem; 
+            border-radius: 8px; 
+            margin: 1rem 0;
+            border: 1px solid #f5c6cb;
+        }
     </style>
 </head>
 <body>
