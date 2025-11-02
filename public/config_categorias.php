@@ -12,6 +12,8 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1 || empty($_SESSION['
 
 @include_once __DIR__ . '/conexao.php';
 if (!isset($pdo)) { echo "Falha na conexão."; exit; }
+require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/core/helpers.php';
 
 
 
@@ -115,48 +117,243 @@ if ($action === 'edit' && $id > 0) {
     if (!$editRow) { $err = 'Registro não encontrado.'; $action = ''; }
 }
 
-?><!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<title>Configurações • Categorias</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="estilo.css">
-<style>
-.content-narrow{ max-width:1100px; margin:0 auto; }
-.topbar{display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap}
-.topbar .grow{flex:1}
-.input-sm{padding:9px;border:1px solid #ccc;border-radius:8px;font-size:14px;width:100%;max-width:340px}
-.btn{background:#004aad;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:600;cursor:pointer}
-.btn.link{background:#e9efff;color:#004aad}
-.btn.danger{background:#b00020}
-.badge{font-size:12px;padding:4px 8px;border-radius:999px;background:#eee}
-.badge.on{background:#d3f4d1;color:#1b5e20}
-.badge.off{background:#ffe1e1;color:#7f0000}
-.table{width:100%;border-collapse:collapse}
-.table th,.table td{border-bottom:1px solid #eee;padding:10px;text-align:left}
-.card{margin-bottom:18px}
-h1{margin-top:0}
-.actions a{margin-right:10px;text-decoration:none}
-.note{font-size:13px;color:#555}
-form.inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-fieldset{border:1px solid #e6eefc;padding:14px;border-radius:10px}
-legend{padding:0 8px;color:#004aad;font-weight:700}
-</style>
-</head>
-<body>
-<div class="sidebar">
-    <img src="logo-smile.png" alt="Logo" />
-    <nav>
-        <a href="index.php?page=dashboard">🏠 Painel</a>
-        <a href="lista_compras.php">🛒 Lista de Compras</a>
-        <a href="config_categorias.php" style="background:#003580;border-bottom:3px solid #fff;">⚙️ Configurações</a>
-    </nav>
-</div>
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
 
-<div class="main-content">
+// Criar conteúdo da página usando output buffering
+ob_start();
+?>
+
+<style>
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        .content-narrow {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        
+        .topbar {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+        }
+        
+        .topbar .grow {
+            flex: 1;
+        }
+        
+        .input-sm {
+            padding: 0.625rem 0.875rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            width: 100%;
+            max-width: 340px;
+            transition: border-color 0.2s;
+        }
+        
+        .input-sm:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+        
+        .btn {
+            background: #1e3a8a;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 0.625rem 1.25rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+        }
+        
+        .btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(30, 58, 138, 0.2);
+        }
+        
+        .btn.link {
+            background: transparent;
+            color: #1e3a8a;
+            border: 1px solid #1e3a8a;
+        }
+        
+        .btn.link:hover {
+            background: #1e3a8a;
+            color: white;
+        }
+        
+        .btn.danger {
+            background: #dc2626;
+        }
+        
+        .btn.danger:hover {
+            background: #b91c1c;
+        }
+        
+        .badge {
+            font-size: 0.75rem;
+            padding: 0.375rem 0.75rem;
+            border-radius: 999px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .badge.on {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge.off {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th, .table td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 0.875rem 1rem;
+            text-align: left;
+        }
+        
+        .table th {
+            background: #1e3a8a;
+            color: white;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        
+        .table tbody tr:hover {
+            background: #f8fafc;
+        }
+        
+        .table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .card {
+            margin-bottom: 1.5rem;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+        }
+        
+        h1 {
+            margin-top: 0;
+            color: #1e3a8a;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .actions a {
+            color: #1e3a8a;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .actions a:hover {
+            background: #f1f5f9;
+        }
+        
+        .note {
+            font-size: 0.813rem;
+            color: #64748b;
+            margin-top: 0.75rem;
+        }
+        
+        form.inline {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        fieldset {
+            border: 1px solid #e5e7eb;
+            padding: 1.5rem;
+            border-radius: 10px;
+            background: white;
+        }
+        
+        legend {
+            padding: 0 0.75rem;
+            color: #1e3a8a;
+            font-weight: 700;
+            font-size: 1.125rem;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #374151;
+            font-size: 0.875rem;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+    </style>
+
 <div class="content-narrow">
-    <h1>Configurações • Categorias</h1>
+        <div class="page-header">
+            <h1>⚙️ Categorias</h1>
+            <p>Gerencie as categorias de insumos e itens</p>
+        </div>
 
     <div class="topbar">
         <form class="inline" method="get" action="config_categorias.php">
@@ -165,14 +362,18 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
             <a class="btn link" href="config_categorias.php">Limpar</a>
         </form>
         <div class="grow"></div>
-        <a class="btn link" href="lista_compras.php">Voltar ao módulo</a>
+        <a class="btn link" href="index.php?page=cadastros">← Voltar</a>
     </div>
 
-    <?php if ($err): ?>
-        <div class="card" style="border-left:4px solid #b00020"><p><?=h($err)?></p></div>
-    <?php elseif (isset($_GET['msg'])): ?>
-        <div class="card" style="border-left:4px solid #2e7d32"><p><?=h($_GET['msg'])?></p></div>
-    <?php endif; ?>
+        <?php if ($err): ?>
+            <div class="card" style="border-left: 4px solid #dc2626; background: #fee2e2;">
+                <p style="color: #991b1b; margin: 0;"><?= h($err) ?></p>
+            </div>
+        <?php elseif (isset($_GET['msg'])): ?>
+            <div class="card" style="border-left: 4px solid #059669; background: #d1fae5;">
+                <p style="color: #065f46; margin: 0;">✅ <?= h($_GET['msg']) ?></p>
+            </div>
+        <?php endif; ?>
 
     <div class="card">
         <fieldset>
@@ -258,7 +459,16 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
         </table>
     </div>
 
-</div>
-</div>
-</body>
-</html>
+    </div>
+
+<?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+includeSidebar('Configurações - Categorias');
+echo $conteudo;
+endSidebar();
+?>
