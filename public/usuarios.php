@@ -1148,11 +1148,11 @@ ob_start();
                         </div>
                         
                         <div class="user-actions">
-                            <button class="btn-edit" type="button" onclick="openModal(<?= $user['id'] ?>, event)">
+                            <button class="btn-edit" type="button" onclick="event.preventDefault(); event.stopPropagation(); openModal(<?= $user['id'] ?>, event);">
                                 <span>✏️</span>
                                 <span>Editar</span>
                             </button>
-                            <button class="btn-delete" type="button" onclick="deleteUser(<?= $user['id'] ?>)">
+                            <button class="btn-delete" type="button" onclick="event.preventDefault(); event.stopPropagation(); deleteUser(<?= $user['id'] ?>);">
                                 <span>🗑️</span>
                                 <span>Excluir</span>
                             </button>
@@ -1389,13 +1389,27 @@ ob_start();
                         // Restaurar formulário - simplesmente restaurar o HTML
                         form.innerHTML = originalContent;
                         
-                        // Re-attach event listeners se necessário (já estão no global scope)
+                        // Mostrar modal após restaurar formulário
+                        const modal = document.getElementById('userModal');
+                        if (modal) {
+                            modal.style.display = 'flex';
+                            setTimeout(() => {
+                                modal.classList.add('active');
+                            }, 10);
+                        }
                         
                         if (data.success && data.user) {
                             // Preencher formulário com dados do usuário
                             const user = data.user;
-                            // Usar o formulário restaurado
-                            const formToFill = restoredForm || document.getElementById('userForm');
+                            // Usar o formulário restaurado (que já foi restaurado acima)
+                            const formToFill = document.getElementById('userForm');
+                            
+                            if (!formToFill) {
+                                console.error('Formulário não encontrado após restauração');
+                                alert('Erro ao carregar formulário');
+                                closeModal();
+                                return;
+                            }
                             
                             const userIdInput = formToFill.querySelector('#userId');
                             if (userIdInput) userIdInput.value = user.id || userId;
