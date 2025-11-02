@@ -18,8 +18,12 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
     exit;
 }
 
-// Iniciar sidebar com título
-includeSidebar('Usuários e Colaboradores');
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 
 // Processar ações
 $action = $_POST['action'] ?? '';
@@ -147,15 +151,14 @@ if ($user_id > 0) {
         .users-container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 20px;
-            margin-left: 0;
+            padding: 1.5rem;
         }
         
         .page-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
         }
         
         .page-title {
@@ -813,4 +816,15 @@ if ($user_id > 0) {
             e.stopPropagation();
         });
     </script>
-<?php endSidebar(); ?>
+
+<?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+includeSidebar('Usuários e Colaboradores');
+echo $conteudo;
+endSidebar();
+?>
