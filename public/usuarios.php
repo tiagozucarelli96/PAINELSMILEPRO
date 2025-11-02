@@ -257,7 +257,17 @@ if ($user_id > 0) {
             z-index: 1 !important;
         }
         
+        /* SOBRESCREVER sidebar_unified.php que tem left: 0 !important */
         /* Garantir que main-content está correto e acima da sidebar */
+        .main-content#mainContent {
+            position: relative !important;
+            left: auto !important;
+            margin-left: 280px !important;
+            width: calc(100% - 280px) !important;
+            z-index: 1 !important;
+        }
+        
+        /* Também para classe genérica */
         .main-content {
             position: relative !important;
             left: auto !important;
@@ -267,6 +277,7 @@ if ($user_id > 0) {
         }
         
         @media (max-width: 768px) {
+            .main-content#mainContent,
             .main-content {
                 margin-left: 0 !important;
                 width: 100% !important;
