@@ -245,8 +245,13 @@ if ($user_id > 0) {
             box-sizing: border-box;
         }
         
-        /* NÃO sobrescrever - sidebar_unified.php já cuida disso */
-        /* O main-content já vem com margin-left: 280px do sidebar_unified.php */
+        /* Garantir que pageContent não force posicionamento absoluto */
+        #pageContent {
+            position: relative !important;
+            left: auto !important;
+            margin-left: 0 !important;
+            padding-left: 0 !important;
+        }
         
         .users-container {
             max-width: 100%;
@@ -255,6 +260,8 @@ if ($user_id > 0) {
             box-sizing: border-box;
             overflow-x: hidden;
             width: 100%;
+            position: relative !important;
+            left: auto !important;
         }
         
         @media (max-width: 1400px) {
@@ -835,6 +842,28 @@ if ($user_id > 0) {
                     if (containerRect.left < sidebarRect.right) {
                         console.error('❌ Container está por baixo da sidebar!');
                         console.error('Container left:', containerRect.left, 'Sidebar right:', sidebarRect.right);
+                        
+                        // CORRIGIR: Forçar que o container respeite a sidebar
+                        const pageContent = document.querySelector('#pageContent');
+                        if (pageContent) {
+                            const pageContentStyle = window.getComputedStyle(pageContent);
+                            console.log('Corrigindo #pageContent...');
+                            pageContent.style.position = 'relative';
+                            pageContent.style.left = '0';
+                            pageContent.style.marginLeft = '0';
+                            pageContent.style.paddingLeft = '0';
+                        }
+                        
+                        // Verificar se há algum CSS que está forçando left: 0
+                        const usersContainerStyle = window.getComputedStyle(usersContainer);
+                        if (parseFloat(usersContainerStyle.left) === 0 || 
+                            usersContainerStyle.position === 'absolute' || 
+                            usersContainerStyle.position === 'fixed') {
+                            console.log('Corrigindo posicionamento do users-container...');
+                            usersContainer.style.position = 'relative';
+                            usersContainer.style.left = 'auto';
+                            usersContainer.style.marginLeft = 'auto';
+                        }
                     }
                 }
             }
