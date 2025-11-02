@@ -170,8 +170,23 @@ if ($is_pdf_request && $degustacao_id > 0) {
         if ($autoload) {
             require_once $autoload;
             try {
+                // Verificar se Dompdf está disponível após carregar autoload
+                $dompdf_available = false;
                 if (class_exists('\\Dompdf\\Dompdf')) {
-                    error_log("✅ Dompdf disponível, iniciando geração...");
+                    $dompdf_available = true;
+                    error_log("✅ Dompdf disponível via namespace, iniciando geração...");
+                } elseif (class_exists('Dompdf')) {
+                    $dompdf_available = true;
+                    error_log("✅ Dompdf disponível sem namespace, iniciando geração...");
+                } elseif (file_exists(__DIR__ . '/../vendor/dompdf/dompdf/src/Dompdf.php')) {
+                    require_once __DIR__ . '/../vendor/dompdf/dompdf/src/Dompdf.php';
+                    if (class_exists('\\Dompdf\\Dompdf')) {
+                        $dompdf_available = true;
+                        error_log("✅ Dompdf carregado diretamente, iniciando geração...");
+                    }
+                }
+                
+                if ($dompdf_available) {
                     // Limpar qualquer output anterior
                     while (ob_get_level()) {
                         ob_end_clean();
@@ -382,6 +397,28 @@ if ($is_pdf_request && $degustacao_id > 0) {
                     exit;
                 } else {
                     error_log("⚠️ Dompdf não disponível - classe não encontrada");
+                    error_log("   Verificando instalação...");
+                    
+                    // Verificar se o pacote está instalado mas não carregado
+                    $dompdf_check_paths = [
+                        __DIR__ . '/../vendor/dompdf/dompdf',
+                        dirname(__DIR__) . '/vendor/dompdf/dompdf'
+                    ];
+                    
+                    $dompdf_package_exists = false;
+                    foreach ($dompdf_check_paths as $dp_check) {
+                        if (is_dir($dp_check)) {
+                            $dompdf_package_exists = true;
+                            error_log("   ✅ Pacote dompdf encontrado em: $dp_check");
+                            error_log("   ⚠️ Mas classe não pode ser carregada. Verifique dependências.");
+                            break;
+                        }
+                    }
+                    
+                    if (!$dompdf_package_exists) {
+                        error_log("   ❌ Pacote dompdf não encontrado. Execute: composer require dompdf/dompdf");
+                    }
+                    
                     while (ob_get_level()) {
                         ob_end_clean();
                     }
@@ -389,7 +426,13 @@ if ($is_pdf_request && $degustacao_id > 0) {
                     echo "<html><body>";
                     echo "<h1>Erro: Dompdf não instalado</h1>";
                     echo "<p>A biblioteca Dompdf não está disponível.</p>";
-                    echo "<p>Execute: <code>composer require dompdf/dompdf</code></p>";
+                    if ($dompdf_package_exists) {
+                        echo "<p><strong>Pacote encontrado mas não pode ser carregado.</strong></p>";
+                        echo "<p>Verifique se todas as dependências estão instaladas:</p>";
+                        echo "<p><code>composer install</code></p>";
+                    } else {
+                        echo "<p>Execute: <code>composer require dompdf/dompdf</code></p>";
+                    }
                     echo "<p><a href='javascript:history.back()'>Voltar</a></p>";
                     echo "</body></html>";
                     exit;
