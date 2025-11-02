@@ -245,12 +245,21 @@ if ($user_id > 0) {
             box-sizing: border-box;
         }
         
-        /* Garantir que pageContent não force posicionamento absoluto */
+        /* FORÇAR que pageContent e users-container respeitem a sidebar */
         #pageContent {
             position: relative !important;
-            left: auto !important;
+            left: 0 !important;
             margin-left: 0 !important;
             padding-left: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Garantir que main-content está correto */
+        .main-content {
+            position: relative !important;
+            left: auto !important;
         }
         
         .users-container {
@@ -261,7 +270,8 @@ if ($user_id > 0) {
             overflow-x: hidden;
             width: 100%;
             position: relative !important;
-            left: auto !important;
+            left: 0 !important;
+            margin-left: 0 !important;
         }
         
         @media (max-width: 1400px) {
@@ -786,16 +796,26 @@ if ($user_id > 0) {
     </style>
 
 <script>
-        // Marcar body como pronto quando a sidebar estiver carregada
-        document.addEventListener('DOMContentLoaded', function() {
-            // Pequeno delay para garantir que o CSS da sidebar foi aplicado
-            setTimeout(function() {
-                document.body.classList.add('sidebar-ready');
-                
-                // Forçar correção de overflow após renderização
+        // Executar correção IMEDIATAMENTE
+        (function() {
+            // Executar logo que o DOM estiver disponível
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initLayout);
+            } else {
+                initLayout();
+            }
+            
+            function initLayout() {
+                // Executar múltiplas vezes para garantir
                 forceOverflowFix();
-            }, 50);
-        });
+                setTimeout(forceOverflowFix, 10);
+                setTimeout(forceOverflowFix, 50);
+                setTimeout(forceOverflowFix, 100);
+                setTimeout(forceOverflowFix, 200);
+                
+                document.body.classList.add('sidebar-ready');
+            }
+        })();
         
         // Função para verificar e corrigir layout
         function forceOverflowFix() {
