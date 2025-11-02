@@ -1558,14 +1558,26 @@ ob_start();
         
         // Excluir usuário
         function deleteUser(userId) {
-            if (!confirm('Tem certeza que deseja excluir este usuário?\n\nEsta ação não pode ser desfeita.')) {
+            console.log('deleteUser chamado com userId:', userId);
+            
+            if (!userId || userId <= 0) {
+                console.error('ID de usuário inválido:', userId);
+                alert('Erro: ID de usuário inválido.');
                 return;
             }
+            
+            if (!confirm('Tem certeza que deseja excluir este usuário?\n\nEsta ação não pode ser desfeita.')) {
+                console.log('Exclusão cancelada pelo usuário');
+                return;
+            }
+            
+            console.log('Enviando requisição de exclusão...');
             
             // Criar formulário para enviar requisição de exclusão
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = '';
+            // Usar action vazio para submeter na mesma página
+            form.action = window.location.pathname + (window.location.search ? window.location.search.split('&page=')[0] + '&page=usuarios' : '?page=usuarios');
             
             const actionInput = document.createElement('input');
             actionInput.type = 'hidden';
@@ -1580,6 +1592,7 @@ ob_start();
             form.appendChild(userIdInput);
             
             document.body.appendChild(form);
+            console.log('Formulário criado, enviando...', {action: form.action, method: form.method});
             form.submit();
         }
         
