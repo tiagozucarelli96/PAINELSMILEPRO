@@ -247,9 +247,12 @@ if ($action === 'save') {
     }
 }
 
-// Buscar mensagem de sucesso da URL
+// Buscar mensagens da URL
 if (isset($_GET['success'])) {
     $success_message = $_GET['success'];
+}
+if (isset($_GET['error'])) {
+    $error_message = $_GET['error'];
 }
 
 // Buscar usuários
