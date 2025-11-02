@@ -30,7 +30,7 @@ if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco 
 require_once __DIR__ . '/lc_calc.php';
 
 // ========= Util =========
-function dow_pt(\DateTime $d): string { static $dias=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado']; return $dias[(int)$d->format('w')]; }
+// dow_pt() já está definida em core/helpers.php - não redeclarar
 // ========= Rascunhos (tudo na mesma página) =========
 $pdo->exec("
 CREATE TABLE IF NOT EXISTS lc_rascunhos (

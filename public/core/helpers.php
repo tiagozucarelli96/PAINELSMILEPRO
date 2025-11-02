@@ -26,7 +26,11 @@ if (!function_exists('brDateOnly')) {
 
 if (!function_exists('dow_pt')) {
     function dow_pt($ts): string {
-        static $dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        static $dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        // Aceitar DateTime, timestamp numérico ou string de data
+        if ($ts instanceof \DateTime) {
+            return $dias[(int)$ts->format('w')];
+        }
         $timestamp = is_numeric($ts) ? $ts : strtotime($ts);
         return $dias[(int)date('w', $timestamp)];
     }
