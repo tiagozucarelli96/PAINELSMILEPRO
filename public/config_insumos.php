@@ -55,30 +55,73 @@ try {
             }
 
             if ($post_action === 'create') {
-                $sql = "INSERT INTO lc_insumos (nome, unidade_compra, conversoes, sku, custo_unitario, ativo)
-                        VALUES (:nome, :unidade, :conv, :sku, :custo, :ativo)";
-                $st = $pdo->prepare($sql);
-                $st->execute([
-                    ':nome'=>$nome, ':unidade'=>$unidade_compra, ':conv'=>$conversoes,
-                    ':sku'=>$sku !== '' ? $sku : null,
-                    ':custo'=>$custo_unitario,
-                    ':ativo'=>$ativo
-                ]);
+                // Verificar se coluna conversoes existe antes de inserir
+                $check_cols = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'lc_insumos' AND column_name = 'conversoes'
+                ");
+                $has_conversoes_col = $check_cols->rowCount() > 0;
+                
+                if ($has_conversoes_col) {
+                    $sql = "INSERT INTO lc_insumos (nome, unidade_compra, conversoes, sku, custo_unitario, ativo)
+                            VALUES (:nome, :unidade, :conv, :sku, :custo, :ativo)";
+                    $st = $pdo->prepare($sql);
+                    $st->execute([
+                        ':nome'=>$nome, ':unidade'=>$unidade_compra, ':conv'=>$conversoes,
+                        ':sku'=>$sku !== '' ? $sku : null,
+                        ':custo'=>$custo_unitario,
+                        ':ativo'=>$ativo
+                    ]);
+                } else {
+                    $sql = "INSERT INTO lc_insumos (nome, unidade_compra, sku, custo_unitario, ativo)
+                            VALUES (:nome, :unidade, :sku, :custo, :ativo)";
+                    $st = $pdo->prepare($sql);
+                    $st->execute([
+                        ':nome'=>$nome, ':unidade'=>$unidade_compra,
+                        ':sku'=>$sku !== '' ? $sku : null,
+                        ':custo'=>$custo_unitario,
+                        ':ativo'=>$ativo
+                    ]);
+                }
                 $msg = 'Insumo criado.';
             } else {
                 $idUpd = (int)($_POST['id'] ?? 0);
                 if ($idUpd <= 0) throw new Exception('ID inválido.');
-                $sql = "UPDATE lc_insumos
-                           SET nome=:nome, unidade_compra=:unidade, conversoes=:conv, sku=:sku,
-                               custo_unitario=:custo, ativo=:ativo
-                         WHERE id=:id";
-                $st = $pdo->prepare($sql);
-                $st->execute([
-                    ':nome'=>$nome, ':unidade'=>$unidade_compra, ':conv'=>$conversoes,
-                    ':sku'=>$sku !== '' ? $sku : null,
-                    ':custo'=>$custo_unitario,
-                    ':ativo'=>$ativo, ':id'=>$idUpd
-                ]);
+                
+                // Verificar se coluna conversoes existe antes de atualizar
+                $check_cols = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'lc_insumos' AND column_name = 'conversoes'
+                ");
+                $has_conversoes_col = $check_cols->rowCount() > 0;
+                
+                if ($has_conversoes_col) {
+                    $sql = "UPDATE lc_insumos
+                               SET nome=:nome, unidade_compra=:unidade, conversoes=:conv, sku=:sku,
+                                   custo_unitario=:custo, ativo=:ativo
+                             WHERE id=:id";
+                    $st = $pdo->prepare($sql);
+                    $st->execute([
+                        ':nome'=>$nome, ':unidade'=>$unidade_compra, ':conv'=>$conversoes,
+                        ':sku'=>$sku !== '' ? $sku : null,
+                        ':custo'=>$custo_unitario,
+                        ':ativo'=>$ativo, ':id'=>$idUpd
+                    ]);
+                } else {
+                    $sql = "UPDATE lc_insumos
+                               SET nome=:nome, unidade_compra=:unidade, sku=:sku,
+                                   custo_unitario=:custo, ativo=:ativo
+                             WHERE id=:id";
+                    $st = $pdo->prepare($sql);
+                    $st->execute([
+                        ':nome'=>$nome, ':unidade'=>$unidade_compra,
+                        ':sku'=>$sku !== '' ? $sku : null,
+                        ':custo'=>$custo_unitario,
+                        ':ativo'=>$ativo, ':id'=>$idUpd
+                    ]);
+                }
                 $msg = 'Insumo atualizado.';
             }
             header("Location: config_insumos.php?msg=".urlencode($msg));
@@ -139,8 +182,32 @@ try {
 $busca = trim($_GET['q'] ?? '');
 $fativo = isset($_GET['fativo']) ? $_GET['fativo'] : '';
 $params = [];
-$sqlList = "SELECT id, nome, unidade_compra, conversoes, sku, custo_unitario, ativo, created_at, updated_at
-            FROM lc_insumos WHERE 1=1";
+
+// Verificar quais colunas existem na tabela
+$check_cols = $pdo->query("
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'lc_insumos' 
+    AND column_name IN ('conversoes', 'created_at', 'updated_at')
+");
+$existing_cols = $check_cols->fetchAll(PDO::FETCH_COLUMN);
+$has_conversoes = in_array('conversoes', $existing_cols);
+$has_created_at = in_array('created_at', $existing_cols);
+$has_updated_at = in_array('updated_at', $existing_cols);
+
+// Construir SELECT dinamicamente
+$select_cols = ['id', 'nome', 'unidade_compra', 'sku', 'custo_unitario', 'ativo'];
+if ($has_conversoes) {
+    $select_cols[] = 'conversoes';
+}
+if ($has_created_at) {
+    $select_cols[] = 'created_at';
+}
+if ($has_updated_at) {
+    $select_cols[] = 'updated_at';
+}
+
+$sqlList = "SELECT " . implode(', ', $select_cols) . " FROM lc_insumos WHERE 1=1";
 if ($busca !== '') {
     $sqlList .= " AND (nome LIKE :q OR sku LIKE :q)";
     $params[':q'] = "%{$busca}%";
@@ -268,11 +335,13 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
                     </div>
                 </div>
 
+                <?php if ($has_conversoes): ?>
                 <div style="margin-top:10px">
                     <label>Conversões (JSON)</label>
                     <textarea class="mono" name="conversoes" rows="4" style="width:100%;" placeholder='{"kg":{"g":1000},"L":{"ml":1000}}'><?= h($editRow['conversoes'] ?? '') ?></textarea>
                     <div class="small">Opcional. Ex.: {"kg":{"g":1000}} significa 1 kg = 1000 g.</div>
                 </div>
+                <?php endif; ?>
 
                 <div style="margin-top:12px;display:flex;gap:8px">
                     <button class="btn" type="submit"><?= $editRow ? 'Salvar alterações' : 'Adicionar' ?></button>
@@ -304,7 +373,7 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
             <?php else: foreach ($rows as $r): ?>
                 <tr>
                     <td><?= (int)$r['id'] ?></td>
-                    <td title="Conversões: <?= h($r['conversoes'] ?? '') ?>"><?= h($r['nome']) ?></td>
+                    <td title="<?= $has_conversoes ? ('Conversões: ' . h($r['conversoes'] ?? '')) : '' ?>"><?= h($r['nome']) ?></td>
                     <td><?= h($r['unidade_compra']) ?></td>
                     <td><?= h($r['sku'] ?? '') ?></td>
                     <td><?= $r['custo_unitario'] !== null ? number_format((float)$r['custo_unitario'], 2, ',', '.') : '' ?></td>
