@@ -234,6 +234,14 @@ if ($user_id > 0) {
 ?>
 
 <style>
+        /* Garantir que o container principal não tenha overflow */
+        #pageContent,
+        .main-content {
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
         .users-container {
             max-width: 100%;
             margin: 0 auto;
@@ -241,6 +249,7 @@ if ($user_id > 0) {
             box-sizing: border-box;
             overflow-x: hidden;
             width: 100%;
+            position: relative;
         }
         
         .page-header {
@@ -314,15 +323,20 @@ if ($user_id > 0) {
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 1.5rem;
             width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
         }
         
         @media (max-width: 768px) {
             .users-grid {
                 grid-template-columns: 1fr;
+            }
+            
+            .users-container {
+                padding: 1rem;
             }
         }
         
@@ -427,6 +441,8 @@ if ($user_id > 0) {
             max-width: 60%;
             flex: 1;
             min-width: 0;
+            hyphens: auto;
+            line-height: 1.4;
         }
         
         .permissions-section {
@@ -457,6 +473,16 @@ if ($user_id > 0) {
             font-size: 0.75rem;
             min-width: 0;
             overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        
+        .permission-item span:not(.permission-badge) {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+            flex: 1;
         }
         
         .permission-badge {
@@ -487,6 +513,14 @@ if ($user_id > 0) {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            flex: 1;
+            justify-content: center;
+            max-width: 100%;
+        }
+        
+        .btn-delete {
+            flex: 0 0 auto;
+            min-width: auto;
         }
         
         .btn-edit {
