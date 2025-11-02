@@ -68,6 +68,26 @@ if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     $_GET = array_merge($parsed_query, $_GET);
 }
 
+// IMPORTANTE: Processar requisições AJAX ANTES de qualquer verificação de login/redirecionamento
+// Isso permite que endpoints AJAX retornem JSON mesmo quando há problemas de sessão
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+if (!empty($action) && !empty($_GET['page'])) {
+    // Se for uma requisição AJAX, incluir a página diretamente para processar o action
+    $ajax_pages = ['usuarios']; // Páginas que têm endpoints AJAX
+    if (in_array($_GET['page'], $ajax_pages)) {
+        $ajax_page_file = __DIR__ . '/' . $_GET['page'] . '.php';
+        if (file_exists($ajax_page_file)) {
+            // Iniciar sessão se necessário
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            // Incluir o arquivo que processará o action e fará exit
+            require $ajax_page_file;
+            exit; // Não continuar processamento normal
+        }
+    }
+}
+
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {

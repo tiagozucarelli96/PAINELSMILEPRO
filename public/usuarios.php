@@ -11,29 +11,7 @@ if (!isset($pdo)) {
     global $pdo;
 }
 
-// Verificar permissões - precisa ter perm_configuracoes (já que está dentro de Configurações)
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
-    http_response_code(403); 
-    ?>
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <title>Acesso Negado</title>
-    </head>
-    <body>
-        <div style="text-align: center; padding: 50px; font-family: Arial;">
-            <h1>🚫 Acesso Negado</h1>
-            <p>Você não tem permissão para acessar esta função.</p>
-            <a href="index.php?page=dashboard">Voltar para Dashboard</a>
-        </div>
-    </body>
-    </html>
-    <?php
-    exit;
-}
-
-// Processar ações ANTES de qualquer output
+// Processar ações AJAX ANTES de qualquer verificação de permissões ou output
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
 
@@ -51,9 +29,9 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
             header('Cache-Control: no-cache, must-revalidate');
         }
         echo json_encode(['success' => false, 'message' => 'Sessão expirada ou sem permissão. Por favor, recarregue a página.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    
+    exit;
+}
+
     // Garantir que não há output buffer ativo
     if (ob_get_level() > 0) {
         ob_end_clean();
@@ -106,6 +84,36 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
+    exit;
+}
+
+// Verificar permissões APÓS processar ações AJAX (para não quebrar endpoints JSON)
+// Verificar permissões - precisa ter perm_configuracoes (já que está dentro de Configurações)
+if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+    // Se for requisição AJAX, retornar JSON
+    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada ou sem permissão. Por favor, recarregue a página.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
+    http_response_code(403); 
+    ?>
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Acesso Negado</title>
+    </head>
+    <body>
+        <div style="text-align: center; padding: 50px; font-family: Arial;">
+            <h1>🚫 Acesso Negado</h1>
+            <p>Você não tem permissão para acessar esta função.</p>
+            <a href="index.php?page=dashboard">Voltar para Dashboard</a>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 
@@ -1419,12 +1427,12 @@ ob_start();
                 form.reset();
                 // Limpar todos os checkboxes
                 form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-                
+            
                 // Mostrar modal imediatamente para novo usuário
                 setTimeout(() => {
                     modal.style.display = 'flex';
                     setTimeout(() => {
-                        modal.classList.add('active');
+            modal.classList.add('active');
                     }, 10);
                 }, 10);
             }
