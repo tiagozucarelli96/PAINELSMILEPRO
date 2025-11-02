@@ -1627,38 +1627,35 @@ ob_start();
                 modal.style.display = 'none';
             }
             
-            // Garantir que os botões funcionem mesmo se o onclick inline falhar
-            // Adicionar event listeners aos botões como fallback
+            // Garantir que os botões funcionem - adicionar event listeners como fallback
             document.querySelectorAll('.btn-edit').forEach(btn => {
-                // Remover listeners antigos se houver
-                btn.replaceWith(btn.cloneNode(true));
-                // Adicionar novo listener
-                const newBtn = document.querySelector(`.btn-edit[onclick*="${btn.getAttribute('onclick')?.match(/\d+/)?.[0] || ''}"]`);
-                if (newBtn) {
-                    const userId = newBtn.getAttribute('onclick')?.match(/openModal\((\d+)/)?.[1] || newBtn.getAttribute('onclick')?.match(/\d+/)?.[0];
-                    if (userId) {
-                        newBtn.addEventListener('click', function(e) {
+                const onclick = btn.getAttribute('onclick');
+                if (onclick) {
+                    const match = onclick.match(/openModal\((\d+)/);
+                    if (match && match[1]) {
+                        const userId = parseInt(match[1]);
+                        btn.addEventListener('click', function(e) {
+                            console.log('Event listener fallback acionado para editar usuário:', userId);
                             e.preventDefault();
                             e.stopPropagation();
-                            openModal(parseInt(userId), e);
-                        });
+                            openModal(userId, e);
+                        }, true); // Use capture phase para garantir execução
                     }
                 }
             });
             
             document.querySelectorAll('.btn-delete').forEach(btn => {
-                // Remover listeners antigos se houver
-                btn.replaceWith(btn.cloneNode(true));
-                // Adicionar novo listener
-                const newBtn = document.querySelector(`.btn-delete[onclick*="${btn.getAttribute('onclick')?.match(/\d+/)?.[0] || ''}"]`);
-                if (newBtn) {
-                    const userId = newBtn.getAttribute('onclick')?.match(/deleteUser\((\d+)/)?.[1] || newBtn.getAttribute('onclick')?.match(/\d+/)?.[0];
-                    if (userId) {
-                        newBtn.addEventListener('click', function(e) {
+                const onclick = btn.getAttribute('onclick');
+                if (onclick) {
+                    const match = onclick.match(/deleteUser\((\d+)/);
+                    if (match && match[1]) {
+                        const userId = parseInt(match[1]);
+                        btn.addEventListener('click', function(e) {
+                            console.log('Event listener fallback acionado para excluir usuário:', userId);
                             e.preventDefault();
                             e.stopPropagation();
-                            deleteUser(parseInt(userId));
-                        });
+                            deleteUser(userId, e);
+                        }, true); // Use capture phase para garantir execução
                     }
                 }
             });
