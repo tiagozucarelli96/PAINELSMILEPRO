@@ -768,16 +768,10 @@ if ($user_id > 0) {
     </style>
 
 <style>
-        /* Prevenir flash de conteúdo não posicionado */
-        body:not(.sidebar-ready) .users-container {
-            visibility: hidden;
-            opacity: 0;
-        }
-        
-        body.sidebar-ready .users-container {
-            visibility: visible;
-            opacity: 1;
-            transition: opacity 0.2s ease-in;
+        /* Remover regra que estava escondendo conteúdo */
+        .users-container {
+            visibility: visible !important;
+            opacity: 1 !important;
         }
     </style>
 
