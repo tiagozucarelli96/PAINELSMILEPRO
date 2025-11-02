@@ -1619,55 +1619,75 @@ if ($current_page === 'dashboard') {
                     Dashboard
                 </a>
                 
+                <?php if (!empty($_SESSION['perm_agenda'])): ?>
                 <a href="index.php?page=agenda" class="nav-item <?= isActiveUnified('agenda') ?>">
                     <span class="nav-item-icon">📅</span>
                     Agenda
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_demandas'])): ?>
                 <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
                     <span class="nav-item-icon">📝</span>
                     Demandas
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_comercial'])): ?>
                 <a href="index.php?page=comercial" class="nav-item <?= isActiveUnified('comercial') ?>">
                     <span class="nav-item-icon">📋</span>
                     Comercial
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_logistico'])): ?>
                 <a href="index.php?page=logistico" class="nav-item <?= isActiveUnified('logistico') ?>">
                     <span class="nav-item-icon">📦</span>
                     Logístico
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_configuracoes'])): ?>
                 <a href="index.php?page=configuracoes" class="nav-item <?= isActiveUnified('configuracoes') ?>">
                     <span class="nav-item-icon">⚙️</span>
                     Configurações
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_cadastros'])): ?>
                 <a href="index.php?page=cadastros" class="nav-item <?= isActiveUnified('cadastros') ?>">
                     <span class="nav-item-icon">📝</span>
                     Cadastros
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_financeiro'])): ?>
                 <a href="index.php?page=financeiro" class="nav-item <?= isActiveUnified('financeiro') ?>">
                     <span class="nav-item-icon">💰</span>
                     Financeiro
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_administrativo'])): ?>
                 <a href="index.php?page=administrativo" class="nav-item <?= isActiveUnified('administrativo') ?>">
                     <span class="nav-item-icon">👥</span>
                     Administrativo
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_rh'])): ?>
                 <a href="index.php?page=rh" class="nav-item <?= isActiveUnified('rh') ?>">
                     <span class="nav-item-icon">👔</span>
                     RH
                 </a>
+                <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
                 <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
                     <span class="nav-item-icon">🏦</span>
                     Banco Smile
                 </a>
+                <?php endif; ?>
             </nav>
     </div>
     <!-- Sidebar fechada -->

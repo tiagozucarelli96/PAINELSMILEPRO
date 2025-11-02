@@ -232,6 +232,115 @@ if (empty($_SESSION['logado']) && !$is_public_page) {
 /* >>> popula as permissões da sessão sem mexer no login */
 require __DIR__ . '/permissoes_boot.php';
 
+/* >>> verifica permissões antes de incluir a página */
+require_once __DIR__ . '/permissoes_map.php';
+$permissoes_map = require __DIR__ . '/permissoes_map.php';
+
+// Verificar se a página requer permissão
+$required_permission = $permissoes_map[$page] ?? null;
+
+if ($required_permission !== null && (empty($_SESSION[$required_permission]) || !$_SESSION[$required_permission])) {
+    // Usuário não tem permissão - exibir mensagem
+    http_response_code(403);
+    
+    // Se for uma requisição AJAX, retornar JSON
+    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'error' => true,
+            'message' => 'Você não tem permissão para acessar esta função.'
+        ]);
+        exit;
+    }
+    
+    // Se não for AJAX, mostrar página de erro
+    require_once __DIR__ . '/core/helpers.php';
+    ?>
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Acesso Negado - Sistema Smile</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }
+            
+            .error-container {
+                background: white;
+                border-radius: 16px;
+                padding: 3rem;
+                max-width: 500px;
+                width: 100%;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                text-align: center;
+            }
+            
+            .error-icon {
+                font-size: 4rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            .error-title {
+                font-size: 1.75rem;
+                font-weight: 700;
+                color: #1e293b;
+                margin-bottom: 1rem;
+            }
+            
+            .error-message {
+                color: #64748b;
+                font-size: 1rem;
+                margin-bottom: 2rem;
+                line-height: 1.6;
+            }
+            
+            .btn-back {
+                display: inline-block;
+                background: #1e3a8a;
+                color: white;
+                padding: 0.75rem 2rem;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }
+            
+            .btn-back:hover {
+                background: #2563eb;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="error-container">
+            <div class="error-icon">🚫</div>
+            <h1 class="error-title">Acesso Negado</h1>
+            <p class="error-message">
+                Você não tem permissão para acessar esta função.
+            </p>
+            <a href="index.php?page=dashboard" class="btn-back">Voltar para Dashboard</a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
 /* resolve e inclui a página */
 $file = $routes[$page] ?? null;
 $path = $file ? (__DIR__.'/'.$file) : null;

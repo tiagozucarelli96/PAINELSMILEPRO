@@ -11,10 +11,25 @@ if (!isset($pdo)) {
     global $pdo;
 }
 
-// Verificar permissões
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
+// Verificar permissões - precisa ter perm_configuracoes (já que está dentro de Configurações)
+if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
     http_response_code(403); 
-    echo "Acesso negado."; 
+    ?>
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <title>Acesso Negado</title>
+    </head>
+    <body>
+        <div style="text-align: center; padding: 50px; font-family: Arial;">
+            <h1>🚫 Acesso Negado</h1>
+            <p>Você não tem permissão para acessar esta função.</p>
+            <a href="index.php?page=dashboard">Voltar para Dashboard</a>
+        </div>
+    </body>
+    </html>
+    <?php
     exit;
 }
 
@@ -65,13 +80,23 @@ if ($action === 'save') {
         
         // Permissões
         $permissoes = [
+            // Módulos da sidebar
+            'perm_agenda' => isset($_POST['perm_agenda']) ? 1 : 0,
+            'perm_comercial' => isset($_POST['perm_comercial']) ? 1 : 0,
+            'perm_logistico' => isset($_POST['perm_logistico']) ? 1 : 0,
+            'perm_configuracoes' => isset($_POST['perm_configuracoes']) ? 1 : 0,
+            'perm_cadastros' => isset($_POST['perm_cadastros']) ? 1 : 0,
+            'perm_financeiro' => isset($_POST['perm_financeiro']) ? 1 : 0,
+            'perm_administrativo' => isset($_POST['perm_administrativo']) ? 1 : 0,
+            'perm_rh' => isset($_POST['perm_rh']) ? 1 : 0,
+            'perm_banco_smile' => isset($_POST['perm_banco_smile']) ? 1 : 0,
+            'perm_banco_smile_admin' => isset($_POST['perm_banco_smile_admin']) ? 1 : 0,
+            // Permissões específicas
             'perm_usuarios' => isset($_POST['perm_usuarios']) ? 1 : 0,
             'perm_pagamentos' => isset($_POST['perm_pagamentos']) ? 1 : 0,
             'perm_tarefas' => isset($_POST['perm_tarefas']) ? 1 : 0,
             'perm_demandas' => isset($_POST['perm_demandas']) ? 1 : 0,
             'perm_portao' => isset($_POST['perm_portao']) ? 1 : 0,
-            'perm_banco_smile' => isset($_POST['perm_banco_smile']) ? 1 : 0,
-            'perm_banco_smile_admin' => isset($_POST['perm_banco_smile_admin']) ? 1 : 0,
             'perm_notas_fiscais' => isset($_POST['perm_notas_fiscais']) ? 1 : 0,
             'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']) ? 1 : 0,
             'perm_dados_contrato' => isset($_POST['perm_dados_contrato']) ? 1 : 0,
@@ -721,13 +746,23 @@ if ($user_id > 0) {
                             // Verificar se há permissões ativas
                             $permissoes_ativas = [];
                             $permissoes_nomes = [
+                                // Módulos da sidebar
+                                'perm_agenda' => 'Agenda',
+                                'perm_comercial' => 'Comercial',
+                                'perm_logistico' => 'Logístico',
+                                'perm_configuracoes' => 'Configurações',
+                                'perm_cadastros' => 'Cadastros',
+                                'perm_financeiro' => 'Financeiro',
+                                'perm_administrativo' => 'Administrativo',
+                                'perm_rh' => 'RH',
+                                'perm_banco_smile' => 'Banco Smile',
+                                'perm_banco_smile_admin' => 'Banco Admin',
+                                // Permissões específicas
                                 'perm_usuarios' => 'Usuários',
                                 'perm_pagamentos' => 'Pagamentos',
                                 'perm_tarefas' => 'Tarefas',
                                 'perm_demandas' => 'Demandas',
                                 'perm_portao' => 'Portão',
-                                'perm_banco_smile' => 'Banco',
-                                'perm_banco_smile_admin' => 'Banco Admin',
                                 'perm_notas_fiscais' => 'Notas Fiscais',
                                 'perm_estoque_logistico' => 'Estoque',
                                 'perm_dados_contrato' => 'Contratos',
@@ -849,31 +884,55 @@ if ($user_id > 0) {
                     </div>
                 </div>
                 
-                <div class="permissions-section">
+                    <div class="permissions-section">
                     <h3 class="permissions-title">🔐 Permissões do Sistema</h3>
+                    <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">Módulos da Sidebar (correspondem aos itens do menu)</p>
                     <div class="permissions-grid-form">
                         <?php
-                        $permissions = [
+                        $permissions_sidebar = [
+                            'perm_agenda' => '📅 Agenda',
+                            'perm_comercial' => '📋 Comercial',
+                            'perm_logistico' => '📦 Logístico',
+                            'perm_configuracoes' => '⚙️ Configurações',
+                            'perm_cadastros' => '📝 Cadastros',
+                            'perm_financeiro' => '💰 Financeiro',
+                            'perm_administrativo' => '👥 Administrativo',
+                            'perm_rh' => '👔 RH',
+                            'perm_banco_smile' => '🏦 Banco Smile',
+                            'perm_banco_smile_admin' => '🏦 Admin Banco Smile'
+                        ];
+                        
+                        foreach ($permissions_sidebar as $perm => $label):
+                        ?>
+                            <div class="permission-checkbox">
+                                <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
+                                <label for="<?= $perm ?>"><?= $label ?></label>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                    <h3 class="permissions-title" style="margin-top: 2rem;">🔧 Permissões Específicas</h3>
+                    <div class="permissions-grid-form">
+                        <?php
+                        $permissions_especificas = [
                             'perm_usuarios' => '👥 Usuários',
                             'perm_pagamentos' => '💳 Pagamentos',
                             'perm_tarefas' => '📋 Tarefas',
                             'perm_demandas' => '📋 Demandas',
                             'perm_portao' => '🚪 Portão',
-                            'perm_banco_smile' => '🏦 Banco Smile',
-                            'perm_banco_smile_admin' => '🏦 Admin Banco',
                             'perm_notas_fiscais' => '📄 Notas Fiscais',
                             'perm_estoque_logistico' => '📦 Estoque',
                             'perm_dados_contrato' => '📋 Dados Contrato',
                             'perm_uso_fiorino' => '🚐 Uso Fiorino'
                         ];
                         
-                        foreach ($permissions as $perm => $label):
+                        foreach ($permissions_especificas as $perm => $label):
                         ?>
                             <div class="permission-checkbox">
                                 <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
                                 <label for="<?= $perm ?>"><?= $label ?></label>
                             </div>
-      <?php endforeach; ?>
+                        <?php endforeach; ?>
                     </div>
                 </div>
                 
@@ -1006,13 +1065,21 @@ if ($user_id > 0) {
                             const statusInput = formToFill.querySelector('select[name="status_empregado"]');
                             if (statusInput) statusInput.value = user.status_empregado || 'ativo';
                             
-                            // Preencher permissões
+                            // Preencher permissões - todas as que começam com perm_
                             Object.keys(user).forEach(key => {
                                 if (key.startsWith('perm_')) {
                                     const checkbox = formToFill.querySelector('input[name="' + key + '"]');
                                     if (checkbox) {
                                         checkbox.checked = (user[key] == 1 || user[key] === true || user[key] === '1');
                                     }
+                                }
+                            });
+                            
+                            // Garantir que todos os checkboxes de permissão sejam verificados corretamente
+                            formToFill.querySelectorAll('input[type="checkbox"][name^="perm_"]').forEach(checkbox => {
+                                const key = checkbox.name;
+                                if (user[key] !== undefined) {
+                                    checkbox.checked = (user[key] == 1 || user[key] === true || user[key] === '1');
                                 }
                             });
                         } else {

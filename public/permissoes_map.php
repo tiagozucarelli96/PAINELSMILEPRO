@@ -1,0 +1,107 @@
+<?php
+// public/permissoes_map.php — Mapeamento de páginas para permissões
+// Define qual permissão é necessária para cada página/modulo
+
+return [
+    // Dashboard - sempre permitido (todos logados podem acessar)
+    'dashboard' => null,
+    
+    // Módulos principais da sidebar
+    'agenda' => 'perm_agenda',
+    'demandas' => 'perm_demandas',
+    'comercial' => 'perm_comercial',
+    'logistico' => 'perm_logistico',
+    'lc_index' => 'perm_logistico',
+    'configuracoes' => 'perm_configuracoes',
+    'cadastros' => 'perm_cadastros',
+    'financeiro' => 'perm_financeiro',
+    'administrativo' => 'perm_administrativo',
+    'rh' => 'perm_rh',
+    'banco_smile' => 'perm_banco_smile',
+    'banco_smile_main' => 'perm_banco_smile',
+    'banco_smile_admin' => 'perm_banco_smile_admin',
+    
+    // Páginas específicas dentro dos módulos
+    
+    // Agenda
+    'agenda_config' => 'perm_agenda',
+    'agenda_relatorios' => 'perm_agenda',
+    
+    // Comercial
+    'comercial_degustacoes' => 'perm_comercial',
+    'comercial_inscritos' => 'perm_comercial',
+    'comercial_degust_inscritos' => 'perm_comercial',
+    'comercial_degust_inscricoes' => 'perm_comercial',
+    'comercial_degustacao_editar' => 'perm_comercial',
+    'comercial_clientes' => 'perm_comercial',
+    'comercial_pagamento' => 'perm_comercial',
+    'comercial_inscritos_cadastrados' => 'perm_comercial',
+    'comercial_lista_espera' => 'perm_comercial',
+    'comercial_realizar_degustacao' => 'perm_comercial',
+    
+    // Logístico
+    'lista_compras' => 'perm_logistico',
+    'lista' => 'perm_logistico',
+    'lc_ver' => 'perm_logistico',
+    'lc_pdf' => 'perm_logistico',
+    'estoque' => 'perm_logistico',
+    'estoque_logistico' => 'perm_logistico',
+    'estoque_kardex' => 'perm_logistico',
+    'kardex' => 'perm_logistico',
+    'estoque_contagens' => 'perm_logistico',
+    'contagens' => 'perm_logistico',
+    'estoque_alertas' => 'perm_logistico',
+    'alertas' => 'perm_logistico',
+    'ver' => 'perm_logistico',
+    
+    // Configurações
+    'config_usuarios' => 'perm_configuracoes',
+    'usuarios' => 'perm_configuracoes',
+    'usuario_novo' => 'perm_configuracoes',
+    'usuario_editar' => 'perm_configuracoes',
+    'config_fornecedores' => 'perm_configuracoes',
+    'fornecedores' => 'perm_configuracoes',
+    'config_insumos' => 'perm_configuracoes',
+    'config_categorias' => 'perm_configuracoes',
+    'config_fichas' => 'perm_configuracoes',
+    'config_itens' => 'perm_configuracoes',
+    'config_itens_fixos' => 'perm_configuracoes',
+    'config_sistema' => 'perm_configuracoes',
+    
+    // Cadastros
+    'fornecedor_link' => 'perm_cadastros',
+    
+    // Financeiro
+    'pagamentos' => 'perm_financeiro',
+    'pagamentos_painel' => 'perm_financeiro',
+    'pagamentos_solicitar' => 'perm_financeiro',
+    'pagamentos_minhas' => 'perm_financeiro',
+    'pagamentos_ver' => 'perm_financeiro',
+    'admin_pagamentos' => 'perm_financeiro',
+    'freelancer_cadastro' => 'perm_financeiro',
+    
+    // Administrativo
+    'administrativo_relatorios' => 'perm_administrativo',
+    'administrativo_auditoria' => 'perm_administrativo',
+    'administrativo_stats' => 'perm_administrativo',
+    'administrativo_historico' => 'perm_administrativo',
+    'relatorio_analise_sistema' => 'perm_administrativo',
+    'verificacao_completa_erros' => 'perm_administrativo',
+    'sistema_unificado' => 'perm_administrativo',
+    'historico' => 'perm_administrativo',
+    'notas_fiscais' => 'perm_notas_fiscais',
+    
+    // RH
+    'rh_dashboard' => 'perm_rh',
+    'rh_colaboradores' => 'perm_rh',
+    'rh_colaborador_ver' => 'perm_rh',
+    'rh_holerite_upload' => 'perm_rh',
+    
+    // Outros (usando permissões existentes)
+    'portao' => 'perm_portao',
+    'dados_contrato' => 'perm_dados_contrato',
+    'uso_fiorino' => 'perm_uso_fiorino',
+    'contab_link' => 'perm_financeiro',
+    'contab_gerar_link' => 'perm_financeiro',
+];
+
