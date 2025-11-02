@@ -1626,6 +1626,42 @@ ob_start();
             if (modal) {
                 modal.style.display = 'none';
             }
+            
+            // Garantir que os botões funcionem mesmo se o onclick inline falhar
+            // Adicionar event listeners aos botões como fallback
+            document.querySelectorAll('.btn-edit').forEach(btn => {
+                // Remover listeners antigos se houver
+                btn.replaceWith(btn.cloneNode(true));
+                // Adicionar novo listener
+                const newBtn = document.querySelector(`.btn-edit[onclick*="${btn.getAttribute('onclick')?.match(/\d+/)?.[0] || ''}"]`);
+                if (newBtn) {
+                    const userId = newBtn.getAttribute('onclick')?.match(/openModal\((\d+)/)?.[1] || newBtn.getAttribute('onclick')?.match(/\d+/)?.[0];
+                    if (userId) {
+                        newBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openModal(parseInt(userId), e);
+                        });
+                    }
+                }
+            });
+            
+            document.querySelectorAll('.btn-delete').forEach(btn => {
+                // Remover listeners antigos se houver
+                btn.replaceWith(btn.cloneNode(true));
+                // Adicionar novo listener
+                const newBtn = document.querySelector(`.btn-delete[onclick*="${btn.getAttribute('onclick')?.match(/\d+/)?.[0] || ''}"]`);
+                if (newBtn) {
+                    const userId = newBtn.getAttribute('onclick')?.match(/deleteUser\((\d+)/)?.[1] || newBtn.getAttribute('onclick')?.match(/\d+/)?.[0];
+                    if (userId) {
+                        newBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            deleteUser(parseInt(userId));
+                        });
+                    }
+                }
+            });
         });
     </script>
 
