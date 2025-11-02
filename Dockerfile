@@ -11,8 +11,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 COPY . /app
 
-# Instalar dependências do Composer (AWS SDK)
+# Instalar dependências do Composer (AWS SDK e Dompdf)
 RUN composer install --no-dev --optimize-autoloader --no-interaction || true
+
+# Verificar se Dompdf foi instalado (para debug)
+RUN composer show dompdf/dompdf 2>/dev/null || echo "Dompdf não encontrado - será instalado no próximo build"
 
 EXPOSE 8080
 # IMPORTANTE: usa o router.php (e não o index.php) para evitar loops
