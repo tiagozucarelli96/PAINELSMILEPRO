@@ -624,13 +624,28 @@ ob_start();
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .modal-header h3 {
+            color: #1e3a8a;
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
         }
         
         .close {
-            font-size: 24px;
+            font-size: 1.5rem;
             cursor: pointer;
-            color: #999;
+            color: #64748b;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        
+        .close:hover {
+            color: #1e3a8a;
         }
         
         .form-group {
@@ -991,11 +1006,11 @@ ob_start();
         <?php endif; ?>
         
         <!-- Modal de Ajuste -->
-        <div id="modalAjuste" class="smile-modal">
-            <div class="smile-modal-content">
-                <div class="smile-modal-header">
+        <div id="modalAjuste" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
                     <h3>Adicionar Ajuste de Estoque</h3>
-                    <span class="smile-close" onclick="fecharModalAjuste()">&times;</span>
+                    <span class="close" onclick="fecharModalAjuste()">&times;</span>
                 </div>
                 <form method="POST" action="">
                     <input type="hidden" name="acao" value="adicionar_ajuste">
