@@ -1305,11 +1305,11 @@ ob_start();
     <script>
         // Abrir modal
         function openModal(userId = 0, evt = null) {
-            // Prevenir navegação padrão se vier de um link
+            // Prevenir navegação padrão se vier de um link ou botão
             if (evt) {
                 evt.preventDefault();
                 evt.stopPropagation();
-            } else if (typeof event !== 'undefined') {
+            } else if (typeof event !== 'undefined' && event) {
                 event.preventDefault();
                 event.stopPropagation();
             }
@@ -1319,28 +1319,36 @@ ob_start();
             const title = document.getElementById('modalTitle');
             const userIdInput = document.getElementById('userId');
             
+            if (!modal || !form || !title || !userIdInput) {
+                console.error('Elementos do modal não encontrados:', {modal, form, title, userIdInput});
+                return;
+            }
+            
             // Esconder modal primeiro para evitar flash
             modal.style.display = 'none';
             
             if (userId > 0) {
+                // Editar usuário existente
                 title.textContent = 'Editar Usuário';
                 userIdInput.value = userId;
                 loadUserData(userId);
+                // O modal será mostrado após carregar os dados em loadUserData
             } else {
+                // Novo usuário
                 title.textContent = 'Novo Usuário';
                 userIdInput.value = 0;
                 form.reset();
                 // Limpar todos os checkboxes
                 form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
-            }
-            
-            // Mostrar modal após pequeno delay para evitar flash
-            setTimeout(() => {
-                modal.style.display = 'flex';
+                
+                // Mostrar modal imediatamente para novo usuário
                 setTimeout(() => {
-            modal.classList.add('active');
+                    modal.style.display = 'flex';
+                    setTimeout(() => {
+                        modal.classList.add('active');
+                    }, 10);
                 }, 10);
-            }, 10);
+            }
         }
         
         // Fechar modal
