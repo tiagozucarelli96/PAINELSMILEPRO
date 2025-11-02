@@ -2,6 +2,10 @@
 /**
  * comercial_realizar_degustacao.php — Relatório para realização de degustação
  */
+
+// CRÍTICO: Verificar se é PDF ANTES de qualquer output
+$is_pdf_request = isset($_GET['pdf']) && $_GET['pdf'] === '1';
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
@@ -95,11 +99,112 @@ if ($degustacao_id > 0) {
     }
 }
 
-// Verificar se é requisição de PDF
-$is_pdf_request = isset($_GET['pdf']) && $_GET['pdf'] === '1';
-
 // Detectar se está via router
 $is_via_router = (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false);
+
+// CRÍTICO: Processar PDF ANTES de qualquer output HTML
+if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
+    $autoload = __DIR__ . '/vendor/autoload.php';
+    if (file_exists($autoload)) {
+        require_once $autoload;
+        try {
+            if (class_exists('\\Dompdf\\Dompdf')) {
+                // Limpar qualquer output anterior
+                while (ob_get_level()) {
+                    ob_end_clean();
+                }
+                
+                ob_start();
+                ?>
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; padding: 2cm; color: #1e293b; }
+                        .header { border-bottom: 3px solid #1e293b; padding-bottom: 1rem; margin-bottom: 2rem; }
+                        .title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+                        .meta { font-size: 0.9rem; color: #6b7280; display: flex; gap: 2rem; }
+                        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+                        .stat { text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; }
+                        .stat-value { font-size: 1.5rem; font-weight: 700; color: #3b82f6; }
+                        .stat-label { font-size: 0.85rem; color: #6b7280; }
+                        .mesas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+                        .mesa { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 8px; break-inside: avoid; }
+                        .mesa-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+                        .mesa-numero { font-weight: 700; color: #3b82f6; }
+                        .mesa-pessoas { font-size: 0.85rem; color: #6b7280; }
+                        .inscrito-nome { font-weight: 600; margin-bottom: 0.25rem; }
+                        @page { margin: 1.5cm; size: A4; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="title"><?= h($degustacao['nome']) ?></div>
+                        <div class="meta">
+                            <span>📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
+                            <span>🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
+                            <?php if (!empty($degustacao['local'])): ?>
+                                <span>📍 <?= h($degustacao['local']) ?></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-value"><?= count($inscritos) ?></div>
+                            <div class="stat-label">Inscrições</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value"><?= count($inscritos) ?></div>
+                            <div class="stat-label">Mesas</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></div>
+                            <div class="stat-label">Pessoas</div>
+                        </div>
+                    </div>
+                    <div class="mesas">
+                        <?php foreach ($inscritos as $index => $inscrito): ?>
+                            <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
+                            <div class="mesa">
+                                <div class="mesa-header">
+                                    <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
+                                    <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+                                </div>
+                                <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
+                                <?php if (!empty($inscrito['tipo_festa'])): ?>
+                                    <div style="font-size: 0.85rem; color: #6b7280;"><?= h(ucfirst($inscrito['tipo_festa'])) ?></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </body>
+                </html>
+                <?php
+                $html = ob_get_clean();
+                
+                $dompdf = new \Dompdf\Dompdf([
+                    'isRemoteEnabled' => true,
+                    'defaultPaperSize' => 'a4',
+                    'isHtml5ParserEnabled' => true
+                ]);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+                $fname = 'Relatorio_Degustacao_' . $degustacao_id . '_' . date('Y-m-d') . '.pdf';
+                $dompdf->stream($fname, ['Attachment' => true]);
+                exit;
+            }
+        } catch (Throwable $e) {
+            error_log("Erro ao gerar PDF: " . $e->getMessage());
+        }
+    }
+    
+    // Fallback: redirecionar para página normal
+    header('Location: ' . str_replace('&pdf=1', '', str_replace('?pdf=1', '', str_replace('pdf=1&', '', str_replace('&pdf=1&', '&', $_SERVER['REQUEST_URI'])))));
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
