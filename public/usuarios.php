@@ -801,68 +801,115 @@ if ($user_id > 0) {
         function forceOverflowFix() {
             const sidebar = document.querySelector('.sidebar');
             const mainContent = document.querySelector('.main-content');
+            const pageContent = document.querySelector('#pageContent');
             const usersContainer = document.querySelector('.users-container');
             
             // DEBUG: Log informações
             console.log('=== DEBUG LAYOUT ===');
             console.log('Sidebar encontrada:', !!sidebar);
             console.log('Main-content encontrado:', !!mainContent);
+            console.log('PageContent encontrado:', !!pageContent);
             console.log('Users-container encontrado:', !!usersContainer);
             
             if (sidebar) {
                 const sidebarWidth = sidebar.offsetWidth;
+                const sidebarRect = sidebar.getBoundingClientRect();
                 const sidebarStyle = window.getComputedStyle(sidebar);
                 console.log('Sidebar width:', sidebarWidth);
                 console.log('Sidebar position:', sidebarStyle.position);
-                console.log('Sidebar left:', sidebarStyle.left);
+                console.log('Sidebar left:', sidebarRect.left);
+                console.log('Sidebar right:', sidebarRect.right);
             }
             
             if (mainContent) {
+                const mainRect = mainContent.getBoundingClientRect();
                 const mainStyle = window.getComputedStyle(mainContent);
                 console.log('Main-content margin-left:', mainStyle.marginLeft);
                 console.log('Main-content width:', mainStyle.width);
-                console.log('Main-content left:', mainStyle.left);
+                console.log('Main-content left:', mainRect.left);
+                console.log('Main-content right:', mainRect.right);
                 console.log('Main-content position:', mainStyle.position);
                 
-                // Verificar se margin-left está correto
+                // FORÇAR correção se necessário
                 if (sidebar && parseFloat(mainStyle.marginLeft) < 250) {
                     console.warn('⚠️ margin-left muito pequeno, corrigindo...');
-                    mainContent.style.marginLeft = '280px';
-                    mainContent.style.width = 'calc(100% - 280px)';
+                    mainContent.style.setProperty('margin-left', '280px', 'important');
+                    mainContent.style.setProperty('width', 'calc(100% - 280px)', 'important');
+                }
+                
+                // Verificar se main-content está por baixo da sidebar
+                if (sidebar) {
+                    const sidebarRect = sidebar.getBoundingClientRect();
+                    if (mainRect.left < sidebarRect.right) {
+                        console.error('❌ Main-content está por baixo da sidebar!');
+                        mainContent.style.setProperty('margin-left', '280px', 'important');
+                        mainContent.style.setProperty('width', 'calc(100% - 280px)', 'important');
+                        mainContent.style.setProperty('position', 'relative', 'important');
+                        mainContent.style.setProperty('left', 'auto', 'important');
+                    }
+                }
+            }
+            
+            if (pageContent) {
+                const pageRect = pageContent.getBoundingClientRect();
+                const pageStyle = window.getComputedStyle(pageContent);
+                console.log('PageContent left:', pageRect.left);
+                console.log('PageContent position:', pageStyle.position);
+                console.log('PageContent margin:', pageStyle.margin);
+                console.log('PageContent padding:', pageStyle.padding);
+                
+                // Forçar position relative se não estiver
+                if (pageStyle.position === 'absolute' || pageStyle.position === 'fixed') {
+                    console.warn('⚠️ PageContent com position absoluta/fixa, corrigindo...');
+                    pageContent.style.setProperty('position', 'relative', 'important');
+                    pageContent.style.setProperty('left', 'auto', 'important');
+                    pageContent.style.setProperty('top', 'auto', 'important');
+                }
+                
+                // Verificar se pageContent está por baixo da sidebar
+                if (sidebar && pageRect.left < 280) {
+                    console.error('❌ PageContent está por baixo da sidebar!');
+                    pageContent.style.setProperty('position', 'relative', 'important');
+                    pageContent.style.setProperty('left', '0', 'important');
+                    pageContent.style.setProperty('margin-left', '0', 'important');
+                    pageContent.style.setProperty('padding-left', '0', 'important');
                 }
             }
             
             if (usersContainer) {
                 const containerRect = usersContainer.getBoundingClientRect();
+                const containerStyle = window.getComputedStyle(usersContainer);
                 const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
+                
                 console.log('Container left:', containerRect.left);
                 console.log('Container width:', containerRect.width);
+                console.log('Container position:', containerStyle.position);
+                
                 if (sidebarRect) {
                     console.log('Sidebar right:', sidebarRect.right);
                     if (containerRect.left < sidebarRect.right) {
                         console.error('❌ Container está por baixo da sidebar!');
                         console.error('Container left:', containerRect.left, 'Sidebar right:', sidebarRect.right);
                         
-                        // CORRIGIR: Forçar que o container respeite a sidebar
-                        const pageContent = document.querySelector('#pageContent');
-                        if (pageContent) {
-                            const pageContentStyle = window.getComputedStyle(pageContent);
-                            console.log('Corrigindo #pageContent...');
-                            pageContent.style.position = 'relative';
-                            pageContent.style.left = '0';
-                            pageContent.style.marginLeft = '0';
-                            pageContent.style.paddingLeft = '0';
-                        }
+                        // CORRIGIR FORÇANDO posicionamento relativo
+                        usersContainer.style.setProperty('position', 'relative', 'important');
+                        usersContainer.style.setProperty('left', 'auto', 'important');
+                        usersContainer.style.setProperty('margin-left', 'auto', 'important');
                         
-                        // Verificar se há algum CSS que está forçando left: 0
-                        const usersContainerStyle = window.getComputedStyle(usersContainer);
-                        if (parseFloat(usersContainerStyle.left) === 0 || 
-                            usersContainerStyle.position === 'absolute' || 
-                            usersContainerStyle.position === 'fixed') {
-                            console.log('Corrigindo posicionamento do users-container...');
-                            usersContainer.style.position = 'relative';
-                            usersContainer.style.left = 'auto';
-                            usersContainer.style.marginLeft = 'auto';
+                        // Verificar o elemento pai
+                        const parent = usersContainer.parentElement;
+                        if (parent) {
+                            const parentRect = parent.getBoundingClientRect();
+                            const parentStyle = window.getComputedStyle(parent);
+                            console.log('Parent:', parent.className || parent.id);
+                            console.log('Parent left:', parentRect.left);
+                            console.log('Parent position:', parentStyle.position);
+                            
+                            if (parentRect.left < sidebarRect.right) {
+                                console.error('❌ Parent também está por baixo da sidebar!');
+                                parent.style.setProperty('position', 'relative', 'important');
+                                parent.style.setProperty('left', 'auto', 'important');
+                            }
                         }
                     }
                 }
