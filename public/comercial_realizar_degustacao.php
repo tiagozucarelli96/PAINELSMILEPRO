@@ -84,9 +84,10 @@ if ($degustacao_id > 0) {
             
             $coluna_id = $check_col ? $check_col['column_name'] : 'degustacao_id';
             
-            // Buscar inscritos confirmados
+            // Buscar inscritos confirmados (incluindo fechou_contrato para PDF)
             $stmt = $pdo->prepare("
-                SELECT id, nome, qtd_pessoas, tipo_festa 
+                SELECT id, nome, qtd_pessoas, tipo_festa, 
+                       COALESCE(fechou_contrato, 'nao') as fechou_contrato
                 FROM comercial_inscricoes 
                 WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
                 ORDER BY nome ASC
@@ -115,6 +116,24 @@ if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
                 }
                 
                 ob_start();
+                
+                // Verificar qual logo usar
+                $logo_path = __DIR__ . '/logo-smile.png';
+                if (!file_exists($logo_path)) {
+                    $logo_path = __DIR__ . '/logo.png';
+                }
+                
+                // Converter logo para base64 para incluir no PDF
+                $logo_base64 = '';
+                if (file_exists($logo_path)) {
+                    $logo_data = file_get_contents($logo_path);
+                    $logo_info = getimagesizefromstring($logo_data);
+                    $mime_type = $logo_info['mime'] ?? 'image/png';
+                    $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                }
+                
+                $total_mesas = count($inscritos);
+                $total_pessoas = array_sum(array_column($inscritos, 'qtd_pessoas'));
                 ?>
                 <!DOCTYPE html>
                 <html lang="pt-BR">
@@ -122,63 +141,162 @@ if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
                     <meta charset="UTF-8">
                     <style>
                         * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: Arial, sans-serif; padding: 2cm; color: #1e293b; }
-                        .header { border-bottom: 3px solid #1e293b; padding-bottom: 1rem; margin-bottom: 2rem; }
-                        .title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-                        .meta { font-size: 0.9rem; color: #6b7280; display: flex; gap: 2rem; }
-                        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
-                        .stat { text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; }
-                        .stat-value { font-size: 1.5rem; font-weight: 700; color: #3b82f6; }
-                        .stat-label { font-size: 0.85rem; color: #6b7280; }
-                        .mesas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-                        .mesa { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 8px; break-inside: avoid; }
-                        .mesa-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
-                        .mesa-numero { font-weight: 700; color: #3b82f6; }
-                        .mesa-pessoas { font-size: 0.85rem; color: #6b7280; }
-                        .inscrito-nome { font-weight: 600; margin-bottom: 0.25rem; }
-                        @page { margin: 1.5cm; size: A4; }
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            padding: 1.5cm; 
+                            color: #1e293b; 
+                            font-size: 11pt;
+                        }
+                        .header {
+                            display: flex;
+                            align-items: center;
+                            margin-bottom: 1.5cm;
+                            padding-bottom: 1rem;
+                            border-bottom: 2px solid #3b82f6;
+                        }
+                        .logo {
+                            width: 80px;
+                            height: 80px;
+                            margin-right: 1.5rem;
+                            flex-shrink: 0;
+                        }
+                        .header-info {
+                            flex: 1;
+                        }
+                        .degustacao-nome {
+                            font-size: 1.4rem;
+                            font-weight: 700;
+                            color: #1e293b;
+                            margin-bottom: 0.5rem;
+                        }
+                        .degustacao-meta {
+                            font-size: 0.95rem;
+                            color: #6b7280;
+                        }
+                        .degustacao-meta span {
+                            margin-right: 1.5rem;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 1cm;
+                            margin-bottom: 1.5cm;
+                        }
+                        thead {
+                            background: #3b82f6;
+                            color: white;
+                        }
+                        th {
+                            padding: 0.75rem;
+                            text-align: left;
+                            font-weight: 600;
+                            font-size: 0.9rem;
+                            border: 1px solid #2563eb;
+                        }
+                        th:nth-child(2),
+                        th:nth-child(3),
+                        th:nth-child(5) {
+                            text-align: center;
+                            width: 80px;
+                        }
+                        tbody tr {
+                            border-bottom: 1px solid #e5e7eb;
+                        }
+                        tbody tr:hover {
+                            background: #f8fafc;
+                        }
+                        td {
+                            padding: 0.75rem;
+                            font-size: 0.9rem;
+                        }
+                        td:nth-child(2),
+                        td:nth-child(3),
+                        td:nth-child(5) {
+                            text-align: center;
+                        }
+                        .fechou-sim {
+                            color: #10b981;
+                            font-weight: 600;
+                        }
+                        .fechou-nao {
+                            color: #ef4444;
+                        }
+                        .tfooter {
+                            background: #f1f5f9;
+                            font-weight: 700;
+                            border-top: 2px solid #3b82f6;
+                        }
+                        .tfooter td {
+                            padding: 1rem 0.75rem;
+                            font-size: 1rem;
+                        }
+                        .tfooter td:first-child {
+                            text-align: right;
+                            padding-right: 1rem;
+                        }
+                        @page { 
+                            margin: 1.5cm; 
+                            size: A4;
+                        }
                     </style>
                 </head>
                 <body>
                     <div class="header">
-                        <div class="title"><?= h($degustacao['nome']) ?></div>
-                        <div class="meta">
-                            <span>📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
-                            <span>🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
-                            <?php if (!empty($degustacao['local'])): ?>
-                                <span>📍 <?= h($degustacao['local']) ?></span>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    <div class="stats">
-                        <div class="stat">
-                            <div class="stat-value"><?= count($inscritos) ?></div>
-                            <div class="stat-label">Inscrições</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-value"><?= count($inscritos) ?></div>
-                            <div class="stat-label">Mesas</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></div>
-                            <div class="stat-label">Pessoas</div>
-                        </div>
-                    </div>
-                    <div class="mesas">
-                        <?php foreach ($inscritos as $index => $inscrito): ?>
-                            <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
-                            <div class="mesa">
-                                <div class="mesa-header">
-                                    <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
-                                    <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
-                                </div>
-                                <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
-                                <?php if (!empty($inscrito['tipo_festa'])): ?>
-                                    <div style="font-size: 0.85rem; color: #6b7280;"><?= h(ucfirst($inscrito['tipo_festa'])) ?></div>
+                        <?php if ($logo_base64): ?>
+                            <img src="<?= $logo_base64 ?>" alt="Logo" class="logo">
+                        <?php endif; ?>
+                        <div class="header-info">
+                            <div class="degustacao-nome"><?= h($degustacao['nome']) ?></div>
+                            <div class="degustacao-meta">
+                                <span>📅 Data: <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
+                                <span>🕐 Horário: <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
+                                <?php if (!empty($degustacao['local'])): ?>
+                                    <span>📍 <?= h($degustacao['local']) ?></span>
                                 <?php endif; ?>
                             </div>
-                        <?php endforeach; ?>
+                        </div>
                     </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome do Inscrito</th>
+                                <th>Mesa</th>
+                                <th>Pessoas</th>
+                                <th>Tipo de Evento</th>
+                                <th>Fechou Contrato</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($inscritos as $index => $inscrito): ?>
+                                <?php 
+                                $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1);
+                                $fechou = strtolower($inscrito['fechou_contrato'] ?? 'nao');
+                                ?>
+                                <tr>
+                                    <td><?= h($inscrito['nome']) ?></td>
+                                    <td><?= $index + 1 ?></td>
+                                    <td><?= $qtdPessoas ?></td>
+                                    <td><?= !empty($inscrito['tipo_festa']) ? h(ucfirst($inscrito['tipo_festa'])) : '-' ?></td>
+                                    <td>
+                                        <span class="<?= $fechou === 'sim' ? 'fechou-sim' : 'fechou-nao' ?>">
+                                            <?= $fechou === 'sim' ? 'Sim' : 'Não' ?>
+                                        </span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                        <tfoot>
+                            <tr class="tfooter">
+                                <td colspan="2"><strong>Total de Mesas:</strong></td>
+                                <td colspan="3"><strong><?= $total_mesas ?></strong></td>
+                            </tr>
+                            <tr class="tfooter">
+                                <td colspan="2"><strong>Total de Pessoas:</strong></td>
+                                <td colspan="3"><strong><?= $total_pessoas ?></strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </body>
                 </html>
                 <?php
