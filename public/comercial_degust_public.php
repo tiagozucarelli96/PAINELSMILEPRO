@@ -494,7 +494,12 @@ if ($_POST && !$inscricoes_encerradas) {
         
         // TODO: Enviar e-mail de confirmação
         
+        // Usar mensagem personalizada se configurada, senão usar mensagem padrão
+        if (!empty($degustacao['msg_sucesso_html'])) {
+            $success_message = $degustacao['msg_sucesso_html'];
+        } else {
         $success_message = "Inscrição realizada com sucesso!";
+        }
         
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
@@ -719,7 +724,13 @@ if ($_POST && !$inscricoes_encerradas) {
         <!-- Mensagens -->
         <?php if ($success_message): ?>
             <div class="alert alert-success">
+                <?php if (!empty($degustacao['msg_sucesso_html']) && $success_message === $degustacao['msg_sucesso_html']): ?>
+                    <!-- Mensagem personalizada com HTML -->
+                    <?= $success_message ?>
+                <?php else: ?>
+                    <!-- Mensagem padrão (sem HTML) -->
                 ✅ <?= h($success_message) ?>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
         
