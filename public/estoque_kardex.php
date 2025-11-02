@@ -205,77 +205,44 @@ ob_start();
 ?>
 
 <style>
-    <link rel="stylesheet" href="estilo.css">
-    <link rel="stylesheet" href="css/smile-ui.css">
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            margin: 0;
-            padding: 0;
-            color: #1e293b;
-            line-height: 1.6;
-        }
-        
+        /* Container Principal */
         .kardex-container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 20px;
-            min-height: 100vh;
+            padding: 1.5rem;
         }
         
         .kardex-header {
-            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 16px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 25px rgba(30, 64, 175, 0.2);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .kardex-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%);
-            pointer-events: none;
+            text-align: center;
+            margin-bottom: 2rem;
         }
         
         .kardex-header h1 {
-            margin: 0;
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: 700;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            position: relative;
-            z-index: 1;
+            color: #1e3a8a;
+            margin: 0 0 0.5rem 0;
         }
         
         .kardex-header p {
-            margin: 10px 0 0 0;
-            font-size: 1.1rem;
-            opacity: 0.95;
-            position: relative;
-            z-index: 1;
+            font-size: 1.125rem;
+            color: #64748b;
+            margin: 0;
         }
         
         .filtros-section {
             background: white;
-            padding: 30px;
-            border-radius: 16px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border: 1px solid rgba(30, 64, 175, 0.1);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
         }
         
         .filtros-section h2 {
-            color: #1e40af;
-            margin: 0 0 25px 0;
-            font-size: 1.5rem;
+            color: #1e3a8a;
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
             font-weight: 600;
             display: flex;
             align-items: center;
@@ -313,8 +280,8 @@ ob_start();
         
         .filtro-group input:focus,
         .filtro-group select:focus {
-            border-color: #1e40af;
-            box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
             outline: none;
         }
         
@@ -337,7 +304,7 @@ ob_start();
         }
         
         .tipo-checkbox input[type="checkbox"] {
-            accent-color: #1e40af;
+            accent-color: #1e3a8a;
             transform: scale(1.2);
             margin-right: 8px;
         }
@@ -394,41 +361,73 @@ ob_start();
         
         .kardex-grid {
             background: white;
-            border-radius: 16px;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            border: 1px solid rgba(30, 64, 175, 0.1);
-            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+            margin-bottom: 2rem;
         }
         
-        .kardex-table {
+        .kardex-grid > div:first-child {
+            background: #1e3a8a;
+            color: white;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .kardex-grid > div:first-child h3 {
+            color: white;
+            margin: 0;
+            font-size: 1.25rem;
+        }
+        
+        .kardex-grid > div:first-child button {
+            margin-left: 0.5rem;
+            background: white;
+            color: #1e3a8a;
+        }
+        
+        .kardex-grid > div:first-child button:hover {
+            background: #f8fafc;
+        }
+        
+        .kardex-grid > div:first-child button[style*="background: #059669"] {
+            background: #059669 !important;
+            color: white !important;
+        }
+        
+        .kardex-grid > div:first-child button[style*="background: #059669"]:hover {
+            background: #047857 !important;
+        }
+        
+        .kardex-table, table {
             width: 100%;
             border-collapse: collapse;
         }
         
-        .kardex-table th {
-            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
+        .kardex-table th, table th {
+            background: #1e3a8a;
             color: white;
-            padding: 18px 15px;
+            padding: 1rem;
             text-align: left;
             font-weight: 600;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #1e3a8a;
+        }
+        
+        .kardex-table td, table td {
+            padding: 0.875rem 1rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .kardex-table tr:hover, table tbody tr:hover {
+            background: #f8fafc;
+        }
+        
+        .kardex-table tbody tr:last-child td, table tbody tr:last-child td {
             border-bottom: none;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .kardex-table td {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e1e5e9;
-        }
-        
-        .kardex-table tr:hover {
-            background: #f8f9fa;
         }
         
         .tipo-entrada { 
@@ -477,60 +476,55 @@ ob_start();
         .saldo-zero { color: #6c757d; font-weight: 600; }
         
         .resumo-section {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-            padding: 30px;
-            border-radius: 16px;
-            margin: 30px 0;
-            border: 1px solid rgba(30, 64, 175, 0.2);
-            box-shadow: 0 4px 20px rgba(30, 64, 175, 0.1);
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
         
         .resumo-section h3 {
-            color: #1e40af;
-            margin: 0 0 25px 0;
-            font-size: 1.4rem;
+            color: #1e3a8a;
+            margin: 0 0 1.5rem 0;
+            font-size: 1.25rem;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
         
         .resumo-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
         }
         
         .resumo-item {
             text-align: center;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            border: 1px solid rgba(30, 64, 175, 0.1);
+            background: #f8fafc;
+            padding: 1.25rem;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
             transition: all 0.3s ease;
         }
         
         .resumo-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background: #f1f5f9;
+            border-color: #1e3a8a;
         }
         
         .resumo-item .label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #64748b;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 0.5rem;
         }
         
         .resumo-item .value {
-            font-size: 1.8rem;
+            font-size: 1.5rem;
             font-weight: 700;
-            color: #1e40af;
-            margin-top: 5px;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            color: #1e3a8a;
+            margin-top: 0.25rem;
         }
         
         .paginacao {
@@ -589,6 +583,32 @@ ob_start();
             background: rgba(0,0,0,0.5);
         }
         
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+        
         .modal-content {
             background: white;
             margin: 5% auto;
@@ -641,57 +661,55 @@ ob_start();
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, #1e40af 0%, #d97706 100%);
+            background: #1e3a8a;
             color: white;
             border: none;
-            padding: 14px 28px;
-            border-radius: 10px;
+            padding: 12px 24px;
+            border-radius: 8px;
             font-weight: 600;
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.2);
+            box-shadow: 0 2px 8px rgba(30, 58, 138, 0.2);
         }
         
         .btn-primary:hover {
+            background: #2563eb;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(30, 64, 175, 0.3);
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.3);
         }
         
         .btn-secondary {
-            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+            background: #64748b;
             color: white;
             border: none;
-            padding: 14px 28px;
-            border-radius: 10px;
+            padding: 12px 24px;
+            border-radius: 8px;
             font-weight: 600;
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(100, 116, 139, 0.2);
         }
         
         .btn-secondary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(100, 116, 139, 0.3);
+            background: #475569;
         }
         
         .alert {
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 25px;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
             font-weight: 500;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .alert-success {
-            background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+            background: #d1fae5;
             color: #065f46;
             border: 1px solid #6ee7b7;
         }
         
         .alert-danger {
-            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            background: #fee2e2;
             color: #991b1b;
             border: 1px solid #f87171;
         }
@@ -716,27 +734,25 @@ ob_start();
             z-index: 1000;
         }
     </style>
-</head>
-<body>
-    <div class="smile-container">
+
+<div class="kardex-container">
         <!-- Header -->
-        <div class="smile-card">
-            <div class="smile-card-header">
-                <h1>📒 Kardex - Histórico de Movimentos</h1>
-                <p>Histórico cronológico de movimentos de estoque com saldo acumulado</p>
-            </div>
+        <div class="kardex-header">
+            <h1>📒 Kardex - Histórico de Movimentos</h1>
+            <p>Histórico cronológico de movimentos de estoque com saldo acumulado</p>
+        </div>
         
-            <!-- Alertas -->
-            <?php if (isset($sucesso)): ?>
-                <div class="smile-alert smile-alert-success"><?= htmlspecialchars($sucesso) ?></div>
-            <?php endif; ?>
-            
-            <?php if (isset($erro)): ?>
-                <div class="smile-alert smile-alert-danger"><?= htmlspecialchars($erro) ?></div>
-            <?php endif; ?>
-            
-            <!-- Filtros -->
-            <div class="smile-card-body">
+        <!-- Alertas -->
+        <?php if (isset($sucesso)): ?>
+            <div class="alert alert-success"><?= htmlspecialchars($sucesso) ?></div>
+        <?php endif; ?>
+        
+        <?php if (isset($erro)): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($erro) ?></div>
+        <?php endif; ?>
+        
+        <!-- Filtros -->
+        <div class="filtros-section">
             <h2>🔍 Filtros</h2>
             <form method="GET" action="">
                 <div class="filtros-grid">
@@ -827,7 +843,7 @@ ob_start();
                 </div>
                 <?php endif; ?>
                 
-                <button type="submit" class="smile-btn smile-btn-primary">🔍 Filtrar Movimentos</button>
+                <button type="submit" class="btn-primary">🔍 Filtrar Movimentos</button>
             </form>
         </div>
         
@@ -875,17 +891,17 @@ ob_start();
         <!-- Grid de Movimentos -->
         <?php if ($insumo_id && !empty($movimentos)): ?>
         <div class="kardex-grid">
-            <div style="padding: 20px; border-bottom: 1px solid #e1e5e9; display: flex; justify-content: space-between; align-items: center;">
+            <div>
                 <h3>📋 Movimentos do Período</h3>
                 <div>
                     <?php if (lc_can_edit_contagem()): ?>
-                    <button onclick="abrirModalAjuste()" class="smile-btn smile-btn-success">+ Adicionar Ajuste</button>
+                    <button onclick="abrirModalAjuste()" class="btn-primary" style="background: #059669;">+ Adicionar Ajuste</button>
                     <?php endif; ?>
-                    <button onclick="exportarCSV()" class="smile-btn smile-btn-secondary">📊 Exportar CSV</button>
+                    <button onclick="exportarCSV()" class="btn-secondary">📊 Exportar CSV</button>
                 </div>
             </div>
             
-            <table class="smile-table">
+            <table class="kardex-table">
                 <thead>
                     <tr>
                         <th>Data/Hora</th>
@@ -985,22 +1001,22 @@ ob_start();
                     <input type="hidden" name="acao" value="adicionar_ajuste">
                     <input type="hidden" name="insumo_id" value="<?= $insumo_id ?>">
                     
-                    <div class="smile-form-group">
+                    <div class="form-group">
                         <label for="tipo_ajuste">Tipo de Ajuste</label>
-                        <select name="tipo_ajuste" id="tipo_ajuste" class="smile-form-control" required>
+                        <select name="tipo_ajuste" id="tipo_ajuste" class="form-control" required>
                             <option value="entrada">Entrada</option>
                             <option value="saida">Saída</option>
                         </select>
                     </div>
                     
-                    <div class="smile-form-group">
+                    <div class="form-group">
                         <label for="quantidade">Quantidade</label>
-                        <input type="number" name="quantidade" id="quantidade" step="0.001" class="smile-form-control" required>
+                        <input type="number" name="quantidade" id="quantidade" step="0.001" class="form-control" required>
                     </div>
                     
-                    <div class="smile-form-group">
+                    <div class="form-group">
                         <label for="unidade">Unidade</label>
-                        <select name="unidade" id="unidade" class="smile-form-control" required>
+                        <select name="unidade" id="unidade" class="form-control" required>
                             <option value="un">Unidade</option>
                             <option value="kg">Quilograma</option>
                             <option value="g">Grama</option>
@@ -1009,19 +1025,19 @@ ob_start();
                         </select>
                     </div>
                     
-                    <div class="smile-form-group">
+                    <div class="form-group">
                         <label for="motivo">Motivo</label>
-                        <input type="text" name="motivo" id="motivo" value="Ajuste manual" class="smile-form-control" required>
+                        <input type="text" name="motivo" id="motivo" value="Ajuste manual" class="form-control" required>
                     </div>
                     
-                    <div class="smile-form-group">
+                    <div class="form-group">
                         <label for="observacao">Observação</label>
-                        <textarea name="observacao" id="observacao" rows="3" class="smile-form-control"></textarea>
+                        <textarea name="observacao" id="observacao" rows="3" class="form-control"></textarea>
                     </div>
                     
                     <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                        <button type="button" class="smile-btn smile-btn-secondary" onclick="fecharModalAjuste()">Cancelar</button>
-                        <button type="submit" class="smile-btn smile-btn-primary">Adicionar Ajuste</button>
+                        <button type="button" class="btn-secondary" onclick="fecharModalAjuste()">Cancelar</button>
+                        <button type="submit" class="btn-primary">Adicionar Ajuste</button>
                     </div>
                 </form>
             </div>
