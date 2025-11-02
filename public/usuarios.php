@@ -231,6 +231,9 @@ if ($user_id > 0) {
     $stmt->execute([':id' => $user_id]);
     $usuario_edit = $stmt->fetch(PDO::FETCH_ASSOC);
 }
+
+// INICIAR OUTPUT BUFFER para capturar todo o conteúdo
+ob_start();
 ?>
 
 <style>
@@ -1542,9 +1545,16 @@ if ($user_id > 0) {
 error_reporting(E_ALL);
 @ini_set('display_errors', 0);
 
+// IMPORTANTE: ob_start deve ter sido chamado antes
+if (!ob_get_level()) {
+    ob_start();
+}
+
 $conteudo = ob_get_clean();
 
 includeSidebar('Usuários e Colaboradores');
+// O sidebar_unified.php cria: <div class="main-content"><div id="pageContent">
+// Então echo $conteudo vai dentro do #pageContent
 echo $conteudo;
 endSidebar();
 ?>

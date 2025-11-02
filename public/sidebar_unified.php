@@ -1018,10 +1018,11 @@ if ($current_page === 'dashboard') {
         }
         
         /* Forçar main-content a começar do topo */
+        /* REMOVIDO left: 0 - estava conflitando com margin-left: 280px */
         .main-content {
             position: relative !important;
             top: 0 !important;
-            left: 0 !important;
+            /* left removido para permitir margin-left funcionar */
         }
         
         /* Remove qualquer espaço em branco antes do conteúdo */
