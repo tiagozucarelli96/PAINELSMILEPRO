@@ -554,7 +554,7 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
                 <div class="no-alerts-icon">✅</div>
                 <h3>Nenhum Alerta de Ruptura</h3>
                 <p>Todos os insumos estão com estoque acima do mínimo estabelecido.</p>
-                <a href="estoque_contagens.php" class="btn btn-primary">Ver Contagens</a>
+                <a href="index.php?page=estoque_contagens" class="btn btn-primary">Ver Contagens</a>
             </div>
         <?php endif; ?>
 
