@@ -108,9 +108,10 @@ ob_start();
 /* Cards de Funcionalidades */
 .funcionalidades-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1.5rem;
     margin-bottom: 2rem;
+    align-items: stretch; /* Garantir que todos os cards tenham a mesma altura na linha */
 }
 
 .funcionalidade-card {
@@ -123,7 +124,9 @@ ob_start();
     cursor: pointer;
     text-decoration: none;
     color: inherit;
-    display: block;
+    display: flex;
+    flex-direction: column;
+    height: 100%; /* Garantir que todos os cards tenham altura uniforme */
 }
 
 .funcionalidade-card:hover {
@@ -200,11 +203,17 @@ ob_start();
 .funcionalidade-card-simples {
     text-decoration: none;
     color: inherit;
+    min-height: 200px; /* Altura mínima para manter proporção */
 }
 
 .funcionalidade-card-simples .funcionalidade-card-content {
     padding: 1.5rem;
     text-align: center;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
 }
 
 .funcionalidade-card-simples .funcionalidade-card-content::after {
@@ -214,6 +223,14 @@ ob_start();
     color: #64748b;
     font-weight: bold;
     font-size: 1.5rem;
+}
+
+/* Garantir que cards com conteúdo tenham altura mínima */
+.funcionalidade-card-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
 }
 </style>
 
