@@ -457,6 +457,7 @@ if ($user_id > 0) {
             width: 100%;
             max-width: 100%;
             overflow: hidden;
+            min-width: 0;
         }
         
         .detail-label {
@@ -795,7 +796,55 @@ if ($user_id > 0) {
             // Pequeno delay para garantir que o CSS da sidebar foi aplicado
             setTimeout(function() {
                 document.body.classList.add('sidebar-ready');
+                
+                // Forçar correção de overflow após renderização
+                forceOverflowFix();
             }, 50);
+        });
+        
+        // Função para forçar correção de overflow
+        function forceOverflowFix() {
+            // Garantir que main-content e pageContent não excedam viewport
+            const mainContent = document.querySelector('.main-content');
+            const pageContent = document.querySelector('#pageContent');
+            const usersContainer = document.querySelector('.users-container');
+            
+            if (mainContent) {
+                mainContent.style.maxWidth = '100%';
+                mainContent.style.overflowX = 'hidden';
+            }
+            
+            if (pageContent) {
+                pageContent.style.maxWidth = '100%';
+                pageContent.style.overflowX = 'hidden';
+            }
+            
+            if (usersContainer) {
+                usersContainer.style.maxWidth = '100%';
+                usersContainer.style.overflowX = 'hidden';
+            }
+            
+            // Forçar todos os cards a respeitarem limites
+            const cards = document.querySelectorAll('.user-card');
+            cards.forEach(function(card) {
+                card.style.maxWidth = '100%';
+                const computedWidth = window.getComputedStyle(card.parentElement).width;
+                if (card.offsetWidth > parseFloat(computedWidth)) {
+                    card.style.width = '100%';
+                }
+            });
+            
+            // Forçar todos os elementos flex a respeitarem limites
+            const flexElements = document.querySelectorAll('.detail-row, .user-header, .search-bar, .page-header');
+            flexElements.forEach(function(el) {
+                el.style.maxWidth = '100%';
+                el.style.overflowX = 'hidden';
+            });
+        }
+        
+        // Executar também após pequeno delay adicional
+        window.addEventListener('load', function() {
+            setTimeout(forceOverflowFix, 100);
         });
     </script>
 
