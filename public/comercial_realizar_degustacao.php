@@ -6,6 +6,13 @@
 // CRÍTICO: Verificar se é PDF ANTES de qualquer output
 $is_pdf_request = isset($_GET['pdf']) && $_GET['pdf'] === '1';
 
+// Se for PDF, garantir que não há output anterior
+if ($is_pdf_request) {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+}
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
@@ -104,37 +111,71 @@ if ($degustacao_id > 0) {
 $is_via_router = (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false);
 
 // CRÍTICO: Processar PDF ANTES de qualquer output HTML
-if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
-    $autoload = __DIR__ . '/vendor/autoload.php';
-    if (file_exists($autoload)) {
-        require_once $autoload;
+if ($is_pdf_request && $degustacao_id > 0) {
+    // Se ainda não tem degustacao, buscar novamente
+    if (!isset($degustacao) || !$degustacao) {
         try {
-            if (class_exists('\\Dompdf\\Dompdf')) {
-                // Limpar qualquer output anterior
-                while (ob_get_level()) {
-                    ob_end_clean();
-                }
+            $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
+            $stmt->execute([':id' => $degustacao_id]);
+            $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($degustacao) {
+                // Buscar inscritos
+                $check_col = $pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'comercial_inscricoes' 
+                    AND column_name IN ('degustacao_id', 'event_id')
+                    LIMIT 1
+                ")->fetch(PDO::FETCH_ASSOC);
+                $coluna_id = $check_col ? $check_col['column_name'] : 'degustacao_id';
                 
-                ob_start();
-                
-                // Verificar qual logo usar
-                $logo_path = __DIR__ . '/logo-smile.png';
-                if (!file_exists($logo_path)) {
-                    $logo_path = __DIR__ . '/logo.png';
-                }
-                
-                // Converter logo para base64 para incluir no PDF
-                $logo_base64 = '';
-                if (file_exists($logo_path)) {
-                    $logo_data = file_get_contents($logo_path);
-                    $logo_info = getimagesizefromstring($logo_data);
-                    $mime_type = $logo_info['mime'] ?? 'image/png';
-                    $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
-                }
-                
-                $total_mesas = count($inscritos);
-                $total_pessoas = array_sum(array_column($inscritos, 'qtd_pessoas'));
-                ?>
+                $stmt = $pdo->prepare("
+                    SELECT id, nome, qtd_pessoas, tipo_festa, 
+                           COALESCE(fechou_contrato, 'nao') as fechou_contrato
+                    FROM comercial_inscricoes 
+                    WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
+                    ORDER BY nome ASC
+                ");
+                $stmt->execute([':deg_id' => $degustacao_id]);
+                $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } catch (Exception $e) {
+            error_log("Erro ao buscar dados para PDF: " . $e->getMessage());
+        }
+    }
+    
+    if ($degustacao && !empty($inscritos)) {
+        $autoload = __DIR__ . '/vendor/autoload.php';
+        if (file_exists($autoload)) {
+            require_once $autoload;
+            try {
+                if (class_exists('\\Dompdf\\Dompdf')) {
+                    // Limpar qualquer output anterior
+                    while (ob_get_level()) {
+                        ob_end_clean();
+                    }
+                    
+                    ob_start();
+                    
+                    // Verificar qual logo usar
+                    $logo_path = __DIR__ . '/logo-smile.png';
+                    if (!file_exists($logo_path)) {
+                        $logo_path = __DIR__ . '/logo.png';
+                    }
+                    
+                    // Converter logo para base64 para incluir no PDF
+                    $logo_base64 = '';
+                    if (file_exists($logo_path)) {
+                        $logo_data = file_get_contents($logo_path);
+                        $logo_info = getimagesizefromstring($logo_data);
+                        $mime_type = $logo_info['mime'] ?? 'image/png';
+                        $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                    }
+                    
+                    $total_mesas = count($inscritos);
+                    $total_pessoas = array_sum(array_column($inscritos, 'qtd_pessoas'));
+                    ?>
                 <!DOCTYPE html>
                 <html lang="pt-BR">
                 <head>
@@ -298,29 +339,46 @@ if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
                         </tfoot>
                     </table>
                 </body>
-                </html>
-                <?php
-                $html = ob_get_clean();
-                
-                $dompdf = new \Dompdf\Dompdf([
-                    'isRemoteEnabled' => true,
-                    'defaultPaperSize' => 'a4',
-                    'isHtml5ParserEnabled' => true
-                ]);
-                $dompdf->loadHtml($html, 'UTF-8');
-                $dompdf->setPaper('A4', 'portrait');
-                $dompdf->render();
-                $fname = 'Relatorio_Degustacao_' . $degustacao_id . '_' . date('Y-m-d') . '.pdf';
-                $dompdf->stream($fname, ['Attachment' => true]);
-                exit;
+                    </html>
+                    <?php
+                    $html = ob_get_clean();
+                    
+                    $dompdf = new \Dompdf\Dompdf([
+                        'isRemoteEnabled' => true,
+                        'defaultPaperSize' => 'a4',
+                        'isHtml5ParserEnabled' => true
+                    ]);
+                    $dompdf->loadHtml($html, 'UTF-8');
+                    $dompdf->setPaper('A4', 'portrait');
+                    $dompdf->render();
+                    $fname = 'Relatorio_Degustacao_' . $degustacao_id . '_' . date('Y-m-d') . '.pdf';
+                    
+                    // Garantir headers corretos antes de enviar PDF
+                    header('Content-Type: application/pdf');
+                    header('Content-Disposition: attachment; filename="' . $fname . '"');
+                    
+                    $dompdf->stream($fname, ['Attachment' => true]);
+                    exit;
+                } else {
+                    error_log("⚠️ Dompdf não disponível - classe não encontrada");
+                }
+            } catch (Throwable $e) {
+                error_log("❌ Erro ao gerar PDF: " . $e->getMessage());
+                error_log("Stack trace: " . $e->getTraceAsString());
             }
-        } catch (Throwable $e) {
-            error_log("Erro ao gerar PDF: " . $e->getMessage());
+        } else {
+            error_log("⚠️ Autoload não encontrado: $autoload");
         }
+    } else {
+        error_log("⚠️ PDF solicitado mas dados não encontrados - degustacao_id: $degustacao_id, degustacao: " . (isset($degustacao) ? 'existe' : 'não existe') . ", inscritos: " . count($inscritos ?? []));
     }
     
-    // Fallback: redirecionar para página normal
-    header('Location: ' . str_replace('&pdf=1', '', str_replace('?pdf=1', '', str_replace('pdf=1&', '', str_replace('&pdf=1&', '&', $_SERVER['REQUEST_URI'])))));
+    // Fallback: redirecionar para página normal sem pdf=1
+    $redirect_url = preg_replace('/[&?]pdf=1(&|$)/', '', $_SERVER['REQUEST_URI']);
+    if (strpos($redirect_url, '?') === false && strpos($redirect_url, '&') !== false) {
+        $redirect_url = str_replace('&', '?', $redirect_url, 1);
+    }
+    header('Location: ' . $redirect_url);
     exit;
 }
 ?>
