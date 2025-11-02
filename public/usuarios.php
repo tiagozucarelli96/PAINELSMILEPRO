@@ -952,12 +952,10 @@ if ($user_id > 0) {
                         return response.json();
                     })
                     .then(data => {
-                        // Restaurar formulário - usar cloneNode para preservar event listeners
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = originalContent;
-                        const newForm = tempDiv.firstElementChild;
-                        form.parentNode.replaceChild(newForm, form);
-                        const restoredForm = document.getElementById('userForm');
+                        // Restaurar formulário - simplesmente restaurar o HTML
+                        form.innerHTML = originalContent;
+                        
+                        // Re-attach event listeners se necessário (já estão no global scope)
                         
                         if (data.success && data.user) {
                             // Preencher formulário com dados do usuário
