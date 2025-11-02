@@ -146,8 +146,22 @@ if ($is_pdf_request && $degustacao_id > 0) {
     }
     
     if ($degustacao && !empty($inscritos)) {
-        $autoload = __DIR__ . '/vendor/autoload.php';
-        if (file_exists($autoload)) {
+        // Tentar múltiplos caminhos possíveis para autoload
+        $autoload_paths = [
+            __DIR__ . '/vendor/autoload.php',
+            __DIR__ . '/../vendor/autoload.php',
+            dirname(__DIR__) . '/vendor/autoload.php'
+        ];
+        
+        $autoload = null;
+        foreach ($autoload_paths as $path) {
+            if (file_exists($path)) {
+                $autoload = $path;
+                break;
+            }
+        }
+        
+        if ($autoload && file_exists($autoload)) {
             require_once $autoload;
             try {
                 if (class_exists('\\Dompdf\\Dompdf')) {
@@ -367,19 +381,64 @@ if ($is_pdf_request && $degustacao_id > 0) {
                 error_log("Stack trace: " . $e->getTraceAsString());
             }
         } else {
-            error_log("⚠️ Autoload não encontrado: $autoload");
+            $paths_tried = implode(', ', $autoload_paths);
+            error_log("⚠️ Autoload não encontrado em nenhum dos caminhos: $paths_tried");
+            error_log("   __DIR__ atual: " . __DIR__);
+            error_log("   __DIR__ parent: " . dirname(__DIR__));
+            error_log("   Tentando usar Dompdf sem autoload...");
+            
+            // Tentar incluir Dompdf diretamente
+            $dompdf_paths = [
+                __DIR__ . '/vendor/dompdf/dompdf/src/Dompdf.php',
+                __DIR__ . '/../vendor/dompdf/dompdf/src/Dompdf.php',
+                dirname(__DIR__) . '/vendor/dompdf/dompdf/src/Dompdf.php'
+            ];
+            
+            $dompdf_found = false;
+            foreach ($dompdf_paths as $dp_path) {
+                if (file_exists($dp_path)) {
+                    require_once $dp_path;
+                    $dompdf_found = true;
+                    error_log("✅ Dompdf encontrado em: $dp_path");
+                    break;
+                }
+            }
+            
+            if (!$dompdf_found) {
+                error_log("❌ Dompdf não encontrado em nenhum caminho. Instale via: composer require dompdf/dompdf");
+            }
         }
     } else {
-        error_log("⚠️ PDF solicitado mas dados não encontrados - degustacao_id: $degustacao_id, degustacao: " . (isset($degustacao) ? 'existe' : 'não existe') . ", inscritos: " . count($inscritos ?? []));
+        error_log("⚠️ PDF solicitado mas dados não encontrados - degustacao_id: $degustacao_id");
+        error_log("   - degustacao existe: " . (isset($degustacao) && $degustacao ? 'sim' : 'não'));
+        error_log("   - inscritos count: " . count($inscritos ?? []));
+        
+        // Se for PDF e não tiver dados, mostrar erro ao invés de redirecionar
+        if ($is_pdf_request) {
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            header('Content-Type: text/html; charset=utf-8');
+            echo "<html><body>";
+            echo "<h1>Erro ao gerar PDF</h1>";
+            echo "<p>Degustação não encontrada ou sem inscritos confirmados.</p>";
+            echo "<p>ID: $degustacao_id</p>";
+            echo "<p><a href='javascript:history.back()'>Voltar</a></p>";
+            echo "</body></html>";
+            exit;
+        }
     }
     
-    // Fallback: redirecionar para página normal sem pdf=1
-    $redirect_url = preg_replace('/[&?]pdf=1(&|$)/', '', $_SERVER['REQUEST_URI']);
-    if (strpos($redirect_url, '?') === false && strpos($redirect_url, '&') !== false) {
-        $redirect_url = str_replace('&', '?', $redirect_url, 1);
+    // Fallback: redirecionar para página normal sem pdf=1 (só se não for PDF request)
+    // Se chegou aqui e é PDF, significa que não foi gerado mas não houve erro explícito
+    if ($is_pdf_request) {
+        $redirect_url = preg_replace('/[&?]pdf=1(&|$)/', '', $_SERVER['REQUEST_URI']);
+        if (strpos($redirect_url, '?') === false && strpos($redirect_url, '&') !== false) {
+            $redirect_url = str_replace('&', '?', $redirect_url, 1);
+        }
+        header('Location: ' . $redirect_url);
+        exit;
     }
-    header('Location: ' . $redirect_url);
-    exit;
 }
 ?>
 
