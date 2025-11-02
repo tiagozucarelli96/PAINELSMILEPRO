@@ -41,8 +41,11 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
     // Permitir acesso DIRETO a arquivos de teste/debug que bypassam router
     if (strpos(basename($file), '_direto.php') !== false || 
         strpos(basename($file), '_test.php') !== false ||
-        strpos(basename($file), '_debug.php') !== false) {
-        // Arquivos com sufixo _direto, _test ou _debug podem ser acessados diretamente
+        strpos(basename($file), '_debug.php') !== false ||
+        strpos(basename($file), '_ultra_simples.php') !== false ||
+        strpos(basename($file), '_simples.php') !== false) {
+        // Arquivos com sufixo _direto, _test, _debug, _ultra_simples ou _simples podem ser acessados diretamente
+        // IMPORTANTE: Servir SEM injeção de conexão para evitar redirecionamentos
         require $file;
         exit;
     }
