@@ -41,14 +41,7 @@ try {
     $debug[] = "❌ Erro ao carregar conexão: " . $e->getMessage();
 }
 
-// Parsear QUERY_STRING manualmente
-if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
-    parse_str($_SERVER['QUERY_STRING'], $parsed);
-    if (isset($parsed['degustacao_id']) && $degustacao_id === 0) {
-        $degustacao_id = (int)$parsed['degustacao_id'];
-        $debug[] = "✅ degustacao_id obtido de QUERY_STRING parseado: {$degustacao_id}";
-    }
-}
+// degustacao_id já foi obtido acima, apenas confirmar
 
 $debug[] = "🎯 degustacao_id FINAL: {$degustacao_id}";
 

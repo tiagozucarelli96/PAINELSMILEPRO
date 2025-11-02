@@ -84,22 +84,20 @@ if (!isset($_GET['degustacao_id']) && isset($_SERVER['REQUEST_URI'])) {
     }
 }
 
-// Tentar obter degustacao_id de múltiplas formas
+// Obter degustacao_id de TODAS as formas possíveis (MESMA LÓGICA DA VERSÃO DIRETA QUE FUNCIONA)
 $degustacao_id = 0;
+
 if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] !== '') {
     $degustacao_id = (int)$_GET['degustacao_id'];
     $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_GET = {$degustacao_id}";
 } elseif (isset($_REQUEST['degustacao_id']) && $_REQUEST['degustacao_id'] !== '') {
     $degustacao_id = (int)$_REQUEST['degustacao_id'];
     $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_REQUEST = {$degustacao_id}";
-} else {
-    // Tentar parsear da QUERY_STRING
-    parse_str($_SERVER['QUERY_STRING'] ?? '', $query_params);
-    if (isset($query_params['degustacao_id']) && $query_params['degustacao_id'] !== '') {
-        $degustacao_id = (int)$query_params['degustacao_id'];
+} elseif (isset($_SERVER['QUERY_STRING'])) {
+    parse_str($_SERVER['QUERY_STRING'], $q);
+    if (isset($q['degustacao_id']) && $q['degustacao_id'] !== '') {
+        $degustacao_id = (int)$q['degustacao_id'];
         $debug_info[] = "✅ DEBUG: degustacao_id obtido de QUERY_STRING = {$degustacao_id}";
-    } else {
-        $debug_info[] = "⚠️ DEBUG: degustacao_id NÃO encontrado em nenhum lugar";
     }
 }
 
