@@ -984,9 +984,22 @@ ob_start();
                         form.querySelector('[name="preco_15anos"]').value = d.preco_15anos || 180.00;
                         form.querySelector('[name="incluidos_15anos"]').value = d.incluidos_15anos || 3;
                         form.querySelector('[name="preco_extra"]').value = d.preco_extra || 50.00;
-                        form.querySelector('[name="instrutivo_html"]').value = d.instrutivo_html || '';
-                        form.querySelector('[name="email_confirmacao_html"]').value = d.email_confirmacao_html || '';
-                        form.querySelector('[name="msg_sucesso_html"]').value = d.msg_sucesso_html || '';
+                        
+                        // Preencher campos de texto (preencher primeiro com valores simples)
+                        const instrutivoField = document.getElementById('modal_instrutivo_html');
+                        const emailField = document.getElementById('modal_email_confirmacao_html');
+                        const msgField = document.getElementById('modal_msg_sucesso_html');
+                        
+                        if (instrutivoField) {
+                            instrutivoField.value = d.instrutivo_html || '';
+                        }
+                        if (emailField) {
+                            emailField.value = d.email_confirmacao_html || '';
+                        }
+                        if (msgField) {
+                            msgField.value = d.msg_sucesso_html || '';
+                        }
+                        
                         form.querySelector('[name="campos_json"]').value = d.campos_json || '[]';
                         
                         // Verificar se local está nas opções, senão mostrar campo customizado
@@ -1025,6 +1038,16 @@ ob_start();
         }
         
         function fecharModalEditar() {
+            // Destruir editores Summernote ao fechar o modal (opcional, para economizar memória)
+            if (typeof $ !== 'undefined' && $.fn && $.fn.summernote) {
+                $('#modal_instrutivo_html, #modal_email_confirmacao_html, #modal_msg_sucesso_html').each(function() {
+                    if ($(this).hasClass('summernote-initialized')) {
+                        $(this).summernote('destroy');
+                        $(this).removeClass('summernote-initialized');
+                    }
+                });
+            }
+            
             const modal = document.getElementById('modalEditarDegustacao');
             modal.classList.remove('active');
         }
@@ -1086,6 +1109,16 @@ ob_start();
             e.stopPropagation();
             
             console.log('📤 Submit do formulário de edição detectado!');
+            
+            // IMPORTANTE: Salvar conteúdo dos editores Summernote antes do submit
+            if (typeof $ !== 'undefined' && $.fn && $.fn.summernote) {
+                $('#modal_instrutivo_html, #modal_email_confirmacao_html, #modal_msg_sucesso_html').each(function() {
+                    if ($(this).hasClass('summernote-initialized')) {
+                        $(this).val($(this).summernote('code'));
+                    }
+                });
+                console.log('✅ Conteúdo do Summernote (modal) salvo antes do submit');
+            }
             
             const form = this;
             const submitBtn = form.querySelector('button[type="submit"]');
