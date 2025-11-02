@@ -139,8 +139,8 @@ if ($action === 'apagar' && $degustacao_id > 0) {
         
         // IMPORTANTE: Excluir degustação mas NÃO excluir inscrições
         // As inscrições ficam no banco (degustacao_id pode ficar como null ou manter referência)
-        $stmt = $pdo->prepare("DELETE FROM comercial_degustacoes WHERE id = :id");
-        $stmt->execute([':id' => $degustacao_id]);
+            $stmt = $pdo->prepare("DELETE FROM comercial_degustacoes WHERE id = :id");
+            $stmt->execute([':id' => $degustacao_id]);
         
         if ($inscricoes_count > 0) {
             $success_message = "Degustação apagada com sucesso! ($inscricoes_count inscrição(ões) preservada(s) no sistema)";
@@ -794,8 +794,8 @@ ob_start();
                         <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
                         <div class="custom-alert-actions">
                             <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
-                        </div>
-                    </div>
+        </div>
+    </div>
                 `;
                 
                 document.body.appendChild(overlay);
@@ -1241,8 +1241,8 @@ ob_start();
             <div class="modal-editar-header">
                 <h2>✏️ Editar Degustação</h2>
                 <button type="button" class="modal-editar-close" onclick="fecharModalEditar()">&times;</button>
-            </div>
-            
+</div>
+
             <div class="modal-loading" style="text-align: center; padding: 40px;">
                 <div style="font-size: 18px; color: #6b7280;">Carregando dados...</div>
             </div>
@@ -1330,16 +1330,25 @@ ob_start();
                     <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
                         <h3 style="font-size: 16px; font-weight: 600; color: #1e3a8a; margin-bottom: 15px;">📝 Textos</h3>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Instruções do Dia (HTML)</label>
-                            <textarea name="instrutivo_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Instruções do Dia</label>
+                            <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                                Use o editor abaixo para formatar o texto que aparecerá no topo da página pública de inscrição.
+                            </small>
+                            <textarea id="modal_instrutivo_html" name="instrutivo_html" style="min-height: 300px;"></textarea>
                         </div>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">E-mail de Confirmação (HTML)</label>
-                            <textarea name="email_confirmacao_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">E-mail de Confirmação</label>
+                            <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                                Conteúdo do e-mail de confirmação enviado após a inscrição.
+                            </small>
+                            <textarea id="modal_email_confirmacao_html" name="email_confirmacao_html" style="min-height: 250px;"></textarea>
                         </div>
                         <div style="margin-bottom: 15px;">
-                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Mensagem de Sucesso (HTML)</label>
-                            <textarea name="msg_sucesso_html" rows="4" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;"></textarea>
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #374151;">Mensagem de Sucesso</label>
+                            <small style="display: block; color: #6b7280; margin-bottom: 8px; font-size: 0.875rem;">
+                                Mensagem exibida após inscrição bem-sucedida.
+                            </small>
+                            <textarea id="modal_msg_sucesso_html" name="msg_sucesso_html" style="min-height: 200px;"></textarea>
                         </div>
                     </div>
                     
