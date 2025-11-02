@@ -286,9 +286,24 @@ ob_start();
             color: #1e3a8a;
         }
         
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
         .actions a {
-            margin-right: 0.5rem;
+            color: #1e3a8a;
             text-decoration: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        
+        .actions a:hover {
+            background: #f1f5f9;
         }
         
         .note {
@@ -358,7 +373,7 @@ ob_start();
             border-color: #1e3a8a;
             box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
         }
-    </style>
+</style>
 
 <div class="content-narrow">
         <div class="page-header">
@@ -376,15 +391,15 @@ ob_start();
         <a class="btn link" href="index.php?page=cadastros">← Voltar</a>
     </div>
 
-        <?php if ($err): ?>
+    <?php if ($err): ?>
             <div class="card" style="border-left: 4px solid #dc2626; background: #fee2e2;">
                 <p style="color: #991b1b; margin: 0;"><?= h($err) ?></p>
             </div>
-        <?php elseif (isset($_GET['msg'])): ?>
+    <?php elseif (isset($_GET['msg'])): ?>
             <div class="card" style="border-left: 4px solid #059669; background: #d1fae5;">
                 <p style="color: #065f46; margin: 0;">✅ <?= h($_GET['msg']) ?></p>
             </div>
-        <?php endif; ?>
+    <?php endif; ?>
 
     <div class="card">
         <fieldset>
@@ -493,7 +508,7 @@ ob_start();
         </table>
     </div>
 
-    </div>
+</div>
 
 <?php
 // Restaurar error_reporting antes de incluir sidebar
