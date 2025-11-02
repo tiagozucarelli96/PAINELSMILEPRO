@@ -985,18 +985,22 @@ ob_start();
                         form.querySelector('[name="incluidos_15anos"]').value = d.incluidos_15anos || 3;
                         form.querySelector('[name="preco_extra"]').value = d.preco_extra || 50.00;
                         
-                        // Preencher campos de texto (preencher primeiro com valores simples)
+                        // Preencher campos de texto (valor será usado quando Summernote inicializar)
                         const instrutivoField = document.getElementById('modal_instrutivo_html');
                         const emailField = document.getElementById('modal_email_confirmacao_html');
                         const msgField = document.getElementById('modal_msg_sucesso_html');
                         
+                        // Guardar valores para usar depois quando Summernote inicializar
                         if (instrutivoField) {
+                            instrutivoField.setAttribute('data-initial-value', d.instrutivo_html || '');
                             instrutivoField.value = d.instrutivo_html || '';
                         }
                         if (emailField) {
+                            emailField.setAttribute('data-initial-value', d.email_confirmacao_html || '');
                             emailField.value = d.email_confirmacao_html || '';
                         }
                         if (msgField) {
+                            msgField.setAttribute('data-initial-value', d.msg_sucesso_html || '');
                             msgField.value = d.msg_sucesso_html || '';
                         }
                         
@@ -1346,6 +1350,12 @@ ob_start();
                 ]
             }).addClass('summernote-initialized');
             
+            // Preencher com valor inicial se existir
+            const instrutivoValue = $('#modal_instrutivo_html').attr('data-initial-value');
+            if (instrutivoValue) {
+                $('#modal_instrutivo_html').summernote('code', instrutivoValue);
+            }
+            
             $('#modal_email_confirmacao_html').summernote({
                 height: 250,
                 lang: 'pt-BR',
@@ -1359,6 +1369,12 @@ ob_start();
                 ]
             }).addClass('summernote-initialized');
             
+            // Preencher com valor inicial se existir
+            const emailValue = $('#modal_email_confirmacao_html').attr('data-initial-value');
+            if (emailValue) {
+                $('#modal_email_confirmacao_html').summernote('code', emailValue);
+            }
+            
             $('#modal_msg_sucesso_html').summernote({
                 height: 200,
                 lang: 'pt-BR',
@@ -1371,6 +1387,12 @@ ob_start();
                     ['view', ['fullscreen', 'codeview', 'help']]
                 ]
             }).addClass('summernote-initialized');
+            
+            // Preencher com valor inicial se existir
+            const msgValue = $('#modal_msg_sucesso_html').attr('data-initial-value');
+            if (msgValue) {
+                $('#modal_msg_sucesso_html').summernote('code', msgValue);
+            }
             
             console.log('✅ Summernote inicializado no modal com sucesso');
         }
