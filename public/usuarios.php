@@ -1576,8 +1576,8 @@ ob_start();
             // Criar formulário para enviar requisição de exclusão
             const form = document.createElement('form');
             form.method = 'POST';
-            // Usar action vazio para submeter na mesma página
-            form.action = window.location.pathname + (window.location.search ? window.location.search.split('&page=')[0] + '&page=usuarios' : '?page=usuarios');
+            // Usar action vazio para submeter na mesma página (index.php vai processar)
+            form.action = 'index.php?page=usuarios';
             
             const actionInput = document.createElement('input');
             actionInput.type = 'hidden';
