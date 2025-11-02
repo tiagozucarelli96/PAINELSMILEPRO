@@ -1334,6 +1334,8 @@ ob_start();
     <script>
         // Abrir modal
         function openModal(userId = 0, evt = null) {
+            console.log('openModal chamado com userId:', userId);
+            
             // Prevenir navegação padrão se vier de um link ou botão
             if (evt) {
                 evt.preventDefault();
@@ -1348,22 +1350,37 @@ ob_start();
             const title = document.getElementById('modalTitle');
             const userIdInput = document.getElementById('userId');
             
-            if (!modal || !form || !title || !userIdInput) {
-                console.error('Elementos do modal não encontrados:', {modal, form, title, userIdInput});
+            if (!modal) {
+                console.error('Modal não encontrado!');
+                alert('Erro: Modal não encontrado. Por favor, recarregue a página.');
                 return;
             }
+            if (!form) {
+                console.error('Formulário não encontrado!');
+                alert('Erro: Formulário não encontrado. Por favor, recarregue a página.');
+                return;
+            }
+            if (!title || !userIdInput) {
+                console.error('Elementos do modal não encontrados:', {title, userIdInput});
+                alert('Erro: Elementos do modal não encontrados. Por favor, recarregue a página.');
+                return;
+            }
+            
+            console.log('Elementos encontrados, prosseguindo...');
             
             // Esconder modal primeiro para evitar flash
             modal.style.display = 'none';
             
             if (userId > 0) {
                 // Editar usuário existente
+                console.log('Editando usuário ID:', userId);
                 title.textContent = 'Editar Usuário';
                 userIdInput.value = userId;
                 loadUserData(userId);
                 // O modal será mostrado após carregar os dados em loadUserData
             } else {
                 // Novo usuário
+                console.log('Criando novo usuário');
                 title.textContent = 'Novo Usuário';
                 userIdInput.value = 0;
                 form.reset();
