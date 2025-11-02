@@ -1271,7 +1271,139 @@ ob_start();
                 }, 300);
             };
         }
+        
+        // Função para inicializar Summernote no modal
+        function initSummernoteModal() {
+            // Verificar se jQuery e Summernote estão disponíveis
+            if (typeof $ === 'undefined') {
+                console.warn('⚠️ jQuery não está disponível. Carregando jQuery...');
+                // Carregar jQuery se não estiver
+                if (!document.querySelector('script[src*="jquery"]')) {
+                    const script = document.createElement('script');
+                    script.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+                    script.onload = function() {
+                        setTimeout(function() {
+                            loadSummernoteAndInit();
+                        }, 300);
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    setTimeout(function() {
+                        if (typeof $ !== 'undefined') {
+                            loadSummernoteAndInit();
+                        } else {
+                            console.error('❌ jQuery ainda não carregou após espera');
+                        }
+                    }, 1000);
+                }
+                return;
+            }
+            
+            if (!$.fn.summernote) {
+                console.warn('⚠️ Summernote não está disponível. Carregando...');
+                loadSummernoteAndInit();
+                return;
+            }
+            
+            // Verificar se já foi inicializado
+            if ($('#modal_instrutivo_html').hasClass('summernote-initialized')) {
+                console.log('✅ Summernote já inicializado no modal');
+                return;
+            }
+            
+            // Carregar CSS se não estiver
+            if (!$('link[href*="summernote"]').length) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.css';
+                document.head.appendChild(link);
+            }
+            
+            // Configuração simplificada para português (se necessário)
+            if (!$.summernote.lang['pt-BR']) {
+                $.extend($.summernote.lang, {
+                    'pt-BR': {
+                        font: { bold: 'Negrito', italic: 'Itálico', underline: 'Sublinhado', clear: 'Remover Formatação' },
+                        lists: { unordered: 'Lista não ordenada', ordered: 'Lista ordenada' },
+                        paragraph: { paragraph: 'Parágrafo', left: 'Esquerda', center: 'Centro', right: 'Direita', justify: 'Justificado' },
+                        color: { recent: 'Cor Recente', more: 'Mais Cores' },
+                        history: { undo: 'Desfazer', redo: 'Refazer' }
+                    }
+                });
+            }
+            
+            // Inicializar Summernote nos campos do modal
+            $('#modal_instrutivo_html').summernote({
+                height: 300,
+                lang: 'pt-BR',
+                toolbar: [
+                    ['style', ['style']],
+                    ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                    ['color', ['color']],
+                    ['para', ['ul', 'ol', 'paragraph']],
+                    ['insert', ['link']],
+                    ['view', ['fullscreen', 'codeview', 'help']]
+                ]
+            }).addClass('summernote-initialized');
+            
+            $('#modal_email_confirmacao_html').summernote({
+                height: 250,
+                lang: 'pt-BR',
+                toolbar: [
+                    ['style', ['style']],
+                    ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                    ['color', ['color']],
+                    ['para', ['ul', 'ol', 'paragraph']],
+                    ['insert', ['link']],
+                    ['view', ['fullscreen', 'codeview', 'help']]
+                ]
+            }).addClass('summernote-initialized');
+            
+            $('#modal_msg_sucesso_html').summernote({
+                height: 200,
+                lang: 'pt-BR',
+                toolbar: [
+                    ['style', ['style']],
+                    ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                    ['color', ['color']],
+                    ['para', ['ul', 'ol', 'paragraph']],
+                    ['insert', ['link']],
+                    ['view', ['fullscreen', 'codeview', 'help']]
+                ]
+            }).addClass('summernote-initialized');
+            
+            console.log('✅ Summernote inicializado no modal com sucesso');
+        }
+        
+        function loadSummernoteAndInit() {
+            if (typeof $.fn.summernote === 'undefined') {
+                // Carregar Summernote se não estiver
+                if (!document.querySelector('script[src*="summernote"]')) {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.js';
+                    script.onload = function() {
+                        setTimeout(initSummernoteModal, 200);
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    setTimeout(function() {
+                        if (typeof $.fn.summernote !== 'undefined') {
+                            initSummernoteModal();
+                        } else {
+                            console.error('❌ Summernote ainda não carregou após espera');
+                        }
+                    }, 1000);
+                }
+            } else {
+                initSummernoteModal();
+            }
+        }
     </script>
+    
+    <!-- jQuery e Summernote para o modal -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.js"></script>
     
     <!-- Modal de Edição -->
     <div id="modalEditarDegustacao" class="modal-editar-degustacao" onclick="if(event.target === this) fecharModalEditar()">
