@@ -26,8 +26,28 @@ error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 ob_start();
 
 // Processar ações
-$action = $_POST['action'] ?? '';
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
+
+// AJAX: Retornar dados do usuário em JSON
+if ($action === 'get_user' && !empty($_GET['id'])) {
+    header('Content-Type: application/json');
+    try {
+        $id = (int)$_GET['id'];
+        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user) {
+            echo json_encode(['success' => true, 'user' => $user]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Usuário não encontrado']);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
 
 if ($action === 'save') {
     try {
@@ -111,11 +131,24 @@ if ($action === 'save') {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
-        $success_message = $user_id > 0 ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!";
+        // Redirecionar para evitar reenvio do formulário
+        $redirectUrl = 'index.php?page=usuarios';
+        if ($search) {
+            $redirectUrl .= '&search=' . urlencode($search);
+        }
+        $redirectUrl .= '&success=' . urlencode($user_id > 0 ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!");
+        
+        header('Location: ' . $redirectUrl);
+        exit;
         
     } catch (Exception $e) {
         $error_message = "Erro: " . $e->getMessage();
     }
+}
+
+// Buscar mensagem de sucesso da URL
+if (isset($_GET['success'])) {
+    $success_message = $_GET['success'];
 }
 
 // Buscar usuários
@@ -409,12 +442,17 @@ if ($user_id > 0) {
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
         }
         
         .modal.active {
             display: flex;
             align-items: center;
             justify-content: center;
+            opacity: 1;
+            visibility: visible;
         }
         
         .modal-content {
@@ -597,7 +635,7 @@ if ($user_id > 0) {
                 <h1 class="page-title">👥 Usuários e Colaboradores</h1>
                 <p style="color: #64748b; margin: 0.5rem 0 0 0; font-size: 0.875rem;">Gerencie usuários, permissões e colaboradores do sistema</p>
             </div>
-            <button class="btn-primary" onclick="openModal()">
+            <button class="btn-primary" type="button" onclick="openModal(0)">
                 <span>➕</span>
                 Novo Usuário
             </button>
@@ -719,10 +757,10 @@ if ($user_id > 0) {
                         </div>
                         
                         <div class="user-actions">
-                            <a href="?id=<?= $user['id'] ?>" class="btn-edit" onclick="openModal(<?= $user['id'] ?>)">
+                            <button class="btn-edit" type="button" onclick="openModal(<?= $user['id'] ?>, event)">
                                 ✏️ Editar
-                            </a>
-                            <button class="btn-delete" onclick="deleteUser(<?= $user['id'] ?>)">
+                            </button>
+                            <button class="btn-delete" type="button" onclick="deleteUser(<?= $user['id'] ?>)">
                                 🗑️ Excluir
                             </button>
                         </div>
@@ -849,11 +887,23 @@ if ($user_id > 0) {
     
     <script>
         // Abrir modal
-        function openModal(userId = 0) {
+        function openModal(userId = 0, evt = null) {
+            // Prevenir navegação padrão se vier de um link
+            if (evt) {
+                evt.preventDefault();
+                evt.stopPropagation();
+            } else if (typeof event !== 'undefined') {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+            
             const modal = document.getElementById('userModal');
             const form = document.getElementById('userForm');
             const title = document.getElementById('modalTitle');
             const userIdInput = document.getElementById('userId');
+            
+            // Esconder modal primeiro para evitar flash
+            modal.style.display = 'none';
             
             if (userId > 0) {
                 title.textContent = 'Editar Usuário';
@@ -863,57 +913,130 @@ if ($user_id > 0) {
                 title.textContent = 'Novo Usuário';
                 userIdInput.value = 0;
                 form.reset();
+                // Limpar todos os checkboxes
+                form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
             }
             
-            modal.classList.add('active');
+            // Mostrar modal após pequeno delay para evitar flash
+            setTimeout(() => {
+                modal.style.display = 'flex';
+                setTimeout(() => {
+                    modal.classList.add('active');
+                }, 10);
+            }, 10);
         }
         
         // Fechar modal
         function closeModal() {
-            document.getElementById('userModal').classList.remove('active');
+            const modal = document.getElementById('userModal');
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300); // Esperar transição completar
         }
         
         // Carregar dados do usuário
         function loadUserData(userId) {
             if (userId > 0) {
+                // Mostrar loading
+                const form = document.getElementById('userForm');
+                const originalContent = form.innerHTML;
+                form.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
+                
                 // Buscar dados do usuário via AJAX
                 fetch('?action=get_user&id=' + userId)
-                    .then(response => response.json())
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Erro na resposta do servidor');
+                        }
+                        return response.json();
+                    })
                     .then(data => {
-                        if (data.success) {
+                        // Restaurar formulário - usar cloneNode para preservar event listeners
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = originalContent;
+                        const newForm = tempDiv.firstElementChild;
+                        form.parentNode.replaceChild(newForm, form);
+                        const restoredForm = document.getElementById('userForm');
+                        
+                        if (data.success && data.user) {
                             // Preencher formulário com dados do usuário
-                            document.getElementById('userId').value = data.user.id;
-                            document.querySelector('input[name="nome"]').value = data.user.nome || '';
-                            document.querySelector('input[name="login"]').value = data.user.login || '';
-                            document.querySelector('input[name="email"]').value = data.user.email || '';
-                            document.querySelector('input[name="cargo"]').value = data.user.cargo || '';
-                            document.querySelector('input[name="cpf"]').value = data.user.cpf || '';
-                            document.querySelector('input[name="admissao_data"]').value = data.user.admissao_data || '';
-                            document.querySelector('input[name="salario_base"]').value = data.user.salario_base || '';
-                            document.querySelector('input[name="pix_tipo"]').value = data.user.pix_tipo || '';
-                            document.querySelector('input[name="pix_chave"]').value = data.user.pix_chave || '';
-                            document.querySelector('select[name="status_empregado"]').value = data.user.status_empregado || 'ativo';
+                            const user = data.user;
+                            // Usar o formulário restaurado
+                            const formToFill = restoredForm || document.getElementById('userForm');
+                            
+                            const userIdInput = formToFill.querySelector('#userId');
+                            if (userIdInput) userIdInput.value = user.id || userId;
+                            
+                            const nomeInput = formToFill.querySelector('input[name="nome"]');
+                            if (nomeInput) nomeInput.value = user.nome || '';
+                            
+                            const loginInput = formToFill.querySelector('input[name="login"]');
+                            if (loginInput) loginInput.value = user.login || '';
+                            
+                            const emailInput = formToFill.querySelector('input[name="email"]');
+                            if (emailInput) emailInput.value = user.email || '';
+                            
+                            const cargoInput = formToFill.querySelector('input[name="cargo"]');
+                            if (cargoInput) cargoInput.value = user.cargo || '';
+                            
+                            const cpfInput = formToFill.querySelector('input[name="cpf"]');
+                            if (cpfInput) cpfInput.value = user.cpf || '';
+                            
+                            const admissaoInput = formToFill.querySelector('input[name="admissao_data"]');
+                            if (admissaoInput && user.admissao_data) {
+                                // Converter data para formato YYYY-MM-DD se necessário
+                                let dataStr = user.admissao_data;
+                                if (dataStr.includes('/')) {
+                                    const parts = dataStr.split('/');
+                                    if (parts.length === 3) {
+                                        dataStr = parts[2] + '-' + parts[1] + '-' + parts[0];
+                                    }
+                                }
+                                admissaoInput.value = dataStr;
+                            }
+                            
+                            const salarioInput = formToFill.querySelector('input[name="salario_base"]');
+                            if (salarioInput) salarioInput.value = user.salario_base || '';
+                            
+                            const pixTipoInput = formToFill.querySelector('select[name="pix_tipo"]');
+                            if (pixTipoInput) pixTipoInput.value = user.pix_tipo || '';
+                            
+                            const pixChaveInput = formToFill.querySelector('input[name="pix_chave"]');
+                            if (pixChaveInput) pixChaveInput.value = user.pix_chave || '';
+                            
+                            const statusInput = formToFill.querySelector('select[name="status_empregado"]');
+                            if (statusInput) statusInput.value = user.status_empregado || 'ativo';
                             
                             // Preencher permissões
-                            Object.keys(data.user).forEach(key => {
+                            Object.keys(user).forEach(key => {
                                 if (key.startsWith('perm_')) {
-                                    const checkbox = document.querySelector('input[name="' + key + '"]');
+                                    const checkbox = formToFill.querySelector('input[name="' + key + '"]');
                                     if (checkbox) {
-                                        checkbox.checked = data.user[key] == 1;
+                                        checkbox.checked = (user[key] == 1 || user[key] === true || user[key] === '1');
                                     }
                                 }
                             });
                         } else {
-                            console.error('Erro ao carregar usuário:', data.message);
+                            alert('Erro ao carregar usuário: ' + (data.message || 'Usuário não encontrado'));
+                            closeModal();
                         }
                     })
                     .catch(error => {
                         console.error('Erro na requisição:', error);
+                        alert('Erro ao carregar dados do usuário. Por favor, tente novamente.');
+                        closeModal();
                     });
             } else {
                 // Limpar formulário para novo usuário
-                document.getElementById('userForm').reset();
-                document.getElementById('userId').value = '0';
+                const form = document.getElementById('userForm');
+                if (form) {
+                    form.reset();
+                    const userIdInput = document.getElementById('userId');
+                    if (userIdInput) userIdInput.value = '0';
+                    // Limpar todos os checkboxes
+                    form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                }
             }
         }
         
@@ -941,8 +1064,28 @@ if ($user_id > 0) {
         });
         
         // Prevenir fechamento do modal ao clicar no conteúdo
-        document.querySelector('.modal-content').addEventListener('click', function(e) {
-            e.stopPropagation();
+        const modalContent = document.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+        
+        // Prevenir submit padrão e fazer submit correto
+        const userForm = document.getElementById('userForm');
+        if (userForm) {
+            userForm.addEventListener('submit', function(e) {
+                // Permitir submit padrão - o PHP vai processar e redirecionar
+                // Não usar preventDefault aqui, pois queremos o submit normal
+            });
+        }
+        
+        // Prevenir flash ao carregar página - esconder modal até que JS esteja pronto
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('userModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
         });
     </script>
 
