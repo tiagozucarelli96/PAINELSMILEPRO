@@ -18,7 +18,7 @@ $perfil = lc_get_user_perfil();
 $msg = '';
 $err = '';
 
-// Processar ações
+// Processar ações (ANTES do output buffering)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
     
@@ -101,6 +101,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = 'Erro: ' . $e->getMessage();
     }
 }
+
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 
 /**
  * Calcular sugestões com integração ME Eventos
@@ -270,14 +277,7 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alertas de Estoque - Painel Smile PRO</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<style>
         .header {
             background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);
             color: white;
@@ -559,8 +559,8 @@ function calcularDiasEstoque($atual, $minimo, $consumo_medio = null) {
         <?php endif; ?>
 
         <div style="margin-top: 30px; text-align: center;">
-            <a href="estoque_contagens.php" class="btn btn-secondary">← Voltar para Contagens</a>
-            <a href="config_insumos.php" class="btn btn-secondary">⚙️ Configurar Insumos</a>
+            <a href="index.php?page=estoque_contagens" class="btn btn-secondary">← Voltar para Contagens</a>
+            <a href="index.php?page=config_insumos" class="btn btn-secondary">⚙️ Configurar Insumos</a>
         </div>
     </div>
 

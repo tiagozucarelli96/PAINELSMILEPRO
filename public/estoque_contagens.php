@@ -7,6 +7,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/lc_units_helper.php';
 require_once __DIR__ . '/lc_permissions_helper.php';
+require_once __DIR__ . '/sidebar_integration.php';
 
 // Verificar permissões
 $perfil = lc_get_user_perfil();
@@ -77,16 +78,16 @@ $total_paginas = ceil($total_registros / $limite);
 
 
 function dt($s, $fmt='d/m/Y H:i') { return $s ? date($fmt, strtotime($s)) : ''; }
+
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contagens de Estoque - Painel Smile PRO</title>
-    <link rel="stylesheet" href="estilo.css">
-    <style>
+<style>
         .header-actions {
             display: flex;
             justify-content: space-between;
@@ -286,8 +287,23 @@ function dt($s, $fmt='d/m/Y H:i') { return $s ? date($fmt, strtotime($s)) : ''; 
         <?php endif; ?>
 
         <div style="margin-top: 30px; text-align: center;">
-            <a href="lc_index.php" class="btn btn-secondary">← Voltar</a>
+            <a href="index.php?page=logistico" class="btn btn-secondary">← Voltar</a>
         </div>
     </div>
-</body>
-</html>
+
+<?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+// Verificar se houve algum erro no buffer
+if (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+includeSidebar('Estoque - Contagens');
+echo $conteudo;
+endSidebar();
+?>
