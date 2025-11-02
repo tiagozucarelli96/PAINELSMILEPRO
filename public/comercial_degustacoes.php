@@ -1025,6 +1025,11 @@ ob_start();
                         // Mostrar formulário
                         if (loadingDiv) loadingDiv.style.display = 'none';
                         if (formDiv) formDiv.style.display = 'block';
+                        
+                        // Inicializar Summernote após preencher os dados e mostrar o formulário
+                        setTimeout(function() {
+                            initSummernoteModal();
+                        }, 500);
                     } else {
                         customAlert(data.error || 'Erro ao carregar dados da degustação', 'Erro');
                         fecharModalEditar();
