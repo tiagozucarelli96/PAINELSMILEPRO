@@ -6,7 +6,8 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_integration.php';
+// REMOVIDO: sidebar_integration causava redirecionamento
+// require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
@@ -172,7 +173,8 @@ if ($degustacao_id > 0) {
     $debug_info[] = "ℹ️ DEBUG: Nenhuma degustação selecionada ainda (degustacao_id = 0 ou vazio)";
 }
 
-includeSidebar('Comercial');
+// REMOVIDO: includeSidebar estava causando redirecionamento
+// includeSidebar('Comercial');
 ?>
 
 <style>
@@ -496,8 +498,7 @@ includeSidebar('Comercial');
     <div class="selecao-container">
         <!-- SOLUÇÃO: Usar action="index.php" e enviar page via campo oculto
              Isso garante que tanto page quanto degustacao_id cheguem juntos no GET -->
-        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
-            <input type="hidden" name="page" value="comercial_realizar_degustacao">
+        <form method="GET" action="comercial_realizar_degustacao.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label class="form-label">Selecione a Degustação</label>
