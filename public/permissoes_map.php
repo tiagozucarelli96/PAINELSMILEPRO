@@ -6,6 +6,10 @@ return [
     // Dashboard - sempre permitido (todos logados podem acessar)
     'dashboard' => null,
     
+    // Scripts de setup - sempre permitido para usuários logados
+    'apply_permissoes_sidebar_columns' => null,
+    'habilitar_todas_permissoes' => null,
+    
     // Módulos principais da sidebar
     'agenda' => 'perm_agenda',
     'demandas' => 'perm_demandas',

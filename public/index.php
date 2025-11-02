@@ -165,6 +165,7 @@ $routes = [
   
   // Scripts de migração/setup
   'apply_permissoes_sidebar_columns' => 'apply_permissoes_sidebar_columns.php',
+  'habilitar_todas_permissoes' => 'habilitar_todas_permissoes.php',
 
   // Agenda
   'agenda_config' => 'agenda_config.php',
