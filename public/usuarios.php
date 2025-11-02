@@ -235,9 +235,12 @@ if ($user_id > 0) {
 
 <style>
         .users-container {
-            max-width: 1400px;
+            max-width: 100%;
             margin: 0 auto;
             padding: 1.5rem;
+            box-sizing: border-box;
+            overflow-x: hidden;
+            width: 100%;
         }
         
         .page-header {
@@ -247,6 +250,8 @@ if ($user_id > 0) {
             margin-bottom: 2rem;
             flex-wrap: wrap;
             gap: 1rem;
+            width: 100%;
+            box-sizing: border-box;
         }
         
         .page-title {
@@ -288,6 +293,8 @@ if ($user_id > 0) {
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             border: 1px solid #e5e7eb;
+            width: 100%;
+            box-sizing: border-box;
         }
         
         .search-input {
@@ -307,8 +314,16 @@ if ($user_id > 0) {
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 1.5rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        @media (max-width: 768px) {
+            .users-grid {
+                grid-template-columns: 1fr;
+            }
         }
         
         .user-card {
@@ -321,6 +336,9 @@ if ($user_id > 0) {
             display: flex;
             flex-direction: column;
             height: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
+            min-width: 0;
         }
         
         .user-card:hover {
@@ -365,6 +383,7 @@ if ($user_id > 0) {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 100%;
         }
         
         .user-info p {
@@ -374,6 +393,7 @@ if ($user_id > 0) {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 100%;
         }
         
         .user-details {
@@ -387,18 +407,26 @@ if ($user_id > 0) {
             margin-bottom: 0.5rem;
             font-size: 0.875rem;
             gap: 0.5rem;
+            align-items: flex-start;
+            flex-wrap: nowrap;
         }
         
         .detail-label {
             color: #64748b;
             font-weight: 500;
             white-space: nowrap;
+            flex-shrink: 0;
+            min-width: fit-content;
         }
         
         .detail-value {
             color: #1e293b;
             text-align: right;
             word-break: break-word;
+            overflow-wrap: break-word;
+            max-width: 60%;
+            flex: 1;
+            min-width: 0;
         }
         
         .permissions-section {
@@ -419,6 +447,7 @@ if ($user_id > 0) {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 0.5rem;
+            min-width: 0;
         }
         
         .permission-item {
@@ -426,6 +455,8 @@ if ($user_id > 0) {
             align-items: center;
             gap: 0.5rem;
             font-size: 0.75rem;
+            min-width: 0;
+            overflow: hidden;
         }
         
         .permission-badge {
@@ -446,6 +477,16 @@ if ($user_id > 0) {
             margin-top: auto;
             padding-top: 1rem;
             border-top: 1px solid #e5e7eb;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .btn-edit,
+        .btn-delete {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         
         .btn-edit {
