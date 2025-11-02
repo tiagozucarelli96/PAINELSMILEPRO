@@ -28,10 +28,7 @@ require_once __DIR__ . '/core/helpers.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Helpers =========
-function brDate(string $isoTs): string {
-    $t = strtotime($isoTs);
-    return $t ? date('d/m/Y H:i', $t) : $isoTs;
-}
+// brDate() já está definida em core/helpers.php - não redeclarar
 function qs(array $extra=[]): string {
     $base = $_GET;
     foreach ($extra as $k=>$v) $base[$k]=$v;
