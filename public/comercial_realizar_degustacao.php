@@ -203,10 +203,28 @@ if ($is_pdf_request && $degustacao_id > 0) {
                     // Converter logo para base64 para incluir no PDF
                     $logo_base64 = '';
                     if (file_exists($logo_path)) {
-                        $logo_data = file_get_contents($logo_path);
-                        $logo_info = getimagesizefromstring($logo_data);
-                        $mime_type = $logo_info['mime'] ?? 'image/png';
-                        $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                        try {
+                            $logo_data = file_get_contents($logo_path);
+                            $logo_info = getimagesizefromstring($logo_data);
+                            
+                            // Verificar se é uma imagem válida
+                            if ($logo_info && isset($logo_info['mime'])) {
+                                $mime_type = $logo_info['mime'];
+                                // Apenas PNG e JPEG são suportados pelo Dompdf
+                                if (in_array($mime_type, ['image/png', 'image/jpeg', 'image/jpg'])) {
+                                    $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                                    error_log("✅ Logo carregado: $logo_path ($mime_type, " . strlen($logo_data) . " bytes)");
+                                } else {
+                                    error_log("⚠️ Logo em formato não suportado: $mime_type");
+                                }
+                            } else {
+                                error_log("⚠️ Logo inválido ou corrompido: $logo_path");
+                            }
+                        } catch (Exception $e) {
+                            error_log("❌ Erro ao carregar logo: " . $e->getMessage());
+                        }
+                    } else {
+                        error_log("⚠️ Logo não encontrado em: $logo_path");
                     }
                     
                     $total_mesas = count($inscritos);
@@ -225,20 +243,23 @@ if ($is_pdf_request && $degustacao_id > 0) {
                             font-size: 11pt;
                         }
                         .header {
-                            display: flex;
-                            align-items: center;
                             margin-bottom: 1.5cm;
                             padding-bottom: 1rem;
                             border-bottom: 2px solid #3b82f6;
+                            overflow: hidden;
                         }
                         .logo {
-                            width: 80px;
-                            height: 80px;
+                            max-width: 120px;
+                            max-height: 80px;
+                            height: auto;
+                            width: auto;
+                            float: left;
                             margin-right: 1.5rem;
-                            flex-shrink: 0;
+                            margin-bottom: 0.5rem;
+                            object-fit: contain;
                         }
                         .header-info {
-                            flex: 1;
+                            overflow: hidden;
                         }
                         .degustacao-nome {
                             font-size: 1.4rem;
@@ -325,10 +346,10 @@ if ($is_pdf_request && $degustacao_id > 0) {
                         <div class="header-info">
                             <div class="degustacao-nome"><?= h($degustacao['nome']) ?></div>
                             <div class="degustacao-meta">
-                                <span>📅 Data: <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
-                                <span>🕐 Horário: <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
+                                <span>Data: <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
+                                <span>Horário: <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
                                 <?php if (!empty($degustacao['local'])): ?>
-                                    <span>📍 <?= h($degustacao['local']) ?></span>
+                                    <span><?= h($degustacao['local']) ?></span>
                                 <?php endif; ?>
                             </div>
                         </div>
