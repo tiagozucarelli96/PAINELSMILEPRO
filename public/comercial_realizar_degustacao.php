@@ -496,9 +496,15 @@ if ($degustacao_id > 0) {
     
     <!-- Seleção de Degustação - SOLUÇÃO SIMPLIFICADA E ROBUSTA -->
     <div class="selecao-container">
-        <!-- SOLUÇÃO: Usar action="index.php" e enviar page via campo oculto
-             Isso garante que tanto page quanto degustacao_id cheguem juntos no GET -->
-        <form method="GET" action="comercial_realizar_degustacao.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
+        <!-- SOLUÇÃO: Verificar se está via router ou direto e ajustar action -->
+        <?php 
+        $is_via_router = (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false);
+        $form_action = $is_via_router ? 'index.php' : 'comercial_realizar_degustacao.php';
+        ?>
+        <form method="GET" action="<?= $form_action ?>" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
+            <?php if ($is_via_router): ?>
+                <input type="hidden" name="page" value="comercial_realizar_degustacao">
+            <?php endif; ?>
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label class="form-label">Selecione a Degustação</label>
