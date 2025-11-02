@@ -686,8 +686,9 @@ ob_start();
         }
     </style>
 
-<!-- TinyMCE Editor -->
-<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+<!-- Summernote Editor (Gratuito, sem necessidade de API key) -->
+<link href="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.js"></script>
 
 <div class="editor-container">
             <!-- Header -->
@@ -1186,10 +1187,14 @@ ob_start();
                 form.addEventListener('submit', function(e) {
                     console.log('📤 Formulário sendo submetido...');
                     
-                    // IMPORTANTE: Salvar conteúdo dos editores TinyMCE antes do submit
-                    if (typeof tinymce !== 'undefined') {
-                        tinymce.triggerSave();
-                        console.log('✅ Conteúdo do TinyMCE salvo antes do submit');
+                    // IMPORTANTE: Salvar conteúdo dos editores Summernote antes do submit
+                    if (typeof $ !== 'undefined' && $.fn.summernote) {
+                        $('#instrutivo_html, #email_confirmacao_html, #msg_sucesso_html').each(function() {
+                            if ($(this).summernote('code') !== null) {
+                                $(this).val($(this).summernote('code'));
+                            }
+                        });
+                        console.log('✅ Conteúdo do Summernote salvo antes do submit');
                     }
                     
                     // Validar formulário nativo do HTML5
@@ -1398,64 +1403,198 @@ ob_start();
             checkElement();
         }
         
-        // Função para inicializar TinyMCE
-        function initTinyMCE() {
-            if (typeof tinymce !== 'undefined') {
-                tinymce.init({
-                    selector: '#instrutivo_html, #email_confirmacao_html, #msg_sucesso_html',
-                    height: 400,
-                    menubar: false,
-                    plugins: [
-                        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
-                        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
-                        'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
-                    ],
-                    toolbar: 'undo redo | formatselect | ' +
-                        'bold italic underline strikethrough | forecolor backcolor | ' +
-                        'alignleft aligncenter alignright alignjustify | ' +
-                        'bullist numlist outdent indent | ' +
-                        'removeformat | help | fullscreen',
-                    language: 'pt_BR',
-                    content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 14px; }',
-                    branding: false,
-                    promotion: false,
-                    setup: function(editor) {
-                        // Salvar conteúdo do TinyMCE antes do submit do form
-                        editor.on('change', function() {
-                            editor.save();
-                        });
+        // Função para inicializar Summernote (Editor de texto rico gratuito)
+        function initSummernote() {
+            if (typeof $ !== 'undefined' && $.fn.summernote) {
+                // Configuração para português brasileiro
+                $.extend($.summernote.lang, {
+                    'pt-BR': {
+                        font: {
+                            bold: 'Negrito',
+                            italic: 'Itálico',
+                            underline: 'Sublinhado',
+                            clear: 'Remover Formatação',
+                            height: 'Altura da Linha',
+                            name: 'Fonte',
+                            strikethrough: 'Tachado',
+                            subscript: 'Subscrito',
+                            superscript: 'Sobrescrito',
+                            size: 'Tamanho da Fonte'
+                        },
+                        image: {
+                            image: 'Imagem',
+                            insert: 'Inserir Imagem',
+                            resizeFull: 'Redimensionar Completo',
+                            resizeHalf: 'Redimensionar pela Metade',
+                            resizeQuarter: 'Redimensionar um Quarto',
+                            floatLeft: 'Flutuar à Esquerda',
+                            floatRight: 'Flutuar à Direita',
+                            floatNone: 'Não Flutuar',
+                            shapeRounded: 'Forma: Arredondado',
+                            shapeCircle: 'Forma: Círculo',
+                            shapeThumbnail: 'Forma: Miniatura',
+                            shapeNone: 'Forma: Nenhum',
+                            dragImageHere: 'Arraste uma Imagem ou Texto Aqui',
+                            dropImage: 'Solte Imagem ou Texto',
+                            selectFromFiles: 'Selecionar dos Arquivos',
+                            maximumFileSize: 'Tamanho Máximo do Arquivo',
+                            maximumFileSizeError: 'Tamanho Máximo do Arquivo Excedido.',
+                            url: 'URL da Imagem',
+                            remove: 'Remover Imagem'
+                        },
+                        link: {
+                            link: 'Link',
+                            insert: 'Inserir Link',
+                            unlink: 'Remover Link',
+                            edit: 'Editar',
+                            textToDisplay: 'Texto para Exibir',
+                            url: 'Para qual URL este link leva?',
+                            openInNewWindow: 'Abrir em Nova Janela'
+                        },
+                        video: {
+                            video: 'Vídeo',
+                            videoLink: 'Link do Vídeo',
+                            insert: 'Inserir Vídeo',
+                            url: 'URL do Vídeo?',
+                            providers: '(YouTube, Vimeo, Vine, Instagram, DailyMotion ou Youku)'
+                        },
+                        table: {
+                            table: 'Tabela',
+                            addRowAbove: 'Adicionar Linha Acima',
+                            addRowBelow: 'Adicionar Linha Abaixo',
+                            addColLeft: 'Adicionar Coluna à Esquerda',
+                            addColRight: 'Adicionar Coluna à Direita',
+                            delRow: 'Excluir Linha',
+                            delCol: 'Excluir Coluna',
+                            delTable: 'Excluir Tabela'
+                        },
+                        hr: {
+                            insert: 'Inserir Linha Horizontal'
+                        },
+                        style: {
+                            style: 'Estilo',
+                            p: 'Normal',
+                            blockquote: 'Citação',
+                            pre: 'Código',
+                            h1: 'Título 1',
+                            h2: 'Título 2',
+                            h3: 'Título 3',
+                            h4: 'Título 4',
+                            h5: 'Título 5',
+                            h6: 'Título 6'
+                        },
+                        lists: {
+                            unordered: 'Lista não ordenada',
+                            ordered: 'Lista ordenada'
+                        },
+                        options: {
+                            help: 'Ajuda',
+                            fullscreen: 'Tela Cheia',
+                            codeview: 'Ver Código-Fonte'
+                        },
+                        paragraph: {
+                            paragraph: 'Parágrafo',
+                            outdent: 'Menor Recuo',
+                            indent: 'Maior Recuo',
+                            left: 'Alinhar à Esquerda',
+                            center: 'Alinhar ao Centro',
+                            right: 'Alinhar à Direita',
+                            justify: 'Justificado'
+                        },
+                        color: {
+                            recent: 'Cor Recente',
+                            more: 'Mais Cores',
+                            background: 'Cor de Fundo',
+                            foreground: 'Cor de Fonte',
+                            transparent: 'Transparente',
+                            setTransparent: 'Fundo Transparente',
+                            reset: 'Restaurar',
+                            resetToDefault: 'Restaurar Padrão'
+                        },
+                        shortcut: {
+                            shortcuts: 'Atalhos do Teclado',
+                            close: 'Fechar',
+                            textFormatting: 'Formatação de Texto',
+                            action: 'Ação',
+                            paragraphFormatting: 'Formatação de Parágrafo',
+                            documentStyle: 'Estilo de Documento'
+                        },
+                        history: {
+                            undo: 'Desfazer',
+                            redo: 'Refazer'
+                        }
                     }
                 });
+                
+                // Inicializar Summernote nos campos
+                $('#instrutivo_html').summernote({
+                    height: 400,
+                    lang: 'pt-BR',
+                    toolbar: [
+                        ['style', ['style']],
+                        ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                        ['color', ['color']],
+                        ['para', ['ul', 'ol', 'paragraph']],
+                        ['table', ['table']],
+                        ['insert', ['link', 'picture']],
+                        ['view', ['fullscreen', 'codeview', 'help']]
+                    ]
+                });
+                
+                $('#email_confirmacao_html').summernote({
+                    height: 300,
+                    lang: 'pt-BR',
+                    toolbar: [
+                        ['style', ['style']],
+                        ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                        ['color', ['color']],
+                        ['para', ['ul', 'ol', 'paragraph']],
+                        ['insert', ['link']],
+                        ['view', ['fullscreen', 'codeview', 'help']]
+                    ]
+                });
+                
+                $('#msg_sucesso_html').summernote({
+                    height: 200,
+                    lang: 'pt-BR',
+                    toolbar: [
+                        ['style', ['style']],
+                        ['font', ['bold', 'italic', 'underline', 'strikethrough', 'clear']],
+                        ['color', ['color']],
+                        ['para', ['ul', 'ol', 'paragraph']],
+                        ['insert', ['link']],
+                        ['view', ['fullscreen', 'codeview', 'help']]
+                    ]
+                });
+                
+                console.log('✅ Summernote inicializado com sucesso');
+            } else if (typeof $ === 'undefined') {
+                console.warn('⚠️ jQuery não está carregado. Carregando jQuery...');
+                // Carregar jQuery se não estiver disponível
+                const script = document.createElement('script');
+                script.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+                script.onload = function() {
+                    setTimeout(initSummernote, 100);
+                };
+                document.head.appendChild(script);
             } else {
-                console.warn('TinyMCE não carregado. Usando textarea simples.');
+                console.warn('⚠️ Summernote não carregado. Usando textarea simples.');
             }
         }
         
-        // Aguardar DOM e TinyMCE estarem prontos
+        // Aguardar DOM estar pronto
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', function() {
-                // Aguardar TinyMCE carregar
-                if (typeof tinymce === 'undefined') {
-                    setTimeout(function() {
-                        initTinyMCE();
-                        setTimeout(() => initializeForm(), 100);
-                    }, 500);
-                } else {
-                    initTinyMCE();
-                    setTimeout(() => initializeForm(), 100);
-                }
-            });
-        } else {
-            // DOM já está pronto
-            if (typeof tinymce === 'undefined') {
                 setTimeout(function() {
-                    initTinyMCE();
+                    initSummernote();
                     setTimeout(() => initializeForm(), 100);
                 }, 500);
-            } else {
-                initTinyMCE();
+            });
+        } else {
+            setTimeout(function() {
+                initSummernote();
                 setTimeout(() => initializeForm(), 100);
-            }
+            }, 500);
         }
         
         function initializeForm() {
