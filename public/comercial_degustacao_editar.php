@@ -686,6 +686,8 @@ ob_start();
         }
     </style>
 
+<!-- jQuery (requerido pelo Summernote) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <!-- Summernote Editor (Gratuito, sem necessidade de API key) -->
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.js"></script>
@@ -1569,32 +1571,75 @@ ob_start();
                 
                 console.log('✅ Summernote inicializado com sucesso');
             } else if (typeof $ === 'undefined') {
-                console.warn('⚠️ jQuery não está carregado. Carregando jQuery...');
-                // Carregar jQuery se não estiver disponível
-                const script = document.createElement('script');
-                script.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
-                script.onload = function() {
-                    setTimeout(initSummernote, 100);
-                };
-                document.head.appendChild(script);
+                console.warn('⚠️ jQuery não está carregado. Aguardando jQuery carregar...');
+                // Verificar se jQuery está sendo carregado
+                let tentativas = 0;
+                const verificarJQuery = setInterval(function() {
+                    tentativas++;
+                    if (typeof $ !== 'undefined' && $.fn.summernote) {
+                        clearInterval(verificarJQuery);
+                        initSummernote();
+                    } else if (tentativas > 20) {
+                        clearInterval(verificarJQuery);
+                        console.error('❌ jQuery não carregou após 10 segundos. Carregando jQuery manualmente...');
+                        // Carregar jQuery manualmente como último recurso
+                        const script = document.createElement('script');
+                        script.src = 'https://code.jquery.com/jquery-3.6.0.min.js';
+                        script.onload = function() {
+                            // Aguardar jQuery carregar completamente
+                            setTimeout(function() {
+                                if (typeof $ !== 'undefined' && $.fn.summernote) {
+                                    initSummernote();
+                                } else {
+                                    console.error('❌ Falha ao carregar jQuery/Summernote. Usando textarea simples.');
+                                }
+                            }, 500);
+                        };
+                        document.head.appendChild(script);
+                    }
+                }, 500);
             } else {
-                console.warn('⚠️ Summernote não carregado. Usando textarea simples.');
+                console.warn('⚠️ Summernote não carregado. Verificando se precisa carregar...');
+                // Tentar carregar Summernote se jQuery estiver disponível mas Summernote não
+                if (typeof $.fn.summernote === 'undefined') {
+                    console.warn('⚠️ Plugin Summernote não encontrado. Carregando...');
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/summernote@0.8.20/dist/summernote-lite.min.js';
+                    script.onload = function() {
+                        setTimeout(initSummernote, 100);
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    console.warn('⚠️ Summernote não disponível. Usando textarea simples.');
+                }
             }
         }
         
-        // Aguardar DOM estar pronto
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
+        // Aguardar DOM e jQuery estarem prontos
+        function waitForJQueryAndInit() {
+            if (typeof $ !== 'undefined' && $.fn && $.fn.summernote) {
+                // jQuery e Summernote estão prontos
                 setTimeout(function() {
                     initSummernote();
                     setTimeout(() => initializeForm(), 100);
-                }, 500);
+                }, 300);
+            } else if (typeof $ !== 'undefined') {
+                // jQuery está pronto, mas Summernote ainda não
+                console.log('jQuery carregado, aguardando Summernote...');
+                setTimeout(waitForJQueryAndInit, 200);
+            } else {
+                // Ainda aguardando jQuery
+                console.log('Aguardando jQuery carregar...');
+                setTimeout(waitForJQueryAndInit, 200);
+            }
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(waitForJQueryAndInit, 500);
             });
         } else {
-            setTimeout(function() {
-                initSummernote();
-                setTimeout(() => initializeForm(), 100);
-            }, 500);
+            setTimeout(waitForJQueryAndInit, 500);
         }
         
         function initializeForm() {
