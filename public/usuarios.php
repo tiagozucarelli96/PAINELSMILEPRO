@@ -234,20 +234,32 @@ if ($user_id > 0) {
 ?>
 
 <style>
-        /* Garantir que o container principal não tenha overflow */
+        /* FORÇAR CONTROLE DE OVERFLOW EM TODOS OS NÍVEIS */
+        * {
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw !important;
+        }
+        
         #pageContent,
         .main-content {
             overflow-x: hidden !important;
             max-width: 100% !important;
+            width: 100% !important;
             box-sizing: border-box !important;
+            position: relative !important;
         }
         
         .users-container {
             max-width: 100%;
-            margin: 0 auto;
+            margin: 0;
             padding: 1.5rem;
             box-sizing: border-box;
             overflow-x: hidden;
+            overflow-y: visible;
             width: 100%;
             position: relative;
         }
@@ -260,7 +272,9 @@ if ($user_id > 0) {
             flex-wrap: wrap;
             gap: 1rem;
             width: 100%;
+            max-width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
         }
         
         .page-title {
@@ -303,7 +317,9 @@ if ($user_id > 0) {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             border: 1px solid #e5e7eb;
             width: 100%;
+            max-width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
         }
         
         .search-input {
@@ -313,6 +329,9 @@ if ($user_id > 0) {
             border-radius: 8px;
             font-size: 0.875rem;
             transition: border-color 0.2s;
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         
         .search-input:focus {
@@ -323,11 +342,20 @@ if ($user_id > 0) {
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
             gap: 1.5rem;
             width: 100%;
+            max-width: 100%;
             box-sizing: border-box;
             overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        
+        @media (max-width: 1024px) {
+            .users-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
         }
         
         @media (max-width: 768px) {
@@ -353,6 +381,9 @@ if ($user_id > 0) {
             box-sizing: border-box;
             overflow: hidden;
             min-width: 0;
+            max-width: 100%;
+            width: 100%;
+            position: relative;
         }
         
         .user-card:hover {
@@ -422,7 +453,10 @@ if ($user_id > 0) {
             font-size: 0.875rem;
             gap: 0.5rem;
             align-items: flex-start;
-            flex-wrap: nowrap;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
         }
         
         .detail-label {
@@ -431,6 +465,7 @@ if ($user_id > 0) {
             white-space: nowrap;
             flex-shrink: 0;
             min-width: fit-content;
+            max-width: 40%;
         }
         
         .detail-value {
@@ -438,11 +473,12 @@ if ($user_id > 0) {
             text-align: right;
             word-break: break-word;
             overflow-wrap: break-word;
-            max-width: 60%;
-            flex: 1;
+            flex: 1 1 auto;
             min-width: 0;
+            max-width: 60%;
             hyphens: auto;
             line-height: 1.4;
+            overflow: hidden;
         }
         
         .permissions-section {
@@ -504,7 +540,9 @@ if ($user_id > 0) {
             padding-top: 1rem;
             border-top: 1px solid #e5e7eb;
             width: 100%;
+            max-width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
         }
         
         .btn-edit,
@@ -513,14 +551,19 @@ if ($user_id > 0) {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1;
-            justify-content: center;
             max-width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .btn-edit {
+            flex: 1 1 auto;
+            justify-content: center;
+            min-width: 0;
         }
         
         .btn-delete {
             flex: 0 0 auto;
-            min-width: auto;
+            min-width: 60px;
         }
         
         .btn-edit {
