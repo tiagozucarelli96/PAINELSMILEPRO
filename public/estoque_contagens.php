@@ -128,101 +128,16 @@ ob_start();
             flex-wrap: wrap;
         }
         
-        .filters {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 2rem;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            border: 1px solid #e5e7eb;
-            margin-bottom: 20px;
-        }
-        .filters form {
-            display: flex;
-            gap: 15px;
-            align-items: end;
-        }
-        .table-container {
-            overflow-x: auto;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-        }
-        .table th, .table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-        .table th {
-            background: #f8f9fa;
-            font-weight: 600;
-        }
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .status-rascunho {
-            background: #fff3cd;
-            color: #856404;
-        }
-        .status-fechada {
-            background: #d4edda;
-            color: #155724;
-        }
-        .actions {
-            white-space: nowrap;
-        }
-        .btn {
-            padding: 6px 12px;
-            margin: 2px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 12px;
-        }
-        .btn-primary {
-            background: #007bff;
-            color: white;
-        }
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-        .btn:hover {
-            opacity: 0.8;
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            gap: 5px;
-            margin-top: 20px;
-        }
-        .pagination a, .pagination span {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            text-decoration: none;
-            color: #007bff;
-        }
-        .pagination .current {
-            background: #007bff;
-            color: white;
-        }
     </style>
-</head>
-<body>
-    <div class="container">
+
+<div class="container" style="max-width: 1400px; margin: 0 auto; padding: 1.5rem;">
+        <div class="page-header">
+            <h1>📊 Contagens de Estoque</h1>
+            <p>Gerencie e visualize as contagens de estoque realizadas</p>
+        </div>
+        
         <div class="header-actions">
-            <h1>Contagens de Estoque</h1>
+            <h1 style="display: none;">Contagens de Estoque</h1>
             <div>
                 <a href="index.php?page=estoque_alertas" class="btn btn-danger">🚨 Alertas</a>
                 <a href="index.php?page=config_insumos" class="btn btn-outline">📦 Insumos</a>
