@@ -354,11 +354,22 @@ try {
             $idcliente_me = null;
             
             // Tentar encontrar ID do cliente na resposta
+            // IMPORTANTE: O campo pode ser 'idcliente' (minúsculo) ou variações
             foreach ($events as $e) {
                 if (mb_strtolower(trim($e['nomeCliente'] ?? '')) === mb_strtolower($nome_cliente)) {
-                    $idcliente_me = $e['idcliente'] ?? $e['idCliente'] ?? $e['cliente_id'] ?? null;
+                    // Tentar múltiplas variações do campo ID do cliente
+                    $idcliente_me = $e['idcliente'] ?? $e['idCliente'] ?? $e['cliente_id'] ?? 
+                                  $e['id_cliente'] ?? $e['clienteId'] ?? $e['client_id'] ?? null;
+                    
+                    // Se não encontrou nas variações, usar o ID do evento como fallback (pode ser o mesmo)
+                    if (!$idcliente_me && isset($e['id'])) {
+                        $idcliente_me = $e['id'];
+                        error_log("ME Buscar Cliente - ID Cliente não encontrado em campos específicos, usando ID do evento: $idcliente_me");
+                    }
+                    
                     if ($idcliente_me) {
                         error_log("ME Buscar Cliente - ID Cliente encontrado: $idcliente_me");
+                        error_log("ME Buscar Cliente - Campos disponíveis no evento para debug: " . json_encode(array_keys($e), JSON_UNESCAPED_UNICODE));
                         break;
                     }
                 }
