@@ -493,6 +493,8 @@ ob_start();
             box-sizing: border-box;
             width: 100%;
             position: relative;
+            overflow: hidden;
+            min-height: 300px;
         }
         
         .user-card:hover {
@@ -624,8 +626,11 @@ ob_start();
             padding-top: 1rem;
             border-top: 1px solid #e5e7eb;
             width: 100%;
+            max-width: 100%;
             box-sizing: border-box;
             align-items: stretch;
+            flex-shrink: 0;
+            overflow: hidden;
         }
         
         .btn-edit {
@@ -644,8 +649,11 @@ ob_start();
             gap: 0.5rem;
             transition: all 0.2s;
             white-space: nowrap;
-            min-width: 100px;
+            min-width: 0;
+            max-width: 100%;
             box-sizing: border-box;
+            overflow: hidden;
+            flex-shrink: 1;
         }
         
         .btn-edit:hover {
@@ -669,6 +677,8 @@ ob_start();
             white-space: nowrap;
             flex-shrink: 0;
             box-sizing: border-box;
+            overflow: hidden;
+            max-width: 100%;
         }
         
         .btn-delete:hover {
@@ -1487,6 +1497,8 @@ ob_start();
                         });
                     })
                     .then(data => {
+                        console.log('Dados recebidos:', data);
+                        
                         // Restaurar formulário - simplesmente restaurar o HTML
                         form.innerHTML = originalContent;
                         
@@ -1579,7 +1591,26 @@ ob_start();
                     })
                     .catch(error => {
                         console.error('Erro na requisição:', error);
-                        alert('Erro ao carregar dados do usuário. Por favor, tente novamente.');
+                        
+                        // Restaurar formulário mesmo em caso de erro
+                        const form = document.getElementById('userForm');
+                        if (form && originalContent) {
+                            form.innerHTML = originalContent;
+                        }
+                        
+                        // Mostrar mensagem de erro específica
+                        let errorMessage = 'Erro ao carregar dados do usuário.';
+                        if (error.message) {
+                            if (error.message.includes('Sessão expirada')) {
+                                errorMessage = 'Sua sessão expirou. Por favor, recarregue a página e faça login novamente.';
+                            } else if (error.message.includes('JSON')) {
+                                errorMessage = 'Erro ao processar resposta do servidor. Verifique sua conexão e tente novamente.';
+                            } else {
+                                errorMessage = error.message;
+                            }
+                        }
+                        
+                        alert(errorMessage);
                         closeModal();
                     });
             } else {
