@@ -1186,6 +1186,12 @@ ob_start();
                 form.addEventListener('submit', function(e) {
                     console.log('📤 Formulário sendo submetido...');
                     
+                    // IMPORTANTE: Salvar conteúdo dos editores TinyMCE antes do submit
+                    if (typeof tinymce !== 'undefined') {
+                        tinymce.triggerSave();
+                        console.log('✅ Conteúdo do TinyMCE salvo antes do submit');
+                    }
+                    
                     // Validar formulário nativo do HTML5
                     if (!form.checkValidity()) {
                         console.warn('⚠️ Validação HTML5 falhou');
