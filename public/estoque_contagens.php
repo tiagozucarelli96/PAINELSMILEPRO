@@ -88,16 +88,53 @@ ob_start();
 ?>
 
 <style>
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin: 0 0 0.5rem 0;
+        }
+        
+        .page-header p {
+            font-size: 1.125rem;
+            color: #64748b;
+            margin: 0;
+        }
+        
         .header-actions {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
+        
+        .header-actions h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin: 0;
+        }
+        
+        .header-actions > div {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
         .filters {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
             margin-bottom: 20px;
         }
         .filters form {
@@ -187,12 +224,11 @@ ob_start();
         <div class="header-actions">
             <h1>Contagens de Estoque</h1>
             <div>
-                <a href="estoque_alertas.php" class="btn btn-danger" style="margin-right: 10px;">🚨 Alertas de Ruptura</a>
-                <a href="estoque_desvios.php" class="btn btn-secondary" style="margin-right: 10px;">📊 Relatório de Desvios</a>
-                <a href="config_insumos.php" class="btn btn-outline" style="margin-right: 10px;">📦 Configurar Insumos</a>
-                <a href="lc_index.php" class="btn btn-outline" style="margin-right: 10px;">🏠 Voltar</a>
+                <a href="index.php?page=estoque_alertas" class="btn btn-danger">🚨 Alertas</a>
+                <a href="index.php?page=config_insumos" class="btn btn-outline">📦 Insumos</a>
+                <a href="index.php?page=logistico" class="btn btn-outline">🏠 Voltar</a>
                 <?php if (lc_can_create_contagem()): ?>
-                    <a href="estoque_contar.php" class="btn btn-primary">Nova Contagem</a>
+                    <a href="estoque_contar.php" class="btn btn-primary">+ Nova Contagem</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -208,12 +244,12 @@ ob_start();
         <div class="filters">
             <form method="GET">
                 <div>
-                    <label>Filtrar por data:</label>
-                    <input type="date" name="data" value="<?= h($filtro_data) ?>" class="input">
+                    <label for="data">Filtrar por data:</label>
+                    <input type="date" name="data" id="data" value="<?= h($filtro_data) ?>" class="input">
                 </div>
-                <button type="submit" class="btn btn-secondary">Filtrar</button>
+                <button type="submit" class="btn btn-primary">🔍 Filtrar</button>
                 <?php if ($filtro_data): ?>
-                    <a href="estoque_contagens.php" class="btn btn-secondary">Limpar</a>
+                    <a href="index.php?page=estoque_contagens" class="btn btn-secondary">Limpar</a>
                 <?php endif; ?>
             </form>
         </div>
@@ -286,9 +322,6 @@ ob_start();
             </div>
         <?php endif; ?>
 
-        <div style="margin-top: 30px; text-align: center;">
-            <a href="index.php?page=logistico" class="btn btn-secondary">← Voltar</a>
-        </div>
     </div>
 
 <?php
