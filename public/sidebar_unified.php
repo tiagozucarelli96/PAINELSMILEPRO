@@ -1658,6 +1658,16 @@ if ($current_page === 'dashboard') {
                     <span class="nav-item-icon">👥</span>
                     Administrativo
                 </a>
+                
+                <a href="index.php?page=rh" class="nav-item <?= isActiveUnified('rh') ?>">
+                    <span class="nav-item-icon">👔</span>
+                    RH
+                </a>
+                
+                <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
+                    <span class="nav-item-icon">🏦</span>
+                    Banco Smile
+                </a>
             </nav>
     </div>
     <!-- Sidebar fechada -->

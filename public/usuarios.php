@@ -149,7 +149,7 @@ if ($user_id > 0) {
 
 <style>
         .users-container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 1.5rem;
         }
@@ -159,174 +159,245 @@ if ($user_id > 0) {
             justify-content: space-between;
             align-items: center;
             margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
         
         .page-title {
-            font-size: 28px;
+            font-size: 2rem;
             font-weight: 700;
             color: #1e3a8a;
             margin: 0;
         }
         
         .btn-primary {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            background: #1e3a8a;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 0.75rem 1.5rem;
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
         }
         
         .btn-primary:hover {
+            background: #2563eb;
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
         }
         
         .search-bar {
             display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
             align-items: center;
+            background: white;
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
         }
         
         .search-input {
             flex: 1;
-            padding: 12px 16px;
+            padding: 0.75rem 1rem;
             border: 1px solid #d1d5db;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
         }
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.5rem;
         }
         
         .user-card {
             background: white;
             border: 1px solid #e5e7eb;
             border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            transition: all 0.2s;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
         
         .user-card:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
             transform: translateY(-2px);
+            border-color: #1e3a8a;
         }
         
         .user-header {
             display: flex;
             align-items: center;
-            gap: 15px;
-            margin-bottom: 15px;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e5e7eb;
         }
         
         .user-avatar {
-            width: 50px;
-            height: 50px;
+            width: 56px;
+            height: 56px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            background: #1e3a8a;
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 18px;
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        
+        .user-info {
+            flex: 1;
+            min-width: 0;
         }
         
         .user-info h3 {
-            margin: 0 0 5px 0;
-            font-size: 18px;
+            margin: 0 0 0.25rem 0;
+            font-size: 1.125rem;
             font-weight: 600;
-            color: #1f2937;
+            color: #1e293b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .user-info p {
             margin: 0;
-            color: #6b7280;
-            font-size: 14px;
+            color: #64748b;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .user-details {
-            margin-bottom: 15px;
+            margin-bottom: 1rem;
+            flex: 1;
         }
         
         .detail-row {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 14px;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            gap: 0.5rem;
         }
         
         .detail-label {
-            color: #6b7280;
+            color: #64748b;
             font-weight: 500;
+            white-space: nowrap;
         }
         
         .detail-value {
-            color: #1f2937;
+            color: #1e293b;
+            text-align: right;
+            word-break: break-word;
+        }
+        
+        .permissions-section {
+            margin-bottom: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .permissions-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
         }
         
         .permissions-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-            margin-bottom: 15px;
+            gap: 0.5rem;
         }
         
         .permission-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 12px;
+            gap: 0.5rem;
+            font-size: 0.75rem;
         }
         
         .permission-badge {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #10b981;
+            background: #059669;
+            flex-shrink: 0;
         }
         
         .permission-badge.disabled {
-            background: #e5e7eb;
+            background: #d1d5db;
         }
         
         .user-actions {
             display: flex;
-            gap: 10px;
+            gap: 0.5rem;
+            margin-top: auto;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
         }
         
         .btn-edit {
-            background: #3b82f6;
+            background: #1e3a8a;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 0.5rem 1rem;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 0.875rem;
             cursor: pointer;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 0.5rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            flex: 1;
+            justify-content: center;
+        }
+        
+        .btn-edit:hover {
+            background: #2563eb;
         }
         
         .btn-delete {
-            background: #ef4444;
+            background: #dc2626;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 0.5rem 1rem;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 0.875rem;
             cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .btn-delete:hover {
+            background: #b91c1c;
         }
         
         .modal {
@@ -520,34 +591,37 @@ if ($user_id > 0) {
     </script>
 
 <div class="users-container">
-            <!-- Header -->
-            <div class="page-header">
+        <!-- Header -->
+        <div class="page-header">
+            <div>
                 <h1 class="page-title">👥 Usuários e Colaboradores</h1>
-                <button class="btn-primary" onclick="openModal()">
-                    <span>➕</span>
-                    Novo Usuário
-                </button>
+                <p style="color: #64748b; margin: 0.5rem 0 0 0; font-size: 0.875rem;">Gerencie usuários, permissões e colaboradores do sistema</p>
             </div>
-            
-            <!-- Mensagens -->
-            <?php if (isset($success_message)): ?>
-                <div class="alert alert-success">
-                    ✅ <?= h($success_message) ?>
-                </div>
-            <?php endif; ?>
-            
-            <?php if (isset($error_message)): ?>
-                <div class="alert alert-error">
-                    ❌ <?= h($error_message) ?>
-                </div>
-            <?php endif; ?>
-            
-            <!-- Barra de Pesquisa -->
-            <div class="search-bar">
-                <input type="text" class="search-input" placeholder="Pesquisar por nome, login ou email..." 
-                       value="<?= h($search) ?>" onkeyup="searchUsers(this.value)">
-                <button class="btn-primary" onclick="searchUsers()">🔍 Buscar</button>
+            <button class="btn-primary" onclick="openModal()">
+                <span>➕</span>
+                Novo Usuário
+            </button>
+        </div>
+        
+        <!-- Mensagens -->
+        <?php if (isset($success_message)): ?>
+            <div class="alert alert-success">
+                ✅ <?= h($success_message) ?>
             </div>
+        <?php endif; ?>
+        
+        <?php if (isset($error_message)): ?>
+            <div class="alert alert-error">
+                ❌ <?= h($error_message) ?>
+            </div>
+        <?php endif; ?>
+        
+        <!-- Barra de Pesquisa -->
+        <div class="search-bar">
+            <input type="text" class="search-input" placeholder="🔍 Pesquisar por nome, login ou email..." 
+                   value="<?= h($search) ?>" onkeyup="searchUsers(this.value)">
+            <button class="btn-primary" onclick="searchUsers()">Buscar</button>
+        </div>
             
             <!-- Grid de Usuários -->
             <div class="users-grid">
@@ -568,48 +642,80 @@ if ($user_id > 0) {
                                 <span class="detail-label">📧 Email:</span>
                                 <span class="detail-value"><?= h($user['email'] ?? '—') ?></span>
                             </div>
+                            
+                            <?php if (!empty($user['cargo'])): ?>
                             <div class="detail-row">
                                 <span class="detail-label">💼 Cargo:</span>
-                                <span class="detail-value"><?= h($user['cargo'] ?? '—') ?></span>
+                                <span class="detail-value"><?= h($user['cargo']) ?></span>
                             </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($user['admissao_data'])): ?>
                             <div class="detail-row">
                                 <span class="detail-label">📅 Admissão:</span>
-                                <span class="detail-value"><?= $user['admissao_data'] ? date('d/m/Y', strtotime($user['admissao_data'])) : '—' ?></span>
+                                <span class="detail-value"><?= date('d/m/Y', strtotime($user['admissao_data'])) ?></span>
                             </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($user['salario_base'])): ?>
                             <div class="detail-row">
                                 <span class="detail-label">💰 Salário:</span>
-                                <span class="detail-value"><?= $user['salario_base'] ? 'R$ ' . number_format($user['salario_base'], 2, ',', '.') : '—' ?></span>
+                                <span class="detail-value">R$ <?= number_format($user['salario_base'], 2, ',', '.') ?></span>
                             </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($user['cpf'])): ?>
+                            <div class="detail-row">
+                                <span class="detail-label">🆔 CPF:</span>
+                                <span class="detail-value"><?= h($user['cpf']) ?></span>
+                            </div>
+                            <?php endif; ?>
+                            
+                            <?php if (!empty($user['pix_chave'])): ?>
                             <div class="detail-row">
                                 <span class="detail-label">📱 PIX:</span>
-                                <span class="detail-value"><?= h($user['pix_chave'] ?? '—') ?></span>
+                                <span class="detail-value"><?= h($user['pix_chave']) ?></span>
                             </div>
+                            <?php endif; ?>
                         </div>
-                        
-                        <div class="permissions-grid">
+                            
                             <?php
-                            $permissions = [
-                                'perm_usuarios' => '👥 Usuários',
-                                'perm_pagamentos' => '💳 Pagamentos',
-                                'perm_tarefas' => '📋 Tarefas',
-                                'perm_demandas' => '📋 Demandas',
-                                'perm_portao' => '🚪 Portão',
-                                'perm_banco_smile' => '🏦 Banco',
-                                'perm_banco_smile_admin' => '🏦 Admin',
-                                'perm_notas_fiscais' => '📄 NF',
-                                'perm_estoque_logistico' => '📦 Estoque',
-                                'perm_dados_contrato' => '📋 Contrato',
-                                'perm_uso_fiorino' => '🚐 Fiorino'
+                            // Verificar se há permissões ativas
+                            $permissoes_ativas = [];
+                            $permissoes_nomes = [
+                                'perm_usuarios' => 'Usuários',
+                                'perm_pagamentos' => 'Pagamentos',
+                                'perm_tarefas' => 'Tarefas',
+                                'perm_demandas' => 'Demandas',
+                                'perm_portao' => 'Portão',
+                                'perm_banco_smile' => 'Banco',
+                                'perm_banco_smile_admin' => 'Banco Admin',
+                                'perm_notas_fiscais' => 'Notas Fiscais',
+                                'perm_estoque_logistico' => 'Estoque',
+                                'perm_dados_contrato' => 'Contratos',
+                                'perm_uso_fiorino' => 'Fiorino'
                             ];
                             
-                            foreach ($permissions as $perm => $label):
-                                $has_permission = ($user[$perm] ?? 0) == 1;
+                            foreach ($permissoes_nomes as $perm => $nome) {
+                                if (!empty($user[$perm])) {
+                                    $permissoes_ativas[] = $nome;
+                                }
+                            }
                             ?>
-                                <div class="permission-item">
-                                    <div class="permission-badge <?= $has_permission ? '' : 'disabled' ?>"></div>
-                                    <span><?= $label ?></span>
+                            
+                            <?php if (!empty($permissoes_ativas)): ?>
+                            <div class="permissions-section">
+                                <div class="permissions-title">Permissões Ativas</div>
+                                <div class="permissions-grid">
+                                    <?php foreach ($permissoes_ativas as $perm): ?>
+                                        <div class="permission-item">
+                                            <span class="permission-badge"></span>
+                                            <span><?= h($perm) ?></span>
+                                        </div>
+                                    <?php endforeach; ?>
                                 </div>
-                            <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                         
                         <div class="user-actions">
