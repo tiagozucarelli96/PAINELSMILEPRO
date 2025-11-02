@@ -1,661 +1,699 @@
 <?php
 /**
  * comercial_realizar_degustacao.php — Relatório para realização de degustação
- * Versão com logs detalhados para debug
  */
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
-// REMOVIDO: sidebar_integration causava redirecionamento
-// require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
-// Inicializar variáveis para debug ANTES de qualquer verificação
-$debug_info = [];
-$pdo = $GLOBALS['pdo'];
-$degustacao = null;
-$inscritos = [];
-$error_message = '';
-$perfil = null;
-
-// CRÍTICO: Parsear QUERY_STRING MANUALMENTE antes de tudo (mesma lógica da versão direta que funciona)
+// Parsear QUERY_STRING manualmente para garantir parâmetros
 if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     parse_str($_SERVER['QUERY_STRING'], $parsed_all);
-    // Mesclar com $_GET para garantir que temos tudo
     $_GET = array_merge($parsed_all, $_GET);
     $_REQUEST = array_merge($parsed_all, $_REQUEST);
 }
 
-// Log inicial - VERIFICAR $_GET ANTES DE PROCESSAR
-$debug_info[] = "🔍 DEBUG: Script iniciado";
-$debug_info[] = "🔍 DEBUG: REQUEST_URI = " . ($_SERVER['REQUEST_URI'] ?? 'NÃO DEFINIDO');
-$debug_info[] = "🔍 DEBUG: QUERY_STRING = " . ($_SERVER['QUERY_STRING'] ?? 'NÃO DEFINIDO');
-$debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET, JSON_UNESCAPED_UNICODE);
-
-// Verificar permissões (mas NÃO bloquear - processar mesmo sem permissão)
-$tem_permissao = false;
-try {
-    $tem_permissao = lc_can_access_comercial();
-    $perfil = lc_get_user_profile();
-} catch (Exception $e) {
-    // Ignorar erro de permissão e continuar
-    error_log("⚠️ Erro ao verificar permissão: " . $e->getMessage());
-}
-
-// NÃO bloquear por permissão - processar sempre (como na versão direta que funciona)
-// Se não tiver permissão, apenas mostrar aviso, mas processar os dados mesmo assim
-
-// 2. Tentar do REQUEST_URI diretamente (última tentativa)
+// Tentar recuperar degustacao_id do REQUEST_URI se não estiver em $_GET
 if (!isset($_GET['degustacao_id']) && isset($_SERVER['REQUEST_URI'])) {
     $request_uri = $_SERVER['REQUEST_URI'];
-    // Procurar por degustacao_id= na URI
     if (preg_match('/degustacao_id[=:](\d+)/', $request_uri, $matches)) {
         $_GET['degustacao_id'] = $matches[1];
-        $debug_info[] = "✅ DEBUG: degustacao_id recuperado do REQUEST_URI via regex = " . $_GET['degustacao_id'];
     } elseif (strpos($request_uri, 'degustacao_id=') !== false) {
-        // Parsear manualmente se houver degustacao_id na URI
         $parts = parse_url($request_uri);
         if (isset($parts['query'])) {
             parse_str($parts['query'], $uri_params);
-            if (isset($uri_params['degustacao_id']) && !empty($uri_params['degustacao_id'])) {
+            if (isset($uri_params['degustacao_id'])) {
                 $_GET['degustacao_id'] = $uri_params['degustacao_id'];
-                $debug_info[] = "✅ DEBUG: degustacao_id recuperado do REQUEST_URI via parse_url = " . $_GET['degustacao_id'];
             }
         }
     }
 }
 
-// Obter degustacao_id de TODAS as formas possíveis (MESMA LÓGICA DA VERSÃO DIRETA QUE FUNCIONA)
+// Obter degustacao_id
 $degustacao_id = 0;
-
 if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] !== '') {
     $degustacao_id = (int)$_GET['degustacao_id'];
-    $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_GET = {$degustacao_id}";
 } elseif (isset($_REQUEST['degustacao_id']) && $_REQUEST['degustacao_id'] !== '') {
     $degustacao_id = (int)$_REQUEST['degustacao_id'];
-    $debug_info[] = "✅ DEBUG: degustacao_id obtido de \$_REQUEST = {$degustacao_id}";
 } elseif (isset($_SERVER['QUERY_STRING'])) {
     parse_str($_SERVER['QUERY_STRING'], $q);
     if (isset($q['degustacao_id']) && $q['degustacao_id'] !== '') {
         $degustacao_id = (int)$q['degustacao_id'];
-        $debug_info[] = "✅ DEBUG: degustacao_id obtido de QUERY_STRING = {$degustacao_id}";
     }
 }
 
-$debug_info[] = "🔍 DEBUG: degustacao_id FINAL = " . ($degustacao_id > 0 ? $degustacao_id : 'VAZIO/0');
+$pdo = $GLOBALS['pdo'];
+$degustacao = null;
+$inscritos = [];
+$degustacoes = [];
+$error_message = '';
 
-// Buscar todas as degustações
+// Buscar lista de degustações
 try {
     $degustacoes = $pdo->query("
         SELECT id, nome, data, hora_inicio, local, capacidade
         FROM comercial_degustacoes
         ORDER BY data DESC, hora_inicio DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
-    $debug_info[] = "✅ DEBUG: Degustações encontradas = " . count($degustacoes);
 } catch (Exception $e) {
-    $degustacoes = [];
     $error_message = "Erro ao buscar degustações: " . $e->getMessage();
-    $debug_info[] = "❌ DEBUG: Erro ao buscar degustações - " . $e->getMessage();
 }
 
-// Se selecionou uma degustação, buscar dados (processar sempre, como na versão direta)
+// Buscar dados da degustação selecionada
 if ($degustacao_id > 0) {
-    $debug_info[] = "🔍 DEBUG: Processando degustacao_id = {$degustacao_id}";
-    
     try {
-        // Buscar degustação
         $stmt = $pdo->prepare("SELECT * FROM comercial_degustacoes WHERE id = :id");
         $stmt->execute([':id' => $degustacao_id]);
         $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($degustacao) {
-            $debug_info[] = "✅ DEBUG: Degustação encontrada - ID: {$degustacao['id']}, Nome: {$degustacao['nome']}";
+            // Verificar qual coluna usar para inscrições
+            $check_col = $pdo->query("
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'comercial_inscricoes' 
+                AND column_name IN ('degustacao_id', 'event_id')
+                LIMIT 1
+            ")->fetch(PDO::FETCH_ASSOC);
             
-            // Verificar qual coluna usar
-            try {
-                $check_col = $pdo->query("
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'comercial_inscricoes' 
-                    AND column_name IN ('degustacao_id', 'event_id')
-                    LIMIT 1
-                ");
-                $col_result = $check_col->fetch(PDO::FETCH_ASSOC);
-                
-                if ($col_result) {
-                    $coluna_id = ($col_result['column_name'] == 'degustacao_id') ? 'degustacao_id' : 'event_id';
-                    $debug_info[] = "✅ DEBUG: Coluna usada = {$coluna_id}";
-                } else {
-                    $coluna_id = 'degustacao_id'; // Padrão
-                    $debug_info[] = "⚠️ DEBUG: Nenhuma coluna encontrada, usando padrão degustacao_id";
-                }
-            } catch (Exception $e) {
-                $coluna_id = 'degustacao_id'; // Padrão
-                $debug_info[] = "⚠️ DEBUG: Erro ao verificar coluna - {$e->getMessage()}, usando padrão degustacao_id";
-            }
+            $coluna_id = $check_col ? $check_col['column_name'] : 'degustacao_id';
             
             // Buscar inscritos confirmados
-            try {
-                $sql = "SELECT id, nome, qtd_pessoas, tipo_festa 
-                        FROM comercial_inscricoes 
-                        WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
-                        ORDER BY nome ASC";
-                $debug_info[] = "🔍 DEBUG: SQL = {$sql}";
-                $debug_info[] = "🔍 DEBUG: Parâmetro deg_id = {$degustacao_id}";
-                
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([':deg_id' => $degustacao_id]);
-                $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                $debug_info[] = "✅ DEBUG: Inscritos encontrados = " . count($inscritos);
-                
-                if (count($inscritos) > 0) {
-                    $debug_info[] = "📋 DEBUG: Primeiros 3 inscritos:";
-                    foreach (array_slice($inscritos, 0, 3) as $idx => $insc) {
-                        $debug_info[] = "   - {$insc['nome']} ({$insc['qtd_pessoas']} pessoas)";
-                    }
-                } else {
-                    $debug_info[] = "⚠️ DEBUG: Nenhum inscrito confirmado encontrado";
-                }
-            } catch (Exception $e) {
-                $error_message = "Erro ao buscar inscritos: " . $e->getMessage();
-                $debug_info[] = "❌ DEBUG: Erro ao buscar inscritos - " . $e->getMessage();
-            }
-        } else {
-            $debug_info[] = "❌ DEBUG: Degustação NÃO encontrada com ID = {$degustacao_id}";
+            $stmt = $pdo->prepare("
+                SELECT id, nome, qtd_pessoas, tipo_festa 
+                FROM comercial_inscricoes 
+                WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
+                ORDER BY nome ASC
+            ");
+            $stmt->execute([':deg_id' => $degustacao_id]);
+            $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
     } catch (Exception $e) {
         $error_message = "Erro ao buscar dados: " . $e->getMessage();
-        $debug_info[] = "❌ DEBUG: Erro geral - " . $e->getMessage();
     }
-} else {
-    $debug_info[] = "ℹ️ DEBUG: Nenhuma degustação selecionada ainda (degustacao_id = 0 ou vazio)";
 }
 
-// REMOVIDO: includeSidebar estava causando redirecionamento
-// includeSidebar('Comercial');
+// Verificar se é requisição de PDF
+$is_pdf_request = isset($_GET['pdf']) && $_GET['pdf'] === '1';
+
+// Detectar se está via router
+$is_via_router = (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false);
 ?>
 
-<style>
-.page-realizar-degustacao {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem;
-}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realizar Degustação - <?= $degustacao ? h($degustacao['nome']) : 'Relatório' ?></title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-.page-header {
-    margin-bottom: 2rem;
-}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f7fa;
+            color: #1e293b;
+            line-height: 1.6;
+        }
 
-.page-title {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #1e3a8a;
-    margin: 0 0 0.5rem 0;
-}
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
 
-.page-subtitle {
-    color: #6b7280;
-    font-size: 1rem;
-    margin: 0;
-}
+        .page-header {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
 
-.debug-panel {
-    background: #fef3c7;
-    border: 2px solid #f59e0b;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin: 1.5rem 0;
-    font-family: 'Courier New', monospace;
-    font-size: 0.875rem;
-    line-height: 1.6;
-    max-height: 400px;
-    overflow-y: auto;
-}
+        .page-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
 
-.debug-panel h3 {
-    margin: 0 0 1rem 0;
-    color: #92400e;
-    font-size: 1rem;
-}
+        .page-subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
 
-.debug-item {
-    margin: 0.25rem 0;
-    padding: 0.25rem 0;
-    border-bottom: 1px solid #fde68a;
-}
+        .selection-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
 
-.debug-item:last-child {
-    border-bottom: none;
-}
+        .form-group {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+        }
 
-.error-panel {
-    background: #fee2e2;
-    border: 2px solid #fca5a5;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    color: #991b1b;
-}
+        .form-field {
+            flex: 1;
+        }
 
-.selecao-container {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 2rem;
-    margin-bottom: 2rem;
-}
+        label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+        }
 
-.form-group {
-    margin-bottom: 1.5rem;
-}
+        select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            color: #1e293b;
+            transition: all 0.2s;
+        }
 
-.form-label {
-    display: block;
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: 0.5rem;
-    font-size: 1rem;
-}
+        select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
 
-.form-select {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 1rem;
-    background: white;
-    cursor: pointer;
-}
+        .btn {
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
 
-.form-select:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
 
-.info-box {
-    background: #f0f9ff;
-    border: 1px solid #bae6fd;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-top: 1.5rem;
-}
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
 
-.info-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #e0f2fe;
-}
+        .info-badge {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e0f2fe;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            color: #0369a1;
+        }
 
-.info-row:last-child {
-    border-bottom: none;
-}
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
 
-.info-label {
-    font-weight: 600;
-    color: #0c4a6e;
-}
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            text-align: center;
+        }
 
-.info-value {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #0369a1;
-}
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #3b82f6;
+            margin-bottom: 0.25rem;
+        }
 
-.relatorio-container {
-    background: white;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 2rem;
-    margin-top: 2rem;
-}
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
 
-.relatorio-header {
-    border-bottom: 2px solid #e5e7eb;
-    padding-bottom: 1.5rem;
-    margin-bottom: 2rem;
-}
+        .relatorio-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+        }
 
-.relatorio-titulo {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: #1e3a8a;
-    margin: 0 0 1rem 0;
-}
+        .relatorio-header {
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 1.5rem;
+            margin-bottom: 2rem;
+        }
 
-.relatorio-info {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-}
+        .relatorio-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 1rem;
+        }
 
-.relatorio-info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
+        .relatorio-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            color: #6b7280;
+            font-size: 0.95rem;
+        }
 
-.relatorio-info-label {
-    font-size: 0.875rem;
-    color: #6b7280;
-    font-weight: 500;
-}
+        .relatorio-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
 
-.relatorio-info-value {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #1f2937;
-}
+        .mesas-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
 
-.mesas-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
+        .mesa-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 1.25rem;
+            transition: all 0.2s;
+        }
 
-.mesa-card {
-    background: #f8fafc;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 1rem;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
+        .mesa-card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+            transform: translateY(-2px);
+        }
 
-.mesa-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
+        .mesa-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #e2e8f0;
+        }
 
-.mesa-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid #e5e7eb;
-}
+        .mesa-numero {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #3b82f6;
+        }
 
-.mesa-numero {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: #1e3a8a;
-}
+        .mesa-pessoas {
+            font-size: 0.875rem;
+            color: #6b7280;
+            background: #e0f2fe;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-weight: 500;
+        }
 
-.mesa-pessoas {
-    font-size: 0.875rem;
-    color: #6b7280;
-    background: #e0f2fe;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-}
+        .inscrito-nome {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 0.25rem;
+        }
 
-.inscrito-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
+        .inscrito-tipo {
+            font-size: 0.875rem;
+            color: #6b7280;
+            background: #f1f5f9;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            display: inline-block;
+        }
 
-.inscrito-nome {
-    font-weight: 600;
-    color: #1f2937;
-    font-size: 1rem;
-}
+        .actions-bar {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            padding: 1.5rem;
+            background: #f8fafc;
+            border-radius: 10px;
+            margin-top: 2rem;
+        }
 
-.inscrito-tipo {
-    font-size: 0.875rem;
-    color: #6b7280;
-    background: #f3f4f6;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    display: inline-block;
-    width: fit-content;
-}
+        .btn-secondary {
+            background: white;
+            color: #3b82f6;
+            border: 2px solid #3b82f6;
+        }
 
-.acoes-relatorio {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    padding-top: 2rem;
-    border-top: 1px solid #e5e7eb;
-}
+        .btn-secondary:hover {
+            background: #3b82f6;
+            color: white;
+        }
 
-.btn-acao {
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
 
-.btn-acao:hover {
-    opacity: 0.9;
-}
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #6b7280;
+        }
 
-.btn-impressao {
-    background: #3b82f6;
-    color: white;
-}
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
 
-.btn-pdf {
-    background: #10b981;
-    color: white;
-}
+        /* Impressão */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
 
-@media print {
-    .selecao-container,
-    .acoes-relatorio,
-    .debug-panel {
-        display: none;
-    }
-    
-    .relatorio-container {
-        border: none;
-        padding: 0;
-    }
-}
-</style>
+            .container {
+                max-width: 100%;
+                padding: 0;
+            }
 
-<div class="page-realizar-degustacao">
-    <div class="page-header">
-        <h1 class="page-title">🍽️ Realizar Degustação</h1>
-        <p class="page-subtitle">Selecione uma degustação para gerar o relatório de mesas e inscritos</p>
-    </div>
-    
-    <!-- Painel de Debug - SEMPRE VISÍVEL para ajudar -->
-    <div class="debug-panel">
-        <h3>🔍 Log de Debug</h3>
-        <?php if (!empty($debug_info)): ?>
-            <?php foreach ($debug_info as $log): ?>
-                <div class="debug-item"><?= h($log) ?></div>
-            <?php endforeach; ?>
-        <?php else: ?>
-            <div class="debug-item">Nenhuma informação de debug disponível.</div>
+            .page-header {
+                background: white !important;
+                color: #1e293b !important;
+                border-bottom: 3px solid #1e293b;
+                padding: 1rem 0;
+                margin-bottom: 1.5rem;
+            }
+
+            .selection-card,
+            .actions-bar,
+            .btn {
+                display: none !important;
+            }
+
+            .relatorio-card {
+                box-shadow: none;
+                border: none;
+                padding: 0;
+            }
+
+            .mesas-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 0.75rem;
+            }
+
+            .mesa-card {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 1px solid #e2e8f0;
+                box-shadow: none;
+            }
+
+            .mesa-card:hover {
+                transform: none;
+                box-shadow: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.75rem;
+                margin-bottom: 1rem;
+            }
+
+            @page {
+                margin: 1.5cm;
+                size: A4;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="page-header">
+            <h1 class="page-title">🍽️ Realizar Degustação</h1>
+            <p class="page-subtitle">Selecione uma degustação para gerar o relatório de mesas e inscritos</p>
+        </div>
+
+        <?php if ($error_message): ?>
+            <div class="error-message">
+                ❌ <strong>Erro:</strong> <?= h($error_message) ?>
+            </div>
         <?php endif; ?>
-        
-        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #fde68a;">
-            <strong>URL atual:</strong> <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;"><?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'N/A') ?></code>
-            <br>
-            <strong>degustacao_id na URL:</strong> <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;"><?= $degustacao_id > 0 ? $degustacao_id : 'NÃO ENCONTRADO' ?></code>
-            <br>
-            <strong>Formulário:</strong> Se você selecionou uma degustação e clicou em "Gerar Relatório", o valor deve aparecer acima.
-        </div>
-    </div>
-    
-    <?php if ($error_message): ?>
-        <div class="error-panel">
-            ❌ <strong>Erro:</strong> <?= h($error_message) ?>
-        </div>
-    <?php endif; ?>
-    
-    <!-- Seleção de Degustação - SOLUÇÃO SIMPLIFICADA E ROBUSTA -->
-    <div class="selecao-container">
-        <!-- SOLUÇÃO: Verificar se está via router ou direto e ajustar action -->
-        <?php 
-        $is_via_router = (isset($_GET['page']) || strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false);
-        $form_action = $is_via_router ? 'index.php' : 'comercial_realizar_degustacao.php';
-        ?>
-        <form method="GET" action="<?= $form_action ?>" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
-            <?php if ($is_via_router): ?>
-                <input type="hidden" name="page" value="comercial_realizar_degustacao">
-            <?php endif; ?>
-            <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
-                <div style="flex: 1;">
-                    <label class="form-label">Selecione a Degustação</label>
-                    <select name="degustacao_id" id="selectDegustacao" class="form-select" required style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;">
-                        <option value="">-- Selecione uma degustação --</option>
-                        <?php foreach ($degustacoes as $deg): ?>
-                            <option value="<?= $deg['id'] ?>" <?= $degustacao_id == $deg['id'] ? 'selected' : '' ?>>
-                                <?= h($deg['nome']) ?> - <?= date('d/m/Y', strtotime($deg['data'])) ?> - <?= date('H:i', strtotime($deg['hora_inicio'])) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+
+        <div class="selection-card">
+            <form method="GET" action="<?= $is_via_router ? 'index.php' : 'comercial_realizar_degustacao.php' ?>" id="formSelecaoDegustacao">
+                <?php if ($is_via_router): ?>
+                    <input type="hidden" name="page" value="comercial_realizar_degustacao">
+                <?php endif; ?>
+                <div class="form-group">
+                    <div class="form-field">
+                        <label for="selectDegustacao">Selecione a Degustação</label>
+                        <select name="degustacao_id" id="selectDegustacao" required>
+                            <option value="">-- Selecione uma degustação --</option>
+                            <?php foreach ($degustacoes as $deg): ?>
+                                <option value="<?= $deg['id'] ?>" <?= $degustacao_id == $deg['id'] ? 'selected' : '' ?>>
+                                    <?= h($deg['nome']) ?> - <?= date('d/m/Y', strtotime($deg['data'])) ?> - <?= date('H:i', strtotime($deg['hora_inicio'])) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">📊 Gerar Relatório</button>
                 </div>
-                <button type="submit" class="btn-primary" style="padding: 12px 24px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; white-space: nowrap;">
-                    📊 Gerar Relatório
-                </button>
-            </div>
-        </form>
-        
-        <?php if ($degustacao_id > 0): ?>
-        <div style="margin-top: 1rem; padding: 1rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; color: #0369a1;">
-            <strong>✅ Degustação selecionada (ID: <?= $degustacao_id ?>)</strong>
-            <?php if (isset($degustacao)): ?>
-                <p style="margin: 0.5rem 0 0 0;"><?= h($degustacao['nome']) ?></p>
-            <?php else: ?>
-                <p style="margin: 0.5rem 0 0 0; color: #dc2626;">⚠️ Degustação não encontrada no banco de dados</p>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-    
-    <!-- Info Box e Relatório (renderizado pelo PHP quando há degustacao_id) -->
-    <?php if ($degustacao_id > 0 && isset($degustacao)): ?>
-        <!-- Info Box -->
-        <div class="info-box" style="display: block;">
-            <div class="info-row">
-                <span class="info-label">Inscrições Confirmadas:</span>
-                <span class="info-value"><?= count($inscritos) ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Total de Mesas:</span>
-                <span class="info-value"><?= count($inscritos) ?></span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Total de Pessoas:</span>
-                <span class="info-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></span>
-            </div>
-        </div>
-        
-        <!-- Relatório -->
-        <div class="relatorio-container">
-            <div class="relatorio-header">
-                <h2 class="relatorio-titulo"><?= h($degustacao['nome']) ?></h2>
-                <div class="relatorio-info">
-                    <div class="relatorio-info-item">
-                        <span class="relatorio-info-label">📅 Data</span>
-                        <span class="relatorio-info-value"><?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
-                    </div>
-                    <div class="relatorio-info-item">
-                        <span class="relatorio-info-label">🕐 Horário de Início</span>
-                        <span class="relatorio-info-value"><?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
-                    </div>
-                    <?php if (!empty($degustacao['local'])): ?>
-                    <div class="relatorio-info-item">
-                        <span class="relatorio-info-label">📍 Local</span>
-                        <span class="relatorio-info-value"><?= h($degustacao['local']) ?></span>
-                    </div>
+            </form>
+
+            <?php if ($degustacao_id > 0): ?>
+                <div class="info-badge">
+                    <strong>✅ Degustação selecionada (ID: <?= $degustacao_id ?>)</strong>
+                    <?php if (isset($degustacao)): ?>
+                        <p style="margin: 0.5rem 0 0 0;"><?= h($degustacao['nome']) ?></p>
+                    <?php else: ?>
+                        <p style="margin: 0.5rem 0 0 0; color: #dc2626;">⚠️ Degustação não encontrada no banco de dados</p>
                     <?php endif; ?>
-                    <div class="relatorio-info-item">
-                        <span class="relatorio-info-label">👥 Total de Pessoas</span>
-                        <span class="relatorio-info-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></span>
-                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($degustacao_id > 0 && isset($degustacao)): ?>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value"><?= count($inscritos) ?></div>
+                    <div class="stat-label">Inscrições Confirmadas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value"><?= count($inscritos) ?></div>
+                    <div class="stat-label">Total de Mesas</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></div>
+                    <div class="stat-label">Total de Pessoas</div>
                 </div>
             </div>
-            
-            <div class="mesas-grid">
-                <?php if (empty($inscritos)): ?>
-                    <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; color: #6b7280;">
-                        <p style="font-size: 1.125rem;">Nenhum inscrito confirmado encontrado para esta degustação.</p>
-                    </div>
-                <?php else: ?>
-                    <?php foreach ($inscritos as $index => $inscrito): ?>
-                        <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
-                        <div class="mesa-card">
-                            <div class="mesa-header">
-                                <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
-                                <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+
+            <div class="relatorio-card">
+                <div class="relatorio-header">
+                    <h2 class="relatorio-title"><?= h($degustacao['nome']) ?></h2>
+                    <div class="relatorio-meta">
+                        <div class="relatorio-meta-item">
+                            <span>📅</span>
+                            <span><?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
+                        </div>
+                        <div class="relatorio-meta-item">
+                            <span>🕐</span>
+                            <span><?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
+                        </div>
+                        <?php if (!empty($degustacao['local'])): ?>
+                            <div class="relatorio-meta-item">
+                                <span>📍</span>
+                                <span><?= h($degustacao['local']) ?></span>
                             </div>
-                            <div class="inscrito-info">
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="mesas-grid">
+                    <?php if (empty($inscritos)): ?>
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">📋</div>
+                            <p style="font-size: 1.125rem;">Nenhum inscrito confirmado encontrado para esta degustação.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($inscritos as $index => $inscrito): ?>
+                            <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
+                            <div class="mesa-card">
+                                <div class="mesa-header">
+                                    <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
+                                    <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+                                </div>
+                                <div class="inscrito-info">
+                                    <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
+                                    <?php if (!empty($inscrito['tipo_festa'])): ?>
+                                        <span class="inscrito-tipo"><?= h(ucfirst($inscrito['tipo_festa'])) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <div class="actions-bar no-print">
+                    <button type="button" class="btn btn-secondary" onclick="window.print()">
+                        🖨️ Imprimir
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="gerarPDF()">
+                        📄 Gerar PDF
+                    </button>
+                </div>
+            </div>
+        <?php elseif ($degustacao_id > 0 && !isset($degustacao)): ?>
+            <div class="error-message">
+                ⚠️ <strong>Atenção:</strong> Degustação selecionada (ID: <?= $degustacao_id ?>) mas dados não encontrados no banco de dados.
+            </div>
+        <?php else: ?>
+            <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <p style="font-size: 1.125rem; margin-bottom: 0.5rem; font-weight: 600;">Instruções</p>
+                <p>Selecione uma degustação no dropdown acima e clique em <strong>"📊 Gerar Relatório"</strong> para visualizar os dados.</p>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+        function gerarPDF() {
+            const url = window.location.href + (window.location.href.includes('?') ? '&' : '?') + 'pdf=1';
+            window.open(url, '_blank');
+        }
+
+        // Adicionar classe para ocultar elementos na impressão
+        const style = document.createElement('style');
+        style.textContent = `
+            @media print {
+                .no-print { display: none !important; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
+
+<?php
+// Geração de PDF usando Dompdf (se disponível)
+if ($is_pdf_request && $degustacao_id > 0 && isset($degustacao)) {
+    $autoload = __DIR__ . '/vendor/autoload.php';
+    if (file_exists($autoload)) {
+        require_once $autoload;
+        try {
+            if (class_exists('\\Dompdf\\Dompdf')) {
+                ob_start();
+                ?>
+                <!DOCTYPE html>
+                <html lang="pt-BR">
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; padding: 2cm; color: #1e293b; }
+                        .header { border-bottom: 3px solid #1e293b; padding-bottom: 1rem; margin-bottom: 2rem; }
+                        .title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+                        .meta { font-size: 0.9rem; color: #6b7280; display: flex; gap: 2rem; }
+                        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+                        .stat { text-align: center; padding: 1rem; background: #f8fafc; border-radius: 8px; }
+                        .stat-value { font-size: 1.5rem; font-weight: 700; color: #3b82f6; }
+                        .stat-label { font-size: 0.85rem; color: #6b7280; }
+                        .mesas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+                        .mesa { background: #f8fafc; border: 1px solid #e2e8f0; padding: 1rem; border-radius: 8px; break-inside: avoid; }
+                        .mesa-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+                        .mesa-numero { font-weight: 700; color: #3b82f6; }
+                        .mesa-pessoas { font-size: 0.85rem; color: #6b7280; }
+                        .inscrito-nome { font-weight: 600; margin-bottom: 0.25rem; }
+                        @page { margin: 1.5cm; size: A4; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div class="title"><?= h($degustacao['nome']) ?></div>
+                        <div class="meta">
+                            <span>📅 <?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
+                            <span>🕐 <?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
+                            <?php if (!empty($degustacao['local'])): ?>
+                                <span>📍 <?= h($degustacao['local']) ?></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-value"><?= count($inscritos) ?></div>
+                            <div class="stat-label">Inscrições</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value"><?= count($inscritos) ?></div>
+                            <div class="stat-label">Mesas</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></div>
+                            <div class="stat-label">Pessoas</div>
+                        </div>
+                    </div>
+                    <div class="mesas">
+                        <?php foreach ($inscritos as $index => $inscrito): ?>
+                            <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
+                            <div class="mesa">
+                                <div class="mesa-header">
+                                    <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
+                                    <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+                                </div>
                                 <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
                                 <?php if (!empty($inscrito['tipo_festa'])): ?>
-                                <span class="inscrito-tipo"><?= h(ucfirst($inscrito['tipo_festa'])) ?></span>
+                                    <div style="font-size: 0.85rem; color: #6b7280;"><?= h(ucfirst($inscrito['tipo_festa'])) ?></div>
                                 <?php endif; ?>
                             </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-            
-            <div class="acoes-relatorio">
-                <button type="button" class="btn-acao btn-impressao" onclick="window.print()">
-                    🖨️ Imprimir
-                </button>
-                <button type="button" class="btn-acao btn-pdf" onclick="gerarPDF()">
-                    📄 Gerar PDF
-                </button>
-            </div>
-        </div>
-    <?php elseif ($degustacao_id > 0 && !isset($degustacao)): ?>
-        <div class="error-panel">
-            ⚠️ <strong>Atenção:</strong> Degustação selecionada (ID: <?= $degustacao_id ?>) mas dados não encontrados no banco de dados.
-            <br><br>
-            Verifique o painel de debug acima para mais detalhes.
-        </div>
-    <?php else: ?>
-        <div style="text-align: center; padding: 3rem; color: #6b7280; background: white; border: 1px solid #e5e7eb; border-radius: 12px; margin-top: 2rem;">
-            <p style="font-size: 1.125rem; margin: 0; font-weight: 600;">📋 Instruções:</p>
-            <p style="font-size: 1rem; margin: 1rem 0 0 0;">Selecione uma degustação no dropdown acima e clique em <strong>"📊 Gerar Relatório"</strong> para visualizar os dados.</p>
-        </div>
-    <?php endif; ?>
-</div>
-
-<script>
-// SOLUÇÃO 100% SERVER-SIDE: Formulário tradicional GET, relatório renderizado pelo PHP
-// Sem AJAX, sem eventos change complexos, sem clonagem - funciona sempre
-(function() {
-    'use strict';
-    
-    // Função simples para gerar PDF (placeholder)
-    function gerarPDF() {
-        alert('Funcionalidade de PDF será implementada em breve. Use a opção de Imprimir e salve como PDF no navegador.');
+                        <?php endforeach; ?>
+                    </div>
+                </body>
+                </html>
+                <?php
+                $html = ob_get_clean();
+                
+                $dompdf = new \Dompdf\Dompdf([
+                    'isRemoteEnabled' => true,
+                    'defaultPaperSize' => 'a4',
+                    'isHtml5ParserEnabled' => true
+                ]);
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'portrait');
+                $dompdf->render();
+                $fname = 'Relatorio_Degustacao_' . $degustacao_id . '_' . date('Y-m-d') . '.pdf';
+                $dompdf->stream($fname, ['Attachment' => true]);
+                exit;
+            }
+        } catch (Throwable $e) {
+            error_log("Erro ao gerar PDF: " . $e->getMessage());
+        }
     }
     
-    // Tornar função global
-    window.gerarPDF = gerarPDF;
-    
-    // Log quando formulário for submetido (apenas para debug, não interferir no submit)
-    const form = document.getElementById('formSelecaoDegustacao');
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            const degustacaoId = this.querySelector('[name="degustacao_id"]').value;
-            const page = this.querySelector('[name="page"]').value;
-            console.log('📤 Formulário sendo submetido:');
-            console.log('   - page:', page);
-            console.log('   - degustacao_id:', degustacaoId);
-            console.log('   - URL será: index.php?page=' + page + '&degustacao_id=' + degustacaoId);
-            // NÃO prevenir o submit - deixar formulário funcionar normalmente
-        });
-        
-        console.log('✅ Formulário "Realizar Degustação" configurado. Método GET tradicional.');
-    }
-    
-    console.log('✅ Página "Realizar Degustação" carregada. Formulário tradicional GET - funciona sempre.');
-})();
-</script>
+    // Fallback: redirecionar para página de impressão
+    header('Location: ' . str_replace('&pdf=1', '', str_replace('?pdf=1', '', $_SERVER['REQUEST_URI'])));
+    exit;
+}
+?>
