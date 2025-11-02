@@ -588,63 +588,66 @@ ob_start();
             overflow: hidden;
         }
         
-        .btn-edit,
-        .btn-delete {
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+        .user-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: auto;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+            width: 100%;
             max-width: 100%;
             box-sizing: border-box;
-        }
-        
-        .btn-edit {
-            flex: 1 1 auto;
-            justify-content: center;
-            min-width: 0;
-        }
-        
-        .btn-delete {
-            flex: 0 0 auto;
-            min-width: 60px;
         }
         
         .btn-edit {
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
+            padding: 0.625rem 1.25rem;
+            border-radius: 8px;
             font-size: 0.875rem;
             cursor: pointer;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
             font-weight: 500;
             transition: all 0.2s;
             flex: 1;
-            justify-content: center;
+            min-width: 0;
+            white-space: nowrap;
         }
         
         .btn-edit:hover {
             background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(30, 58, 138, 0.3);
         }
         
         .btn-delete {
             background: #dc2626;
             color: white;
             border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
+            padding: 0.625rem 1.25rem;
+            border-radius: 8px;
             font-size: 0.875rem;
             cursor: pointer;
             font-weight: 500;
             transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex: 0 0 auto;
+            min-width: fit-content;
+            white-space: nowrap;
         }
         
         .btn-delete:hover {
             background: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
         }
         
         .modal {
@@ -1022,38 +1025,38 @@ ob_start();
         });
     </script>
 
-<div class="users-container">
-        <!-- Header -->
-        <div class="page-header">
+        <div class="users-container">
+            <!-- Header -->
+            <div class="page-header">
             <div>
                 <h1 class="page-title">👥 Usuários e Colaboradores</h1>
                 <p style="color: #64748b; margin: 0.5rem 0 0 0; font-size: 0.875rem;">Gerencie usuários, permissões e colaboradores do sistema</p>
             </div>
             <button class="btn-primary" type="button" onclick="openModal(0)">
-                <span>➕</span>
-                Novo Usuário
-            </button>
-        </div>
-        
-        <!-- Mensagens -->
-        <?php if (isset($success_message)): ?>
-            <div class="alert alert-success">
-                ✅ <?= h($success_message) ?>
+                    <span>➕</span>
+                    Novo Usuário
+                </button>
             </div>
-        <?php endif; ?>
-        
-        <?php if (isset($error_message)): ?>
-            <div class="alert alert-error">
-                ❌ <?= h($error_message) ?>
-            </div>
-        <?php endif; ?>
-        
-        <!-- Barra de Pesquisa -->
-        <div class="search-bar">
+            
+            <!-- Mensagens -->
+            <?php if (isset($success_message)): ?>
+                <div class="alert alert-success">
+                    ✅ <?= h($success_message) ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if (isset($error_message)): ?>
+                <div class="alert alert-error">
+                    ❌ <?= h($error_message) ?>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Barra de Pesquisa -->
+            <div class="search-bar">
             <input type="text" class="search-input" placeholder="🔍 Pesquisar por nome, login ou email..." 
-                   value="<?= h($search) ?>" onkeyup="searchUsers(this.value)">
+                       value="<?= h($search) ?>" onkeyup="searchUsers(this.value)">
             <button class="btn-primary" onclick="searchUsers()">Buscar</button>
-        </div>
+            </div>
             
             <!-- Grid de Usuários -->
             <div class="users-grid">
@@ -1110,7 +1113,7 @@ ob_start();
                             </div>
                             <?php endif; ?>
                         </div>
-                            
+                        
                             <?php
                             // Verificar se há permissões ativas
                             $permissoes_ativas = [];
@@ -1150,11 +1153,11 @@ ob_start();
                                 <div class="permissions-title">Permissões Ativas</div>
                                 <div class="permissions-grid">
                                     <?php foreach ($permissoes_ativas as $perm): ?>
-                                        <div class="permission-item">
+                                <div class="permission-item">
                                             <span class="permission-badge"></span>
                                             <span><?= h($perm) ?></span>
-                                        </div>
-                                    <?php endforeach; ?>
+                                </div>
+                            <?php endforeach; ?>
                                 </div>
                             </div>
                             <?php endif; ?>
@@ -1253,7 +1256,7 @@ ob_start();
                     </div>
                 </div>
                 
-                    <div class="permissions-section">
+                <div class="permissions-section">
                     <h3 class="permissions-title">🔐 Permissões do Sistema</h3>
                     <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">Módulos da Sidebar (correspondem aos itens do menu)</p>
                     <div class="permissions-grid-form">
@@ -1301,7 +1304,7 @@ ob_start();
                                 <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
                                 <label for="<?= $perm ?>"><?= $label ?></label>
                             </div>
-                        <?php endforeach; ?>
+      <?php endforeach; ?>
                     </div>
                 </div>
                 
@@ -1349,7 +1352,7 @@ ob_start();
             setTimeout(() => {
                 modal.style.display = 'flex';
                 setTimeout(() => {
-                    modal.classList.add('active');
+            modal.classList.add('active');
                 }, 10);
             }, 10);
         }
@@ -1518,7 +1521,7 @@ ob_start();
         const modalContent = document.querySelector('.modal-content');
         if (modalContent) {
             modalContent.addEventListener('click', function(e) {
-                e.stopPropagation();
+            e.stopPropagation();
             });
         }
         
