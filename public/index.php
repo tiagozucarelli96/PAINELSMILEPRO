@@ -115,6 +115,7 @@ $routes = [
   'comercial_inscritos_cadastrados' => 'comercial_inscritos_cadastrados.php',
   'comercial_lista_espera' => 'comercial_lista_espera.php',
   'comercial_realizar_degustacao' => 'comercial_realizar_degustacao.php',
+  'comercial_realizar_degustacao_direto' => 'comercial_realizar_degustacao_direto.php', // VERSÃO TESTE - bypass router
 
   // Logístico
   'lc_index' => 'lc_index.php',
