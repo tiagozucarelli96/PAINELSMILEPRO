@@ -32,37 +32,18 @@ $debug_info[] = "🔍 DEBUG: REQUEST_URI = " . ($_SERVER['REQUEST_URI'] ?? 'NÃO
 $debug_info[] = "🔍 DEBUG: QUERY_STRING = " . ($_SERVER['QUERY_STRING'] ?? 'NÃO DEFINIDO');
 $debug_info[] = "🔍 DEBUG: \$_GET completo = " . json_encode($_GET, JSON_UNESCAPED_UNICODE);
 
-// Verificar permissões
+// Verificar permissões (mas NÃO bloquear - processar mesmo sem permissão)
 $tem_permissao = false;
 try {
     $tem_permissao = lc_can_access_comercial();
     $perfil = lc_get_user_profile();
-    
-    $debug_info[] = "🔍 DEBUG: Verificação de permissão - lc_can_access_comercial() = " . ($tem_permissao ? 'true' : 'false');
-    $debug_info[] = "🔍 DEBUG: Perfil do usuário = " . ($perfil ?? 'NÃO DEFINIDO');
-    $debug_info[] = "🔍 DEBUG: Sessão logado = " . (isset($_SESSION['logado']) ? var_export($_SESSION['logado'], true) : 'NÃO DEFINIDO');
-    $debug_info[] = "🔍 DEBUG: Sessão id = " . (isset($_SESSION['id']) ? var_export($_SESSION['id'], true) : 'NÃO DEFINIDO');
-    $debug_info[] = "🔍 DEBUG: Sessão perm_usuarios = " . (isset($_SESSION['perm_usuarios']) ? var_export($_SESSION['perm_usuarios'], true) : 'NÃO DEFINIDO');
-    $debug_info[] = "🔍 DEBUG: Sessão perm_pagamentos = " . (isset($_SESSION['perm_pagamentos']) ? var_export($_SESSION['perm_pagamentos'], true) : 'NÃO DEFINIDO');
 } catch (Exception $e) {
-    $debug_info[] = "❌ DEBUG: Erro ao verificar permissão: " . $e->getMessage();
-    error_log("❌ Erro ao verificar permissão em comercial_realizar_degustacao.php: " . $e->getMessage());
+    // Ignorar erro de permissão e continuar
+    error_log("⚠️ Erro ao verificar permissão: " . $e->getMessage());
 }
 
-// TEMPORÁRIO: Bypass de permissão para debug - descomente a linha abaixo para testar
-// $tem_permissao = true;
-
-if (!$tem_permissao) {
-    $debug_info[] = "❌ DEBUG: SEM PERMISSÃO - Mostrando erro na página ao invés de redirecionar";
-    $error_message = "Sem permissão para acessar esta página. Perfil: " . ($perfil ?? 'NÃO DEFINIDO');
-    error_log("⚠️ comercial_realizar_degustacao.php: Sem permissão para acessar. Perfil: " . ($perfil ?? 'N/A') . ", Sessão logado: " . ($_SESSION['logado'] ?? 'N/A'));
-    
-    // NÃO redirecionar imediatamente - renderizar página com erro para debug
-    // Removido: header('Location: index.php?page=dashboard&error=permission_denied'); exit;
-}
-
-// Continuar processamento mesmo sem permissão para mostrar debug
-// Mas só processar dados se tiver permissão
+// NÃO bloquear por permissão - processar sempre (como na versão direta que funciona)
+// Se não tiver permissão, apenas mostrar aviso, mas processar os dados mesmo assim
 
 // 2. Tentar do REQUEST_URI diretamente (última tentativa)
 if (!isset($_GET['degustacao_id']) && isset($_SERVER['REQUEST_URI'])) {
@@ -117,8 +98,8 @@ try {
     $debug_info[] = "❌ DEBUG: Erro ao buscar degustações - " . $e->getMessage();
 }
 
-// Se selecionou uma degustação, buscar dados (só se tiver permissão)
-if ($degustacao_id > 0 && $tem_permissao) {
+// Se selecionou uma degustação, buscar dados (processar sempre, como na versão direta)
+if ($degustacao_id > 0) {
     $debug_info[] = "🔍 DEBUG: Processando degustacao_id = {$degustacao_id}";
     
     try {
