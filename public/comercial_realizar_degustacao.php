@@ -18,8 +18,7 @@ $inscritos = [];
 $error_message = '';
 $perfil = null;
 
-// CRÍTICO: Parsear QUERY_STRING MANUALMENTE antes de tudo para garantir que pegamos todos os parâmetros
-// O problema pode ser que o router está limpando ou não passando todos os parâmetros GET
+// CRÍTICO: Parsear QUERY_STRING MANUALMENTE antes de tudo (mesma lógica da versão direta que funciona)
 if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     parse_str($_SERVER['QUERY_STRING'], $parsed_all);
     // Mesclar com $_GET para garantir que temos tudo

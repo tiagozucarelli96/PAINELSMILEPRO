@@ -11,6 +11,13 @@ $debug[] = "🔍 REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'N/A');
 $debug[] = "🔍 PHP_SELF: " . ($_SERVER['PHP_SELF'] ?? 'N/A');
 $debug[] = "🔍 QUERY_STRING: " . ($_SERVER['QUERY_STRING'] ?? 'N/A');
 
+// Parsear QUERY_STRING manualmente ANTES de tudo
+if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
+    parse_str($_SERVER['QUERY_STRING'], $parsed);
+    $_GET = array_merge($parsed, $_GET);
+    $debug[] = "🔍 QUERY_STRING parseado";
+}
+
 // Verificar se passou pelo router (se tiver index.php no path, foi pelo router)
 if (strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false) {
     $debug[] = "⚠️ DETECTADO: Passou pelo router (index.php no REQUEST_URI)";
@@ -20,16 +27,15 @@ if (strpos($_SERVER['REQUEST_URI'] ?? '', 'index.php') !== false) {
 $pdo = null;
 $degustacao_id = (int)($_GET['degustacao_id'] ?? 0);
 
+// Carregar conexão SEMPRE (não apenas se degustacao_id > 0)
+// Para buscar lista de degustações também precisamos de conexão
 try {
-    // Carregar conexão APENAS se degustacao_id for válido
-    if ($degustacao_id > 0) {
-        if (file_exists(__DIR__ . '/conexao.php')) {
-            require_once __DIR__ . '/conexao.php';
-            $pdo = $GLOBALS['pdo'] ?? null;
-            $debug[] = "✅ Conexão carregada";
-        } else {
-            $debug[] = "❌ conexao.php não encontrado";
-        }
+    if (file_exists(__DIR__ . '/conexao.php')) {
+        require_once __DIR__ . '/conexao.php';
+        $pdo = $GLOBALS['pdo'] ?? null;
+        $debug[] = "✅ Conexão carregada";
+    } else {
+        $debug[] = "❌ conexao.php não encontrado";
     }
 } catch (Exception $e) {
     $debug[] = "❌ Erro ao carregar conexão: " . $e->getMessage();
