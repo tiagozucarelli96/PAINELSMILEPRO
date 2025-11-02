@@ -914,16 +914,16 @@ if ($is_pdf_request && $degustacao_id > 0) {
                     <h2 class="relatorio-title"><?= h($degustacao['nome']) ?></h2>
                     <div class="relatorio-meta">
                         <div class="relatorio-meta-item">
-                            <span>📅</span>
+                            <span>Data:</span>
                             <span><?= date('d/m/Y', strtotime($degustacao['data'])) ?></span>
                         </div>
                         <div class="relatorio-meta-item">
-                            <span>🕐</span>
+                            <span>Horário:</span>
                             <span><?= date('H:i', strtotime($degustacao['hora_inicio'])) ?></span>
                         </div>
                         <?php if (!empty($degustacao['local'])): ?>
                             <div class="relatorio-meta-item">
-                                <span>📍</span>
+                                <span>Local:</span>
                                 <span><?= h($degustacao['local']) ?></span>
                             </div>
                         <?php endif; ?>
