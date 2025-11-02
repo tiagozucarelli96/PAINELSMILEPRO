@@ -495,8 +495,7 @@ if ($user_id > 0) {
         }
     </style>
 
-<div class="main-content">
-        <div class="users-container">
+<div class="users-container">
             <!-- Header -->
             <div class="page-header">
                 <h1 class="page-title">👥 Usuários e Colaboradores</h1>
