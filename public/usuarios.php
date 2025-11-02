@@ -800,12 +800,56 @@ if ($user_id > 0) {
             }, 50);
         });
         
-        // Função simples para garantir overflow-x hidden
+        // Função para verificar e corrigir layout
         function forceOverflowFix() {
+            const sidebar = document.querySelector('.sidebar');
             const mainContent = document.querySelector('.main-content');
             const usersContainer = document.querySelector('.users-container');
-            const usersGrid = document.querySelector('.users-grid');
             
+            // DEBUG: Log informações
+            console.log('=== DEBUG LAYOUT ===');
+            console.log('Sidebar encontrada:', !!sidebar);
+            console.log('Main-content encontrado:', !!mainContent);
+            console.log('Users-container encontrado:', !!usersContainer);
+            
+            if (sidebar) {
+                const sidebarWidth = sidebar.offsetWidth;
+                const sidebarStyle = window.getComputedStyle(sidebar);
+                console.log('Sidebar width:', sidebarWidth);
+                console.log('Sidebar position:', sidebarStyle.position);
+                console.log('Sidebar left:', sidebarStyle.left);
+            }
+            
+            if (mainContent) {
+                const mainStyle = window.getComputedStyle(mainContent);
+                console.log('Main-content margin-left:', mainStyle.marginLeft);
+                console.log('Main-content width:', mainStyle.width);
+                console.log('Main-content left:', mainStyle.left);
+                console.log('Main-content position:', mainStyle.position);
+                
+                // Verificar se margin-left está correto
+                if (sidebar && parseFloat(mainStyle.marginLeft) < 250) {
+                    console.warn('⚠️ margin-left muito pequeno, corrigindo...');
+                    mainContent.style.marginLeft = '280px';
+                    mainContent.style.width = 'calc(100% - 280px)';
+                }
+            }
+            
+            if (usersContainer) {
+                const containerRect = usersContainer.getBoundingClientRect();
+                const sidebarRect = sidebar ? sidebar.getBoundingClientRect() : null;
+                console.log('Container left:', containerRect.left);
+                console.log('Container width:', containerRect.width);
+                if (sidebarRect) {
+                    console.log('Sidebar right:', sidebarRect.right);
+                    if (containerRect.left < sidebarRect.right) {
+                        console.error('❌ Container está por baixo da sidebar!');
+                        console.error('Container left:', containerRect.left, 'Sidebar right:', sidebarRect.right);
+                    }
+                }
+            }
+            
+            // Garantir overflow-x
             if (mainContent) {
                 mainContent.style.overflowX = 'hidden';
             }
@@ -814,12 +858,9 @@ if ($user_id > 0) {
                 usersContainer.style.overflowX = 'hidden';
             }
             
-            if (usersGrid) {
-                usersGrid.style.overflowX = 'hidden';
-            }
-            
-            // Garantir overflow-x no body
             document.body.style.overflowX = 'hidden';
+            
+            console.log('=== FIM DEBUG ===');
         }
         
         // Executar também após pequeno delay adicional
