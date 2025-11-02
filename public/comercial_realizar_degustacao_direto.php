@@ -3,7 +3,37 @@
  * comercial_realizar_degustacao_direto.php — VERSÃO DIRETA que bypassa o router
  * Esta versão funciona como página standalone para testar se o problema é do router
  */
+
+// CRÍTICO: Começar output buffering ANTES de qualquer coisa
+ob_start();
+
+// CRÍTICO: Enviar headers ANTES de qualquer require
+header('Content-Type: text/html; charset=utf-8');
+header('Cache-Control: no-cache, no-store, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+// CRÍTICO: Registrar função para interceptar headers de redirecionamento
+if (!function_exists('header_interceptor')) {
+    function header_interceptor($header) {
+        if (stripos($header, 'Location:') !== false) {
+            // Bloquear qualquer redirecionamento e registrar
+            error_log("🚫 REDIRECIONAMENTO BLOQUEADO: " . $header);
+            return false; // Não enviar o header
+        }
+        return true; // Permitir outros headers
+    }
+    
+    // Substituir função header() temporariamente (isso não é possível diretamente em PHP)
+    // Mas podemos usar output buffering para capturar
+}
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
+// DEBUG: Logar como está sendo acessado
+error_log("🔍 comercial_realizar_degustacao_direto.php sendo executado");
+error_log("🔍 REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'N/A'));
+error_log("🔍 SCRIPT_NAME: " . ($_SERVER['SCRIPT_NAME'] ?? 'N/A'));
 
 require_once __DIR__ . '/conexao.php';
 // REMOVER sidebar e permissões para teste - causavam redirecionamento

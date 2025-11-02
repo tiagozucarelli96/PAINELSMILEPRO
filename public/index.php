@@ -116,6 +116,7 @@ $routes = [
   'comercial_lista_espera' => 'comercial_lista_espera.php',
   'comercial_realizar_degustacao' => 'comercial_realizar_degustacao.php',
   'comercial_realizar_degustacao_direto' => 'comercial_realizar_degustacao_direto.php', // VERSÃO TESTE - bypass router
+  'comercial_realizar_degustacao_ultra_simples' => 'comercial_realizar_degustacao_ultra_simples.php', // VERSÃO ULTRA SIMPLES
 
   // Logístico
   'lc_index' => 'lc_index.php',
@@ -196,7 +197,15 @@ $routes = [
 ];
 
 /* exige login - EXCETO para páginas públicas */
-$public_pages = ['comercial_degust_public', 'asaas_webhook', 'webhook_me_eventos', 'login'];
+$public_pages = [
+  'comercial_degust_public', 
+  'asaas_webhook', 
+  'webhook_me_eventos', 
+  'login',
+  // Versões de teste que bypassam router
+  'comercial_realizar_degustacao_direto',
+  'comercial_realizar_degustacao_ultra_simples',
+];
 $is_public_page = in_array($page, $public_pages);
 
 // Debug: verificar se rota existe antes de verificar login
