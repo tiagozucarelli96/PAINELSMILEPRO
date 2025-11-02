@@ -514,10 +514,12 @@ includeSidebar('Comercial');
         </div>
     <?php endif; ?>
     
-    <!-- Seleção de Degustação - VERSÃO SIMPLIFICADA -->
+    <!-- Seleção de Degustação - SOLUÇÃO SIMPLIFICADA E ROBUSTA -->
     <div class="selecao-container">
-        <!-- CORREÇÃO: Incluir page diretamente na URL de action para garantir que todos os parâmetros sejam preservados -->
-        <form method="GET" action="index.php?page=comercial_realizar_degustacao" id="formSelecaoDegustacao" style="margin-bottom: 2rem;" onsubmit="return true;">
+        <!-- SOLUÇÃO: Usar action="index.php" e enviar page via campo oculto
+             Isso garante que tanto page quanto degustacao_id cheguem juntos no GET -->
+        <form method="GET" action="index.php" id="formSelecaoDegustacao" style="margin-bottom: 2rem;">
+            <input type="hidden" name="page" value="comercial_realizar_degustacao">
             <div class="form-group" style="display: flex; gap: 1rem; align-items: flex-end;">
                 <div style="flex: 1;">
                     <label class="form-label">Selecione a Degustação</label>
@@ -641,7 +643,7 @@ includeSidebar('Comercial');
 
 <script>
 // SOLUÇÃO 100% SERVER-SIDE: Formulário tradicional GET, relatório renderizado pelo PHP
-// Sem AJAX, sem eventos change complexos - funciona sempre
+// Sem AJAX, sem eventos change complexos, sem clonagem - funciona sempre
 (function() {
     'use strict';
     
@@ -653,24 +655,20 @@ includeSidebar('Comercial');
     // Tornar função global
     window.gerarPDF = gerarPDF;
     
-    // Garantir que formulário não seja interceptado por outros scripts
+    // Log quando formulário for submetido (apenas para debug, não interferir no submit)
     const form = document.getElementById('formSelecaoDegustacao');
     if (form) {
-        // Remover qualquer listener antigo
-        const newForm = form.cloneNode(true);
-        form.parentNode.replaceChild(newForm, form);
+        form.addEventListener('submit', function(e) {
+            const degustacaoId = this.querySelector('[name="degustacao_id"]').value;
+            const page = this.querySelector('[name="page"]').value;
+            console.log('📤 Formulário sendo submetido:');
+            console.log('   - page:', page);
+            console.log('   - degustacao_id:', degustacaoId);
+            console.log('   - URL será: index.php?page=' + page + '&degustacao_id=' + degustacaoId);
+            // NÃO prevenir o submit - deixar formulário funcionar normalmente
+        });
         
         console.log('✅ Formulário "Realizar Degustação" configurado. Método GET tradicional.');
-        
-        // Log quando formulário for submetido (para debug)
-        const formAtual = document.getElementById('formSelecaoDegustacao');
-        if (formAtual) {
-            formAtual.addEventListener('submit', function(e) {
-                const degustacaoId = this.querySelector('[name="degustacao_id"]').value;
-                console.log('📤 Formulário sendo submetido com degustacao_id:', degustacaoId);
-                console.log('📍 URL será: index.php?page=comercial_realizar_degustacao&degustacao_id=' + degustacaoId);
-            });
-        }
     }
     
     console.log('✅ Página "Realizar Degustação" carregada. Formulário tradicional GET - funciona sempre.');
