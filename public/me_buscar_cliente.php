@@ -149,12 +149,28 @@ try {
         // PASSO 2: Buscar evento específico deste cliente e extrair TODOS os dados
         $evento_encontrado = null;
         $cpf_api_encontrado = null;
+        $idcliente_do_evento = null; // IMPORTANTE: Guardar ID do cliente para buscar dados completos depois
         
         foreach ($events as $e) {
             $nomeCliente = trim($e['nomeCliente'] ?? '');
             
             // Comparar nomes (normalizado)
             if (mb_strtolower($nomeCliente) === mb_strtolower($nome_cliente)) {
+                // IMPORTANTE: Extrair ID do cliente PRIMEIRO para buscar dados completos depois
+                $idcliente_do_evento = $e['idcliente'] ?? $e['idCliente'] ?? $e['cliente_id'] ?? 
+                                      $e['id_cliente'] ?? $e['clienteId'] ?? $e['client_id'] ?? null;
+                
+                if ($idcliente_do_evento) {
+                    error_log("ME Buscar Cliente - ✅ ID do cliente encontrado no evento: $idcliente_do_evento");
+                } else {
+                    error_log("ME Buscar Cliente - ⚠️ ID do cliente NÃO encontrado nos campos: " . json_encode(array_keys($e), JSON_UNESCAPED_UNICODE));
+                    // Tentar usar ID do evento como fallback (algumas APIs usam o mesmo ID)
+                    if (isset($e['id'])) {
+                        $idcliente_do_evento = $e['id'];
+                        error_log("ME Buscar Cliente - Usando ID do evento como fallback: $idcliente_do_evento");
+                    }
+                }
+                
                 // Buscar CPF na resposta da API (testar TODOS os campos possíveis)
                 $cpf_api = $e['cpfCliente'] ?? $e['cpf'] ?? $e['cliente_cpf'] ?? $e['documento'] ?? 
                           $e['cpf_cliente'] ?? $e['clienteCpf'] ?? $e['documentoCliente'] ?? 
@@ -271,7 +287,94 @@ try {
             throw new Exception('Cliente não encontrado. Verifique o nome digitado.');
         }
         
-        // PASSO 2.5: SALVAR BUSCA/SELECÇÃO NO BANCO DE DADOS
+        // PASSO 2.5: Buscar DADOS COMPLETOS DO CLIENTE no endpoint específico
+        // O endpoint de eventos retorna dados do EVENTO (que incluem alguns dados do cliente)
+        // Mas precisamos buscar no endpoint do CLIENTE para ter email completo, CPF, etc.
+        if ($idcliente_do_evento) {
+            error_log("ME Buscar Cliente - 🔍 Buscando DADOS COMPLETOS DO CLIENTE no endpoint /api/v1/clients/$idcliente_do_evento");
+            
+            try {
+                $url_cliente_completo = rtrim($base, '/') . '/api/v1/clients/' . $idcliente_do_evento;
+                
+                $ch_cliente_completo = curl_init($url_cliente_completo);
+                curl_setopt_array($ch_cliente_completo, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 15,
+                    CURLOPT_HTTPHEADER => [
+                        'Authorization: ' . $key,
+                        'Content-Type: application/json',
+                        'Accept: application/json'
+                    ]
+                ]);
+                
+                $resp_cliente_completo = curl_exec($ch_cliente_completo);
+                $code_cliente_completo = curl_getinfo($ch_cliente_completo, CURLINFO_HTTP_CODE);
+                curl_close($ch_cliente_completo);
+                
+                error_log("ME Buscar Cliente - Código HTTP endpoint cliente completo: $code_cliente_completo");
+                
+                if ($code_cliente_completo === 200 && $resp_cliente_completo) {
+                    $dados_cliente_completo = json_decode($resp_cliente_completo, true);
+                    error_log("ME Buscar Cliente - ✅ Dados completos do cliente recebidos: " . json_encode($dados_cliente_completo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    
+                    // Buscar EMAIL nos dados completos do cliente
+                    $email_cliente_completo = '';
+                    $campos_email = ['email', 'emailCliente', 'cliente_email', 'clienteEmail', 'contato_email', 
+                                   'contatoEmail', 'email_contato', 'emailContato', 'e_mail', 'e-mail', 
+                                   'e_mailCliente', 'e-mailCliente', 'mail', 'correio', 'correio_eletronico'];
+                    
+                    foreach ($campos_email as $campo) {
+                        if (isset($dados_cliente_completo[$campo]) && !empty($dados_cliente_completo[$campo]) && filter_var($dados_cliente_completo[$campo], FILTER_VALIDATE_EMAIL)) {
+                            $email_cliente_completo = trim($dados_cliente_completo[$campo]);
+                            error_log("ME Buscar Cliente - ✅ Email encontrado nos dados completos do cliente (campo '$campo'): " . substr($email_cliente_completo, 0, 3) . "***");
+                            break;
+                        }
+                    }
+                    
+                    // Se não encontrou, buscar em qualquer campo que contenha '@'
+                    if (empty($email_cliente_completo)) {
+                        foreach ($dados_cliente_completo as $key => $value) {
+                            if (is_string($value) && strpos($value, '@') !== false && filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                                $email_cliente_completo = trim($value);
+                                error_log("ME Buscar Cliente - ✅ Email encontrado nos dados completos (campo genérico '$key'): " . substr($email_cliente_completo, 0, 3) . "***");
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Atualizar evento_encontrado com email do cliente completo
+                    if (!empty($email_cliente_completo)) {
+                        $evento_encontrado['email'] = $email_cliente_completo;
+                        error_log("ME Buscar Cliente - ✅ Email dos dados completos do cliente adicionado ao evento_encontrado!");
+                    } else {
+                        error_log("ME Buscar Cliente - ⚠️ Email NÃO encontrado mesmo nos dados completos do cliente");
+                        error_log("ME Buscar Cliente - Campos disponíveis nos dados completos: " . json_encode(array_keys($dados_cliente_completo), JSON_UNESCAPED_UNICODE));
+                    }
+                    
+                    // Também buscar CPF nos dados completos do cliente (se não encontrou antes)
+                    if (empty($cpf_api_encontrado)) {
+                        $cpf_cliente_completo = $dados_cliente_completo['cpf'] ?? $dados_cliente_completo['cpfCliente'] ?? 
+                                              $dados_cliente_completo['documento'] ?? $dados_cliente_completo['cpfCnpj'] ?? 
+                                              $dados_cliente_completo['cpf_cnpj'] ?? $dados_cliente_completo['documentoCliente'] ?? '';
+                        if (!empty($cpf_cliente_completo)) {
+                            $cpf_api_encontrado = $cpf_cliente_completo;
+                            error_log("ME Buscar Cliente - ✅ CPF encontrado nos dados completos do cliente!");
+                        }
+                    }
+                } else {
+                    error_log("ME Buscar Cliente - ⚠️ Erro ao buscar dados completos do cliente. HTTP $code_cliente_completo");
+                    if ($resp_cliente_completo) {
+                        error_log("ME Buscar Cliente - Resposta de erro: " . substr($resp_cliente_completo, 0, 500));
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("ME Buscar Cliente - Erro ao buscar dados completos do cliente: " . $e->getMessage());
+            }
+        } else {
+            error_log("ME Buscar Cliente - ⚠️ ID do cliente não disponível, não é possível buscar dados completos");
+        }
+        
+        // PASSO 2.6: SALVAR BUSCA/SELECÇÃO NO BANCO DE DADOS
         $busca_id = null;
         try {
             // Verificar se tabela existe
