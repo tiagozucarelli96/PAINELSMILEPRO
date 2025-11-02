@@ -264,6 +264,18 @@ if ($user_id > 0) {
             position: relative;
         }
         
+        /* Garantir que o container não ultrapasse o main-content */
+        .main-content .users-container {
+            max-width: 100%;
+            width: 100%;
+        }
+        
+        @media (max-width: 1400px) {
+            .users-container {
+                padding: 1rem;
+            }
+        }
+        
         .page-header {
             display: flex;
             justify-content: space-between;
@@ -342,14 +354,20 @@ if ($user_id > 0) {
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
             overflow: hidden;
             margin: 0;
             padding: 0;
+        }
+        
+        /* Garantir que o grid não ultrapasse o container */
+        .users-container > .users-grid {
+            width: 100%;
+            max-width: 100%;
         }
         
         @media (max-width: 1024px) {
@@ -804,13 +822,20 @@ if ($user_id > 0) {
         
         // Função para forçar correção de overflow
         function forceOverflowFix() {
-            // Garantir que main-content e pageContent não excedam viewport
+            // Calcular largura disponível considerando sidebar
+            const sidebar = document.querySelector('.sidebar');
             const mainContent = document.querySelector('.main-content');
             const pageContent = document.querySelector('#pageContent');
             const usersContainer = document.querySelector('.users-container');
+            const usersGrid = document.querySelector('.users-grid');
+            
+            const sidebarWidth = sidebar ? sidebar.offsetWidth : 280;
+            const viewportWidth = window.innerWidth;
+            const availableWidth = viewportWidth - sidebarWidth;
             
             if (mainContent) {
-                mainContent.style.maxWidth = '100%';
+                mainContent.style.maxWidth = availableWidth + 'px';
+                mainContent.style.width = availableWidth + 'px';
                 mainContent.style.overflowX = 'hidden';
             }
             
@@ -821,16 +846,34 @@ if ($user_id > 0) {
             
             if (usersContainer) {
                 usersContainer.style.maxWidth = '100%';
+                usersContainer.style.width = '100%';
                 usersContainer.style.overflowX = 'hidden';
+                // Ajustar padding se necessário
+                const containerPadding = parseFloat(window.getComputedStyle(usersContainer).paddingLeft) * 2;
+                const maxContentWidth = availableWidth - containerPadding;
+                if (usersContainer.scrollWidth > availableWidth) {
+                    usersContainer.style.padding = '1rem';
+                }
+            }
+            
+            if (usersGrid) {
+                usersGrid.style.maxWidth = '100%';
+                usersGrid.style.width = '100%';
+                usersGrid.style.overflowX = 'hidden';
             }
             
             // Forçar todos os cards a respeitarem limites
             const cards = document.querySelectorAll('.user-card');
             cards.forEach(function(card) {
-                card.style.maxWidth = '100%';
-                const computedWidth = window.getComputedStyle(card.parentElement).width;
-                if (card.offsetWidth > parseFloat(computedWidth)) {
+                const gridItem = card.parentElement;
+                if (gridItem && gridItem.classList.contains('user-card')) {
+                    // Garantir que o card não ultrapasse seu grid item
+                    const gridComputedWidth = window.getComputedStyle(gridItem).width;
+                    card.style.maxWidth = '100%';
                     card.style.width = '100%';
+                    if (card.offsetWidth > parseFloat(gridComputedWidth)) {
+                        card.style.width = '100%';
+                    }
                 }
             });
             
@@ -839,7 +882,17 @@ if ($user_id > 0) {
             flexElements.forEach(function(el) {
                 el.style.maxWidth = '100%';
                 el.style.overflowX = 'hidden';
+                // Garantir que elementos filhos também respeitem
+                Array.from(el.children).forEach(function(child) {
+                    child.style.maxWidth = '100%';
+                });
             });
+            
+            // Verificar se há scroll horizontal e forçar correção
+            if (document.documentElement.scrollWidth > viewportWidth) {
+                document.body.style.overflowX = 'hidden';
+                document.documentElement.style.overflowX = 'hidden';
+            }
         }
         
         // Executar também após pequeno delay adicional
