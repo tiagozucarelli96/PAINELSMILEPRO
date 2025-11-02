@@ -38,6 +38,15 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
         exit;
     }
     
+    // Permitir acesso DIRETO a arquivos de teste/debug que bypassam router
+    if (strpos(basename($file), '_direto.php') !== false || 
+        strpos(basename($file), '_test.php') !== false ||
+        strpos(basename($file), '_debug.php') !== false) {
+        // Arquivos com sufixo _direto, _test ou _debug podem ser acessados diretamente
+        require $file;
+        exit;
+    }
+    
     if (strpos($path, 'cron') !== false || strpos($path, '/cron') !== false || 
         strpos($path, 'webhook') !== false || strpos($path, '/webhook') !== false ||
         in_array(basename($file), $public_files)) {
