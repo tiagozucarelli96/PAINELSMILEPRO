@@ -234,64 +234,29 @@ if ($user_id > 0) {
 ?>
 
 <style>
-        /* FORÇAR CONTROLE DE OVERFLOW EM TODOS OS NÍVEIS */
-        * {
-            box-sizing: border-box !important;
-        }
-        
+        /* Controle de overflow sem quebrar o layout */
         html, body {
-            overflow-x: hidden !important;
-            max-width: 100vw !important;
-            width: 100vw !important;
-            position: relative !important;
+            overflow-x: hidden;
         }
         
         #pageContent,
         .main-content {
-            overflow-x: hidden !important;
-            max-width: 100% !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
-            position: relative !important;
-            contain: layout size !important;
-        }
-        
-        /* Forçar que main-content respeite sidebar */
-        .main-content {
-            margin-left: 280px !important;
-            width: calc(100vw - 280px) !important;
-            max-width: calc(100vw - 280px) !important;
+            overflow-x: hidden;
+            box-sizing: border-box;
         }
         
         .users-container {
-            max-width: 100% !important;
-            margin: 0 !important;
+            max-width: 100%;
+            margin: 0 auto;
             padding: 1.5rem;
-            box-sizing: border-box !important;
-            overflow-x: hidden !important;
-            overflow-y: visible;
-            width: 100% !important;
-            position: relative !important;
-            contain: layout size !important;
-        }
-        
-        /* Garantir que o container não ultrapasse o main-content */
-        .main-content .users-container {
-            max-width: 100% !important;
-            width: 100% !important;
+            box-sizing: border-box;
+            overflow-x: hidden;
+            width: 100%;
         }
         
         @media (max-width: 1400px) {
             .users-container {
                 padding: 1rem;
-            }
-        }
-        
-        @media (max-width: 768px) {
-            .main-content {
-                margin-left: 0 !important;
-                width: 100vw !important;
-                max-width: 100vw !important;
             }
         }
         
@@ -373,21 +338,11 @@ if ($user_id > 0) {
         
         .users-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 1rem;
-            width: 100% !important;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            contain: layout size !important;
-        }
-        
-        /* Garantir que o grid não ultrapasse o container */
-        .users-container > .users-grid {
-            width: 100% !important;
-            max-width: 100% !important;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            width: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         @media (max-width: 1024px) {
@@ -416,13 +371,10 @@ if ($user_id > 0) {
             display: flex;
             flex-direction: column;
             height: 100%;
-            box-sizing: border-box !important;
-            overflow: hidden !important;
-            min-width: 0 !important;
-            max-width: 100% !important;
-            width: 100% !important;
-            position: relative !important;
-            contain: layout size !important;
+            box-sizing: border-box;
+            overflow: hidden;
+            min-width: 0;
+            width: 100%;
         }
         
         .user-card:hover {
@@ -841,102 +793,27 @@ if ($user_id > 0) {
             }, 50);
         });
         
-        // Função para forçar correção de overflow
+        // Função simples para garantir overflow-x hidden
         function forceOverflowFix() {
-            // Calcular largura disponível considerando sidebar
-            const sidebar = document.querySelector('.sidebar');
             const mainContent = document.querySelector('.main-content');
-            const pageContent = document.querySelector('#pageContent');
             const usersContainer = document.querySelector('.users-container');
             const usersGrid = document.querySelector('.users-grid');
             
-            const sidebarWidth = sidebar ? sidebar.offsetWidth : 280;
-            const viewportWidth = window.innerWidth;
-            const availableWidth = viewportWidth - sidebarWidth;
-            
-            // Forçar no body e html primeiro
-            document.documentElement.style.overflowX = 'hidden';
-            document.documentElement.style.maxWidth = viewportWidth + 'px';
-            document.body.style.overflowX = 'hidden';
-            document.body.style.maxWidth = viewportWidth + 'px';
-            document.body.style.width = viewportWidth + 'px';
-            
             if (mainContent) {
-                mainContent.style.setProperty('max-width', availableWidth + 'px', 'important');
-                mainContent.style.setProperty('width', availableWidth + 'px', 'important');
-                mainContent.style.setProperty('overflow-x', 'hidden', 'important');
-                mainContent.style.setProperty('margin-left', sidebarWidth + 'px', 'important');
-            }
-            
-            if (pageContent) {
-                pageContent.style.setProperty('max-width', '100%', 'important');
-                pageContent.style.setProperty('width', '100%', 'important');
-                pageContent.style.setProperty('overflow-x', 'hidden', 'important');
+                mainContent.style.overflowX = 'hidden';
             }
             
             if (usersContainer) {
-                usersContainer.style.setProperty('max-width', '100%', 'important');
-                usersContainer.style.setProperty('width', '100%', 'important');
-                usersContainer.style.setProperty('overflow-x', 'hidden', 'important');
-                
-                // Se ainda houver overflow, reduzir padding
-                if (usersContainer.scrollWidth > availableWidth) {
-                    usersContainer.style.padding = '1rem';
-                }
+                usersContainer.style.overflowX = 'hidden';
             }
             
             if (usersGrid) {
-                usersGrid.style.setProperty('max-width', '100%', 'important');
-                usersGrid.style.setProperty('width', '100%', 'important');
-                usersGrid.style.setProperty('overflow-x', 'hidden', 'important');
-                
-                // Garantir que nenhum grid item ultrapasse
-                const gridItems = usersGrid.children;
-                for (let i = 0; i < gridItems.length; i++) {
-                    const item = gridItems[i];
-                    item.style.setProperty('max-width', '100%', 'important');
-                    item.style.setProperty('overflow', 'hidden', 'important');
-                }
+                usersGrid.style.overflowX = 'hidden';
             }
             
-            // Forçar todos os cards a respeitarem limites
-            const cards = document.querySelectorAll('.user-card');
-            cards.forEach(function(card) {
-                card.style.setProperty('max-width', '100%', 'important');
-                card.style.setProperty('width', '100%', 'important');
-                card.style.setProperty('overflow-x', 'hidden', 'important');
-            });
-            
-            // Forçar todos os elementos flex a respeitarem limites
-            const flexElements = document.querySelectorAll('.detail-row, .user-header, .search-bar, .page-header, .user-details, .permissions-grid, .user-actions');
-            flexElements.forEach(function(el) {
-                el.style.setProperty('max-width', '100%', 'important');
-                el.style.setProperty('overflow-x', 'hidden', 'important');
-                // Garantir que elementos filhos também respeitem
-                Array.from(el.children).forEach(function(child) {
-                    child.style.setProperty('max-width', '100%', 'important');
-                    if (child.offsetWidth > el.offsetWidth) {
-                        child.style.setProperty('width', '100%', 'important');
-                    }
-                });
-            });
-            
-            // Verificar e corrigir qualquer elemento que esteja ultrapassando
-            const allElements = document.querySelectorAll('.users-container, .users-container *');
-            allElements.forEach(function(el) {
-                if (el.offsetWidth > availableWidth) {
-                    el.style.setProperty('max-width', '100%', 'important');
-                    el.style.setProperty('overflow-x', 'hidden', 'important');
-                }
-            });
+            // Garantir overflow-x no body
+            document.body.style.overflowX = 'hidden';
         }
-        
-        // Executar também no resize
-        let resizeTimer;
-        window.addEventListener('resize', function() {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(forceOverflowFix, 100);
-        });
         
         // Executar também após pequeno delay adicional
         window.addEventListener('load', function() {
