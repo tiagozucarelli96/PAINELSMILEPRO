@@ -92,6 +92,28 @@ if ($action === 'get_user' && !empty($_GET['id'])) {
     exit;
 }
 
+// Ação: Excluir usuário
+if ($action === 'delete' && $user_id > 0) {
+    try {
+        // Verificar se não é o próprio usuário logado
+        if ($user_id == ($_SESSION['usuario_id'] ?? 0)) {
+            $error_message = "Você não pode excluir seu próprio usuário!";
+        } else {
+            $stmt = $pdo->prepare("DELETE FROM usuarios WHERE id = :id");
+            $stmt->execute([':id' => $user_id]);
+            
+            if ($stmt->rowCount() > 0) {
+                header('Location: index.php?page=usuarios&success=' . urlencode('Usuário excluído com sucesso!'));
+                exit;
+            } else {
+                $error_message = "Usuário não encontrado.";
+            }
+        }
+    } catch (Exception $e) {
+        $error_message = "Erro ao excluir usuário: " . $e->getMessage();
+    }
+}
+
 if ($action === 'save') {
     try {
         $nome = trim($_POST['nome'] ?? '');
@@ -1504,10 +1526,29 @@ ob_start();
         
         // Excluir usuário
         function deleteUser(userId) {
-            if (confirm('Tem certeza que deseja excluir este usuário?')) {
-                // Implementar exclusão
-                console.log('Excluindo usuário:', userId);
+            if (!confirm('Tem certeza que deseja excluir este usuário?\n\nEsta ação não pode ser desfeita.')) {
+                return;
             }
+            
+            // Criar formulário para enviar requisição de exclusão
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '';
+            
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = 'delete';
+            form.appendChild(actionInput);
+            
+            const userIdInput = document.createElement('input');
+            userIdInput.type = 'hidden';
+            userIdInput.name = 'user_id';
+            userIdInput.value = userId;
+            form.appendChild(userIdInput);
+            
+            document.body.appendChild(form);
+            form.submit();
         }
         
         // Fechar modal ao clicar fora (apenas no fundo, não no conteúdo)
