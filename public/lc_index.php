@@ -11,7 +11,7 @@ require_once __DIR__ . '/sidebar_integration.php';
 // Verificar permissões
 $perfil = lc_get_user_perfil();
 if (!lc_can_access_lc($perfil)) {
-    header('Location: dashboard.php?erro=permissao_negada');
+    header('Location: index.php?page=dashboard&erro=permissao_negada');
     exit;
 }
 
@@ -34,8 +34,12 @@ try {
     // Ignorar erro
 }
 
-// Incluir sidebar ANTES do conteúdo
-includeSidebar('Logístico');
+// Suprimir warnings durante renderização
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+@ini_set('display_errors', 0);
+
+// Criar conteúdo da página usando output buffering
+ob_start();
 ?>
 
 <style>
@@ -329,5 +333,20 @@ includeSidebar('Logístico');
 </div>
 
 <?php
+// Restaurar error_reporting antes de incluir sidebar
+error_reporting(E_ALL);
+@ini_set('display_errors', 0);
+
+$conteudo = ob_get_clean();
+
+// Verificar se houve algum erro no buffer
+if (ob_get_level() > 0) {
+    ob_end_clean();
+}
+
+includeSidebar('Logístico');
+// O sidebar_unified.php já cria <div class="main-content"><div id="pageContent">
+// Então só precisamos do conteúdo da página
+echo $conteudo;
 endSidebar();
 ?>
