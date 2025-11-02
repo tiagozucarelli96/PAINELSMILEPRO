@@ -446,6 +446,7 @@ ob_start();
             flex-direction: column;
             box-sizing: border-box;
             width: 100%;
+            position: relative;
         }
         
         .user-card:hover {
@@ -569,14 +570,16 @@ ob_start();
             flex-shrink: 0;
         }
         
-        /* AÇÕES - BOTÕES SIMPLIFICADOS */
+        /* AÇÕES - BOTÕES NA PARTE INFERIOR DO CARD */
         .user-actions {
             display: flex;
             gap: 0.75rem;
-            margin-top: 1rem;
+            margin-top: auto;
             padding-top: 1rem;
             border-top: 1px solid #e5e7eb;
             width: 100%;
+            box-sizing: border-box;
+            align-items: stretch;
         }
         
         .btn-edit {
@@ -584,43 +587,54 @@ ob_start();
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 0.625rem 1rem;
-            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
             font-size: 0.875rem;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            transition: background 0.2s;
+            transition: all 0.2s;
             white-space: nowrap;
+            min-width: 0;
         }
         
         .btn-edit:hover {
             background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(30, 58, 138, 0.25);
         }
         
         .btn-delete {
             background: #dc2626;
             color: white;
             border: none;
-            padding: 0.625rem 1rem;
-            border-radius: 6px;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
             font-size: 0.875rem;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            transition: background 0.2s;
+            transition: all 0.2s;
             white-space: nowrap;
             flex-shrink: 0;
         }
         
         .btn-delete:hover {
             background: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+        }
+        
+        .btn-edit span,
+        .btn-delete span {
+            display: inline-block;
+            line-height: 1;
         }
         
         .modal {
