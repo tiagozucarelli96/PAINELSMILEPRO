@@ -38,7 +38,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 $user_id = (int)($_POST['user_id'] ?? $_GET['id'] ?? 0);
 
 // AJAX: Retornar dados do usuário em JSON
-// IMPORTANTE: Processar ANTES de qualquer output buffer
+// IMPORTANTE: Processar ANTES de qualquer output buffer e ANTES da verificação de permissões que pode redirecionar
 if ($action === 'get_user' && !empty($_GET['id'])) {
     // Verificar sessão ANTES de qualquer output
     if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
