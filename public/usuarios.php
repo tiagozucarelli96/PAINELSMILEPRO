@@ -592,19 +592,18 @@ ob_start();
             font-size: 0.875rem;
             font-weight: 600;
             cursor: pointer;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
             transition: all 0.2s;
             white-space: nowrap;
-            min-width: 0;
+            min-width: 100px;
+            box-sizing: border-box;
         }
         
         .btn-edit:hover {
             background: #2563eb;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(30, 58, 138, 0.25);
         }
         
         .btn-delete {
@@ -616,25 +615,23 @@ ob_start();
             font-size: 0.875rem;
             font-weight: 600;
             cursor: pointer;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
             transition: all 0.2s;
             white-space: nowrap;
             flex-shrink: 0;
+            box-sizing: border-box;
         }
         
         .btn-delete:hover {
             background: #b91c1c;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
         }
         
         .btn-edit span,
         .btn-delete span {
             display: inline-block;
-            line-height: 1;
         }
         
         .modal {
