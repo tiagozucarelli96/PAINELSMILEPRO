@@ -572,10 +572,11 @@ ob_start();
         /* AÇÕES - BOTÕES SIMPLIFICADOS */
         .user-actions {
             display: flex;
-            gap: 0.5rem;
-            margin-top: auto;
+            gap: 0.75rem;
+            margin-top: 1rem;
             padding-top: 1rem;
             border-top: 1px solid #e5e7eb;
+            width: 100%;
         }
         
         .btn-edit {
@@ -583,16 +584,17 @@ ob_start();
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 0.5rem;
+            padding: 0.625rem 1rem;
             border-radius: 6px;
-            font-size: 0.8125rem;
+            font-size: 0.875rem;
             font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.375rem;
+            gap: 0.5rem;
             transition: background 0.2s;
+            white-space: nowrap;
         }
         
         .btn-edit:hover {
@@ -600,20 +602,21 @@ ob_start();
         }
         
         .btn-delete {
-            flex: 0 0 auto;
             background: #dc2626;
             color: white;
             border: none;
-            padding: 0.5rem 1rem;
+            padding: 0.625rem 1rem;
             border-radius: 6px;
-            font-size: 0.8125rem;
+            font-size: 0.875rem;
             font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.375rem;
+            gap: 0.5rem;
             transition: background 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         
         .btn-delete:hover {
@@ -1135,10 +1138,12 @@ ob_start();
                         
                         <div class="user-actions">
                             <button class="btn-edit" type="button" onclick="openModal(<?= $user['id'] ?>, event)">
-                                ✏️ Editar
+                                <span>✏️</span>
+                                <span>Editar</span>
                             </button>
                             <button class="btn-delete" type="button" onclick="deleteUser(<?= $user['id'] ?>)">
-                                🗑️ Excluir
+                                <span>🗑️</span>
+                                <span>Excluir</span>
                             </button>
                         </div>
                     </div>
