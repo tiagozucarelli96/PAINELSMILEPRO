@@ -162,6 +162,9 @@ $routes = [
   'administrativo_auditoria' => 'verificacao_completa_erros.php',
   'administrativo_stats' => 'sistema_unificado.php',
   'administrativo_historico' => 'historico.php',
+  
+  // Scripts de migração/setup
+  'apply_permissoes_sidebar_columns' => 'apply_permissoes_sidebar_columns.php',
 
   // Agenda
   'agenda_config' => 'agenda_config.php',
