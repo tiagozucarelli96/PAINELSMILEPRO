@@ -1587,10 +1587,17 @@ if ($_POST && !$inscricoes_encerradas) {
         function selecionarClienteME(nomeCliente, qtdEventos) {
             clienteSelecionadoME = { nome: nomeCliente, eventos: qtdEventos };
             
+            // Log da seleção
+            console.log('Cliente selecionado:', nomeCliente, 'com', qtdEventos, 'evento(s)');
+            
             // Esconder resultados e mostrar validação de CPF
             document.getElementById('buscaMEResultados').innerHTML = '';
             document.getElementById('buscaMEValidarCPF').style.display = 'block';
             document.getElementById('nomeClienteSelecionado').textContent = nomeCliente;
+            
+            // Limpar campo de CPF para nova validação
+            document.getElementById('buscaMECpf').value = '';
+            document.getElementById('buscaMECpf').focus();
         }
         
         // Validar CPF do cliente
@@ -1626,7 +1633,8 @@ if ($_POST && !$inscricoes_encerradas) {
                     },
                     body: JSON.stringify({
                         nome_cliente: clienteSelecionadoME.nome,
-                        cpf: cpf
+                        cpf: cpf,
+                        degustacao_token: '<?= h($token) ?>' // Token da degustação atual
                     })
                 });
                 
@@ -1721,31 +1729,52 @@ if ($_POST && !$inscricoes_encerradas) {
                 // CPF validado com sucesso! Preencher campos automaticamente
                 const evento = data.evento;
                 
+                console.log('✅ CPF validado com sucesso! Preenchendo campos...');
+                console.log('Dados do evento recebidos:', evento);
+                
                 // Limpar mensagem de erro anterior se existir
                 document.getElementById('meEventInfo').classList.add('hidden');
                 
                 // Preencher campos principais automaticamente
-                document.getElementById('nomeInput').value = evento.nome_cliente || '';
+                const nomeInput = document.getElementById('nomeInput');
+                const emailInput = document.getElementById('emailInput');
+                const telefoneInput = document.getElementById('telefoneInput');
+                
+                if (nomeInput) {
+                    nomeInput.value = evento.nome_cliente || '';
+                    console.log('✅ Nome preenchido:', nomeInput.value);
+                } else {
+                    console.error('❌ Campo nomeInput não encontrado!');
+                }
                 
                 // Preencher email (buscar em múltiplos campos possíveis)
                 const emailVal = evento.email || evento.emailCliente || evento.cliente_email || evento.contato_email || '';
-                if (emailVal) {
-                    document.getElementById('emailInput').value = emailVal;
-                    console.log('Email preenchido:', emailVal);
+                if (emailInput && emailVal) {
+                    emailInput.value = emailVal;
+                    console.log('✅ Email preenchido:', emailVal);
+                } else if (emailInput) {
+                    console.warn('⚠️ Email não encontrado na resposta da API ME Eventos');
                 } else {
-                    console.warn('Email não encontrado na resposta da API ME Eventos');
+                    console.error('❌ Campo emailInput não encontrado!');
                 }
                 
                 // Preencher telefone/celular (buscar em múltiplos campos possíveis)
                 const telefoneVal = evento.telefone || evento.celular || evento.telefoneCliente || 
                                    evento.celularCliente || evento.cliente_telefone || evento.cliente_celular || 
                                    evento.contato_telefone || evento.telefone_contato || '';
-                if (telefoneVal) {
-                    document.getElementById('telefoneInput').value = telefoneVal;
-                    console.log('Telefone preenchido:', telefoneVal);
+                if (telefoneInput && telefoneVal) {
+                    telefoneInput.value = telefoneVal;
+                    console.log('✅ Telefone preenchido:', telefoneVal);
+                } else if (telefoneInput) {
+                    console.warn('⚠️ Telefone não encontrado na resposta da API ME Eventos');
                 } else {
-                    console.warn('Telefone não encontrado na resposta da API ME Eventos');
+                    console.error('❌ Campo telefoneInput não encontrado!');
                 }
+                
+                // Disparar evento de mudança nos campos para garantir que qualquer validação JavaScript seja executada
+                if (nomeInput) nomeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                if (emailInput) emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                if (telefoneInput) telefoneInput.dispatchEvent(new Event('input', { bubbles: true }));
                 
                 // Preencher campos ocultos
                 document.getElementById('nomeTitularHidden').value = evento.nome_cliente || '';

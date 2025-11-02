@@ -6,6 +6,7 @@ header('Access-Control-Allow-Origin: *');
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/me_config.php';
+require_once __DIR__ . '/conexao.php';
 
 try {
     $base = getenv('ME_BASE_URL') ?: ME_BASE_URL;
@@ -196,6 +197,59 @@ try {
             throw new Exception('Cliente não encontrado. Verifique o nome digitado.');
         }
         
+        // PASSO 2.5: SALVAR BUSCA/SELECÇÃO NO BANCO DE DADOS
+        $busca_id = null;
+        try {
+            // Verificar se tabela existe
+            $check_table = $pdo->query("
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'comercial_me_buscas_clientes'
+                )
+            ")->fetchColumn();
+            
+            if ($check_table) {
+                $degustacao_token = $input['degustacao_token'] ?? '';
+                $ip_origem = $_SERVER['REMOTE_ADDR'] ?? '';
+                $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                
+                $stmt_busca = $pdo->prepare("
+                    INSERT INTO comercial_me_buscas_clientes 
+                    (nome_buscado, nome_cliente_encontrado, quantidade_eventos, 
+                     cpf_api_encontrado, email_api_encontrado, telefone_api_encontrado, 
+                     me_event_id, cpf_digitado, status, ip_origem, user_agent, degustacao_token)
+                    VALUES (:nome_buscado, :nome_encontrado, :qtd_eventos,
+                            :cpf_api, :email_api, :telefone_api,
+                            :me_event_id, :cpf_digitado, 'busca_realizada', 
+                            :ip, :ua, :token)
+                    RETURNING id
+                ");
+                
+                $cpf_api_limpo_temp = preg_replace('/\D/', '', $cpf_api_encontrado ?? '');
+                
+                $stmt_busca->execute([
+                    ':nome_buscado' => $nome_cliente,
+                    ':nome_encontrado' => $evento_encontrado['nome_cliente'] ?? $nome_cliente,
+                    ':qtd_eventos' => count($events),
+                    ':cpf_api' => !empty($cpf_api_limpo_temp) ? $cpf_api_limpo_temp : null,
+                    ':email_api' => $evento_encontrado['email'] ?? null,
+                    ':telefone_api' => $evento_encontrado['telefone'] ?? null,
+                    ':me_event_id' => $evento_encontrado['id'] ?? null,
+                    ':cpf_digitado' => preg_replace('/\D/', '', $cpf_digitado),
+                    ':ip' => $ip_origem,
+                    ':ua' => $user_agent,
+                    ':token' => $degustacao_token ?: null
+                ]);
+                
+                $busca_id = $stmt_busca->fetchColumn();
+                error_log("ME Buscar Cliente - Busca salva no banco com ID: $busca_id");
+            }
+        } catch (Exception $e) {
+            error_log("ME Buscar Cliente - Erro ao salvar busca no banco (não crítico): " . $e->getMessage());
+            // Não interromper o fluxo se falhar ao salvar
+        }
+        
         // PASSO 3: VALIDAR CPF COM MECANISMO DE SEGURANÇA ROBUSTO
         $cpf_validado = false;
         
@@ -243,7 +297,43 @@ try {
         // VALIDAÇÃO 3: CPF digitado DEVE ser EXATAMENTE igual ao CPF da API
         if ($cpf_api_limpo !== $cpf_digitado_limpo) {
             error_log("ME Buscar Cliente - CPF NÃO CONFERE! API='$cpf_api_limpo' vs Digitado='$cpf_digitado_limpo'");
+            
+            // Atualizar busca no banco com status de CPF inválido
+            if ($busca_id) {
+                try {
+                    $stmt_update = $pdo->prepare("
+                        UPDATE comercial_me_buscas_clientes 
+                        SET cpf_bateu = false, 
+                            cpf_validado = false,
+                            status = 'cpf_invalido',
+                            atualizado_em = NOW()
+                        WHERE id = :id
+                    ");
+                    $stmt_update->execute([':id' => $busca_id]);
+                } catch (Exception $e) {
+                    error_log("Erro ao atualizar busca (não crítico): " . $e->getMessage());
+                }
+            }
+            
             throw new Exception('CPF não confere com o cadastro. Verifique os dados digitados de acordo com seu contrato.');
+        }
+        
+        // CPF bateu! Atualizar busca no banco
+        if ($busca_id) {
+            try {
+                $stmt_update = $pdo->prepare("
+                    UPDATE comercial_me_buscas_clientes 
+                    SET cpf_bateu = true, 
+                        cpf_validado = true,
+                        status = 'cpf_validado',
+                        atualizado_em = NOW()
+                    WHERE id = :id
+                ");
+                $stmt_update->execute([':id' => $busca_id]);
+                error_log("ME Buscar Cliente - Busca atualizada: CPF validado com sucesso (ID: $busca_id)");
+            } catch (Exception $e) {
+                error_log("Erro ao atualizar busca (não crítico): " . $e->getMessage());
+            }
         }
         
         // VALIDAÇÃO 4: Confirmação adicional - verificar se email/telefone também coincidem (camada extra de segurança)
@@ -254,14 +344,31 @@ try {
         
         $cpf_validado = true;
         
+        // Atualizar status para campos_preenchidos quando retornar dados
+        if ($busca_id) {
+            try {
+                $stmt_update = $pdo->prepare("
+                    UPDATE comercial_me_buscas_clientes 
+                    SET status = 'campos_preenchidos',
+                        atualizado_em = NOW()
+                    WHERE id = :id
+                ");
+                $stmt_update->execute([':id' => $busca_id]);
+            } catch (Exception $e) {
+                error_log("Erro ao atualizar status (não crítico): " . $e->getMessage());
+            }
+        }
+        
         error_log("ME Buscar Cliente - Retornando dados do cliente (CPF validado com sucesso).");
+        error_log("ME Buscar Cliente - Dados que serão retornados: nome=" . ($evento_encontrado['nome_cliente'] ?? 'N/A') . ", email=" . ($evento_encontrado['email'] ?? 'N/A') . ", telefone=" . ($evento_encontrado['telefone'] ?? 'N/A'));
         
         // Retornar dados do evento encontrado (APENAS após validação rigorosa)
         echo json_encode([
             'ok' => true,
             'evento' => $evento_encontrado,
             'cpf_validado' => true,
-            'mensagem' => 'Identidade confirmada com sucesso.'
+            'mensagem' => 'Identidade confirmada com sucesso.',
+            'busca_id' => $busca_id // ID da busca salva no banco
         ], JSON_UNESCAPED_UNICODE);
         
     } else {
