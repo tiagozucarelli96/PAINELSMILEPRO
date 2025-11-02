@@ -231,7 +231,19 @@ if ($action === 'save') {
         exit;
         
     } catch (Exception $e) {
-        $error_message = "Erro: " . $e->getMessage();
+        // Garantir que não há output buffer ativo antes do redirect
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
+        $redirectUrl = 'index.php?page=usuarios&error=' . urlencode("Erro: " . $e->getMessage());
+        $search = $_GET['search'] ?? $_POST['search'] ?? '';
+        if ($search) {
+            $redirectUrl .= '&search=' . urlencode($search);
+        }
+        
+        header('Location: ' . $redirectUrl);
+        exit;
     }
 }
 
