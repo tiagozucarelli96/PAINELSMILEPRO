@@ -203,7 +203,6 @@ ob_start();
 .funcionalidade-card-simples {
     text-decoration: none;
     color: inherit;
-    min-height: 200px; /* Altura mínima para manter proporção */
 }
 
 .funcionalidade-card-simples .funcionalidade-card-content {
