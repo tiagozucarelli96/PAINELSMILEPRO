@@ -1727,10 +1727,23 @@ if ($_POST && !$inscricoes_encerradas) {
                 }
                 
                 // CPF validado com sucesso! Preencher campos automaticamente
+                console.log('✅ CPF validado! Resposta completa do backend:', data);
+                console.log('   data.ok =', data.ok);
+                console.log('   data.evento =', data.evento);
+                console.log('   Tipo de data.evento:', typeof data.evento);
+                
                 const evento = data.evento;
+                
+                if (!evento) {
+                    console.error('❌ ERRO CRÍTICO: data.evento está null ou undefined!');
+                    console.log('   Resposta completa:', JSON.stringify(data, null, 2));
+                    return;
+                }
                 
                 console.log('✅ CPF validado com sucesso! Preenchendo campos...');
                 console.log('Dados do evento recebidos:', evento);
+                console.log('   Todos os campos do evento:', Object.keys(evento));
+                console.log('   Estrutura JSON completa:', JSON.stringify(evento, null, 2));
                 
                 // Limpar mensagem de erro anterior se existir
                 document.getElementById('meEventInfo').classList.add('hidden');
@@ -1749,29 +1762,81 @@ if ($_POST && !$inscricoes_encerradas) {
                 
                 // Preencher email (buscar em múltiplos campos possíveis)
                 // IMPORTANTE: Verificar TODOS os campos possíveis que podem conter email
-                const emailVal = evento.email || 
-                                evento.emailCliente || 
-                                evento.cliente_email || 
-                                evento.clienteEmail ||
-                                evento.contato_email ||
-                                evento.contatoEmail ||
-                                evento.email_contato ||
-                                evento.emailContato ||
-                                evento.e_mail ||
-                                evento['e-mail'] ||
-                                evento.e_mailCliente ||
-                                '';
+                console.log('🔍 Buscando email no evento...');
+                console.log('   evento.email =', evento.email);
+                console.log('   evento.emailCliente =', evento.emailCliente);
                 
-                if (emailInput && emailVal) {
-                    emailInput.value = emailVal;
-                    console.log('✅ Email preenchido:', emailVal);
-                    console.log('   Campo usado:', Object.keys(evento).find(k => evento[k] === emailVal) || 'email padrão');
-                } else if (emailInput) {
-                    console.warn('⚠️ Email não encontrado na resposta da API ME Eventos');
-                    console.log('   Campos disponíveis no evento:', Object.keys(evento));
-                    console.log('   Valores do evento:', evento);
+                let emailVal = '';
+                
+                // Lista de TODOS os campos possíveis
+                const camposEmail = [
+                    'email',
+                    'emailCliente',
+                    'cliente_email',
+                    'clienteEmail',
+                    'contato_email',
+                    'contatoEmail',
+                    'email_contato',
+                    'emailContato',
+                    'e_mail',
+                    'e-mail',
+                    'e_mailCliente',
+                    'e-mailCliente',
+                    'mail',
+                    'correio',
+                    'correio_eletronico'
+                ];
+                
+                // Tentar cada campo
+                for (const campo of camposEmail) {
+                    const valor = evento[campo];
+                    console.log(`   Verificando evento.${campo} =`, valor);
+                    if (valor && typeof valor === 'string' && valor.trim().length > 0 && valor.includes('@')) {
+                        emailVal = valor.trim();
+                        console.log(`   ✅ Email encontrado em evento.${campo}:`, emailVal);
+                        break;
+                    }
+                }
+                
+                // Se ainda não encontrou, buscar em qualquer campo que contenha '@'
+                if (!emailVal) {
+                    console.log('   Buscando email em qualquer campo que contenha @...');
+                    for (const key in evento) {
+                        const valor = evento[key];
+                        if (typeof valor === 'string' && valor.includes('@') && valor.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+                            emailVal = valor.trim();
+                            console.log(`   ✅ Email encontrado em campo genérico '${key}':`, emailVal);
+                            break;
+                        }
+                    }
+                }
+                
+                // Tentar preencher
+                if (emailInput) {
+                    if (emailVal) {
+                        emailInput.value = emailVal;
+                        console.log('✅ Email preenchido com sucesso:', emailVal);
+                        // Disparar evento input para trigger de validações
+                        emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    } else {
+                        console.warn('⚠️ Email NÃO encontrado em nenhum campo!');
+                        console.log('   Todos os campos do evento:', Object.keys(evento));
+                        console.log('   Todos os valores do evento:', JSON.stringify(evento, null, 2));
+                    }
                 } else {
-                    console.error('❌ Campo emailInput não encontrado!');
+                    console.error('❌ Campo emailInput não encontrado no DOM!');
+                    console.log('   Tentando encontrar campo de email de outras formas...');
+                    // Tentar encontrar por ID, name, placeholder, etc
+                    const emailInputAlt = document.querySelector('input[type="email"], input[name*="email" i], input[id*="email" i], input[placeholder*="email" i]');
+                    if (emailInputAlt) {
+                        console.log('   ✅ Campo de email encontrado por seletor alternativo:', emailInputAlt);
+                        if (emailVal) {
+                            emailInputAlt.value = emailVal;
+                            console.log('✅ Email preenchido (campo alternativo):', emailVal);
+                        }
+                    } else {
+                        console.error('   ❌ Nenhum campo de email encontrado no formulário!');
+                    }
                 }
                 
                 // Preencher telefone/celular (buscar em múltiplos campos possíveis)

@@ -528,15 +528,25 @@ try {
         
         error_log("ME Buscar Cliente - Retornando dados do cliente (CPF validado com sucesso).");
         error_log("ME Buscar Cliente - Dados que serão retornados: nome=" . ($evento_encontrado['nome_cliente'] ?? 'N/A') . ", email=" . ($evento_encontrado['email'] ?? 'N/A') . ", telefone=" . ($evento_encontrado['telefone'] ?? 'N/A'));
+        error_log("ME Buscar Cliente - Estrutura completa do evento_encontrado: " . json_encode($evento_encontrado, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        
+        // Garantir que email está presente no array retornado (mesmo se vazio, para debug)
+        if (empty($evento_encontrado['email'])) {
+            error_log("ME Buscar Cliente - ⚠️ ATENÇÃO: Email está VAZIO no array evento_encontrado que será retornado!");
+        }
         
         // Retornar dados do evento encontrado (APENAS após validação rigorosa)
-        echo json_encode([
+        $resposta = [
             'ok' => true,
             'evento' => $evento_encontrado,
             'cpf_validado' => true,
             'mensagem' => 'Identidade confirmada com sucesso.',
             'busca_id' => $busca_id // ID da busca salva no banco
-        ], JSON_UNESCAPED_UNICODE);
+        ];
+        
+        error_log("ME Buscar Cliente - JSON que será retornado (primeiros 3000 caracteres): " . substr(json_encode($resposta, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), 0, 3000));
+        
+        echo json_encode($resposta, JSON_UNESCAPED_UNICODE);
         
     } else {
         throw new Exception('Método não permitido');
