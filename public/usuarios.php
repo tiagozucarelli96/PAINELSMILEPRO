@@ -149,15 +149,20 @@ if ($action === 'delete' && $user_id > 0) {
 
 if ($action === 'save') {
     try {
-        // Função helper para verificar se coluna existe
+        // Função helper para verificar se coluna existe (com proteção SQL injection)
         $columnExists = function($columnName) use ($pdo) {
             static $cache = [];
             if (isset($cache[$columnName])) {
                 return $cache[$columnName];
             }
             try {
-                $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                     WHERE table_name = 'usuarios' AND column_name = '$columnName'");
+                // Validar nome da coluna (apenas letras, números, underscore)
+                if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $columnName)) {
+                    return false;
+                }
+                $stmt = $pdo->prepare("SELECT column_name FROM information_schema.columns 
+                                     WHERE table_name = 'usuarios' AND column_name = :column_name");
+                $stmt->execute([':column_name' => $columnName]);
                 $exists = $stmt->rowCount() > 0;
                 $cache[$columnName] = $exists;
                 return $exists;
