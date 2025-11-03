@@ -149,17 +149,38 @@ if ($action === 'delete' && $user_id > 0) {
 
 if ($action === 'save') {
     try {
+        // Função helper para verificar se coluna existe
+        $columnExists = function($columnName) use ($pdo) {
+            static $cache = [];
+            if (isset($cache[$columnName])) {
+                return $cache[$columnName];
+            }
+            try {
+                $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                     WHERE table_name = 'usuarios' AND column_name = '$columnName'");
+                $exists = $stmt->rowCount() > 0;
+                $cache[$columnName] = $exists;
+                return $exists;
+            } catch (Exception $e) {
+                return false;
+            }
+        };
+        
         $nome = trim($_POST['nome'] ?? '');
         $login = trim($_POST['login'] ?? '');
         $email = trim($_POST['email'] ?? '');
         $senha = trim($_POST['senha'] ?? '');
-        $cargo = trim($_POST['cargo'] ?? '');
-        $cpf = trim($_POST['cpf'] ?? '');
-        $admissao_data = $_POST['admissao_data'] ?? null;
-        $salario_base = (float)($_POST['salario_base'] ?? 0);
-        $pix_tipo = trim($_POST['pix_tipo'] ?? '');
-        $pix_chave = trim($_POST['pix_chave'] ?? '');
-        $status_empregado = $_POST['status_empregado'] ?? 'ativo';
+        
+        // Campos opcionais (podem não existir no banco)
+        $campos_opcionais = [
+            'cargo' => trim($_POST['cargo'] ?? ''),
+            'cpf' => trim($_POST['cpf'] ?? ''),
+            'admissao_data' => $_POST['admissao_data'] ?? null,
+            'salario_base' => (float)($_POST['salario_base'] ?? 0),
+            'pix_tipo' => trim($_POST['pix_tipo'] ?? ''),
+            'pix_chave' => trim($_POST['pix_chave'] ?? ''),
+            'status_empregado' => $_POST['status_empregado'] ?? 'ativo'
+        ];
         
         // Permissões
         $permissoes = [
@@ -188,26 +209,32 @@ if ($action === 'save') {
         
         if ($user_id > 0) {
             // Editar usuário existente
-            $sql = "UPDATE usuarios SET 
-                    nome = :nome, login = :login, email = :email, cargo = :cargo,
-                    cpf = :cpf, admissao_data = :admissao_data, salario_base = :salario_base,
-                    pix_tipo = :pix_tipo, pix_chave = :pix_chave, status_empregado = :status_empregado";
-            
+            $sql = "UPDATE usuarios SET nome = :nome, login = :login, email = :email";
             $params = [
-                ':nome' => $nome, ':login' => $login, ':email' => $email, ':cargo' => $cargo,
-                ':cpf' => $cpf, ':admissao_data' => $admissao_data, ':salario_base' => $salario_base,
-                ':pix_tipo' => $pix_tipo, ':pix_chave' => $pix_chave, ':status_empregado' => $status_empregado
+                ':nome' => $nome, 
+                ':login' => $login, 
+                ':email' => $email
             ];
+            
+            // Adicionar campos opcionais apenas se existirem no banco
+            foreach ($campos_opcionais as $campo => $valor) {
+                if ($columnExists($campo)) {
+                    $sql .= ", $campo = :$campo";
+                    $params[":$campo"] = $valor;
+                }
+            }
             
             if ($senha) {
                 $sql .= ", senha = :senha";
                 $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
             }
             
-            // Adicionar permissões
+            // Adicionar permissões apenas se as colunas existirem
             foreach ($permissoes as $perm => $value) {
-                $sql .= ", $perm = :$perm";
-                $params[":$perm"] = $value;
+                if ($columnExists($perm)) {
+                    $sql .= ", $perm = :$perm";
+                    $params[":$perm"] = $value;
+                }
             }
             
             $sql .= " WHERE id = :id";
@@ -219,18 +246,31 @@ if ($action === 'save') {
                 throw new Exception("Senha é obrigatória para novos usuários");
             }
             
-            $sql = "INSERT INTO usuarios (nome, login, email, senha, cargo, cpf, admissao_data, salario_base, pix_tipo, pix_chave, status_empregado";
-            $values = "VALUES (:nome, :login, :email, :senha, :cargo, :cpf, :admissao_data, :salario_base, :pix_tipo, :pix_chave, :status_empregado";
+            $sql = "INSERT INTO usuarios (nome, login, email, senha";
+            $values = "VALUES (:nome, :login, :email, :senha";
             $params = [
-                ':nome' => $nome, ':login' => $login, ':email' => $email, ':senha' => password_hash($senha, PASSWORD_DEFAULT),
-                ':cargo' => $cargo, ':cpf' => $cpf, ':admissao_data' => $admissao_data, ':salario_base' => $salario_base,
-                ':pix_tipo' => $pix_tipo, ':pix_chave' => $pix_chave, ':status_empregado' => $status_empregado
+                ':nome' => $nome, 
+                ':login' => $login, 
+                ':email' => $email, 
+                ':senha' => password_hash($senha, PASSWORD_DEFAULT)
             ];
             
+            // Adicionar campos opcionais apenas se existirem no banco
+            foreach ($campos_opcionais as $campo => $valor) {
+                if ($columnExists($campo)) {
+                    $sql .= ", $campo";
+                    $values .= ", :$campo";
+                    $params[":$campo"] = $valor;
+                }
+            }
+            
+            // Adicionar permissões apenas se as colunas existirem
             foreach ($permissoes as $perm => $value) {
-                $sql .= ", $perm";
-                $values .= ", :$perm";
-                $params[":$perm"] = $value;
+                if ($columnExists($perm)) {
+                    $sql .= ", $perm";
+                    $values .= ", :$perm";
+                    $params[":$perm"] = $value;
+                }
             }
             
             $sql .= ") $values)";
@@ -648,22 +688,19 @@ ob_start();
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 0.75rem 1rem;
-            border-radius: 8px;
+            padding: 0.625rem 1rem;
+            border-radius: 6px;
             font-size: 0.875rem;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
-            display: inline-flex;
+            display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            transition: all 0.2s;
+            transition: background 0.2s;
             white-space: nowrap;
             min-width: 0;
-            max-width: 100%;
             box-sizing: border-box;
-            overflow: hidden;
-            flex-shrink: 1;
         }
         
         .btn-edit:hover {
@@ -674,21 +711,19 @@ ob_start();
             background: #dc2626;
             color: white;
             border: none;
-            padding: 0.75rem 1.25rem;
-            border-radius: 8px;
+            padding: 0.625rem 1rem;
+            border-radius: 6px;
             font-size: 0.875rem;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
-            display: inline-flex;
+            display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
-            transition: all 0.2s;
+            transition: background 0.2s;
             white-space: nowrap;
             flex-shrink: 0;
             box-sizing: border-box;
-            overflow: hidden;
-            max-width: 100%;
         }
         
         .btn-delete:hover {
@@ -697,7 +732,8 @@ ob_start();
         
         .btn-edit span,
         .btn-delete span {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
         }
         
         .modal {
