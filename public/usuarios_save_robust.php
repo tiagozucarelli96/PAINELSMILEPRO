@@ -78,12 +78,9 @@ class UsuarioSaveManager {
         try {
             $columns = $this->getExistingColumns();
             
-            // Campos obrigatórios
-            $required = ['nome', 'email'];
-            foreach ($required as $field) {
-                if (empty($data[$field])) {
-                    throw new Exception("Campo obrigatório faltando: $field");
-                }
+            // Campos obrigatórios - apenas nome é sempre obrigatório
+            if (empty($data['nome'])) {
+                throw new Exception("Nome é obrigatório");
             }
             
             // Validar dados básicos
@@ -108,9 +105,9 @@ class UsuarioSaveManager {
                 throw new Exception("Senha é obrigatória para novos usuários");
             }
             
-            // Campos opcionais com verificações
+            // Campos opcionais com verificações (login é tratado separadamente acima)
             $optionalFields = [
-                'login', 'cargo', 'cpf', 'admissao_data', 'salario_base',
+                'cargo', 'cpf', 'admissao_data', 'salario_base',
                 'pix_tipo', 'pix_chave', 'status_empregado'
             ];
             
