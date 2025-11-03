@@ -578,19 +578,20 @@ ob_start();
             background: #1e3a8a;
             color: white;
             border: none;
-            padding: 0.625rem 1rem;
+            padding: 0.625rem 0.875rem;
             border-radius: 6px;
-            font-size: 0.875rem;
+            font-size: 0.8125rem;
             font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            transition: background 0.2s;
+            gap: 0.375rem;
+            transition: all 0.15s ease;
             white-space: nowrap;
-            min-width: 0;
+            min-width: 80px;
             box-sizing: border-box;
+            line-height: 1.4;
         }
         
         .btn-edit:hover {
