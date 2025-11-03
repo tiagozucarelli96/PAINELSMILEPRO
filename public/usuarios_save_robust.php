@@ -90,13 +90,21 @@ class UsuarioSaveManager {
             $nome = trim($data['nome'] ?? '');
             $email = trim($data['email'] ?? '');
             $senha = trim($data['senha'] ?? '');
-            $login = trim($data['login'] ?? $email); // Fallback para email se login não existir
             
-            if (empty($nome) || empty($email)) {
-                throw new Exception("Nome e email são obrigatórios");
+            // Login: usar email como fallback se coluna login não existir
+            $hasLoginColumn = $this->columnExists('login');
+            $login = $hasLoginColumn ? trim($data['login'] ?? $email) : $email;
+            
+            if (empty($nome)) {
+                throw new Exception("Nome é obrigatório");
             }
             
-            if ($userId === 0 && empty($senha)) {
+            if (empty($email)) {
+                throw new Exception("Email é obrigatório");
+            }
+            
+            // Verificar se senha é obrigatória (coluna existe e é novo usuário)
+            if ($this->columnExists('senha') && $userId === 0 && empty($senha)) {
                 throw new Exception("Senha é obrigatória para novos usuários");
             }
             
@@ -130,8 +138,14 @@ class UsuarioSaveManager {
      * Atualizar usuário existente
      */
     private function update($userId, $nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns) {
-        $sql = "UPDATE usuarios SET nome = :nome, email = :email";
-        $params = [':nome' => $nome, ':email' => $email];
+        $sql = "UPDATE usuarios SET nome = :nome";
+        $params = [':nome' => $nome];
+        
+        // Adicionar email se coluna existir
+        if ($this->columnExists('email')) {
+            $sql .= ", email = :email";
+            $params[':email'] = $email;
+        }
         
         // Adicionar login se existir
         if ($this->columnExists('login')) {
@@ -139,7 +153,7 @@ class UsuarioSaveManager {
             $params[':login'] = $login;
         }
         
-        // Adicionar senha se fornecida
+        // Adicionar senha se fornecida e coluna existir
         if (!empty($senha) && $this->columnExists('senha')) {
             $sql .= ", senha = :senha";
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
@@ -183,13 +197,26 @@ class UsuarioSaveManager {
      * Inserir novo usuário
      */
     private function insert($nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns) {
-        $sqlCols = ['nome', 'email', 'senha'];
-        $sqlVals = [':nome', ':email', ':senha'];
-        $params = [
-            ':nome' => $nome,
-            ':email' => $email,
-            ':senha' => password_hash($senha, PASSWORD_DEFAULT)
-        ];
+        $sqlCols = ['nome'];
+        $sqlVals = [':nome'];
+        $params = [':nome' => $nome];
+        
+        // Adicionar email se coluna existir
+        if ($this->columnExists('email')) {
+            $sqlCols[] = 'email';
+            $sqlVals[] = ':email';
+            $params[':email'] = $email;
+        }
+        
+        // Adicionar senha se coluna existir e senha fornecida
+        if ($this->columnExists('senha')) {
+            if (empty($senha)) {
+                throw new Exception("Senha é obrigatória para novos usuários");
+            }
+            $sqlCols[] = 'senha';
+            $sqlVals[] = ':senha';
+            $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
+        }
         
         // Adicionar login se existir
         if ($this->columnExists('login')) {
