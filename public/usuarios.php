@@ -501,8 +501,8 @@ ob_start();
             box-sizing: border-box;
             width: 100%;
             position: relative;
-            overflow: hidden;
-            min-height: 300px;
+            overflow: visible;
+            min-height: auto;
         }
         
         .user-card:hover {
@@ -630,15 +630,17 @@ ob_start();
         .user-actions {
             display: flex;
             gap: 0.75rem;
-            margin-top: auto;
+            margin-top: 1rem;
             padding-top: 1rem;
+            padding-bottom: 0;
             border-top: 1px solid #e5e7eb;
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
             align-items: stretch;
             flex-shrink: 0;
-            overflow: hidden;
+            overflow: visible;
+            position: relative;
         }
         
         .btn-edit {
@@ -1456,7 +1458,10 @@ ob_start();
                 form.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
                 
                 // Buscar dados do usuário via AJAX
-                fetch('?action=get_user&id=' + userId, {
+                // IMPORTANTE: Incluir page=usuarios na URL para que index.php processe corretamente
+                const url = window.location.pathname + '?page=usuarios&action=get_user&id=' + userId;
+                console.log('Fetch URL:', url);
+                fetch(url, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',

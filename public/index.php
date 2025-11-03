@@ -71,16 +71,24 @@ if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
 // IMPORTANTE: Processar requisições AJAX ANTES de qualquer verificação de login/redirecionamento
 // Isso permite que endpoints AJAX retornem JSON mesmo quando há problemas de sessão
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
-if (!empty($action) && !empty($_GET['page'])) {
+$is_ajax_request = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
+                   strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+
+// Se for requisição AJAX com action, processar ANTES de tudo
+if ((!empty($action) || $is_ajax_request) && !empty($_GET['page'])) {
     // Se for uma requisição AJAX, incluir a página diretamente para processar o action
     $ajax_pages = ['usuarios']; // Páginas que têm endpoints AJAX
     if (in_array($_GET['page'], $ajax_pages)) {
         $ajax_page_file = __DIR__ . '/' . $_GET['page'] . '.php';
         if (file_exists($ajax_page_file)) {
-            // Iniciar sessão se necessário
+            // Iniciar sessão se necessário (já está iniciada acima, mas garantir)
             if (session_status() === PHP_SESSION_NONE) {
                 session_start();
             }
+            
+            // Carregar permissões antes de processar
+            require_once __DIR__ . '/permissoes_boot.php';
+            
             // Incluir o arquivo que processará o action e fará exit
             require $ajax_page_file;
             exit; // Não continuar processamento normal
