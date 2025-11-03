@@ -148,157 +148,42 @@ if ($action === 'delete' && $user_id > 0) {
 }
 
 if ($action === 'save') {
+    // Garantir que não há output buffer ativo antes de processar
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    
     try {
-        // Função helper para verificar se coluna existe (com proteção SQL injection)
-        $columnExists = function($columnName) use ($pdo) {
-            static $cache = [];
-            if (isset($cache[$columnName])) {
-                return $cache[$columnName];
-            }
-            try {
-                // Validar nome da coluna (apenas letras, números, underscore)
-                if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $columnName)) {
-                    return false;
-                }
-                $stmt = $pdo->prepare("SELECT column_name FROM information_schema.columns 
-                                     WHERE table_name = 'usuarios' AND column_name = :column_name");
-                $stmt->execute([':column_name' => $columnName]);
-                $exists = $stmt->rowCount() > 0;
-                $cache[$columnName] = $exists;
-                return $exists;
-            } catch (Exception $e) {
-                return false;
-            }
-        };
+        // Usar sistema robusto de salvamento
+        require_once __DIR__ . '/usuarios_save_robust.php';
         
-        $nome = trim($_POST['nome'] ?? '');
-        $login = trim($_POST['login'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $senha = trim($_POST['senha'] ?? '');
+        $manager = new UsuarioSaveManager($pdo);
         
-        // Campos opcionais (podem não existir no banco)
-        $campos_opcionais = [
-            'cargo' => trim($_POST['cargo'] ?? ''),
-            'cpf' => trim($_POST['cpf'] ?? ''),
-            'admissao_data' => $_POST['admissao_data'] ?? null,
-            'salario_base' => (float)($_POST['salario_base'] ?? 0),
-            'pix_tipo' => trim($_POST['pix_tipo'] ?? ''),
-            'pix_chave' => trim($_POST['pix_chave'] ?? ''),
-            'status_empregado' => $_POST['status_empregado'] ?? 'ativo'
-        ];
+        // Preparar dados do POST
+        $data = $_POST;
         
-        // Permissões
-        $permissoes = [
-            // Módulos da sidebar
-            'perm_agenda' => isset($_POST['perm_agenda']) ? 1 : 0,
-            'perm_comercial' => isset($_POST['perm_comercial']) ? 1 : 0,
-            'perm_logistico' => isset($_POST['perm_logistico']) ? 1 : 0,
-            'perm_configuracoes' => isset($_POST['perm_configuracoes']) ? 1 : 0,
-            'perm_cadastros' => isset($_POST['perm_cadastros']) ? 1 : 0,
-            'perm_financeiro' => isset($_POST['perm_financeiro']) ? 1 : 0,
-            'perm_administrativo' => isset($_POST['perm_administrativo']) ? 1 : 0,
-            'perm_rh' => isset($_POST['perm_rh']) ? 1 : 0,
-            'perm_banco_smile' => isset($_POST['perm_banco_smile']) ? 1 : 0,
-            'perm_banco_smile_admin' => isset($_POST['perm_banco_smile_admin']) ? 1 : 0,
-            // Permissões específicas
-            'perm_usuarios' => isset($_POST['perm_usuarios']) ? 1 : 0,
-            'perm_pagamentos' => isset($_POST['perm_pagamentos']) ? 1 : 0,
-            'perm_tarefas' => isset($_POST['perm_tarefas']) ? 1 : 0,
-            'perm_demandas' => isset($_POST['perm_demandas']) ? 1 : 0,
-            'perm_portao' => isset($_POST['perm_portao']) ? 1 : 0,
-            'perm_notas_fiscais' => isset($_POST['perm_notas_fiscais']) ? 1 : 0,
-            'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']) ? 1 : 0,
-            'perm_dados_contrato' => isset($_POST['perm_dados_contrato']) ? 1 : 0,
-            'perm_uso_fiorino' => isset($_POST['perm_uso_fiorino']) ? 1 : 0
-        ];
+        // Garantir que login existe (fallback para email)
+        if (empty($data['login']) && !empty($data['email'])) {
+            $data['login'] = $data['email'];
+        }
         
-        if ($user_id > 0) {
-            // Editar usuário existente
-            $sql = "UPDATE usuarios SET nome = :nome, login = :login, email = :email";
-            $params = [
-                ':nome' => $nome, 
-                ':login' => $login, 
-                ':email' => $email
-            ];
-            
-            // Adicionar campos opcionais apenas se existirem no banco
-            foreach ($campos_opcionais as $campo => $valor) {
-                if ($columnExists($campo)) {
-                    $sql .= ", $campo = :$campo";
-                    $params[":$campo"] = $valor;
-                }
+        // Salvar usuário
+        $result = $manager->save($data, $user_id);
+        
+        if ($result['success']) {
+            // Redirecionar para evitar reenvio do formulário
+            $redirectUrl = 'index.php?page=usuarios';
+            $search = $_GET['search'] ?? $_POST['search'] ?? '';
+            if ($search) {
+                $redirectUrl .= '&search=' . urlencode($search);
             }
+            $redirectUrl .= '&success=' . urlencode($user_id > 0 ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!");
             
-            if ($senha) {
-                $sql .= ", senha = :senha";
-                $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
-            }
-            
-            // Adicionar permissões apenas se as colunas existirem
-            foreach ($permissoes as $perm => $value) {
-                if ($columnExists($perm)) {
-                    $sql .= ", $perm = :$perm";
-                    $params[":$perm"] = $value;
-                }
-            }
-            
-            $sql .= " WHERE id = :id";
-            $params[':id'] = $user_id;
-            
+            header('Location: ' . $redirectUrl);
+            exit;
         } else {
-            // Criar novo usuário
-            if (!$senha) {
-                throw new Exception("Senha é obrigatória para novos usuários");
-            }
-            
-            $sql = "INSERT INTO usuarios (nome, login, email, senha";
-            $values = "VALUES (:nome, :login, :email, :senha";
-            $params = [
-                ':nome' => $nome, 
-                ':login' => $login, 
-                ':email' => $email, 
-                ':senha' => password_hash($senha, PASSWORD_DEFAULT)
-            ];
-            
-            // Adicionar campos opcionais apenas se existirem no banco
-            foreach ($campos_opcionais as $campo => $valor) {
-                if ($columnExists($campo)) {
-                    $sql .= ", $campo";
-                    $values .= ", :$campo";
-                    $params[":$campo"] = $valor;
-                }
-            }
-            
-            // Adicionar permissões apenas se as colunas existirem
-            foreach ($permissoes as $perm => $value) {
-                if ($columnExists($perm)) {
-                    $sql .= ", $perm";
-                    $values .= ", :$perm";
-                    $params[":$perm"] = $value;
-                }
-            }
-            
-            $sql .= ") $values)";
+            throw new Exception($result['message'] ?? 'Erro ao salvar usuário');
         }
-        
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        
-        // Garantir que não há output buffer ativo antes do redirect
-        while (ob_get_level() > 0) {
-            ob_end_clean();
-        }
-        
-        // Redirecionar para evitar reenvio do formulário
-        $redirectUrl = 'index.php?page=usuarios';
-        $search = $_GET['search'] ?? $_POST['search'] ?? '';
-        if ($search) {
-            $redirectUrl .= '&search=' . urlencode($search);
-        }
-        $redirectUrl .= '&success=' . urlencode($user_id > 0 ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!");
-        
-        header('Location: ' . $redirectUrl);
-        exit;
         
     } catch (Exception $e) {
         // Garantir que não há output buffer ativo antes do redirect
