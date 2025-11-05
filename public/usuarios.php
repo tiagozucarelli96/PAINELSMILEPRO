@@ -560,7 +560,7 @@ ob_start();
         .user-actions {
             display: flex;
             gap: 0.75rem;
-            margin-top: 1rem;
+            margin-top: auto;
             padding-top: 1rem;
             padding-bottom: 0;
             border-top: 1px solid #e5e7eb;
@@ -602,19 +602,26 @@ ob_start();
             background: #dc2626;
             color: white;
             border: none;
-            padding: 0.625rem 1rem;
+            padding: 0.625rem 0.875rem;
             border-radius: 6px;
-            font-size: 0.875rem;
+            font-size: 0.8125rem;
             font-weight: 500;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            transition: background 0.2s;
+            gap: 0.375rem;
+            transition: all 0.15s ease;
             white-space: nowrap;
             flex-shrink: 0;
+            min-width: 80px;
             box-sizing: border-box;
+            line-height: 1.4;
+        }
+        
+        .btn-delete:active {
+            background: #991b1b;
+            transform: scale(0.98);
         }
         
         .btn-delete:hover {
@@ -1039,17 +1046,18 @@ ob_start();
             <div class="users-grid">
                 <?php foreach ($usuarios as $user): ?>
                     <div class="user-card">
-                        <div class="user-header">
-                            <div class="user-avatar">
-                                <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                        <div class="user-card-content">
+                            <div class="user-header">
+                                <div class="user-avatar">
+                                    <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                                </div>
+                                <div class="user-info">
+                                    <h3><?= h($user['nome'] ?? 'Sem nome') ?></h3>
+                                    <p><?= h($user['login'] ?? 'Sem login') ?></p>
+                                </div>
                             </div>
-                            <div class="user-info">
-                                <h3><?= h($user['nome'] ?? 'Sem nome') ?></h3>
-                                <p><?= h($user['login'] ?? 'Sem login') ?></p>
-                            </div>
-                        </div>
-                        
-                        <div class="user-details">
+
+                            <div class="user-details">
                             <div class="detail-row">
                                 <span class="detail-label">📧 Email:</span>
                                 <span class="detail-value"><?= h($user['email'] ?? '—') ?></span>
@@ -1138,6 +1146,7 @@ ob_start();
                                 </div>
                             </div>
                             <?php endif; ?>
+                            </div>
                         </div>
                         
                         <div class="user-actions">
