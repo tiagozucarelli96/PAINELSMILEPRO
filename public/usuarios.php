@@ -1240,7 +1240,8 @@ ob_start();
                     <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">Módulos da Sidebar (correspondem aos itens do menu)</p>
                     <div class="permissions-grid-form">
                         <?php
-                        $permissions_sidebar = [
+                        // Verificar quais permissões existem no banco antes de exibir
+                        $permissions_sidebar_all = [
                             'perm_agenda' => '📅 Agenda',
                             'perm_comercial' => '📋 Comercial',
                             'perm_logistico' => '📦 Logístico',
@@ -1252,6 +1253,22 @@ ob_start();
                             'perm_banco_smile' => '🏦 Banco Smile',
                             'perm_banco_smile_admin' => '🏦 Admin Banco Smile'
                         ];
+                        
+                        // Verificar quais colunas existem no banco
+                        $stmt_check = $pdo->query("
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'usuarios'
+                            AND column_name IN ('" . implode("','", array_keys($permissions_sidebar_all)) . "')
+                        ");
+                        $existing_perms = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
+                        $existing_perms = array_flip($existing_perms);
+                        
+                        // Filtrar apenas permissões que existem no banco
+                        $permissions_sidebar = array_filter($permissions_sidebar_all, function($key) use ($existing_perms) {
+                            return isset($existing_perms[$key]);
+                        }, ARRAY_FILTER_USE_KEY);
                         
                         foreach ($permissions_sidebar as $perm => $label):
                         ?>
@@ -1265,7 +1282,8 @@ ob_start();
                     <h3 class="permissions-title" style="margin-top: 2rem;">🔧 Permissões Específicas</h3>
                     <div class="permissions-grid-form">
                         <?php
-                        $permissions_especificas = [
+                        // Verificar quais permissões existem no banco antes de exibir
+                        $permissions_especificas_all = [
                             'perm_usuarios' => '👥 Usuários',
                             'perm_pagamentos' => '💳 Pagamentos',
                             'perm_tarefas' => '📋 Tarefas',
@@ -1276,6 +1294,22 @@ ob_start();
                             'perm_dados_contrato' => '📋 Dados Contrato',
                             'perm_uso_fiorino' => '🚐 Uso Fiorino'
                         ];
+                        
+                        // Verificar quais colunas existem no banco
+                        $stmt_check2 = $pdo->query("
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_schema = 'public' 
+                            AND table_name = 'usuarios'
+                            AND column_name IN ('" . implode("','", array_keys($permissions_especificas_all)) . "')
+                        ");
+                        $existing_perms2 = $stmt_check2->fetchAll(PDO::FETCH_COLUMN);
+                        $existing_perms2 = array_flip($existing_perms2);
+                        
+                        // Filtrar apenas permissões que existem no banco
+                        $permissions_especificas = array_filter($permissions_especificas_all, function($key) use ($existing_perms2) {
+                            return isset($existing_perms2[$key]);
+                        }, ARRAY_FILTER_USE_KEY);
                         
                         foreach ($permissions_especificas as $perm => $label):
                         ?>
