@@ -59,26 +59,51 @@ if ($action === 'get_user' && $user_id > 0) {
 
 // Salvar usuário
 if ($action === 'save') {
-    while (ob_get_level() > 0) { ob_end_clean(); }
+    // Limpar qualquer output buffer
+    while (ob_get_level() > 0) { 
+        ob_end_clean(); 
+    }
+    
+    // Verificar sessão
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        header('Location: index.php?page=usuarios&error=' . urlencode('Sessão expirada ou sem permissão'));
+        exit;
+    }
     
     try {
         require_once __DIR__ . '/usuarios_save_robust.php';
         $manager = new UsuarioSaveManager($pdo);
         
         $data = $_POST;
+        
+        // Validar campos obrigatórios
+        if (empty($data['nome'])) {
+            throw new Exception('Nome é obrigatório');
+        }
+        if (empty($data['email'])) {
+            throw new Exception('Email é obrigatório');
+        }
+        
+        // Se login vazio, usar email
         if (empty($data['login']) && !empty($data['email'])) {
             $data['login'] = $data['email'];
+        }
+        
+        // Validar senha para novos usuários
+        if ($user_id === 0 && empty($data['senha'])) {
+            throw new Exception('Senha é obrigatória para novos usuários');
         }
         
         $result = $manager->save($data, $user_id);
         
         if ($result['success']) {
-            $redirectUrl = 'index.php?page=usuarios&success=' . urlencode($user_id > 0 ? 'Usuário atualizado!' : 'Usuário criado!');
+            $redirectUrl = 'index.php?page=usuarios&success=' . urlencode($user_id > 0 ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
             header('Location: ' . $redirectUrl);
         } else {
             header('Location: index.php?page=usuarios&error=' . urlencode($result['message'] ?? 'Erro ao salvar'));
         }
     } catch (Exception $e) {
+        error_log("Erro ao salvar usuário: " . $e->getMessage());
         header('Location: index.php?page=usuarios&error=' . urlencode('Erro: ' . $e->getMessage()));
     }
     exit;
@@ -127,27 +152,22 @@ $search = trim($_GET['search'] ?? '');
 $sql = "SELECT id, nome, login, email, cargo, ativo, created_at";
 $params = [];
 
-// Adicionar colunas de permissões se existirem
-$perm_cols = ['perm_agenda', 'perm_comercial', 'perm_logistico', 'perm_configuracoes', 
-              'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_rh',
-              'perm_banco_smile', 'perm_banco_smile_admin', 'perm_usuarios', 'perm_pagamentos',
-              'perm_tarefas', 'perm_demandas', 'perm_portao', 'perm_notas_fiscais',
-              'perm_estoque_logistico', 'perm_dados_contrato', 'perm_uso_fiorino'];
-
+// Buscar todas as colunas de permissões que existem no banco
 try {
     $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                          WHERE table_schema = 'public' AND table_name = 'usuarios' 
-                         AND column_name LIKE 'perm_%'");
+                         AND column_name LIKE 'perm_%' 
+                         ORDER BY column_name");
     $existing_perms = $stmt->fetchAll(PDO::FETCH_COLUMN);
     $existing_perms = array_flip($existing_perms);
     
-    foreach ($perm_cols as $perm) {
-        if (isset($existing_perms[$perm])) {
-            $sql .= ", $perm";
-        }
+    // Adicionar colunas de permissões ao SELECT
+    foreach ($existing_perms as $perm => $val) {
+        $sql .= ", $perm";
     }
 } catch (Exception $e) {
     error_log("Erro ao verificar permissões: " . $e->getMessage());
+    $existing_perms = [];
 }
 
 $sql .= " FROM usuarios WHERE 1=1";
@@ -592,8 +612,8 @@ ob_start();
     <div class="users-grid">
         <?php foreach ($usuarios as $user): 
             $permissoes_ativas = [];
-            foreach ($perm_cols as $perm) {
-                if (isset($existing_perms[$perm]) && !empty($user[$perm])) {
+            foreach ($existing_perms as $perm => $val) {
+                if (!empty($user[$perm])) {
                     $permissoes_ativas[] = $perm;
                 }
             }
@@ -683,8 +703,9 @@ ob_start();
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Senha <?= $user_id > 0 ? '(deixe em branco para não alterar)' : '*' ?></label>
-                    <input type="password" name="senha" class="form-input" <?= $user_id > 0 ? '' : 'required' ?>>
+                    <label class="form-label" id="senhaLabel">Senha *</label>
+                    <input type="password" name="senha" id="senhaInput" class="form-input" required>
+                    <small style="color: #64748b; font-size: 0.75rem; display: none;" id="senhaHint">(deixe em branco para não alterar)</small>
                 </div>
                 
                 <div class="form-group">
@@ -693,8 +714,8 @@ ob_start();
                 </div>
                 
                 <?php
-                // Verificar permissões existentes
-                $all_perms = [
+                // Mapeamento de permissões com labels
+                $perm_labels = [
                     'perm_agenda' => '📅 Agenda',
                     'perm_comercial' => '📋 Comercial',
                     'perm_logistico' => '📦 Logístico',
@@ -713,12 +734,28 @@ ob_start();
                     'perm_notas_fiscais' => '📄 Notas Fiscais',
                     'perm_estoque_logistico' => '📦 Estoque',
                     'perm_dados_contrato' => '📋 Contratos',
-                    'perm_uso_fiorino' => '🚐 Fiorino'
+                    'perm_uso_fiorino' => '🚐 Fiorino',
+                    'perm_agenda_ver' => '👁️ Ver Agenda',
+                    'perm_agenda_editar' => '✏️ Editar Agenda',
+                    'perm_agenda_criar' => '➕ Criar Agenda',
+                    'perm_agenda_excluir' => '🗑️ Excluir Agenda',
+                    'perm_comercial_ver' => '👁️ Ver Comercial',
+                    'perm_comercial_deg_editar' => '✏️ Editar Degustações',
+                    'perm_demandas_ver' => '👁️ Ver Demandas',
+                    'perm_demandas_editar' => '✏️ Editar Demandas',
+                    'perm_demandas_criar' => '➕ Criar Demandas',
+                    'perm_demandas_excluir' => '🗑️ Excluir Demandas',
                 ];
                 
+                // Filtrar apenas permissões que existem no banco
                 $available_perms = [];
-                foreach ($all_perms as $perm => $label) {
-                    if (isset($existing_perms[$perm])) {
+                foreach ($existing_perms as $perm => $val) {
+                    if (isset($perm_labels[$perm])) {
+                        $available_perms[$perm] = $perm_labels[$perm];
+                    } else {
+                        // Se não tiver label, usar o nome da permissão formatado
+                        $label = str_replace('perm_', '', $perm);
+                        $label = ucwords(str_replace('_', ' ', $label));
                         $available_perms[$perm] = $label;
                     }
                 }
@@ -726,15 +763,19 @@ ob_start();
                 
                 <?php if (!empty($available_perms)): ?>
                 <div class="permissions-section">
-                    <h3 class="permissions-title">Permissões</h3>
+                    <h3 class="permissions-title">Permissões do Sistema</h3>
                     <div class="permissions-grid">
                         <?php foreach ($available_perms as $perm => $label): ?>
                         <div class="permission-item">
-                            <input type="checkbox" name="<?= $perm ?>" id="<?= $perm ?>" value="1">
-                            <label for="<?= $perm ?>"><?= $label ?></label>
+                            <input type="checkbox" name="<?= htmlspecialchars($perm) ?>" id="perm_<?= htmlspecialchars($perm) ?>" value="1">
+                            <label for="perm_<?= htmlspecialchars($perm) ?>"><?= htmlspecialchars($label) ?></label>
                         </div>
                         <?php endforeach; ?>
                     </div>
+                </div>
+                <?php else: ?>
+                <div class="permissions-section">
+                    <p style="color: #64748b; font-size: 0.875rem;">Nenhuma permissão configurada no banco de dados.</p>
                 </div>
                 <?php endif; ?>
             </div>
@@ -754,17 +795,49 @@ function openModal(userId = 0) {
     const title = document.getElementById('modalTitle');
     const userIdInput = document.getElementById('userId');
     
+    if (!modal || !form || !title || !userIdInput) {
+        console.error('Elementos do modal não encontrados');
+        alert('Erro: Elementos do modal não encontrados. Recarregue a página.');
+        return;
+    }
+    
     userId = parseInt(userId) || 0;
     
     if (userId > 0) {
         title.textContent = 'Editar Usuário';
         userIdInput.value = userId;
+        
+        // Ajustar label e required da senha
+        const senhaLabel = document.getElementById('senhaLabel');
+        const senhaInput = document.getElementById('senhaInput');
+        const senhaHint = document.getElementById('senhaHint');
+        if (senhaLabel) senhaLabel.textContent = 'Senha (deixe em branco para não alterar)';
+        if (senhaInput) senhaInput.removeAttribute('required');
+        if (senhaHint) senhaHint.style.display = 'block';
+        
         loadUserData(userId);
     } else {
         title.textContent = 'Novo Usuário';
         userIdInput.value = 0;
+        
+        // Ajustar label e required da senha
+        const senhaLabel = document.getElementById('senhaLabel');
+        const senhaInput = document.getElementById('senhaInput');
+        const senhaHint = document.getElementById('senhaHint');
+        if (senhaLabel) senhaLabel.textContent = 'Senha *';
+        if (senhaInput) senhaInput.setAttribute('required', 'required');
+        if (senhaHint) senhaHint.style.display = 'none';
+        
         form.reset();
-        form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+        // Limpar todos os checkboxes
+        form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+        });
+        // Limpar todos os inputs de texto
+        form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]').forEach(input => {
+            input.value = '';
+        });
+        // Mostrar modal
         modal.classList.add('active');
     }
 }
@@ -774,6 +847,18 @@ function closeModal() {
 }
 
 function loadUserData(userId) {
+    const modal = document.getElementById('userModal');
+    const form = document.getElementById('userForm');
+    
+    if (!modal || !form) {
+        console.error('Modal ou formulário não encontrado');
+        return;
+    }
+    
+    // Mostrar loading
+    const originalBody = form.querySelector('.modal-body').innerHTML;
+    form.querySelector('.modal-body').innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
+    
     fetch('index.php?page=usuarios&action=get_user&id=' + userId, {
         headers: {
             'X-Requested-With': 'XMLHttpRequest',
@@ -781,33 +866,51 @@ function loadUserData(userId) {
         },
         credentials: 'same-origin'
     })
-    .then(response => response.json())
+    .then(response => {
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            return response.text().then(text => {
+                throw new Error('Resposta não é JSON: ' + text.substring(0, 100));
+            });
+        }
+        return response.json();
+    })
     .then(data => {
+        // Restaurar formulário
+        form.querySelector('.modal-body').innerHTML = originalBody;
+        
         if (data.success && data.user) {
             const user = data.user;
-            const form = document.getElementById('userForm');
             
-            form.querySelector('[name="nome"]').value = user.nome || '';
-            form.querySelector('[name="login"]').value = user.login || '';
-            form.querySelector('[name="email"]').value = user.email || '';
-            form.querySelector('[name="cargo"]').value = user.cargo || '';
+            // Preencher campos básicos
+            const nomeInput = form.querySelector('[name="nome"]');
+            const loginInput = form.querySelector('[name="login"]');
+            const emailInput = form.querySelector('[name="email"]');
+            const cargoInput = form.querySelector('[name="cargo"]');
             
-            // Permissões
+            if (nomeInput) nomeInput.value = user.nome || '';
+            if (loginInput) loginInput.value = user.login || user.email || '';
+            if (emailInput) emailInput.value = user.email || '';
+            if (cargoInput) cargoInput.value = user.cargo || '';
+            
+            // Permissões - marcar checkboxes
             form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 const name = cb.name;
-                if (user[name]) {
-                    cb.checked = true;
-                }
+                // Converter valor para boolean
+                const value = user[name];
+                cb.checked = value === true || value === 1 || value === '1' || value === 't' || value === 'true';
             });
             
-            document.getElementById('userModal').classList.add('active');
+            modal.classList.add('active');
         } else {
             alert('Erro ao carregar usuário: ' + (data.message || 'Usuário não encontrado'));
+            form.querySelector('.modal-body').innerHTML = originalBody;
         }
     })
     .catch(error => {
         console.error('Erro:', error);
-        alert('Erro ao carregar dados do usuário');
+        alert('Erro ao carregar dados do usuário: ' + error.message);
+        form.querySelector('.modal-body').innerHTML = originalBody;
     });
 }
 
