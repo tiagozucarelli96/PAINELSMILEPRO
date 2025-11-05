@@ -440,6 +440,13 @@ ob_start();
             border-color: #1e3a8a;
         }
         
+        .user-card-content {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+        
         .user-header {
             display: flex;
             align-items: center;
@@ -447,6 +454,7 @@ ob_start();
             margin-bottom: 1rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid #e5e7eb;
+            flex-shrink: 0;
         }
         
         .user-avatar {
@@ -490,6 +498,8 @@ ob_start();
         .user-details {
             margin-bottom: 1rem;
             font-size: 0.8125rem;
+            flex: 1;
+            min-height: 0;
         }
         
         .detail-row {
