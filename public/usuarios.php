@@ -1255,20 +1255,29 @@ ob_start();
                         ];
                         
                         // Verificar quais colunas existem no banco
-                        $stmt_check = $pdo->query("
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_schema = 'public' 
-                            AND table_name = 'usuarios'
-                            AND column_name IN ('" . implode("','", array_keys($permissions_sidebar_all)) . "')
-                        ");
-                        $existing_perms = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
-                        $existing_perms = array_flip($existing_perms);
-                        
-                        // Filtrar apenas permissões que existem no banco
-                        $permissions_sidebar = array_filter($permissions_sidebar_all, function($key) use ($existing_perms) {
-                            return isset($existing_perms[$key]);
-                        }, ARRAY_FILTER_USE_KEY);
+                        try {
+                            $perm_keys = array_keys($permissions_sidebar_all);
+                            $placeholders = array_fill(0, count($perm_keys), '?');
+                            $stmt_check = $pdo->prepare("
+                                SELECT column_name 
+                                FROM information_schema.columns 
+                                WHERE table_schema = 'public' 
+                                AND table_name = 'usuarios'
+                                AND column_name IN (" . implode(',', $placeholders) . ")
+                            ");
+                            $stmt_check->execute($perm_keys);
+                            $existing_perms = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
+                            $existing_perms = array_flip($existing_perms);
+                            
+                            // Filtrar apenas permissões que existem no banco
+                            $permissions_sidebar = array_filter($permissions_sidebar_all, function($key) use ($existing_perms) {
+                                return isset($existing_perms[$key]);
+                            }, ARRAY_FILTER_USE_KEY);
+                        } catch (Exception $e) {
+                            // Em caso de erro, usar todas as permissões (fallback)
+                            error_log("Erro ao verificar permissões: " . $e->getMessage());
+                            $permissions_sidebar = $permissions_sidebar_all;
+                        }
                         
                         foreach ($permissions_sidebar as $perm => $label):
                         ?>
@@ -1296,20 +1305,29 @@ ob_start();
                         ];
                         
                         // Verificar quais colunas existem no banco
-                        $stmt_check2 = $pdo->query("
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_schema = 'public' 
-                            AND table_name = 'usuarios'
-                            AND column_name IN ('" . implode("','", array_keys($permissions_especificas_all)) . "')
-                        ");
-                        $existing_perms2 = $stmt_check2->fetchAll(PDO::FETCH_COLUMN);
-                        $existing_perms2 = array_flip($existing_perms2);
-                        
-                        // Filtrar apenas permissões que existem no banco
-                        $permissions_especificas = array_filter($permissions_especificas_all, function($key) use ($existing_perms2) {
-                            return isset($existing_perms2[$key]);
-                        }, ARRAY_FILTER_USE_KEY);
+                        try {
+                            $perm_keys2 = array_keys($permissions_especificas_all);
+                            $placeholders2 = array_fill(0, count($perm_keys2), '?');
+                            $stmt_check2 = $pdo->prepare("
+                                SELECT column_name 
+                                FROM information_schema.columns 
+                                WHERE table_schema = 'public' 
+                                AND table_name = 'usuarios'
+                                AND column_name IN (" . implode(',', $placeholders2) . ")
+                            ");
+                            $stmt_check2->execute($perm_keys2);
+                            $existing_perms2 = $stmt_check2->fetchAll(PDO::FETCH_COLUMN);
+                            $existing_perms2 = array_flip($existing_perms2);
+                            
+                            // Filtrar apenas permissões que existem no banco
+                            $permissions_especificas = array_filter($permissions_especificas_all, function($key) use ($existing_perms2) {
+                                return isset($existing_perms2[$key]);
+                            }, ARRAY_FILTER_USE_KEY);
+                        } catch (Exception $e) {
+                            // Em caso de erro, usar todas as permissões (fallback)
+                            error_log("Erro ao verificar permissões específicas: " . $e->getMessage());
+                            $permissions_especificas = $permissions_especificas_all;
+                        }
                         
                         foreach ($permissions_especificas as $perm => $label):
                         ?>
