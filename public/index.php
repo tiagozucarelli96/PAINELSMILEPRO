@@ -163,7 +163,7 @@ $routes = [
 
   // Cadastros / Configurações
   'config_usuarios' => 'usuarios.php',
-  'usuarios' => 'usuarios.php',
+  'usuarios' => 'usuarios_new.php',
   'apply_usuarios_schema' => 'apply_usuarios_schema.php',
   'usuario_novo' => 'usuario_novo.php',
   'usuario_editar' => 'usuario_editar.php',
