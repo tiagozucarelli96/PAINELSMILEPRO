@@ -95,6 +95,13 @@ class UsuarioSaveManager {
      */
     public function save($data, $userId = 0) {
         try {
+            // CRÍTICO: Verificar foto ANTES de qualquer processamento
+            error_log("=== DEBUG SAVE: INÍCIO ===");
+            error_log("DEBUG SAVE: userId = $userId");
+            error_log("DEBUG SAVE: isset(data['foto']) = " . (isset($data['foto']) ? 'SIM' : 'NÃO'));
+            error_log("DEBUG SAVE: data['foto'] = " . (isset($data['foto']) ? (strlen($data['foto']) > 150 ? substr($data['foto'], 0, 150) . '...' : $data['foto']) : 'NÃO DEFINIDO'));
+            error_log("DEBUG SAVE: Chaves de data[] recebido: " . implode(', ', array_keys($data)));
+            
             $columns = $this->getExistingColumns();
             
             // Campos obrigatórios - apenas nome é sempre obrigatório

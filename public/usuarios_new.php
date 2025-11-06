@@ -189,14 +189,19 @@ if ($action === 'save') {
             unset($data['foto']);
         }
         
-        // Debug: verificar se foto está em $data antes de salvar
-        error_log("DEBUG FOTO FINAL: Antes de salvar, data['foto'] = " . (isset($data['foto']) ? $data['foto'] : 'NÃO DEFINIDO'));
+        // CRÍTICO: Verificar se foto está em $data ANTES de salvar
+        error_log("=== DEBUG FOTO FINAL: ANTES DE CHAMAR save() ===");
+        error_log("DEBUG FOTO FINAL: isset(data['foto']) = " . (isset($data['foto']) ? 'SIM' : 'NÃO'));
+        error_log("DEBUG FOTO FINAL: data['foto'] = " . (isset($data['foto']) ? (strlen($data['foto']) > 150 ? substr($data['foto'], 0, 150) . '...' : $data['foto']) : 'NÃO DEFINIDO'));
         error_log("DEBUG FOTO FINAL: data completo (resumido): " . json_encode([
             'nome' => $data['nome'] ?? 'N/A',
             'email' => $data['email'] ?? 'N/A',
             'foto' => isset($data['foto']) ? (strlen($data['foto']) > 100 ? substr($data['foto'], 0, 100) . '...' : $data['foto']) : 'NÃO DEFINIDO',
+            'foto_atual' => isset($data['foto_atual']) ? (strlen($data['foto_atual']) > 100 ? substr($data['foto_atual'], 0, 100) . '...' : $data['foto_atual']) : 'NÃO DEFINIDO',
             'user_id' => $user_id
         ]));
+        error_log("DEBUG FOTO FINAL: Chaves de data[]: " . implode(', ', array_keys($data)));
+        error_log("=== FIM DEBUG FOTO FINAL ===");
         
         $result = $manager->save($data, $user_id);
         
