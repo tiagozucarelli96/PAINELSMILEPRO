@@ -20,8 +20,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Definir header JSON ANTES de qualquer output
+// CRÍTICO: Definir header JSON ANTES de qualquer output ou require
+// Isso garante que mesmo se houver warnings/notices, o header será JSON
 header('Content-Type: application/json; charset=utf-8');
+
+// Carregar conexão ANTES de upload_magalu (ele pode precisar)
+if (!isset($GLOBALS['pdo'])) {
+    require_once __DIR__ . '/conexao.php';
+}
 
 // Verificar autenticação (compatível com múltiplas variáveis de sessão)
 $usuario_id_session = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
@@ -85,7 +91,15 @@ try {
     }
     
     // Usar EXATAMENTE a mesma lógica do Trello
+    // IMPORTANTE: upload_magalu.php tem verificação de sessão que pode retornar HTML
+    // Vamos garantir que não há output antes de incluir
     require_once __DIR__ . '/upload_magalu.php';
+    
+    // Verificar se a classe existe
+    if (!class_exists('MagaluUpload')) {
+        error_log("❌ ERRO: Classe MagaluUpload não encontrada!");
+        throw new Exception('Classe MagaluUpload não encontrada');
+    }
     
     try {
         $uploader = new MagaluUpload();
