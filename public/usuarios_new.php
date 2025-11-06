@@ -1446,8 +1446,33 @@ function loadUserData(userId) {
         return response.json();
     })
     .then(data => {
+        // IMPORTANTE: Salvar referência do arquivo antes de restaurar HTML (se houver)
+        const fotoInputAntes = document.getElementById('fotoInput');
+        let arquivoAnterior = null;
+        if (fotoInputAntes && fotoInputAntes.files && fotoInputAntes.files.length > 0) {
+            arquivoAnterior = fotoInputAntes.files[0];
+            console.log('[EDITAR] 💾 Arquivo encontrado antes de restaurar HTML, salvando referência:', arquivoAnterior.name, 'tamanho:', arquivoAnterior.size);
+        }
+        
         // Restaurar formulário
         form.querySelector('.modal-body').innerHTML = originalBody;
+        
+        // Restaurar arquivo se houver
+        if (arquivoAnterior) {
+            setTimeout(() => {
+                const fotoInputDepois = document.getElementById('fotoInput');
+                if (fotoInputDepois) {
+                    try {
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(arquivoAnterior);
+                        fotoInputDepois.files = dataTransfer.files;
+                        console.log('[EDITAR] ✅ Arquivo restaurado após HTML ser recriado:', fotoInputDepois.files.length, 'arquivo(s)');
+                    } catch (error) {
+                        console.error('[EDITAR] ❌ Erro ao restaurar arquivo:', error);
+                    }
+                }
+            }, 50);
+        }
         
         if (data.success && data.user) {
             const user = data.user;
