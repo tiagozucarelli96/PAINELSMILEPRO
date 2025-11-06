@@ -416,23 +416,93 @@ class UsuarioSaveManager {
         $sqlVals[] = ':login';
         $params[':login'] = $login;
         
-        // SEMPRE tentar adicionar funcao (coluna conhecida que pode ser NOT NULL no servidor)
-        // Mesmo se a query não encontrar, adicionar por segurança
-        if ($this->columnExists('funcao') && !isset($requiredFields['funcao'])) {
-            $funcaoValue = $data['funcao'] ?? 'OPER';
-            $requiredFields['funcao'] = $funcaoValue;
-            error_log("DEBUG INSERT: FALLBACK - Adicionando funcao = $funcaoValue (por segurança)");
+        // VERIFICAR E ADICIONAR TODAS AS COLUNAS NOT NULL QUE NÃO FORAM INCLUÍDAS
+        // Isso garante que nenhuma coluna obrigatória seja esquecida
+        try {
+            $stmt = $this->pdo->query("
+                SELECT column_name, column_default, data_type
+                FROM information_schema.columns 
+                WHERE table_name = 'usuarios'
+                AND is_nullable = 'NO'
+                AND column_name NOT IN ('id', 'created_at', 'updated_at')
+                AND column_name NOT LIKE 'perm_%'
+            ");
+            $allNotNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($allNotNullCols as $col) {
+                $colName = $col['column_name'];
+                
+                // Se já está incluída, pular
+                if (in_array($colName, $sqlCols)) {
+                    continue;
+                }
+                
+                // Se está em optionalFields, já será tratado abaixo
+                if (in_array($colName, $optionalFields)) {
+                    continue;
+                }
+                
+                // Obter valor
+                $value = null;
+                
+                // 1. Tentar do formulário
+                if (isset($data[$colName])) {
+                    $value = $data[$colName];
+                }
+                
+                // 2. Tentar default do banco
+                if (empty($value) && !empty($col['column_default'])) {
+                    $default = preg_replace("/^'(.*)'$/", '$1', $col['column_default']);
+                    $value = $default;
+                }
+                
+                // 3. Valor padrão baseado no tipo/nome
+                if (empty($value) && $value !== '0' && $value !== 0 && $value !== false) {
+                    if ($colName === 'funcao') {
+                        $value = 'OPER';
+                    } elseif ($colName === 'nome') {
+                        $value = $nome; // Já temos
+                    } elseif ($colName === 'email') {
+                        $value = $email; // Já temos
+                    } elseif ($colName === 'login') {
+                        $value = $login; // Já temos
+                    } elseif ($colName === 'senha') {
+                        $value = password_hash($senha, PASSWORD_DEFAULT); // Já temos
+                    } elseif (strpos($col['data_type'], 'int') !== false || strpos($col['data_type'], 'numeric') !== false) {
+                        $value = 0;
+                    } elseif (strpos($col['data_type'], 'bool') !== false) {
+                        $value = false;
+                    } else {
+                        $value = '';
+                    }
+                }
+                
+                // Adicionar ao INSERT
+                if ($value !== null) {
+                    // Verificar se já foi adicionada (pode ter sido adicionada pelos campos principais)
+                    if (!in_array($colName, $sqlCols)) {
+                        $sqlCols[] = $colName;
+                        $sqlVals[] = ":$colName";
+                        $params[":$colName"] = $value;
+                        error_log("DEBUG INSERT: Coluna NOT NULL adicionada: $colName = " . var_export($value, true));
+                    } else {
+                        error_log("DEBUG INSERT: Coluna NOT NULL $colName já está incluída, pulando");
+                    }
+                } else {
+                    error_log("DEBUG INSERT: AVISO - Coluna NOT NULL $colName não tem valor, pode causar erro!");
+                }
+            }
+        } catch (Exception $e) {
+            error_log("ERRO ao verificar colunas NOT NULL no INSERT: " . $e->getMessage());
         }
         
-        // Adicionar campos obrigatórios (como funcao que é NOT NULL)
+        // Adicionar campos obrigatórios do requiredFields (se ainda não foram adicionados)
         foreach ($requiredFields as $field => $value) {
-            if ($this->columnExists($field)) {
+            if (!in_array($field, $sqlCols) && $this->columnExists($field)) {
                 error_log("DEBUG INSERT: Adicionando campo obrigatório $field = " . var_export($value, true));
                 $sqlCols[] = $field;
                 $sqlVals[] = ":$field";
                 $params[":$field"] = $value;
-            } else {
-                error_log("DEBUG INSERT: AVISO - Campo obrigatório $field não existe no banco, pulando");
             }
         }
         
