@@ -1571,7 +1571,14 @@ function initFotoListeners(force = false) {
         
         const file = e.target.files[0];
         if (!file) {
-            console.warn('⚠️ Nenhum arquivo selecionado');
+            console.log('Nenhum arquivo selecionado');
+            // Restaurar foto atual se houver
+            const fotoAtual = document.getElementById('fotoAtual');
+            if (fotoAtual && fotoAtual.value) {
+                updateFotoPreview(fotoAtual.value);
+            } else {
+                updateFotoPreview('');
+            }
             return;
         }
         
@@ -1620,16 +1627,6 @@ function initFotoListeners(force = false) {
             alert('Erro ao ler o arquivo selecionado');
         };
         reader.readAsDataURL(file);
-        } else {
-            console.log('Nenhum arquivo selecionado');
-            // Restaurar foto atual se houver
-            const fotoAtual = document.getElementById('fotoAtual');
-            if (fotoAtual && fotoAtual.value) {
-                updateFotoPreview(fotoAtual.value);
-            } else {
-                updateFotoPreview('');
-            }
-        }
     });
     
     console.log('✅ Event listener de foto registrado com sucesso');
