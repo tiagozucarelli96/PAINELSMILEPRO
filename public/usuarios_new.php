@@ -1480,10 +1480,17 @@ function loadUserData(userId) {
                 cb.checked = value === true || value === 1 || value === '1' || value === 't' || value === 'true';
             });
             
-            // Modal já está visível (foi mostrado antes de loadUserData)
-            // Agora registrar listeners de foto após dados carregados
-            setTimeout(() => {
-                console.log('🔍 [EDITAR] Tentando registrar listeners de foto após carregar dados...');
+            // IMPORTANTE: HTML foi restaurado (innerHTML = originalBody), então os elementos foram RECRIADOS
+            // Precisamos resetar as flags e registrar os listeners DEPOIS que o DOM foi atualizado
+            // Usar requestAnimationFrame para garantir que o DOM foi renderizado
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                console.log('🔍 [EDITAR] HTML restaurado, elementos recriados. Registrando listeners de foto...');
+                
+                // Resetar flags porque elementos foram recriados
+                fotoListenersJaRegistrados = false;
+                previewListenersJaRegistrados = false;
+                
                 const fotoInput = document.getElementById('fotoInput');
                 const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
                 
@@ -1496,7 +1503,7 @@ function loadUserData(userId) {
                 if (fotoInput && btnSelecionarFoto) {
                     console.log('[EDITAR] ✅ Elementos encontrados! Registrando listeners...');
                     
-                    // Registrar botão se ainda não tiver listener
+                    // Registrar botão (sempre registrar porque elementos foram recriados)
                     if (btnSelecionarFoto.getAttribute('listener') !== 'attached') {
                         console.log('[EDITAR] Registrando botão Selecionar Foto...');
                         btnSelecionarFoto.addEventListener('click', function(e) {
@@ -1517,11 +1524,9 @@ function loadUserData(userId) {
                         console.log('[EDITAR] Botão já tem listener, pulando...');
                     }
                     
-                    // Registrar input file se ainda não tiver listener
-                    if (!fotoListenersJaRegistrados) {
-                        console.log('[EDITAR] Registrando input file...');
-                        initFotoListeners(true); // Forçar registro
-                    }
+                    // Registrar input file (sempre registrar porque elementos foram recriados)
+                    console.log('[EDITAR] Registrando input file...');
+                    initFotoListeners(true); // Forçar registro
                 } else {
                     console.warn('[EDITAR] ⚠️ Elementos não encontrados após carregar dados:', {
                         fotoInput: !!fotoInput,
@@ -1542,18 +1547,15 @@ function loadUserData(userId) {
                                 });
                                 btnSelecionarFoto2.setAttribute('listener', 'attached');
                             }
-                            if (!fotoListenersJaRegistrados) {
-                                initFotoListeners(true);
-                            }
+                            initFotoListeners(true);
                         }
                     }, 300);
                 }
                 
-                if (!previewListenersJaRegistrados) {
-                    console.log('[EDITAR] Tentando registrar listeners de preview...');
-                    initPreviewListeners();
-                }
-            }, 300); // Delay maior porque dados foram carregados via AJAX
+                console.log('[EDITAR] Registrando listeners de preview...');
+                initPreviewListeners();
+                }, 100); // Delay após requestAnimationFrame
+            }); // Fechar requestAnimationFrame
         } else {
             alert('Erro ao carregar usuário: ' + (data.message || 'Usuário não encontrado'));
             form.querySelector('.modal-body').innerHTML = originalBody;
