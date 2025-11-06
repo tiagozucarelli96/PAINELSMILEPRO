@@ -1298,9 +1298,18 @@ function openModal(userId = 0) {
         
         // Tentar re-inicializar listeners de foto quando modal abrir (caso não tenham sido encontrados antes)
         setTimeout(() => {
-            if (!fotoListenersJaRegistrados) {
-                console.log('Tentando registrar listeners de foto ao abrir modal...');
+            console.log('Tentando registrar listeners de foto ao abrir modal...');
+            // Sempre tentar registrar novamente quando modal abre (pode estar dentro do modal)
+            const fotoInput = document.getElementById('fotoInput');
+            const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+            if (fotoInput && btnSelecionarFoto && !fotoListenersJaRegistrados) {
+                console.log('Elementos encontrados ao abrir modal, registrando listeners...');
                 initFotoListeners();
+            } else if (!fotoInput || !btnSelecionarFoto) {
+                console.warn('Elementos não encontrados ao abrir modal:', {
+                    fotoInput: !!fotoInput,
+                    btnSelecionarFoto: !!btnSelecionarFoto
+                });
             }
             if (!previewListenersJaRegistrados) {
                 console.log('Tentando registrar listeners de preview ao abrir modal...');
