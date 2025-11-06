@@ -4,7 +4,6 @@ declare(strict_types=1);
 // Versão: 2025-09-03 (rascunho in-page + integração ME Eventos)
 
 ini_set('display_errors','1'); error_reporting(E_ALL);
-require_once __DIR__ . '/sidebar_unified.php';
 
 // ========= Sessão / Auth =========
 $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? null) == 443);
@@ -22,8 +21,8 @@ $usuarioNome = (string)($_SESSION['user_name'] ?? ($_SESSION['nome'] ?? ''));
 
 // ========= Conexão =========
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_unified.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/sidebar_integration.php';
 if (!isset($pdo) || !$pdo instanceof PDO) { echo "Falha na conexão com o banco de dados."; exit; }
 
 // ========= Incluir lc_calc.php =========
@@ -57,17 +56,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'salvar_
     if (!empty($_POST['rascunho_id'])) {
         $st = $pdo->prepare("UPDATE lc_rascunhos SET payload=:p, updated_at=NOW() WHERE id=:i AND criado_por=:u");
         $st->execute([':p'=>json_encode($payload, JSON_UNESCAPED_UNICODE), ':i'=>(int)$_POST['rascunho_id'], ':u'=>$uid]);
-        header('Location: lista_compras.php?ok=rascunho_atualizado'); exit;
+        header('Location: index.php?page=lista_compras&ok=rascunho_atualizado'); exit;
     } else {
         $st = $pdo->prepare("INSERT INTO lc_rascunhos (criado_por, criado_por_nome, payload) VALUES (:u,:n,:p)");
         $st->execute([':u'=>$uid, ':n'=>$usuarioNome, ':p'=>json_encode($payload, JSON_UNESCAPED_UNICODE)]);
-        header('Location: lista_compras.php?ok=rascunho_salvo'); exit;
+        header('Location: index.php?page=lista_compras&ok=rascunho_salvo'); exit;
     }
 }
 if (($_GET['acao'] ?? '') === 'excluir_rascunho' && !empty($_GET['id'])) {
     $st = $pdo->prepare("DELETE FROM lc_rascunhos WHERE id=:i AND criado_por=:u");
     $st->execute([':i'=>(int)$_GET['id'], ':u'=>$uid]);
-    header('Location: lista_compras.php?ok=rascunho_excluido'); exit;
+    header('Location: index.php?page=lista_compras&ok=rascunho_excluido'); exit;
 }
 $RAS = [];
 $stR = $pdo->prepare("SELECT id, to_char(updated_at,'DD/MM HH24:MI') AS quando, jsonb_array_length(payload->'eventos') AS qtd_ev, jsonb_array_length(payload->'itens_ids') AS qtd_it FROM lc_rascunhos WHERE criado_por=:u ORDER BY updated_at DESC LIMIT 20");
@@ -210,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'gerar_l
         // Limpar rascunho da sessão
         unset($_SESSION['rascunho_lista']);
         
-        header('Location: lc_index.php?sucesso=' . urlencode('Lista de compras gerada com sucesso! ID: ' . $listaId));
+        header('Location: index.php?page=lc_index&sucesso=' . urlencode('Lista de compras gerada com sucesso! ID: ' . $listaId));
         exit;
         
     } catch (Exception $e) {
@@ -406,21 +405,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (($_POST['acao'] ?? '') !== 'salvar
         }
 
         $pdo->commit();
-        header('Location: lc_index.php?msg='.urlencode('Listas geradas com sucesso!')); exit;
+        header('Location: index.php?page=lc_index&msg='.urlencode('Listas geradas com sucesso!')); exit;
 
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
         $err = $e->getMessage();
     }
 }
+// Iniciar output buffering
+ob_start();
 ?>
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<title>Gerar Lista de Compras</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="estilo.css">
 <style>
 .form{background:#fff;border:1px solid #dfe7f4;border-radius:12px;padding:16px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -758,9 +752,9 @@ function addEventoME(e){
   }
 
   .btn-primary {
-    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    background: #1e3a8a;
     color: white;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 15px rgba(30, 58, 138, 0.3);
   }
 
   .btn-primary:hover {
@@ -769,9 +763,19 @@ function addEventoME(e){
   }
 
   .btn-secondary {
-    background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+    background: #6b7280;
     color: white;
     box-shadow: 0 4px 15px rgba(107, 114, 128, 0.3);
+  }
+  
+  .btn-danger {
+    background: #dc2626;
+    color: white;
+  }
+  
+  .btn-danger:hover {
+    background: #b91c1c;
+    transform: translateY(-2px);
   }
 
   .btn-secondary:hover {
@@ -1396,18 +1400,15 @@ function addEventoME(e){
     }
   }
 </style>
-</script>
-</head>
-<body class="panel">
-<?php if (is_file(__DIR__.'/sidebar.php')) include __DIR__.'/sidebar.php'; ?>
-<div class="main-content">
+
+<script>
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
     <h1 style="margin: 0;">Gerar Lista de Compras</h1>
-    <div style="display: flex; gap: 10px;">
-      <a href="fornecedores.php" class="btn btn-outline" style="display: flex; align-items: center; gap: 5px;">
+      <div style="display: flex; gap: 10px;">
+      <a href="index.php?page=config_fornecedores" class="btn btn-primary" style="display: flex; align-items: center; gap: 5px;">
         <span>🏢</span> Cadastrar Fornecedor
       </a>
-      <a href="lc_index.php" class="btn btn-outline" style="display: flex; align-items: center; gap: 5px;">
+      <a href="index.php?page=lc_index" class="btn btn-secondary" style="display: flex; align-items: center; gap: 5px;">
         <span>🏠</span> Voltar
       </a>
     </div>
@@ -1446,8 +1447,8 @@ function addEventoME(e){
               <td><?= (int)$r['qtd_ev'] ?></td>
               <td><?= (int)$r['qtd_it'] ?></td>
               <td class="lc-actions">
-                <a class="btn btn--secondary" href="lista_compras.php?acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
-                <a class="btn btn--danger" href="lista_compras.php?acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
+                <a class="btn btn-secondary" href="index.php?page=lista_compras&acao=editar_rascunho&id=<?= (int)$r['id'] ?>">Editar</a>
+                <a class="btn btn-danger" href="index.php?page=lista_compras&acao=excluir_rascunho&id=<?= (int)$r['id'] ?>" onclick="return confirm('Excluir este rascunho?')">Excluir</a>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -1582,7 +1583,7 @@ function addEventoME(e){
       <div class="lc-actions-container">
         <button class="btn btn--secondary" type="button" onclick="adicionarEvento()">➕ Adicionar Evento ao Rascunho</button>
         <button class="btn btn--secondary" type="button" onclick="salvarRascunho()">Salvar rascunho</button>
-        <a class="btn btn--secondary" href="dashboard.php">Cancelar</a>
+        <a class="btn btn-secondary" href="index.php?page=dashboard">Cancelar</a>
       </div>
     </form>
   </div>
@@ -1793,6 +1794,10 @@ function addEventoME(e){
   })();
 })();
 </script>
-<?php endSidebar(); ?>
-</body>
-</html>
+
+<?php
+$conteudo = ob_get_clean();
+includeSidebar('Logístico');
+echo $conteudo;
+endSidebar();
+?>
