@@ -316,6 +316,162 @@ class MagaluIntegrationHelper {
     }
     
     /**
+     * Upload de foto de usuário
+     */
+    public function uploadFotoUsuario($arquivo, $usuario_id) {
+        try {
+            // Validar tipo
+            $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $arquivo['tmp_name']);
+            finfo_close($finfo);
+            
+            if (!in_array($mimeType, $allowedTypes)) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Tipo de arquivo não permitido. Use JPG, PNG ou GIF.'
+                ];
+            }
+            
+            // Validar tamanho (2MB)
+            if ($arquivo['size'] > 2 * 1024 * 1024) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Arquivo muito grande. Tamanho máximo: 2MB.'
+                ];
+            }
+            
+            // Criar arquivo temporário para redimensionamento
+            $tempDir = sys_get_temp_dir();
+            $tempFile = $tempDir . '/' . uniqid('user_photo_', true) . '.' . pathinfo($arquivo['name'], PATHINFO_EXTENSION);
+            
+            // Mover arquivo para temp
+            if (!move_uploaded_file($arquivo['tmp_name'], $tempFile)) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Erro ao processar arquivo temporário.'
+                ];
+            }
+            
+            // Redimensionar imagem se necessário (máximo 400x400)
+            try {
+                $imageInfo = getimagesize($tempFile);
+                if ($imageInfo !== false) {
+                    $maxSize = 400;
+                    $width = $imageInfo[0];
+                    $height = $imageInfo[1];
+                    
+                    if ($width > $maxSize || $height > $maxSize) {
+                        $ratio = min($maxSize / $width, $maxSize / $height);
+                        $newWidth = (int)($width * $ratio);
+                        $newHeight = (int)($height * $ratio);
+                        
+                        $image = null;
+                        if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
+                            $image = imagecreatefromjpeg($tempFile);
+                        } elseif ($mimeType === 'image/png') {
+                            $image = imagecreatefrompng($tempFile);
+                        } elseif ($mimeType === 'image/gif') {
+                            $image = imagecreatefromgif($tempFile);
+                        }
+                        
+                        if ($image) {
+                            $resized = imagecreatetruecolor($newWidth, $newHeight);
+                            
+                            // Preservar transparência para PNG e GIF
+                            if ($mimeType === 'image/png' || $mimeType === 'image/gif') {
+                                imagealphablending($resized, false);
+                                imagesavealpha($resized, true);
+                                $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
+                                imagefilledrectangle($resized, 0, 0, $newWidth, $newHeight, $transparent);
+                            }
+                            
+                            imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                            
+                            if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
+                                imagejpeg($resized, $tempFile, 85);
+                            } elseif ($mimeType === 'image/png') {
+                                imagepng($resized, $tempFile);
+                            } elseif ($mimeType === 'image/gif') {
+                                imagegif($resized, $tempFile);
+                            }
+                            
+                            imagedestroy($image);
+                            imagedestroy($resized);
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Erro ao redimensionar imagem: " . $e->getMessage());
+                // Continua mesmo se redimensionamento falhar
+            }
+            
+            // Upload para Magalu
+            $resultado = $this->magalu->uploadFileFromPath(
+                $tempFile,
+                'usuarios/fotos/' . $usuario_id,
+                $mimeType
+            );
+            
+            // Limpar arquivo temporário
+            @unlink($tempFile);
+            
+            if (!$resultado['success']) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Erro no upload para Magalu: ' . ($resultado['error'] ?? 'Erro desconhecido')
+                ];
+            }
+            
+            return [
+                'sucesso' => true,
+                'url' => $resultado['url'],
+                'key' => $resultado['key'],
+                'provider' => 'Magalu Object Storage'
+            ];
+            
+        } catch (Exception $e) {
+            // Limpar arquivo temporário em caso de erro
+            if (isset($tempFile) && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+            
+            return [
+                'sucesso' => false,
+                'erro' => 'Erro: ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * Remover foto de usuário do Magalu
+     */
+    public function removerFotoUsuario($url) {
+        try {
+            // Extrair key da URL
+            $key = $this->extrairKeyDaUrl($url);
+            if (!$key) {
+                return ['sucesso' => false, 'erro' => 'URL inválida'];
+            }
+            
+            // Remover do Magalu
+            $result = $this->magalu->deleteFile($key);
+            
+            if ($result['success']) {
+                return ['sucesso' => true];
+            }
+            
+            return ['sucesso' => false, 'erro' => $result['error'] ?? 'Erro ao remover arquivo'];
+            
+        } catch (Exception $e) {
+            return [
+                'sucesso' => false,
+                'erro' => 'Erro: ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
      * Verificar status do Magalu
      */
     public function verificarStatus() {

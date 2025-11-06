@@ -34,7 +34,7 @@ class MagaluStorageHelper {
         }
         
         // Validar tipo
-        $allowed_types = ['pdf', 'jpg', 'jpeg', 'png'];
+        $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'gif'];
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($extension, $allowed_types)) {
             throw new Exception('Tipo de arquivo não permitido. Permitidos: ' . implode(', ', $allowed_types));

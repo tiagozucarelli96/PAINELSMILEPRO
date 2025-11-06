@@ -123,90 +123,40 @@ if ($action === 'save') {
         
         // Processar upload de foto se houver
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            // Criar diretório se não existir
-            $uploadDir = __DIR__ . '/uploads/fotos_usuarios/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
+            require_once __DIR__ . '/magalu_integration_helper.php';
             
-            $file = $_FILES['foto'];
-            
-            // Validar tipo
-            $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mimeType = finfo_file($finfo, $file['tmp_name']);
-            finfo_close($finfo);
-            
-            if (in_array($mimeType, $allowedTypes) && $file['size'] <= 2 * 1024 * 1024) {
-                $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-                $fileName = uniqid('user_', true) . '.' . $extension;
-                $filePath = $uploadDir . $fileName;
+            try {
+                $magaluHelper = new MagaluIntegrationHelper();
                 
-                if (move_uploaded_file($file['tmp_name'], $filePath)) {
-                    // Redimensionar se necessário
-                    try {
-                        $imageInfo = getimagesize($filePath);
-                        if ($imageInfo !== false) {
-                            $maxSize = 400;
-                            $width = $imageInfo[0];
-                            $height = $imageInfo[1];
-                            
-                            if ($width > $maxSize || $height > $maxSize) {
-                                $ratio = min($maxSize / $width, $maxSize / $height);
-                                $newWidth = (int)($width * $ratio);
-                                $newHeight = (int)($height * $ratio);
-                                
-                                $image = null;
-                                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                                    $image = imagecreatefromjpeg($filePath);
-                                } elseif ($mimeType === 'image/png') {
-                                    $image = imagecreatefrompng($filePath);
-                                } elseif ($mimeType === 'image/gif') {
-                                    $image = imagecreatefromgif($filePath);
-                                }
-                                
-                                if ($image) {
-                                    $resized = imagecreatetruecolor($newWidth, $newHeight);
-                                    if ($mimeType === 'image/png' || $mimeType === 'image/gif') {
-                                        imagealphablending($resized, false);
-                                        imagesavealpha($resized, true);
-                                        $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
-                                        imagefilledrectangle($resized, 0, 0, $newWidth, $newHeight, $transparent);
-                                    }
-                                    imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-                                    
-                                    if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
-                                        imagejpeg($resized, $filePath, 85);
-                                    } elseif ($mimeType === 'image/png') {
-                                        imagepng($resized, $filePath);
-                                    } elseif ($mimeType === 'image/gif') {
-                                        imagegif($resized, $filePath);
-                                    }
-                                    imagedestroy($image);
-                                    imagedestroy($resized);
-                                }
-                            }
-                        }
-                    } catch (Exception $e) {
-                        error_log("Erro ao redimensionar: " . $e->getMessage());
-                    }
+                // Usar user_id temporário (0 se novo usuário, será atualizado depois)
+                $tempUserId = $user_id > 0 ? $user_id : 999999; // ID temporário para novos usuários
+                
+                $resultado = $magaluHelper->uploadFotoUsuario($_FILES['foto'], $tempUserId);
+                
+                if ($resultado['sucesso']) {
+                    // Salvar URL do Magalu no banco
+                    $data['foto'] = $resultado['url'];
+                    error_log("DEBUG FOTO: Foto salva no Magalu com URL: " . $data['foto']);
                     
-                    // Salvar caminho relativo (sem /public/)
-                    $data['foto'] = 'uploads/fotos_usuarios/' . $fileName;
-                    error_log("DEBUG FOTO: Foto salva com path: " . $data['foto']);
-                    
-                    // Se estiver editando e tinha foto anterior, remover
+                    // Se estiver editando e tinha foto anterior, remover do Magalu
                     if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
-                        $oldPath = __DIR__ . '/' . $data['foto_atual'];
-                        if (file_exists($oldPath) && strpos($oldPath, 'fotos_usuarios') !== false) {
-                            @unlink($oldPath);
+                        // Verificar se é URL do Magalu (não local)
+                        if (strpos($data['foto_atual'], 'magaluobjects.com') !== false || strpos($data['foto_atual'], 'http') === 0) {
+                            try {
+                                $magaluHelper->removerFotoUsuario($data['foto_atual']);
+                                error_log("DEBUG FOTO: Foto anterior removida do Magalu");
+                            } catch (Exception $e) {
+                                error_log("AVISO FOTO: Erro ao remover foto anterior do Magalu: " . $e->getMessage());
+                            }
                         }
                     }
                 } else {
-                    error_log("ERRO FOTO: Falha ao mover arquivo para: " . $filePath);
+                    error_log("ERRO FOTO: Falha no upload para Magalu: " . ($resultado['erro'] ?? 'Erro desconhecido'));
+                    throw new Exception('Erro ao fazer upload da foto: ' . ($resultado['erro'] ?? 'Erro desconhecido'));
                 }
-            } else {
-                error_log("ERRO FOTO: Tipo inválido ou arquivo muito grande. Tipo: $mimeType, Tamanho: " . $file['size']);
+            } catch (Exception $e) {
+                error_log("ERRO FOTO: Exceção ao processar upload: " . $e->getMessage());
+                throw new Exception('Erro ao processar foto: ' . $e->getMessage());
             }
         } elseif (!empty($data['foto_atual'])) {
             // Manter foto atual se não houver novo upload
@@ -222,15 +172,36 @@ if ($action === 'save') {
         
         $result = $manager->save($data, $user_id);
         
-        // Debug: verificar se salvou
+        // Debug: verificar se salvou e atualizar foto se for novo usuário
+        if ($result['success'] && !empty($data['foto']) && $user_id === 0) {
+            // Se foi um novo usuário, atualizar a foto com o ID correto
+            try {
+                $newUserId = $pdo->lastInsertId();
+                if ($newUserId && strpos($data['foto'], 'magaluobjects.com') !== false) {
+                    // Extrair key atual e recriar com ID correto
+                    require_once __DIR__ . '/magalu_integration_helper.php';
+                    $magaluHelper = new MagaluIntegrationHelper();
+                    
+                    // A URL já está salva, mas podemos atualizar a key se necessário
+                    // Por enquanto, apenas logamos
+                    error_log("DEBUG FOTO: Novo usuário criado com ID $newUserId, foto: " . $data['foto']);
+                }
+            } catch (Exception $e) {
+                error_log("DEBUG FOTO: Erro ao processar foto de novo usuário: " . $e->getMessage());
+            }
+        }
+        
+        // Verificar foto no banco
         if ($result['success'] && !empty($data['foto'])) {
             error_log("DEBUG FOTO: Tentando verificar se foto foi salva para usuário ID " . ($user_id > 0 ? $user_id : 'NOVO'));
             try {
                 $checkId = $user_id > 0 ? $user_id : $pdo->lastInsertId();
-                $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
-                $stmtCheck->execute([':id' => $checkId]);
-                $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-                error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
+                if ($checkId) {
+                    $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
+                    $stmtCheck->execute([':id' => $checkId]);
+                    $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                    error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
+                }
             } catch (Exception $e) {
                 error_log("DEBUG FOTO: Erro ao verificar foto no banco: " . $e->getMessage());
             }
