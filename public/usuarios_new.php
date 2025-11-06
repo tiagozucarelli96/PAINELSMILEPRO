@@ -122,7 +122,17 @@ if ($action === 'save') {
         }
         
         // Processar upload de foto se houver
+        error_log("DEBUG FOTO: Verificando upload de foto...");
+        error_log("DEBUG FOTO: \$_FILES['foto'] existe? " . (isset($_FILES['foto']) ? 'SIM' : 'NÃO'));
+        if (isset($_FILES['foto'])) {
+            error_log("DEBUG FOTO: \$_FILES['foto']['error'] = " . $_FILES['foto']['error']);
+            error_log("DEBUG FOTO: \$_FILES['foto']['name'] = " . ($_FILES['foto']['name'] ?? 'N/A'));
+            error_log("DEBUG FOTO: \$_FILES['foto']['size'] = " . ($_FILES['foto']['size'] ?? 'N/A'));
+            error_log("DEBUG FOTO: \$_FILES['foto']['type'] = " . ($_FILES['foto']['type'] ?? 'N/A'));
+        }
+        
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
+            error_log("DEBUG FOTO: Upload OK, processando...");
             require_once __DIR__ . '/magalu_integration_helper.php';
             
             try {
@@ -130,13 +140,16 @@ if ($action === 'save') {
                 
                 // Usar user_id temporário (0 se novo usuário, será atualizado depois)
                 $tempUserId = $user_id > 0 ? $user_id : 999999; // ID temporário para novos usuários
+                error_log("DEBUG FOTO: Fazendo upload para Magalu com user_id temporário: $tempUserId");
                 
                 $resultado = $magaluHelper->uploadFotoUsuario($_FILES['foto'], $tempUserId);
+                
+                error_log("DEBUG FOTO: Resultado do upload: " . json_encode($resultado));
                 
                 if ($resultado['sucesso']) {
                     // Salvar URL do Magalu no banco
                     $data['foto'] = $resultado['url'];
-                    error_log("DEBUG FOTO: Foto salva no Magalu com URL: " . $data['foto']);
+                    error_log("DEBUG FOTO: ✅ Foto salva no Magalu com URL: " . $data['foto']);
                     
                     // Se estiver editando e tinha foto anterior, remover do Magalu
                     if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
@@ -151,11 +164,12 @@ if ($action === 'save') {
                         }
                     }
                 } else {
-                    error_log("ERRO FOTO: Falha no upload para Magalu: " . ($resultado['erro'] ?? 'Erro desconhecido'));
+                    error_log("ERRO FOTO: ❌ Falha no upload para Magalu: " . ($resultado['erro'] ?? 'Erro desconhecido'));
                     throw new Exception('Erro ao fazer upload da foto: ' . ($resultado['erro'] ?? 'Erro desconhecido'));
                 }
             } catch (Exception $e) {
-                error_log("ERRO FOTO: Exceção ao processar upload: " . $e->getMessage());
+                error_log("ERRO FOTO: ❌ Exceção ao processar upload: " . $e->getMessage());
+                error_log("ERRO FOTO: Stack trace: " . $e->getTraceAsString());
                 throw new Exception('Erro ao processar foto: ' . $e->getMessage());
             }
         } elseif (!empty($data['foto_atual'])) {
@@ -164,6 +178,7 @@ if ($action === 'save') {
             error_log("DEBUG FOTO: Mantendo foto atual: " . $data['foto']);
         } else {
             // Se não houver foto e não houver foto_atual, garantir que não será enviado
+            error_log("DEBUG FOTO: Nenhuma foto enviada e nenhuma foto_atual, removendo foto dos dados");
             unset($data['foto']);
         }
         
@@ -208,10 +223,29 @@ if ($action === 'save') {
         }
         
         if ($result['success']) {
+            error_log("DEBUG FOTO: ✅ Usuário salvo com sucesso! ID: " . ($user_id > 0 ? $user_id : 'NOVO'));
+            error_log("DEBUG FOTO: Foto em data['foto']: " . (isset($data['foto']) ? $data['foto'] : 'NÃO DEFINIDO'));
+            
+            // Verificar se foto foi realmente salva no banco
+            $checkId = $user_id > 0 ? $user_id : $pdo->lastInsertId();
+            if ($checkId) {
+                try {
+                    $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
+                    $stmtCheck->execute([':id' => $checkId]);
+                    $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                    error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
+                } catch (Exception $e) {
+                    error_log("DEBUG FOTO: Erro ao verificar foto no banco: " . $e->getMessage());
+                }
+            }
+            
             $redirectUrl = 'index.php?page=usuarios&success=' . urlencode($user_id > 0 ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
             header('Location: ' . $redirectUrl);
+            exit;
         } else {
+            error_log("DEBUG FOTO: ❌ Erro ao salvar usuário: " . ($result['message'] ?? 'Erro desconhecido'));
             header('Location: index.php?page=usuarios&error=' . urlencode($result['message'] ?? 'Erro ao salvar'));
+            exit;
         }
     } catch (Exception $e) {
         error_log("Erro ao salvar usuário: " . $e->getMessage());
