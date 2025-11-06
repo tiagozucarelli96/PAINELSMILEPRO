@@ -903,7 +903,7 @@ ob_start();
             <h2 class="modal-title" id="modalTitle">Novo Usuário</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form id="userForm" method="POST" action="index.php?page=usuarios">
+        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="user_id" id="userId" value="0">
             
