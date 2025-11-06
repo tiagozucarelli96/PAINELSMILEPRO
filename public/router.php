@@ -50,6 +50,12 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
         exit;
     }
     
+    // Verificar se é endpoint de upload (deve ser servido ANTES de qualquer outra verificação)
+    if (strpos($path, 'upload_foto_usuario_endpoint') !== false || basename($file) === 'upload_foto_usuario_endpoint.php') {
+        require $file;
+        exit;
+    }
+    
     if (strpos($path, 'cron') !== false || strpos($path, '/cron') !== false || 
         strpos($path, 'webhook') !== false || strpos($path, '/webhook') !== false ||
         in_array(basename($file), $public_files)) {

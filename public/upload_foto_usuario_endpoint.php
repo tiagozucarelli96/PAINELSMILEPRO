@@ -7,13 +7,18 @@
  * IMPORTANTE: Este arquivo deve ser acessado DIRETAMENTE, não via index.php
  */
 
-// Limpar qualquer output buffer anterior
+// CRÍTICO: Desabilitar TODOS os outputs possíveis
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
+error_reporting(0); // Desabilitar completamente para evitar warnings
+
+// Limpar QUALQUER output buffer anterior
 while (ob_get_level() > 0) {
     ob_end_clean();
 }
 
-ini_set('display_errors', 0);
-error_reporting(E_ALL);
+// Iniciar novo buffer e nunca enviar nada além do JSON
+ob_start();
 
 // Iniciar sessão se necessário
 if (session_status() === PHP_SESSION_NONE) {
@@ -42,11 +47,17 @@ if (empty($usuario_id_session) && isset($_SESSION['logado']) && $_SESSION['logad
 // upload_magalu.php também verifica sessão e pode fazer exit com JSON
 // Mas queremos controlar isso, então verificamos aqui primeiro
 if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    ob_clean();
+    header_remove();
+    header('Content-Type: application/json', true);
     http_response_code(401);
     echo json_encode([
         'success' => false, 
         'error' => 'Não autenticado. Por favor, recarregue a página e faça login novamente.'
-    ]);
+    ], JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -58,11 +69,17 @@ if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
 
 // Aceitar apenas POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    ob_clean();
+    header_remove();
+    header('Content-Type: application/json', true);
     http_response_code(405);
     echo json_encode([
         'success' => false,
         'error' => 'Método não permitido'
-    ]);
+    ], JSON_UNESCAPED_SLASHES);
     exit;
 }
 
@@ -87,15 +104,16 @@ try {
         throw new Exception($errorMessages[$error] ?? 'Erro no upload: código ' . $error);
     }
     
-    error_log("=== UPLOAD FOTO ENDPOINT: INÍCIO ===");
-    error_log("Arquivo recebido: " . ($_FILES['foto']['name'] ?? 'N/A'));
-    error_log("Tamanho: " . ($_FILES['foto']['size'] ?? 0) . " bytes");
-    error_log("Tipo: " . ($_FILES['foto']['type'] ?? 'N/A'));
-    error_log("Error code: " . ($_FILES['foto']['error'] ?? 'N/A'));
+    // Logs apenas para debug (não afetam output)
+    @error_log("=== UPLOAD FOTO ENDPOINT: INÍCIO ===");
+    @error_log("Arquivo recebido: " . ($_FILES['foto']['name'] ?? 'N/A'));
+    @error_log("Tamanho: " . ($_FILES['foto']['size'] ?? 0) . " bytes");
+    @error_log("Tipo: " . ($_FILES['foto']['type'] ?? 'N/A'));
+    @error_log("Error code: " . ($_FILES['foto']['error'] ?? 'N/A'));
     
     // Verificar se arquivo temporário existe
     if (!isset($_FILES['foto']['tmp_name']) || !is_uploaded_file($_FILES['foto']['tmp_name'])) {
-        error_log("ERRO: Arquivo temporário inválido ou não encontrado");
+        @error_log("ERRO: Arquivo temporário inválido ou não encontrado");
         throw new Exception('Arquivo temporário inválido');
     }
     
@@ -108,34 +126,34 @@ try {
     // Verificar se a classe existe após require
     // Se upload_magalu.php fez exit, não chegaremos aqui
     if (!class_exists('MagaluUpload')) {
-        error_log("❌ ERRO: Classe MagaluUpload não encontrada após require!");
-        error_log("Possível causa: upload_magalu.php fez exit antes de definir a classe");
+        @error_log("❌ ERRO: Classe MagaluUpload não encontrada após require!");
+        @error_log("Possível causa: upload_magalu.php fez exit antes de definir a classe");
         throw new Exception('Classe MagaluUpload não encontrada. Verifique logs do servidor.');
     }
     
     try {
         $uploader = new MagaluUpload();
-        error_log("✅ MagaluUpload instanciado com sucesso");
+        @error_log("✅ MagaluUpload instanciado com sucesso");
         
         // Upload usando prefix 'usuarios' (mesmo padrão do Trello que usa 'demandas_trello')
         $upload_result = $uploader->upload($_FILES['foto'], 'usuarios');
         
-        error_log("✅ Upload resultado recebido: " . json_encode($upload_result));
+        @error_log("✅ Upload resultado recebido: " . json_encode($upload_result));
         
         // Validar que o upload foi bem-sucedido (mesmo do Trello)
         if (empty($upload_result['url'])) {
-            error_log("❌ ERRO: Upload falhou - URL não retornada");
-            error_log("Resultado completo: " . json_encode($upload_result));
+            @error_log("❌ ERRO: Upload falhou - URL não retornada");
+            @error_log("Resultado completo: " . json_encode($upload_result));
             throw new Exception('Upload falhou: URL não foi retornada');
         }
         
         if (empty($upload_result['chave_storage'])) {
-            error_log("❌ ERRO: Upload falhou - chave_storage não retornada");
+            @error_log("❌ ERRO: Upload falhou - chave_storage não retornada");
             throw new Exception('Upload falhou: chave de armazenamento não foi retornada');
         }
         
-        error_log("✅✅✅ Upload bem-sucedido! URL: " . $upload_result['url']);
-        error_log("Chave storage: " . $upload_result['chave_storage']);
+        @error_log("✅✅✅ Upload bem-sucedido! URL: " . $upload_result['url']);
+        @error_log("Chave storage: " . $upload_result['chave_storage']);
         
         // Retornar resultado (mesmo formato do Trello)
         $response = [
@@ -150,7 +168,7 @@ try {
             ]
         ];
         
-        // CRÍTICO: Limpar qualquer output buffer antes de enviar JSON
+        // CRÍTICO: Limpar TODOS os output buffers
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
@@ -160,8 +178,13 @@ try {
             ob_end_clean();
         }
         
-        // Garantir que headers estão corretos (sem charset pode causar problemas)
-        header('Content-Type: application/json');
+        // CRÍTICO: Limpar qualquer conteúdo que possa ter sido gerado
+        ob_clean();
+        
+        // Garantir que headers estão corretos (sem charset)
+        header_remove(); // Remover headers anteriores
+        header('Content-Type: application/json', true);
+        header('X-Content-Type-Options: nosniff', true);
         http_response_code(200);
         
         // Enviar JSON e fazer exit imediatamente
@@ -169,34 +192,44 @@ try {
         $json = json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($json === false) {
             error_log("❌ ERRO ao gerar JSON: " . json_last_error_msg());
+            // Limpar antes de enviar erro
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            header_remove();
+            header('Content-Type: application/json', true);
             http_response_code(500);
-            echo json_encode(['success' => false, 'error' => 'Erro ao gerar resposta JSON']);
+            echo json_encode(['success' => false, 'error' => 'Erro ao gerar resposta JSON'], JSON_UNESCAPED_SLASHES);
             exit;
         }
         
+        // Enviar JSON puro
         echo $json;
+        flush();
         exit;
         
     } catch (Exception $e) {
-        error_log("❌ ERRO no MagaluUpload: " . $e->getMessage());
-        error_log("Stack trace: " . $e->getTraceAsString());
+        @error_log("❌ ERRO no MagaluUpload: " . $e->getMessage());
+        @error_log("Stack trace: " . $e->getTraceAsString());
         throw $e;
     }
     
 } catch (Exception $e) {
-    error_log("❌❌❌ ERRO CRÍTICO no upload de foto: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
-    error_log("_FILES: " . print_r($_FILES, true));
-    error_log("_POST: " . print_r($_POST, true));
-    error_log("_SESSION: " . print_r(['user_id' => ($_SESSION['user_id'] ?? 'N/A'), 'logado' => ($_SESSION['logado'] ?? 'N/A')], true));
+    @error_log("❌❌❌ ERRO CRÍTICO no upload de foto: " . $e->getMessage());
+    @error_log("Stack trace: " . $e->getTraceAsString());
+    @error_log("_FILES: " . print_r($_FILES, true));
+    @error_log("_POST: " . print_r($_POST, true));
+    @error_log("_SESSION: " . print_r(['user_id' => ($_SESSION['user_id'] ?? 'N/A'), 'logado' => ($_SESSION['logado'] ?? 'N/A')], true));
     
-    // CRÍTICO: Limpar qualquer output buffer antes de enviar JSON
+    // CRÍTICO: Limpar TODOS os output buffers
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
+    ob_clean();
     
     // Garantir que headers estão corretos
-    header('Content-Type: application/json; charset=utf-8');
+    header_remove();
+    header('Content-Type: application/json', true);
     http_response_code(500);
     
     // Enviar JSON de erro e fazer exit imediatamente
@@ -204,6 +237,7 @@ try {
         'success' => false,
         'error' => $e->getMessage()
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    flush();
     exit;
 }
 
