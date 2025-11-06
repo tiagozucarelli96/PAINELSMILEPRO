@@ -63,20 +63,31 @@ class MagaluStorageHelper {
     
     /**
      * Upload via API S3-compatible
+     * Aceita tanto arquivo temporário quanto caminho de arquivo
      */
     private function s3Upload($file, $key) {
         $url = $this->endpoint . '/' . $this->bucket . '/' . $key;
         
+        // Determinar se é array $_FILES ou caminho de arquivo
+        $filePath = is_array($file) ? $file['tmp_name'] : $file;
+        $fileSize = is_array($file) ? $file['size'] : filesize($file);
+        $contentType = is_array($file) ? $file['type'] : mime_content_type($file);
+        
+        // Ler conteúdo do arquivo
+        $fileContent = file_get_contents($filePath);
+        if ($fileContent === false) {
+            return ['success' => false, 'error' => 'Erro ao ler arquivo'];
+        }
+        
         $headers = [
-            'Content-Type: ' . $file['type'],
-            'Content-Length: ' . $file['size']
+            'Content-Type: ' . $contentType,
+            'Content-Length: ' . $fileSize
         ];
         
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_PUT, true);
-        curl_setopt($ch, CURLOPT_INFILE, fopen($file['tmp_name'], 'rb'));
-        curl_setopt($ch, CURLOPT_INFILESIZE, $file['size']);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $fileContent);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
@@ -90,11 +101,50 @@ class MagaluStorageHelper {
             return ['success' => false, 'error' => 'cURL Error: ' . $error];
         }
         
-        if ($http_code === 200) {
+        if ($http_code === 200 || $http_code === 201) {
             return ['success' => true];
         }
         
         return ['success' => false, 'error' => 'HTTP ' . $http_code . ': ' . $response];
+    }
+    
+    /**
+     * Upload de arquivo já processado (redimensionado, etc)
+     */
+    public function uploadFileFromPath($filePath, $subfolder = '', $contentType = null) {
+        if (!$this->isConfigured()) {
+            throw new Exception('Magalu Object Storage não configurado');
+        }
+        
+        if (!file_exists($filePath)) {
+            throw new Exception('Arquivo não encontrado');
+        }
+        
+        // Gerar nome único
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+        $filename = $this->generateFilename('file.' . $extension);
+        $key = $subfolder ? $subfolder . '/' . $filename : $filename;
+        
+        // Determinar content type
+        if (!$contentType) {
+            $contentType = mime_content_type($filePath);
+        }
+        
+        // Fazer upload via API S3-compatible
+        $result = $this->s3Upload($filePath, $key);
+        
+        if ($result['success']) {
+            return [
+                'success' => true,
+                'url' => $this->getPublicUrl($key),
+                'filename' => $filename,
+                'size' => filesize($filePath),
+                'provider' => 'Magalu Object Storage',
+                'key' => $key
+            ];
+        }
+        
+        return ['success' => false, 'error' => $result['error']];
     }
     
     /**
