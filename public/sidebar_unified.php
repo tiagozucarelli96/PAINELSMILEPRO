@@ -1615,13 +1615,18 @@ if ($current_page === 'dashboard') {
                             $foto_result = $stmt_foto->fetch(PDO::FETCH_ASSOC);
                             if ($foto_result && !empty($foto_result['foto'])) {
                                 $foto_usuario = $foto_result['foto'];
+                                // Garantir que o caminho seja acessível (se começar com uploads/, já está correto)
+                                // Se não começar com /, adicionar / para garantir caminho absoluto relativo
+                                if (!empty($foto_usuario) && strpos($foto_usuario, '/') !== 0 && strpos($foto_usuario, 'http') !== 0) {
+                                    // Caminho relativo já está correto
+                                }
                             }
                         } catch (Exception $e) {
-                            error_log("Erro ao buscar foto do usuário: " . $e->getMessage());
+                            error_log("Erro ao buscar foto do usuário na sidebar: " . $e->getMessage());
                         }
                     }
                     ?>
-                    <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center;" : '' ?>">
+                    <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center; color: transparent;" : '' ?>">
                         <?php if (!$foto_usuario): ?>
                             <?= strtoupper(substr($nomeUser, 0, 2)) ?>
                         <?php endif; ?>

@@ -348,12 +348,23 @@ class UsuarioSaveManager {
                     $value = (float)($value ?? 0);
                 } elseif ($field === 'admissao_data') {
                     $value = !empty($value) ? $value : null;
+                } elseif ($field === 'foto') {
+                    // Foto: manter como está (pode ser string vazia ou caminho)
+                    $value = !empty($value) ? trim($value) : null;
                 } else {
                     $value = trim($value ?? '');
                 }
                 
-                $sql .= ", $field = :$field";
-                $params[":$field"] = $value;
+                // Só adicionar se tiver valor (exceto para foto que pode ser null)
+                if ($value !== null && $value !== '') {
+                    $sql .= ", $field = :$field";
+                    $params[":$field"] = $value;
+                    error_log("DEBUG UPDATE: Adicionando campo $field = " . (is_string($value) ? substr($value, 0, 50) : $value));
+                } elseif ($field === 'foto' && isset($data[$field])) {
+                    // Se foto foi explicitamente definida como vazia, atualizar para NULL
+                    $sql .= ", $field = NULL";
+                    error_log("DEBUG UPDATE: Campo $field definido como NULL");
+                }
             }
         }
         
@@ -580,13 +591,21 @@ class UsuarioSaveManager {
                     $value = (float)($value ?? 0);
                 } elseif ($field === 'admissao_data') {
                     $value = !empty($value) ? $value : null;
+                } elseif ($field === 'foto') {
+                    // Foto: manter como está (pode ser string vazia ou caminho)
+                    $value = !empty($value) ? trim($value) : null;
                 } else {
                     $value = trim($value ?? '');
                 }
                 
-                $sqlCols[] = $field;
-                $sqlVals[] = ":$field";
-                $params[":$field"] = $value;
+                // Para INSERT, só adicionar se tiver valor (exceto para foto que pode ser null)
+                if ($value !== null && $value !== '') {
+                    $sqlCols[] = $field;
+                    $sqlVals[] = ":$field";
+                    $params[":$field"] = $value;
+                    error_log("DEBUG INSERT: Adicionando campo opcional $field = " . (is_string($value) ? substr($value, 0, 50) : $value));
+                }
+                // Se foto for null ou vazio, não adicionar ao INSERT (coluna aceita NULL)
             }
         }
         

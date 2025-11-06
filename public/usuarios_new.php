@@ -118,8 +118,6 @@ if ($action === 'save') {
         
         // Processar upload de foto se houver
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            require_once __DIR__ . '/upload_foto_usuario.php';
-            
             // Criar diretório se não existir
             $uploadDir = __DIR__ . '/uploads/fotos_usuarios/';
             if (!is_dir($uploadDir)) {
@@ -188,7 +186,9 @@ if ($action === 'save') {
                         error_log("Erro ao redimensionar: " . $e->getMessage());
                     }
                     
+                    // Salvar caminho relativo (sem /public/)
                     $data['foto'] = 'uploads/fotos_usuarios/' . $fileName;
+                    error_log("DEBUG FOTO: Foto salva com path: " . $data['foto']);
                     
                     // Se estiver editando e tinha foto anterior, remover
                     if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
@@ -197,14 +197,39 @@ if ($action === 'save') {
                             @unlink($oldPath);
                         }
                     }
+                } else {
+                    error_log("ERRO FOTO: Falha ao mover arquivo para: " . $filePath);
                 }
+            } else {
+                error_log("ERRO FOTO: Tipo inválido ou arquivo muito grande. Tipo: $mimeType, Tamanho: " . $file['size']);
             }
         } elseif (!empty($data['foto_atual'])) {
             // Manter foto atual se não houver novo upload
             $data['foto'] = $data['foto_atual'];
+            error_log("DEBUG FOTO: Mantendo foto atual: " . $data['foto']);
+        } else {
+            // Se não houver foto e não houver foto_atual, garantir que não será enviado
+            unset($data['foto']);
         }
         
+        // Debug: verificar se foto está em $data antes de salvar
+        error_log("DEBUG FOTO FINAL: Antes de salvar, data['foto'] = " . (isset($data['foto']) ? $data['foto'] : 'NÃO DEFINIDO'));
+        
         $result = $manager->save($data, $user_id);
+        
+        // Debug: verificar se salvou
+        if ($result['success'] && !empty($data['foto'])) {
+            error_log("DEBUG FOTO: Tentando verificar se foto foi salva para usuário ID " . ($user_id > 0 ? $user_id : 'NOVO'));
+            try {
+                $checkId = $user_id > 0 ? $user_id : $pdo->lastInsertId();
+                $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
+                $stmtCheck->execute([':id' => $checkId]);
+                $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
+            } catch (Exception $e) {
+                error_log("DEBUG FOTO: Erro ao verificar foto no banco: " . $e->getMessage());
+            }
+        }
         
         if ($result['success']) {
             $redirectUrl = 'index.php?page=usuarios&success=' . urlencode($user_id > 0 ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
@@ -833,7 +858,7 @@ ob_start();
         ?>
         <div class="user-card">
             <div class="user-header">
-                <div class="user-avatar" style="background-image: <?= !empty($user['foto']) ? "url('" . htmlspecialchars($user['foto']) . "')" : 'none' ?>; background-size: cover; background-position: center;">
+                <div class="user-avatar" style="background-image: <?= !empty($user['foto']) ? "url('" . htmlspecialchars($user['foto']) . "')" : 'none' ?>; background-size: cover; background-position: center; <?= !empty($user['foto']) ? 'color: transparent;' : '' ?>">
                     <?php if (empty($user['foto'])): ?>
                         <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
                     <?php endif; ?>
