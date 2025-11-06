@@ -149,40 +149,51 @@ if ($action === 'save') {
         
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
             error_log("DEBUG FOTO: ✅ Condição de upload OK atendida, processando...");
-            error_log("DEBUG FOTO: Upload OK, processando...");
-            require_once __DIR__ . '/magalu_integration_helper.php';
+            error_log("DEBUG FOTO: Usando MESMA lógica do Trello (MagaluUpload direto)");
+            
+            // USAR EXATAMENTE A MESMA LÓGICA DO TRELLO
+            require_once __DIR__ . '/upload_magalu.php';
             
             try {
-                $magaluHelper = new MagaluIntegrationHelper();
+                $uploader = new MagaluUpload();
+                error_log("DEBUG FOTO: MagaluUpload instanciado com sucesso");
                 
-                // Usar user_id temporário (0 se novo usuário, será atualizado depois)
-                $tempUserId = $user_id > 0 ? $user_id : 999999; // ID temporário para novos usuários
-                error_log("DEBUG FOTO: Fazendo upload para Magalu com user_id temporário: $tempUserId");
+                // Upload usando prefix 'usuarios' (mesmo padrão do Trello que usa 'demandas_trello')
+                $upload_result = $uploader->upload($_FILES['foto'], 'usuarios');
                 
-                $resultado = $magaluHelper->uploadFotoUsuario($_FILES['foto'], $tempUserId);
+                error_log("DEBUG FOTO: Resultado do upload: " . json_encode($upload_result));
                 
-                error_log("DEBUG FOTO: Resultado do upload: " . json_encode($resultado));
+                // Validar que o upload foi bem-sucedido (mesmo do Trello)
+                if (empty($upload_result['url'])) {
+                    error_log("ERRO FOTO: ❌ Upload falhou: URL não foi retornada");
+                    throw new Exception('Upload falhou: URL não foi retornada');
+                }
                 
-                if ($resultado['sucesso']) {
-                    // Salvar URL do Magalu no banco
-                    $data['foto'] = $resultado['url'];
-                    error_log("DEBUG FOTO: ✅ Foto salva no Magalu com URL: " . $data['foto']);
-                    
-                    // Se estiver editando e tinha foto anterior, remover do Magalu
-                    if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
-                        // Verificar se é URL do Magalu (não local)
-                        if (strpos($data['foto_atual'], 'magaluobjects.com') !== false || strpos($data['foto_atual'], 'http') === 0) {
-                            try {
-                                $magaluHelper->removerFotoUsuario($data['foto_atual']);
-                                error_log("DEBUG FOTO: Foto anterior removida do Magalu");
-                            } catch (Exception $e) {
-                                error_log("AVISO FOTO: Erro ao remover foto anterior do Magalu: " . $e->getMessage());
+                // Salvar URL do Magalu no banco (mesmo do Trello)
+                $data['foto'] = $upload_result['url'];
+                error_log("DEBUG FOTO: ✅ Foto salva no Magalu com URL: " . $data['foto']);
+                error_log("DEBUG FOTO: Chave storage: " . ($upload_result['chave_storage'] ?? 'N/A'));
+                
+                // Se estiver editando e tinha foto anterior, remover do Magalu
+                if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
+                    // Verificar se é URL do Magalu e extrair chave_storage
+                    if (strpos($data['foto_atual'], 'magaluobjects.com') !== false) {
+                        try {
+                            // Extrair chave da URL (formato: endpoint/bucket/key)
+                            $urlParts = parse_url($data['foto_atual']);
+                            $path = $urlParts['path'] ?? '';
+                            // Remover /bucket/ do início
+                            $pathParts = explode('/', trim($path, '/'));
+                            if (count($pathParts) > 1) {
+                                array_shift($pathParts); // Remove bucket
+                                $key = implode('/', $pathParts);
+                                $uploader->delete($key);
+                                error_log("DEBUG FOTO: Foto anterior removida do Magalu (key: $key)");
                             }
+                        } catch (Exception $e) {
+                            error_log("AVISO FOTO: Erro ao remover foto anterior do Magalu: " . $e->getMessage());
                         }
                     }
-                } else {
-                    error_log("ERRO FOTO: ❌ Falha no upload para Magalu: " . ($resultado['erro'] ?? 'Erro desconhecido'));
-                    throw new Exception('Erro ao fazer upload da foto: ' . ($resultado['erro'] ?? 'Erro desconhecido'));
                 }
             } catch (Exception $e) {
                 error_log("ERRO FOTO: ❌ Exceção ao processar upload: " . $e->getMessage());
