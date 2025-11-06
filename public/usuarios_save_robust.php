@@ -39,6 +39,7 @@ class UsuarioSaveManager {
         }
         
         try {
+            // Tentar múltiplas estratégias
             $stmt = $this->pdo->query("
                 SELECT column_name 
                 FROM information_schema.columns 
@@ -47,12 +48,30 @@ class UsuarioSaveManager {
                 ORDER BY ordinal_position
             ");
             $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            // Se não encontrar, tentar sem especificar schema
+            if (empty($columns)) {
+                error_log("DEBUG: Tentando buscar colunas sem especificar schema");
+                $stmt = $this->pdo->query("
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'usuarios'
+                    ORDER BY ordinal_position
+                ");
+                $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            }
+            
             $this->existingColumns = array_flip($columns); // Usar array_flip para busca O(1)
+            error_log("DEBUG getExistingColumns: Encontradas " . count($columns) . " colunas");
+            error_log("DEBUG getExistingColumns: login existe? " . (isset($this->existingColumns['login']) ? 'SIM' : 'NÃO'));
+            error_log("DEBUG getExistingColumns: email existe? " . (isset($this->existingColumns['email']) ? 'SIM' : 'NÃO'));
+            error_log("DEBUG getExistingColumns: senha existe? " . (isset($this->existingColumns['senha']) ? 'SIM' : 'NÃO'));
+            
             return $this->existingColumns;
         } catch (Exception $e) {
             error_log("Erro ao obter colunas: " . $e->getMessage());
             // Retornar colunas básicas como fallback
-            return array_flip(['id', 'nome', 'email', 'senha']);
+            return array_flip(['id', 'nome', 'email', 'senha', 'login']);
         }
     }
     
