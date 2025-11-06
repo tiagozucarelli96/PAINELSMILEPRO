@@ -162,12 +162,14 @@ class MagaluStorageHelper {
     
     /**
      * Upload de arquivo já processado (redimensionado, etc)
+     * Aceita key completo ou gera automaticamente
      */
-    public function uploadFileFromPath($filePath, $subfolder = '', $contentType = null) {
+    public function uploadFileFromPath($filePath, $subfolder = '', $contentType = null, $keyCompleto = null) {
         error_log("DEBUG MAGALU STORAGE: uploadFileFromPath chamado");
         error_log("DEBUG MAGALU STORAGE: filePath: $filePath");
         error_log("DEBUG MAGALU STORAGE: subfolder: $subfolder");
         error_log("DEBUG MAGALU STORAGE: contentType: " . ($contentType ?? 'N/A'));
+        error_log("DEBUG MAGALU STORAGE: keyCompleto: " . ($keyCompleto ?? 'N/A - será gerado'));
         
         if (!$this->isConfigured()) {
             error_log("DEBUG MAGALU STORAGE: ❌ Magalu não configurado!");
@@ -181,13 +183,19 @@ class MagaluStorageHelper {
         
         error_log("DEBUG MAGALU STORAGE: ✅ Arquivo existe, tamanho: " . filesize($filePath) . " bytes");
         
-        // Gerar nome único
-        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
-        $filename = $this->generateFilename('file.' . $extension);
-        $key = $subfolder ? $subfolder . '/' . $filename : $filename;
-        
-        error_log("DEBUG MAGALU STORAGE: Filename gerado: $filename");
-        error_log("DEBUG MAGALU STORAGE: Key gerado: $key");
+        // Usar key completo se fornecido, senão gerar
+        if ($keyCompleto) {
+            $key = $keyCompleto;
+            $filename = basename($key);
+            error_log("DEBUG MAGALU STORAGE: Usando key completo fornecido: $key");
+        } else {
+            // Gerar nome único (fallback para compatibilidade)
+            $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+            $filename = $this->generateFilename('file.' . $extension);
+            $key = $subfolder ? $subfolder . '/' . $filename : $filename;
+            error_log("DEBUG MAGALU STORAGE: Filename gerado: $filename");
+            error_log("DEBUG MAGALU STORAGE: Key gerado: $key");
+        }
         
         // Determinar content type
         if (!$contentType) {
