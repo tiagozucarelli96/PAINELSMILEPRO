@@ -32,7 +32,9 @@ if ($action === 'get_user' && $user_id > 0) {
     }
     
     try {
-        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE id = :id");
+        // Buscar todas as colunas dinamicamente, incluindo foto
+        $sql = "SELECT * FROM usuarios WHERE id = :id";
+        $stmt = $pdo->prepare($sql);
         $stmt->execute([':id' => $user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -43,6 +45,9 @@ if ($action === 'get_user' && $user_id > 0) {
                     $user[$key] = (bool)($value ?? false);
                 }
             }
+            
+            // Debug: verificar foto
+            error_log("DEBUG GET_USER: Foto do usuário ID $user_id: " . ($user['foto'] ?? 'NULL'));
             
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['success' => true, 'user' => $user], JSON_UNESCAPED_UNICODE);
