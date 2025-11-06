@@ -150,8 +150,17 @@ try {
             ]
         ];
         
-        error_log("✅ Resposta JSON sendo enviada: " . json_encode($response));
-        echo json_encode($response);
+        // CRÍTICO: Limpar qualquer output buffer antes de enviar JSON
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
+        // Garantir que headers estão corretos
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(200);
+        
+        // Enviar JSON e fazer exit imediatamente
+        echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         exit;
         
     } catch (Exception $e) {
@@ -167,16 +176,20 @@ try {
     error_log("_POST: " . print_r($_POST, true));
     error_log("_SESSION: " . print_r(['user_id' => ($_SESSION['user_id'] ?? 'N/A'), 'logado' => ($_SESSION['logado'] ?? 'N/A')], true));
     
-    // Garantir que não há output antes do JSON
+    // CRÍTICO: Limpar qualquer output buffer antes de enviar JSON
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
     
+    // Garantir que headers estão corretos
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code(500);
+    
+    // Enviar JSON de erro e fazer exit imediatamente
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()
-    ]);
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
