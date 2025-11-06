@@ -1507,19 +1507,12 @@ function loadUserData(userId) {
             
             // IMPORTANTE: HTML foi restaurado (innerHTML = originalBody), então os elementos foram RECRIADOS
             // Precisamos resetar as flags e registrar os listeners DEPOIS que o DOM foi atualizado
-            // Usar requestAnimationFrame para garantir que o DOM foi renderizado
-            requestAnimationFrame(() => {
-                setTimeout(() => {
-                console.log('🔍 [EDITAR] HTML restaurado, elementos recriados. Registrando listeners de foto...');
-                
-                // Resetar flags porque elementos foram recriados
-                fotoListenersJaRegistrados = false;
-                previewListenersJaRegistrados = false;
-                
+            // Função auxiliar para tentar registrar listeners com múltiplas tentativas
+            function tentarRegistrarListenersFotoEditar(tentativa = 1, maxTentativas = 10) {
                 const fotoInput = document.getElementById('fotoInput');
                 const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
                 
-                console.log('[EDITAR] Elementos encontrados:', {
+                console.log(`[EDITAR] Tentativa ${tentativa}/${maxTentativas} - Elementos encontrados:`, {
                     fotoInput: !!fotoInput,
                     btnSelecionarFoto: !!btnSelecionarFoto,
                     modal: !!modal
@@ -1527,6 +1520,10 @@ function loadUserData(userId) {
                 
                 if (fotoInput && btnSelecionarFoto) {
                     console.log('[EDITAR] ✅ Elementos encontrados! Registrando listeners...');
+                    
+                    // Resetar flags porque elementos foram recriados
+                    fotoListenersJaRegistrados = false;
+                    previewListenersJaRegistrados = false;
                     
                     // Registrar botão (sempre registrar porque elementos foram recriados)
                     if (btnSelecionarFoto.getAttribute('listener') !== 'attached') {
@@ -1546,41 +1543,47 @@ function loadUserData(userId) {
                         btnSelecionarFoto.setAttribute('listener', 'attached');
                         console.log('[EDITAR] ✅ Botão registrado com sucesso!');
                     } else {
-                        console.log('[EDITAR] Botão já tem listener, pulando...');
+                        console.log('[EDITAR] Botão já tem listener, mas re-registrando...');
+                        // Mesmo assim, re-registrar para garantir
+                        btnSelecionarFoto.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('[EDITAR] 🔘 Botão Selecionar Foto clicado (re-registrado)!');
+                            const fotoInputNow = document.getElementById('fotoInput');
+                            if (fotoInputNow) {
+                                fotoInputNow.click();
+                            }
+                        });
                     }
                     
                     // Registrar input file (sempre registrar porque elementos foram recriados)
                     console.log('[EDITAR] Registrando input file...');
                     initFotoListeners(true); // Forçar registro
+                    
+                    // Registrar preview listeners
+                    console.log('[EDITAR] Registrando listeners de preview...');
+                    initPreviewListeners();
+                    
+                    return true; // Sucesso
                 } else {
-                    console.warn('[EDITAR] ⚠️ Elementos não encontrados após carregar dados:', {
-                        fotoInput: !!fotoInput,
-                        btnSelecionarFoto: !!btnSelecionarFoto
-                    });
-                    // Tentar novamente após mais delay
-                    setTimeout(() => {
-                        const fotoInput2 = document.getElementById('fotoInput');
-                        const btnSelecionarFoto2 = document.getElementById('btnSelecionarFoto');
-                        if (fotoInput2 && btnSelecionarFoto2) {
-                            console.log('[EDITAR] ✅ Elementos encontrados na segunda tentativa!');
-                            if (btnSelecionarFoto2.getAttribute('listener') !== 'attached') {
-                                btnSelecionarFoto2.addEventListener('click', function(e) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    console.log('[EDITAR] 🔘 Botão clicado (segunda tentativa)');
-                                    fotoInput2.click();
-                                });
-                                btnSelecionarFoto2.setAttribute('listener', 'attached');
-                            }
-                            initFotoListeners(true);
-                        }
-                    }, 300);
+                    if (tentativa < maxTentativas) {
+                        console.warn(`[EDITAR] ⚠️ Elementos não encontrados (tentativa ${tentativa}), tentando novamente em ${tentativa * 100}ms...`);
+                        setTimeout(() => {
+                            tentarRegistrarListenersFotoEditar(tentativa + 1, maxTentativas);
+                        }, tentativa * 100); // Delay crescente (100ms, 200ms, 300ms, etc.)
+                    } else {
+                        console.error('[EDITAR] ❌ Elementos não encontrados após todas as tentativas!');
+                    }
+                    return false;
                 }
-                
-                console.log('[EDITAR] Registrando listeners de preview...');
-                initPreviewListeners();
-                }, 100); // Delay após requestAnimationFrame
-            }); // Fechar requestAnimationFrame
+            }
+            
+            // Usar requestAnimationFrame + múltiplas tentativas
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    tentarRegistrarListenersFotoEditar(1, 10);
+                }, 100);
+            });
         } else {
             alert('Erro ao carregar usuário: ' + (data.message || 'Usuário não encontrado'));
             form.querySelector('.modal-body').innerHTML = originalBody;
