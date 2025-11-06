@@ -741,12 +741,19 @@ ob_start();
             </div>
             
             <div class="user-details">
-                <?php if (!empty($user['email'])): ?>
                 <div class="detail-item">
                     <span class="detail-label">Email</span>
-                    <span class="detail-value"><?= h($user['email']) ?></span>
+                    <span class="detail-value">
+                        <?php 
+                        $email = $user['email'] ?? '';
+                        if (!empty($email)) {
+                            echo h($email);
+                        } else {
+                            echo '<span style="color: #94a3b8; font-style: italic;">Não informado</span>';
+                        }
+                        ?>
+                    </span>
                 </div>
-                <?php endif; ?>
                 
                 <?php if (!empty($user['cargo'])): ?>
                 <div class="detail-item">
