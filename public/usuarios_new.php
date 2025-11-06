@@ -1846,34 +1846,88 @@ function initFotoListeners(force = false) {
             return;
         }
         
-        // Salvar blob original
-        fotoOriginalBlob = file;
-        
-        // MOSTRAR PREVIEW IMEDIATAMENTE antes de abrir editor
+        // MOSTRAR PREVIEW IMEDIATAMENTE
         const reader = new FileReader();
         reader.onload = function(e) {
             const previewUrl = e.target.result;
-            console.log('Arquivo lido com sucesso, atualizando preview...');
             updateFotoPreview(previewUrl);
-            console.log('✅ Preview atualizado com sucesso');
-            
-            // Agora tentar abrir o editor
-            loadCropperLibrary()
-                .then(() => {
-                    console.log('Cropper.js carregado, abrindo editor...');
-                    abrirEditorFoto(previewUrl);
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar editor:', error);
-                    // Se o editor falhar, a foto já está no preview e no input
-                    console.log('Foto carregada no input, mas editor não disponível');
-                });
-        };
-        reader.onerror = function() {
-            console.error('Erro ao ler arquivo');
-            alert('Erro ao ler o arquivo selecionado');
         };
         reader.readAsDataURL(file);
+        
+        // MOSTRAR INDICADOR DE UPLOAD
+        const fotoUploading = document.getElementById('fotoUploading');
+        if (fotoUploading) {
+            fotoUploading.style.display = 'flex';
+        }
+        
+        // FAZER UPLOAD VIA AJAX IMEDIATAMENTE (como Trello)
+        const formData = new FormData();
+        formData.append('foto', file);
+        
+        console.log('📤 Iniciando upload AJAX para endpoint dedicado...');
+        
+        try {
+            const response = await fetch('upload_foto_usuario_endpoint.php', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            });
+            
+            const result = await response.json();
+            
+            // Esconder indicador de upload
+            if (fotoUploading) {
+                fotoUploading.style.display = 'none';
+            }
+            
+            if (result.success && result.data && result.data.url) {
+                console.log('✅ Upload bem-sucedido! URL:', result.data.url);
+                
+                // Salvar URL no campo hidden (será enviado quando salvar usuário)
+                const fotoUrlInput = document.getElementById('fotoUrl');
+                if (fotoUrlInput) {
+                    fotoUrlInput.value = result.data.url;
+                    console.log('✅ URL salva no campo hidden:', result.data.url);
+                } else {
+                    console.error('❌ Campo fotoUrl não encontrado!');
+                }
+                
+                // Atualizar preview com URL do Magalu
+                updateFotoPreview(result.data.url);
+                
+                // Mostrar mensagem de sucesso
+                const fotoStatus = document.getElementById('fotoStatus');
+                if (fotoStatus) {
+                    fotoStatus.style.display = 'block';
+                    fotoStatus.style.color = '#10b981';
+                    fotoStatus.textContent = '✅ Foto enviada com sucesso!';
+                    setTimeout(() => {
+                        fotoStatus.style.display = 'none';
+                    }, 3000);
+                }
+                
+                // Limpar input file (já foi enviado)
+                e.target.value = '';
+                
+                console.log('✅ Foto processada e pronta para salvar!');
+            } else {
+                console.error('❌ Upload falhou:', result.error || 'Erro desconhecido');
+                alert('Erro ao fazer upload da foto: ' + (result.error || 'Erro desconhecido'));
+                updateFotoPreview('');
+                e.target.value = '';
+            }
+        } catch (error) {
+            console.error('❌ Erro no upload AJAX:', error);
+            alert('Erro ao fazer upload da foto: ' + error.message);
+            
+            // Esconder indicador de upload
+            if (fotoUploading) {
+                fotoUploading.style.display = 'none';
+            }
+            
+            updateFotoPreview('');
+            e.target.value = '';
+        }
     });
     
     console.log('✅ Event listener de foto registrado com sucesso');
