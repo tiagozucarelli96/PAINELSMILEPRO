@@ -1876,24 +1876,55 @@ function initFotoListeners(force = false) {
                 }
             });
             
-            // Verificar se resposta é JSON
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
+            // Verificar status HTTP
+            if (!response.ok) {
                 const text = await response.text();
-                console.error('❌ Resposta não é JSON! Status:', response.status);
-                console.error('❌ Content-Type:', contentType);
+                console.error('❌ Resposta HTTP não OK! Status:', response.status);
                 console.error('❌ Resposta (primeiros 500 chars):', text.substring(0, 500));
-                throw new Error('O servidor retornou uma resposta inválida. Status: ' + response.status);
+                throw new Error('Erro no servidor. Status: ' + response.status);
             }
             
-            const result = await response.json();
+            // Tentar fazer parse do JSON
+            let result;
+            try {
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    // Se não for JSON, tentar fazer parse mesmo assim (pode ter charset extra)
+                    const text = await response.text();
+                    console.warn('⚠️ Content-Type não é JSON, mas tentando fazer parse:', contentType);
+                    result = JSON.parse(text);
+                } else {
+                    result = await response.json();
+                }
+            } catch (parseError) {
+                // Se o parse falhar, tentar extrair JSON da resposta
+                const text = await response.text();
+                console.warn('⚠️ Erro ao fazer parse do JSON, tentando extrair JSON da resposta:', parseError.message);
+                
+                // Tentar encontrar JSON na resposta (pode ter output extra antes/depois)
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (jsonMatch) {
+                    try {
+                        result = JSON.parse(jsonMatch[0]);
+                        console.log('✅ JSON extraído com sucesso da resposta!');
+                    } catch (e) {
+                        console.error('❌ Erro ao fazer parse do JSON extraído:', e);
+                        throw new Error('Erro ao processar resposta do servidor: ' + e.message);
+                    }
+                } else {
+                    console.error('❌ Nenhum JSON encontrado na resposta');
+                    console.error('❌ Resposta completa (primeiros 1000 chars):', text.substring(0, 1000));
+                    throw new Error('Resposta do servidor não contém JSON válido');
+                }
+            }
             
             // Esconder indicador de upload
             if (fotoUploading) {
                 fotoUploading.style.display = 'none';
             }
             
-            if (result.success && result.data && result.data.url) {
+            // Verificar se upload foi bem-sucedido
+            if (result && result.success && result.data && result.data.url) {
                 console.log('✅ Upload bem-sucedido! URL:', result.data.url);
                 
                 // Salvar URL no campo hidden (será enviado quando salvar usuário)
@@ -1923,9 +1954,31 @@ function initFotoListeners(force = false) {
                 e.target.value = '';
                 
                 console.log('✅ Foto processada e pronta para salvar!');
+            } else if (result && result.data && result.data.url) {
+                // Fallback: se tiver URL mesmo sem success=true, considerar sucesso
+                console.log('✅ Upload bem-sucedido (fallback)! URL:', result.data.url);
+                
+                const fotoUrlInput = document.getElementById('fotoUrl');
+                if (fotoUrlInput) {
+                    fotoUrlInput.value = result.data.url;
+                }
+                
+                updateFotoPreview(result.data.url);
+                
+                const fotoStatus = document.getElementById('fotoStatus');
+                if (fotoStatus) {
+                    fotoStatus.style.display = 'block';
+                    fotoStatus.style.color = '#10b981';
+                    fotoStatus.textContent = '✅ Foto enviada com sucesso!';
+                    setTimeout(() => {
+                        fotoStatus.style.display = 'none';
+                    }, 3000);
+                }
+                
+                e.target.value = '';
             } else {
-                console.error('❌ Upload falhou:', result.error || 'Erro desconhecido');
-                alert('Erro ao fazer upload da foto: ' + (result.error || 'Erro desconhecido'));
+                console.error('❌ Upload falhou:', result?.error || result || 'Erro desconhecido');
+                alert('Erro ao fazer upload da foto: ' + (result?.error || result || 'Erro desconhecido'));
                 updateFotoPreview('');
                 e.target.value = '';
             }

@@ -155,12 +155,26 @@ try {
             ob_end_clean();
         }
         
-        // Garantir que headers estão corretos
-        header('Content-Type: application/json; charset=utf-8');
+        // Garantir que não há output antes do JSON
+        if (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        
+        // Garantir que headers estão corretos (sem charset pode causar problemas)
+        header('Content-Type: application/json');
         http_response_code(200);
         
         // Enviar JSON e fazer exit imediatamente
-        echo json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Usar flags para garantir JSON válido
+        $json = json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            error_log("❌ ERRO ao gerar JSON: " . json_last_error_msg());
+            http_response_code(500);
+            echo json_encode(['success' => false, 'error' => 'Erro ao gerar resposta JSON']);
+            exit;
+        }
+        
+        echo $json;
         exit;
         
     } catch (Exception $e) {
