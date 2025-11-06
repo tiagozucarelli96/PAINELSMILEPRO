@@ -84,9 +84,17 @@ if ($action === 'save') {
             throw new Exception('Email é obrigatório');
         }
         
-        // Se login vazio, usar email
+        // Se login vazio, usar email (garantir que sempre tenha valor)
         if (empty($data['login']) && !empty($data['email'])) {
             $data['login'] = $data['email'];
+        }
+        
+        // Garantir que login não está vazio após trim
+        if (isset($data['login'])) {
+            $data['login'] = trim($data['login']);
+            if (empty($data['login']) && !empty($data['email'])) {
+                $data['login'] = trim($data['email']);
+            }
         }
         
         // Validar senha para novos usuários

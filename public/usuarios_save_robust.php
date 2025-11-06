@@ -90,7 +90,17 @@ class UsuarioSaveManager {
             
             // Login: usar email como fallback se coluna login não existir
             $hasLoginColumn = $this->columnExists('login');
-            $login = $hasLoginColumn ? trim($data['login'] ?? $email) : $email;
+            $login = $hasLoginColumn ? trim($data['login'] ?? $email ?? '') : ($email ?? '');
+            
+            // Se login está vazio mas coluna existe, usar email como fallback
+            if ($hasLoginColumn && empty($login) && !empty($email)) {
+                $login = $email;
+            }
+            
+            // Se login ainda está vazio mas coluna existe, é obrigatório
+            if ($hasLoginColumn && empty($login)) {
+                throw new Exception("Login é obrigatório (use email como login se necessário)");
+            }
             
             if (empty($nome)) {
                 throw new Exception("Nome é obrigatório");
@@ -215,8 +225,16 @@ class UsuarioSaveManager {
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
         }
         
-        // Adicionar login se existir
+        // Adicionar login se existir - OBRIGATÓRIO se coluna existe
         if ($this->columnExists('login')) {
+            // Garantir que login não está vazio (se estiver, usar email)
+            if (empty($login)) {
+                $login = $email;
+            }
+            // Se ainda estiver vazio, lançar erro
+            if (empty($login)) {
+                throw new Exception("Login é obrigatório. Preencha o campo Login ou Email.");
+            }
             $sqlCols[] = 'login';
             $sqlVals[] = ':login';
             $params[':login'] = $login;
