@@ -1483,25 +1483,29 @@ if (fotoInput) {
             // Salvar blob original
             fotoOriginalBlob = file;
             
-            // Carregar biblioteca Cropper.js
-            try {
-                await loadCropperLibrary();
+            // MOSTRAR PREVIEW IMEDIATAMENTE antes de abrir editor
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewUrl = e.target.result;
+                updateFotoPreview(previewUrl);
+                console.log('Preview atualizado com sucesso');
                 
-                // Ler arquivo e abrir editor
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    abrirEditorFoto(e.target.result);
-                };
-                reader.readAsDataURL(file);
-            } catch (error) {
-                console.error('Erro ao carregar editor:', error);
-                // Fallback: mostrar preview simples
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    updateFotoPreview(e.target.result);
-                };
-                reader.readAsDataURL(file);
-            }
+                // Agora tentar abrir o editor
+                loadCropperLibrary()
+                    .then(() => {
+                        abrirEditorFoto(previewUrl);
+                    })
+                    .catch(error => {
+                        console.error('Erro ao carregar editor:', error);
+                        // Se o editor falhar, a foto já está no preview e no input
+                        console.log('Foto carregada no input, mas editor não disponível');
+                    });
+            };
+            reader.onerror = function() {
+                console.error('Erro ao ler arquivo');
+                alert('Erro ao ler o arquivo selecionado');
+            };
+            reader.readAsDataURL(file);
         } else {
             // Restaurar foto atual se houver
             const fotoAtual = document.getElementById('fotoAtual');
@@ -1617,6 +1621,7 @@ function aplicarEdicaoFoto() {
                 // Criar URL do blob para preview
                 const blobUrl = URL.createObjectURL(blob);
                 updateFotoPreview(blobUrl);
+                console.log('Preview atualizado após edição');
                 
                 // Salvar blob para upload
                 fotoOriginalBlob = blob;
@@ -1630,6 +1635,7 @@ function aplicarEdicaoFoto() {
                 const fotoInput = document.getElementById('fotoInput');
                 if (fotoInput) {
                     fotoInput.files = dataTransfer.files;
+                    console.log('Arquivo atualizado no input file:', fotoInput.files.length, 'arquivo(s)');
                 }
                 
                 // Salvar também como base64 no campo hidden para backup
@@ -1643,11 +1649,14 @@ function aplicarEdicaoFoto() {
                     };
                     reader.readAsDataURL(blob);
                 }, 'image/jpeg', 0.9);
+            } else {
+                console.error('Erro: blob é null');
             }
             
             fecharEditorFoto();
         }, 'image/jpeg', 0.9);
     } else {
+        console.error('Erro: canvas é null');
         fecharEditorFoto();
     }
 }
