@@ -116,8 +116,15 @@ try {
     // Usar EXATAMENTE a mesma lógica do Trello
     // IMPORTANTE: upload_magalu.php tem verificação de sessão no início
     // Mas já verificamos sessão acima, então ele não deve fazer exit
-    // Se fizer exit, nosso código não chegará aqui (o que é ok)
+    // CRÍTICO: Capturar qualquer output que upload_magalu.php possa gerar
+    ob_start();
     require_once __DIR__ . '/upload_magalu.php';
+    $magalu_output = ob_get_clean();
+    
+    // Se upload_magalu.php gerou output, logar mas não incluir na resposta
+    if (!empty($magalu_output)) {
+        @error_log("⚠️ AVISO: upload_magalu.php gerou output: " . substr($magalu_output, 0, 200));
+    }
     
     // Verificar se a classe existe após require
     // Se upload_magalu.php fez exit, não chegaremos aqui
