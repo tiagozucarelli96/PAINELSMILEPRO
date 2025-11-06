@@ -436,13 +436,23 @@ class MagaluIntegrationHelper {
             error_log("DEBUG MAGALU: Arquivo temporário criado: $tempFile");
             error_log("DEBUG MAGALU: Tamanho do arquivo: " . filesize($tempFile) . " bytes");
             error_log("DEBUG MAGALU: Fazendo upload para Magalu...");
-            error_log("DEBUG MAGALU: Subpasta: usuarios/fotos/$usuario_id");
             
-            // Upload para Magalu
+            // Usar mesma estrutura de pastas que Trello: prefix/YYYY/MM/uuid.ext
+            $year = date('Y');
+            $month = date('m');
+            $uuid = uniqid();
+            $extension = pathinfo($tempFile, PATHINFO_EXTENSION);
+            $key = "usuarios/fotos/{$year}/{$month}/{$uuid}.{$extension}";
+            
+            error_log("DEBUG MAGALU: Key gerado: $key");
+            error_log("DEBUG MAGALU: Subpasta: usuarios/fotos/{$year}/{$month}");
+            
+            // Upload para Magalu usando a key gerada
             $resultado = $this->magalu->uploadFileFromPath(
                 $tempFile,
-                'usuarios/fotos/' . $usuario_id,
-                $mimeType
+                '', // Não passar subfolder, já está na key
+                $mimeType,
+                $key // Passar a key completa
             );
             
             error_log("DEBUG MAGALU: Resultado do uploadFileFromPath: " . print_r($resultado, true));

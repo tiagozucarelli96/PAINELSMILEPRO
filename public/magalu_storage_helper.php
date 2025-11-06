@@ -64,6 +64,7 @@ class MagaluStorageHelper {
     /**
      * Upload via API S3-compatible
      * Aceita tanto arquivo temporário quanto caminho de arquivo
+     * USA AUTENTICAÇÃO AWS S3 Signature Version 2 (mesmo que Trello)
      */
     private function s3Upload($file, $key) {
         error_log("DEBUG MAGALU S3: s3Upload chamado");
@@ -93,22 +94,38 @@ class MagaluStorageHelper {
         
         error_log("DEBUG MAGALU S3: ✅ Arquivo lido, tamanho do conteúdo: " . strlen($fileContent) . " bytes");
         
+        // AUTENTICAÇÃO AWS S3 Signature Version 2 (mesmo que Trello usa)
+        $date = gmdate('D, d M Y H:i:s \G\M\T');
+        $canonicalizedResource = "/{$this->bucket}/{$key}";
+        $stringToSign = "PUT\n\n{$contentType}\n{$date}\n{$canonicalizedResource}";
+        
+        // Gerar assinatura HMAC-SHA1 e codificar em base64
+        $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secret_key, true));
+        
+        error_log("DEBUG MAGALU S3: String to sign: " . str_replace("\n", "\\n", $stringToSign));
+        error_log("DEBUG MAGALU S3: Signature gerada: " . substr($signature, 0, 20) . "...");
+        error_log("DEBUG MAGALU S3: Access Key: " . substr($this->access_key, 0, 10) . "...");
+        
+        // Headers da requisição COM AUTENTICAÇÃO
         $headers = [
+            'Date: ' . $date,
             'Content-Type: ' . $contentType,
-            'Content-Length: ' . $fileSize
+            'Content-Length: ' . $fileSize,
+            'Authorization: AWS ' . $this->access_key . ':' . $signature
         ];
         
         error_log("DEBUG MAGALU S3: Headers: " . print_r($headers, true));
-        error_log("DEBUG MAGALU S3: Iniciando requisição cURL...");
+        error_log("DEBUG MAGALU S3: Iniciando requisição cURL com autenticação...");
         
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $fileContent);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_VERBOSE, true); // Habilitar verbose para debug
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => 'PUT',
+            CURLOPT_POSTFIELDS => $fileContent,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_VERBOSE => true
+        ]);
         
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -126,14 +143,21 @@ class MagaluStorageHelper {
             return ['success' => false, 'error' => 'cURL Error: ' . $error];
         }
         
-        if ($http_code === 200 || $http_code === 201) {
-            error_log("DEBUG MAGALU S3: ✅ Upload bem-sucedido! HTTP $http_code");
-            return ['success' => true];
+        // Extrair mensagem de erro da resposta XML se houver
+        if ($http_code !== 200 && $http_code !== 201) {
+            error_log("DEBUG MAGALU S3: ❌ Upload falhou! HTTP $http_code");
+            if ($response && strpos($response, '<Error>') !== false) {
+                if (preg_match('/<Message>(.*?)<\/Message>/', $response, $matches)) {
+                    error_log("DEBUG MAGALU S3: Mensagem de erro XML: " . $matches[1]);
+                    return ['success' => false, 'error' => 'Erro no upload para Magalu Cloud: ' . $matches[1]];
+                }
+            }
+            error_log("DEBUG MAGALU S3: Response completo: $response");
+            return ['success' => false, 'error' => 'HTTP ' . $http_code . ': ' . substr($response, 0, 200)];
         }
         
-        error_log("DEBUG MAGALU S3: ❌ Upload falhou! HTTP $http_code");
-        error_log("DEBUG MAGALU S3: Response completo: $response");
-        return ['success' => false, 'error' => 'HTTP ' . $http_code . ': ' . $response];
+        error_log("DEBUG MAGALU S3: ✅ Upload bem-sucedido! HTTP $http_code");
+        return ['success' => true];
     }
     
     /**
