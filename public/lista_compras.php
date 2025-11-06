@@ -953,7 +953,7 @@ function addEventoME(e){
     content: '';
     width: 6px;
     height: 32px;
-    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
     border-radius: 3px;
     box-shadow: 0 2px 8px rgba(30, 58, 138, 0.3);
   }
@@ -965,7 +965,7 @@ function addEventoME(e){
     left: 0;
     width: 60px;
     height: 3px;
-    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
     border-radius: 2px;
     opacity: 0.6;
   }
@@ -1062,7 +1062,7 @@ function addEventoME(e){
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   }
 
   .lc-category-card:hover {
@@ -1133,7 +1133,7 @@ function addEventoME(e){
   }
 
   .lc-item-checkbox:has(input:checked) {
-    background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
     color: white;
     border-color: #1e3a8a;
   }
