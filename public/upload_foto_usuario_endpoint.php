@@ -164,7 +164,7 @@ try {
             ]
         ];
         
-        // CRÍTICO: Limpar TODOS os output buffers
+        // CRÍTICO: Limpar TODOS os output buffers ANTES de qualquer header
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
@@ -175,33 +175,50 @@ try {
         }
         
         // CRÍTICO: Limpar qualquer conteúdo que possa ter sido gerado
-        ob_clean();
+        if (ob_get_level() > 0) {
+            ob_clean();
+        }
+        
+        // CRÍTICO: Remover TODOS os headers anteriores
+        if (function_exists('header_remove')) {
+            header_remove();
+        }
         
         // Garantir que headers estão corretos (sem charset)
-        header_remove(); // Remover headers anteriores
-        header('Content-Type: application/json', true);
+        header('Content-Type: application/json', true, 200);
         header('X-Content-Type-Options: nosniff', true);
-        http_response_code(200);
+        header('Cache-Control: no-cache, no-store, must-revalidate', true);
+        header('Pragma: no-cache', true);
+        header('Expires: 0', true);
         
         // Enviar JSON e fazer exit imediatamente
         // Usar flags para garantir JSON válido
         $json = json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         if ($json === false) {
-            error_log("❌ ERRO ao gerar JSON: " . json_last_error_msg());
+            @error_log("❌ ERRO ao gerar JSON: " . json_last_error_msg());
             // Limpar antes de enviar erro
             while (ob_get_level() > 0) {
                 ob_end_clean();
             }
-            header_remove();
-            header('Content-Type: application/json', true);
-            http_response_code(500);
-            echo json_encode(['success' => false, 'error' => 'Erro ao gerar resposta JSON'], JSON_UNESCAPED_SLASHES);
+            if (function_exists('header_remove')) {
+                header_remove();
+            }
+            header('Content-Type: application/json', true, 500);
+            $errorJson = json_encode(['success' => false, 'error' => 'Erro ao gerar resposta JSON'], JSON_UNESCAPED_SLASHES);
+            echo $errorJson;
+            flush();
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
             exit;
         }
         
-        // Enviar JSON puro
+        // Enviar JSON puro - SEM espaço antes, SEM BOM, APENAS JSON
         echo $json;
         flush();
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
         exit;
         
     } catch (Exception $e) {
