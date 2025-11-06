@@ -1546,14 +1546,18 @@ function initFotoListeners(force = false) {
         const btnSelecionarFotoNew = document.getElementById('btnSelecionarFoto');
         
         btnSelecionarFotoNew.addEventListener('click', function(e) {
-        btnSelecionarFoto.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Botão Selecionar Foto clicado');
-            if (fotoInput) {
-                fotoInput.click();
+            console.log('🔘 Botão Selecionar Foto clicado');
+            const fotoInputNow = document.getElementById('fotoInput');
+            if (fotoInputNow) {
+                console.log('Abrindo seletor de arquivo...');
+                fotoInputNow.click();
+            } else {
+                console.error('fotoInput não encontrado ao clicar no botão!');
             }
         });
+        btnSelecionarFotoNew.setAttribute('listener', 'attached');
         console.log('✅ Botão Selecionar Foto registrado');
     }
     
