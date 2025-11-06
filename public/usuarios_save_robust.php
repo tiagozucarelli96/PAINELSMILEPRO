@@ -418,16 +418,49 @@ class UsuarioSaveManager {
         
         // VERIFICAR E ADICIONAR TODAS AS COLUNAS NOT NULL QUE NÃO FORAM INCLUÍDAS
         // Isso garante que nenhuma coluna obrigatória seja esquecida
+        // IMPORTANTE: Esta verificação acontece ANTES de finalizar o INSERT
         try {
-            $stmt = $this->pdo->query("
-                SELECT column_name, column_default, data_type
-                FROM information_schema.columns 
-                WHERE table_name = 'usuarios'
-                AND is_nullable = 'NO'
-                AND column_name NOT IN ('id', 'created_at', 'updated_at')
-                AND column_name NOT LIKE 'perm_%'
-            ");
-            $allNotNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            error_log("DEBUG INSERT: Verificando todas as colunas NOT NULL antes de finalizar INSERT...");
+            
+            // Tentar múltiplas estratégias para encontrar colunas NOT NULL
+            $allNotNullCols = [];
+            
+            // Estratégia 1: Com schema 'public'
+            try {
+                $stmt = $this->pdo->query("
+                    SELECT column_name, column_default, data_type
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public'
+                    AND table_name = 'usuarios'
+                    AND is_nullable = 'NO'
+                    AND column_name NOT IN ('id', 'created_at', 'updated_at')
+                    AND column_name NOT LIKE 'perm_%'
+                ");
+                $allNotNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                error_log("DEBUG INSERT: Estratégia 1 encontrou " . count($allNotNullCols) . " colunas NOT NULL");
+            } catch (Exception $e) {
+                error_log("DEBUG INSERT: Estratégia 1 falhou: " . $e->getMessage());
+            }
+            
+            // Estratégia 2: Sem especificar schema
+            if (empty($allNotNullCols)) {
+                try {
+                    $stmt = $this->pdo->query("
+                        SELECT column_name, column_default, data_type
+                        FROM information_schema.columns 
+                        WHERE table_name = 'usuarios'
+                        AND is_nullable = 'NO'
+                        AND column_name NOT IN ('id', 'created_at', 'updated_at')
+                        AND column_name NOT LIKE 'perm_%'
+                    ");
+                    $allNotNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    error_log("DEBUG INSERT: Estratégia 2 encontrou " . count($allNotNullCols) . " colunas NOT NULL");
+                } catch (Exception $e) {
+                    error_log("DEBUG INSERT: Estratégia 2 falhou: " . $e->getMessage());
+                }
+            }
+            
+            error_log("DEBUG INSERT: Total de colunas NOT NULL encontradas: " . count($allNotNullCols));
             
             foreach ($allNotNullCols as $col) {
                 $colName = $col['column_name'];
