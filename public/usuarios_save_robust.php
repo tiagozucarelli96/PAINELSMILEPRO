@@ -485,8 +485,17 @@ class UsuarioSaveManager {
                 
                 // 2. Tentar default do banco
                 if (empty($value) && !empty($col['column_default'])) {
-                    $default = preg_replace("/^'(.*)'$/", '$1', $col['column_default']);
-                    $value = $default;
+                    $default = $col['column_default'];
+                    
+                    // Se o default é CURRENT_TIMESTAMP ou similar, usar timestamp atual em PHP
+                    if (preg_match('/CURRENT_TIMESTAMP|NOW\(\)|clock_timestamp\(\)/i', $default)) {
+                        $value = date('Y-m-d H:i:s');
+                        error_log("DEBUG INSERT: Default é CURRENT_TIMESTAMP, usando timestamp atual: $value");
+                    } else {
+                        // Remover aspas se for string
+                        $default = preg_replace("/^'(.*)'$/", '$1', $default);
+                        $value = $default;
+                    }
                 }
                 
                 // 3. Valor padrão baseado no tipo/nome
@@ -501,6 +510,14 @@ class UsuarioSaveManager {
                         $value = $login; // Já temos
                     } elseif ($colName === 'senha') {
                         $value = password_hash($senha, PASSWORD_DEFAULT); // Já temos
+                    } elseif (in_array($colName, ['criado_em', 'created_at', 'updated_at', 'atualizado_em'])) {
+                        // Timestamps: usar timestamp atual
+                        $value = date('Y-m-d H:i:s');
+                        error_log("DEBUG INSERT: Coluna timestamp $colName, usando timestamp atual: $value");
+                    } elseif (strpos($col['data_type'], 'timestamp') !== false || strpos($col['data_type'], 'date') !== false) {
+                        // Qualquer coluna de data/timestamp: usar timestamp atual
+                        $value = date('Y-m-d H:i:s');
+                        error_log("DEBUG INSERT: Coluna de data/timestamp $colName, usando timestamp atual: $value");
                     } elseif (strpos($col['data_type'], 'int') !== false || strpos($col['data_type'], 'numeric') !== false) {
                         $value = 0;
                     } elseif (strpos($col['data_type'], 'bool') !== false) {
