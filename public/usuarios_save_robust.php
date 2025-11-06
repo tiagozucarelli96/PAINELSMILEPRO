@@ -149,6 +149,29 @@ class UsuarioSaveManager {
                 'pix_tipo', 'pix_chave', 'status_empregado'
             ];
             
+            // Campos obrigatórios que podem ter valores padrão
+            $requiredFields = [];
+            if ($this->columnExists('funcao')) {
+                // Verificar se funcao é NOT NULL
+                try {
+                    $stmt = $this->pdo->query("
+                        SELECT is_nullable, column_default 
+                        FROM information_schema.columns 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'usuarios' 
+                        AND column_name = 'funcao'
+                    ");
+                    $colInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($colInfo && $colInfo['is_nullable'] === 'NO') {
+                        // Coluna é NOT NULL, precisa de valor
+                        $requiredFields['funcao'] = $data['funcao'] ?? $colInfo['column_default'] ?? 'OPER';
+                        error_log("DEBUG SAVE: funcao é NOT NULL, valor = " . $requiredFields['funcao']);
+                    }
+                } catch (Exception $e) {
+                    error_log("Erro ao verificar funcao: " . $e->getMessage());
+                }
+            }
+            
             // Permissões (todas as que começam com perm_)
             $permissions = [];
             foreach ($data as $key => $value) {
@@ -158,9 +181,9 @@ class UsuarioSaveManager {
             }
             
             if ($userId > 0) {
-                return $this->update($userId, $nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns);
+                return $this->update($userId, $nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
             } else {
-                return $this->insert($nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns);
+                return $this->insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
             }
             
         } catch (Exception $e) {
@@ -172,7 +195,7 @@ class UsuarioSaveManager {
     /**
      * Atualizar usuário existente
      */
-    private function update($userId, $nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns) {
+    private function update($userId, $nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
         $sql = "UPDATE usuarios SET nome = :nome";
         $params = [':nome' => $nome];
         
@@ -231,7 +254,7 @@ class UsuarioSaveManager {
     /**
      * Inserir novo usuário
      */
-    private function insert($nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns) {
+    private function insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
         error_log("DEBUG INSERT: nome=$nome, email=$email, login=$login, senha=" . (empty($senha) ? 'VAZIA' : 'PREENCHIDA'));
         
         $sqlCols = ['nome'];
@@ -285,6 +308,16 @@ class UsuarioSaveManager {
         $sqlCols[] = 'login';
         $sqlVals[] = ':login';
         $params[':login'] = $login;
+        
+        // Adicionar campos obrigatórios (como funcao que é NOT NULL)
+        foreach ($requiredFields as $field => $value) {
+            if ($this->columnExists($field)) {
+                error_log("DEBUG INSERT: Adicionando campo obrigatório $field = $value");
+                $sqlCols[] = $field;
+                $sqlVals[] = ":$field";
+                $params[":$field"] = $value;
+            }
+        }
         
         // Adicionar campos opcionais
         foreach ($optionalFields as $field) {
