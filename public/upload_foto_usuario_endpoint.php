@@ -17,17 +17,13 @@ while (ob_get_level() > 0) {
     ob_end_clean();
 }
 
-// Iniciar novo buffer e nunca enviar nada além do JSON
-ob_start();
-
 // Iniciar sessão se necessário
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// CRÍTICO: Definir header JSON ANTES de qualquer output ou require
-// Isso garante que mesmo se houver warnings/notices, o header será JSON
-header('Content-Type: application/json; charset=utf-8');
+// CRÍTICO: NÃO iniciar buffer aqui - vamos limpar tudo antes de enviar
+// ob_start() pode capturar output indesejado
 
 // Carregar conexão ANTES de upload_magalu (ele pode precisar)
 if (!isset($GLOBALS['pdo'])) {
@@ -225,19 +221,27 @@ try {
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
-    ob_clean();
+    if (ob_get_level() > 0) {
+        ob_clean();
+    }
     
     // Garantir que headers estão corretos
-    header_remove();
-    header('Content-Type: application/json', true);
-    http_response_code(500);
+    if (function_exists('header_remove')) {
+        header_remove();
+    }
+    header('Content-Type: application/json', true, 500);
+    header('X-Content-Type-Options: nosniff', true);
     
     // Enviar JSON de erro e fazer exit imediatamente
-    echo json_encode([
+    $errorJson = json_encode([
         'success' => false,
         'error' => $e->getMessage()
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    echo $errorJson;
     flush();
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    }
     exit;
 }
 
