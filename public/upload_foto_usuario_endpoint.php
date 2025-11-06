@@ -38,6 +38,9 @@ if (empty($usuario_id_session) && isset($_SESSION['logado']) && $_SESSION['logad
     $usuario_id_session = $_SESSION['id'];
 }
 
+// CRÍTICO: Verificar autenticação ANTES de incluir upload_magalu.php
+// upload_magalu.php também verifica sessão e pode fazer exit com JSON
+// Mas queremos controlar isso, então verificamos aqui primeiro
 if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
     http_response_code(401);
     echo json_encode([
@@ -46,6 +49,12 @@ if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
     ]);
     exit;
 }
+
+// IMPORTANTE: upload_magalu.php verifica sessão no início e pode fazer exit
+// Mas já verificamos acima, então vamos temporariamente desabilitar a verificação
+// usando uma flag ou simplesmente ignorando o exit dele
+// Na verdade, melhor: vamos incluir e se ele fizer exit, não chegaremos aqui
+// Mas como já verificamos sessão, ele não deve fazer exit
 
 // Aceitar apenas POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -91,14 +100,17 @@ try {
     }
     
     // Usar EXATAMENTE a mesma lógica do Trello
-    // IMPORTANTE: upload_magalu.php tem verificação de sessão que pode retornar HTML
-    // Vamos garantir que não há output antes de incluir
+    // IMPORTANTE: upload_magalu.php tem verificação de sessão no início
+    // Mas já verificamos sessão acima, então ele não deve fazer exit
+    // Se fizer exit, nosso código não chegará aqui (o que é ok)
     require_once __DIR__ . '/upload_magalu.php';
     
-    // Verificar se a classe existe
+    // Verificar se a classe existe após require
+    // Se upload_magalu.php fez exit, não chegaremos aqui
     if (!class_exists('MagaluUpload')) {
-        error_log("❌ ERRO: Classe MagaluUpload não encontrada!");
-        throw new Exception('Classe MagaluUpload não encontrada');
+        error_log("❌ ERRO: Classe MagaluUpload não encontrada após require!");
+        error_log("Possível causa: upload_magalu.php fez exit antes de definir a classe");
+        throw new Exception('Classe MagaluUpload não encontrada. Verifique logs do servidor.');
     }
     
     try {
