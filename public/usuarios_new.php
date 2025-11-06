@@ -1276,8 +1276,13 @@ function openModal(userId = 0) {
         if (senhaHint) senhaHint.style.display = 'none';
         
         form.reset();
-        // Limpar preview da foto
+        // Limpar preview da foto e editor
         updateFotoPreview('');
+        fotoOriginalBlob = null;
+        if (fotoCropper) {
+            fotoCropper.destroy();
+            fotoCropper = null;
+        }
         
         // Limpar todos os checkboxes
         form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1300,6 +1305,7 @@ function updateFotoPreview(fotoPath) {
     const previewImg = document.getElementById('fotoPreviewImg');
     const previewText = document.getElementById('fotoPreviewText');
     const preview = document.getElementById('fotoPreview');
+    const overlay = document.getElementById('fotoEditOverlay');
     
     if (fotoPath && previewImg && previewText && preview) {
         previewImg.src = fotoPath;
@@ -1308,6 +1314,7 @@ function updateFotoPreview(fotoPath) {
         preview.style.backgroundImage = 'url(' + fotoPath + ')';
         preview.style.backgroundSize = 'cover';
         preview.style.backgroundPosition = 'center';
+        if (overlay) overlay.style.display = 'none'; // Esconder overlay inicialmente
     } else {
         if (previewImg) previewImg.style.display = 'none';
         if (previewText) previewText.style.display = 'block';
@@ -1315,6 +1322,7 @@ function updateFotoPreview(fotoPath) {
             preview.style.backgroundImage = 'none';
             preview.style.background = '#f8fafc';
         }
+        if (overlay) overlay.style.display = 'none';
     }
 }
 
