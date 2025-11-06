@@ -261,28 +261,30 @@ class UsuarioSaveManager {
             error_log("DEBUG INSERT: Coluna senha NÃO existe");
         }
         
-        // Adicionar login se existir - OBRIGATÓRIO se coluna existe
+        // Adicionar login - SEMPRE adicionar se recebemos um valor (coluna provavelmente existe)
+        // Se columnExists falhar mas login foi passado, adicionar mesmo assim
         $hasLogin = $this->columnExists('login');
         error_log("DEBUG INSERT: Coluna login existe? " . ($hasLogin ? 'SIM' : 'NÃO'));
+        error_log("DEBUG INSERT: login recebido = '$login'");
         
-        if ($hasLogin) {
-            // Garantir que login não está vazio (se estiver, usar email)
-            if (empty($login)) {
-                error_log("DEBUG INSERT: login está vazio, usando email como fallback");
-                $login = $email;
-            }
-            // Se ainda estiver vazio, lançar erro
-            if (empty($login)) {
-                error_log("DEBUG INSERT: ERRO - login e email ambos vazios!");
-                throw new Exception("Login é obrigatório. Preencha o campo Login ou Email.");
-            }
-            error_log("DEBUG INSERT: Adicionando login com valor: $login");
-            $sqlCols[] = 'login';
-            $sqlVals[] = ':login';
-            $params[':login'] = $login;
-        } else {
-            error_log("DEBUG INSERT: Coluna login NÃO existe, não adicionando");
+        // Se login está vazio, usar email como fallback
+        if (empty($login) && !empty($email)) {
+            error_log("DEBUG INSERT: login está vazio, usando email como fallback");
+            $login = $email;
         }
+        
+        // Se ainda estiver vazio, lançar erro
+        if (empty($login)) {
+            error_log("DEBUG INSERT: ERRO - login e email ambos vazios!");
+            throw new Exception("Login é obrigatório. Preencha o campo Login ou Email.");
+        }
+        
+        // SEMPRE adicionar login se temos um valor (assumindo que coluna existe)
+        // Baseado no teste, sabemos que a coluna existe no banco
+        error_log("DEBUG INSERT: Adicionando login com valor: $login");
+        $sqlCols[] = 'login';
+        $sqlVals[] = ':login';
+        $params[':login'] = $login;
         
         // Adicionar campos opcionais
         foreach ($optionalFields as $field) {
