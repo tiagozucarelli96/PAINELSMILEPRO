@@ -1620,8 +1620,17 @@ function addEventoME(e){
 
 <script>
 (function(){
+  // Variável para evitar múltiplos registros de eventos
+  let eventosMEJaRegistrados = false;
+  
   // Aguardar DOM estar pronto
   function initMEBusca() {
+    // Evitar registrar eventos múltiplas vezes
+    if (eventosMEJaRegistrados) {
+      console.log('Eventos ME já registrados, pulando...');
+      return;
+    }
+    
     const $ = s => document.querySelector(s);
     const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
 
@@ -1634,15 +1643,19 @@ function addEventoME(e){
     });
 
     if (!modal || !btnOpen || !btnClose || !btnExec || !box) {
-      console.error('Elementos do modal ME não encontrados!', {
+      console.warn('Elementos do modal ME não encontrados ainda, tentando novamente...', {
         modal: !!modal,
         btnOpen: !!btnOpen,
         btnClose: !!btnClose,
         btnExec: !!btnExec,
         box: !!box
       });
-      return;
+      return; // Não retornar erro, apenas tentar novamente depois
     }
+    
+    // Se chegou aqui, todos os elementos foram encontrados
+    console.log('✅ Todos os elementos do modal ME foram encontrados!');
+    eventosMEJaRegistrados = true; // Marcar como registrado
 
     // Teste de conectividade com me_proxy.php
     fetch('./me_proxy.php')
