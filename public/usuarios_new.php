@@ -933,6 +933,19 @@ ob_start();
                     <input type="text" name="cargo" class="form-input">
                 </div>
                 
+                <div class="form-group">
+                    <label class="form-label">Foto do Perfil</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div id="fotoPreview" style="width: 120px; height: 120px; border-radius: 50%; border: 2px solid #e5e7eb; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.5rem;">
+                            <img id="fotoPreviewImg" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                            <span id="fotoPreviewText" style="color: #94a3b8; font-size: 2rem;">👤</span>
+                        </div>
+                        <input type="file" name="foto" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem;">
+                        <small style="color: #64748b; font-size: 0.75rem;">Formatos aceitos: JPG, PNG, GIF. Tamanho máximo: 2MB</small>
+                        <input type="hidden" name="foto_atual" id="fotoAtual">
+                    </div>
+                </div>
+                
                 <?php
                 // DEBUG: Verificar se $existing_perms está disponível e não vazio
                 if (!isset($existing_perms) || !is_array($existing_perms) || empty($existing_perms)) {
