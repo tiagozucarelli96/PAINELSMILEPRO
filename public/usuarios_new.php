@@ -1689,12 +1689,29 @@ if (fotoPreview) {
     });
 }
 
-// Fechar modal ao clicar fora
+// Fechar modal de usuário ao clicar fora
 document.getElementById('userModal').addEventListener('click', function(e) {
     if (e.target === this) {
         closeModal();
     }
 });
+
+// Fechar editor de foto ao clicar fora ou pressionar ESC
+const fotoEditorModal = document.getElementById('fotoEditorModal');
+if (fotoEditorModal) {
+    fotoEditorModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            fecharEditorFoto();
+        }
+    });
+    
+    // Fechar com ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && fotoEditorModal.style.display === 'flex') {
+            fecharEditorFoto();
+        }
+    });
+}
 </script>
 
 <?php
