@@ -205,17 +205,14 @@ if ($action === 'save') {
         
         // Debug: verificar se salvou e atualizar foto se for novo usuário
         if ($result['success'] && !empty($data['foto']) && $user_id === 0) {
-            // Se foi um novo usuário, atualizar a foto com o ID correto
+            // Se foi um novo usuário, a foto já foi salva com ID temporário (999999)
+            // Mas a URL está correta e já foi salva no banco, então não precisa fazer nada
             try {
-                $newUserId = $pdo->lastInsertId();
+                $newUserId = $result['user_id'] ?? $pdo->lastInsertId();
                 if ($newUserId && strpos($data['foto'], 'magaluobjects.com') !== false) {
-                    // Extrair key atual e recriar com ID correto
-                    require_once __DIR__ . '/magalu_integration_helper.php';
-                    $magaluHelper = new MagaluIntegrationHelper();
-                    
-                    // A URL já está salva, mas podemos atualizar a key se necessário
-                    // Por enquanto, apenas logamos
-                    error_log("DEBUG FOTO: Novo usuário criado com ID $newUserId, foto: " . $data['foto']);
+                    error_log("DEBUG FOTO: ✅ Novo usuário criado com ID $newUserId");
+                    error_log("DEBUG FOTO: Foto já salva no banco com URL: " . substr($data['foto'], 0, 100) . '...');
+                    error_log("DEBUG FOTO: Nota: A foto foi salva com ID temporário 999999 no caminho, mas a URL está correta e funcional");
                 }
             } catch (Exception $e) {
                 error_log("DEBUG FOTO: Erro ao processar foto de novo usuário: " . $e->getMessage());
