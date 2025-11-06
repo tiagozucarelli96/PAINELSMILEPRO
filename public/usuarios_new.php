@@ -1867,7 +1867,8 @@ function initFotoListeners(force = false) {
         console.log('📤 Iniciando upload AJAX para endpoint dedicado...');
         
         try {
-            const response = await fetch('upload_foto_usuario_endpoint.php', {
+            // Usar rota via index.php para garantir que passa por todas as verificações
+            const response = await fetch('index.php?page=upload_foto_usuario_endpoint', {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin',

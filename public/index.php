@@ -68,6 +68,16 @@ if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     $_GET = array_merge($parsed_query, $_GET);
 }
 
+// CRÍTICO: Processar endpoint de upload de foto ANTES de qualquer coisa
+// Este endpoint deve ser servido DIRETAMENTE, sem passar por router ou verificações
+if (isset($_GET['page']) && $_GET['page'] === 'upload_foto_usuario_endpoint') {
+    $endpoint_file = __DIR__ . '/upload_foto_usuario_endpoint.php';
+    if (file_exists($endpoint_file)) {
+        require $endpoint_file;
+        exit; // Não continuar processamento
+    }
+}
+
 // IMPORTANTE: Processar requisições AJAX ANTES de qualquer verificação de login/redirecionamento
 // Isso permite que endpoints AJAX retornem JSON mesmo quando há problemas de sessão
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
