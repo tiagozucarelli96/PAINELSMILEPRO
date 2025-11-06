@@ -153,17 +153,23 @@ $sql = "SELECT id, nome, login, email, cargo, ativo, created_at";
 $params = [];
 
 // Buscar todas as colunas de permissões que existem no banco
+$existing_perms = [];
 try {
     $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                          WHERE table_schema = 'public' AND table_name = 'usuarios' 
                          AND column_name LIKE 'perm_%' 
                          ORDER BY column_name");
-    $existing_perms = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    $existing_perms = array_flip($existing_perms);
+    $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
-    // Adicionar colunas de permissões ao SELECT
-    foreach ($existing_perms as $perm => $val) {
-        $sql .= ", $perm";
+    if (!empty($perms_array)) {
+        $existing_perms = array_flip($perms_array);
+        
+        // Adicionar colunas de permissões ao SELECT
+        foreach ($perms_array as $perm) {
+            $sql .= ", $perm";
+        }
+    } else {
+        error_log("AVISO: Nenhuma permissão encontrada no banco de dados");
     }
 } catch (Exception $e) {
     error_log("Erro ao verificar permissões: " . $e->getMessage());
@@ -714,6 +720,26 @@ ob_start();
                 </div>
                 
                 <?php
+                // DEBUG: Verificar se $existing_perms está disponível
+                if (!isset($existing_perms)) {
+                    // Se não estiver disponível, buscar novamente
+                    try {
+                        $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                 WHERE table_schema = 'public' AND table_name = 'usuarios' 
+                                                 AND column_name LIKE 'perm_%' 
+                                                 ORDER BY column_name");
+                        $perms_array_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
+                        if (!empty($perms_array_debug)) {
+                            $existing_perms = array_flip($perms_array_debug);
+                        } else {
+                            $existing_perms = [];
+                        }
+                    } catch (Exception $e) {
+                        error_log("Erro ao buscar permissões no modal: " . $e->getMessage());
+                        $existing_perms = [];
+                    }
+                }
+                
                 // Mapeamento de permissões com labels
                 $perm_labels = [
                     'perm_agenda' => '📅 Agenda',
@@ -739,24 +765,34 @@ ob_start();
                     'perm_agenda_editar' => '✏️ Editar Agenda',
                     'perm_agenda_criar' => '➕ Criar Agenda',
                     'perm_agenda_excluir' => '🗑️ Excluir Agenda',
+                    'perm_agenda_meus' => '📋 Meus Eventos',
+                    'perm_agenda_relatorios' => '📊 Relatórios Agenda',
                     'perm_comercial_ver' => '👁️ Ver Comercial',
                     'perm_comercial_deg_editar' => '✏️ Editar Degustações',
+                    'perm_comercial_deg_inscritos' => '👥 Inscritos',
+                    'perm_comercial_conversao' => '💰 Conversão',
                     'perm_demandas_ver' => '👁️ Ver Demandas',
                     'perm_demandas_editar' => '✏️ Editar Demandas',
                     'perm_demandas_criar' => '➕ Criar Demandas',
                     'perm_demandas_excluir' => '🗑️ Excluir Demandas',
+                    'perm_demandas_ver_produtividade' => '📊 Produtividade',
+                    'perm_forcar_conflito' => '⚡ Forçar Conflito',
+                    'perm_gerir_eventos_outros' => '👥 Eventos de Outros',
+                    'perm_lista' => '📋 Lista',
                 ];
                 
                 // Filtrar apenas permissões que existem no banco
                 $available_perms = [];
-                foreach ($existing_perms as $perm => $val) {
-                    if (isset($perm_labels[$perm])) {
-                        $available_perms[$perm] = $perm_labels[$perm];
-                    } else {
-                        // Se não tiver label, usar o nome da permissão formatado
-                        $label = str_replace('perm_', '', $perm);
-                        $label = ucwords(str_replace('_', ' ', $label));
-                        $available_perms[$perm] = $label;
+                if (!empty($existing_perms) && is_array($existing_perms)) {
+                    foreach ($existing_perms as $perm => $val) {
+                        if (isset($perm_labels[$perm])) {
+                            $available_perms[$perm] = $perm_labels[$perm];
+                        } else {
+                            // Se não tiver label, usar o nome da permissão formatado
+                            $label = str_replace('perm_', '', $perm);
+                            $label = ucwords(str_replace('_', ' ', $label));
+                            $available_perms[$perm] = $label;
+                        }
                     }
                 }
                 ?>
@@ -775,7 +811,14 @@ ob_start();
                 </div>
                 <?php else: ?>
                 <div class="permissions-section">
-                    <p style="color: #64748b; font-size: 0.875rem;">Nenhuma permissão configurada no banco de dados.</p>
+                    <p style="color: #dc2626; font-size: 0.875rem; padding: 1rem; background: #fee2e2; border-radius: 6px;">
+                        <strong>⚠️ Nenhuma permissão encontrada no banco de dados.</strong><br>
+                        <small>Verifique se as colunas de permissões foram criadas corretamente.</small>
+                    </p>
+                    <p style="color: #64748b; font-size: 0.75rem; margin-top: 0.5rem;">
+                        Debug: existing_perms está <?= isset($existing_perms) ? 'definido' : 'NÃO definido' ?>, 
+                        count: <?= isset($existing_perms) && is_array($existing_perms) ? count($existing_perms) : 'N/A' ?>
+                    </p>
                 </div>
                 <?php endif; ?>
             </div>
