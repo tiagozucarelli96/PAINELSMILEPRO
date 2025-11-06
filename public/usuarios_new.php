@@ -789,7 +789,113 @@ ob_start();
     .btn-secondary:hover {
         background: #e2e8f0;
     }
+/* Estilos para o editor de foto */
+.modal-foto-editor {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 1rem;
+}
+
+.modal-foto-editor-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 90vw;
+    max-height: 90vh;
+    width: 800px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-foto-editor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-foto-editor-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.btn-close-foto-editor {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.btn-close-foto-editor:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.modal-foto-editor-body {
+    padding: 1.5rem;
+    overflow: auto;
+    flex: 1;
+}
+
+.modal-foto-editor-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+.foto-editor-controls .btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+/* Estilos do Cropper.js customizados */
+#fotoEditorContainer .cropper-container {
+    max-width: 100%;
+}
+
+#fotoEditorContainer .cropper-view-box {
+    border-radius: 50% !important;
+    outline: none !important;
+}
+
+#fotoEditorContainer .cropper-face {
+    border-radius: 50% !important;
+}
+
+/* Hover no preview */
+#fotoPreview:hover #fotoEditOverlay {
+    display: flex !important;
+}
+
+#fotoPreview {
+    transition: transform 0.2s;
+}
+
+#fotoPreview:hover {
+    transform: scale(1.05);
+}
 </style>
+
+<!-- CSS do Cropper.js será carregado dinamicamente via JavaScript -->
 
 <div class="usuarios-page">
     <div class="page-header">
@@ -939,13 +1045,49 @@ ob_start();
                 <div class="form-group">
                     <label class="form-label">Foto do Perfil</label>
                     <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        <div id="fotoPreview" style="width: 120px; height: 120px; border-radius: 50%; border: 2px solid #e5e7eb; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.5rem;">
+                        <!-- Preview da foto (thumbnail) -->
+                        <div id="fotoPreview" style="width: 120px; height: 120px; border-radius: 50%; border: 2px solid #e5e7eb; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.5rem; cursor: pointer; position: relative;">
                             <img id="fotoPreviewImg" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; display: none;">
                             <span id="fotoPreviewText" style="color: #94a3b8; font-size: 2rem;">👤</span>
+                            <div id="fotoEditOverlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; color: white; font-size: 0.75rem; border-radius: 50%;">
+                                ✏️ Editar
+                            </div>
                         </div>
-                        <input type="file" name="foto" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem;">
+                        
+                        <!-- Input de arquivo (oculto) -->
+                        <input type="file" name="foto" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem; display: none;">
+                        <button type="button" onclick="document.getElementById('fotoInput').click()" class="btn btn-secondary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem;">
+                            <span>📷</span>
+                            <span>Selecionar Foto</span>
+                        </button>
                         <small style="color: #64748b; font-size: 0.75rem;">Formatos aceitos: JPG, PNG, GIF. Tamanho máximo: 2MB</small>
                         <input type="hidden" name="foto_atual" id="fotoAtual">
+                        <input type="hidden" name="foto_editada" id="fotoEditada">
+                    </div>
+                </div>
+                
+                <!-- Modal de Edição de Imagem -->
+                <div id="fotoEditorModal" class="modal-foto-editor" style="display: none;">
+                    <div class="modal-foto-editor-content">
+                        <div class="modal-foto-editor-header">
+                            <h3>Editar Foto de Perfil</h3>
+                            <button type="button" onclick="fecharEditorFoto()" class="btn-close-foto-editor">×</button>
+                        </div>
+                        <div class="modal-foto-editor-body">
+                            <div id="fotoEditorContainer" style="max-width: 100%; max-height: 500px; margin: 0 auto;">
+                                <img id="fotoEditorImg" style="max-width: 100%; display: block;">
+                            </div>
+                            <div class="foto-editor-controls" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
+                                <button type="button" onclick="fotoEditorZoomIn()" class="btn btn-secondary btn-sm">🔍+ Zoom</button>
+                                <button type="button" onclick="fotoEditorZoomOut()" class="btn btn-secondary btn-sm">🔍- Zoom</button>
+                                <button type="button" onclick="fotoEditorRotate()" class="btn btn-secondary btn-sm">🔄 Girar</button>
+                                <button type="button" onclick="fotoEditorReset()" class="btn btn-secondary btn-sm">↺ Resetar</button>
+                            </div>
+                        </div>
+                        <div class="modal-foto-editor-footer">
+                            <button type="button" onclick="fecharEditorFoto()" class="btn btn-secondary">Cancelar</button>
+                            <button type="button" onclick="aplicarEdicaoFoto()" class="btn btn-primary">Aplicar Alterações</button>
+                        </div>
                     </div>
                 </div>
                 
