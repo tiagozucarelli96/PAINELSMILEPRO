@@ -1425,9 +1425,21 @@ function loadUserData(userId) {
         return;
     }
     
+    // Verificar se o modal-body existe e tem conteúdo
+    const modalBody = form.querySelector('.modal-body');
+    if (!modalBody) {
+        console.error('modal-body não encontrado no formulário!');
+        alert('Erro: Estrutura do modal inválida. Recarregue a página.');
+        return;
+    }
+    
     // Mostrar loading
-    const originalBody = form.querySelector('.modal-body').innerHTML;
-    form.querySelector('.modal-body').innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
+    const originalBody = modalBody.innerHTML;
+    console.log('[EDITAR] originalBody capturado, tamanho:', originalBody.length, 'caracteres');
+    console.log('[EDITAR] originalBody contém fotoInput?', originalBody.includes('id="fotoInput"'));
+    console.log('[EDITAR] originalBody contém btnSelecionarFoto?', originalBody.includes('id="btnSelecionarFoto"'));
+    
+    modalBody.innerHTML = '<div style="padding: 2rem; text-align: center; color: #64748b;">Carregando dados do usuário...</div>';
     
     fetch('index.php?page=usuarios&action=get_user&id=' + userId, {
         headers: {
@@ -1454,8 +1466,42 @@ function loadUserData(userId) {
             console.log('[EDITAR] 💾 Arquivo encontrado antes de restaurar HTML, salvando referência:', arquivoAnterior.name, 'tamanho:', arquivoAnterior.size);
         }
         
+        // Verificar se originalBody tem os elementos necessários
+        if (!originalBody || originalBody.length === 0) {
+            console.error('[EDITAR] ❌ originalBody está vazio ou não existe!');
+            alert('Erro: Não foi possível restaurar o formulário. Recarregue a página.');
+            return;
+        }
+        
+        // Verificar se originalBody contém os elementos necessários
+        if (!originalBody.includes('id="fotoInput"')) {
+            console.error('[EDITAR] ❌ originalBody não contém fotoInput!');
+            console.log('[EDITAR] Primeiros 500 caracteres do originalBody:', originalBody.substring(0, 500));
+        }
+        if (!originalBody.includes('id="btnSelecionarFoto"')) {
+            console.error('[EDITAR] ❌ originalBody não contém btnSelecionarFoto!');
+        }
+        
         // Restaurar formulário
-        form.querySelector('.modal-body').innerHTML = originalBody;
+        const modalBody = form.querySelector('.modal-body');
+        if (!modalBody) {
+            console.error('[EDITAR] ❌ modal-body não encontrado após carregar dados!');
+            return;
+        }
+        
+        modalBody.innerHTML = originalBody;
+        console.log('[EDITAR] ✅ HTML restaurado, tamanho:', originalBody.length, 'caracteres');
+        
+        // Verificar imediatamente se elementos foram criados
+        setTimeout(() => {
+            const fotoInputTeste = document.getElementById('fotoInput');
+            const btnSelecionarFotoTeste = document.getElementById('btnSelecionarFoto');
+            console.log('[EDITAR] Verificação imediata após restaurar HTML:', {
+                fotoInput: !!fotoInputTeste,
+                btnSelecionarFoto: !!btnSelecionarFotoTeste,
+                modalBody: !!modalBody
+            });
+        }, 10);
         
         // Restaurar arquivo se houver
         if (arquivoAnterior) {
