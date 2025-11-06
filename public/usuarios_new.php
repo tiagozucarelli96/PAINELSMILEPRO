@@ -57,6 +57,20 @@ if ($action === 'get_user' && $user_id > 0) {
     exit;
 }
 
+// Upload de foto (AJAX)
+if ($action === 'upload_foto') {
+    while (ob_get_level() > 0) { ob_end_clean(); }
+    
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Acesso negado']);
+        exit;
+    }
+    
+    require_once __DIR__ . '/upload_foto_usuario.php';
+    exit;
+}
+
 // Salvar usuário
 if ($action === 'save') {
     // Limpar qualquer output buffer
@@ -100,6 +114,94 @@ if ($action === 'save') {
         // Validar senha para novos usuários
         if ($user_id === 0 && empty($data['senha'])) {
             throw new Exception('Senha é obrigatória para novos usuários');
+        }
+        
+        // Processar upload de foto se houver
+        if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
+            require_once __DIR__ . '/upload_foto_usuario.php';
+            
+            // Criar diretório se não existir
+            $uploadDir = __DIR__ . '/uploads/fotos_usuarios/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            
+            $file = $_FILES['foto'];
+            
+            // Validar tipo
+            $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+            
+            if (in_array($mimeType, $allowedTypes) && $file['size'] <= 2 * 1024 * 1024) {
+                $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+                $fileName = uniqid('user_', true) . '.' . $extension;
+                $filePath = $uploadDir . $fileName;
+                
+                if (move_uploaded_file($file['tmp_name'], $filePath)) {
+                    // Redimensionar se necessário
+                    try {
+                        $imageInfo = getimagesize($filePath);
+                        if ($imageInfo !== false) {
+                            $maxSize = 400;
+                            $width = $imageInfo[0];
+                            $height = $imageInfo[1];
+                            
+                            if ($width > $maxSize || $height > $maxSize) {
+                                $ratio = min($maxSize / $width, $maxSize / $height);
+                                $newWidth = (int)($width * $ratio);
+                                $newHeight = (int)($height * $ratio);
+                                
+                                $image = null;
+                                if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
+                                    $image = imagecreatefromjpeg($filePath);
+                                } elseif ($mimeType === 'image/png') {
+                                    $image = imagecreatefrompng($filePath);
+                                } elseif ($mimeType === 'image/gif') {
+                                    $image = imagecreatefromgif($filePath);
+                                }
+                                
+                                if ($image) {
+                                    $resized = imagecreatetruecolor($newWidth, $newHeight);
+                                    if ($mimeType === 'image/png' || $mimeType === 'image/gif') {
+                                        imagealphablending($resized, false);
+                                        imagesavealpha($resized, true);
+                                        $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
+                                        imagefilledrectangle($resized, 0, 0, $newWidth, $newHeight, $transparent);
+                                    }
+                                    imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                                    
+                                    if ($mimeType === 'image/jpeg' || $mimeType === 'image/jpg') {
+                                        imagejpeg($resized, $filePath, 85);
+                                    } elseif ($mimeType === 'image/png') {
+                                        imagepng($resized, $filePath);
+                                    } elseif ($mimeType === 'image/gif') {
+                                        imagegif($resized, $filePath);
+                                    }
+                                    imagedestroy($image);
+                                    imagedestroy($resized);
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        error_log("Erro ao redimensionar: " . $e->getMessage());
+                    }
+                    
+                    $data['foto'] = 'uploads/fotos_usuarios/' . $fileName;
+                    
+                    // Se estiver editando e tinha foto anterior, remover
+                    if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
+                        $oldPath = __DIR__ . '/' . $data['foto_atual'];
+                        if (file_exists($oldPath) && strpos($oldPath, 'fotos_usuarios') !== false) {
+                            @unlink($oldPath);
+                        }
+                    }
+                }
+            }
+        } elseif (!empty($data['foto_atual'])) {
+            // Manter foto atual se não houver novo upload
+            $data['foto'] = $data['foto_atual'];
         }
         
         $result = $manager->save($data, $user_id);

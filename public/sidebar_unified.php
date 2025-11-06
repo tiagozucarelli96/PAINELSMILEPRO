@@ -1604,7 +1604,28 @@ if ($current_page === 'dashboard') {
     <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1000 !important;">
             <div class="sidebar-header">
                 <div class="user-info">
-                    <div class="user-avatar"><?= strtoupper(substr($nomeUser, 0, 2)) ?></div>
+                    <?php
+                    // Buscar foto do usuário se disponível
+                    $foto_usuario = null;
+                    $usuario_id_sidebar = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+                    if ($usuario_id_sidebar) {
+                        try {
+                            $stmt_foto = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id LIMIT 1");
+                            $stmt_foto->execute([':id' => $usuario_id_sidebar]);
+                            $foto_result = $stmt_foto->fetch(PDO::FETCH_ASSOC);
+                            if ($foto_result && !empty($foto_result['foto'])) {
+                                $foto_usuario = $foto_result['foto'];
+                            }
+                        } catch (Exception $e) {
+                            error_log("Erro ao buscar foto do usuário: " . $e->getMessage());
+                        }
+                    }
+                    ?>
+                    <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center;" : '' ?>">
+                        <?php if (!$foto_usuario): ?>
+                            <?= strtoupper(substr($nomeUser, 0, 2)) ?>
+                        <?php endif; ?>
+                    </div>
                     <div class="user-name"><?= htmlspecialchars($nomeUser) ?></div>
                     <div class="user-plan"><?= strtoupper($perfil) ?></div>
                 </div>
