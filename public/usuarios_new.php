@@ -154,13 +154,26 @@ $params = [];
 
 // Buscar todas as colunas de permissões que existem no banco
 $existing_perms = [];
+
+// Garantir que $pdo está disponível
+if (!isset($pdo) || !$pdo) {
+    error_log("ERRO CRÍTICO: \$pdo não está disponível!");
+    try {
+        require_once __DIR__ . '/conexao.php';
+    } catch (Exception $e) {
+        error_log("Erro ao carregar conexao.php: " . $e->getMessage());
+    }
+}
+
 try {
     // Primeiro tentar com schema 'public'
+    error_log("Buscando permissões - Estratégia 1: Com schema 'public'");
     $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                          WHERE table_schema = 'public' AND table_name = 'usuarios' 
                          AND column_name LIKE 'perm_%' 
                          ORDER BY column_name");
     $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    error_log("Estratégia 1 retornou: " . count($perms_array) . " permissões");
     
     // Se não encontrar, tentar sem especificar schema
     if (empty($perms_array)) {
@@ -170,6 +183,7 @@ try {
                              AND column_name LIKE 'perm_%' 
                              ORDER BY column_name");
         $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        error_log("Estratégia 2 retornou: " . count($perms_array) . " permissões");
     }
     
     // Se ainda não encontrar, tentar buscar diretamente da tabela
@@ -179,15 +193,17 @@ try {
                              WHERE table_name = 'usuarios' 
                              ORDER BY column_name");
         $all_cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        error_log("Total de colunas encontradas: " . count($all_cols));
         $perms_array = array_filter($all_cols, function($col) {
             return strpos($col, 'perm_') === 0;
         });
         $perms_array = array_values($perms_array); // Reindexar array
+        error_log("Estratégia 3 retornou: " . count($perms_array) . " permissões");
     }
     
     if (!empty($perms_array)) {
         $existing_perms = array_flip($perms_array);
-        error_log("Permissões encontradas: " . count($existing_perms));
+        error_log("SUCCESS: Permissões encontradas: " . count($existing_perms) . " - Primeiras 3: " . implode(', ', array_slice($perms_array, 0, 3)));
         
         // Adicionar colunas de permissões ao SELECT
         foreach ($perms_array as $perm) {
@@ -197,7 +213,12 @@ try {
         error_log("AVISO: Nenhuma permissão encontrada no banco de dados após todas as tentativas");
     }
 } catch (Exception $e) {
-    error_log("Erro ao verificar permissões: " . $e->getMessage());
+    error_log("ERRO ao verificar permissões: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
+    $existing_perms = [];
+} catch (Error $e) {
+    error_log("ERRO FATAL ao verificar permissões: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
     $existing_perms = [];
 }
 
