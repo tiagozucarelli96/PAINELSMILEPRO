@@ -1480,7 +1480,80 @@ function loadUserData(userId) {
                 cb.checked = value === true || value === 1 || value === '1' || value === 't' || value === 'true';
             });
             
-            modal.classList.add('active');
+            // Modal já está visível (foi mostrado antes de loadUserData)
+            // Agora registrar listeners de foto após dados carregados
+            setTimeout(() => {
+                console.log('🔍 [EDITAR] Tentando registrar listeners de foto após carregar dados...');
+                const fotoInput = document.getElementById('fotoInput');
+                const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+                
+                console.log('[EDITAR] Elementos encontrados:', {
+                    fotoInput: !!fotoInput,
+                    btnSelecionarFoto: !!btnSelecionarFoto,
+                    modal: !!modal
+                });
+                
+                if (fotoInput && btnSelecionarFoto) {
+                    console.log('[EDITAR] ✅ Elementos encontrados! Registrando listeners...');
+                    
+                    // Registrar botão se ainda não tiver listener
+                    if (btnSelecionarFoto.getAttribute('listener') !== 'attached') {
+                        console.log('[EDITAR] Registrando botão Selecionar Foto...');
+                        btnSelecionarFoto.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('[EDITAR] 🔘 Botão Selecionar Foto clicado!');
+                            const fotoInputNow = document.getElementById('fotoInput');
+                            if (fotoInputNow) {
+                                console.log('[EDITAR] Abrindo seletor de arquivo...');
+                                fotoInputNow.click();
+                            } else {
+                                console.error('[EDITAR] ❌ fotoInput não encontrado ao clicar!');
+                            }
+                        });
+                        btnSelecionarFoto.setAttribute('listener', 'attached');
+                        console.log('[EDITAR] ✅ Botão registrado com sucesso!');
+                    } else {
+                        console.log('[EDITAR] Botão já tem listener, pulando...');
+                    }
+                    
+                    // Registrar input file se ainda não tiver listener
+                    if (!fotoListenersJaRegistrados) {
+                        console.log('[EDITAR] Registrando input file...');
+                        initFotoListeners(true); // Forçar registro
+                    }
+                } else {
+                    console.warn('[EDITAR] ⚠️ Elementos não encontrados após carregar dados:', {
+                        fotoInput: !!fotoInput,
+                        btnSelecionarFoto: !!btnSelecionarFoto
+                    });
+                    // Tentar novamente após mais delay
+                    setTimeout(() => {
+                        const fotoInput2 = document.getElementById('fotoInput');
+                        const btnSelecionarFoto2 = document.getElementById('btnSelecionarFoto');
+                        if (fotoInput2 && btnSelecionarFoto2) {
+                            console.log('[EDITAR] ✅ Elementos encontrados na segunda tentativa!');
+                            if (btnSelecionarFoto2.getAttribute('listener') !== 'attached') {
+                                btnSelecionarFoto2.addEventListener('click', function(e) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    console.log('[EDITAR] 🔘 Botão clicado (segunda tentativa)');
+                                    fotoInput2.click();
+                                });
+                                btnSelecionarFoto2.setAttribute('listener', 'attached');
+                            }
+                            if (!fotoListenersJaRegistrados) {
+                                initFotoListeners(true);
+                            }
+                        }
+                    }, 300);
+                }
+                
+                if (!previewListenersJaRegistrados) {
+                    console.log('[EDITAR] Tentando registrar listeners de preview...');
+                    initPreviewListeners();
+                }
+            }, 300); // Delay maior porque dados foram carregados via AJAX
         } else {
             alert('Erro ao carregar usuário: ' + (data.message || 'Usuário não encontrado'));
             form.querySelector('.modal-body').innerHTML = originalBody;
