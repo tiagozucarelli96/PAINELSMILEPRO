@@ -1401,20 +1401,22 @@ function addEventoME(e){
   }
 </style>
 
-<script>
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h1 style="margin: 0;">Gerar Lista de Compras</h1>
-      <div style="display: flex; gap: 10px;">
-      <a href="index.php?page=config_fornecedores" class="btn btn-primary" style="display: flex; align-items: center; gap: 5px;">
-        <span>🏢</span> Cadastrar Fornecedor
-      </a>
-      <a href="index.php?page=lc_index" class="btn btn-secondary" style="display: flex; align-items: center; gap: 5px;">
-        <span>🏠</span> Voltar
-      </a>
-    </div>
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+  <div>
+    <h1 class="page-title">Gerar Lista de Compras</h1>
+    <p class="page-subtitle">Crie listas de compras e encomendas para seus eventos</p>
   </div>
+  <div style="display: flex; gap: 10px;">
+    <a href="index.php?page=config_fornecedores" class="btn btn-primary" style="display: flex; align-items: center; gap: 5px;">
+      <span>🏢</span> Cadastrar Fornecedor
+    </a>
+    <a href="index.php?page=lc_index" class="btn btn-secondary" style="display: flex; align-items: center; gap: 5px;">
+      <span>🏠</span> Voltar
+    </a>
+  </div>
+</div>
 
-  <div class="lc-main-container">
+<div class="lc-main-container">
     <?php if (!empty($err)): ?><div class="alert err"><?=h($err)?></div><?php endif; ?>
     <?php if (isset($_GET['ok'])): ?>
       <div class="alert success">
