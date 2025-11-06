@@ -1840,8 +1840,8 @@ function initFotoListeners(force = false) {
         }
         
         // Validar tamanho (10MB - mesmo do Trello)
-        if (file.size > 2 * 1024 * 1024) {
-            alert('Arquivo muito grande. Tamanho máximo: 2MB');
+        if (file.size > 10 * 1024 * 1024) {
+            alert('Arquivo muito grande. Tamanho máximo: 10MB');
             e.target.value = '';
             return;
         }
