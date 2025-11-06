@@ -1620,71 +1620,84 @@ function addEventoME(e){
 
 <script>
 (function(){
-  const $ = s => document.querySelector(s);
-  const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
+  // Aguardar DOM estar pronto
+  function initMEBusca() {
+    const $ = s => document.querySelector(s);
+    const modal = $('#modalME'), btnOpen = $('#btnBuscarME'), btnClose = $('#me_close'), btnExec = $('#me_exec'), box = $('#me_results');
 
-  console.log('Elementos encontrados:', {
-    modal: !!modal,
-    btnOpen: !!btnOpen,
-    btnClose: !!btnClose,
-    btnExec: !!btnExec,
-    box: !!box
-  });
-
-  // Teste de conectividade com me_proxy.php
-  fetch('./me_proxy.php')
-    .then(r => r.json())
-    .then(data => console.log('Teste de conectividade me_proxy.php:', data))
-    .catch(e => console.error('Erro ao testar me_proxy.php:', e));
-
-  const openModal  = () => { 
-    console.log('Abrindo modal ME');
-    modal.style.display = 'flex'; 
-  };
-  const closeModal = () => { 
-    console.log('Fechando modal ME');
-    modal.style.display = 'none'; 
-  };
-
-  if (btnOpen) {
-    btnOpen.addEventListener('click', openModal);
-    console.log('Evento de abertura do modal registrado');
-    
-    // Teste adicional - clique direto
-    btnOpen.addEventListener('click', function(e) {
-      console.log('Clique detectado no botão Buscar na ME');
+    console.log('Elementos encontrados:', {
+      modal: !!modal,
+      btnOpen: !!btnOpen,
+      btnClose: !!btnClose,
+      btnExec: !!btnExec,
+      box: !!box
     });
-  } else {
-    console.error('Botão de abrir modal não encontrado!');
-  }
-  
-  if (btnClose) {
-    btnClose.addEventListener('click', closeModal);
-    console.log('Evento de fechamento do modal registrado');
-  } else {
-    console.error('Botão de fechar modal não encontrado!');
-  }
 
-  // MAPEAMENTO conforme documentação da ME Eventos
-  function mapEventoToForm(raw){
-    const pad = s => (s||'').toString();
-    return {
-      espaco:     pad(raw.tipoEvento),                 // Espaço (tipoEvento)
-      convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
-      hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM)
-      nome:       pad(raw.nomeevento||''),             // Evento (nomeevento)
-      data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
-      id:         pad(raw.id||'')
+    if (!modal || !btnOpen || !btnClose || !btnExec || !box) {
+      console.error('Elementos do modal ME não encontrados!', {
+        modal: !!modal,
+        btnOpen: !!btnOpen,
+        btnClose: !!btnClose,
+        btnExec: !!btnExec,
+        box: !!box
+      });
+      return;
+    }
+
+    // Teste de conectividade com me_proxy.php
+    fetch('./me_proxy.php')
+      .then(r => r.json())
+      .then(data => console.log('Teste de conectividade me_proxy.php:', data))
+      .catch(e => console.error('Erro ao testar me_proxy.php:', e));
+
+    const openModal  = () => { 
+      console.log('Abrindo modal ME');
+      if (modal) modal.style.display = 'flex'; 
     };
-  }
+    const closeModal = () => { 
+      console.log('Fechando modal ME');
+      if (modal) modal.style.display = 'none'; 
+    };
 
-  // Buscar no proxy
-  if (btnExec) {
-    btnExec.addEventListener('click', async ()=>{
+    // Registrar evento de abertura
+    btnOpen.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('Clique detectado no botão Buscar na ME');
+      openModal();
+    });
+    console.log('Evento de abertura do modal registrado');
+  
+    // Registrar evento de fechamento
+    btnClose.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeModal();
+    });
+    console.log('Evento de fechamento do modal registrado');
+
+    // MAPEAMENTO conforme documentação da ME Eventos
+    function mapEventoToForm(raw){
+      const pad = s => (s||'').toString();
+      return {
+        espaco:     pad(raw.tipoEvento),                 // Espaço (tipoEvento)
+        convidados: parseInt(raw.convidados||'0',10)||'',// Convidados
+        hora:       pad(raw.horaevento || '').slice(0,5), // Horário (HH:MM)
+        nome:       pad(raw.nomeevento||''),             // Evento (nomeevento)
+        data:       pad(raw.dataevento||''),             // Data (YYYY-MM-DD)
+        id:         pad(raw.id||'')
+      };
+    }
+
+    // Buscar no proxy
+    btnExec.addEventListener('click', async function(e) {
+      e.preventDefault();
+      e.stopPropagation();
       console.log('Botão Buscar clicado');
-    const start = $('#me_start').value || '';
-    const end   = $('#me_end').value   || '';
-    const q     = $('#me_q').value     || '';
+      
+      const start = $('#me_start')?.value || '';
+      const end   = $('#me_end')?.value   || '';
+      const q     = $('#me_q')?.value     || '';
 
     console.log('Parâmetros:', { start, end, q });
 
@@ -1771,12 +1784,21 @@ function addEventoME(e){
       });
 
     } catch (e) {
-      box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
+      console.error('Erro ao buscar na ME:', e);
+      if (box) {
+        box.innerHTML = `<div style="padding:12px;color:#b00">Falha ao buscar na ME (${e.message}).</div>`;
+      }
     }
     });
     console.log('Evento de busca registrado');
+  }
+
+  // Inicializar quando DOM estiver pronto
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMEBusca);
   } else {
-    console.error('Botão de executar busca não encontrado!');
+    // DOM já está pronto
+    initMEBusca();
   }
 
   // Impede submit sem evento da ME
