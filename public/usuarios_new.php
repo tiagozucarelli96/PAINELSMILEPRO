@@ -1262,6 +1262,9 @@ function openModal(userId = 0) {
         if (senhaInput) senhaInput.removeAttribute('required');
         if (senhaHint) senhaHint.style.display = 'block';
         
+        // Mostrar modal PRIMEIRO (antes de carregar dados)
+        modal.classList.add('active');
+        
         loadUserData(userId);
     } else {
         title.textContent = 'Novo Usuário';
