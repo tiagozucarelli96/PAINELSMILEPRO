@@ -1743,10 +1743,27 @@ function initFotoListeners(force = false) {
     const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
     
     if (!fotoInput || !btnSelecionarFoto) {
-        console.warn('Elementos não encontrados ainda:', {
-            fotoInput: !!fotoInput,
-            btnSelecionarFoto: !!btnSelecionarFoto
-        });
+        // Não mostrar warning se não estiver no modal (página recarregada)
+        const modal = document.getElementById('userModal');
+        const isModalOpen = modal && modal.classList.contains('active');
+        if (!isModalOpen) {
+            // Modal não está aberto, provavelmente página recarregada - não mostrar warning
+            return;
+        }
+        
+        // Modal está aberto mas elementos não encontrados - mostrar warning apenas uma vez
+        if (!window._fotoListenersWarningShown) {
+            console.warn('Elementos não encontrados ainda (modal pode estar carregando):', {
+                fotoInput: !!fotoInput,
+                btnSelecionarFoto: !!btnSelecionarFoto,
+                modalActive: isModalOpen
+            });
+            window._fotoListenersWarningShown = true;
+            // Resetar após 2 segundos
+            setTimeout(() => {
+                window._fotoListenersWarningShown = false;
+            }, 2000);
+        }
         return;
     }
     
