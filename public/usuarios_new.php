@@ -204,6 +204,9 @@ try {
     if (!empty($perms_array)) {
         $existing_perms = array_flip($perms_array);
         error_log("SUCCESS: Permissões encontradas: " . count($existing_perms) . " - Primeiras 3: " . implode(', ', array_slice($perms_array, 0, 3)));
+        error_log("DEBUG: existing_perms é array? " . (is_array($existing_perms) ? 'SIM' : 'NÃO'));
+        error_log("DEBUG: existing_perms está vazio? " . (empty($existing_perms) ? 'SIM' : 'NÃO'));
+        error_log("DEBUG: count de existing_perms: " . count($existing_perms));
         
         // Adicionar colunas de permissões ao SELECT
         foreach ($perms_array as $perm) {
@@ -211,6 +214,7 @@ try {
         }
     } else {
         error_log("AVISO: Nenhuma permissão encontrada no banco de dados após todas as tentativas");
+        error_log("DEBUG: perms_array está vazio, count: " . count($perms_array ?? []));
     }
 } catch (Exception $e) {
     error_log("ERRO ao verificar permissões: " . $e->getMessage());
