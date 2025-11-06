@@ -1577,49 +1577,49 @@ function initFotoListeners(force = false) {
         
         console.log('✅ Arquivo encontrado:', file.name, file.type, file.size, 'bytes');
         console.log('Processando arquivo...');
+        
+        // Validar tipo
+        if (!file.type.match('image.*')) {
+            alert('Por favor, selecione uma imagem');
+            e.target.value = '';
+            return;
+        }
+        
+        // Validar tamanho (2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            alert('Arquivo muito grande. Tamanho máximo: 2MB');
+            e.target.value = '';
+            return;
+        }
+        
+        // Salvar blob original
+        fotoOriginalBlob = file;
+        
+        // MOSTRAR PREVIEW IMEDIATAMENTE antes de abrir editor
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const previewUrl = e.target.result;
+            console.log('Arquivo lido com sucesso, atualizando preview...');
+            updateFotoPreview(previewUrl);
+            console.log('✅ Preview atualizado com sucesso');
             
-            // Validar tipo
-            if (!file.type.match('image.*')) {
-                alert('Por favor, selecione uma imagem');
-                e.target.value = '';
-                return;
-            }
-            
-            // Validar tamanho (2MB)
-            if (file.size > 2 * 1024 * 1024) {
-                alert('Arquivo muito grande. Tamanho máximo: 2MB');
-                e.target.value = '';
-                return;
-            }
-            
-            // Salvar blob original
-            fotoOriginalBlob = file;
-            
-            // MOSTRAR PREVIEW IMEDIATAMENTE antes de abrir editor
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const previewUrl = e.target.result;
-                console.log('Arquivo lido com sucesso, atualizando preview...');
-                updateFotoPreview(previewUrl);
-                console.log('✅ Preview atualizado com sucesso');
-                
-                // Agora tentar abrir o editor
-                loadCropperLibrary()
-                    .then(() => {
-                        console.log('Cropper.js carregado, abrindo editor...');
-                        abrirEditorFoto(previewUrl);
-                    })
-                    .catch(error => {
-                        console.error('Erro ao carregar editor:', error);
-                        // Se o editor falhar, a foto já está no preview e no input
-                        console.log('Foto carregada no input, mas editor não disponível');
-                    });
-            };
-            reader.onerror = function() {
-                console.error('Erro ao ler arquivo');
-                alert('Erro ao ler o arquivo selecionado');
-            };
-            reader.readAsDataURL(file);
+            // Agora tentar abrir o editor
+            loadCropperLibrary()
+                .then(() => {
+                    console.log('Cropper.js carregado, abrindo editor...');
+                    abrirEditorFoto(previewUrl);
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar editor:', error);
+                    // Se o editor falhar, a foto já está no preview e no input
+                    console.log('Foto carregada no input, mas editor não disponível');
+                });
+        };
+        reader.onerror = function() {
+            console.error('Erro ao ler arquivo');
+            alert('Erro ao ler o arquivo selecionado');
+        };
+        reader.readAsDataURL(file);
         } else {
             console.log('Nenhum arquivo selecionado');
             // Restaurar foto atual se houver
