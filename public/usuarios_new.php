@@ -1010,7 +1010,7 @@ ob_start();
             <h2 class="modal-title" id="modalTitle">Novo Usuário</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data" onsubmit="return validarFormFoto(event)">
+        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data" onsubmit="console.log('Formulário sendo submetido!'); return validarFormFoto(event);">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="user_id" id="userId" value="0">
             
@@ -1800,18 +1800,37 @@ window.addEventListener('load', () => {
 
 // Validar formulário antes de submeter (garantir que foto está no input)
 function validarFormFoto(event) {
+    console.log('=== VALIDAÇÃO DE FORMULÁRIO ===');
     const fotoInput = document.getElementById('fotoInput');
     const fotoAtual = document.getElementById('fotoAtual');
+    const form = event.target;
+    
+    console.log('Formulário encontrado:', !!form);
+    console.log('fotoInput encontrado:', !!fotoInput);
+    console.log('fotoAtual encontrado:', !!fotoAtual);
+    
+    if (fotoInput) {
+        console.log('fotoInput.files:', fotoInput.files);
+        console.log('fotoInput.files.length:', fotoInput.files?.length || 0);
+        if (fotoInput.files && fotoInput.files.length > 0) {
+            console.log('Arquivo no input:', fotoInput.files[0].name, fotoInput.files[0].type, fotoInput.files[0].size, 'bytes');
+        }
+    }
+    
+    if (fotoAtual) {
+        console.log('fotoAtual.value:', fotoAtual.value || '(vazio)');
+    }
     
     // Verificar se há foto selecionada ou foto atual
     if (fotoInput && fotoInput.files && fotoInput.files.length > 0) {
-        console.log('Formulário sendo submetido com foto:', fotoInput.files[0].name, fotoInput.files[0].size, 'bytes');
+        console.log('✅ Formulário sendo submetido COM foto:', fotoInput.files[0].name, fotoInput.files[0].size, 'bytes');
+        console.log('✅ Formulário tem enctype multipart/form-data:', form.enctype === 'multipart/form-data');
         return true; // Permitir submit
     } else if (fotoAtual && fotoAtual.value) {
-        console.log('Formulário sendo submetido mantendo foto atual');
+        console.log('✅ Formulário sendo submetido mantendo foto atual:', fotoAtual.value);
         return true; // Permitir submit (mantendo foto atual)
     } else {
-        console.log('Formulário sendo submetido sem foto (opcional)');
+        console.log('⚠️ Formulário sendo submetido sem foto (opcional)');
         return true; // Permitir submit mesmo sem foto (foto é opcional)
     }
 }
