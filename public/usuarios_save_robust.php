@@ -230,6 +230,50 @@ class UsuarioSaveManager {
                 if (!empty($requiredFields)) {
                     error_log("DEBUG SAVE: requiredFields = " . implode(', ', array_keys($requiredFields)));
                 }
+                
+                // FALLBACK: Verificar especificamente colunas conhecidas que podem ser NOT NULL
+                // Isso garante que mesmo se a query falhar, campos críticos serão incluídos
+                $knownRequiredFields = ['funcao'];
+                foreach ($knownRequiredFields as $fieldName) {
+                    if (!isset($requiredFields[$fieldName]) && $this->columnExists($fieldName)) {
+                        // Verificar se é NOT NULL
+                        try {
+                            $stmtCheck = $this->pdo->query("
+                                SELECT is_nullable 
+                                FROM information_schema.columns 
+                                WHERE table_schema = 'public' 
+                                AND table_name = 'usuarios' 
+                                AND column_name = '$fieldName'
+                            ");
+                            $checkResult = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                            
+                            // Se não encontrar, tentar sem schema
+                            if (!$checkResult) {
+                                $stmtCheck = $this->pdo->query("
+                                    SELECT is_nullable 
+                                    FROM information_schema.columns 
+                                    WHERE table_name = 'usuarios' 
+                                    AND column_name = '$fieldName'
+                                ");
+                                $checkResult = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                            }
+                            
+                            if ($checkResult && $checkResult['is_nullable'] === 'NO') {
+                                $value = $data[$fieldName] ?? 'OPER';
+                                $requiredFields[$fieldName] = $value;
+                                error_log("DEBUG SAVE: FALLBACK - Adicionando $fieldName = $value (NOT NULL detectado)");
+                            }
+                        } catch (Exception $e) {
+                            error_log("Erro ao verificar $fieldName: " . $e->getMessage());
+                            // Se der erro mas coluna existe, adicionar mesmo assim como segurança
+                            if ($this->columnExists($fieldName)) {
+                                $value = $data[$fieldName] ?? 'OPER';
+                                $requiredFields[$fieldName] = $value;
+                                error_log("DEBUG SAVE: FALLBACK - Adicionando $fieldName = $value (por segurança)");
+                            }
+                        }
+                    }
+                }
             } catch (Exception $e) {
                 error_log("ERRO ao verificar colunas NOT NULL: " . $e->getMessage());
                 error_log("Stack trace: " . $e->getTraceAsString());
