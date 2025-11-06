@@ -1302,10 +1302,27 @@ function openModal(userId = 0) {
             // Sempre tentar registrar novamente quando modal abre (pode estar dentro do modal)
             const fotoInput = document.getElementById('fotoInput');
             const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
-            if (fotoInput && btnSelecionarFoto && !fotoListenersJaRegistrados) {
-                console.log('Elementos encontrados ao abrir modal, registrando listeners...');
-                initFotoListeners();
-            } else if (!fotoInput || !btnSelecionarFoto) {
+            if (fotoInput && btnSelecionarFoto) {
+                if (!fotoListenersJaRegistrados) {
+                    console.log('Elementos encontrados ao abrir modal, registrando listeners...');
+                    initFotoListeners(true); // Forçar registro
+                } else {
+                    console.log('Listeners já registrados, mas verificando botão...');
+                    // Verificar se o botão tem listener (pode ter sido perdido)
+                    if (!btnSelecionarFoto.onclick && btnSelecionarFoto.getAttribute('listener') !== 'attached') {
+                        console.log('Re-registrando botão...');
+                        btnSelecionarFoto.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('Botão Selecionar Foto clicado (re-registrado)');
+                            if (fotoInput) {
+                                fotoInput.click();
+                            }
+                        });
+                        btnSelecionarFoto.setAttribute('listener', 'attached');
+                    }
+                }
+            } else {
                 console.warn('Elementos não encontrados ao abrir modal:', {
                     fotoInput: !!fotoInput,
                     btnSelecionarFoto: !!btnSelecionarFoto
@@ -1495,20 +1512,30 @@ function loadCropperLibrary() {
 // Função para inicializar event listeners da foto
 let fotoListenersJaRegistrados = false;
 
-function initFotoListeners() {
-    // Evitar registrar múltiplas vezes
-    if (fotoListenersJaRegistrados) {
+function initFotoListeners(force = false) {
+    // Evitar registrar múltiplas vezes, mas permitir forçar se necessário
+    if (fotoListenersJaRegistrados && !force) {
         console.log('Listeners de foto já registrados');
         return;
     }
     
     const fotoInput = document.getElementById('fotoInput');
-    if (!fotoInput) {
-        console.warn('fotoInput não encontrado ainda, tentando novamente...');
+    const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+    
+    if (!fotoInput || !btnSelecionarFoto) {
+        console.warn('Elementos não encontrados ainda:', {
+            fotoInput: !!fotoInput,
+            btnSelecionarFoto: !!btnSelecionarFoto
+        });
         return;
     }
     
-    console.log('✅ fotoInput encontrado, registrando listeners...');
+    // Se já foram registrados, não registrar novamente
+    if (fotoListenersJaRegistrados && !force) {
+        return;
+    }
+    
+    console.log('✅ Elementos encontrados, registrando listeners...');
     fotoListenersJaRegistrados = true;
     
     // Registrar botão de selecionar foto
