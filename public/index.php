@@ -165,6 +165,7 @@ $routes = [
   'config_usuarios' => 'usuarios.php',
   'usuarios' => 'usuarios_new.php',
   'apply_usuarios_schema' => 'apply_usuarios_schema.php',
+  'limpar_e_recriar_permissoes' => 'limpar_e_recriar_permissoes.php',
   'usuario_novo' => 'usuario_novo.php',
   'usuario_editar' => 'usuario_editar.php',
   'config_fornecedores' => 'config_fornecedores.php',

@@ -416,13 +416,23 @@ class UsuarioSaveManager {
         $sqlVals[] = ':login';
         $params[':login'] = $login;
         
+        // SEMPRE tentar adicionar funcao (coluna conhecida que pode ser NOT NULL no servidor)
+        // Mesmo se a query não encontrar, adicionar por segurança
+        if ($this->columnExists('funcao') && !isset($requiredFields['funcao'])) {
+            $funcaoValue = $data['funcao'] ?? 'OPER';
+            $requiredFields['funcao'] = $funcaoValue;
+            error_log("DEBUG INSERT: FALLBACK - Adicionando funcao = $funcaoValue (por segurança)");
+        }
+        
         // Adicionar campos obrigatórios (como funcao que é NOT NULL)
         foreach ($requiredFields as $field => $value) {
             if ($this->columnExists($field)) {
-                error_log("DEBUG INSERT: Adicionando campo obrigatório $field = $value");
+                error_log("DEBUG INSERT: Adicionando campo obrigatório $field = " . var_export($value, true));
                 $sqlCols[] = $field;
                 $sqlVals[] = ":$field";
                 $params[":$field"] = $value;
+            } else {
+                error_log("DEBUG INSERT: AVISO - Campo obrigatório $field não existe no banco, pulando");
             }
         }
         
