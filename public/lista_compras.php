@@ -1793,13 +1793,32 @@ function addEventoME(e){
     console.log('Evento de busca registrado');
   }
 
-  // Inicializar quando DOM estiver pronto
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initMEBusca);
-  } else {
-    // DOM já está pronto
+  // Inicializar quando DOM estiver pronto - usar múltiplas estratégias
+  function iniciarMEBusca() {
+    // Tentar múltiplas vezes para garantir que os elementos estejam disponíveis
+    setTimeout(() => {
+      initMEBusca();
+    }, 100);
+    
+    setTimeout(() => {
+      initMEBusca();
+    }, 500);
+    
+    // Também tentar imediatamente
     initMEBusca();
   }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarMEBusca);
+  } else {
+    // DOM já está pronto
+    iniciarMEBusca();
+  }
+  
+  // Também tentar após um pequeno delay adicional (para garantir que tudo está renderizado)
+  window.addEventListener('load', () => {
+    setTimeout(initMEBusca, 200);
+  });
 
   // Impede submit sem evento da ME
   (function(){
