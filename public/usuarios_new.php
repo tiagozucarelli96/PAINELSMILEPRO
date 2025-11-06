@@ -1538,9 +1538,14 @@ function initFotoListeners(force = false) {
     console.log('✅ Elementos encontrados, registrando listeners...');
     fotoListenersJaRegistrados = true;
     
-    // Registrar botão de selecionar foto
-    const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+    // Registrar botão de selecionar foto (já foi verificado acima)
     if (btnSelecionarFoto) {
+        // Remover listener anterior se existir
+        const newBtn = btnSelecionarFoto.cloneNode(true);
+        btnSelecionarFoto.parentNode.replaceChild(newBtn, btnSelecionarFoto);
+        const btnSelecionarFotoNew = document.getElementById('btnSelecionarFoto');
+        
+        btnSelecionarFotoNew.addEventListener('click', function(e) {
         btnSelecionarFoto.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
