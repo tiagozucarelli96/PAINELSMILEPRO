@@ -282,11 +282,6 @@ ob_start();
                     <span class="funcionalidade-item-text">Gerar Lista</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
-                <a href="index.php?page=lc_index" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
-                    <span class="funcionalidade-item-icon">📝</span>
-                    <span class="funcionalidade-item-text">Gerenciar Listas</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </a>
             </div>
         </div>
         
