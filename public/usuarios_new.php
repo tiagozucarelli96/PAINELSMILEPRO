@@ -1302,12 +1302,21 @@ function openModal(userId = 0) {
 }
 
 function updateFotoPreview(fotoPath) {
+    console.log('updateFotoPreview chamado com:', fotoPath ? 'path fornecido' : 'sem path');
     const previewImg = document.getElementById('fotoPreviewImg');
     const previewText = document.getElementById('fotoPreviewText');
     const preview = document.getElementById('fotoPreview');
     const overlay = document.getElementById('fotoEditOverlay');
     
+    console.log('Elementos encontrados:', {
+        previewImg: !!previewImg,
+        previewText: !!previewText,
+        preview: !!preview,
+        overlay: !!overlay
+    });
+    
     if (fotoPath && previewImg && previewText && preview) {
+        console.log('Atualizando preview com foto...');
         previewImg.src = fotoPath;
         previewImg.style.display = 'block';
         previewText.style.display = 'none';
@@ -1315,7 +1324,9 @@ function updateFotoPreview(fotoPath) {
         preview.style.backgroundSize = 'cover';
         preview.style.backgroundPosition = 'center';
         if (overlay) overlay.style.display = 'none'; // Esconder overlay inicialmente
+        console.log('✅ Preview atualizado com sucesso');
     } else {
+        console.log('Limpando preview...');
         if (previewImg) previewImg.style.display = 'none';
         if (previewText) previewText.style.display = 'block';
         if (preview) {
@@ -1460,12 +1471,31 @@ function loadCropperLibrary() {
     });
 }
 
-// Preview da foto ao selecionar arquivo
-const fotoInput = document.getElementById('fotoInput');
-if (fotoInput) {
+// Função para inicializar event listeners da foto
+let fotoListenersJaRegistrados = false;
+
+function initFotoListeners() {
+    // Evitar registrar múltiplas vezes
+    if (fotoListenersJaRegistrados) {
+        console.log('Listeners de foto já registrados');
+        return;
+    }
+    
+    const fotoInput = document.getElementById('fotoInput');
+    if (!fotoInput) {
+        console.warn('fotoInput não encontrado ainda, tentando novamente...');
+        return;
+    }
+    
+    console.log('✅ fotoInput encontrado, registrando listeners...');
+    fotoListenersJaRegistrados = true;
+    
     fotoInput.addEventListener('change', async function(e) {
+        console.log('Arquivo selecionado:', e.target.files[0]?.name || 'nenhum');
         const file = e.target.files[0];
         if (file) {
+            console.log('Processando arquivo:', file.name, file.type, file.size, 'bytes');
+            
             // Validar tipo
             if (!file.type.match('image.*')) {
                 alert('Por favor, selecione uma imagem');
@@ -1487,12 +1517,14 @@ if (fotoInput) {
             const reader = new FileReader();
             reader.onload = function(e) {
                 const previewUrl = e.target.result;
+                console.log('Arquivo lido com sucesso, atualizando preview...');
                 updateFotoPreview(previewUrl);
-                console.log('Preview atualizado com sucesso');
+                console.log('✅ Preview atualizado com sucesso');
                 
                 // Agora tentar abrir o editor
                 loadCropperLibrary()
                     .then(() => {
+                        console.log('Cropper.js carregado, abrindo editor...');
                         abrirEditorFoto(previewUrl);
                     })
                     .catch(error => {
@@ -1507,6 +1539,7 @@ if (fotoInput) {
             };
             reader.readAsDataURL(file);
         } else {
+            console.log('Nenhum arquivo selecionado');
             // Restaurar foto atual se houver
             const fotoAtual = document.getElementById('fotoAtual');
             if (fotoAtual && fotoAtual.value) {
@@ -1516,7 +1549,30 @@ if (fotoInput) {
             }
         }
     });
+    
+    console.log('✅ Event listener de foto registrado com sucesso');
 }
+
+// Inicializar quando DOM estiver pronto - múltiplas tentativas
+function iniciarFotoListeners() {
+    // Tentar imediatamente
+    initFotoListeners();
+    
+    // Tentar após delays
+    setTimeout(initFotoListeners, 100);
+    setTimeout(initFotoListeners, 500);
+    setTimeout(initFotoListeners, 1000);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarFotoListeners);
+} else {
+    iniciarFotoListeners();
+}
+
+window.addEventListener('load', () => {
+    setTimeout(initFotoListeners, 200);
+});
 
 // Abrir editor de foto
 function abrirEditorFoto(imageSrc) {
@@ -1661,9 +1717,21 @@ function aplicarEdicaoFoto() {
     }
 }
 
-// Permitir clicar no preview para editar
-const fotoPreview = document.getElementById('fotoPreview');
-if (fotoPreview) {
+// Função para inicializar eventos do preview
+let previewListenersJaRegistrados = false;
+
+function initPreviewListeners() {
+    if (previewListenersJaRegistrados) {
+        return;
+    }
+    
+    const fotoPreview = document.getElementById('fotoPreview');
+    if (!fotoPreview) {
+        return;
+    }
+    
+    previewListenersJaRegistrados = true;
+    
     fotoPreview.addEventListener('mouseenter', function() {
         const overlay = document.getElementById('fotoEditOverlay');
         if (overlay) {
@@ -1693,10 +1761,30 @@ if (fotoPreview) {
             }
         } else {
             // Se não houver foto, abrir seletor de arquivo
-            document.getElementById('fotoInput')?.click();
+            const fotoInput = document.getElementById('fotoInput');
+            if (fotoInput) {
+                fotoInput.click();
+            }
         }
     });
 }
+
+// Inicializar preview listeners
+function iniciarPreviewListeners() {
+    initPreviewListeners();
+    setTimeout(initPreviewListeners, 100);
+    setTimeout(initPreviewListeners, 500);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', iniciarPreviewListeners);
+} else {
+    iniciarPreviewListeners();
+}
+
+window.addEventListener('load', () => {
+    setTimeout(initPreviewListeners, 200);
+});
 
 // Validar formulário antes de submeter (garantir que foto está no input)
 function validarFormFoto(event) {
