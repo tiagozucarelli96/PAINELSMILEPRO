@@ -1893,28 +1893,69 @@ function aplicarEdicaoFoto() {
                 fotoOriginalBlob = blob;
                 
                 // Criar um File a partir do blob para substituir o input file
-                const file = new File([blob], 'foto_usuario.jpg', { type: 'image/jpeg' });
+                const file = new File([blob], 'foto_usuario.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+                console.log('📸 File criado a partir do blob:', {
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    lastModified: file.lastModified
+                });
                 
                 // Criar DataTransfer para substituir o arquivo do input
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(file);
-                const fotoInput = document.getElementById('fotoInput');
-                if (fotoInput) {
-                    fotoInput.files = dataTransfer.files;
-                    console.log('Arquivo atualizado no input file. Total:', fotoInput.files.length, 'arquivo(s)');
+                try {
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    const fotoInput = document.getElementById('fotoInput');
+                    if (fotoInput) {
+                        fotoInput.files = dataTransfer.files;
+                        console.log('✅ Arquivo atualizado no input file. Total:', fotoInput.files.length, 'arquivo(s)');
+                        console.log('✅ Verificação após atualizar:', {
+                            hasFiles: !!fotoInput.files,
+                            filesLength: fotoInput.files?.length || 0,
+                            firstFile: fotoInput.files?.[0] ? {
+                                name: fotoInput.files[0].name,
+                                type: fotoInput.files[0].type,
+                                size: fotoInput.files[0].size
+                            } : null
+                        });
+                        
+                        // Disparar evento change para garantir que o formulário detecte o arquivo
+                        const changeEvent = new Event('change', { bubbles: true });
+                        fotoInput.dispatchEvent(changeEvent);
+                        console.log('✅ Evento change disparado no fotoInput');
+                    } else {
+                        console.error('❌ fotoInput não encontrado ao tentar atualizar arquivo!');
+                    }
+                } catch (error) {
+                    console.error('❌ Erro ao atualizar arquivo no input:', error);
+                    // Fallback: tentar método alternativo
+                    const fotoInput = document.getElementById('fotoInput');
+                    if (fotoInput) {
+                        // Criar um novo input file e substituir
+                        const newInput = document.createElement('input');
+                        newInput.type = 'file';
+                        newInput.name = 'foto';
+                        newInput.id = 'fotoInput';
+                        newInput.accept = 'image/*';
+                        newInput.style.display = 'none';
+                        
+                        // Tentar usar FormData como fallback
+                        console.log('⚠️ Tentando método alternativo de upload...');
+                    }
                 }
                 
-                // Salvar também como base64 no campo hidden para backup
-                canvas.toBlob(function(blob) {
-                    const reader = new FileReader();
-                    reader.onload = function() {
-                        const fotoEditadaInput = document.getElementById('fotoEditada');
-                        if (fotoEditadaInput) {
-                            fotoEditadaInput.value = reader.result;
-                        }
-                    };
-                    reader.readAsDataURL(blob);
-                }, 'image/jpeg', 0.9);
+                // Salvar também como base64 no campo hidden para backup (não usado mais, mas mantido para debug)
+                const fotoEditadaInput = document.getElementById('fotoEditada');
+                if (fotoEditadaInput) {
+                    canvas.toBlob(function(blob) {
+                        const reader = new FileReader();
+                        reader.onload = function() {
+                            fotoEditadaInput.value = reader.result.substring(0, 100) + '...'; // Apenas primeiros 100 chars para debug
+                            console.log('✅ Foto editada salva no campo hidden (primeiros 100 chars)');
+                        };
+                        reader.readAsDataURL(blob);
+                    }, 'image/jpeg', 0.9);
+                }
             } else {
                 console.error('Erro: blob é null');
             }
@@ -2006,13 +2047,29 @@ function validarFormFoto(event) {
     console.log('Formulário encontrado:', !!form);
     console.log('fotoInput encontrado:', !!fotoInput);
     console.log('fotoAtual encontrado:', !!fotoAtual);
+    console.log('Form enctype:', form.enctype);
+    console.log('Form method:', form.method);
+    console.log('Form action:', form.action);
     
     if (fotoInput) {
         console.log('fotoInput.files:', fotoInput.files);
         console.log('fotoInput.files.length:', fotoInput.files?.length || 0);
+        console.log('fotoInput.value:', fotoInput.value || '(vazio)');
         if (fotoInput.files && fotoInput.files.length > 0) {
-            console.log('Arquivo no input:', fotoInput.files[0].name, 'tipo:', fotoInput.files[0].type, 'tamanho:', fotoInput.files[0].size, 'bytes');
+            const file = fotoInput.files[0];
+            console.log('📸 Arquivo no input:', {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                lastModified: file.lastModified,
+                isFile: file instanceof File,
+                isBlob: file instanceof Blob
+            });
+        } else {
+            console.warn('⚠️ fotoInput.files está vazio ou não existe!');
         }
+    } else {
+        console.error('❌ fotoInput não encontrado!');
     }
     
     if (fotoAtual) {
@@ -2021,8 +2078,19 @@ function validarFormFoto(event) {
     
     // Verificar se há foto selecionada ou foto atual
     if (fotoInput && fotoInput.files && fotoInput.files.length > 0) {
-        console.log('✅ Formulário sendo submetido COM foto:', fotoInput.files[0].name, 'tamanho:', fotoInput.files[0].size, 'bytes');
+        const file = fotoInput.files[0];
+        console.log('✅ Formulário sendo submetido COM foto:', file.name, 'tamanho:', file.size, 'bytes');
         console.log('✅ Formulário tem enctype multipart/form-data:', form.enctype === 'multipart/form-data');
+        console.log('✅ Arquivo será enviado via formulário multipart');
+        
+        // Verificação final: garantir que o arquivo está realmente no input
+        if (file.size === 0) {
+            console.error('❌ ERRO: Arquivo tem tamanho 0!');
+            alert('Erro: A foto não pôde ser processada corretamente. Tente novamente.');
+            event.preventDefault();
+            return false;
+        }
+        
         return true; // Permitir submit
     } else if (fotoAtual && fotoAtual.value) {
         console.log('✅ Formulário sendo submetido mantendo foto atual:', fotoAtual.value);
