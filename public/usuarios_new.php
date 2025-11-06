@@ -123,12 +123,19 @@ if ($action === 'save') {
         
         // Processar upload de foto se houver
         error_log("DEBUG FOTO: Verificando upload de foto...");
+        error_log("DEBUG FOTO: \$_FILES existe? " . (isset($_FILES) ? 'SIM' : 'NÃO'));
+        error_log("DEBUG FOTO: \$_FILES completo: " . print_r($_FILES, true));
+        error_log("DEBUG FOTO: \$_POST completo: " . print_r($_POST, true));
         error_log("DEBUG FOTO: \$_FILES['foto'] existe? " . (isset($_FILES['foto']) ? 'SIM' : 'NÃO'));
         if (isset($_FILES['foto'])) {
             error_log("DEBUG FOTO: \$_FILES['foto']['error'] = " . $_FILES['foto']['error']);
             error_log("DEBUG FOTO: \$_FILES['foto']['name'] = " . ($_FILES['foto']['name'] ?? 'N/A'));
             error_log("DEBUG FOTO: \$_FILES['foto']['size'] = " . ($_FILES['foto']['size'] ?? 'N/A'));
             error_log("DEBUG FOTO: \$_FILES['foto']['type'] = " . ($_FILES['foto']['type'] ?? 'N/A'));
+            error_log("DEBUG FOTO: \$_FILES['foto']['tmp_name'] = " . ($_FILES['foto']['tmp_name'] ?? 'N/A'));
+        } else {
+            error_log("DEBUG FOTO: ❌ \$_FILES['foto'] NÃO EXISTE! Verificando se há arquivo em outro lugar...");
+            error_log("DEBUG FOTO: Chaves de \$_FILES: " . (isset($_FILES) ? implode(', ', array_keys($_FILES)) : 'N/A'));
         }
         
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
@@ -2017,22 +2024,28 @@ function aplicarEdicaoFoto() {
                 // Salvar blob para upload
                 fotoOriginalBlob = blob;
                 
-                // Criar um File a partir do blob para substituir o input file
+                // IMPORTANTE: Converter blob para File e garantir que seja enviado corretamente
                 const file = new File([blob], 'foto_usuario.jpg', { type: 'image/jpeg', lastModified: Date.now() });
                 console.log('📸 File criado a partir do blob:', {
                     name: file.name,
                     type: file.type,
                     size: file.size,
-                    lastModified: file.lastModified
+                    lastModified: file.lastModified,
+                    isFile: file instanceof File,
+                    isBlob: file instanceof Blob
                 });
                 
                 // Criar DataTransfer para substituir o arquivo do input
                 try {
                     const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
+                    const added = dataTransfer.items.add(file);
+                    console.log('📸 Arquivo adicionado ao DataTransfer:', added);
+                    
                     const fotoInput = document.getElementById('fotoInput');
                     if (fotoInput) {
+                        // IMPORTANTE: Substituir files diretamente
                         fotoInput.files = dataTransfer.files;
+                        
                         console.log('✅ Arquivo atualizado no input file. Total:', fotoInput.files.length, 'arquivo(s)');
                         console.log('✅ Verificação após atualizar:', {
                             hasFiles: !!fotoInput.files,
@@ -2040,20 +2053,39 @@ function aplicarEdicaoFoto() {
                             firstFile: fotoInput.files?.[0] ? {
                                 name: fotoInput.files[0].name,
                                 type: fotoInput.files[0].type,
-                                size: fotoInput.files[0].size
-                            } : null
+                                size: fotoInput.files[0].size,
+                                isFile: fotoInput.files[0] instanceof File,
+                                isBlob: fotoInput.files[0] instanceof Blob
+                            } : null,
+                            inputValue: fotoInput.value || '(vazio)'
                         });
                         
                         // Disparar evento change para garantir que o formulário detecte o arquivo
-                        const changeEvent = new Event('change', { bubbles: true });
+                        const changeEvent = new Event('change', { bubbles: true, cancelable: true });
                         fotoInput.dispatchEvent(changeEvent);
                         console.log('✅ Evento change disparado no fotoInput');
+                        
+                        // Verificação final: garantir que o arquivo está realmente no input
+                        setTimeout(() => {
+                            const fotoInputCheck = document.getElementById('fotoInput');
+                            if (fotoInputCheck && fotoInputCheck.files && fotoInputCheck.files.length > 0) {
+                                console.log('✅ VERIFICAÇÃO FINAL: Arquivo ainda está no input após 100ms:', {
+                                    name: fotoInputCheck.files[0].name,
+                                    size: fotoInputCheck.files[0].size
+                                });
+                            } else {
+                                console.error('❌ VERIFICAÇÃO FINAL: Arquivo PERDIDO do input após 100ms!');
+                            }
+                        }, 100);
                     } else {
                         console.error('❌ fotoInput não encontrado ao tentar atualizar arquivo!');
                     }
                 } catch (error) {
                     console.error('❌ Erro ao atualizar arquivo no input:', error);
-                    // Fallback: tentar método alternativo
+                    console.error('❌ Stack trace:', error.stack);
+                    
+                    // Fallback: tentar método alternativo usando FormData
+                    console.log('⚠️ Tentando método alternativo: salvar blob em FormData...');
                     const fotoInput = document.getElementById('fotoInput');
                     if (fotoInput) {
                         // Criar um novo input file e substituir
@@ -2064,8 +2096,12 @@ function aplicarEdicaoFoto() {
                         newInput.accept = 'image/*';
                         newInput.style.display = 'none';
                         
-                        // Tentar usar FormData como fallback
-                        console.log('⚠️ Tentando método alternativo de upload...');
+                        // Tentar adicionar o arquivo ao novo input
+                        const form = document.getElementById('userForm');
+                        if (form && fotoInput.parentNode) {
+                            fotoInput.parentNode.replaceChild(newInput, fotoInput);
+                            console.log('⚠️ Input substituído, mas arquivo pode não estar disponível');
+                        }
                     }
                 }
                 
