@@ -150,26 +150,56 @@ class UsuarioSaveManager {
             ];
             
             // Campos obrigatórios que podem ter valores padrão
+            // Buscar TODAS as colunas NOT NULL que não são campos principais nem permissões
             $requiredFields = [];
-            if ($this->columnExists('funcao')) {
-                // Verificar se funcao é NOT NULL
-                try {
-                    $stmt = $this->pdo->query("
-                        SELECT is_nullable, column_default 
-                        FROM information_schema.columns 
-                        WHERE table_schema = 'public' 
-                        AND table_name = 'usuarios' 
-                        AND column_name = 'funcao'
-                    ");
-                    $colInfo = $stmt->fetch(PDO::FETCH_ASSOC);
-                    if ($colInfo && $colInfo['is_nullable'] === 'NO') {
-                        // Coluna é NOT NULL, precisa de valor
-                        $requiredFields['funcao'] = $data['funcao'] ?? $colInfo['column_default'] ?? 'OPER';
-                        error_log("DEBUG SAVE: funcao é NOT NULL, valor = " . $requiredFields['funcao']);
+            try {
+                $stmt = $this->pdo->query("
+                    SELECT column_name, column_default, data_type
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'usuarios'
+                    AND is_nullable = 'NO'
+                    AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'login', 'created_at', 'updated_at')
+                    AND column_name NOT LIKE 'perm_%'
+                    ORDER BY column_name
+                ");
+                $notNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($notNullCols as $col) {
+                    $colName = $col['column_name'];
+                    // Pular se já temos no data ou é campo que já tratamos
+                    if (in_array($colName, ['cargo', 'cpf', 'admissao_data', 'salario_base', 'pix_tipo', 'pix_chave', 'status_empregado'])) {
+                        continue; // Já tratado em optionalFields
                     }
-                } catch (Exception $e) {
-                    error_log("Erro ao verificar funcao: " . $e->getMessage());
+                    
+                    // Obter valor do formulário ou usar default
+                    $value = $data[$colName] ?? null;
+                    
+                    // Se não tem valor e tem default, usar default
+                    if (empty($value) && !empty($col['column_default'])) {
+                        // Remover aspas e casting do default se necessário
+                        $default = preg_replace("/^'(.*)'$/", '$1', $col['column_default']);
+                        $value = $default;
+                    }
+                    
+                    // Se ainda não tem valor, usar valor padrão baseado no tipo
+                    if (empty($value)) {
+                        if ($colName === 'funcao') {
+                            $value = 'OPER'; // Valor padrão para funcao
+                        } elseif (strpos($col['data_type'], 'int') !== false || strpos($col['data_type'], 'numeric') !== false) {
+                            $value = 0;
+                        } elseif (strpos($col['data_type'], 'bool') !== false) {
+                            $value = false;
+                        } else {
+                            $value = ''; // String vazia como último recurso
+                        }
+                    }
+                    
+                    $requiredFields[$colName] = $value;
+                    error_log("DEBUG SAVE: Coluna NOT NULL $colName = $value");
                 }
+            } catch (Exception $e) {
+                error_log("Erro ao verificar colunas NOT NULL: " . $e->getMessage());
             }
             
             // Permissões (todas as que começam com perm_)
