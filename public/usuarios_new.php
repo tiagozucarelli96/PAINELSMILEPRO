@@ -198,6 +198,28 @@ try {
 // INICIAR OUTPUT
 // ============================================
 
+// Garantir que $existing_perms está definido e disponível
+if (!isset($existing_perms) || !is_array($existing_perms)) {
+    error_log("AVISO: existing_perms não está definido antes de ob_start(), recriando...");
+    try {
+        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                             WHERE table_schema = 'public' AND table_name = 'usuarios' 
+                             AND column_name LIKE 'perm_%' 
+                             ORDER BY column_name");
+        $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        if (!empty($perms_array)) {
+            $existing_perms = array_flip($perms_array);
+            error_log("Permissões recriadas: " . count($existing_perms));
+        } else {
+            $existing_perms = [];
+            error_log("AVISO: Nenhuma permissão encontrada no banco!");
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao recriar existing_perms: " . $e->getMessage());
+        $existing_perms = [];
+    }
+}
+
 ob_start();
 ?>
 
@@ -816,8 +838,14 @@ ob_start();
                         <small>Verifique se as colunas de permissões foram criadas corretamente.</small>
                     </p>
                     <p style="color: #64748b; font-size: 0.75rem; margin-top: 0.5rem;">
-                        Debug: existing_perms está <?= isset($existing_perms) ? 'definido' : 'NÃO definido' ?>, 
-                        count: <?= isset($existing_perms) && is_array($existing_perms) ? count($existing_perms) : 'N/A' ?>
+                        <strong>Debug Info:</strong><br>
+                        - existing_perms está <?= isset($existing_perms) ? '<strong style="color: green;">DEFINIDO</strong>' : '<strong style="color: red;">NÃO DEFINIDO</strong>' ?><br>
+                        - É array: <?= isset($existing_perms) && is_array($existing_perms) ? '<strong style="color: green;">SIM</strong>' : '<strong style="color: red;">NÃO</strong>' ?><br>
+                        - Count: <?= isset($existing_perms) && is_array($existing_perms) ? '<strong>' . count($existing_perms) . '</strong>' : 'N/A' ?><br>
+                        - available_perms count: <?= count($available_perms) ?><br>
+                        <?php if (isset($existing_perms) && is_array($existing_perms) && count($existing_perms) > 0): ?>
+                        - Primeiras 3 permissões: <?= implode(', ', array_slice(array_keys($existing_perms), 0, 3)) ?>
+                        <?php endif; ?>
                     </p>
                 </div>
                 <?php endif; ?>
