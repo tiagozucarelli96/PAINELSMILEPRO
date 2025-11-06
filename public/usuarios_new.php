@@ -1870,8 +1870,21 @@ function initFotoListeners(force = false) {
             const response = await fetch('upload_foto_usuario_endpoint.php', {
                 method: 'POST',
                 body: formData,
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             });
+            
+            // Verificar se resposta é JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                console.error('❌ Resposta não é JSON! Status:', response.status);
+                console.error('❌ Content-Type:', contentType);
+                console.error('❌ Resposta (primeiros 500 chars):', text.substring(0, 500));
+                throw new Error('O servidor retornou uma resposta inválida. Status: ' + response.status);
+            }
             
             const result = await response.json();
             
