@@ -1056,7 +1056,7 @@ ob_start();
                         
                         <!-- Input de arquivo (oculto) -->
                         <input type="file" name="foto" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem; display: none;">
-                        <button type="button" onclick="document.getElementById('fotoInput').click()" class="btn btn-secondary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem;">
+                        <button type="button" id="btnSelecionarFoto" class="btn btn-secondary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem;">
                             <span>📷</span>
                             <span>Selecionar Foto</span>
                         </button>
@@ -1502,11 +1502,36 @@ function initFotoListeners() {
     console.log('✅ fotoInput encontrado, registrando listeners...');
     fotoListenersJaRegistrados = true;
     
+    // Registrar botão de selecionar foto
+    const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+    if (btnSelecionarFoto) {
+        btnSelecionarFoto.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Botão Selecionar Foto clicado');
+            if (fotoInput) {
+                fotoInput.click();
+            }
+        });
+        console.log('✅ Botão Selecionar Foto registrado');
+    }
+    
+    // Registrar evento change do input file
     fotoInput.addEventListener('change', async function(e) {
+        console.log('🔔 EVENTO CHANGE DISPARADO no fotoInput!');
+        console.log('Event target:', e.target);
+        console.log('Files:', e.target.files);
+        console.log('Files length:', e.target.files?.length || 0);
         console.log('Arquivo selecionado:', e.target.files[0]?.name || 'nenhum');
+        
         const file = e.target.files[0];
-        if (file) {
-            console.log('Processando arquivo:', file.name, file.type, file.size, 'bytes');
+        if (!file) {
+            console.warn('⚠️ Nenhum arquivo selecionado');
+            return;
+        }
+        
+        console.log('✅ Arquivo encontrado:', file.name, file.type, file.size, 'bytes');
+        console.log('Processando arquivo...');
             
             // Validar tipo
             if (!file.type.match('image.*')) {
