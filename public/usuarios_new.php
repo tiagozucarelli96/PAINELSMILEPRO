@@ -1575,7 +1575,7 @@ function initFotoListeners(force = false) {
             return;
         }
         
-        console.log('✅ Arquivo encontrado:', file.name, file.type, file.size, 'bytes');
+        console.log('✅ Arquivo encontrado:', file.name, 'tipo:', file.type, 'tamanho:', file.size, 'bytes');
         console.log('Processando arquivo...');
         
         // Validar tipo
@@ -1773,7 +1773,7 @@ function aplicarEdicaoFoto() {
                 const fotoInput = document.getElementById('fotoInput');
                 if (fotoInput) {
                     fotoInput.files = dataTransfer.files;
-                    console.log('Arquivo atualizado no input file:', fotoInput.files.length, 'arquivo(s)');
+                    console.log('Arquivo atualizado no input file. Total:', fotoInput.files.length, 'arquivo(s)');
                 }
                 
                 // Salvar também como base64 no campo hidden para backup
@@ -1883,7 +1883,7 @@ function validarFormFoto(event) {
         console.log('fotoInput.files:', fotoInput.files);
         console.log('fotoInput.files.length:', fotoInput.files?.length || 0);
         if (fotoInput.files && fotoInput.files.length > 0) {
-            console.log('Arquivo no input:', fotoInput.files[0].name, fotoInput.files[0].type, fotoInput.files[0].size, 'bytes');
+            console.log('Arquivo no input:', fotoInput.files[0].name, 'tipo:', fotoInput.files[0].type, 'tamanho:', fotoInput.files[0].size, 'bytes');
         }
     }
     
@@ -1893,7 +1893,7 @@ function validarFormFoto(event) {
     
     // Verificar se há foto selecionada ou foto atual
     if (fotoInput && fotoInput.files && fotoInput.files.length > 0) {
-        console.log('✅ Formulário sendo submetido COM foto:', fotoInput.files[0].name, fotoInput.files[0].size, 'bytes');
+        console.log('✅ Formulário sendo submetido COM foto:', fotoInput.files[0].name, 'tamanho:', fotoInput.files[0].size, 'bytes');
         console.log('✅ Formulário tem enctype multipart/form-data:', form.enctype === 'multipart/form-data');
         return true; // Permitir submit
     } else if (fotoAtual && fotoAtual.value) {
