@@ -98,6 +98,9 @@ class MagaluStorageHelper {
             'Content-Length: ' . $fileSize
         ];
         
+        error_log("DEBUG MAGALU S3: Headers: " . print_r($headers, true));
+        error_log("DEBUG MAGALU S3: Iniciando requisição cURL...");
+        
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
@@ -105,20 +108,31 @@ class MagaluStorageHelper {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_VERBOSE, true); // Habilitar verbose para debug
         
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
+        $curl_info = curl_getinfo($ch);
         curl_close($ch);
         
+        error_log("DEBUG MAGALU S3: HTTP Code: $http_code");
+        error_log("DEBUG MAGALU S3: cURL Error: " . ($error ?: 'Nenhum'));
+        error_log("DEBUG MAGALU S3: Response: " . substr($response, 0, 500));
+        error_log("DEBUG MAGALU S3: cURL Info: " . print_r($curl_info, true));
+        
         if ($error) {
+            error_log("DEBUG MAGALU S3: ❌ Erro cURL: $error");
             return ['success' => false, 'error' => 'cURL Error: ' . $error];
         }
         
         if ($http_code === 200 || $http_code === 201) {
+            error_log("DEBUG MAGALU S3: ✅ Upload bem-sucedido! HTTP $http_code");
             return ['success' => true];
         }
         
+        error_log("DEBUG MAGALU S3: ❌ Upload falhou! HTTP $http_code");
+        error_log("DEBUG MAGALU S3: Response completo: $response");
         return ['success' => false, 'error' => 'HTTP ' . $http_code . ': ' . $response];
     }
     
@@ -126,31 +140,49 @@ class MagaluStorageHelper {
      * Upload de arquivo já processado (redimensionado, etc)
      */
     public function uploadFileFromPath($filePath, $subfolder = '', $contentType = null) {
+        error_log("DEBUG MAGALU STORAGE: uploadFileFromPath chamado");
+        error_log("DEBUG MAGALU STORAGE: filePath: $filePath");
+        error_log("DEBUG MAGALU STORAGE: subfolder: $subfolder");
+        error_log("DEBUG MAGALU STORAGE: contentType: " . ($contentType ?? 'N/A'));
+        
         if (!$this->isConfigured()) {
+            error_log("DEBUG MAGALU STORAGE: ❌ Magalu não configurado!");
             throw new Exception('Magalu Object Storage não configurado');
         }
         
         if (!file_exists($filePath)) {
-            throw new Exception('Arquivo não encontrado');
+            error_log("DEBUG MAGALU STORAGE: ❌ Arquivo não encontrado: $filePath");
+            throw new Exception('Arquivo não encontrado: ' . $filePath);
         }
+        
+        error_log("DEBUG MAGALU STORAGE: ✅ Arquivo existe, tamanho: " . filesize($filePath) . " bytes");
         
         // Gerar nome único
         $extension = pathinfo($filePath, PATHINFO_EXTENSION);
         $filename = $this->generateFilename('file.' . $extension);
         $key = $subfolder ? $subfolder . '/' . $filename : $filename;
         
+        error_log("DEBUG MAGALU STORAGE: Filename gerado: $filename");
+        error_log("DEBUG MAGALU STORAGE: Key gerado: $key");
+        
         // Determinar content type
         if (!$contentType) {
             $contentType = mime_content_type($filePath);
+            error_log("DEBUG MAGALU STORAGE: Content type detectado: $contentType");
         }
         
         // Fazer upload via API S3-compatible
+        error_log("DEBUG MAGALU STORAGE: Chamando s3Upload...");
         $result = $this->s3Upload($filePath, $key);
         
+        error_log("DEBUG MAGALU STORAGE: Resultado do s3Upload: " . print_r($result, true));
+        
         if ($result['success']) {
+            $url = $this->getPublicUrl($key);
+            error_log("DEBUG MAGALU STORAGE: ✅ Upload bem-sucedido! URL: $url");
             return [
                 'success' => true,
-                'url' => $this->getPublicUrl($key),
+                'url' => $url,
                 'filename' => $filename,
                 'size' => filesize($filePath),
                 'provider' => 'Magalu Object Storage',
@@ -158,6 +190,7 @@ class MagaluStorageHelper {
             ];
         }
         
+        error_log("DEBUG MAGALU STORAGE: ❌ Upload falhou: " . ($result['error'] ?? 'Erro desconhecido'));
         return ['success' => false, 'error' => $result['error']];
     }
     

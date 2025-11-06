@@ -424,6 +424,20 @@ class MagaluIntegrationHelper {
                 // Continua mesmo se redimensionamento falhar
             }
             
+            // Verificar se arquivo temporário existe antes de upload
+            if (!file_exists($tempFile)) {
+                error_log("DEBUG MAGALU: ❌ Arquivo temporário não existe antes de upload: $tempFile");
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Arquivo temporário não encontrado após processamento.'
+                ];
+            }
+            
+            error_log("DEBUG MAGALU: Arquivo temporário criado: $tempFile");
+            error_log("DEBUG MAGALU: Tamanho do arquivo: " . filesize($tempFile) . " bytes");
+            error_log("DEBUG MAGALU: Fazendo upload para Magalu...");
+            error_log("DEBUG MAGALU: Subpasta: usuarios/fotos/$usuario_id");
+            
             // Upload para Magalu
             $resultado = $this->magalu->uploadFileFromPath(
                 $tempFile,
@@ -431,15 +445,21 @@ class MagaluIntegrationHelper {
                 $mimeType
             );
             
+            error_log("DEBUG MAGALU: Resultado do uploadFileFromPath: " . print_r($resultado, true));
+            
             // Limpar arquivo temporário
             @unlink($tempFile);
             
             if (!$resultado['success']) {
+                error_log("DEBUG MAGALU: ❌ Erro no upload para Magalu: " . ($resultado['error'] ?? 'Erro desconhecido'));
                 return [
                     'sucesso' => false,
                     'erro' => 'Erro no upload para Magalu: ' . ($resultado['error'] ?? 'Erro desconhecido')
                 ];
             }
+            
+            error_log("DEBUG MAGALU: ✅ Upload bem-sucedido! URL: " . $resultado['url']);
+            error_log("DEBUG MAGALU: Key: " . ($resultado['key'] ?? 'N/A'));
             
             return [
                 'sucesso' => true,
