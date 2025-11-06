@@ -833,8 +833,10 @@ ob_start();
         ?>
         <div class="user-card">
             <div class="user-header">
-                <div class="user-avatar">
-                    <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                <div class="user-avatar" style="background-image: <?= !empty($user['foto']) ? "url('" . htmlspecialchars($user['foto']) . "')" : 'none' ?>; background-size: cover; background-position: center;">
+                    <?php if (empty($user['foto'])): ?>
+                        <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                    <?php endif; ?>
                 </div>
                 <div class="user-info">
                     <h3><?= h($user['nome'] ?? 'Sem nome') ?></h3>
@@ -1131,6 +1133,9 @@ function openModal(userId = 0) {
         if (senhaHint) senhaHint.style.display = 'none';
         
         form.reset();
+        // Limpar preview da foto
+        updateFotoPreview('');
+        
         // Limpar todos os checkboxes
         form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.checked = false;
@@ -1139,8 +1144,34 @@ function openModal(userId = 0) {
         form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]').forEach(input => {
             input.value = '';
         });
+        // Limpar foto atual
+        const fotoAtualInput = document.getElementById('fotoAtual');
+        if (fotoAtualInput) fotoAtualInput.value = '';
+        
         // Mostrar modal
         modal.classList.add('active');
+    }
+}
+
+function updateFotoPreview(fotoPath) {
+    const previewImg = document.getElementById('fotoPreviewImg');
+    const previewText = document.getElementById('fotoPreviewText');
+    const preview = document.getElementById('fotoPreview');
+    
+    if (fotoPath && previewImg && previewText && preview) {
+        previewImg.src = fotoPath;
+        previewImg.style.display = 'block';
+        previewText.style.display = 'none';
+        preview.style.backgroundImage = 'url(' + fotoPath + ')';
+        preview.style.backgroundSize = 'cover';
+        preview.style.backgroundPosition = 'center';
+    } else {
+        if (previewImg) previewImg.style.display = 'none';
+        if (previewText) previewText.style.display = 'block';
+        if (preview) {
+            preview.style.backgroundImage = 'none';
+            preview.style.background = '#f8fafc';
+        }
     }
 }
 
@@ -1189,11 +1220,16 @@ function loadUserData(userId) {
             const loginInput = form.querySelector('[name="login"]');
             const emailInput = form.querySelector('[name="email"]');
             const cargoInput = form.querySelector('[name="cargo"]');
+            const fotoAtualInput = document.getElementById('fotoAtual');
             
             if (nomeInput) nomeInput.value = user.nome || '';
             if (loginInput) loginInput.value = user.login || user.email || '';
             if (emailInput) emailInput.value = user.email || '';
             if (cargoInput) cargoInput.value = user.cargo || '';
+            if (fotoAtualInput) fotoAtualInput.value = user.foto || '';
+            
+            // Atualizar preview da foto
+            updateFotoPreview(user.foto || '');
             
             // Permissões - marcar checkboxes
             form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1239,6 +1275,44 @@ function deleteUser(userId) {
     
     document.body.appendChild(form);
     form.submit();
+}
+
+// Preview da foto ao selecionar arquivo
+const fotoInput = document.getElementById('fotoInput');
+if (fotoInput) {
+    fotoInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Validar tipo
+            if (!file.type.match('image.*')) {
+                alert('Por favor, selecione uma imagem');
+                e.target.value = '';
+                return;
+            }
+            
+            // Validar tamanho (2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                alert('Arquivo muito grande. Tamanho máximo: 2MB');
+                e.target.value = '';
+                return;
+            }
+            
+            // Mostrar preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                updateFotoPreview(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        } else {
+            // Restaurar foto atual se houver
+            const fotoAtual = document.getElementById('fotoAtual');
+            if (fotoAtual && fotoAtual.value) {
+                updateFotoPreview(fotoAtual.value);
+            } else {
+                updateFotoPreview('');
+            }
+        }
+    });
 }
 
 // Fechar modal ao clicar fora
