@@ -1010,7 +1010,7 @@ ob_start();
             <h2 class="modal-title" id="modalTitle">Novo Usuário</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data">
+        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data" onsubmit="return validarFormFoto(event)">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="user_id" id="userId" value="0">
             
@@ -1698,12 +1698,33 @@ if (fotoPreview) {
     });
 }
 
-// Fechar modal de usuário ao clicar fora
-document.getElementById('userModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeModal();
+// Validar formulário antes de submeter (garantir que foto está no input)
+function validarFormFoto(event) {
+    const fotoInput = document.getElementById('fotoInput');
+    const fotoAtual = document.getElementById('fotoAtual');
+    
+    // Verificar se há foto selecionada ou foto atual
+    if (fotoInput && fotoInput.files && fotoInput.files.length > 0) {
+        console.log('Formulário sendo submetido com foto:', fotoInput.files[0].name, fotoInput.files[0].size, 'bytes');
+        return true; // Permitir submit
+    } else if (fotoAtual && fotoAtual.value) {
+        console.log('Formulário sendo submetido mantendo foto atual');
+        return true; // Permitir submit (mantendo foto atual)
+    } else {
+        console.log('Formulário sendo submetido sem foto (opcional)');
+        return true; // Permitir submit mesmo sem foto (foto é opcional)
     }
-});
+}
+
+// Fechar modal de usuário ao clicar fora
+const userModal = document.getElementById('userModal');
+if (userModal) {
+    userModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal();
+        }
+    });
+}
 
 // Fechar editor de foto ao clicar fora ou pressionar ESC
 const fotoEditorModal = document.getElementById('fotoEditorModal');
