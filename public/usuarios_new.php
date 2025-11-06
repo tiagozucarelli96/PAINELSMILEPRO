@@ -121,84 +121,37 @@ if ($action === 'save') {
             throw new Exception('Senha é obrigatória para novos usuários');
         }
         
-        // Processar upload de foto se houver
-        error_log("=== DEBUG FOTO: INÍCIO DO PROCESSAMENTO ===");
-        error_log("DEBUG FOTO: Verificando upload de foto...");
-        error_log("DEBUG FOTO: \$_FILES existe? " . (isset($_FILES) ? 'SIM' : 'NÃO'));
-        error_log("DEBUG FOTO: \$_POST['foto_atual'] = " . (isset($_POST['foto_atual']) ? $_POST['foto_atual'] : 'NÃO DEFINIDO'));
-        error_log("DEBUG FOTO: \$_FILES['foto'] existe? " . (isset($_FILES['foto']) ? 'SIM' : 'NÃO'));
+        // NOVA ABORDAGEM: Foto já foi enviada via AJAX, só pegar URL do POST
+        error_log("=== DEBUG FOTO: NOVA ABORDAGEM - Foto via AJAX ===");
+        error_log("DEBUG FOTO: \$_POST['foto'] = " . (isset($_POST['foto']) ? substr($_POST['foto'], 0, 100) . '...' : 'NÃO DEFINIDO'));
+        error_log("DEBUG FOTO: \$_POST['foto_atual'] = " . (isset($_POST['foto_atual']) ? substr($_POST['foto_atual'], 0, 100) . '...' : 'NÃO DEFINIDO'));
         
-        if (isset($_FILES['foto'])) {
-            error_log("DEBUG FOTO: \$_FILES['foto']['error'] = " . $_FILES['foto']['error'] . " (UPLOAD_ERR_OK = " . UPLOAD_ERR_OK . ")");
-            error_log("DEBUG FOTO: \$_FILES['foto']['name'] = " . ($_FILES['foto']['name'] ?? 'N/A'));
-            error_log("DEBUG FOTO: \$_FILES['foto']['size'] = " . ($_FILES['foto']['size'] ?? 'N/A'));
-            error_log("DEBUG FOTO: \$_FILES['foto']['type'] = " . ($_FILES['foto']['type'] ?? 'N/A'));
-            error_log("DEBUG FOTO: \$_FILES['foto']['tmp_name'] = " . ($_FILES['foto']['tmp_name'] ?? 'N/A'));
+        // Foto vem do campo hidden (enviado após upload AJAX)
+        if (!empty($_POST['foto'])) {
+            $data['foto'] = trim($_POST['foto']);
+            error_log("DEBUG FOTO: ✅ Foto recebida do POST (URL do Magalu): " . substr($data['foto'], 0, 100) . '...');
             
-            // Verificar se tmp_name existe e é um arquivo válido
-            if (isset($_FILES['foto']['tmp_name']) && is_uploaded_file($_FILES['foto']['tmp_name'])) {
-                error_log("DEBUG FOTO: ✅ Arquivo temporário existe e é válido");
-            } else {
-                error_log("DEBUG FOTO: ❌ Arquivo temporário NÃO existe ou NÃO é válido");
-            }
-        } else {
-            error_log("DEBUG FOTO: ❌ \$_FILES['foto'] NÃO EXISTE!");
-            error_log("DEBUG FOTO: Chaves de \$_FILES: " . (isset($_FILES) && is_array($_FILES) ? implode(', ', array_keys($_FILES)) : 'N/A ou não é array'));
-            error_log("DEBUG FOTO: \$_FILES completo: " . print_r($_FILES, true));
-        }
-        
-        if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            error_log("DEBUG FOTO: ✅ Condição de upload OK atendida, processando...");
-            error_log("DEBUG FOTO: Usando MESMA lógica do Trello (MagaluUpload direto)");
-            
-            // USAR EXATAMENTE A MESMA LÓGICA DO TRELLO
-            require_once __DIR__ . '/upload_magalu.php';
-            
-            try {
-                $uploader = new MagaluUpload();
-                error_log("DEBUG FOTO: MagaluUpload instanciado com sucesso");
-                
-                // Upload usando prefix 'usuarios' (mesmo padrão do Trello que usa 'demandas_trello')
-                $upload_result = $uploader->upload($_FILES['foto'], 'usuarios');
-                
-                error_log("DEBUG FOTO: Resultado do upload: " . json_encode($upload_result));
-                
-                // Validar que o upload foi bem-sucedido (mesmo do Trello)
-                if (empty($upload_result['url'])) {
-                    error_log("ERRO FOTO: ❌ Upload falhou: URL não foi retornada");
-                    throw new Exception('Upload falhou: URL não foi retornada');
-                }
-                
-                // Salvar URL do Magalu no banco (mesmo do Trello)
-                $data['foto'] = $upload_result['url'];
-                error_log("DEBUG FOTO: ✅ Foto salva no Magalu com URL: " . $data['foto']);
-                error_log("DEBUG FOTO: Chave storage: " . ($upload_result['chave_storage'] ?? 'N/A'));
-                
-                // Se estiver editando e tinha foto anterior, remover do Magalu
-                if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
-                    // Verificar se é URL do Magalu e extrair chave_storage
-                    if (strpos($data['foto_atual'], 'magaluobjects.com') !== false) {
-                        try {
-                            // Extrair chave da URL (formato: endpoint/bucket/key)
-                            $urlParts = parse_url($data['foto_atual']);
-                            $path = $urlParts['path'] ?? '';
-                            // Remover /bucket/ do início
-                            $pathParts = explode('/', trim($path, '/'));
-                            if (count($pathParts) > 1) {
-                                array_shift($pathParts); // Remove bucket
-                                $key = implode('/', $pathParts);
-                                $uploader->delete($key);
-                                error_log("DEBUG FOTO: Foto anterior removida do Magalu (key: $key)");
-                            }
-                        } catch (Exception $e) {
-                            error_log("AVISO FOTO: Erro ao remover foto anterior do Magalu: " . $e->getMessage());
+            // Se estiver editando e tinha foto anterior, remover do Magalu
+            if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
+                if (strpos($data['foto_atual'], 'magaluobjects.com') !== false) {
+                    try {
+                        require_once __DIR__ . '/upload_magalu.php';
+                        $uploader = new MagaluUpload();
+                        
+                        // Extrair chave da URL
+                        $urlParts = parse_url($data['foto_atual']);
+                        $path = $urlParts['path'] ?? '';
+                        $pathParts = explode('/', trim($path, '/'));
+                        if (count($pathParts) > 1) {
+                            array_shift($pathParts); // Remove bucket
+                            $key = implode('/', $pathParts);
+                            $uploader->delete($key);
+                            error_log("DEBUG FOTO: Foto anterior removida do Magalu (key: $key)");
                         }
+                    } catch (Exception $e) {
+                        error_log("AVISO FOTO: Erro ao remover foto anterior: " . $e->getMessage());
                     }
                 }
-            } catch (Exception $e) {
-                error_log("ERRO FOTO: ❌ Exceção ao processar upload: " . $e->getMessage());
-                error_log("ERRO FOTO: Stack trace: " . $e->getTraceAsString());
-                throw new Exception('Erro ao processar foto: ' . $e->getMessage());
             }
         } elseif (!empty($data['foto_atual'])) {
             // Manter foto atual se não houver novo upload
@@ -206,12 +159,9 @@ if ($action === 'save') {
             error_log("DEBUG FOTO: ✅ Mantendo foto atual (sem novo upload): " . substr($data['foto'], 0, 100) . '...');
         } else {
             // Se não houver foto e não houver foto_atual, garantir que não será enviado
-            error_log("DEBUG FOTO: ⚠️ Nenhuma foto enviada e nenhuma foto_atual, removendo foto dos dados");
-            error_log("DEBUG FOTO: data['foto_atual'] = " . (isset($data['foto_atual']) ? $data['foto_atual'] : 'NÃO DEFINIDO'));
+            error_log("DEBUG FOTO: ⚠️ Nenhuma foto enviada, removendo foto dos dados");
             unset($data['foto']);
         }
-        
-        error_log("=== DEBUG FOTO: FIM DO PROCESSAMENTO ===");
         
         // CRÍTICO: Verificar se foto está em $data ANTES de salvar
         error_log("=== DEBUG FOTO FINAL: ANTES DE CHAMAR save() ===");
@@ -1086,7 +1036,7 @@ ob_start();
             <h2 class="modal-title" id="modalTitle">Novo Usuário</h2>
             <button class="modal-close" onclick="closeModal()">&times;</button>
         </div>
-        <form id="userForm" method="POST" action="index.php?page=usuarios" enctype="multipart/form-data" onsubmit="console.log('Formulário sendo submetido!'); return validarFormFoto(event);">
+        <form id="userForm" method="POST" action="index.php?page=usuarios" onsubmit="console.log('Formulário sendo submetido!'); return true;">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="user_id" id="userId" value="0">
             
@@ -1128,15 +1078,20 @@ ob_start();
                             <div id="fotoEditOverlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; color: white; font-size: 0.75rem; border-radius: 50%;">
                                 ✏️ Editar
                             </div>
+                            <div id="fotoUploading" style="position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; color: white; font-size: 0.75rem; border-radius: 50%;">
+                                ⏳ Enviando...
+                            </div>
                         </div>
                         
-                        <!-- Input de arquivo (oculto) -->
-                        <input type="file" name="foto" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem; display: none;">
+                        <!-- Input de arquivo (oculto) - NÃO será enviado no form, só para upload AJAX -->
+                        <input type="file" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem; display: none;">
                         <button type="button" id="btnSelecionarFoto" class="btn btn-secondary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem;">
                             <span>📷</span>
                             <span>Selecionar Foto</span>
                         </button>
-                        <small style="color: #64748b; font-size: 0.75rem;">Formatos aceitos: JPG, PNG, GIF. Tamanho máximo: 2MB</small>
+                        <small style="color: #64748b; font-size: 0.75rem;">Formatos aceitos: JPG, PNG, GIF. Tamanho máximo: 10MB</small>
+                        <!-- Campo hidden com URL da foto (será preenchido após upload AJAX) -->
+                        <input type="hidden" name="foto" id="fotoUrl">
                         <input type="hidden" name="foto_atual" id="fotoAtual">
                         <input type="hidden" name="foto_editada" id="fotoEditada">
                     </div>
@@ -1859,18 +1814,13 @@ function initFotoListeners(force = false) {
         }
     }
     
-    // Registrar evento change do input file
+    // NOVA ABORDAGEM: Upload via AJAX imediatamente quando foto é selecionada (como Trello)
     fotoInput.addEventListener('change', async function(e) {
-        console.log('🔔 EVENTO CHANGE DISPARADO no fotoInput!');
-        console.log('Event target:', e.target);
-        console.log('Files:', e.target.files);
-        console.log('Files length:', e.target.files?.length || 0);
-        console.log('Arquivo selecionado:', e.target.files[0]?.name || 'nenhum');
+        console.log('🔔 EVENTO CHANGE DISPARADO - NOVA ABORDAGEM AJAX');
         
         const file = e.target.files[0];
         if (!file) {
             console.log('Nenhum arquivo selecionado');
-            // Restaurar foto atual se houver
             const fotoAtual = document.getElementById('fotoAtual');
             if (fotoAtual && fotoAtual.value) {
                 updateFotoPreview(fotoAtual.value);
@@ -1881,16 +1831,15 @@ function initFotoListeners(force = false) {
         }
         
         console.log('✅ Arquivo encontrado:', file.name, 'tipo:', file.type, 'tamanho:', file.size, 'bytes');
-        console.log('Processando arquivo...');
         
         // Validar tipo
         if (!file.type.match('image.*')) {
-            alert('Por favor, selecione uma imagem');
+            alert('Por favor, selecione uma imagem (JPG, PNG ou GIF)');
             e.target.value = '';
             return;
         }
         
-        // Validar tamanho (2MB)
+        // Validar tamanho (10MB - mesmo do Trello)
         if (file.size > 2 * 1024 * 1024) {
             alert('Arquivo muito grande. Tamanho máximo: 2MB');
             e.target.value = '';
@@ -2233,69 +2182,7 @@ window.addEventListener('load', () => {
     setTimeout(initPreviewListeners, 200);
 });
 
-// Validar formulário antes de submeter (garantir que foto está no input)
-function validarFormFoto(event) {
-    console.log('=== VALIDAÇÃO DE FORMULÁRIO ===');
-    const fotoInput = document.getElementById('fotoInput');
-    const fotoAtual = document.getElementById('fotoAtual');
-    const form = event.target;
-    
-    console.log('Formulário encontrado:', !!form);
-    console.log('fotoInput encontrado:', !!fotoInput);
-    console.log('fotoAtual encontrado:', !!fotoAtual);
-    console.log('Form enctype:', form.enctype);
-    console.log('Form method:', form.method);
-    console.log('Form action:', form.action);
-    
-    if (fotoInput) {
-        console.log('fotoInput.files:', fotoInput.files);
-        console.log('fotoInput.files.length:', fotoInput.files?.length || 0);
-        console.log('fotoInput.value:', fotoInput.value || '(vazio)');
-        if (fotoInput.files && fotoInput.files.length > 0) {
-            const file = fotoInput.files[0];
-            console.log('📸 Arquivo no input:', {
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                lastModified: file.lastModified,
-                isFile: file instanceof File,
-                isBlob: file instanceof Blob
-            });
-        } else {
-            console.warn('⚠️ fotoInput.files está vazio ou não existe!');
-        }
-    } else {
-        console.error('❌ fotoInput não encontrado!');
-    }
-    
-    if (fotoAtual) {
-        console.log('fotoAtual.value:', fotoAtual.value || '(vazio)');
-    }
-    
-    // Verificar se há foto selecionada ou foto atual
-    if (fotoInput && fotoInput.files && fotoInput.files.length > 0) {
-        const file = fotoInput.files[0];
-        console.log('✅ Formulário sendo submetido COM foto:', file.name, 'tamanho:', file.size, 'bytes');
-        console.log('✅ Formulário tem enctype multipart/form-data:', form.enctype === 'multipart/form-data');
-        console.log('✅ Arquivo será enviado via formulário multipart');
-        
-        // Verificação final: garantir que o arquivo está realmente no input
-        if (file.size === 0) {
-            console.error('❌ ERRO: Arquivo tem tamanho 0!');
-            alert('Erro: A foto não pôde ser processada corretamente. Tente novamente.');
-            event.preventDefault();
-            return false;
-        }
-        
-        return true; // Permitir submit
-    } else if (fotoAtual && fotoAtual.value) {
-        console.log('✅ Formulário sendo submetido mantendo foto atual:', fotoAtual.value);
-        return true; // Permitir submit (mantendo foto atual)
-    } else {
-        console.log('⚠️ Formulário sendo submetido sem foto (opcional)');
-        return true; // Permitir submit mesmo sem foto (foto é opcional)
-    }
-}
+// Validação simplificada - foto já foi enviada via AJAX
 
 // Fechar modal de usuário ao clicar fora
 const userModal = document.getElementById('userModal');
