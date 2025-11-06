@@ -1296,6 +1296,18 @@ function openModal(userId = 0) {
         const fotoAtualInput = document.getElementById('fotoAtual');
         if (fotoAtualInput) fotoAtualInput.value = '';
         
+        // Tentar re-inicializar listeners de foto quando modal abrir (caso não tenham sido encontrados antes)
+        setTimeout(() => {
+            if (!fotoListenersJaRegistrados) {
+                console.log('Tentando registrar listeners de foto ao abrir modal...');
+                initFotoListeners();
+            }
+            if (!previewListenersJaRegistrados) {
+                console.log('Tentando registrar listeners de preview ao abrir modal...');
+                initPreviewListeners();
+            }
+        }, 100);
+        
         // Mostrar modal
         modal.classList.add('active');
     }
