@@ -201,10 +201,18 @@ class UsuarioSaveManager {
                     
                     // Se não tem valor e tem default, usar default
                     if (empty($value) && !empty($col['column_default'])) {
-                        // Remover aspas e casting do default se necessário
-                        $default = preg_replace("/^'(.*)'$/", '$1', $col['column_default']);
-                        $value = $default;
-                        error_log("DEBUG SAVE: Usando default de $colName = $value");
+                        $default = $col['column_default'];
+                        
+                        // Se o default é CURRENT_TIMESTAMP ou similar, usar timestamp atual em PHP
+                        if (preg_match('/CURRENT_TIMESTAMP|NOW\(\)|clock_timestamp\(\)|now\(\)/i', $default)) {
+                            $value = date('Y-m-d H:i:s');
+                            error_log("DEBUG SAVE: Default é CURRENT_TIMESTAMP/NOW(), usando timestamp atual: $value");
+                        } else {
+                            // Remover aspas se for string
+                            $default = preg_replace("/^'(.*)'$/", '$1', $default);
+                            $value = $default;
+                            error_log("DEBUG SAVE: Usando default de $colName = $value");
+                        }
                     }
                     
                     // Se ainda não tem valor, usar valor padrão baseado no tipo
@@ -212,6 +220,14 @@ class UsuarioSaveManager {
                         if ($colName === 'funcao') {
                             $value = 'OPER'; // Valor padrão para funcao
                             error_log("DEBUG SAVE: Aplicando valor padrão 'OPER' para funcao");
+                        } elseif (in_array($colName, ['criado_em', 'created_at', 'updated_at', 'atualizado_em'])) {
+                            // Timestamps: usar timestamp atual
+                            $value = date('Y-m-d H:i:s');
+                            error_log("DEBUG SAVE: Coluna timestamp $colName, usando timestamp atual: $value");
+                        } elseif (strpos($col['data_type'], 'timestamp') !== false || strpos($col['data_type'], 'date') !== false) {
+                            // Qualquer coluna de data/timestamp: usar timestamp atual
+                            $value = date('Y-m-d H:i:s');
+                            error_log("DEBUG SAVE: Coluna de data/timestamp $colName, usando timestamp atual: $value");
                         } elseif (strpos($col['data_type'], 'int') !== false || strpos($col['data_type'], 'numeric') !== false) {
                             $value = 0;
                         } elseif (strpos($col['data_type'], 'bool') !== false) {
