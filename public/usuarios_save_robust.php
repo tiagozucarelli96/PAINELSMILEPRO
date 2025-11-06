@@ -90,17 +90,26 @@ class UsuarioSaveManager {
             
             // Login: usar email como fallback se coluna login não existir
             $hasLoginColumn = $this->columnExists('login');
+            error_log("DEBUG SAVE: hasLoginColumn = " . ($hasLoginColumn ? 'SIM' : 'NÃO'));
+            error_log("DEBUG SAVE: data[login] = " . ($data['login'] ?? 'NÃO DEFINIDO'));
+            error_log("DEBUG SAVE: email = " . ($email ?? 'NÃO DEFINIDO'));
+            
             $login = $hasLoginColumn ? trim($data['login'] ?? $email ?? '') : ($email ?? '');
+            error_log("DEBUG SAVE: login após trim = '$login'");
             
             // Se login está vazio mas coluna existe, usar email como fallback
             if ($hasLoginColumn && empty($login) && !empty($email)) {
+                error_log("DEBUG SAVE: login vazio, usando email como fallback");
                 $login = $email;
             }
             
             // Se login ainda está vazio mas coluna existe, é obrigatório
             if ($hasLoginColumn && empty($login)) {
+                error_log("DEBUG SAVE: ERRO - login obrigatório mas está vazio!");
                 throw new Exception("Login é obrigatório (use email como login se necessário)");
             }
+            
+            error_log("DEBUG SAVE: login final = '$login'");
             
             if (empty($nome)) {
                 throw new Exception("Nome é obrigatório");
@@ -204,15 +213,20 @@ class UsuarioSaveManager {
      * Inserir novo usuário
      */
     private function insert($nome, $email, $senha, $login, $optionalFields, $permissions, $data, $columns) {
+        error_log("DEBUG INSERT: nome=$nome, email=$email, login=$login, senha=" . (empty($senha) ? 'VAZIA' : 'PREENCHIDA'));
+        
         $sqlCols = ['nome'];
         $sqlVals = [':nome'];
         $params = [':nome' => $nome];
         
         // Adicionar email se coluna existir
         if ($this->columnExists('email')) {
+            error_log("DEBUG INSERT: Adicionando email");
             $sqlCols[] = 'email';
             $sqlVals[] = ':email';
             $params[':email'] = $email;
+        } else {
+            error_log("DEBUG INSERT: Coluna email NÃO existe");
         }
         
         // Adicionar senha se coluna existir e senha fornecida
@@ -220,24 +234,35 @@ class UsuarioSaveManager {
             if (empty($senha)) {
                 throw new Exception("Senha é obrigatória para novos usuários");
             }
+            error_log("DEBUG INSERT: Adicionando senha");
             $sqlCols[] = 'senha';
             $sqlVals[] = ':senha';
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
+        } else {
+            error_log("DEBUG INSERT: Coluna senha NÃO existe");
         }
         
         // Adicionar login se existir - OBRIGATÓRIO se coluna existe
-        if ($this->columnExists('login')) {
+        $hasLogin = $this->columnExists('login');
+        error_log("DEBUG INSERT: Coluna login existe? " . ($hasLogin ? 'SIM' : 'NÃO'));
+        
+        if ($hasLogin) {
             // Garantir que login não está vazio (se estiver, usar email)
             if (empty($login)) {
+                error_log("DEBUG INSERT: login está vazio, usando email como fallback");
                 $login = $email;
             }
             // Se ainda estiver vazio, lançar erro
             if (empty($login)) {
+                error_log("DEBUG INSERT: ERRO - login e email ambos vazios!");
                 throw new Exception("Login é obrigatório. Preencha o campo Login ou Email.");
             }
+            error_log("DEBUG INSERT: Adicionando login com valor: $login");
             $sqlCols[] = 'login';
             $sqlVals[] = ':login';
             $params[':login'] = $login;
+        } else {
+            error_log("DEBUG INSERT: Coluna login NÃO existe, não adicionando");
         }
         
         // Adicionar campos opcionais
@@ -270,6 +295,10 @@ class UsuarioSaveManager {
         $sql = "INSERT INTO usuarios (" . implode(', ', $sqlCols) . ") 
                 VALUES (" . implode(', ', $sqlVals) . ") 
                 RETURNING id";
+        
+        error_log("DEBUG INSERT: SQL final = " . $sql);
+        error_log("DEBUG INSERT: Colunas = " . implode(', ', $sqlCols));
+        error_log("DEBUG INSERT: Params = " . json_encode(array_keys($params)));
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
