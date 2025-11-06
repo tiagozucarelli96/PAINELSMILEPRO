@@ -122,23 +122,33 @@ if ($action === 'save') {
         }
         
         // Processar upload de foto se houver
+        error_log("=== DEBUG FOTO: INÍCIO DO PROCESSAMENTO ===");
         error_log("DEBUG FOTO: Verificando upload de foto...");
         error_log("DEBUG FOTO: \$_FILES existe? " . (isset($_FILES) ? 'SIM' : 'NÃO'));
-        error_log("DEBUG FOTO: \$_FILES completo: " . print_r($_FILES, true));
-        error_log("DEBUG FOTO: \$_POST completo: " . print_r($_POST, true));
+        error_log("DEBUG FOTO: \$_POST['foto_atual'] = " . (isset($_POST['foto_atual']) ? $_POST['foto_atual'] : 'NÃO DEFINIDO'));
         error_log("DEBUG FOTO: \$_FILES['foto'] existe? " . (isset($_FILES['foto']) ? 'SIM' : 'NÃO'));
+        
         if (isset($_FILES['foto'])) {
-            error_log("DEBUG FOTO: \$_FILES['foto']['error'] = " . $_FILES['foto']['error']);
+            error_log("DEBUG FOTO: \$_FILES['foto']['error'] = " . $_FILES['foto']['error'] . " (UPLOAD_ERR_OK = " . UPLOAD_ERR_OK . ")");
             error_log("DEBUG FOTO: \$_FILES['foto']['name'] = " . ($_FILES['foto']['name'] ?? 'N/A'));
             error_log("DEBUG FOTO: \$_FILES['foto']['size'] = " . ($_FILES['foto']['size'] ?? 'N/A'));
             error_log("DEBUG FOTO: \$_FILES['foto']['type'] = " . ($_FILES['foto']['type'] ?? 'N/A'));
             error_log("DEBUG FOTO: \$_FILES['foto']['tmp_name'] = " . ($_FILES['foto']['tmp_name'] ?? 'N/A'));
+            
+            // Verificar se tmp_name existe e é um arquivo válido
+            if (isset($_FILES['foto']['tmp_name']) && is_uploaded_file($_FILES['foto']['tmp_name'])) {
+                error_log("DEBUG FOTO: ✅ Arquivo temporário existe e é válido");
+            } else {
+                error_log("DEBUG FOTO: ❌ Arquivo temporário NÃO existe ou NÃO é válido");
+            }
         } else {
-            error_log("DEBUG FOTO: ❌ \$_FILES['foto'] NÃO EXISTE! Verificando se há arquivo em outro lugar...");
-            error_log("DEBUG FOTO: Chaves de \$_FILES: " . (isset($_FILES) ? implode(', ', array_keys($_FILES)) : 'N/A'));
+            error_log("DEBUG FOTO: ❌ \$_FILES['foto'] NÃO EXISTE!");
+            error_log("DEBUG FOTO: Chaves de \$_FILES: " . (isset($_FILES) && is_array($_FILES) ? implode(', ', array_keys($_FILES)) : 'N/A ou não é array'));
+            error_log("DEBUG FOTO: \$_FILES completo: " . print_r($_FILES, true));
         }
         
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
+            error_log("DEBUG FOTO: ✅ Condição de upload OK atendida, processando...");
             error_log("DEBUG FOTO: Upload OK, processando...");
             require_once __DIR__ . '/magalu_integration_helper.php';
             
@@ -182,12 +192,15 @@ if ($action === 'save') {
         } elseif (!empty($data['foto_atual'])) {
             // Manter foto atual se não houver novo upload
             $data['foto'] = $data['foto_atual'];
-            error_log("DEBUG FOTO: Mantendo foto atual: " . $data['foto']);
+            error_log("DEBUG FOTO: ✅ Mantendo foto atual (sem novo upload): " . substr($data['foto'], 0, 100) . '...');
         } else {
             // Se não houver foto e não houver foto_atual, garantir que não será enviado
-            error_log("DEBUG FOTO: Nenhuma foto enviada e nenhuma foto_atual, removendo foto dos dados");
+            error_log("DEBUG FOTO: ⚠️ Nenhuma foto enviada e nenhuma foto_atual, removendo foto dos dados");
+            error_log("DEBUG FOTO: data['foto_atual'] = " . (isset($data['foto_atual']) ? $data['foto_atual'] : 'NÃO DEFINIDO'));
             unset($data['foto']);
         }
+        
+        error_log("=== DEBUG FOTO: FIM DO PROCESSAMENTO ===");
         
         // CRÍTICO: Verificar se foto está em $data ANTES de salvar
         error_log("=== DEBUG FOTO FINAL: ANTES DE CHAMAR save() ===");
