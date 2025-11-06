@@ -1380,7 +1380,11 @@ function loadUserData(userId) {
             if (fotoAtualInput) fotoAtualInput.value = user.foto || '';
             
             // Atualizar preview da foto
-            updateFotoPreview(user.foto || '');
+            if (user.foto) {
+                updateFotoPreview(user.foto);
+            } else {
+                updateFotoPreview('');
+            }
             
             // Permissões - marcar checkboxes
             form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1428,10 +1432,38 @@ function deleteUser(userId) {
     form.submit();
 }
 
+// Variáveis globais para o editor de foto
+let fotoCropper = null;
+let fotoOriginalBlob = null;
+
+// Carregar biblioteca Cropper.js via CDN
+function loadCropperLibrary() {
+    return new Promise((resolve, reject) => {
+        // Verificar se já está carregado
+        if (window.Cropper) {
+            resolve();
+            return;
+        }
+        
+        // Carregar CSS
+        const cssLink = document.createElement('link');
+        cssLink.rel = 'stylesheet';
+        cssLink.href = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css';
+        document.head.appendChild(cssLink);
+        
+        // Carregar JS
+        const jsScript = document.createElement('script');
+        jsScript.src = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js';
+        jsScript.onload = () => resolve();
+        jsScript.onerror = () => reject(new Error('Erro ao carregar Cropper.js'));
+        document.body.appendChild(jsScript);
+    });
+}
+
 // Preview da foto ao selecionar arquivo
 const fotoInput = document.getElementById('fotoInput');
 if (fotoInput) {
-    fotoInput.addEventListener('change', function(e) {
+    fotoInput.addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (file) {
             // Validar tipo
@@ -1448,12 +1480,28 @@ if (fotoInput) {
                 return;
             }
             
-            // Mostrar preview
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                updateFotoPreview(e.target.result);
-            };
-            reader.readAsDataURL(file);
+            // Salvar blob original
+            fotoOriginalBlob = file;
+            
+            // Carregar biblioteca Cropper.js
+            try {
+                await loadCropperLibrary();
+                
+                // Ler arquivo e abrir editor
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    abrirEditorFoto(e.target.result);
+                };
+                reader.readAsDataURL(file);
+            } catch (error) {
+                console.error('Erro ao carregar editor:', error);
+                // Fallback: mostrar preview simples
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    updateFotoPreview(e.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
         } else {
             // Restaurar foto atual se houver
             const fotoAtual = document.getElementById('fotoAtual');
@@ -1462,6 +1510,181 @@ if (fotoInput) {
             } else {
                 updateFotoPreview('');
             }
+        }
+    });
+}
+
+// Abrir editor de foto
+function abrirEditorFoto(imageSrc) {
+    const modal = document.getElementById('fotoEditorModal');
+    const img = document.getElementById('fotoEditorImg');
+    
+    if (!modal || !img) return;
+    
+    img.src = imageSrc;
+    modal.style.display = 'flex';
+    
+    // Aguardar imagem carregar antes de inicializar cropper
+    img.onload = function() {
+        // Destruir cropper anterior se existir
+        if (fotoCropper) {
+            fotoCropper.destroy();
+        }
+        
+        // Inicializar Cropper com configuração circular
+        fotoCropper = new Cropper(img, {
+            aspectRatio: 1, // Quadrado/circular
+            viewMode: 1,
+            dragMode: 'move',
+            autoCropArea: 0.8,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false,
+            minCropBoxWidth: 100,
+            minCropBoxHeight: 100,
+            ready: function() {
+                // Garantir que o crop seja circular
+                this.cropper.setAspectRatio(1);
+            }
+        });
+    };
+}
+
+// Fechar editor de foto
+function fecharEditorFoto() {
+    const modal = document.getElementById('fotoEditorModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    if (fotoCropper) {
+        fotoCropper.destroy();
+        fotoCropper = null;
+    }
+}
+
+// Zoom in
+function fotoEditorZoomIn() {
+    if (fotoCropper) {
+        fotoCropper.zoom(0.1);
+    }
+}
+
+// Zoom out
+function fotoEditorZoomOut() {
+    if (fotoCropper) {
+        fotoCropper.zoom(-0.1);
+    }
+}
+
+// Rotacionar
+function fotoEditorRotate() {
+    if (fotoCropper) {
+        fotoCropper.rotate(90);
+    }
+}
+
+// Resetar
+function fotoEditorReset() {
+    if (fotoCropper) {
+        fotoCropper.reset();
+    }
+}
+
+// Aplicar edição e atualizar preview
+function aplicarEdicaoFoto() {
+    if (!fotoCropper) {
+        fecharEditorFoto();
+        return;
+    }
+    
+    // Obter canvas com a imagem cortada (circular)
+    const canvas = fotoCropper.getCroppedCanvas({
+        width: 400,
+        height: 400,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high'
+    });
+    
+    if (canvas) {
+        // Converter canvas para blob
+        canvas.toBlob(function(blob) {
+            if (blob) {
+                // Criar URL do blob para preview
+                const blobUrl = URL.createObjectURL(blob);
+                updateFotoPreview(blobUrl);
+                
+                // Salvar blob para upload
+                fotoOriginalBlob = blob;
+                
+                // Criar um File a partir do blob para substituir o input file
+                const file = new File([blob], 'foto_usuario.jpg', { type: 'image/jpeg' });
+                
+                // Criar DataTransfer para substituir o arquivo do input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                const fotoInput = document.getElementById('fotoInput');
+                if (fotoInput) {
+                    fotoInput.files = dataTransfer.files;
+                }
+                
+                // Salvar também como base64 no campo hidden para backup
+                canvas.toBlob(function(blob) {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        const fotoEditadaInput = document.getElementById('fotoEditada');
+                        if (fotoEditadaInput) {
+                            fotoEditadaInput.value = reader.result;
+                        }
+                    };
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.9);
+            }
+            
+            fecharEditorFoto();
+        }, 'image/jpeg', 0.9);
+    } else {
+        fecharEditorFoto();
+    }
+}
+
+// Permitir clicar no preview para editar
+const fotoPreview = document.getElementById('fotoPreview');
+if (fotoPreview) {
+    fotoPreview.addEventListener('mouseenter', function() {
+        const overlay = document.getElementById('fotoEditOverlay');
+        if (overlay) {
+            const previewImg = document.getElementById('fotoPreviewImg');
+            if (previewImg && previewImg.style.display !== 'none') {
+                overlay.style.display = 'flex';
+            }
+        }
+    });
+    
+    fotoPreview.addEventListener('mouseleave', function() {
+        const overlay = document.getElementById('fotoEditOverlay');
+        if (overlay) overlay.style.display = 'none';
+    });
+    
+    fotoPreview.addEventListener('click', async function() {
+        const fotoAtualInput = document.getElementById('fotoAtual');
+        const previewImg = document.getElementById('fotoPreviewImg');
+        
+        if (previewImg && previewImg.src && previewImg.style.display !== 'none') {
+            // Carregar biblioteca se necessário
+            try {
+                await loadCropperLibrary();
+                abrirEditorFoto(previewImg.src);
+            } catch (error) {
+                console.error('Erro ao abrir editor:', error);
+            }
+        } else {
+            // Se não houver foto, abrir seletor de arquivo
+            document.getElementById('fotoInput')?.click();
         }
     });
 }
