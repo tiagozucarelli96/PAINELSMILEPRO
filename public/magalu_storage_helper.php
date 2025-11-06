@@ -66,18 +66,32 @@ class MagaluStorageHelper {
      * Aceita tanto arquivo temporário quanto caminho de arquivo
      */
     private function s3Upload($file, $key) {
+        error_log("DEBUG MAGALU S3: s3Upload chamado");
+        error_log("DEBUG MAGALU S3: key: $key");
+        error_log("DEBUG MAGALU S3: file type: " . (is_array($file) ? 'array' : gettype($file)));
+        
         $url = $this->endpoint . '/' . $this->bucket . '/' . $key;
+        error_log("DEBUG MAGALU S3: URL completa: $url");
+        error_log("DEBUG MAGALU S3: endpoint: " . $this->endpoint);
+        error_log("DEBUG MAGALU S3: bucket: " . $this->bucket);
         
         // Determinar se é array $_FILES ou caminho de arquivo
         $filePath = is_array($file) ? $file['tmp_name'] : $file;
         $fileSize = is_array($file) ? $file['size'] : filesize($file);
         $contentType = is_array($file) ? $file['type'] : mime_content_type($file);
         
+        error_log("DEBUG MAGALU S3: filePath: $filePath");
+        error_log("DEBUG MAGALU S3: fileSize: $fileSize");
+        error_log("DEBUG MAGALU S3: contentType: $contentType");
+        
         // Ler conteúdo do arquivo
         $fileContent = file_get_contents($filePath);
         if ($fileContent === false) {
+            error_log("DEBUG MAGALU S3: ❌ Erro ao ler arquivo");
             return ['success' => false, 'error' => 'Erro ao ler arquivo'];
         }
+        
+        error_log("DEBUG MAGALU S3: ✅ Arquivo lido, tamanho do conteúdo: " . strlen($fileContent) . " bytes");
         
         $headers = [
             'Content-Type: ' . $contentType,

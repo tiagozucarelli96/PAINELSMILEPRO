@@ -319,14 +319,29 @@ class MagaluIntegrationHelper {
      * Upload de foto de usuário
      */
     public function uploadFotoUsuario($arquivo, $usuario_id) {
+        error_log("DEBUG MAGALU: uploadFotoUsuario chamado com usuario_id: $usuario_id");
+        error_log("DEBUG MAGALU: arquivo recebido: " . print_r($arquivo, true));
+        
         try {
+            // Validar se arquivo existe
+            if (!isset($arquivo['tmp_name']) || !file_exists($arquivo['tmp_name'])) {
+                error_log("DEBUG MAGALU: ❌ Arquivo temporário não existe!");
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Arquivo temporário não encontrado.'
+                ];
+            }
+            
             // Validar tipo
             $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mimeType = finfo_file($finfo, $arquivo['tmp_name']);
             finfo_close($finfo);
             
+            error_log("DEBUG MAGALU: MIME type detectado: $mimeType");
+            
             if (!in_array($mimeType, $allowedTypes)) {
+                error_log("DEBUG MAGALU: ❌ Tipo de arquivo não permitido: $mimeType");
                 return [
                     'sucesso' => false,
                     'erro' => 'Tipo de arquivo não permitido. Use JPG, PNG ou GIF.'
@@ -335,11 +350,14 @@ class MagaluIntegrationHelper {
             
             // Validar tamanho (2MB)
             if ($arquivo['size'] > 2 * 1024 * 1024) {
+                error_log("DEBUG MAGALU: ❌ Arquivo muito grande: " . $arquivo['size'] . " bytes");
                 return [
                     'sucesso' => false,
                     'erro' => 'Arquivo muito grande. Tamanho máximo: 2MB.'
                 ];
             }
+            
+            error_log("DEBUG MAGALU: ✅ Validações passadas, processando arquivo...");
             
             // Criar arquivo temporário para redimensionamento
             $tempDir = sys_get_temp_dir();
