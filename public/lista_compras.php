@@ -447,7 +447,7 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
 .items{display:none;margin-top:8px;padding-left:12px}
 .items.active{display:block}
   .btn{
-  background: linear-gradient(135deg, #1e3a8a 0%, #d97706 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -463,7 +463,7 @@ label.small{display:block;font-size:13px;font-weight:700;margin-bottom:6px}
   gap: 8px;
 }
 .btn:hover{
-  background: linear-gradient(135deg, #1e40af 0%, #ea580c 100%);
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(30, 58, 138, 0.4);
 }
@@ -700,7 +700,7 @@ function addEventoME(e){
 
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
     min-height: 100vh;
     color: #374151;
   }
@@ -1225,15 +1225,15 @@ function addEventoME(e){
 
   /* Rascunho de Eventos */
   .lc-rascunho-container {
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-    border: 2px solid #f59e0b;
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    border: 2px solid #3b82f6;
     border-radius: 12px;
     padding: 1.5rem;
     margin: 1rem 0;
   }
 
   .lc-rascunho-container h3 {
-    color: #92400e;
+    color: #1e40af;
     margin: 0 0 1rem 0;
     font-size: 1.25rem;
     font-weight: 700;
@@ -1409,9 +1409,6 @@ function addEventoME(e){
   <div style="display: flex; gap: 10px;">
     <a href="index.php?page=config_fornecedores" class="btn btn-primary" style="display: flex; align-items: center; gap: 5px;">
       <span>🏢</span> Cadastrar Fornecedor
-    </a>
-    <a href="index.php?page=lc_index" class="btn btn-secondary" style="display: flex; align-items: center; gap: 5px;">
-      <span>🏠</span> Voltar
     </a>
   </div>
 </div>
