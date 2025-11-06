@@ -155,21 +155,46 @@ $params = [];
 // Buscar todas as colunas de permissões que existem no banco
 $existing_perms = [];
 try {
+    // Primeiro tentar com schema 'public'
     $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                          WHERE table_schema = 'public' AND table_name = 'usuarios' 
                          AND column_name LIKE 'perm_%' 
                          ORDER BY column_name");
     $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
+    // Se não encontrar, tentar sem especificar schema
+    if (empty($perms_array)) {
+        error_log("Tentando buscar permissões sem especificar schema...");
+        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                             WHERE table_name = 'usuarios' 
+                             AND column_name LIKE 'perm_%' 
+                             ORDER BY column_name");
+        $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+    
+    // Se ainda não encontrar, tentar buscar diretamente da tabela
+    if (empty($perms_array)) {
+        error_log("Tentando buscar colunas diretamente da tabela usuarios...");
+        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                             WHERE table_name = 'usuarios' 
+                             ORDER BY column_name");
+        $all_cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $perms_array = array_filter($all_cols, function($col) {
+            return strpos($col, 'perm_') === 0;
+        });
+        $perms_array = array_values($perms_array); // Reindexar array
+    }
+    
     if (!empty($perms_array)) {
         $existing_perms = array_flip($perms_array);
+        error_log("Permissões encontradas: " . count($existing_perms));
         
         // Adicionar colunas de permissões ao SELECT
         foreach ($perms_array as $perm) {
             $sql .= ", $perm";
         }
     } else {
-        error_log("AVISO: Nenhuma permissão encontrada no banco de dados");
+        error_log("AVISO: Nenhuma permissão encontrada no banco de dados após todas as tentativas");
     }
 } catch (Exception $e) {
     error_log("Erro ao verificar permissões: " . $e->getMessage());
@@ -199,20 +224,45 @@ try {
 // ============================================
 
 // Garantir que $existing_perms está definido e disponível
-if (!isset($existing_perms) || !is_array($existing_perms)) {
-    error_log("AVISO: existing_perms não está definido antes de ob_start(), recriando...");
+if (!isset($existing_perms) || !is_array($existing_perms) || empty($existing_perms)) {
+    error_log("AVISO: existing_perms não está definido ou está vazio antes de ob_start(), recriando...");
     try {
+        // Tentar múltiplas estratégias
+        $perms_array = [];
+        
+        // Estratégia 1: Com schema 'public'
         $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
                              WHERE table_schema = 'public' AND table_name = 'usuarios' 
                              AND column_name LIKE 'perm_%' 
                              ORDER BY column_name");
         $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        // Estratégia 2: Sem especificar schema
+        if (empty($perms_array)) {
+            $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                 WHERE table_name = 'usuarios' 
+                                 AND column_name LIKE 'perm_%' 
+                                 ORDER BY column_name");
+            $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+        
+        // Estratégia 3: Buscar todas as colunas e filtrar
+        if (empty($perms_array)) {
+            $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                 WHERE table_name = 'usuarios' 
+                                 ORDER BY column_name");
+            $all_cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $perms_array = array_values(array_filter($all_cols, function($col) {
+                return strpos($col, 'perm_') === 0;
+            }));
+        }
+        
         if (!empty($perms_array)) {
             $existing_perms = array_flip($perms_array);
-            error_log("Permissões recriadas: " . count($existing_perms));
+            error_log("Permissões recriadas: " . count($existing_perms) . " - Primeiras: " . implode(', ', array_slice($perms_array, 0, 3)));
         } else {
             $existing_perms = [];
-            error_log("AVISO: Nenhuma permissão encontrada no banco!");
+            error_log("AVISO: Nenhuma permissão encontrada no banco após todas as estratégias!");
         }
     } catch (Exception $e) {
         error_log("Erro ao recriar existing_perms: " . $e->getMessage());
@@ -742,19 +792,45 @@ ob_start();
                 </div>
                 
                 <?php
-                // DEBUG: Verificar se $existing_perms está disponível
-                if (!isset($existing_perms)) {
-                    // Se não estiver disponível, buscar novamente
+                // DEBUG: Verificar se $existing_perms está disponível e não vazio
+                if (!isset($existing_perms) || !is_array($existing_perms) || empty($existing_perms)) {
+                    // Se não estiver disponível ou vazio, buscar novamente com múltiplas estratégias
                     try {
+                        $perms_array_debug = [];
+                        
+                        // Estratégia 1: Com schema 'public'
                         $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                                 WHERE table_schema = 'public' AND table_name = 'usuarios' 
-                                                 AND column_name LIKE 'perm_%' 
-                                                 ORDER BY column_name");
+                                                     WHERE table_schema = 'public' AND table_name = 'usuarios' 
+                                                     AND column_name LIKE 'perm_%' 
+                                                     ORDER BY column_name");
                         $perms_array_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
+                        
+                        // Estratégia 2: Sem especificar schema
+                        if (empty($perms_array_debug)) {
+                            $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                         WHERE table_name = 'usuarios' 
+                                                         AND column_name LIKE 'perm_%' 
+                                                         ORDER BY column_name");
+                            $perms_array_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
+                        }
+                        
+                        // Estratégia 3: Buscar todas e filtrar
+                        if (empty($perms_array_debug)) {
+                            $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
+                                                         WHERE table_name = 'usuarios' 
+                                                         ORDER BY column_name");
+                            $all_cols_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
+                            $perms_array_debug = array_values(array_filter($all_cols_debug, function($col) {
+                                return strpos($col, 'perm_') === 0;
+                            }));
+                        }
+                        
                         if (!empty($perms_array_debug)) {
                             $existing_perms = array_flip($perms_array_debug);
+                            error_log("Permissões encontradas no modal: " . count($existing_perms));
                         } else {
                             $existing_perms = [];
+                            error_log("Erro: Nenhuma permissão encontrada no modal após todas as estratégias");
                         }
                     } catch (Exception $e) {
                         error_log("Erro ao buscar permissões no modal: " . $e->getMessage());
