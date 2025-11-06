@@ -191,8 +191,17 @@ if ($action === 'save') {
         
         // Debug: verificar se foto está em $data antes de salvar
         error_log("DEBUG FOTO FINAL: Antes de salvar, data['foto'] = " . (isset($data['foto']) ? $data['foto'] : 'NÃO DEFINIDO'));
+        error_log("DEBUG FOTO FINAL: data completo (resumido): " . json_encode([
+            'nome' => $data['nome'] ?? 'N/A',
+            'email' => $data['email'] ?? 'N/A',
+            'foto' => isset($data['foto']) ? (strlen($data['foto']) > 100 ? substr($data['foto'], 0, 100) . '...' : $data['foto']) : 'NÃO DEFINIDO',
+            'user_id' => $user_id
+        ]));
         
         $result = $manager->save($data, $user_id);
+        
+        // Log adicional após salvar
+        error_log("DEBUG FOTO FINAL: Após save(), result['success'] = " . ($result['success'] ?? 'N/A'));
         
         // Debug: verificar se salvou e atualizar foto se for novo usuário
         if ($result['success'] && !empty($data['foto']) && $user_id === 0) {
