@@ -153,6 +153,9 @@ class UsuarioSaveManager {
             // Buscar TODAS as colunas NOT NULL que não são campos principais nem permissões
             $requiredFields = [];
             try {
+                error_log("DEBUG SAVE: Iniciando busca de colunas NOT NULL...");
+                
+                // Tentar múltiplas estratégias
                 $stmt = $this->pdo->query("
                     SELECT column_name, column_default, data_type
                     FROM information_schema.columns 
@@ -165,27 +168,50 @@ class UsuarioSaveManager {
                 ");
                 $notNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
+                // Se não encontrar, tentar sem especificar schema
+                if (empty($notNullCols)) {
+                    error_log("DEBUG SAVE: Tentando sem especificar schema...");
+                    $stmt = $this->pdo->query("
+                        SELECT column_name, column_default, data_type
+                        FROM information_schema.columns 
+                        WHERE table_name = 'usuarios'
+                        AND is_nullable = 'NO'
+                        AND column_name NOT IN ('id', 'nome', 'email', 'senha', 'login', 'created_at', 'updated_at')
+                        AND column_name NOT LIKE 'perm_%'
+                        ORDER BY column_name
+                    ");
+                    $notNullCols = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                }
+                
+                error_log("DEBUG SAVE: Encontradas " . count($notNullCols) . " colunas NOT NULL");
+                
                 foreach ($notNullCols as $col) {
                     $colName = $col['column_name'];
+                    error_log("DEBUG SAVE: Processando coluna NOT NULL: $colName");
+                    
                     // Pular se já temos no data ou é campo que já tratamos
                     if (in_array($colName, ['cargo', 'cpf', 'admissao_data', 'salario_base', 'pix_tipo', 'pix_chave', 'status_empregado'])) {
+                        error_log("DEBUG SAVE: Coluna $colName já tratada em optionalFields, pulando");
                         continue; // Já tratado em optionalFields
                     }
                     
                     // Obter valor do formulário ou usar default
                     $value = $data[$colName] ?? null;
+                    error_log("DEBUG SAVE: Valor inicial de $colName = " . ($value ?? 'NULL'));
                     
                     // Se não tem valor e tem default, usar default
                     if (empty($value) && !empty($col['column_default'])) {
                         // Remover aspas e casting do default se necessário
                         $default = preg_replace("/^'(.*)'$/", '$1', $col['column_default']);
                         $value = $default;
+                        error_log("DEBUG SAVE: Usando default de $colName = $value");
                     }
                     
                     // Se ainda não tem valor, usar valor padrão baseado no tipo
-                    if (empty($value)) {
+                    if (empty($value) && $value !== '0' && $value !== 0 && $value !== false) {
                         if ($colName === 'funcao') {
                             $value = 'OPER'; // Valor padrão para funcao
+                            error_log("DEBUG SAVE: Aplicando valor padrão 'OPER' para funcao");
                         } elseif (strpos($col['data_type'], 'int') !== false || strpos($col['data_type'], 'numeric') !== false) {
                             $value = 0;
                         } elseif (strpos($col['data_type'], 'bool') !== false) {
@@ -193,13 +219,20 @@ class UsuarioSaveManager {
                         } else {
                             $value = ''; // String vazia como último recurso
                         }
+                        error_log("DEBUG SAVE: Valor padrão para $colName = " . var_export($value, true));
                     }
                     
                     $requiredFields[$colName] = $value;
-                    error_log("DEBUG SAVE: Coluna NOT NULL $colName = $value");
+                    error_log("DEBUG SAVE: Coluna NOT NULL $colName adicionada com valor = " . var_export($value, true));
+                }
+                
+                error_log("DEBUG SAVE: Total de requiredFields = " . count($requiredFields));
+                if (!empty($requiredFields)) {
+                    error_log("DEBUG SAVE: requiredFields = " . implode(', ', array_keys($requiredFields)));
                 }
             } catch (Exception $e) {
-                error_log("Erro ao verificar colunas NOT NULL: " . $e->getMessage());
+                error_log("ERRO ao verificar colunas NOT NULL: " . $e->getMessage());
+                error_log("Stack trace: " . $e->getTraceAsString());
             }
             
             // Permissões (todas as que começam com perm_)
