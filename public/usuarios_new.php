@@ -1296,46 +1296,80 @@ function openModal(userId = 0) {
         const fotoAtualInput = document.getElementById('fotoAtual');
         if (fotoAtualInput) fotoAtualInput.value = '';
         
-        // Tentar re-inicializar listeners de foto quando modal abrir (caso não tenham sido encontrados antes)
+        // Mostrar modal PRIMEIRO
+        modal.classList.add('active');
+        
+        // AGORA tentar registrar listeners de foto quando modal já estiver visível
         setTimeout(() => {
-            console.log('Tentando registrar listeners de foto ao abrir modal...');
-            // Sempre tentar registrar novamente quando modal abre (pode estar dentro do modal)
+            console.log('🔍 Tentando registrar listeners de foto ao abrir modal...');
             const fotoInput = document.getElementById('fotoInput');
             const btnSelecionarFoto = document.getElementById('btnSelecionarFoto');
+            
+            console.log('Elementos encontrados:', {
+                fotoInput: !!fotoInput,
+                btnSelecionarFoto: !!btnSelecionarFoto,
+                modal: !!modal
+            });
+            
             if (fotoInput && btnSelecionarFoto) {
+                console.log('✅ Elementos encontrados! Registrando listeners...');
+                
+                // Registrar botão se ainda não tiver listener
+                if (btnSelecionarFoto.getAttribute('listener') !== 'attached') {
+                    console.log('Registrando botão Selecionar Foto...');
+                    btnSelecionarFoto.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🔘 Botão Selecionar Foto clicado!');
+                        const fotoInputNow = document.getElementById('fotoInput');
+                        if (fotoInputNow) {
+                            console.log('Abrindo seletor de arquivo...');
+                            fotoInputNow.click();
+                        } else {
+                            console.error('❌ fotoInput não encontrado ao clicar!');
+                        }
+                    });
+                    btnSelecionarFoto.setAttribute('listener', 'attached');
+                    console.log('✅ Botão registrado com sucesso!');
+                }
+                
+                // Registrar input file se ainda não tiver listener
                 if (!fotoListenersJaRegistrados) {
-                    console.log('Elementos encontrados ao abrir modal, registrando listeners...');
+                    console.log('Registrando input file...');
                     initFotoListeners(true); // Forçar registro
-                } else {
-                    console.log('Listeners já registrados, mas verificando botão...');
-                    // Verificar se o botão tem listener (pode ter sido perdido)
-                    if (!btnSelecionarFoto.onclick && btnSelecionarFoto.getAttribute('listener') !== 'attached') {
-                        console.log('Re-registrando botão...');
-                        btnSelecionarFoto.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('Botão Selecionar Foto clicado (re-registrado)');
-                            if (fotoInput) {
-                                fotoInput.click();
-                            }
-                        });
-                        btnSelecionarFoto.setAttribute('listener', 'attached');
-                    }
                 }
             } else {
-                console.warn('Elementos não encontrados ao abrir modal:', {
+                console.warn('⚠️ Elementos não encontrados ao abrir modal:', {
                     fotoInput: !!fotoInput,
                     btnSelecionarFoto: !!btnSelecionarFoto
                 });
+                // Tentar novamente após mais delay
+                setTimeout(() => {
+                    const fotoInput2 = document.getElementById('fotoInput');
+                    const btnSelecionarFoto2 = document.getElementById('btnSelecionarFoto');
+                    if (fotoInput2 && btnSelecionarFoto2) {
+                        console.log('✅ Elementos encontrados na segunda tentativa!');
+                        if (btnSelecionarFoto2.getAttribute('listener') !== 'attached') {
+                            btnSelecionarFoto2.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('🔘 Botão clicado (segunda tentativa)');
+                                fotoInput2.click();
+                            });
+                            btnSelecionarFoto2.setAttribute('listener', 'attached');
+                        }
+                        if (!fotoListenersJaRegistrados) {
+                            initFotoListeners(true);
+                        }
+                    }
+                }, 300);
             }
+            
             if (!previewListenersJaRegistrados) {
-                console.log('Tentando registrar listeners de preview ao abrir modal...');
+                console.log('Tentando registrar listeners de preview...');
                 initPreviewListeners();
             }
-        }, 100);
-        
-        // Mostrar modal
-        modal.classList.add('active');
+        }, 200); // Aumentar delay para garantir que modal está renderizado
     }
 }
 
@@ -1540,25 +1574,44 @@ function initFotoListeners(force = false) {
     
     // Registrar botão de selecionar foto (já foi verificado acima)
     if (btnSelecionarFoto) {
-        // Remover listener anterior se existir
-        const newBtn = btnSelecionarFoto.cloneNode(true);
-        btnSelecionarFoto.parentNode.replaceChild(newBtn, btnSelecionarFoto);
-        const btnSelecionarFotoNew = document.getElementById('btnSelecionarFoto');
-        
-        btnSelecionarFotoNew.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🔘 Botão Selecionar Foto clicado');
-            const fotoInputNow = document.getElementById('fotoInput');
-            if (fotoInputNow) {
-                console.log('Abrindo seletor de arquivo...');
-                fotoInputNow.click();
-            } else {
-                console.error('fotoInput não encontrado ao clicar no botão!');
+        // Verificar se já tem listener para evitar duplicação
+        if (btnSelecionarFoto.getAttribute('listener') === 'attached') {
+            console.log('Botão já tem listener, pulando...');
+        } else {
+            // Remover listener anterior se existir (clonando e substituindo)
+            try {
+                const newBtn = btnSelecionarFoto.cloneNode(true);
+                btnSelecionarFoto.parentNode.replaceChild(newBtn, btnSelecionarFoto);
+                const btnSelecionarFotoNew = document.getElementById('btnSelecionarFoto');
+                
+                if (btnSelecionarFotoNew) {
+                    btnSelecionarFotoNew.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🔘 Botão Selecionar Foto clicado (initFotoListeners)');
+                        const fotoInputNow = document.getElementById('fotoInput');
+                        if (fotoInputNow) {
+                            console.log('Abrindo seletor de arquivo...');
+                            fotoInputNow.click();
+                        } else {
+                            console.error('❌ fotoInput não encontrado ao clicar no botão!');
+                        }
+                    });
+                    btnSelecionarFotoNew.setAttribute('listener', 'attached');
+                    console.log('✅ Botão Selecionar Foto registrado em initFotoListeners');
+                }
+            } catch (error) {
+                console.error('Erro ao registrar botão:', error);
+                // Fallback: tentar registrar diretamente
+                btnSelecionarFoto.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('🔘 Botão clicado (fallback)');
+                    fotoInput.click();
+                });
+                btnSelecionarFoto.setAttribute('listener', 'attached');
             }
-        });
-        btnSelecionarFotoNew.setAttribute('listener', 'attached');
-        console.log('✅ Botão Selecionar Foto registrado');
+        }
     }
     
     // Registrar evento change do input file
