@@ -236,7 +236,8 @@ try {
             ]
         ];
         
-        // CRÍTICO: Limpar TODOS os output buffers ANTES de qualquer header
+        // CRÍTICO: Garantir que SEMPRE retornamos JSON válido, mesmo se houver problemas
+        // Limpar TODOS os output buffers ANTES de qualquer header
         while (ob_get_level() > 0) {
             ob_end_clean();
         }
@@ -263,6 +264,30 @@ try {
         header('Pragma: no-cache', true);
         header('Expires: 0', true);
         
+        // Validar que temos URL antes de retornar
+        if (empty($response['data']['url'])) {
+            @error_log("⚠️ AVISO: URL vazia na resposta, mas upload pode ter sido bem-sucedido");
+            // Se temos chave_storage, construir URL
+            if (!empty($response['data']['chave_storage'])) {
+                $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                $response['data']['url'] = "{$endpoint}/{$bucket}/{$response['data']['chave_storage']}";
+                @error_log("✅ URL construída na última tentativa: " . $response['data']['url']);
+            }
+        }
+        
+        // Garantir que sempre temos uma URL válida
+        if (empty($response['data']['url'])) {
+            @error_log("❌ ERRO: Não foi possível construir URL válida");
+            // Mesmo assim, retornar sucesso se temos chave_storage (upload foi bem-sucedido)
+            if (!empty($response['data']['chave_storage'])) {
+                $response['data']['url'] = 'https://br-se1.magaluobjects.com/smilepainel/' . $response['data']['chave_storage'];
+                @error_log("✅ URL padrão construída: " . $response['data']['url']);
+            }
+        }
+        
+        @error_log("📤 Enviando resposta JSON - success: " . ($response['success'] ? 'true' : 'false') . ", URL: " . ($response['data']['url'] ?? 'N/A'));
+        
         // Enviar JSON e fazer exit imediatamente
         // Usar flags para garantir JSON válido
         $json = json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -284,6 +309,9 @@ try {
             }
             exit;
         }
+        
+        @error_log("📤 JSON gerado com sucesso, tamanho: " . strlen($json) . " bytes");
+        @error_log("📤 Primeiros 200 chars do JSON: " . substr($json, 0, 200));
         
         // Enviar JSON puro - SEM espaço antes, SEM BOM, APENAS JSON
         echo $json;

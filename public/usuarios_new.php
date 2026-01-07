@@ -1880,37 +1880,52 @@ function initFotoListeners(force = false) {
             
             // Tentar fazer parse do JSON
             let result;
+            let responseText = '';
             try {
                 const contentType = response.headers.get('content-type');
+                responseText = await response.text();
+                console.log('📥 Resposta recebida, tamanho:', responseText.length, 'chars');
+                console.log('📥 Content-Type:', contentType);
+                console.log('📥 Primeiros 200 chars:', responseText.substring(0, 200));
+                
                 if (!contentType || !contentType.includes('application/json')) {
                     // Se não for JSON, tentar fazer parse mesmo assim (pode ter charset extra)
-                    const text = await response.text();
                     console.warn('⚠️ Content-Type não é JSON, mas tentando fazer parse:', contentType);
-                    result = JSON.parse(text);
+                    result = JSON.parse(responseText);
                 } else {
-                    result = await response.json();
+                    result = JSON.parse(responseText);
                 }
+                console.log('✅ JSON parseado com sucesso:', result);
             } catch (parseError) {
                 // Se o parse falhar, tentar extrair JSON da resposta
-                const text = await response.text();
                 console.warn('⚠️ Erro ao fazer parse do JSON, tentando extrair JSON da resposta:', parseError.message);
+                console.warn('⚠️ Texto da resposta (primeiros 500 chars):', responseText.substring(0, 500));
                 
                 // Tentar encontrar JSON na resposta (pode ter output extra antes/depois)
-                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
                     try {
                         result = JSON.parse(jsonMatch[0]);
-                        console.log('✅ JSON extraído com sucesso da resposta!');
+                        console.log('✅ JSON extraído com sucesso da resposta!', result);
                     } catch (e) {
                         console.error('❌ Erro ao fazer parse do JSON extraído:', e);
+                        console.error('❌ JSON extraído (primeiros 200 chars):', jsonMatch[0].substring(0, 200));
                         throw new Error('Erro ao processar resposta do servidor: ' + e.message);
                     }
                 } else {
                     console.error('❌ Nenhum JSON encontrado na resposta');
-                    console.error('❌ Resposta completa (primeiros 1000 chars):', text.substring(0, 1000));
+                    console.error('❌ Resposta completa (primeiros 1000 chars):', responseText.substring(0, 1000));
                     throw new Error('Resposta do servidor não contém JSON válido');
                 }
             }
+            
+            // Log detalhado do resultado
+            console.log('📊 Resultado processado:', {
+                success: result?.success,
+                hasData: !!result?.data,
+                hasUrl: !!result?.data?.url,
+                url: result?.data?.url?.substring(0, 100) + '...'
+            });
             
             // Esconder indicador de upload
             if (fotoUploading) {
