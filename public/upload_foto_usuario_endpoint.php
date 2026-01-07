@@ -135,6 +135,15 @@ try {
     }
     
     try {
+        // Verificar credenciais Magalu antes de tentar instanciar
+        $magaluAccessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+        $magaluSecretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+        
+        if (empty($magaluAccessKey) || empty($magaluSecretKey)) {
+            @error_log("❌ ERRO: Credenciais Magalu não configuradas!");
+            throw new Exception('Credenciais Magalu não configuradas. Verifique as variáveis de ambiente MAGALU_ACCESS_KEY e MAGALU_SECRET_KEY.');
+        }
+        
         $uploader = new MagaluUpload();
         @error_log("✅ MagaluUpload instanciado com sucesso");
         
@@ -231,6 +240,17 @@ try {
     } catch (Exception $e) {
         @error_log("❌ ERRO no MagaluUpload: " . $e->getMessage());
         @error_log("Stack trace: " . $e->getTraceAsString());
+        
+        // Verificar se é erro de credenciais
+        if (strpos($e->getMessage(), 'Credenciais') !== false || strpos($e->getMessage(), 'credentials') !== false) {
+            throw new Exception('Erro de configuração: ' . $e->getMessage());
+        }
+        
+        // Verificar se é erro de upload para Magalu
+        if (strpos($e->getMessage(), 'Magalu') !== false || strpos($e->getMessage(), 'upload') !== false) {
+            throw new Exception('Erro ao fazer upload para Magalu Cloud: ' . $e->getMessage());
+        }
+        
         throw $e;
     }
     
@@ -240,6 +260,12 @@ try {
     @error_log("_FILES: " . print_r($_FILES, true));
     @error_log("_POST: " . print_r($_POST, true));
     @error_log("_SESSION: " . print_r(['user_id' => ($_SESSION['user_id'] ?? 'N/A'), 'logado' => ($_SESSION['logado'] ?? 'N/A')], true));
+    
+    // Verificar credenciais Magalu para diagnóstico
+    $magaluAccessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+    $magaluSecretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+    @error_log("Diagnóstico Magalu - Access Key: " . ($magaluAccessKey ? 'CONFIGURADO' : 'NÃO CONFIGURADO'));
+    @error_log("Diagnóstico Magalu - Secret Key: " . ($magaluSecretKey ? 'CONFIGURADO' : 'NÃO CONFIGURADO'));
     
     // CRÍTICO: Limpar TODOS os output buffers
     while (ob_get_level() > 0) {
@@ -256,10 +282,18 @@ try {
     header('Content-Type: application/json', true, 500);
     header('X-Content-Type-Options: nosniff', true);
     
+    // Mensagem de erro mais amigável
+    $errorMessage = $e->getMessage();
+    if (strpos($errorMessage, 'Credenciais') !== false) {
+        $errorMessage = 'Erro de configuração: Credenciais Magalu não configuradas. Entre em contato com o administrador.';
+    } elseif (strpos($errorMessage, 'Magalu') !== false) {
+        $errorMessage = 'Erro ao fazer upload para Magalu Cloud. Verifique as configurações ou tente novamente.';
+    }
+    
     // Enviar JSON de erro e fazer exit imediatamente
     $errorJson = json_encode([
         'success' => false,
-        'error' => $e->getMessage()
+        'error' => $errorMessage
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     echo $errorJson;
     flush();

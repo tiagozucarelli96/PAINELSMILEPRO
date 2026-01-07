@@ -1,13 +1,8 @@
 <?php
 // upload_magalu.php - Helper de upload para Magalu Cloud
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
-
-// Verificar se usuário está logado
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] != 1) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Não autorizado']);
-    exit;
-}
+// NOTA: A verificação de sessão é feita pelo endpoint que inclui este arquivo
+// Não fazer verificação aqui para evitar conflitos com upload_foto_usuario_endpoint.php
+// Se este arquivo for acessado diretamente, a verificação será feita pelo endpoint
 
 require_once __DIR__ . '/conexao.php';
 
