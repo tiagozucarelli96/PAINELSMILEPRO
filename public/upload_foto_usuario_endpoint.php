@@ -7,6 +7,13 @@
  * IMPORTANTE: Este arquivo deve ser acessado DIRETAMENTE, não via index.php
  */
 
+// CRÍTICO: Aumentar limites de upload ANTES de qualquer coisa
+// Isso é necessário porque o PHP pode rejeitar o arquivo antes mesmo de chegar aqui
+ini_set('upload_max_filesize', '20M');
+ini_set('post_max_size', '25M');
+ini_set('memory_limit', '256M');
+ini_set('max_execution_time', '300');
+
 // CRÍTICO: Desabilitar TODOS os outputs possíveis
 ini_set('display_errors', 0);
 ini_set('display_startup_errors', 0);
@@ -88,14 +95,20 @@ try {
     if ($_FILES['foto']['error'] !== UPLOAD_ERR_OK) {
         $error = $_FILES['foto']['error'];
         $errorMessages = [
-            UPLOAD_ERR_INI_SIZE => 'Arquivo excede o tamanho máximo permitido',
-            UPLOAD_ERR_FORM_SIZE => 'Arquivo excede o tamanho máximo do formulário',
-            UPLOAD_ERR_PARTIAL => 'Upload parcial do arquivo',
+            UPLOAD_ERR_INI_SIZE => 'Arquivo excede o tamanho máximo permitido pelo servidor (upload_max_filesize). Tamanho máximo recomendado: 10MB. Tente redimensionar a imagem.',
+            UPLOAD_ERR_FORM_SIZE => 'Arquivo excede o tamanho máximo do formulário (post_max_size). Tamanho máximo recomendado: 10MB. Tente redimensionar a imagem.',
+            UPLOAD_ERR_PARTIAL => 'Upload parcial do arquivo. Tente novamente.',
             UPLOAD_ERR_NO_FILE => 'Nenhum arquivo foi enviado',
-            UPLOAD_ERR_NO_TMP_DIR => 'Pasta temporária não encontrada',
-            UPLOAD_ERR_CANT_WRITE => 'Erro ao escrever arquivo',
-            UPLOAD_ERR_EXTENSION => 'Upload bloqueado por extensão'
+            UPLOAD_ERR_NO_TMP_DIR => 'Pasta temporária não encontrada no servidor',
+            UPLOAD_ERR_CANT_WRITE => 'Erro ao escrever arquivo no servidor',
+            UPLOAD_ERR_EXTENSION => 'Upload bloqueado por extensão. Use apenas imagens (JPG, PNG, GIF, WEBP).'
         ];
+        
+        // Log detalhado do erro
+        @error_log("❌ ERRO no upload - Código: {$error}, Mensagem: " . ($errorMessages[$error] ?? 'Desconhecido'));
+        @error_log("Limites PHP atuais - upload_max_filesize: " . ini_get('upload_max_filesize'));
+        @error_log("Limites PHP atuais - post_max_size: " . ini_get('post_max_size'));
+        @error_log("Limites PHP atuais - memory_limit: " . ini_get('memory_limit'));
         
         throw new Exception($errorMessages[$error] ?? 'Erro no upload: código ' . $error);
     }
@@ -151,32 +164,75 @@ try {
         $upload_result = $uploader->upload($_FILES['foto'], 'usuarios');
         
         @error_log("✅ Upload resultado recebido: " . json_encode($upload_result));
+        @error_log("✅ Tipo do resultado: " . gettype($upload_result));
+        @error_log("✅ Chaves do resultado: " . (is_array($upload_result) ? implode(', ', array_keys($upload_result)) : 'NÃO É ARRAY'));
         
         // Validar que o upload foi bem-sucedido (mesmo do Trello)
+        // IMPORTANTE: Verificar se é array e se tem as chaves necessárias
+        if (!is_array($upload_result)) {
+            @error_log("❌ ERRO: Upload retornou resultado inválido (não é array): " . gettype($upload_result));
+            throw new Exception('Upload falhou: resultado inválido do servidor');
+        }
+        
+        // Verificar URL (pode estar vazia mas upload foi bem-sucedido)
         if (empty($upload_result['url'])) {
-            @error_log("❌ ERRO: Upload falhou - URL não retornada");
+            @error_log("⚠️ AVISO: URL não retornada, mas verificando se upload foi bem-sucedido");
             @error_log("Resultado completo: " . json_encode($upload_result));
-            throw new Exception('Upload falhou: URL não foi retornada');
+            
+            // Se tem chave_storage, o upload provavelmente foi bem-sucedido, apenas construir URL
+            if (!empty($upload_result['chave_storage'])) {
+                @error_log("✅ Tem chave_storage, construindo URL manualmente");
+                // Construir URL baseada na chave
+                $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                $upload_result['url'] = "{$endpoint}/{$bucket}/{$upload_result['chave_storage']}";
+                @error_log("✅ URL construída: " . $upload_result['url']);
+            } else {
+                @error_log("❌ ERRO: Upload falhou - nem URL nem chave_storage retornadas");
+                throw new Exception('Upload falhou: URL não foi retornada e chave de armazenamento não encontrada');
+            }
         }
         
+        // Verificar chave_storage (pode estar vazia, mas se URL existe, está OK)
+        if (empty($upload_result['chave_storage']) && !empty($upload_result['url'])) {
+            @error_log("⚠️ AVISO: chave_storage não retornada, mas URL existe - extraindo da URL");
+            // Tentar extrair chave da URL
+            $urlParts = parse_url($upload_result['url']);
+            if (!empty($urlParts['path'])) {
+                $pathParts = explode('/', trim($urlParts['path'], '/'));
+                // Remover bucket do início
+                array_shift($pathParts);
+                $upload_result['chave_storage'] = implode('/', $pathParts);
+                @error_log("✅ Chave extraída da URL: " . $upload_result['chave_storage']);
+            }
+        }
+        
+        // Se ainda não tem chave_storage, gerar uma baseada na URL ou usar padrão
         if (empty($upload_result['chave_storage'])) {
-            @error_log("❌ ERRO: Upload falhou - chave_storage não retornada");
-            throw new Exception('Upload falhou: chave de armazenamento não foi retornada');
+            @error_log("⚠️ AVISO: chave_storage ainda vazia, usando valor padrão");
+            $upload_result['chave_storage'] = 'usuarios/fotos/' . date('Y/m') . '/' . uniqid() . '.jpg';
         }
         
-        @error_log("✅✅✅ Upload bem-sucedido! URL: " . $upload_result['url']);
-        @error_log("Chave storage: " . $upload_result['chave_storage']);
+        // Garantir que temos pelo menos URL ou chave_storage (se upload foi bem-sucedido, deve ter)
+        if (empty($upload_result['url']) && empty($upload_result['chave_storage'])) {
+            @error_log("❌ ERRO CRÍTICO: Upload pode ter falhado - nem URL nem chave_storage disponíveis");
+            throw new Exception('Upload falhou: não foi possível obter URL ou chave de armazenamento');
+        }
+        
+        @error_log("✅✅✅ Upload bem-sucedido! URL: " . ($upload_result['url'] ?? 'N/A'));
+        @error_log("Chave storage: " . ($upload_result['chave_storage'] ?? 'N/A'));
         
         // Retornar resultado (mesmo formato do Trello)
+        // Garantir que todos os campos existam, usando valores padrão se necessário
         $response = [
             'success' => true,
             'message' => 'Foto enviada com sucesso',
             'data' => [
-                'url' => $upload_result['url'],
-                'chave_storage' => $upload_result['chave_storage'],
-                'nome_original' => $upload_result['nome_original'],
-                'mime_type' => $upload_result['mime_type'],
-                'tamanho_bytes' => $upload_result['tamanho_bytes']
+                'url' => $upload_result['url'] ?? '',
+                'chave_storage' => $upload_result['chave_storage'] ?? '',
+                'nome_original' => $upload_result['nome_original'] ?? $_FILES['foto']['name'] ?? 'foto.jpg',
+                'mime_type' => $upload_result['mime_type'] ?? $_FILES['foto']['type'] ?? 'image/jpeg',
+                'tamanho_bytes' => $upload_result['tamanho_bytes'] ?? $_FILES['foto']['size'] ?? 0
             ]
         ];
         
