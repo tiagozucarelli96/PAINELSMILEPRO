@@ -1,8 +1,8 @@
 <?php
 // upload_magalu.php - Helper de upload para Magalu Cloud
-// NOTA: A verificação de sessão é feita pelo endpoint que inclui este arquivo
-// Não fazer verificação aqui para evitar conflitos com upload_foto_usuario_endpoint.php
-// Se este arquivo for acessado diretamente, a verificação será feita pelo endpoint
+// NOTA: Este arquivo é apenas uma classe, não deve fazer verificações ou gerar output
+// A verificação de sessão e arquivo é feita pelo endpoint que inclui este arquivo
+// Se este arquivo for acessado diretamente, não deve fazer nada
 
 require_once __DIR__ . '/conexao.php';
 
@@ -170,8 +170,13 @@ class MagaluUpload {
         $contentType = $mimeType;
         
         // String para assinatura AWS S3 v2
+        // IMPORTANTE: A canonicalizedResource deve incluir o bucket no path
         $canonicalizedResource = "/{$this->bucket}/{$key}";
         $stringToSign = "PUT\n\n{$contentType}\n{$date}\n{$canonicalizedResource}";
+        
+        // Log para debug (sem expor credenciais)
+        @error_log("🔐 Magalu Auth Debug - Bucket: {$this->bucket}, Key: {$key}");
+        @error_log("🔐 Magalu Auth Debug - String to sign (primeiros 100 chars): " . substr($stringToSign, 0, 100));
         
         // Gerar assinatura HMAC-SHA1 e codificar em base64
         $signature = base64_encode(hash_hmac('sha1', $stringToSign, $this->secretKey, true));
