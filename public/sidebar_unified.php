@@ -972,6 +972,20 @@ if ($current_page === 'dashboard') {
             font-size: 18px;
         }
         
+        /* Botão Sair - Estilo diferenciado */
+        .nav-item-logout {
+            margin-top: 10px;
+            background: rgba(239, 68, 68, 0.1);
+            border-left-color: rgba(239, 68, 68, 0.5);
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .nav-item-logout:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-left-color: #ef4444;
+            color: white;
+        }
+        
         /* Main Content - Sobrescrever estilo.css */
         .main-content {
             margin-left: 280px !important;
@@ -1715,6 +1729,15 @@ if ($current_page === 'dashboard') {
                     Banco Smile
                 </a>
                 <?php endif; ?>
+                
+                <!-- Separador visual antes do botão Sair -->
+                <div style="height: 1px; background: rgba(255, 255, 255, 0.1); margin: 20px 0;"></div>
+                
+                <!-- Botão Sair -->
+                <a href="logout.php" class="nav-item nav-item-logout">
+                    <span class="nav-item-icon">🚪</span>
+                    Sair
+                </a>
             </nav>
     </div>
     <!-- Sidebar fechada -->

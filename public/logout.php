@@ -17,6 +17,6 @@ session_destroy();
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
-// redireciona
-header('Location: login.php');
+// redireciona para a página de login
+header('Location: index.php?page=login');
 exit;

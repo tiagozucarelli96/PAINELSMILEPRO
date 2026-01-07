@@ -1169,8 +1169,9 @@ ob_start();
                     }
                 }
                 
-                // Mapeamento de permissões com labels
+                // Mapeamento de permissões com labels - APENAS PERMISSÕES ATIVAS NO SISTEMA
                 $perm_labels = [
+                    // Módulos principais (sidebar)
                     'perm_agenda' => '📅 Agenda',
                     'perm_comercial' => '📋 Comercial',
                     'perm_logistico' => '📦 Logístico',
@@ -1181,33 +1182,25 @@ ob_start();
                     'perm_rh' => '👔 RH',
                     'perm_banco_smile' => '🏦 Banco Smile',
                     'perm_banco_smile_admin' => '🏦 Admin Banco Smile',
+                    'perm_demandas' => '📋 Demandas',
+                    
+                    // Permissões específicas de Agenda (usadas em agenda_helper.php)
+                    'perm_agenda_ver' => '👁️ Ver Agenda',
+                    'perm_agenda_meus' => '📋 Meus Eventos',
+                    'perm_agenda_relatorios' => '📊 Relatórios Agenda',
+                    'perm_forcar_conflito' => '⚡ Forçar Conflito',
+                    'perm_gerir_eventos_outros' => '👥 Eventos de Outros',
+                    
+                    // Permissões antigas ainda em uso
                     'perm_usuarios' => '👥 Usuários',
                     'perm_pagamentos' => '💳 Pagamentos',
                     'perm_tarefas' => '📋 Tarefas',
-                    'perm_demandas' => '📋 Demandas',
+                    'perm_lista' => '📋 Lista',
                     'perm_portao' => '🚪 Portão',
                     'perm_notas_fiscais' => '📄 Notas Fiscais',
                     'perm_estoque_logistico' => '📦 Estoque',
                     'perm_dados_contrato' => '📋 Contratos',
                     'perm_uso_fiorino' => '🚐 Fiorino',
-                    'perm_agenda_ver' => '👁️ Ver Agenda',
-                    'perm_agenda_editar' => '✏️ Editar Agenda',
-                    'perm_agenda_criar' => '➕ Criar Agenda',
-                    'perm_agenda_excluir' => '🗑️ Excluir Agenda',
-                    'perm_agenda_meus' => '📋 Meus Eventos',
-                    'perm_agenda_relatorios' => '📊 Relatórios Agenda',
-                    'perm_comercial_ver' => '👁️ Ver Comercial',
-                    'perm_comercial_deg_editar' => '✏️ Editar Degustações',
-                    'perm_comercial_deg_inscritos' => '👥 Inscritos',
-                    'perm_comercial_conversao' => '💰 Conversão',
-                    'perm_demandas_ver' => '👁️ Ver Demandas',
-                    'perm_demandas_editar' => '✏️ Editar Demandas',
-                    'perm_demandas_criar' => '➕ Criar Demandas',
-                    'perm_demandas_excluir' => '🗑️ Excluir Demandas',
-                    'perm_demandas_ver_produtividade' => '📊 Produtividade',
-                    'perm_forcar_conflito' => '⚡ Forçar Conflito',
-                    'perm_gerir_eventos_outros' => '👥 Eventos de Outros',
-                    'perm_lista' => '📋 Lista',
                 ];
                 
                 // Filtrar apenas permissões que existem no banco
