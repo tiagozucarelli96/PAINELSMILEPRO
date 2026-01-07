@@ -290,8 +290,13 @@ class MagaluUpload {
     }
 }
 
-// API endpoint
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// API endpoint - APENAS se arquivo for acessado DIRETAMENTE (não quando incluído)
+// Verificar se está sendo incluído por outro arquivo
+$isIncluded = (basename($_SERVER['PHP_SELF']) !== basename(__FILE__)) || 
+              (strpos($_SERVER['REQUEST_URI'] ?? '', 'upload_magalu.php') === false);
+
+// Só executar endpoint se for acesso direto
+if (!$isIncluded && $_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $uploader = new MagaluUpload();
         
@@ -315,7 +320,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'error' => $e->getMessage()
         ]);
     }
-} else {
+} elseif (!$isIncluded) {
     http_response_code(405);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Método não permitido']);
 }
