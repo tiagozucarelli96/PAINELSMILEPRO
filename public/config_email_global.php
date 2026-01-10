@@ -211,7 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         } else {
             $teste_resultado = [
                 'sucesso' => false,
-                'mensagem' => 'Erro ao enviar e-mail de teste. Verifique as configurações SMTP e os logs do sistema.'
+                'mensagem' => 'Erro ao enviar e-mail de teste. Verifique se o Resend está configurado corretamente e os logs do sistema.'
             ];
         }
         
@@ -361,23 +361,23 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
     
     <form method="POST" class="form-section">
-        <!-- Configurações do Remetente (para Resend) -->
-        <h2 class="section-title">📧 Configurações do Remetente</h2>
-        <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 1rem;">
-            Estas configurações são usadas pelo Resend para definir o remetente dos e-mails.
-        </p>
+        <h2 class="section-title">📧 Configurações de E-mail</h2>
         
         <div class="form-group">
             <label class="form-label">E-mail Remetente</label>
             <input type="email" name="email_remetente" class="form-input" 
                    value="<?= htmlspecialchars($config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br') ?>" required>
-            <small style="color: #64748b; font-size: 0.875rem; display: block; margin-top: 0.25rem;">
-                Este e-mail será usado como remetente em todos os e-mails enviados via Resend.
-            </small>
+            <div class="info-text">E-mail que aparecerá como remetente em todos os e-mails enviados</div>
         </div>
         
-        <!-- E-mail e Preferências -->
-        <h2 class="section-title" style="margin-top: 2rem;">👤 E-mail e Preferências do Administrador</h2>
+        <div class="form-group" style="margin-top: 2rem;">
+            <label class="form-label">E-mail Principal do Administrador</label>
+            <input type="email" name="email_administrador" class="form-input" 
+                   value="<?= htmlspecialchars($config['email_administrador'] ?? '') ?>" required>
+            <div class="info-text">E-mail que receberá as notificações do sistema</div>
+        </div>
+        
+        <h2 class="section-title" style="margin-top: 2rem;">🔔 Preferências de Notificação</h2>
         
         <div class="form-group">
             <label class="form-label">E-mail Principal do Administrador</label>
@@ -386,24 +386,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="info-text">E-mail que receberá as notificações do sistema</div>
         </div>
         
-        <div class="form-group">
-            <label class="form-label">Preferências de Notificação</label>
-            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
-                <div class="checkbox-group">
-                    <input type="checkbox" name="preferencia_notif_contabilidade" id="pref_contabilidade" 
-                           <?= ($config['preferencia_notif_contabilidade'] ?? true) ? 'checked' : '' ?>>
-                    <label for="pref_contabilidade">Receber notificações da Contabilidade</label>
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" name="preferencia_notif_sistema" id="pref_sistema" 
-                           <?= ($config['preferencia_notif_sistema'] ?? true) ? 'checked' : '' ?>>
-                    <label for="pref_sistema">Receber notificações do Sistema</label>
-                </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" name="preferencia_notif_financeiro" id="pref_financeiro" 
-                           <?= ($config['preferencia_notif_financeiro'] ?? true) ? 'checked' : '' ?>>
-                    <label for="pref_financeiro">Receber notificações Financeiras</label>
-                </div>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+            <div class="checkbox-group">
+                <input type="checkbox" name="preferencia_notif_contabilidade" id="pref_contabilidade" 
+                       <?= ($config['preferencia_notif_contabilidade'] ?? true) ? 'checked' : '' ?>>
+                <label for="pref_contabilidade">Receber notificações da Contabilidade</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" name="preferencia_notif_sistema" id="pref_sistema" 
+                       <?= ($config['preferencia_notif_sistema'] ?? true) ? 'checked' : '' ?>>
+                <label for="pref_sistema">Receber notificações do Sistema</label>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" name="preferencia_notif_financeiro" id="pref_financeiro" 
+                       <?= ($config['preferencia_notif_financeiro'] ?? true) ? 'checked' : '' ?>>
+                <label for="pref_financeiro">Receber notificações Financeiras</label>
             </div>
         </div>
         
@@ -431,7 +428,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         </div>
         <?php endif; ?>
         
-        <form method="POST" class="form-section" style="margin-top: 0; padding-top: 0;">
+        <form method="POST">
             <input type="hidden" name="acao" value="testar_email">
             
             <div class="form-group">
@@ -439,7 +436,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 <input type="email" name="email_teste" class="form-input" 
                        value="<?= htmlspecialchars($config['email_administrador'] ?? '') ?>" 
                        placeholder="Digite o e-mail para receber o teste" required>
-                <div class="info-text">Um e-mail de teste será enviado para verificar se a configuração SMTP está funcionando.</div>
+                <div class="info-text">Um e-mail de teste será enviado para verificar se o Resend está funcionando corretamente.</div>
             </div>
             
             <div style="margin-top: 1.5rem;">
