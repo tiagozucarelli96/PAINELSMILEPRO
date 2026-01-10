@@ -535,12 +535,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 <div class="info-box" style="margin-top: 1rem;">
                     <p><strong>💡 Possíveis causas:</strong></p>
                     <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                        <li>Firewall bloqueando a porta <?= htmlspecialchars($config['smtp_port']) ?></li>
-                        <li>Servidor SMTP não acessível do Railway</li>
-                        <li>Host ou porta incorretos</li>
-                        <li>Problema de rede temporário</li>
+                        <li><strong>Firewall bloqueando:</strong> O Railway pode estar bloqueando conexões de saída na porta 465</li>
+                        <li><strong>Servidor SMTP inacessível:</strong> O servidor pode não estar acessível externamente</li>
+                        <li><strong>Host ou porta incorretos:</strong> Verifique se o host e porta estão corretos</li>
+                        <li><strong>Problema de rede temporário:</strong> Tente novamente em alguns minutos</li>
                     </ul>
-                    <p style="margin-top: 0.5rem;"><strong>Sugestão:</strong> Tente usar a porta 587 com STARTTLS se a 465 não funcionar.</p>
+                    <?php if ((int)$config['smtp_port'] === 465): ?>
+                    <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
+                        <p><strong>⚠️ Recomendação para Railway:</strong></p>
+                        <p>O Railway frequentemente bloqueia a porta 465. Tente usar a porta <strong>587 com STARTTLS</strong>:</p>
+                        <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                            <li>Acesse <a href="index.php?page=config_email_global" style="color: #1e3a8a; text-decoration: underline;">Configuração de E-mail</a></li>
+                            <li>Altere a porta de <strong>465</strong> para <strong>587</strong></li>
+                            <li>Altere a encriptação de <strong>SSL</strong> para <strong>TLS</strong></li>
+                            <li>Salve e teste novamente</li>
+                        </ol>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -595,8 +606,23 @@ composer install --no-dev --optimize-autoloader
                 <p><strong>Mensagem:</strong> <?= htmlspecialchars($resultado_teste['mensagem']) ?></p>
                 <?php if (isset($resultado_teste['erro'])): ?>
                 <p><strong>Erro detalhado:</strong></p>
-                <div class="code-block">
+                <div class="code-block" style="white-space: pre-wrap;">
 <?= htmlspecialchars($resultado_teste['erro']) ?>
+                </div>
+                
+                <div class="info-box" style="margin-top: 1rem;">
+                    <p><strong>💡 Soluções possíveis:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li><strong>Connection timed out:</strong> Firewall bloqueando ou servidor SMTP inacessível. Tente porta 587 com STARTTLS.</li>
+                        <li><strong>Authentication failed:</strong> Verifique usuário e senha SMTP.</li>
+                        <li><strong>SSL/TLS error:</strong> Verifique se a porta e encriptação estão corretas (465 = SSL, 587 = TLS).</li>
+                        <li><strong>Could not connect:</strong> Verifique se o host está correto e acessível.</li>
+                    </ul>
+                    <?php if ((int)$config['smtp_port'] === 465): ?>
+                    <p style="margin-top: 0.5rem; padding: 0.75rem; background: #fef3c7; border-radius: 4px;">
+                        <strong>💡 Dica:</strong> O Railway frequentemente bloqueia a porta 465. Tente usar a porta <strong>587 com TLS (STARTTLS)</strong> na configuração de e-mail.
+                    </p>
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
             </div>
