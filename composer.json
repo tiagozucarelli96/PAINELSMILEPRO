@@ -4,9 +4,15 @@
     "type": "project",
     "require": {
         "php": ">=8.0",
-        "aws/aws-sdk-php": "3.335.0",
+        "aws/aws-sdk-php": "^3.300",
         "dompdf/dompdf": "^2.0",
         "minishlink/web-push": "^10.0"
+    },
+    "config": {
+        "allow-plugins": true,
+        "audit": {
+            "block-insecure": false
+        }
     },
     "autoload": {
         "psr-4": {

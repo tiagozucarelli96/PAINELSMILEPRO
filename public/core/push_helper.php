@@ -29,12 +29,14 @@ class PushHelper {
             $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
         }
         
+        // Carregar autoload do composer se disponível
+        $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
+        if (file_exists($autoloadPath)) {
+            require_once $autoloadPath;
+        }
+        
         // Verificar se biblioteca web-push está disponível
         $this->useLibrary = class_exists('Minishlink\WebPush\WebPush');
-        
-        if ($this->useLibrary && file_exists(__DIR__ . '/../../vendor/autoload.php')) {
-            require_once __DIR__ . '/../../vendor/autoload.php';
-        }
     }
     
     /**
