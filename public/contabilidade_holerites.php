@@ -1,0 +1,240 @@
+<?php
+// contabilidade_holerites.php — Tela de Holerites
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/magalu_integration_helper.php';
+
+// Verificar se está logado
+if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'] !== true) {
+    header('Location: contabilidade_login.php');
+    exit;
+}
+
+$mensagem = '';
+$erro = '';
+
+// Processar cadastro de holerite
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_holerite') {
+    try {
+        $mes_competencia = trim($_POST['mes_competencia'] ?? '');
+        $e_ajuste = isset($_POST['e_ajuste']) && $_POST['e_ajuste'] === '1';
+        $observacao = trim($_POST['observacao'] ?? '');
+        
+        if (empty($mes_competencia)) {
+            throw new Exception('Mês de competência é obrigatório');
+        }
+        
+        // Validar formato MM/AAAA
+        if (!preg_match('/^\d{2}\/\d{4}$/', $mes_competencia)) {
+            throw new Exception('Formato inválido. Use MM/AAAA (ex: 01/2024)');
+        }
+        
+        if (!isset($_FILES['arquivo']) || $_FILES['arquivo']['error'] !== UPLOAD_ERR_OK) {
+            throw new Exception('Arquivo é obrigatório');
+        }
+        
+        // Processar upload
+        try {
+            $magalu = new MagaluIntegrationHelper($pdo);
+            $resultado = $magalu->uploadAnexoRH($_FILES['arquivo'], 0, 'holerite');
+            
+            if (!$resultado['sucesso']) {
+                throw new Exception('Erro no upload: ' . ($resultado['erro'] ?? 'Erro desconhecido'));
+            }
+            
+            $arquivo_url = $resultado['url'] ?? $resultado['caminho_arquivo'] ?? null;
+            $arquivo_nome = $_FILES['arquivo']['name'];
+            
+            // Inserir holerite
+            $stmt = $pdo->prepare("
+                INSERT INTO contabilidade_holerites 
+                (arquivo_url, arquivo_nome, mes_competencia, e_ajuste, observacao)
+                VALUES (:arquivo_url, :arquivo_nome, :competencia, :e_ajuste, :obs)
+            ");
+            $stmt->execute([
+                ':arquivo_url' => $arquivo_url,
+                ':arquivo_nome' => $arquivo_nome,
+                ':competencia' => $mes_competencia,
+                ':e_ajuste' => $e_ajuste,
+                ':obs' => !empty($observacao) ? $observacao : null
+            ]);
+            
+            $mensagem = 'Holerite cadastrado com sucesso!';
+            
+        } catch (Exception $e) {
+            throw new Exception('Erro ao fazer upload: ' . $e->getMessage());
+        }
+        
+    } catch (Exception $e) {
+        $erro = $e->getMessage();
+    }
+}
+
+// Buscar holerites
+$holerites = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_holerites
+        ORDER BY mes_competencia DESC, criado_em DESC
+        LIMIT 50
+    ");
+    $holerites = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holerites - Contabilidade</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 700; }
+        .btn-back { background: rgba(255,255,255,0.2); color: white; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .alert { padding: 1rem; border-radius: 6px; margin-bottom: 1.5rem; }
+        .alert-success { background: #d1fae5; color: #065f46; }
+        .alert-error { background: #fee2e2; color: #991b1b; }
+        .form-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .form-section-title { font-size: 1.25rem; font-weight: 600; color: #1e40af; margin-bottom: 1.5rem; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-label { font-weight: 500; color: #374151; margin-bottom: 0.5rem; }
+        .form-input, .form-select { padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 1rem; }
+        .form-input:focus, .form-select:focus { outline: none; border-color: #1e40af; box-shadow: 0 0 0 3px rgba(30,64,175,0.1); }
+        .checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin: 1rem 0; }
+        .btn-primary { background: #1e40af; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 6px; font-weight: 500; cursor: pointer; }
+        .btn-primary:hover { background: #1e3a8a; }
+        .table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; }
+        .table th { background: #1e40af; color: white; padding: 1rem; text-align: left; }
+        .table td { padding: 1rem; border-bottom: 1px solid #e5e7eb; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 500; }
+        .badge-aberto { background: #fef3c7; color: #92400e; }
+        .badge-ajuste { background: #dbeafe; color: #1e40af; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📄 Holerites</h1>
+        <a href="contabilidade_painel.php" class="btn-back">← Voltar</a>
+    </div>
+    
+    <div class="container">
+        <?php if ($mensagem): ?>
+        <div class="alert alert-success">✅ <?= htmlspecialchars($mensagem) ?></div>
+        <?php endif; ?>
+        
+        <?php if ($erro): ?>
+        <div class="alert alert-error">❌ <?= htmlspecialchars($erro) ?></div>
+        <?php endif; ?>
+        
+        <!-- Formulário de Cadastro -->
+        <div class="form-section">
+            <h2 class="form-section-title">➕ Cadastrar Novo Holerite</h2>
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="acao" value="cadastrar_holerite">
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Mês de Competência (MM/AAAA) *</label>
+                        <input type="text" name="mes_competencia" class="form-input" 
+                               placeholder="01/2024" pattern="\d{2}/\d{4}" required>
+                        <small style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem;">
+                            Formato: MM/AAAA (ex: 01/2024)
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Arquivo *</label>
+                        <input type="file" name="arquivo" class="form-input" accept=".pdf,.jpg,.jpeg,.png" required>
+                    </div>
+                </div>
+                
+                <div class="checkbox-group">
+                    <input type="checkbox" name="e_ajuste" id="e_ajuste" value="1">
+                    <label for="e_ajuste">É ajuste?</label>
+                </div>
+                
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Observação (apenas para admin)</label>
+                    <textarea name="observacao" class="form-input" rows="3" 
+                              placeholder="Observações internas..."></textarea>
+                </div>
+                
+                <button type="submit" class="btn-primary">💾 Cadastrar Holerite</button>
+            </form>
+        </div>
+        
+        <!-- Lista de Holerites -->
+        <div class="form-section">
+            <h2 class="form-section-title">📋 Holerites Cadastrados</h2>
+            <?php if (empty($holerites)): ?>
+            <p style="color: #64748b; text-align: center; padding: 2rem;">Nenhum holerite cadastrado ainda.</p>
+            <?php else: ?>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Competência</th>
+                        <th>Tipo</th>
+                        <th>Status</th>
+                        <th>Arquivo</th>
+                        <th>Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($holerites as $holerite): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($holerite['mes_competencia']) ?></td>
+                        <td>
+                            <?php if ($holerite['e_ajuste']): ?>
+                                <span class="badge badge-ajuste">Ajuste</span>
+                            <?php else: ?>
+                                Normal
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <span class="badge badge-aberto">
+                                <?= ucfirst($holerite['status']) ?>
+                            </span>
+                        </td>
+                        <td>
+                            <?php if ($holerite['arquivo_url']): ?>
+                                <a href="<?= htmlspecialchars($holerite['arquivo_url']) ?>" target="_blank">📎 Ver</a>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </td>
+                        <td><?= date('d/m/Y H:i', strtotime($holerite['criado_em'])) ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+    </div>
+</body>
+</html>
