@@ -1,21 +1,51 @@
 <?php
-// email_helper.php — Helper para envio de e-mails do sistema
+// email_helper.php — Helper para envio de e-mails do sistema (usa EmailGlobalHelper)
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/email_global_helper.php';
 
 class EmailHelper {
     private $pdo;
+    private $emailGlobal;
     private $config;
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
+        // Usar EmailGlobalHelper que utiliza sistema_email_config
+        $this->emailGlobal = new EmailGlobalHelper();
         $this->carregarConfiguracao();
     }
     
     /**
-     * Carregar configurações de e-mail do banco
+     * Carregar configurações de e-mail do banco (compatibilidade)
+     * Agora usa sistema_email_config através do EmailGlobalHelper
      */
     private function carregarConfiguracao() {
+        try {
+            // Tentar carregar do sistema global primeiro
+            $stmt = $this->pdo->query("SELECT * FROM sistema_email_config ORDER BY id DESC LIMIT 1");
+            $global_config = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($global_config) {
+                $this->config = [
+                    'host' => $global_config['smtp_host'],
+                    'port' => (int)$global_config['smtp_port'],
+                    'username' => $global_config['smtp_username'],
+                    'password' => $global_config['smtp_password'],
+                    'from_name' => 'Portal Grupo Smile',
+                    'from_email' => $global_config['email_remetente'],
+                    'reply_to' => $global_config['email_remetente'],
+                    'encryption' => $global_config['smtp_encryption'],
+                    'auth' => true,
+                    'ativado' => true
+                ];
+                return;
+            }
+        } catch (Exception $e) {
+            // Continuar para fallback
+        }
+        
+        // Fallback: tentar carregar de demandas_configuracoes (compatibilidade)
         try {
             $stmt = $this->pdo->query("
                 SELECT chave, valor 
@@ -90,21 +120,12 @@ class EmailHelper {
     }
     
     /**
-     * Enviar e-mail usando configurações SMTP
+     * Enviar e-mail usando sistema global (EmailGlobalHelper)
      */
     private function enviarEmail($para_email, $para_nome, $assunto, $corpo) {
         try {
-            // Usar função mail() do PHP como fallback
-            $headers = [
-                'From: ' . $this->config['from_name'] . ' <' . $this->config['from_email'] . '>',
-                'Reply-To: ' . $this->config['reply_to'],
-                'Content-Type: text/html; charset=UTF-8',
-                'X-Mailer: GRUPO Smile EVENTOS - Sistema de Demandas'
-            ];
-            
-            $headers_string = implode("\r\n", $headers);
-            
-            $enviado = mail($para_email, $assunto, $corpo, $headers_string);
+            // Usar EmailGlobalHelper que utiliza sistema_email_config
+            $enviado = $this->emailGlobal->enviarEmail($para_email, $assunto, $corpo, true);
             
             if ($enviado) {
                 return [

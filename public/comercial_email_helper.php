@@ -1,95 +1,22 @@
 <?php
-// comercial_email_helper.php — Helper para envio de e-mails SMTP
+// comercial_email_helper.php — Helper para envio de e-mails SMTP (usa EmailGlobalHelper)
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/email_global_helper.php';
 
 class ComercialEmailHelper {
-    private $pdo;
-    private $smtp_config;
+    private $emailGlobal;
     
     public function __construct() {
-        $this->pdo = $GLOBALS['pdo'];
-        $this->loadSmtpConfig();
+        // Usar EmailGlobalHelper que utiliza sistema_email_config
+        $this->emailGlobal = new EmailGlobalHelper();
     }
     
-    private function loadSmtpConfig() {
-        // Primeiro tenta carregar das variáveis de ambiente
-        if (getenv('SMTP_HOST')) {
-            $this->smtp_config = [
-                'smtp_host' => getenv('SMTP_HOST'),
-                'smtp_port' => getenv('SMTP_PORT') ?: 587,
-                'smtp_username' => getenv('SMTP_USERNAME'),
-                'smtp_password' => getenv('SMTP_PASSWORD'),
-                'from_name' => getenv('SMTP_FROM_NAME') ?: 'GRUPO Smile EVENTOS',
-                'from_email' => getenv('SMTP_FROM_EMAIL'),
-                'reply_to' => getenv('SMTP_REPLY_TO')
-            ];
-        } else {
-            // Fallback para configuração no banco
-            $stmt = $this->pdo->query("SELECT * FROM comercial_email_config WHERE ativo = TRUE ORDER BY criado_em DESC LIMIT 1");
-            $this->smtp_config = $stmt->fetch(PDO::FETCH_ASSOC);
-        }
-    }
-    
+    /**
+     * Enviar e-mail usando sistema global
+     */
     public function sendEmail($to, $subject, $body, $isHtml = true) {
-        if (!$this->smtp_config) {
-            throw new Exception("Configuração SMTP não encontrada");
-        }
-        
-        // Usar PHPMailer se disponível, senão usar mail() nativo
-        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            return $this->sendWithPHPMailer($to, $subject, $body, $isHtml);
-        } else {
-            return $this->sendWithNativeMail($to, $subject, $body, $isHtml);
-        }
-    }
-    
-    private function sendWithPHPMailer($to, $subject, $body, $isHtml) {
-        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-        
-        try {
-            // Configurações do servidor
-            $mail->isSMTP();
-            $mail->Host = $this->smtp_config['smtp_host'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $this->smtp_config['smtp_username'];
-            $mail->Password = $this->smtp_config['smtp_password'];
-            $mail->SMTPSecure = $this->smtp_config['smtp_port'] == 465 ? 'ssl' : 'tls';
-            $mail->Port = $this->smtp_config['smtp_port'];
-            $mail->CharSet = 'UTF-8';
-            
-            // Remetente
-            $mail->setFrom($this->smtp_config['from_email'], $this->smtp_config['from_name']);
-            if ($this->smtp_config['reply_to']) {
-                $mail->addReplyTo($this->smtp_config['reply_to']);
-            }
-            
-            // Destinatário
-            $mail->addAddress($to);
-            
-            // Conteúdo
-            $mail->isHTML($isHtml);
-            $mail->Subject = $subject;
-            $mail->Body = $body;
-            
-            $mail->send();
-            return true;
-            
-        } catch (Exception $e) {
-            error_log("Erro ao enviar e-mail: " . $e->getMessage());
-            throw new Exception("Erro ao enviar e-mail: " . $e->getMessage());
-        }
-    }
-    
-    private function sendWithNativeMail($to, $subject, $body, $isHtml) {
-        $headers = [
-            'From: ' . $this->smtp_config['from_name'] . ' <' . $this->smtp_config['from_email'] . '>',
-            'Reply-To: ' . ($this->smtp_config['reply_to'] ?: $this->smtp_config['from_email']),
-            'MIME-Version: 1.0',
-            'Content-Type: ' . ($isHtml ? 'text/html' : 'text/plain') . '; charset=UTF-8'
-        ];
-        
-        return mail($to, $subject, $body, implode("\r\n", $headers));
+        return $this->emailGlobal->enviarEmail($to, $subject, $body, $isHtml);
     }
     
     public function sendInscricaoConfirmation($inscricao, $degustacao) {

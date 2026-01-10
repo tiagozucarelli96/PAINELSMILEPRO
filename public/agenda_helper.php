@@ -10,6 +10,7 @@ class AgendaHelper {
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
+        // EmailHelper agora usa EmailGlobalHelper internamente (sistema_email_config)
         $this->emailHelper = new EmailHelper();
     }
     
