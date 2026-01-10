@@ -180,14 +180,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 <div class="content">
                     <div class="success-box">
                         <h2 style="color: #065f46; margin: 0 0 10px 0;">🎉 E-mail Enviado com Sucesso!</h2>
-                        <p style="color: #047857; margin: 0;">Se você recebeu este e-mail, a configuração SMTP está funcionando corretamente.</p>
+                        <p style="color: #047857; margin: 0;">Se você recebeu este e-mail, a configuração do Resend está funcionando corretamente.</p>
                     </div>
                     
                     <div class="info-box">
                         <h3 style="color: #1e40af; margin: 0 0 10px 0;">📋 Informações da Configuração:</h3>
-                        <p style="margin: 5px 0;"><strong>Servidor SMTP:</strong> ' . htmlspecialchars($config_teste['smtp_host']) . '</p>
-                        <p style="margin: 5px 0;"><strong>Porta:</strong> ' . htmlspecialchars($config_teste['smtp_port']) . '</p>
-                        <p style="margin: 5px 0;"><strong>Encriptação:</strong> ' . strtoupper($config_teste['smtp_encryption']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Serviço:</strong> Resend (API)</p>
                         <p style="margin: 5px 0;"><strong>Remetente:</strong> ' . htmlspecialchars($config_teste['email_remetente']) . '</p>
                         <p style="margin: 5px 0;"><strong>Data/Hora:</strong> ' . date('d/m/Y H:i:s') . '</p>
                     </div>
