@@ -65,6 +65,20 @@ class EmailGlobalHelper {
      */
     private function enviarComResend($para, $assunto, $corpo, $eh_html, $api_key) {
         try {
+            // Garantir que autoload foi carregado (sem duplicar)
+            if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+                $autoload_path = __DIR__ . '/../../vendor/autoload.php';
+                if (file_exists($autoload_path)) {
+                    require_once $autoload_path;
+                }
+            }
+            
+            // Verificar se classe Resend existe antes de usar
+            if (!class_exists('\Resend\Resend', false)) {
+                error_log("[EMAIL] ❌ ERRO: Classe Resend\Resend não encontrada. Execute: composer install");
+                return false;
+            }
+            
             $resend = \Resend\Resend::client($api_key);
             
             $email_remetente = $this->config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br';

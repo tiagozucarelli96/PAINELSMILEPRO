@@ -224,7 +224,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
 // Verificar se Resend está configurado
 $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
 $resend_configurado = !empty($resend_api_key);
-$resend_sdk_disponivel = class_exists('\Resend\Resend');
+
+// Verificar se SDK está disponível (sem carregar a classe)
+$resend_sdk_disponivel = false;
+if ($resend_configurado) {
+    // Verificar se autoload existe e se a classe está disponível
+    $autoload_path = __DIR__ . '/../vendor/autoload.php';
+    if (file_exists($autoload_path)) {
+        // Verificar se já foi carregado
+        if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+            require_once $autoload_path;
+        }
+        // Agora verificar se Resend está disponível
+        $resend_sdk_disponivel = class_exists('\Resend\Resend', false);
+    }
+}
 
 ob_start();
 ?>
