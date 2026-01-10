@@ -6,6 +6,7 @@ class PushHelper {
     private $pdo;
     private $vapidPublicKey;
     private $vapidPrivateKey;
+    private $useLibrary;
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'] ?? null;
@@ -26,6 +27,13 @@ class PushHelper {
             $this->vapidPrivateKey = VAPID_PRIVATE_KEY;
         } else {
             $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
+        }
+        
+        // Verificar se biblioteca web-push está disponível
+        $this->useLibrary = class_exists('Minishlink\WebPush\WebPush');
+        
+        if ($this->useLibrary && file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+            require_once __DIR__ . '/../../vendor/autoload.php';
         }
     }
     
@@ -86,76 +94,60 @@ class PushHelper {
             return ['success' => false, 'error' => 'Chaves VAPID não configuradas'];
         }
         
-        $endpoint = $subscription['endpoint'];
-        $p256dh = base64_decode($subscription['chave_publica']);
-        $auth = base64_decode($subscription['chave_autenticacao']);
-        
-        // Payload
-        $payload = json_encode([
-            'title' => $titulo,
-            'body' => $mensagem,
-            'data' => $data,
-            'icon' => '/favicon.ico',
-            'badge' => '/favicon.ico'
-        ]);
-        
-        // Gerar VAPID JWT
-        $jwt = $this->gerarVAPIDJWT($endpoint);
-        
-        // Headers
-        $headers = [
-            'Authorization: vapid t=' . $jwt . ', k=' . $this->vapidPublicKey,
-            'Content-Type: application/octet-stream',
-            'Content-Encoding: aesgcm',
-            'TTL: 86400'
-        ];
-        
-        // Criptografar payload (simplificado - usar biblioteca em produção)
-        $encrypted = $this->criptografarPayload($payload, $p256dh, $auth);
-        
-        // Enviar via cURL
-        $ch = curl_init($endpoint);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_POSTFIELDS => $encrypted,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => true
-        ]);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-        
-        if ($httpCode === 201 || $httpCode === 204) {
-            return ['success' => true];
-        } else {
-            return ['success' => false, 'error' => "HTTP $httpCode: $response"];
+        // Usar biblioteca se disponível
+        if ($this->useLibrary) {
+            return $this->enviarComBiblioteca($subscription, $titulo, $mensagem, $data);
         }
+        
+        // Fallback: implementação manual (será implementada se necessário)
+        return ['success' => false, 'error' => 'Biblioteca web-push não disponível. Execute: composer require minishlink/web-push'];
     }
     
     /**
-     * Gerar JWT VAPID (simplificado - usar biblioteca em produção)
+     * Enviar usando biblioteca minishlink/web-push
      */
-    private function gerarVAPIDJWT($audience) {
-        // Implementação simplificada - em produção usar biblioteca JWT
-        $header = base64_encode(json_encode(['alg' => 'ES256', 'typ' => 'JWT']));
-        $payload = base64_encode(json_encode([
-            'aud' => parse_url($audience, PHP_URL_SCHEME) . '://' . parse_url($audience, PHP_URL_HOST),
-            'exp' => time() + 43200,
-            'sub' => 'mailto:painelsmilenotifica@smileeventos.com.br'
-        ]));
-        // Em produção, assinar com chave privada VAPID
-        return $header . '.' . $payload . '.signature';
-    }
-    
-    /**
-     * Criptografar payload (simplificado - usar biblioteca em produção)
-     */
-    private function criptografarPayload($payload, $p256dh, $auth) {
-        // Implementação simplificada - em produção usar biblioteca de criptografia
-        return $payload; // Placeholder
+    private function enviarComBiblioteca($subscription, $titulo, $mensagem, $data) {
+        try {
+            $webPush = new \Minishlink\WebPush\WebPush([
+                'VAPID' => [
+                    'subject' => 'mailto:painelsmilenotifica@smileeventos.com.br',
+                    'publicKey' => $this->vapidPublicKey,
+                    'privateKey' => $this->vapidPrivateKey,
+                ],
+            ]);
+            
+            $pushSubscription = \Minishlink\WebPush\Subscription::create([
+                'endpoint' => $subscription['endpoint'],
+                'keys' => [
+                    'p256dh' => $subscription['chave_publica'],
+                    'auth' => $subscription['chave_autenticacao'],
+                ],
+            ]);
+            
+            // Payload
+            $payload = json_encode([
+                'title' => $titulo,
+                'body' => $mensagem,
+                'data' => $data,
+                'icon' => '/favicon.ico',
+                'badge' => '/favicon.ico'
+            ]);
+            
+            // Enviar notificação
+            $result = $webPush->sendOneNotification($pushSubscription, $payload);
+            
+            // Processar resultado
+            if ($result->isSuccess()) {
+                return ['success' => true];
+            } else {
+                $error = $result->getReason();
+                return ['success' => false, 'error' => $error];
+            }
+            
+        } catch (Exception $e) {
+            error_log("Erro ao enviar push com biblioteca: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
     }
     
     /**
