@@ -164,6 +164,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
         
+        <!-- E-mail Global -->
+        <a href="index.php?page=config_email_global" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #ec4899, #db2777);">
+                <span class="funcionalidade-card-icon">📧</span>
+                <div class="funcionalidade-card-title">E-mail Global</div>
+                <div class="funcionalidade-card-subtitle">Configurar SMTP e notificações</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        
         <!-- Sistema -->
         <a href="index.php?page=configuracoes" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
