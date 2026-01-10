@@ -39,9 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email_remetente = trim($_POST['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br');
         $email_administrador = trim($_POST['email_administrador'] ?? '');
         
-        $pref_contabilidade = isset($_POST['preferencia_notif_contabilidade']) ? true : false;
-        $pref_sistema = isset($_POST['preferencia_notif_sistema']) ? true : false;
-        $pref_financeiro = isset($_POST['preferencia_notif_financeiro']) ? true : false;
+        // Garantir que valores boolean sejam boolean verdadeiros (não strings vazias)
+        $pref_contabilidade = isset($_POST['preferencia_notif_contabilidade']) ? (bool)true : (bool)false;
+        $pref_sistema = isset($_POST['preferencia_notif_sistema']) ? (bool)true : (bool)false;
+        $pref_financeiro = isset($_POST['preferencia_notif_financeiro']) ? (bool)true : (bool)false;
         $tempo_inatividade = (int)($_POST['tempo_inatividade_minutos'] ?? 10);
         
         if (empty($email_administrador)) {
@@ -76,20 +77,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     atualizado_em = NOW()
                 WHERE id = :id
             ");
-            $params = [
-                ':smtp_host' => $smtp_host,
-                ':smtp_port' => $smtp_port,
-                ':smtp_username' => $smtp_username,
-                ':smtp_encryption' => $smtp_encryption,
-                ':email_remetente' => $email_remetente,
-                ':email_administrador' => $email_administrador,
-                ':pref_contabilidade' => $pref_contabilidade,
-                ':pref_sistema' => $pref_sistema,
-                ':pref_financeiro' => $pref_financeiro,
-                ':tempo_inatividade' => $tempo_inatividade,
-                ':id' => $config['id']
-            ];
-            $stmt->execute($params);
+            $stmt->bindValue(':smtp_host', $smtp_host);
+            $stmt->bindValue(':smtp_port', $smtp_port, PDO::PARAM_INT);
+            $stmt->bindValue(':smtp_username', $smtp_username);
+            $stmt->bindValue(':smtp_encryption', $smtp_encryption);
+            $stmt->bindValue(':email_remetente', $email_remetente);
+            $stmt->bindValue(':email_administrador', $email_administrador);
+            $stmt->bindValue(':pref_contabilidade', $pref_contabilidade, PDO::PARAM_BOOL);
+            $stmt->bindValue(':pref_sistema', $pref_sistema, PDO::PARAM_BOOL);
+            $stmt->bindValue(':pref_financeiro', $pref_financeiro, PDO::PARAM_BOOL);
+            $stmt->bindValue(':tempo_inatividade', $tempo_inatividade, PDO::PARAM_INT);
+            $stmt->bindValue(':id', $config['id'], PDO::PARAM_INT);
+            $stmt->execute();
         } else {
             // Criar
             $stmt = $pdo->prepare("
@@ -105,19 +104,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     :tempo_inatividade
                 )
             ");
-            $stmt->execute([
-                ':smtp_host' => $smtp_host,
-                ':smtp_port' => $smtp_port,
-                ':smtp_username' => $smtp_username,
-                ':smtp_password' => $smtp_password,
-                ':smtp_encryption' => $smtp_encryption,
-                ':email_remetente' => $email_remetente,
-                ':email_administrador' => $email_administrador,
-                ':pref_contabilidade' => $pref_contabilidade,
-                ':pref_sistema' => $pref_sistema,
-                ':pref_financeiro' => $pref_financeiro,
-                ':tempo_inatividade' => $tempo_inatividade
-            ]);
+            $stmt->bindValue(':smtp_host', $smtp_host);
+            $stmt->bindValue(':smtp_port', $smtp_port, PDO::PARAM_INT);
+            $stmt->bindValue(':smtp_username', $smtp_username);
+            $stmt->bindValue(':smtp_password', $smtp_password);
+            $stmt->bindValue(':smtp_encryption', $smtp_encryption);
+            $stmt->bindValue(':email_remetente', $email_remetente);
+            $stmt->bindValue(':email_administrador', $email_administrador);
+            $stmt->bindValue(':pref_contabilidade', $pref_contabilidade, PDO::PARAM_BOOL);
+            $stmt->bindValue(':pref_sistema', $pref_sistema, PDO::PARAM_BOOL);
+            $stmt->bindValue(':pref_financeiro', $pref_financeiro, PDO::PARAM_BOOL);
+            $stmt->bindValue(':tempo_inatividade', $tempo_inatividade, PDO::PARAM_INT);
+            $stmt->execute();
         }
         
         $mensagem = 'Configuração salva com sucesso!';
