@@ -153,7 +153,11 @@ class UsuarioSaveManager {
             // Campos opcionais com verificações (login é tratado separadamente acima)
             $optionalFields = [
                 'cargo', 'cpf', 'admissao_data', 'salario_base',
-                'pix_tipo', 'pix_chave', 'status_empregado', 'foto'
+                'pix_tipo', 'pix_chave', 'status_empregado', 'foto',
+                // Campos de dados pessoais
+                'nome_completo', 'rg', 'telefone', 'celular',
+                'endereco_cep', 'endereco_logradouro', 'endereco_numero',
+                'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_estado'
             ];
             
             // Campos obrigatórios que podem ter valores padrão
