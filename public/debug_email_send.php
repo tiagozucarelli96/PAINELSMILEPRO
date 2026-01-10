@@ -49,58 +49,123 @@ function registrarLogEmail($pdo, $tipo, $mensagem, $detalhes = null) {
     }
 }
 
-// Função para testar conexão TCP/SSL
-function testarConexaoTCP($host, $port, $timeout = 10) {
+// Função para testar conexão TCP/SSL com múltiplas tentativas
+function testarConexaoTCP($host, $port, $timeout = 5) {
     $inicio = microtime(true);
     $resultado = [
         'sucesso' => false,
         'erro' => null,
-        'tempo' => 0
+        'tempo' => 0,
+        'metodo' => null,
+        'tentativas' => []
     ];
     
-    try {
-        // Tentar conexão SSL direta (para porta 465)
-        if ($port == 465) {
-            $context = stream_context_create([
+    // Tentar diferentes métodos de conexão
+    $metodos = [];
+    
+    if ($port == 465) {
+        // Porta 465: SSL implícito
+        $metodos[] = [
+            'nome' => 'SSL Implícito (ssl://)',
+            'url' => "ssl://{$host}:{$port}",
+            'context' => stream_context_create([
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                    'allow_self_signed' => true,
+                    'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT
+                ],
+                'socket' => [
+                    'bindto' => '0:0' // Não forçar interface específica
+                ]
+            ])
+        ];
+        
+        // Tentar também com TLS explícito
+        $metodos[] = [
+            'nome' => 'TLS Explícito (tls://)',
+            'url' => "tls://{$host}:{$port}",
+            'context' => stream_context_create([
                 'ssl' => [
                     'verify_peer' => false,
                     'verify_peer_name' => false,
                     'allow_self_signed' => true
                 ]
-            ]);
+            ])
+        ];
+    } else {
+        // Outras portas: TCP primeiro, depois TLS se necessário
+        $metodos[] = [
+            'nome' => 'TCP Simples',
+            'url' => "tcp://{$host}:{$port}",
+            'context' => null
+        ];
+    }
+    
+    foreach ($metodos as $metodo) {
+        $tentativa_inicio = microtime(true);
+        $socket = null;
+        
+        try {
+            if ($metodo['context']) {
+                $socket = @stream_socket_client(
+                    $metodo['url'],
+                    $errno,
+                    $errstr,
+                    $timeout,
+                    STREAM_CLIENT_CONNECT,
+                    $metodo['context']
+                );
+            } else {
+                $socket = @stream_socket_client(
+                    $metodo['url'],
+                    $errno,
+                    $errstr,
+                    $timeout
+                );
+            }
             
-            $socket = @stream_socket_client(
-                "ssl://{$host}:{$port}",
-                $errno,
-                $errstr,
-                $timeout,
-                STREAM_CLIENT_CONNECT,
-                $context
-            );
-        } else {
-            // Conexão TCP normal
-            $socket = @stream_socket_client(
-                "tcp://{$host}:{$port}",
-                $errno,
-                $errstr,
-                $timeout
-            );
+            $tentativa_tempo = round((microtime(true) - $tentativa_inicio) * 1000, 2);
+            
+            if ($socket) {
+                fclose($socket);
+                $resultado['sucesso'] = true;
+                $resultado['metodo'] = $metodo['nome'];
+                $resultado['tempo'] = round((microtime(true) - $inicio) * 1000, 2);
+                $resultado['tentativas'][] = [
+                    'metodo' => $metodo['nome'],
+                    'sucesso' => true,
+                    'tempo' => $tentativa_tempo
+                ];
+                return $resultado; // Sucesso, parar tentativas
+            } else {
+                $resultado['tentativas'][] = [
+                    'metodo' => $metodo['nome'],
+                    'sucesso' => false,
+                    'erro' => "Erro $errno: $errstr",
+                    'tempo' => $tentativa_tempo
+                ];
+            }
+        } catch (Exception $e) {
+            $tentativa_tempo = round((microtime(true) - $tentativa_inicio) * 1000, 2);
+            $resultado['tentativas'][] = [
+                'metodo' => $metodo['nome'],
+                'sucesso' => false,
+                'erro' => $e->getMessage(),
+                'tempo' => $tentativa_tempo
+            ];
         }
-        
-        $tempo = round((microtime(true) - $inicio) * 1000, 2);
-        
-        if ($socket) {
-            fclose($socket);
-            $resultado['sucesso'] = true;
-            $resultado['tempo'] = $tempo;
-        } else {
-            $resultado['erro'] = "Erro $errno: $errstr";
-            $resultado['tempo'] = $tempo;
-        }
-    } catch (Exception $e) {
-        $tempo = round((microtime(true) - $inicio) * 1000, 2);
-        $resultado['erro'] = $e->getMessage();
-        $resultado['tempo'] = $tempo;
+    }
+    
+    // Se chegou aqui, todas as tentativas falharam
+    $resultado['tempo'] = round((microtime(true) - $inicio) * 1000, 2);
+    
+    // Pegar o último erro como principal
+    if (!empty($resultado['tentativas'])) {
+        $ultima_tentativa = end($resultado['tentativas']);
+        $resultado['erro'] = $ultima_tentativa['erro'] ?? 'Todas as tentativas falharam';
+    } else {
+        $resultado['erro'] = 'Nenhuma tentativa foi realizada';
     }
     
     return $resultado;
@@ -444,13 +509,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <div class="resultado-box sucesso">
                 <p><strong>✅ Sucesso!</strong></p>
                 <p>Conexão estabelecida com <?= htmlspecialchars($config['smtp_host']) ?>:<?= htmlspecialchars($config['smtp_port']) ?></p>
+                <p>Método usado: <?= htmlspecialchars($resultado_conexao['metodo']) ?></p>
                 <p>Tempo de resposta: <?= $resultado_conexao['tempo'] ?>ms</p>
             </div>
             <?php else: ?>
             <div class="resultado-box erro">
                 <p><strong>❌ Falha na conexão</strong></p>
                 <p>Erro: <?= htmlspecialchars($resultado_conexao['erro']) ?></p>
-                <p>Tempo de tentativa: <?= $resultado_conexao['tempo'] ?>ms</p>
+                <p>Tempo total de tentativas: <?= $resultado_conexao['tempo'] ?>ms</p>
+                
+                <?php if (!empty($resultado_conexao['tentativas'])): ?>
+                <p style="margin-top: 1rem;"><strong>Tentativas realizadas:</strong></p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <?php foreach ($resultado_conexao['tentativas'] as $tentativa): ?>
+                    <li>
+                        <strong><?= htmlspecialchars($tentativa['metodo']) ?>:</strong>
+                        <?= $tentativa['sucesso'] ? '✅' : '❌' ?>
+                        <?= $tentativa['sucesso'] ? 'Sucesso' : htmlspecialchars($tentativa['erro'] ?? 'Falhou') ?>
+                        (<?= $tentativa['tempo'] ?>ms)
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+                
+                <div class="info-box" style="margin-top: 1rem;">
+                    <p><strong>💡 Possíveis causas:</strong></p>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li>Firewall bloqueando a porta <?= htmlspecialchars($config['smtp_port']) ?></li>
+                        <li>Servidor SMTP não acessível do Railway</li>
+                        <li>Host ou porta incorretos</li>
+                        <li>Problema de rede temporário</li>
+                    </ul>
+                    <p style="margin-top: 0.5rem;"><strong>Sugestão:</strong> Tente usar a porta 587 com STARTTLS se a 465 não funcionar.</p>
+                </div>
             </div>
             <?php endif; ?>
         </div>
