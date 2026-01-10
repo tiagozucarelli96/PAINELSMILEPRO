@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/magalu_integration_helper.php';
+require_once __DIR__ . '/core/notificacoes_helper.php';
 
 // Verificar se está logado
 if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'] !== true) {
@@ -127,8 +128,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 ':num_parc' => $numero_parcela
             ]);
             
+            $guia_id = $pdo->lastInsertId();
+            
             $pdo->commit();
             $mensagem = 'Guia cadastrada com sucesso!';
+            
+            // Registrar notificação (ETAPA 13)
+            try {
+                $notificacoes = new NotificacoesHelper();
+                $titulo = $e_parcela && $numero_parcela ? 
+                    "Nova guia cadastrada: {$descricao} (Parcela {$numero_parcela})" : 
+                    "Nova guia cadastrada: {$descricao}";
+                $notificacoes->registrarNotificacao(
+                    'contabilidade',
+                    'novo_cadastro',
+                    'guia',
+                    $guia_id,
+                    $titulo,
+                    "Data de vencimento: " . date('d/m/Y', strtotime($data_vencimento)),
+                    'ambos'
+                );
+            } catch (Exception $e) {
+                // Ignorar erro de notificação silenciosamente
+                error_log("Erro ao registrar notificação: " . $e->getMessage());
+            }
             
         } catch (Exception $e) {
             $pdo->rollBack();

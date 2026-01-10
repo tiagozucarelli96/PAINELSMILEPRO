@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $id = (int)($_POST['id'] ?? 0);
             // Excluir mensagens primeiro
-            $stmt = $pdo->prepare("DELETE FROM contabilidade_mensagens WHERE conversa_id = :id");
+            $stmt = $pdo->prepare("DELETE FROM contabilidade_conversas_mensagens WHERE conversa_id = :id");
             $stmt->execute([':id' => $id]);
             // Depois a conversa
             $stmt = $pdo->prepare("DELETE FROM contabilidade_conversas WHERE id = :id");
@@ -78,7 +78,7 @@ try {
                COUNT(m.id) as total_mensagens,
                MAX(m.criado_em) as ultima_mensagem
         FROM contabilidade_conversas c
-        LEFT JOIN contabilidade_mensagens m ON m.conversa_id = c.id
+        LEFT JOIN contabilidade_conversas_mensagens m ON m.conversa_id = c.id
         $where_sql
         GROUP BY c.id
         ORDER BY COALESCE(MAX(m.criado_em), c.criado_em) DESC

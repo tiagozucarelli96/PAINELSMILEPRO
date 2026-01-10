@@ -38,6 +38,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([':status' => $status, ':id' => $id]);
             $mensagem = 'Status atualizado com sucesso!';
             
+            // Registrar notificação de alteração de status (ETAPA 13)
+            try {
+                $notificacoes = new NotificacoesHelper();
+                $notificacoes->registrarNotificacao(
+                    'contabilidade',
+                    'alteracao_status',
+                    'guia',
+                    $id,
+                    "Status da guia alterado para: " . ucfirst(str_replace('_', ' ', $status)),
+                    '',
+                    'ambos'
+                );
+            } catch (Exception $e) {
+                // Ignorar erro silenciosamente
+            }
+            
         } catch (Exception $e) {
             $erro = $e->getMessage();
         }

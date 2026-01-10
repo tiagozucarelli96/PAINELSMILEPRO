@@ -149,23 +149,10 @@ BEGIN
         NULL;
     END IF;
     
-    -- Criar tabela com nome correto se não existir
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_name = 'contabilidade_mensagens'
-    ) THEN
-        CREATE TABLE contabilidade_mensagens (
-            id BIGSERIAL PRIMARY KEY,
-            conversa_id BIGINT NOT NULL REFERENCES contabilidade_conversas(id) ON DELETE CASCADE,
-            autor VARCHAR(50) NOT NULL,
-            mensagem TEXT,
-            anexo_url TEXT,
-            anexo_nome VARCHAR(255),
-            criado_em TIMESTAMP NOT NULL DEFAULT NOW()
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_contabilidade_mensagens_conversa ON contabilidade_mensagens(conversa_id);
-    END IF;
+    -- A tabela já existe como contabilidade_conversas_mensagens no schema original
+    -- Manter compatibilidade: criar alias ou usar o nome correto
+    -- Não precisamos criar uma nova tabela, apenas garantir que o nome está correto
+    NULL;
 END $$;
 
 -- Corrigir nome da tabela de documentos de colaboradores
