@@ -11,10 +11,12 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/email_global_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
 $mensagem = '';
 $erro = '';
+$teste_resultado = null;
 
 // Carregar configuração existente
 $config = null;
@@ -120,6 +122,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
     } catch (Exception $e) {
         $erro = $e->getMessage();
+    }
+}
+
+// Processar teste de e-mail
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'testar_email') {
+    try {
+        $email_teste = trim($_POST['email_teste'] ?? '');
+        
+        if (empty($email_teste)) {
+            throw new Exception('E-mail de teste é obrigatório');
+        }
+        
+        if (!filter_var($email_teste, FILTER_VALIDATE_EMAIL)) {
+            throw new Exception('E-mail inválido');
+        }
+        
+        // Carregar configuração atual
+        $stmt = $pdo->query("SELECT * FROM sistema_email_config ORDER BY id DESC LIMIT 1");
+        $config_teste = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$config_teste) {
+            throw new Exception('Configuração de e-mail não encontrada. Salve as configurações primeiro.');
+        }
+        
+        // Criar helper e enviar e-mail de teste
+        $emailHelper = new EmailGlobalHelper();
+        
+        $assunto = 'Teste de E-mail - Portal Grupo Smile';
+        $corpo = '
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+                .success-box { background: #d1fae5; border: 2px solid #10b981; padding: 20px; border-radius: 8px; margin: 20px 0; }
+                .info-box { background: #f0f9ff; border-left: 4px solid #1e40af; padding: 15px; margin: 15px 0; }
+                .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>✅ E-mail de Teste</h1>
+                    <p>Portal Grupo Smile</p>
+                </div>
+                <div class="content">
+                    <div class="success-box">
+                        <h2 style="color: #065f46; margin: 0 0 10px 0;">🎉 E-mail Enviado com Sucesso!</h2>
+                        <p style="color: #047857; margin: 0;">Se você recebeu este e-mail, a configuração SMTP está funcionando corretamente.</p>
+                    </div>
+                    
+                    <div class="info-box">
+                        <h3 style="color: #1e40af; margin: 0 0 10px 0;">📋 Informações da Configuração:</h3>
+                        <p style="margin: 5px 0;"><strong>Servidor SMTP:</strong> ' . htmlspecialchars($config_teste['smtp_host']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Porta:</strong> ' . htmlspecialchars($config_teste['smtp_port']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Encriptação:</strong> ' . strtoupper($config_teste['smtp_encryption']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Remetente:</strong> ' . htmlspecialchars($config_teste['email_remetente']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Data/Hora:</strong> ' . date('d/m/Y H:i:s') . '</p>
+                    </div>
+                    
+                    <p>Este é um e-mail de teste enviado pelo sistema de configuração global de e-mail do Portal Grupo Smile.</p>
+                    
+                    <div class="footer">
+                        <p>Portal Grupo Smile - Sistema de Gestão</p>
+                        <p>Este é um e-mail automático, por favor não responda.</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>';
+        
+        $enviado = $emailHelper->enviarEmail($email_teste, $assunto, $corpo, true);
+        
+        if ($enviado) {
+            $teste_resultado = [
+                'sucesso' => true,
+                'mensagem' => 'E-mail de teste enviado com sucesso para: ' . htmlspecialchars($email_teste)
+            ];
+        } else {
+            $teste_resultado = [
+                'sucesso' => false,
+                'mensagem' => 'Erro ao enviar e-mail de teste. Verifique as configurações SMTP e os logs do sistema.'
+            ];
+        }
+        
+    } catch (Exception $e) {
+        $teste_resultado = [
+            'sucesso' => false,
+            'mensagem' => 'Erro: ' . $e->getMessage()
+        ];
     }
 }
 
@@ -302,10 +398,47 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="info-text">Após este tempo sem novas ações, as notificações serão enviadas consolidadas</div>
         </div>
         
-        <div style="margin-top: 2rem;">
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
             <button type="submit" class="btn-primary">💾 Salvar Configurações</button>
         </div>
     </form>
+    
+    <!-- Seção de Teste de E-mail -->
+    <?php if ($config): ?>
+    <div class="form-section">
+        <h2 class="section-title">🧪 Testar Configuração de E-mail</h2>
+        
+        <?php if ($teste_resultado): ?>
+        <div class="alert <?= $teste_resultado['sucesso'] ? 'alert-success' : 'alert-error' ?>">
+            <?= $teste_resultado['sucesso'] ? '✅' : '❌' ?> <?= htmlspecialchars($teste_resultado['mensagem']) ?>
+        </div>
+        <?php endif; ?>
+        
+        <form method="POST" class="form-section" style="margin-top: 0; padding-top: 0;">
+            <input type="hidden" name="acao" value="testar_email">
+            
+            <div class="form-group">
+                <label class="form-label">E-mail para Teste</label>
+                <input type="email" name="email_teste" class="form-input" 
+                       value="<?= htmlspecialchars($config['email_administrador'] ?? '') ?>" 
+                       placeholder="Digite o e-mail para receber o teste" required>
+                <div class="info-text">Um e-mail de teste será enviado para verificar se a configuração SMTP está funcionando.</div>
+            </div>
+            
+            <div style="margin-top: 1.5rem;">
+                <button type="submit" class="btn-primary" style="background: #10b981;">
+                    📧 Enviar E-mail de Teste
+                </button>
+            </div>
+        </form>
+    </div>
+    <?php else: ?>
+    <div class="form-section">
+        <div class="alert" style="background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b;">
+            ⚠️ <strong>Salve as configurações primeiro</strong> para poder testar o envio de e-mail.
+        </div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php
