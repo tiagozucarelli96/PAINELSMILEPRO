@@ -96,6 +96,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         $_SESSION['id']     = (int)($u['id'] ?? 0);
                         $_SESSION['nome']   = $u['nome'] ?? ($u['nome_completo'] ?? ($u['name'] ?? 'Usuário'));
                         // Permissões continuam sendo tratadas pelo permissoes_boot.php no index.php
+                        
+                        // Verificar se é usuário interno e precisa de push
+                        require_once __DIR__ . '/permissoes_boot.php';
+                        $is_admin = !empty($_SESSION['perm_administrativo']);
+                        $is_internal = $is_admin || !empty($_SESSION['perm_agenda']) || !empty($_SESSION['perm_demandas']) || 
+                                       !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_financeiro']);
+                        
+                        if ($is_internal) {
+                            // Verificar consentimento de push
+                            try {
+                                $stmt = $pdo->prepare("
+                                    SELECT COUNT(*) 
+                                    FROM sistema_notificacoes_navegador 
+                                    WHERE usuario_id = :usuario_id 
+                                    AND consentimento_permitido = TRUE 
+                                    AND ativo = TRUE
+                                ");
+                                $stmt->execute([':usuario_id' => $_SESSION['id']]);
+                                $hasConsent = $stmt->fetchColumn() > 0;
+                                
+                                if (!$hasConsent) {
+                                    // Redirecionar para tela de bloqueio
+                                    header('Location: push_block_screen.php');
+                                    exit;
+                                }
+                            } catch (Exception $e) {
+                                error_log("Erro ao verificar consentimento push: " . $e->getMessage());
+                                // Em caso de erro, permitir acesso (não bloquear)
+                            }
+                        }
+                        
                         header('Location: index.php?page=dashboard');
                         exit;
                     }

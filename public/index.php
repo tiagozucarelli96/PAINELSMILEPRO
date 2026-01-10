@@ -109,6 +109,34 @@ if ((!empty($action) || $is_ajax_request) && !empty($_GET['page'])) {
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
+    // Verificar push para usuários internos (antes de carregar qualquer página)
+    require_once __DIR__ . '/permissoes_boot.php';
+    $is_admin = !empty($_SESSION['perm_administrativo']);
+    $is_internal = $is_admin || !empty($_SESSION['perm_agenda']) || !empty($_SESSION['perm_demandas']) || 
+                   !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_financeiro']);
+    
+    if ($is_internal && $page !== 'push_block_screen') {
+      try {
+        require_once __DIR__ . '/conexao.php';
+        $stmt = $GLOBALS['pdo']->prepare("
+          SELECT COUNT(*) 
+          FROM sistema_notificacoes_navegador 
+          WHERE usuario_id = :usuario_id 
+          AND consentimento_permitido = TRUE 
+          AND ativo = TRUE
+        ");
+        $stmt->execute([':usuario_id' => $_SESSION['id']]);
+        $hasConsent = $stmt->fetchColumn() > 0;
+        
+        if (!$hasConsent) {
+          header('Location: push_block_screen.php');
+          exit;
+        }
+      } catch (Exception $e) {
+        error_log("Erro ao verificar push: " . $e->getMessage());
+      }
+    }
+    
     header('Location: index.php?page=dashboard');
   } else {
     header('Location: index.php?page=login');
@@ -246,6 +274,7 @@ $routes = [
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'testar_identificacao_pagamento' => 'testar_identificacao_pagamento.php',
   'login' => 'login.php', // Rota de login
+  'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais

@@ -197,8 +197,11 @@ class NotificacoesHelper {
             
             // Enviar e-mails (ETAPA 15)
             $email_helper = new EmailGlobalHelper();
+            require_once __DIR__ . '/push_helper.php';
+            $push_helper = new PushHelper();
             
             $enviados = 0;
+            $push_enviados = 0;
             
             // E-mail para administrador
             if (!empty($notificacoes_admin) && !empty($destinatarios[0]['email'])) {
@@ -228,8 +231,45 @@ class NotificacoesHelper {
                 }
             }
             
+            // Enviar push notifications para usuários internos
+            foreach ($notificacoes as $notif) {
+                // Buscar usuários internos que devem receber esta notificação
+                $stmt = $this->pdo->prepare("
+                    SELECT DISTINCT u.id
+                    FROM usuarios u
+                    JOIN sistema_notificacoes_navegador snn ON snn.usuario_id = u.id
+                    WHERE u.ativo = TRUE
+                    AND snn.consentimento_permitido = TRUE
+                    AND snn.ativo = TRUE
+                    AND (
+                        (:modulo = 'contabilidade' AND :pref_contabilidade = TRUE) OR
+                        (:modulo = 'sistema' AND :pref_sistema = TRUE) OR
+                        (:modulo = 'financeiro' AND :pref_financeiro = TRUE)
+                    )
+                ");
+                $stmt->execute([
+                    ':modulo' => $notif['modulo'],
+                    ':pref_contabilidade' => $email_config['preferencia_notif_contabilidade'] ?? true,
+                    ':pref_sistema' => $email_config['preferencia_notif_sistema'] ?? true,
+                    ':pref_financeiro' => $email_config['preferencia_notif_financeiro'] ?? true
+                ]);
+                $usuarios_push = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                
+                foreach ($usuarios_push as $user_id) {
+                    $result = $push_helper->enviarPush(
+                        $user_id,
+                        'Portal Grupo Smile',
+                        'Você tem novas atualizações no sistema.',
+                        ['notificacao_id' => $notif['id']]
+                    );
+                    if ($result['success']) {
+                        $push_enviados++;
+                    }
+                }
+            }
+            
             // Marcar notificações como processadas
-            if ($enviados > 0) {
+            if ($enviados > 0 || $push_enviados > 0) {
                 $ids = array_column($notificacoes, 'id');
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
                 $stmt = $this->pdo->prepare("
