@@ -20,6 +20,7 @@ return [
     'cadastros' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
     'administrativo' => 'perm_administrativo',
+    'contabilidade' => 'perm_administrativo',
     'rh' => 'perm_administrativo',
     'banco_smile' => 'perm_banco_smile',
     'banco_smile_main' => 'perm_banco_smile',

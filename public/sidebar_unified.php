@@ -1731,6 +1731,13 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_administrativo'])): ?>
+                <a href="index.php?page=contabilidade" class="nav-item <?= isActiveUnified('contabilidade') ?>">
+                    <span class="nav-item-icon">📑</span>
+                    Contabilidade
+                </a>
+                <?php endif; ?>
+                
                 <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
                 <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
                     <span class="nav-item-icon">🏦</span>

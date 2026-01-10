@@ -126,6 +126,7 @@ $routes = [
   'cadastros' => 'cadastros.php',
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
+  'contabilidade' => 'contabilidade.php',
   'agenda' => 'agenda.php',
   'demandas' => 'demandas_trello.php',
   'demandas_old' => 'demandas.php', // Versão antiga mantida
