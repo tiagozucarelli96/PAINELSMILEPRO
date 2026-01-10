@@ -219,6 +219,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
+// Verificar se Resend está configurado
+$resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+$resend_configurado = !empty($resend_api_key);
+$resend_sdk_disponivel = class_exists('\Resend\Resend');
+
 ob_start();
 ?>
 <style>
@@ -304,7 +309,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <div class="container">
     <div class="header">
-        <h1>📧 E-mail Global - Configuração SMTP</h1>
+        <h1>📧 E-mail Global - Configuração</h1>
     </div>
     
     <?php if ($mensagem): ?>
@@ -314,6 +319,39 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <?php if ($erro): ?>
     <div class="alert alert-error">❌ <?= htmlspecialchars($erro) ?></div>
     <?php endif; ?>
+    
+    <!-- Status do Resend -->
+    <div class="form-section" style="background: <?= $resend_configurado && $resend_sdk_disponivel ? '#d1fae5' : ($resend_configurado ? '#fef3c7' : '#f9fafb') ?>; border-left: 4px solid <?= $resend_configurado && $resend_sdk_disponivel ? '#059669' : ($resend_configurado ? '#f59e0b' : '#6b7280') ?>;">
+        <h2 class="section-title">🚀 Resend (Recomendado para Railway)</h2>
+        
+        <?php if ($resend_configurado && $resend_sdk_disponivel): ?>
+        <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
+            <p style="color: #059669; font-weight: 600; margin-bottom: 0.5rem;">✅ Resend configurado e pronto para uso!</p>
+            <p style="color: #374151; font-size: 0.875rem;">O sistema usará o Resend para enviar e-mails. Não é necessário configurar SMTP.</p>
+        </div>
+        <?php elseif ($resend_configurado && !$resend_sdk_disponivel): ?>
+        <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
+            <p style="color: #f59e0b; font-weight: 600; margin-bottom: 0.5rem;">⚠️ RESEND_API_KEY configurada, mas SDK não instalado</p>
+            <p style="color: #374151; font-size: 0.875rem;">Execute no servidor: <code style="background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px;">composer install</code></p>
+        </div>
+        <?php else: ?>
+        <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
+            <p style="color: #6b7280; font-weight: 600; margin-bottom: 0.5rem;">ℹ️ Resend não configurado</p>
+            <p style="color: #374151; font-size: 0.875rem; margin-bottom: 1rem;">
+                Para usar Resend (recomendado para Railway), adicione a variável de ambiente <code style="background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px;">RESEND_API_KEY</code> no Railway.
+            </p>
+            <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                <p style="font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">📋 Como configurar:</p>
+                <ol style="margin-left: 1.5rem; color: #374151; font-size: 0.875rem;">
+                    <li>Acesse o painel do Railway</li>
+                    <li>Vá em <strong>Variables</strong> (Variáveis de Ambiente)</li>
+                    <li>Adicione: <code style="background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px;">RESEND_API_KEY</code> = sua API key do Resend</li>
+                    <li>Faça um novo deploy</li>
+                </ol>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
     
     <form method="POST" class="form-section">
         <!-- Configurações SMTP -->
