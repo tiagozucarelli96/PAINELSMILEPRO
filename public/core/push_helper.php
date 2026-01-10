@@ -9,9 +9,9 @@ class PushHelper {
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'] ?? null;
-        // Chaves VAPID das variáveis de ambiente
-        $this->vapidPublicKey = getenv('VAPID_PUBLIC_KEY') ?: '';
-        $this->vapidPrivateKey = getenv('VAPID_PRIVATE_KEY') ?: '';
+        // Chaves VAPID das variáveis de ambiente (tentar ambos os métodos)
+        $this->vapidPublicKey = $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '';
+        $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
     }
     
     /**
