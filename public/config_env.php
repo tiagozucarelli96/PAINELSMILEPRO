@@ -38,6 +38,10 @@ define('ME_API_KEY', $_ENV['ME_API_KEY'] ?? '');
 define('JWT_SECRET', $_ENV['JWT_SECRET'] ?? 'sua_chave_secreta_aqui');
 define('ENCRYPTION_KEY', $_ENV['ENCRYPTION_KEY'] ?? 'sua_chave_de_criptografia_aqui');
 
+// Configurações VAPID para Web Push Notifications
+define('VAPID_PUBLIC_KEY', $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '');
+define('VAPID_PRIVATE_KEY', $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '');
+
 // Configurações de Upload
 define('UPLOAD_MAX_SIZE', $_ENV['UPLOAD_MAX_SIZE'] ?? '10485760'); // 10MB
 define('UPLOAD_ALLOWED_TYPES', $_ENV['UPLOAD_ALLOWED_TYPES'] ?? 'pdf,jpg,jpeg,png');

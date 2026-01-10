@@ -3,18 +3,24 @@
 // Este arquivo NÃO precisa de conexão com banco de dados
 header('Content-Type: application/json');
 
-// Chave pública VAPID das variáveis de ambiente
-// Tentar ambos os métodos (Railway pode usar $_ENV ou getenv)
-$publicKey = $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '';
+// Carregar config_env.php para ter acesso às constantes
+require_once __DIR__ . '/config_env.php';
+
+// Chave pública VAPID - tentar múltiplas fontes
+$publicKey = '';
+if (defined('VAPID_PUBLIC_KEY') && !empty(VAPID_PUBLIC_KEY)) {
+    $publicKey = VAPID_PUBLIC_KEY;
+} elseif (isset($_ENV['VAPID_PUBLIC_KEY']) && !empty($_ENV['VAPID_PUBLIC_KEY'])) {
+    $publicKey = $_ENV['VAPID_PUBLIC_KEY'];
+} elseif (getenv('VAPID_PUBLIC_KEY')) {
+    $publicKey = getenv('VAPID_PUBLIC_KEY');
+}
 
 if (empty($publicKey)) {
     http_response_code(500);
     echo json_encode([
         'error' => 'VAPID_PUBLIC_KEY não configurada',
-        'debug' => [
-            '_ENV' => isset($_ENV['VAPID_PUBLIC_KEY']) ? 'definida' : 'não definida',
-            'getenv' => getenv('VAPID_PUBLIC_KEY') ? 'definida' : 'não definida'
-        ]
+        'hint' => 'Configure a variável VAPID_PUBLIC_KEY no Railway ou em config_env.php'
     ]);
     exit;
 }

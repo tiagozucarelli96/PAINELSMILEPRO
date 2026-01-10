@@ -9,9 +9,24 @@ class PushHelper {
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'] ?? null;
-        // Chaves VAPID das variáveis de ambiente (tentar ambos os métodos)
-        $this->vapidPublicKey = $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '';
-        $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
+        
+        // Carregar config_env.php se disponível
+        if (file_exists(__DIR__ . '/../config_env.php')) {
+            require_once __DIR__ . '/../config_env.php';
+        }
+        
+        // Chaves VAPID - tentar múltiplas fontes
+        if (defined('VAPID_PUBLIC_KEY') && !empty(VAPID_PUBLIC_KEY)) {
+            $this->vapidPublicKey = VAPID_PUBLIC_KEY;
+        } else {
+            $this->vapidPublicKey = $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '';
+        }
+        
+        if (defined('VAPID_PRIVATE_KEY') && !empty(VAPID_PRIVATE_KEY)) {
+            $this->vapidPrivateKey = VAPID_PRIVATE_KEY;
+        } else {
+            $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
+        }
     }
     
     /**
