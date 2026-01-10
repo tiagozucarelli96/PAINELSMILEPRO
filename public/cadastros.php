@@ -144,55 +144,11 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
         
-        <!-- Insumos -->
-        <a href="index.php?page=config_insumos" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <span class="funcionalidade-card-icon">📦</span>
-                <div class="funcionalidade-card-title">Insumos</div>
-                <div class="funcionalidade-card-subtitle">Configurar insumos e categorias</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Categorias -->
-        <a href="index.php?page=config_categorias" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                <span class="funcionalidade-card-icon">📋</span>
-                <div class="funcionalidade-card-title">Categorias</div>
-                <div class="funcionalidade-card-subtitle">Organizar categorias de produtos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Fichas -->
-        <a href="index.php?page=config_fichas" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">
-                <span class="funcionalidade-card-icon">📄</span>
-                <div class="funcionalidade-card-title">Fichas</div>
-                <div class="funcionalidade-card-subtitle">Configurar fichas técnicas</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Itens -->
-        <a href="index.php?page=config_itens" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
-                <span class="funcionalidade-card-icon">🔧</span>
-                <div class="funcionalidade-card-title">Itens</div>
-                <div class="funcionalidade-card-subtitle">Configurar itens e produtos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Itens Fixos -->
-        <a href="index.php?page=config_itens_fixos" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #ec4899, #db2777);">
-                <span class="funcionalidade-card-icon">📌</span>
-                <div class="funcionalidade-card-title">Itens Fixos</div>
-                <div class="funcionalidade-card-subtitle">Configurar itens fixos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
+        <!-- REMOVIDO: Insumos (módulo desativado) -->
+        <!-- REMOVIDO: Categorias (módulo desativado) -->
+        <!-- REMOVIDO: Fichas (módulo desativado) -->
+        <!-- REMOVIDO: Itens (módulo desativado) -->
+        <!-- REMOVIDO: Itens Fixos (módulo desativado) -->
     </div>
 </div>
 

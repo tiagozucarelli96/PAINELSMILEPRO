@@ -14,8 +14,8 @@ return [
     'agenda' => 'perm_agenda',
     'demandas' => 'perm_demandas',
     'comercial' => 'perm_comercial',
-    'logistico' => 'perm_logistico',
-    'lc_index' => 'perm_logistico',
+    // 'logistico' => 'perm_logistico', // REMOVIDO: Módulo desativado
+    // 'lc_index' => 'perm_logistico', // REMOVIDO: Módulo desativado
     'configuracoes' => 'perm_configuracoes',
     'cadastros' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
@@ -44,20 +44,20 @@ return [
     'comercial_lista_espera' => 'perm_comercial',
     'comercial_realizar_degustacao' => 'perm_comercial',
     
-    // Logístico
-    'lista_compras' => 'perm_logistico',
-    'lista' => 'perm_logistico',
-    'lc_ver' => 'perm_logistico',
-    'lc_pdf' => 'perm_logistico',
-    'estoque' => 'perm_logistico',
-    'estoque_logistico' => 'perm_logistico',
-    'estoque_kardex' => 'perm_logistico',
-    'kardex' => 'perm_logistico',
-    'estoque_contagens' => 'perm_logistico',
-    'contagens' => 'perm_logistico',
-    'estoque_alertas' => 'perm_logistico',
-    'alertas' => 'perm_logistico',
-    'ver' => 'perm_logistico',
+    // Logístico - REMOVIDO: Módulo desativado
+    // 'lista_compras' => 'perm_logistico',
+    // 'lista' => 'perm_logistico',
+    // 'lc_ver' => 'perm_logistico',
+    // 'lc_pdf' => 'perm_logistico',
+    // 'estoque' => 'perm_logistico',
+    // 'estoque_logistico' => 'perm_logistico',
+    // 'estoque_kardex' => 'perm_logistico',
+    // 'kardex' => 'perm_logistico',
+    // 'estoque_contagens' => 'perm_logistico',
+    // 'contagens' => 'perm_logistico',
+    // 'estoque_alertas' => 'perm_logistico',
+    // 'alertas' => 'perm_logistico',
+    // 'ver' => 'perm_logistico',
     
     // Configurações
     'config_usuarios' => 'perm_configuracoes',
@@ -66,11 +66,12 @@ return [
     'usuario_editar' => 'perm_configuracoes',
     'config_fornecedores' => 'perm_configuracoes',
     'fornecedores' => 'perm_configuracoes',
-    'config_insumos' => 'perm_configuracoes',
-    'config_categorias' => 'perm_configuracoes',
-    'config_fichas' => 'perm_configuracoes',
-    'config_itens' => 'perm_configuracoes',
-    'config_itens_fixos' => 'perm_configuracoes',
+    // REMOVIDO: Módulo desativado
+    // 'config_insumos' => 'perm_configuracoes',
+    // 'config_categorias' => 'perm_configuracoes',
+    // 'config_fichas' => 'perm_configuracoes',
+    // 'config_itens' => 'perm_configuracoes',
+    // 'config_itens_fixos' => 'perm_configuracoes',
     'config_sistema' => 'perm_configuracoes',
     
     // Cadastros

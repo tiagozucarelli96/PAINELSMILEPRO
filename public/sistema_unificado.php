@@ -861,18 +861,8 @@ class SistemaUnificado {
                 'icone' => 'fas fa-handshake',
                 'perfis' => ['ADM', 'GERENTE', 'OPER']
             ],
-            [
-                'titulo' => 'Compras',
-                'link' => 'lc_index.php',
-                'icone' => 'fas fa-shopping-cart',
-                'perfis' => ['ADM', 'GERENTE', 'OPER']
-            ],
-            [
-                'titulo' => 'Estoque',
-                'link' => 'estoque_contagens.php',
-                'icone' => 'fas fa-boxes',
-                'perfis' => ['ADM', 'GERENTE', 'OPER']
-            ],
+            // REMOVIDO: Módulo Compras (Lista de Compras)
+            // REMOVIDO: Módulo Estoque
             [
                 'titulo' => 'Financeiro',
                 'link' => 'pagamentos_painel.php',
@@ -946,26 +936,8 @@ class SistemaUnificado {
                     ['texto' => 'Nova Degustação', 'link' => 'comercial_degustacao_editar.php', 'classe' => 'btn-success']
                 ]
             ],
-            [
-                'titulo' => 'Compras',
-                'descricao' => 'Controle de compras, fornecedores e listas de compras.',
-                'link' => 'lc_index.php',
-                'icone' => 'fas fa-shopping-cart',
-                'cor' => '#3b82f6',
-                'acoes' => [
-                    ['texto' => 'Gerar Lista', 'link' => 'lista_compras.php', 'classe' => 'btn-success']
-                ]
-            ],
-            [
-                'titulo' => 'Estoque',
-                'descricao' => 'Controle de estoque, contagens e movimentações.',
-                'link' => 'estoque_contagens.php',
-                'icone' => 'fas fa-boxes',
-                'cor' => '#f59e0b',
-                'acoes' => [
-                    ['texto' => 'Nova Contagem', 'link' => 'estoque_contar.php', 'classe' => 'btn-success']
-                ]
-            ],
+            // REMOVIDO: Módulo Compras (Lista de Compras)
+            // REMOVIDO: Módulo Estoque
             [
                 'titulo' => 'Tarefas',
                 'descricao' => 'Gerencie suas tarefas e demandas do dia a dia.',
@@ -1082,8 +1054,8 @@ class SistemaUnificado {
             'Dashboard' => 'sistema_unificado.php',
             'Usuários' => 'usuarios.php',
             'Eventos' => 'eventos.php',
-            'Estoque' => 'estoque_contagens.php',
-            'Compras' => 'lc_index.php',
+            // 'Estoque' => 'estoque_contagens.php', // REMOVIDO
+            // 'Compras' => 'lc_index.php', // REMOVIDO
             'Financeiro' => 'pagamentos_painel.php',
             'Demandas' => 'demandas_quadros.php',
             'Agenda' => 'agenda.php',
@@ -1100,8 +1072,8 @@ class SistemaUnificado {
             'Dashboard' => 'fas fa-home',
             'Usuários' => 'fas fa-users',
             'Eventos' => 'fas fa-calendar',
-            'Estoque' => 'fas fa-boxes',
-            'Compras' => 'fas fa-shopping-cart',
+            // 'Estoque' => 'fas fa-boxes', // REMOVIDO
+            // 'Compras' => 'fas fa-shopping-cart', // REMOVIDO
             'Financeiro' => 'fas fa-dollar-sign',
             'Demandas' => 'fas fa-tasks',
             'Agenda' => 'fas fa-calendar-alt',

@@ -149,7 +149,7 @@ $routes = [
   // Dashboard e blocos
   'dashboard' => 'sidebar_unified.php',
   'comercial' => 'comercial_landing.php',
-  'logistico' => 'lc_index.php',
+  // 'logistico' => 'lc_index.php', // REMOVIDO: Módulo desativado
   'configuracoes' => 'configuracoes.php',
   'cadastros' => 'cadastros.php',
   'financeiro' => 'financeiro.php',
@@ -191,20 +191,20 @@ $routes = [
   'comercial_realizar_degustacao_direto' => 'comercial_realizar_degustacao_direto.php', // VERSÃO TESTE - bypass router
   'comercial_realizar_degustacao_ultra_simples' => 'comercial_realizar_degustacao_ultra_simples.php', // VERSÃO ULTRA SIMPLES
 
-  // Logístico
-  'lc_index' => 'lc_index.php',
-  'lista' => 'lista_compras.php',
-  'lista_compras' => 'lista_compras.php',
-  'lc_ver' => 'ver.php',
-  'lc_pdf' => 'lc_pdf.php',
-  'estoque' => 'estoque_logistico.php',
-  'estoque_logistico' => 'estoque_logistico.php',
-  'estoque_kardex' => 'estoque_kardex.php',
-  'kardex' => 'estoque_kardex.php',
-  'estoque_contagens' => 'estoque_contagens.php',
-  'contagens' => 'estoque_contagens.php',
-  'estoque_alertas' => 'estoque_alertas.php',
-  'alertas' => 'estoque_alertas.php',
+  // Logístico - REMOVIDO: Módulo desativado
+  // 'lc_index' => 'lc_index.php',
+  // 'lista' => 'lista_compras.php',
+  // 'lista_compras' => 'lista_compras.php',
+  // 'lc_ver' => 'ver.php',
+  // 'lc_pdf' => 'lc_pdf.php',
+  // 'estoque' => 'estoque_logistico.php',
+  // 'estoque_logistico' => 'estoque_logistico.php',
+  // 'estoque_kardex' => 'estoque_kardex.php',
+  // 'kardex' => 'estoque_kardex.php',
+  // 'estoque_contagens' => 'estoque_contagens.php',
+  // 'contagens' => 'estoque_contagens.php',
+  // 'estoque_alertas' => 'estoque_alertas.php',
+  // 'alertas' => 'estoque_alertas.php',
 
   // Cadastros / Configurações
   'config_usuarios' => 'usuarios.php',
@@ -216,11 +216,12 @@ $routes = [
   'config_fornecedores' => 'config_fornecedores.php',
   'fornecedores' => 'fornecedores.php',
   'fornecedor_link' => 'fornecedor_link.php',
-  'config_insumos' => 'config_insumos.php',
-  'config_categorias' => 'config_categorias.php',
-  'config_fichas' => 'config_fichas.php',
-  'config_itens' => 'config_itens.php',
-  'config_itens_fixos' => 'config_itens_fixos.php',
+  // REMOVIDO: Módulo desativado
+  // 'config_insumos' => 'config_insumos.php',
+  // 'config_categorias' => 'config_categorias.php',
+  // 'config_fichas' => 'config_fichas.php',
+  // 'config_itens' => 'config_itens.php',
+  // 'config_itens_fixos' => 'config_itens_fixos.php',
   'config_sistema' => 'configuracoes.php',
 
   // Financeiro

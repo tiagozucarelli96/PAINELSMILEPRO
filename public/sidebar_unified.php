@@ -1696,12 +1696,7 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_logistico'])): ?>
-                <a href="index.php?page=logistico" class="nav-item <?= isActiveUnified('logistico') ?>">
-                    <span class="nav-item-icon">📦</span>
-                    Logístico
-                </a>
-                <?php endif; ?>
+                <?php /* REMOVIDO: Módulo Logístico (Estoque + Lista de Compras) */ ?>
                 
                 <?php if (!empty($_SESSION['perm_configuracoes'])): ?>
                 <a href="index.php?page=configuracoes" class="nav-item <?= isActiveUnified('configuracoes') ?>">

@@ -144,25 +144,8 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
         
-        <!-- Insumos -->
-        <a href="index.php?page=config_insumos" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <span class="funcionalidade-card-icon">📦</span>
-                <div class="funcionalidade-card-title">Insumos</div>
-                <div class="funcionalidade-card-subtitle">Configurar insumos e categorias</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Categorias -->
-        <a href="index.php?page=config_categorias" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                <span class="funcionalidade-card-icon">📋</span>
-                <div class="funcionalidade-card-title">Categorias</div>
-                <div class="funcionalidade-card-subtitle">Organizar categorias de produtos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
+        <!-- REMOVIDO: Insumos (módulo desativado) -->
+        <!-- REMOVIDO: Categorias (módulo desativado) -->
         
         <!-- E-mail Global -->
         <a href="index.php?page=config_email_global" class="funcionalidade-card">
