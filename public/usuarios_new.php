@@ -32,7 +32,7 @@ if ($action === 'get_user' && $user_id > 0) {
     }
     
     try {
-        // Buscar todas as colunas dinamicamente, incluindo foto
+        // Buscar todas as colunas dinamicamente
         $sql = "SELECT * FROM usuarios WHERE id = :id";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':id' => $user_id]);
@@ -46,8 +46,6 @@ if ($action === 'get_user' && $user_id > 0) {
                 }
             }
             
-            // Debug: verificar foto
-            error_log("DEBUG GET_USER: Foto do usuário ID $user_id: " . ($user['foto'] ?? 'NULL'));
             
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['success' => true, 'user' => $user], JSON_UNESCAPED_UNICODE);
@@ -59,20 +57,6 @@ if ($action === 'get_user' && $user_id > 0) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
     }
-    exit;
-}
-
-// Upload de foto (AJAX)
-if ($action === 'upload_foto') {
-    while (ob_get_level() > 0) { ob_end_clean(); }
-    
-    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['success' => false, 'message' => 'Acesso negado']);
-        exit;
-    }
-    
-    require_once __DIR__ . '/upload_foto_usuario.php';
     exit;
 }
 
@@ -121,121 +105,9 @@ if ($action === 'save') {
             throw new Exception('Senha é obrigatória para novos usuários');
         }
         
-        // NOVA ABORDAGEM: Foto já foi enviada via AJAX, só pegar URL do POST
-        error_log("=== DEBUG FOTO: NOVA ABORDAGEM - Foto via AJAX ===");
-        error_log("DEBUG FOTO: \$_POST['foto'] = " . (isset($_POST['foto']) ? substr($_POST['foto'], 0, 100) . '...' : 'NÃO DEFINIDO'));
-        error_log("DEBUG FOTO: \$_POST['foto_atual'] = " . (isset($_POST['foto_atual']) ? substr($_POST['foto_atual'], 0, 100) . '...' : 'NÃO DEFINIDO'));
-        
-        // Foto vem do campo hidden (enviado após upload AJAX)
-        if (!empty($_POST['foto'])) {
-            $data['foto'] = trim($_POST['foto']);
-            error_log("DEBUG FOTO: ✅ Foto recebida do POST (URL do Magalu): " . substr($data['foto'], 0, 100) . '...');
-            
-            // Se estiver editando e tinha foto anterior, remover do Magalu
-            if ($user_id > 0 && !empty($data['foto_atual']) && $data['foto_atual'] !== $data['foto']) {
-                if (strpos($data['foto_atual'], 'magaluobjects.com') !== false) {
-                    try {
-                        require_once __DIR__ . '/upload_magalu.php';
-                        $uploader = new MagaluUpload();
-                        
-                        // Extrair chave da URL
-                        $urlParts = parse_url($data['foto_atual']);
-                        $path = $urlParts['path'] ?? '';
-                        $pathParts = explode('/', trim($path, '/'));
-                        if (count($pathParts) > 1) {
-                            array_shift($pathParts); // Remove bucket
-                            $key = implode('/', $pathParts);
-                            $uploader->delete($key);
-                            error_log("DEBUG FOTO: Foto anterior removida do Magalu (key: $key)");
-                        }
-                    } catch (Exception $e) {
-                        error_log("AVISO FOTO: Erro ao remover foto anterior: " . $e->getMessage());
-                    }
-                }
-            }
-        } elseif (!empty($data['foto_atual'])) {
-            // Manter foto atual se não houver novo upload
-            $data['foto'] = $data['foto_atual'];
-            error_log("DEBUG FOTO: ✅ Mantendo foto atual (sem novo upload): " . substr($data['foto'], 0, 100) . '...');
-        } else {
-            // Se não houver foto e não houver foto_atual, garantir que não será enviado
-            error_log("DEBUG FOTO: ⚠️ Nenhuma foto enviada, removendo foto dos dados");
-            unset($data['foto']);
-        }
-        
-        // CRÍTICO: Verificar se foto está em $data ANTES de salvar
-        error_log("=== DEBUG FOTO FINAL: ANTES DE CHAMAR save() ===");
-        error_log("DEBUG FOTO FINAL: isset(data['foto']) = " . (isset($data['foto']) ? 'SIM' : 'NÃO'));
-        error_log("DEBUG FOTO FINAL: data['foto'] = " . (isset($data['foto']) ? (strlen($data['foto']) > 150 ? substr($data['foto'], 0, 150) . '...' : $data['foto']) : 'NÃO DEFINIDO'));
-        error_log("DEBUG FOTO FINAL: data completo (resumido): " . json_encode([
-            'nome' => $data['nome'] ?? 'N/A',
-            'email' => $data['email'] ?? 'N/A',
-            'foto' => isset($data['foto']) ? (strlen($data['foto']) > 100 ? substr($data['foto'], 0, 100) . '...' : $data['foto']) : 'NÃO DEFINIDO',
-            'foto_atual' => isset($data['foto_atual']) ? (strlen($data['foto_atual']) > 100 ? substr($data['foto_atual'], 0, 100) . '...' : $data['foto_atual']) : 'NÃO DEFINIDO',
-            'user_id' => $user_id
-        ]));
-        error_log("DEBUG FOTO FINAL: Chaves de data[]: " . implode(', ', array_keys($data)));
-        error_log("=== FIM DEBUG FOTO FINAL ===");
-        
         $result = $manager->save($data, $user_id);
         
-        // Log adicional após salvar
-        error_log("DEBUG FOTO FINAL: Após save(), result['success'] = " . ($result['success'] ?? 'N/A'));
-        
-        // Debug: verificar se salvou e atualizar foto se for novo usuário
-        if ($result['success'] && !empty($data['foto']) && $user_id === 0) {
-            // Se foi um novo usuário, a foto já foi salva com ID temporário (999999)
-            // Mas a URL está correta e já foi salva no banco, então não precisa fazer nada
-            try {
-                $newUserId = $result['user_id'] ?? $pdo->lastInsertId();
-                if ($newUserId && strpos($data['foto'], 'magaluobjects.com') !== false) {
-                    error_log("DEBUG FOTO: ✅ Novo usuário criado com ID $newUserId");
-                    error_log("DEBUG FOTO: Foto já salva no banco com URL: " . substr($data['foto'], 0, 100) . '...');
-                    error_log("DEBUG FOTO: Nota: A foto foi salva com ID temporário 999999 no caminho, mas a URL está correta e funcional");
-                }
-            } catch (Exception $e) {
-                error_log("DEBUG FOTO: Erro ao processar foto de novo usuário: " . $e->getMessage());
-            }
-        }
-        
-        // Verificar foto no banco
-        if ($result['success'] && !empty($data['foto'])) {
-            error_log("DEBUG FOTO: Tentando verificar se foto foi salva para usuário ID " . ($user_id > 0 ? $user_id : 'NOVO'));
-            try {
-                $checkId = $user_id > 0 ? $user_id : $pdo->lastInsertId();
-                if ($checkId) {
-                    $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
-                    $stmtCheck->execute([':id' => $checkId]);
-                    $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-                    error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
-                }
-            } catch (Exception $e) {
-                error_log("DEBUG FOTO: Erro ao verificar foto no banco: " . $e->getMessage());
-            }
-        }
-        
         if ($result['success']) {
-            error_log("DEBUG FOTO: ✅ Usuário salvo com sucesso! ID: " . ($user_id > 0 ? $user_id : 'NOVO'));
-            error_log("DEBUG FOTO: Foto em data['foto']: " . (isset($data['foto']) ? $data['foto'] : 'NÃO DEFINIDO'));
-            
-            // Verificar se foto foi realmente salva no banco
-            $checkId = $user_id > 0 ? $user_id : $pdo->lastInsertId();
-            if ($checkId) {
-                try {
-                    $stmtCheck = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id");
-                    $stmtCheck->execute([':id' => $checkId]);
-                    $fotoCheck = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-                    error_log("DEBUG FOTO: Foto no banco após salvar: " . ($fotoCheck['foto'] ?? 'NULL'));
-                } catch (Exception $e) {
-                    error_log("DEBUG FOTO: Erro ao verificar foto no banco: " . $e->getMessage());
-                }
-            }
-            
-            $redirectUrl = 'index.php?page=usuarios&success=' . urlencode($user_id > 0 ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!');
-            header('Location: ' . $redirectUrl);
-            exit;
-        } else {
-            error_log("DEBUG FOTO: ❌ Erro ao salvar usuário: " . ($result['message'] ?? 'Erro desconhecido'));
             header('Location: index.php?page=usuarios&error=' . urlencode($result['message'] ?? 'Erro ao salvar'));
             exit;
         }
@@ -815,113 +687,80 @@ ob_start();
     .btn-secondary:hover {
         background: #e2e8f0;
     }
-/* Estilos para o editor de foto */
-.modal-foto-editor {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.75);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    padding: 1rem;
-}
-
-.modal-foto-editor-content {
-    background: white;
-    border-radius: 12px;
-    max-width: 90vw;
-    max-height: 90vh;
-    width: 800px;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-foto-editor-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
-}
-
-.modal-foto-editor-header h3 {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.btn-close-foto-editor {
-    background: none;
-    border: none;
-    font-size: 2rem;
-    color: #64748b;
-    cursor: pointer;
-    padding: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.btn-close-foto-editor:hover {
-    background: #f1f5f9;
-    color: #1e293b;
-}
-
-.modal-foto-editor-body {
-    padding: 1.5rem;
-    overflow: auto;
-    flex: 1;
-}
-
-.modal-foto-editor-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1.5rem;
-    border-top: 1px solid #e5e7eb;
-}
-
-.foto-editor-controls .btn-sm {
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
-}
-
-/* Estilos do Cropper.js customizados */
-#fotoEditorContainer .cropper-container {
-    max-width: 100%;
-}
-
-#fotoEditorContainer .cropper-view-box {
-    border-radius: 50% !important;
-    outline: none !important;
-}
-
-#fotoEditorContainer .cropper-face {
-    border-radius: 50% !important;
-}
-
-/* Hover no preview */
-#fotoPreview:hover #fotoEditOverlay {
-    display: flex !important;
-}
-
-#fotoPreview {
-    transition: transform 0.2s;
-}
-
-#fotoPreview:hover {
-    transform: scale(1.05);
-}
+    
+    /* Estilos para abas */
+    .modal-tabs {
+        display: flex;
+        border-bottom: 2px solid #e5e7eb;
+        margin-bottom: 1.5rem;
+    }
+    
+    .modal-tab {
+        padding: 0.75rem 1.5rem;
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #64748b;
+        transition: all 0.2s;
+        position: relative;
+        top: 2px;
+    }
+    
+    .modal-tab:hover {
+        color: #1e3a8a;
+        background: #f1f5f9;
+    }
+    
+    .modal-tab.active {
+        color: #1e3a8a;
+        border-bottom-color: #1e3a8a;
+    }
+    
+    .modal-tab-content {
+        display: none;
+    }
+    
+    .modal-tab-content.active {
+        display: block;
+    }
+    
+    /* Estilos para busca de CEP */
+    .cep-search-group {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-end;
+    }
+    
+    .cep-search-group .form-group {
+        flex: 1;
+        margin-bottom: 0;
+    }
+    
+    .btn-buscar-cep {
+        background: #1e3a8a;
+        color: white;
+        border: none;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.2s;
+    }
+    
+    .btn-buscar-cep:hover {
+        background: #2563eb;
+    }
+    
+    .btn-buscar-cep:disabled {
+        background: #94a3b8;
+        cursor: not-allowed;
+    }
 </style>
-
-<!-- CSS do Cropper.js será carregado dinamicamente via JavaScript -->
 
 <div class="usuarios-page">
     <div class="page-header">
@@ -966,10 +805,8 @@ ob_start();
         ?>
         <div class="user-card">
             <div class="user-header">
-                <div class="user-avatar" style="background-image: <?= !empty($user['foto']) ? "url('" . htmlspecialchars($user['foto']) . "')" : 'none' ?>; background-size: cover; background-position: center; <?= !empty($user['foto']) ? 'color: transparent;' : '' ?>">
-                    <?php if (empty($user['foto'])): ?>
-                        <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
-                    <?php endif; ?>
+                <div class="user-avatar">
+                    <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
                 </div>
                 <div class="user-info">
                     <h3><?= h($user['nome'] ?? 'Sem nome') ?></h3>
@@ -1041,86 +878,44 @@ ob_start();
             <input type="hidden" name="user_id" id="userId" value="0">
             
             <div class="modal-body">
-                <div class="form-group">
-                    <label class="form-label">Nome *</label>
-                    <input type="text" name="nome" class="form-input" required>
+                <!-- Abas -->
+                <div class="modal-tabs">
+                    <button type="button" class="modal-tab active" onclick="switchTab('usuario')" data-tab="usuario">
+                        👤 Usuário
+                    </button>
+                    <button type="button" class="modal-tab" onclick="switchTab('dados')" data-tab="dados">
+                        📋 Dados Pessoais
+                    </button>
                 </div>
                 
-                <div class="form-row">
+                <!-- Aba Usuário -->
+                <div id="tab-usuario" class="modal-tab-content active">
                     <div class="form-group">
-                        <label class="form-label">Login *</label>
-                        <input type="text" name="login" class="form-input" required>
+                        <label class="form-label">Nome *</label>
+                        <input type="text" name="nome" class="form-input" required>
                     </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Login *</label>
+                            <input type="text" name="login" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email *</label>
+                            <input type="email" name="email" class="form-input" required>
+                        </div>
+                    </div>
+                    
                     <div class="form-group">
-                        <label class="form-label">Email *</label>
-                        <input type="email" name="email" class="form-input" required>
+                        <label class="form-label" id="senhaLabel">Senha *</label>
+                        <input type="password" name="senha" id="senhaInput" class="form-input" required>
+                        <small style="color: #64748b; font-size: 0.75rem; display: none;" id="senhaHint">(deixe em branco para não alterar)</small>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label" id="senhaLabel">Senha *</label>
-                    <input type="password" name="senha" id="senhaInput" class="form-input" required>
-                    <small style="color: #64748b; font-size: 0.75rem; display: none;" id="senhaHint">(deixe em branco para não alterar)</small>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Cargo</label>
-                    <input type="text" name="cargo" class="form-input">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Foto do Perfil</label>
-                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        <!-- Preview da foto (thumbnail) -->
-                        <div id="fotoPreview" style="width: 120px; height: 120px; border-radius: 50%; border: 2px solid #e5e7eb; background: #f8fafc; display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 0.5rem; cursor: pointer; position: relative;">
-                            <img id="fotoPreviewImg" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; display: none;">
-                            <span id="fotoPreviewText" style="color: #94a3b8; font-size: 2rem;">👤</span>
-                            <div id="fotoEditOverlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; color: white; font-size: 0.75rem; border-radius: 50%;">
-                                ✏️ Editar
-                            </div>
-                            <div id="fotoUploading" style="position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; color: white; font-size: 0.75rem; border-radius: 50%;">
-                                ⏳ Enviando...
-                            </div>
-                        </div>
-                        
-                        <!-- Input de arquivo (oculto) - NÃO será enviado no form, só para upload AJAX -->
-                        <input type="file" id="fotoInput" accept="image/*" class="form-input" style="padding: 0.5rem; display: none;">
-                        <button type="button" id="btnSelecionarFoto" class="btn btn-secondary" style="width: auto; padding: 0.5rem 1rem; font-size: 0.875rem;">
-                            <span>📷</span>
-                            <span>Selecionar Foto</span>
-                        </button>
-                        <small style="color: #64748b; font-size: 0.75rem;">Formatos aceitos: JPG, PNG, GIF. Tamanho máximo: 10MB</small>
-                        <!-- Campo hidden com URL da foto (será preenchido após upload AJAX) -->
-                        <input type="hidden" name="foto" id="fotoUrl">
-                        <input type="hidden" name="foto_atual" id="fotoAtual">
-                        <input type="hidden" name="foto_editada" id="fotoEditada">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Cargo</label>
+                        <input type="text" name="cargo" class="form-input">
                     </div>
-                </div>
-                
-                <!-- Modal de Edição de Imagem -->
-                <div id="fotoEditorModal" class="modal-foto-editor" style="display: none;">
-                    <div class="modal-foto-editor-content">
-                        <div class="modal-foto-editor-header">
-                            <h3>Editar Foto de Perfil</h3>
-                            <button type="button" onclick="fecharEditorFoto()" class="btn-close-foto-editor">×</button>
-                        </div>
-                        <div class="modal-foto-editor-body">
-                            <div id="fotoEditorContainer" style="max-width: 100%; max-height: 500px; margin: 0 auto;">
-                                <img id="fotoEditorImg" style="max-width: 100%; display: block;">
-                            </div>
-                            <div class="foto-editor-controls" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
-                                <button type="button" onclick="fotoEditorZoomIn()" class="btn btn-secondary btn-sm">🔍+ Zoom</button>
-                                <button type="button" onclick="fotoEditorZoomOut()" class="btn btn-secondary btn-sm">🔍- Zoom</button>
-                                <button type="button" onclick="fotoEditorRotate()" class="btn btn-secondary btn-sm">🔄 Girar</button>
-                                <button type="button" onclick="fotoEditorReset()" class="btn btn-secondary btn-sm">↺ Resetar</button>
-                            </div>
-                        </div>
-                        <div class="modal-foto-editor-footer">
-                            <button type="button" onclick="fecharEditorFoto()" class="btn btn-secondary">Cancelar</button>
-                            <button type="button" onclick="aplicarEdicaoFoto()" class="btn btn-primary">Aplicar Alterações</button>
-                        </div>
-                    </div>
-                </div>
                 
                 <?php
                 // DEBUG: Verificar se $existing_perms está disponível e não vazio
@@ -1169,11 +964,11 @@ ob_start();
                     }
                 }
                 
-                // Mapeamento de permissões com labels - APENAS PERMISSÕES ATIVAS NO SISTEMA
+                // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
-                    // Módulos principais (sidebar)
+                    // Módulos principais da sidebar (conforme solicitado)
                     'perm_agenda' => '📅 Agenda',
-                    'perm_comercial' => '📋 Comercial',
+                    'perm_demandas' => '📝 Demandas',
                     'perm_logistico' => '📦 Logístico',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
@@ -1181,39 +976,29 @@ ob_start();
                     'perm_administrativo' => '👥 Administrativo',
                     'perm_rh' => '👔 RH',
                     'perm_banco_smile' => '🏦 Banco Smile',
-                    'perm_banco_smile_admin' => '🏦 Admin Banco Smile',
-                    'perm_demandas' => '📋 Demandas',
-                    
-                    // Permissões específicas de Agenda (usadas em agenda_helper.php)
-                    'perm_agenda_ver' => '👁️ Ver Agenda',
-                    'perm_agenda_meus' => '📋 Meus Eventos',
-                    'perm_agenda_relatorios' => '📊 Relatórios Agenda',
-                    'perm_forcar_conflito' => '⚡ Forçar Conflito',
-                    'perm_gerir_eventos_outros' => '👥 Eventos de Outros',
-                    
-                    // Permissões antigas ainda em uso
-                    'perm_usuarios' => '👥 Usuários',
-                    'perm_pagamentos' => '💳 Pagamentos',
-                    'perm_tarefas' => '📋 Tarefas',
-                    'perm_lista' => '📋 Lista',
-                    'perm_portao' => '🚪 Portão',
-                    'perm_notas_fiscais' => '📄 Notas Fiscais',
-                    'perm_estoque_logistico' => '📦 Estoque',
-                    'perm_dados_contrato' => '📋 Contratos',
-                    'perm_uso_fiorino' => '🚐 Fiorino',
                 ];
                 
-                // Filtrar apenas permissões que existem no banco
+                // Filtrar APENAS permissões da sidebar (resumido)
+                // Definir lista fixa de permissões da sidebar
+                $sidebar_perms = [
+                    'perm_agenda',
+                    'perm_demandas',
+                    'perm_logistico',
+                    'perm_configuracoes',
+                    'perm_cadastros',
+                    'perm_financeiro',
+                    'perm_administrativo',
+                    'perm_rh',
+                    'perm_banco_smile'
+                ];
+                
+                // Filtrar apenas permissões da sidebar que existem no banco
                 $available_perms = [];
                 if (!empty($existing_perms) && is_array($existing_perms)) {
-                    foreach ($existing_perms as $perm => $val) {
-                        if (isset($perm_labels[$perm])) {
+                    foreach ($sidebar_perms as $perm) {
+                        // Verificar se a permissão existe no banco E está no nosso mapeamento
+                        if (isset($existing_perms[$perm]) && isset($perm_labels[$perm])) {
                             $available_perms[$perm] = $perm_labels[$perm];
-                        } else {
-                            // Se não tiver label, usar o nome da permissão formatado
-                            $label = str_replace('perm_', '', $perm);
-                            $label = ucwords(str_replace('_', ' ', $label));
-                            $available_perms[$perm] = $label;
                         }
                     }
                 }
@@ -1249,6 +1034,83 @@ ob_start();
                     </p>
                 </div>
                 <?php endif; ?>
+                </div>
+                
+                <!-- Aba Dados Pessoais -->
+                <div id="tab-dados" class="modal-tab-content">
+                    <div class="form-group">
+                        <label class="form-label">Nome Completo</label>
+                        <input type="text" name="nome_completo" class="form-input" placeholder="Nome completo do colaborador">
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">CPF</label>
+                            <input type="text" name="cpf" id="cpfInput" class="form-input" placeholder="000.000.000-00" maxlength="14">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">RG</label>
+                            <input type="text" name="rg" class="form-input" placeholder="00.000.000-0">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Telefone</label>
+                            <input type="text" name="telefone" class="form-input" placeholder="(00) 0000-0000">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Celular</label>
+                            <input type="text" name="celular" class="form-input" placeholder="(00) 00000-0000">
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #e5e7eb;">
+                        <h4 style="font-size: 1rem; font-weight: 600; color: #1e293b; margin-bottom: 1rem;">Endereço</h4>
+                        
+                        <div class="cep-search-group">
+                            <div class="form-group">
+                                <label class="form-label">CEP</label>
+                                <input type="text" name="endereco_cep" id="cepInput" class="form-input" placeholder="00000-000" maxlength="9">
+                            </div>
+                            <button type="button" class="btn-buscar-cep" onclick="buscarCEP()" id="btnBuscarCEP">
+                                🔍 Buscar CEP
+                            </button>
+                        </div>
+                        
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label class="form-label">Logradouro</label>
+                            <input type="text" name="endereco_logradouro" id="enderecoLogradouro" class="form-input" placeholder="Rua, Avenida, etc">
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Número</label>
+                                <input type="text" name="endereco_numero" id="enderecoNumero" class="form-input" placeholder="123">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Complemento</label>
+                                <input type="text" name="endereco_complemento" id="enderecoComplemento" class="form-input" placeholder="Apto, Bloco, etc">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Bairro</label>
+                            <input type="text" name="endereco_bairro" id="enderecoBairro" class="form-input" placeholder="Nome do bairro">
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Cidade</label>
+                                <input type="text" name="endereco_cidade" id="enderecoCidade" class="form-input" placeholder="Nome da cidade">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Estado (UF)</label>
+                                <input type="text" name="endereco_estado" id="enderecoEstado" class="form-input" placeholder="SP" maxlength="2" style="text-transform: uppercase;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="modal-footer">
@@ -1260,6 +1122,134 @@ ob_start();
 </div>
 
 <script>
+// Função para trocar entre abas
+function switchTab(tabName) {
+    // Esconder todas as abas
+    document.querySelectorAll('.modal-tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Remover active de todos os botões
+    document.querySelectorAll('.modal-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Mostrar aba selecionada
+    const tabContent = document.getElementById('tab-' + tabName);
+    const tabButton = document.querySelector(`[data-tab="${tabName}"]`);
+    
+    if (tabContent) {
+        tabContent.classList.add('active');
+    }
+    if (tabButton) {
+        tabButton.classList.add('active');
+    }
+}
+
+// Função para buscar CEP
+async function buscarCEP() {
+    const cepInput = document.getElementById('cepInput');
+    const btnBuscar = document.getElementById('btnBuscarCEP');
+    const cep = cepInput.value.replace(/\D/g, '');
+    
+    if (cep.length !== 8) {
+        alert('Por favor, digite um CEP válido (8 dígitos)');
+        return;
+    }
+    
+    // Desabilitar botão durante busca
+    btnBuscar.disabled = true;
+    btnBuscar.textContent = 'Buscando...';
+    
+    try {
+        const response = await fetch(`buscar_cep_endpoint.php?cep=${cep}`);
+        const data = await response.json();
+        
+        if (data.success && data.data) {
+            // Preencher campos automaticamente
+            document.getElementById('enderecoLogradouro').value = data.data.logradouro || '';
+            document.getElementById('enderecoBairro').value = data.data.bairro || '';
+            document.getElementById('enderecoCidade').value = data.data.cidade || '';
+            document.getElementById('enderecoEstado').value = data.data.estado || '';
+            document.getElementById('enderecoComplemento').value = data.data.complemento || '';
+            
+            // Focar no campo número
+            document.getElementById('enderecoNumero').focus();
+        } else {
+            alert(data.message || 'CEP não encontrado');
+        }
+    } catch (error) {
+        console.error('Erro ao buscar CEP:', error);
+        alert('Erro ao buscar CEP. Tente novamente.');
+    } finally {
+        btnBuscar.disabled = false;
+        btnBuscar.textContent = '🔍 Buscar CEP';
+    }
+}
+
+// Formatar CEP
+document.addEventListener('DOMContentLoaded', function() {
+    const cepInput = document.getElementById('cepInput');
+    if (cepInput) {
+        cepInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 5) {
+                value = value.substring(0, 5) + '-' + value.substring(5, 8);
+            }
+            e.target.value = value;
+        });
+        
+        // Buscar CEP ao pressionar Enter
+        cepInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                buscarCEP();
+            }
+        });
+    }
+    
+    // Formatar CPF
+    const cpfInput = document.getElementById('cpfInput');
+    if (cpfInput) {
+        cpfInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 11) value = value.substring(0, 11);
+            if (value.length > 9) {
+                value = value.substring(0, 3) + '.' + value.substring(3, 6) + '.' + value.substring(6, 9) + '-' + value.substring(9);
+            } else if (value.length > 6) {
+                value = value.substring(0, 3) + '.' + value.substring(3, 6) + '.' + value.substring(6);
+            } else if (value.length > 3) {
+                value = value.substring(0, 3) + '.' + value.substring(3);
+            }
+            e.target.value = value;
+        });
+    }
+    
+    // Formatar telefone
+    const telefoneInputs = document.querySelectorAll('input[name="telefone"], input[name="celular"]');
+    telefoneInputs.forEach(input => {
+        input.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            const isCelular = e.target.name === 'celular' || value.length > 10;
+            if (isCelular && value.length > 11) value = value.substring(0, 11);
+            if (!isCelular && value.length > 10) value = value.substring(0, 10);
+            
+            if (value.length > 6) {
+                if (isCelular) {
+                    value = '(' + value.substring(0, 2) + ') ' + value.substring(2, 7) + '-' + value.substring(7);
+                } else {
+                    value = '(' + value.substring(0, 2) + ') ' + value.substring(2, 6) + '-' + value.substring(6);
+                }
+            } else if (value.length > 2) {
+                value = '(' + value.substring(0, 2) + ') ' + value.substring(2);
+            } else if (value.length > 0) {
+                value = '(' + value;
+            }
+            e.target.value = value;
+        });
+    });
+});
+
 function openModal(userId = 0) {
     const modal = document.getElementById('userModal');
     const form = document.getElementById('userForm');
