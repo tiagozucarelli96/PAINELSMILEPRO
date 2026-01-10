@@ -29,7 +29,9 @@ if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
 // Se for um .php existente, injeta conexao e inclui o arquivo
 if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
     // Arquivos de cron, webhook, endpoints e páginas públicas devem ser servidos diretamente SEM redirecionamento
-    $public_files = ['comercial_degust_public.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php', 'upload_foto_usuario_endpoint.php'];
+    $public_files = ['comercial_degust_public.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php', 'upload_foto_usuario_endpoint.php',
+                     'contabilidade_login.php', 'contabilidade_painel.php', 'contabilidade_guias.php', 'contabilidade_holerites.php',
+                     'contabilidade_honorarios.php', 'contabilidade_conversas.php', 'contabilidade_colaboradores.php'];
     
     // Verificação ESPECIAL para webhooks - SEM conexão automática, eles gerenciam sua própria conexão
     if (strpos($path, 'asaas_webhook.php') !== false || basename($file) === 'asaas_webhook.php') {
