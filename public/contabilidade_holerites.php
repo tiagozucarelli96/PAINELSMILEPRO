@@ -46,18 +46,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir holerite
+            // Garantir que e_ajuste seja boolean explícito
+            $e_ajuste_bool = (bool)$e_ajuste;
+            
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_holerites 
                 (arquivo_url, arquivo_nome, mes_competencia, e_ajuste, observacao)
                 VALUES (:arquivo_url, :arquivo_nome, :competencia, :e_ajuste, :obs)
             ");
-            $stmt->execute([
-                ':arquivo_url' => $arquivo_url,
-                ':arquivo_nome' => $arquivo_nome,
-                ':competencia' => $mes_competencia,
-                ':e_ajuste' => $e_ajuste,
-                ':obs' => !empty($observacao) ? $observacao : null
-            ]);
+            $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
+            $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
+            $stmt->bindValue(':competencia', $mes_competencia, PDO::PARAM_STR);
+            $stmt->bindValue(':e_ajuste', $e_ajuste_bool, PDO::PARAM_BOOL);
+            $stmt->bindValue(':obs', !empty($observacao) ? $observacao : null, PDO::PARAM_STR);
+            $stmt->execute();
             
             $mensagem = 'Holerite cadastrado com sucesso!';
             

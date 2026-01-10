@@ -109,20 +109,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             }
             
             // Inserir guia
+            // Garantir que e_parcela seja boolean explícito
+            $e_parcela_bool = (bool)$e_parcela;
+            
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_guias 
                 (arquivo_url, arquivo_nome, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
                 VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
             ");
-            $stmt->execute([
-                ':arquivo_url' => $arquivo_url,
-                ':arquivo_nome' => $arquivo_nome,
-                ':vencimento' => $data_vencimento,
-                ':desc' => $descricao,
-                ':e_parcela' => $e_parcela,
-                ':parc_id' => $parcelamento_id,
-                ':num_parc' => $numero_parcela
-            ]);
+            $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
+            $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
+            $stmt->bindValue(':vencimento', $data_vencimento, PDO::PARAM_STR);
+            $stmt->bindValue(':desc', $descricao, PDO::PARAM_STR);
+            $stmt->bindValue(':e_parcela', $e_parcela_bool, PDO::PARAM_BOOL);
+            $stmt->bindValue(':parc_id', $parcelamento_id, PDO::PARAM_INT);
+            $stmt->bindValue(':num_parc', $numero_parcela, PDO::PARAM_INT);
+            $stmt->execute();
             
             $guia_id = $pdo->lastInsertId();
             
