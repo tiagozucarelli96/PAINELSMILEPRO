@@ -30,11 +30,12 @@ try {
 // Processar formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        $smtp_host = trim($_POST['smtp_host'] ?? 'mail.smileeventos.com.br');
-        $smtp_port = (int)($_POST['smtp_port'] ?? 465);
-        $smtp_username = trim($_POST['smtp_username'] ?? 'painelsmilenotifica@smileeventos.com.br');
-        $smtp_password = trim($_POST['smtp_password'] ?? '');
-        $smtp_encryption = trim($_POST['smtp_encryption'] ?? 'ssl');
+        // Verificar se Resend está configurado antes de salvar
+        $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+        if (!$resend_api_key) {
+            throw new Exception('RESEND_API_KEY não configurada. Configure no Railway antes de salvar as configurações.');
+        }
+        
         $email_remetente = trim($_POST['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br');
         $email_administrador = trim($_POST['email_administrador'] ?? '');
         
@@ -47,6 +48,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('E-mail do administrador é obrigatório');
         }
         
+        if (empty($email_remetente)) {
+            throw new Exception('E-mail remetente é obrigatório');
+        }
+        
+        // Valores padrão para SMTP (mantidos para compatibilidade com banco, mas não são mais usados)
+        $smtp_host = 'mail.smileeventos.com.br';
+        $smtp_port = 465;
+        $smtp_username = $email_remetente;
+        $smtp_password = ''; // Não é mais usado
+        $smtp_encryption = 'ssl';
+        
         if ($config) {
             // Atualizar
             $stmt = $pdo->prepare("
@@ -54,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     smtp_host = :smtp_host,
                     smtp_port = :smtp_port,
                     smtp_username = :smtp_username,
-                    smtp_password = COALESCE(NULLIF(:smtp_password, ''), smtp_password),
                     smtp_encryption = :smtp_encryption,
                     email_remetente = :email_remetente,
                     email_administrador = :email_administrador,
@@ -69,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':smtp_host' => $smtp_host,
                 ':smtp_port' => $smtp_port,
                 ':smtp_username' => $smtp_username,
-                ':smtp_password' => $smtp_password,
                 ':smtp_encryption' => $smtp_encryption,
                 ':email_remetente' => $email_remetente,
                 ':email_administrador' => $email_administrador,
@@ -82,10 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute($params);
         } else {
             // Criar
-            if (empty($smtp_password)) {
-                throw new Exception('Senha SMTP é obrigatória na primeira configuração');
-            }
-            
             $stmt = $pdo->prepare("
                 INSERT INTO sistema_email_config (
                     smtp_host, smtp_port, smtp_username, smtp_password, smtp_encryption,
@@ -367,40 +373,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <label class="form-label">E-mail Remetente</label>
             <input type="email" name="email_remetente" class="form-input" 
                    value="<?= htmlspecialchars($config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br') ?>" required>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Usuário SMTP</label>
-            <input type="text" name="smtp_username" class="form-input" 
-                   value="<?= htmlspecialchars($config['smtp_username'] ?? 'painelsmilenotifica@smileeventos.com.br') ?>" required>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Senha SMTP</label>
-            <input type="password" name="smtp_password" class="form-input" 
-                   placeholder="<?= $config ? 'Deixe em branco para não alterar' : 'Obrigatório' ?>" 
-                   <?= $config ? '' : 'required' ?>>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Servidor SMTP</label>
-            <input type="text" name="smtp_host" class="form-input" 
-                   value="<?= htmlspecialchars($config['smtp_host'] ?? 'mail.smileeventos.com.br') ?>" required>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Porta SMTP</label>
-            <input type="number" name="smtp_port" class="form-input" 
-                   value="<?= htmlspecialchars($config['smtp_port'] ?? '465') ?>" required>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label">Tipo de Segurança</label>
-            <select name="smtp_encryption" class="form-select" required>
-                <option value="ssl" <?= ($config['smtp_encryption'] ?? 'ssl') === 'ssl' ? 'selected' : '' ?>>SSL</option>
-                <option value="tls" <?= ($config['smtp_encryption'] ?? '') === 'tls' ? 'selected' : '' ?>>TLS</option>
-                <option value="none" <?= ($config['smtp_encryption'] ?? '') === 'none' ? 'selected' : '' ?>>Nenhuma</option>
-            </select>
+            <small style="color: #64748b; font-size: 0.875rem; display: block; margin-top: 0.25rem;">
+                Este e-mail será usado como remetente em todos os e-mails enviados via Resend.
+            </small>
         </div>
         
         <!-- E-mail e Preferências -->
