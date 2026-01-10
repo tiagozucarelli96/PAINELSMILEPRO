@@ -105,9 +105,11 @@ class PushHelper {
     
     /**
      * Enviar usando biblioteca minishlink/web-push
+     * @suppress PhanUndeclaredClass
      */
     private function enviarComBiblioteca($subscription, $titulo, $mensagem, $data) {
         try {
+            // @phpstan-ignore-next-line
             $webPush = new \Minishlink\WebPush\WebPush([
                 'VAPID' => [
                     'subject' => 'mailto:painelsmilenotifica@smileeventos.com.br',
@@ -116,6 +118,7 @@ class PushHelper {
                 ],
             ]);
             
+            // @phpstan-ignore-next-line
             $pushSubscription = \Minishlink\WebPush\Subscription::create([
                 'endpoint' => $subscription['endpoint'],
                 'keys' => [
