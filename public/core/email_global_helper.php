@@ -33,16 +33,26 @@ class EmailGlobalHelper {
      * Enviar e-mail usando PHPMailer ou mail() nativo
      */
     public function enviarEmail($para, $assunto, $corpo, $eh_html = true) {
+        error_log("[EMAIL] ====== INÍCIO DO ENVIO DE E-MAIL ======");
+        error_log("[EMAIL] Destinatário: $para");
+        error_log("[EMAIL] Assunto: $assunto");
+        
         if (!$this->config) {
-            error_log("Configuração de e-mail não encontrada");
+            error_log("[EMAIL] ❌ ERRO: Configuração de e-mail não encontrada");
             return false;
         }
         
         // Tentar usar PHPMailer se disponível
         if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            return $this->enviarComPHPMailer($para, $assunto, $corpo, $eh_html);
+            error_log("[EMAIL] Usando PHPMailer para envio");
+            $resultado = $this->enviarComPHPMailer($para, $assunto, $corpo, $eh_html);
+            error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
+            return $resultado;
         } else {
-            return $this->enviarComMailNativo($para, $assunto, $corpo, $eh_html);
+            error_log("[EMAIL] ⚠️ PHPMailer não disponível, usando mail() nativo");
+            $resultado = $this->enviarComMailNativo($para, $assunto, $corpo, $eh_html);
+            error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
+            return $resultado;
         }
     }
     
@@ -83,8 +93,12 @@ class EmailGlobalHelper {
         
         $ultimo_erro = null;
         
-        foreach ($tentativas as $tentativa) {
+        foreach ($tentativas as $index => $tentativa) {
             try {
+                // Log inicial da tentativa
+                error_log("[EMAIL] Tentativa " . ($index + 1) . "/" . count($tentativas) . ": {$tentativa['desc']}");
+                error_log("[EMAIL] Host: {$this->config['smtp_host']}, Porta: {$tentativa['port']}, Encriptação: {$tentativa['encryption']}");
+                
                 $mail = new PHPMailer\PHPMailer\PHPMailer(true);
                 
                 // Configurações do servidor
@@ -128,24 +142,32 @@ class EmailGlobalHelper {
                     $mail->AltBody = strip_tags($corpo);
                 }
                 
+                $inicio_envio = microtime(true);
                 $mail->send();
+                $tempo_envio = round((microtime(true) - $inicio_envio) * 1000, 2);
                 
                 // Se chegou aqui, funcionou! Logar qual configuração funcionou
                 if ($tentativa_port !== $port || $tentativa_enc !== $encryption) {
-                    error_log("Email enviado com sucesso usando configuração alternativa: {$tentativa['desc']}");
+                    error_log("[EMAIL] ✅ SUCESSO usando configuração alternativa: {$tentativa['desc']} (tempo: {$tempo_envio}ms)");
+                } else {
+                    error_log("[EMAIL] ✅ SUCESSO usando configuração salva: {$tentativa['desc']} (tempo: {$tempo_envio}ms)");
                 }
+                error_log("[EMAIL] E-mail enviado para: $para");
                 
                 return true;
                 
             } catch (Exception $e) {
                 $ultimo_erro = $e->getMessage();
-                error_log("Tentativa falhou ({$tentativa['desc']}): " . $ultimo_erro);
+                $erro_resumido = substr($ultimo_erro, 0, 200); // Limitar tamanho do log
+                error_log("[EMAIL] ❌ FALHA na tentativa ({$tentativa['desc']}): $erro_resumido");
                 // Continuar para próxima tentativa
             }
         }
         
         // Se chegou aqui, todas as tentativas falharam
-        error_log("Todas as tentativas de envio de e-mail falharam. Último erro: " . $ultimo_erro);
+        error_log("[EMAIL] ❌❌❌ TODAS AS TENTATIVAS FALHARAM!");
+        error_log("[EMAIL] Último erro completo: " . substr($ultimo_erro, 0, 500));
+        error_log("[EMAIL] Configurações tentadas: " . count($tentativas));
         return false;
     }
     
