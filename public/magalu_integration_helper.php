@@ -108,6 +108,37 @@ class MagaluIntegrationHelper {
     }
     
     /**
+     * Upload genérico para contabilidade (apenas upload, sem salvar em tabela de anexos)
+     */
+    public function uploadContabilidade($arquivo, $pasta = 'contabilidade') {
+        try {
+            // Upload para Magalu
+            $resultado = $this->magalu->uploadFile($arquivo, $pasta);
+            
+            if (!$resultado['success']) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Erro no upload: ' . ($resultado['error'] ?? 'Erro desconhecido')
+                ];
+            }
+            
+            return [
+                'sucesso' => true,
+                'url' => $resultado['url'] ?? null,
+                'caminho_arquivo' => $resultado['url'] ?? null,
+                'filename' => $resultado['filename'] ?? $arquivo['name'],
+                'provider' => 'Magalu Object Storage'
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'sucesso' => false,
+                'erro' => 'Erro: ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
      * Upload de anexo para Comercial (degustações)
      */
     public function uploadAnexoComercial($arquivo, $degustacao_id, $tipo_anexo = 'degustacao') {
