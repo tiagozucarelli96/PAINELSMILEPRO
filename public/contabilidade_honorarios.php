@@ -48,12 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             // Inserir honorário
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_honorarios 
-                (arquivo_url, arquivo_nome, data_vencimento, descricao)
-                VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc)
+                (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao)
+                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc)
             ");
             $stmt->execute([
                 ':arquivo_url' => $arquivo_url,
                 ':arquivo_nome' => $arquivo_nome,
+                ':chave_storage' => $chave_storage,
                 ':vencimento' => $data_vencimento,
                 ':desc' => $descricao
             ]);

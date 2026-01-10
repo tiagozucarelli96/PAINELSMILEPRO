@@ -102,15 +102,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Inserir mensagem
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_conversas_mensagens 
-                (conversa_id, autor, mensagem, anexo_url, anexo_nome)
-                VALUES (:conversa_id, :autor, :mensagem, :anexo_url, :anexo_nome)
+                (conversa_id, autor, mensagem, anexo_url, anexo_nome, chave_storage)
+                VALUES (:conversa_id, :autor, :mensagem, :anexo_url, :anexo_nome, :chave_storage)
             ");
             $stmt->execute([
                 ':conversa_id' => $conversa_id,
                 ':autor' => $autor,
                 ':mensagem' => !empty($texto) ? $texto : null,
                 ':anexo_url' => $anexo_url,
-                ':anexo_nome' => $anexo_nome
+                ':anexo_nome' => $anexo_nome,
+                ':chave_storage' => $chave_storage
             ]);
             
             // Atualizar data da conversa
