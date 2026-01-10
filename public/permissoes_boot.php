@@ -29,7 +29,7 @@ try {
     'perm_estoque_logistico','perm_dados_contrato','perm_uso_fiorino',
     // Módulos principais da sidebar
     'perm_agenda','perm_comercial','perm_logistico','perm_configuracoes',
-    'perm_cadastros','perm_financeiro','perm_administrativo','perm_rh',
+    'perm_cadastros','perm_financeiro','perm_administrativo',
     // Permissões específicas de Agenda (usadas em agenda_helper.php)
     'perm_agenda_ver','perm_agenda_meus','perm_agenda_relatorios',
     'perm_forcar_conflito','perm_gerir_eventos_outros'

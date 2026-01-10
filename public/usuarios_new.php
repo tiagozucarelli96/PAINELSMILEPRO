@@ -974,7 +974,6 @@ ob_start();
                     'perm_cadastros' => '📝 Cadastros',
                     'perm_financeiro' => '💰 Financeiro',
                     'perm_administrativo' => '👥 Administrativo',
-                    'perm_rh' => '👔 RH',
                     'perm_banco_smile' => '🏦 Banco Smile',
                 ];
                 
@@ -988,7 +987,6 @@ ob_start();
                     'perm_cadastros',
                     'perm_financeiro',
                     'perm_administrativo',
-                    'perm_rh',
                     'perm_banco_smile'
                 ];
                 

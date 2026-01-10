@@ -151,7 +151,7 @@ error_reporting(E_ALL);
 
 $conteudo = ob_get_clean();
 
-includeSidebar('RH - Recursos Humanos');
+includeSidebar('Administrativo - RH');
 echo $conteudo;
 endSidebar();
 ?>

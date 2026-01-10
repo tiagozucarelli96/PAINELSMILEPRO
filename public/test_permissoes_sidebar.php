@@ -174,7 +174,6 @@ require_once __DIR__ . '/permissoes_boot.php';
             'perm_cadastros' => 'Cadastros',
             'perm_financeiro' => 'Financeiro',
             'perm_administrativo' => 'Administrativo',
-            'perm_rh' => 'RH',
             'perm_banco_smile' => 'Banco Smile'
         ];
         
@@ -359,7 +358,6 @@ require_once __DIR__ . '/permissoes_boot.php';
                     'perm_cadastros' => '📝',
                     'perm_financeiro' => '💰',
                     'perm_administrativo' => '👥',
-                    'perm_rh' => '👔',
                     'perm_banco_smile' => '🏦'
                 ][$perm] ?? '📌';
                 

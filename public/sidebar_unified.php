@@ -1731,13 +1731,6 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_rh'])): ?>
-                <a href="index.php?page=rh" class="nav-item <?= isActiveUnified('rh') ?>">
-                    <span class="nav-item-icon">👔</span>
-                    RH
-                </a>
-                <?php endif; ?>
-                
                 <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
                 <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
                     <span class="nav-item-icon">🏦</span>

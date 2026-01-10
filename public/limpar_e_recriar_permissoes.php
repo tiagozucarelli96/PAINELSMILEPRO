@@ -78,7 +78,6 @@ header('Content-Type: text/html; charset=utf-8');
                     'perm_cadastros',
                     'perm_financeiro',
                     'perm_administrativo',
-                    'perm_rh',
                     'perm_banco_smile',
                     'perm_usuarios'
                 ];

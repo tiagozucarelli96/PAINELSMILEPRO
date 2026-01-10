@@ -30,7 +30,6 @@ function testarSidebar($permissoes_sessao) {
         'Cadastros' => 'perm_cadastros',
         'Financeiro' => 'perm_financeiro',
         'Administrativo' => 'perm_administrativo',
-        'RH' => 'perm_rh',
         'Banco Smile' => 'perm_banco_smile'
     ];
     
@@ -66,7 +65,7 @@ $permissoes_atual = [];
 $permissoes_sidebar = [
     'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_logistico',
     'perm_configuracoes', 'perm_cadastros', 'perm_financeiro',
-    'perm_administrativo', 'perm_rh', 'perm_banco_smile'
+    'perm_administrativo', 'perm_banco_smile'
 ];
 
 foreach ($permissoes_sidebar as $perm) {
@@ -190,7 +189,6 @@ $resultado_teste = testarSidebar($permissoes_atual);
                 'Cadastros' => '📝',
                 'Financeiro' => '💰',
                 'Administrativo' => '👥',
-                'RH' => '👔',
                 'Banco Smile' => '🏦'
             ];
             

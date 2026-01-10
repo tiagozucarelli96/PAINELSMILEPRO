@@ -20,7 +20,7 @@ return [
     'cadastros' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
     'administrativo' => 'perm_administrativo',
-    'rh' => 'perm_rh',
+    'rh' => 'perm_administrativo',
     'banco_smile' => 'perm_banco_smile',
     'banco_smile_main' => 'perm_banco_smile',
     'banco_smile_admin' => 'perm_banco_smile_admin',
@@ -95,11 +95,11 @@ return [
     'historico' => 'perm_administrativo',
     'notas_fiscais' => 'perm_notas_fiscais',
     
-    // RH
-    'rh_dashboard' => 'perm_rh',
-    'rh_colaboradores' => 'perm_rh',
-    'rh_colaborador_ver' => 'perm_rh',
-    'rh_holerite_upload' => 'perm_rh',
+    // RH (transferido para Administrativo)
+    'rh_dashboard' => 'perm_administrativo',
+    'rh_colaboradores' => 'perm_administrativo',
+    'rh_colaborador_ver' => 'perm_administrativo',
+    'rh_holerite_upload' => 'perm_administrativo',
     
     // Outros (usando permissões existentes)
     'portao' => 'perm_portao',
