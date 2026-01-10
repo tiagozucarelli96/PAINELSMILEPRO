@@ -1537,7 +1537,7 @@ function loadUserData(userId) {
         if (data.success && data.user) {
             const user = data.user;
             
-            // Preencher campos básicos
+            // Preencher campos básicos (aba Usuário)
             const nomeInput = form.querySelector('[name="nome"]');
             const loginInput = form.querySelector('[name="login"]');
             const emailInput = form.querySelector('[name="email"]');
@@ -1549,6 +1549,33 @@ function loadUserData(userId) {
             if (emailInput) emailInput.value = user.email || '';
             if (cargoInput) cargoInput.value = user.cargo || '';
             if (fotoAtualInput) fotoAtualInput.value = user.foto || '';
+            
+            // Preencher campos de dados pessoais (aba Dados)
+            const nomeCompletoInput = form.querySelector('[name="nome_completo"]');
+            const cpfInput = form.querySelector('[name="cpf"]');
+            const rgInput = form.querySelector('[name="rg"]');
+            const telefoneInput = form.querySelector('[name="telefone"]');
+            const celularInput = form.querySelector('[name="celular"]');
+            const cepInput = form.querySelector('[name="endereco_cep"]');
+            const logradouroInput = form.querySelector('[name="endereco_logradouro"]');
+            const numeroInput = form.querySelector('[name="endereco_numero"]');
+            const complementoInput = form.querySelector('[name="endereco_complemento"]');
+            const bairroInput = form.querySelector('[name="endereco_bairro"]');
+            const cidadeInput = form.querySelector('[name="endereco_cidade"]');
+            const estadoInput = form.querySelector('[name="endereco_estado"]');
+            
+            if (nomeCompletoInput) nomeCompletoInput.value = user.nome_completo || '';
+            if (cpfInput) cpfInput.value = user.cpf || '';
+            if (rgInput) rgInput.value = user.rg || '';
+            if (telefoneInput) telefoneInput.value = user.telefone || '';
+            if (celularInput) celularInput.value = user.celular || '';
+            if (cepInput) cepInput.value = user.endereco_cep || '';
+            if (logradouroInput) logradouroInput.value = user.endereco_logradouro || '';
+            if (numeroInput) numeroInput.value = user.endereco_numero || '';
+            if (complementoInput) complementoInput.value = user.endereco_complemento || '';
+            if (bairroInput) bairroInput.value = user.endereco_bairro || '';
+            if (cidadeInput) cidadeInput.value = user.endereco_cidade || '';
+            if (estadoInput) estadoInput.value = user.endereco_estado || '';
             
             // Atualizar preview da foto
             if (user.foto) {
