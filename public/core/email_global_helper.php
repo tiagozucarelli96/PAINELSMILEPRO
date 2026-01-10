@@ -2,6 +2,11 @@
 // email_global_helper.php — Helper para envio de e-mails usando configuração global (ETAPA 12)
 require_once __DIR__ . '/../conexao.php';
 
+// Carregar autoload do Composer (para PHPMailer)
+if (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+    require_once __DIR__ . '/../../vendor/autoload.php';
+}
+
 class EmailGlobalHelper {
     private $pdo;
     private $config;
@@ -54,10 +59,27 @@ class EmailGlobalHelper {
             $mail->SMTPAuth = true;
             $mail->Username = $this->config['smtp_username'];
             $mail->Password = $this->config['smtp_password'];
-            $mail->SMTPSecure = $this->config['smtp_encryption'] === 'ssl' ? PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : 
-                               ($this->config['smtp_encryption'] === 'tls' ? PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS : '');
-            $mail->Port = $this->config['smtp_port'];
+            
+            // Para porta 465, usar SSL implícito (SMTPS). Não usar STARTTLS.
+            // Para outras portas (587, 25), usar STARTTLS se TLS
+            $port = (int)$this->config['smtp_port'];
+            $encryption = strtolower($this->config['smtp_encryption'] ?? 'ssl');
+            
+            if ($port === 465) {
+                // Porta 465: SSL implícito (SMTPS)
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+                $mail->SMTPAutoTLS = false; // Não tentar STARTTLS na porta 465
+            } elseif ($encryption === 'tls') {
+                // Outras portas com TLS: usar STARTTLS
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            } else {
+                // SSL em outras portas (não recomendado, mas suportado)
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+            }
+            
+            $mail->Port = $port;
             $mail->CharSet = 'UTF-8';
+            $mail->SMTPDebug = 0; // Desabilitar debug por padrão (pode ser ativado no diagnóstico)
             
             // Remetente e destinatário
             $mail->setFrom($this->config['email_remetente'], 'Portal Grupo Smile');

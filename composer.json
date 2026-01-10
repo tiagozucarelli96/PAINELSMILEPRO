@@ -6,7 +6,8 @@
         "php": ">=8.0",
         "aws/aws-sdk-php": "^3.300",
         "dompdf/dompdf": "^2.0",
-        "minishlink/web-push": "^10.0"
+        "minishlink/web-push": "^10.0",
+        "phpmailer/phpmailer": "^6.9"
     },
     "config": {
         "allow-plugins": true,

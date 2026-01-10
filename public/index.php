@@ -277,6 +277,7 @@ $routes = [
   'login' => 'login.php', // Rota de login
   'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
   'executar_drop_modulo_estoque' => 'executar_drop_modulo_estoque.php', // Remover módulo Estoque + Lista de Compras
+  'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
