@@ -111,26 +111,50 @@ class MagaluIntegrationHelper {
      * Upload genérico para contabilidade (apenas upload, sem salvar em tabela de anexos)
      */
     public function uploadContabilidade($arquivo, $pasta = 'contabilidade') {
+        error_log("=== UPLOAD CONTABILIDADE INICIADO ===");
+        error_log("Pasta: $pasta");
+        error_log("Arquivo recebido: " . print_r($arquivo, true));
+        
         try {
+            // Verificar se Magalu está configurado ANTES de tentar upload
+            if (!$this->magalu->isConfigured()) {
+                error_log("❌ MAGALU: Não configurado - bloqueando upload");
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Magalu Object Storage não configurado. Verifique as variáveis de ambiente no Railway: MAGALU_ACCESS_KEY, MAGALU_SECRET_KEY, MAGALU_BUCKET'
+                ];
+            }
+            
+            error_log("✅ MAGALU: Configurado, iniciando upload...");
+            
             // Upload para Magalu
             $resultado = $this->magalu->uploadFile($arquivo, $pasta);
             
+            error_log("Resultado do upload: " . print_r($resultado, true));
+            
             if (!$resultado['success']) {
+                $erro_msg = $resultado['error'] ?? 'Erro desconhecido';
+                error_log("❌ Upload falhou: $erro_msg");
                 return [
                     'sucesso' => false,
-                    'erro' => 'Erro no upload: ' . ($resultado['error'] ?? 'Erro desconhecido')
+                    'erro' => 'Erro no upload: ' . $erro_msg
                 ];
             }
+            
+            error_log("✅ Upload bem-sucedido! URL: " . ($resultado['url'] ?? 'N/A'));
             
             return [
                 'sucesso' => true,
                 'url' => $resultado['url'] ?? null,
                 'caminho_arquivo' => $resultado['url'] ?? null,
                 'filename' => $resultado['filename'] ?? $arquivo['name'],
+                'key' => $resultado['key'] ?? null,
                 'provider' => 'Magalu Object Storage'
             ];
             
         } catch (Exception $e) {
+            error_log("❌ EXCEÇÃO no uploadContabilidade: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
             return [
                 'sucesso' => false,
                 'erro' => 'Erro: ' . $e->getMessage()

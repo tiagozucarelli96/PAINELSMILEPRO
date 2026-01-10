@@ -19,26 +19,46 @@ class MagaluStorageHelper {
      * Upload de arquivo para Magalu Object Storage
      */
     public function uploadFile($file, $subfolder = '') {
+        // Verificar configuração com logs detalhados
         if (!$this->isConfigured()) {
-            throw new Exception('Magalu Object Storage não configurado');
+            error_log("❌ MAGALU: Upload bloqueado - não configurado");
+            error_log("MAGALU DEBUG - access_key: " . ($this->access_key ? 'SET (' . substr($this->access_key, 0, 10) . '...)' : 'MISSING'));
+            error_log("MAGALU DEBUG - secret_key: " . ($this->secret_key ? 'SET (' . substr($this->secret_key, 0, 10) . '...)' : 'MISSING'));
+            error_log("MAGALU DEBUG - bucket: " . ($this->bucket ?: 'MISSING'));
+            error_log("MAGALU DEBUG - region: " . ($this->region ?: 'MISSING'));
+            error_log("MAGALU DEBUG - endpoint: " . ($this->endpoint ?: 'MISSING'));
+            throw new Exception('Magalu Object Storage não configurado. Verifique as variáveis de ambiente: MAGALU_ACCESS_KEY, MAGALU_SECRET_KEY, MAGALU_BUCKET');
         }
+        
+        error_log("✅ MAGALU: Configuração OK, iniciando upload");
+        error_log("MAGALU DEBUG - Arquivo: " . ($file['name'] ?? 'N/A'));
+        error_log("MAGALU DEBUG - Tamanho: " . ($file['size'] ?? 0) . " bytes");
+        error_log("MAGALU DEBUG - Subfolder: " . ($subfolder ?: 'raiz'));
         
         // Validar arquivo
         if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-            throw new Exception('Erro no upload do arquivo');
+            $error_code = $file['error'] ?? 'N/A';
+            error_log("❌ MAGALU: Erro no upload do arquivo - código: $error_code");
+            throw new Exception('Erro no upload do arquivo. Código de erro: ' . $error_code);
         }
         
         // Validar tamanho (10MB máximo)
-        if ($file['size'] > 10485760) {
-            throw new Exception('Arquivo muito grande. Máximo: 10MB');
+        $maxSize = 10485760; // 10MB
+        if ($file['size'] > $maxSize) {
+            $sizeMB = round($file['size'] / 1048576, 2);
+            error_log("❌ MAGALU: Arquivo muito grande - {$sizeMB}MB (máximo: 10MB)");
+            throw new Exception("Arquivo muito grande. Tamanho: {$sizeMB}MB. Máximo permitido: 10MB");
         }
         
         // Validar tipo
         $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'csv'];
         $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
         if (!in_array($extension, $allowed_types)) {
-            throw new Exception('Tipo de arquivo não permitido. Permitidos: ' . implode(', ', $allowed_types));
+            error_log("❌ MAGALU: Tipo de arquivo não permitido - extensão: $extension");
+            throw new Exception('Tipo de arquivo não permitido. Extensão: ' . $extension . '. Permitidos: ' . implode(', ', $allowed_types));
         }
+        
+        error_log("✅ MAGALU: Validações passadas - extensão: $extension, tamanho: " . round($file['size'] / 1024, 2) . "KB");
         
         // Gerar nome único
         $filename = $this->generateFilename($file['name']);
@@ -237,9 +257,22 @@ class MagaluStorageHelper {
      * Verificar se está configurado
      */
     public function isConfigured() {
-        return !empty($this->access_key) && 
-               !empty($this->secret_key) && 
-               !empty($this->bucket);
+        $configured = !empty($this->access_key) && 
+                      !empty($this->secret_key) && 
+                      !empty($this->bucket);
+        
+        if (!$configured) {
+            error_log("MAGALU isConfigured: FALSE");
+            error_log("  - access_key: " . ($this->access_key ? 'SET' : 'EMPTY'));
+            error_log("  - secret_key: " . ($this->secret_key ? 'SET' : 'EMPTY'));
+            error_log("  - bucket: " . ($this->bucket ?: 'EMPTY'));
+            error_log("  - region: " . ($this->region ?: 'DEFAULT'));
+            error_log("  - endpoint: " . ($this->endpoint ?: 'DEFAULT'));
+        } else {
+            error_log("MAGALU isConfigured: TRUE");
+        }
+        
+        return $configured;
     }
     
     /**
