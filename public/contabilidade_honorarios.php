@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/magalu_integration_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 // Verificar se está logado
 if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'] !== true) {
@@ -37,15 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         
         // Processar upload
         try {
-            $magalu = new MagaluIntegrationHelper($pdo);
-            $resultado = $magalu->uploadContabilidade($_FILES['arquivo'], 'contabilidade/honorarios');
+            $uploader = new MagaluUpload();
+            $resultado = $uploader->upload($_FILES['arquivo'], 'contabilidade/honorarios');
             
-            if (!$resultado['sucesso']) {
-                throw new Exception('Erro no upload: ' . ($resultado['erro'] ?? 'Erro desconhecido'));
-            }
-            
-            $arquivo_url = $resultado['url'] ?? $resultado['caminho_arquivo'] ?? null;
-            $arquivo_nome = $_FILES['arquivo']['name'];
+            $arquivo_url = $resultado['url'] ?? null;
+            $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir honorário
             $stmt = $pdo->prepare("

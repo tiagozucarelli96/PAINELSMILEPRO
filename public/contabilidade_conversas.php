@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/magalu_integration_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 // Verificar se está logado (admin ou contabilidade)
 $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo']);
@@ -83,13 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Processar anexo se houver
             if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] === UPLOAD_ERR_OK) {
                 try {
-                    $magalu = new MagaluIntegrationHelper($pdo);
-                    $resultado = $magalu->uploadContabilidade($_FILES['anexo'], 'contabilidade/conversas/' . $conversa_id);
+                    $uploader = new MagaluUpload();
+                    $resultado = $uploader->upload($_FILES['anexo'], 'contabilidade/conversas/' . $conversa_id);
                     
-                    if ($resultado['sucesso']) {
-                        $anexo_url = $resultado['url'] ?? $resultado['caminho_arquivo'] ?? null;
-                        $anexo_nome = $_FILES['anexo']['name'];
-                    }
+                    $anexo_url = $resultado['url'] ?? null;
+                    $anexo_nome = $resultado['nome_original'] ?? $_FILES['anexo']['name'];
                 } catch (Exception $e) {
                     error_log("Erro ao fazer upload de anexo: " . $e->getMessage());
                 }
