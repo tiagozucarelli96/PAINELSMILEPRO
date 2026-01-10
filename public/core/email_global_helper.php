@@ -30,42 +30,31 @@ class EmailGlobalHelper {
     }
     
     /**
-     * Enviar e-mail usando Resend (API) ou PHPMailer (SMTP) ou mail() nativo
+     * Enviar e-mail usando APENAS Resend (API)
      */
     public function enviarEmail($para, $assunto, $corpo, $eh_html = true) {
         error_log("[EMAIL] ====== INÍCIO DO ENVIO DE E-MAIL ======");
         error_log("[EMAIL] Destinatário: $para");
         error_log("[EMAIL] Assunto: $assunto");
         
-        // PRIORIDADE 1: Tentar usar Resend se API key estiver configurada
+        // Verificar se Resend está configurado
         $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
-        if ($resend_api_key && class_exists('\Resend\Resend')) {
-            error_log("[EMAIL] Usando Resend (API) para envio");
-            $resultado = $this->enviarComResend($para, $assunto, $corpo, $eh_html, $resend_api_key);
-            error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
-            return $resultado;
-        } elseif ($resend_api_key) {
-            error_log("[EMAIL] ⚠️ RESEND_API_KEY configurada mas SDK não disponível. Execute: composer install");
-        }
         
-        if (!$this->config) {
-            error_log("[EMAIL] ❌ ERRO: Configuração de e-mail não encontrada e Resend não configurado");
+        if (!$resend_api_key) {
+            error_log("[EMAIL] ❌ ERRO: RESEND_API_KEY não configurada. Configure no Railway: Variables → RESEND_API_KEY");
             return false;
         }
         
-        // PRIORIDADE 2: Tentar usar PHPMailer (SMTP) se disponível
-        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            error_log("[EMAIL] Usando PHPMailer (SMTP) para envio");
-            $resultado = $this->enviarComPHPMailer($para, $assunto, $corpo, $eh_html);
-            error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
-            return $resultado;
-        } else {
-            // PRIORIDADE 3: Fallback para mail() nativo
-            error_log("[EMAIL] ⚠️ PHPMailer não disponível, usando mail() nativo");
-            $resultado = $this->enviarComMailNativo($para, $assunto, $corpo, $eh_html);
-            error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
-            return $resultado;
+        if (!class_exists('\Resend\Resend')) {
+            error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível. Execute: composer install");
+            return false;
         }
+        
+        // Usar APENAS Resend
+        error_log("[EMAIL] Usando Resend (API) para envio");
+        $resultado = $this->enviarComResend($para, $assunto, $corpo, $eh_html, $resend_api_key);
+        error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
+        return $resultado;
     }
     
     /**
