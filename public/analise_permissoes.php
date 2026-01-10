@@ -134,8 +134,8 @@ echo "<h2>⚠️ Inconsistências Encontradas</h2>";
 $inconsistencias = [];
 
 // Verificar se há dois sistemas de permissão diferentes
-if (file_exists(__DIR__ . '/lc_permissions_helper.php') && file_exists(__DIR__ . '/permissoes_boot.php')) {
-    $inconsistencias[] = "Dois sistemas de permissão diferentes: lc_permissions_helper.php (novo) e permissoes_boot.php (antigo)";
+if (file_exists(__DIR__ . '/core/lc_permissions_stub.php') && file_exists(__DIR__ . '/permissoes_boot.php')) {
+    $inconsistencias[] = "Dois sistemas de permissão diferentes: core/lc_permissions_stub.php (novo) e permissoes_boot.php (antigo)";
 }
 
 // Verificar se novos módulos usam sistema antigo
@@ -143,7 +143,7 @@ $paginas_novas = ['rh_dashboard.php', 'contab_dashboard.php'];
 foreach ($paginas_novas as $pagina) {
     if (file_exists(__DIR__ . "/$pagina")) {
         $conteudo = file_get_contents(__DIR__ . "/$pagina");
-        if (strpos($conteudo, 'lc_permissions_helper.php') !== false && strpos($conteudo, 'permissoes_boot.php') !== false) {
+        if (strpos($conteudo, 'core/lc_permissions_stub.php') !== false && strpos($conteudo, 'permissoes_boot.php') !== false) {
             $inconsistencias[] = "Página $pagina usa ambos os sistemas de permissão";
         }
     }
@@ -164,7 +164,7 @@ echo "<h2>💡 Recomendações</h2>";
 
 echo "<h3>🔧 Padronização do Sistema de Permissões</h3>";
 echo "<ol>";
-echo "<li><strong>Unificar sistemas:</strong> Escolher entre lc_permissions_helper.php (novo) ou permissoes_boot.php (antigo)</li>";
+echo "<li><strong>Unificar sistemas:</strong> Escolher entre core/lc_permissions_stub.php (novo) ou permissoes_boot.php (antigo)</li>";
 echo "<li><strong>Adicionar colunas RH:</strong> Incluir campos RH na tabela usuarios (cpf, cargo, etc.)</li>";
 echo "<li><strong>Implementar perfil único:</strong> Usar campo 'perfil' em vez de múltiplas colunas perm_*</li>";
 echo "<li><strong>Atualizar sidebar:</strong> Incluir novos módulos na sidebar com controle de acesso</li>";

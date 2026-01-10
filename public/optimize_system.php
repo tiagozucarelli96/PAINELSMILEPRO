@@ -169,7 +169,7 @@ try {
     $helpers = [
         'lc_calc.php' => 'Cálculos de fichas',
         'lc_units_helper.php' => 'Conversão de unidades',
-        'lc_permissions_helper.php' => 'Sistema de permissões',
+        'core/lc_permissions_stub.php' => 'Sistema de permissões',
         'me_api_helper.php' => 'Integração ME Eventos',
         'lc_substitutes_helper.php' => 'Sistema de substitutos'
     ];

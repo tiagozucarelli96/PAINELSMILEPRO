@@ -24,17 +24,17 @@ $modulos = [
     ],
     'Estoque' => [
         'paginas' => ['estoque_contagens.php', 'estoque_kardex.php', 'estoque_alertas.php', 'estoque_desvios.php'],
-        'permissao' => 'Sistema novo (lc_permissions_helper.php)',
+        'permissao' => 'Sistema novo (core/lc_permissions_stub.php)',
         'status' => '✅ Funcional'
     ],
     'Pagamentos' => [
         'paginas' => ['pagamentos_painel.php', 'pagamentos_solicitar.php', 'pagamentos_minhas.php', 'pagamentos_ver.php'],
-        'permissao' => 'Sistema novo (lc_permissions_helper.php)',
+        'permissao' => 'Sistema novo (core/lc_permissions_stub.php)',
         'status' => '✅ Funcional'
     ],
     'RH' => [
         'paginas' => ['rh_dashboard.php', 'rh_colaboradores.php', 'rh_colaborador_ver.php', 'rh_holerite_upload.php'],
-        'permissao' => 'Sistema novo (lc_permissions_helper.php)',
+        'permissao' => 'Sistema novo (core/lc_permissions_stub.php)',
         'status' => '✅ Implementado'
     ],
     'Usuários' => [
@@ -56,7 +56,7 @@ echo "</table>";
 
 echo "<h3>⚠️ Problemas Identificados</h3>";
 echo "<ol>";
-echo "<li><strong>Dois sistemas de permissão:</strong> Sistema antigo (perm_*) e novo (lc_permissions_helper.php)</li>";
+echo "<li><strong>Dois sistemas de permissão:</strong> Sistema antigo (perm_*) e novo (core/lc_permissions_stub.php)</li>";
 echo "<li><strong>Inconsistência na sidebar:</strong> Não inclui novos módulos (RH)</li>";
 echo "<li><strong>Dashboard fragmentado:</strong> Múltiplos dashboards em vez de um centralizado</li>";
 echo "<li><strong>UI de usuários desatualizada:</strong> Interface antiga sem integração RH</li>";
@@ -97,7 +97,7 @@ echo "<h2>🔐 Análise do Sistema de Permissões</h2>";
 
 echo "<h3>📊 Comparação dos Sistemas</h3>";
 echo "<table border='1' style='border-collapse: collapse; width: 100%; margin-bottom: 20px;'>";
-echo "<tr><th>Aspecto</th><th>Sistema Antigo (perm_*)</th><th>Sistema Novo (lc_permissions_helper.php)</th></tr>";
+echo "<tr><th>Aspecto</th><th>Sistema Antigo (perm_*)</th><th>Sistema Novo (core/lc_permissions_stub.php)</th></tr>";
 
 $comparacao = [
     'Estrutura' => 'Múltiplas colunas booleanas', 'Funções centralizadas',
@@ -115,7 +115,7 @@ echo "</table>";
 
 echo "<h3>🎯 Recomendações para Padronização</h3>";
 echo "<ol>";
-echo "<li><strong>Migrar para sistema novo:</strong> Usar lc_permissions_helper.php em todos os módulos</li>";
+echo "<li><strong>Migrar para sistema novo:</strong> Usar core/lc_permissions_stub.php em todos os módulos</li>";
 echo "<li><strong>Adicionar campo perfil:</strong> Implementar coluna 'perfil' na tabela usuarios</li>";
 echo "<li><strong>Atualizar sidebar:</strong> Incluir novos módulos com controle de acesso</li>";
 echo "<li><strong>Dashboard unificado:</strong> Criar dashboard central com todos os módulos</li>";

@@ -5,7 +5,7 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/lc_permissions_helper.php';
+require_once __DIR__ . '/core/lc_permissions_stub.php';
 
 // Verificar permissões
 if (empty($_SESSION['logado']) || empty($_SESSION['perm_usuarios'])) {
