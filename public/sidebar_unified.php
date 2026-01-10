@@ -19,8 +19,23 @@ if (!isset($pdo) && isset($GLOBALS['pdo'])) {
 }
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
-$perfil = $_SESSION['perfil'] ?? 'CONSULTA';
 $current_page = $_GET['page'] ?? 'dashboard';
+
+// Buscar cargo do usuário logado do banco de dados
+$perfil = 'CONSULTA'; // Valor padrão
+$usuario_id_sidebar = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+if ($usuario_id_sidebar && isset($pdo)) {
+    try {
+        $stmt_cargo = $pdo->prepare("SELECT cargo FROM usuarios WHERE id = :id");
+        $stmt_cargo->execute([':id' => $usuario_id_sidebar]);
+        $cargo_result = $stmt_cargo->fetch(PDO::FETCH_ASSOC);
+        if ($cargo_result && !empty($cargo_result['cargo'])) {
+            $perfil = $cargo_result['cargo'];
+        }
+    } catch (Exception $e) {
+        error_log("Erro ao buscar cargo do usuário: " . $e->getMessage());
+    }
+}
 
 // Inicializar variáveis de conteúdo (para evitar erros undefined)
 $dashboard_content = '';
