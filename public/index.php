@@ -68,6 +68,27 @@ if (isset($_SERVER['QUERY_STRING']) && !empty($_SERVER['QUERY_STRING'])) {
     $_GET = array_merge($parsed_query, $_GET);
 }
 
+// CRÍTICO: Verificar link público da contabilidade ANTES de qualquer coisa
+// Se o caminho da URL corresponder a um link público da contabilidade, redirecionar para login
+$request_path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+if ($request_path !== '/' && !isset($_GET['page']) && !isset($_GET['action'])) {
+    try {
+        require_once __DIR__ . '/conexao.php';
+        $stmt = $GLOBALS['pdo']->prepare("SELECT * FROM contabilidade_acesso WHERE link_publico = :path AND status = 'ativo' LIMIT 1");
+        $stmt->execute([':path' => $request_path]);
+        $acesso_contabilidade = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($acesso_contabilidade) {
+            // Link público da contabilidade encontrado - redirecionar para login
+            header('Location: contabilidade_login.php');
+            exit;
+        }
+    } catch (Exception $e) {
+        // Se houver erro, continuar processamento normal
+        error_log("Erro ao verificar link público da contabilidade: " . $e->getMessage());
+    }
+}
+
 // CRÍTICO: Processar endpoint de upload de foto ANTES de qualquer coisa
 // Este endpoint deve ser servido DIRETAMENTE, sem passar por router ou verificações
 if (isset($_GET['page']) && $_GET['page'] === 'upload_foto_usuario_endpoint') {
