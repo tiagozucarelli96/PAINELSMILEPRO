@@ -108,54 +108,6 @@ class MagaluIntegrationHelper {
     }
     
     /**
-     * Upload de anexo para Contabilidade
-     */
-    public function uploadAnexoContabilidade($arquivo, $documento_id, $tipo_anexo = 'documento') {
-        try {
-            // Upload para Magalu
-            $resultado = $this->magalu->uploadFile($arquivo, 'contabilidade/' . $documento_id);
-            
-            if (!$resultado['success']) {
-                return [
-                    'sucesso' => false,
-                    'erro' => 'Erro no upload: ' . $resultado['error']
-                ];
-            }
-            
-            // Salvar no banco
-            $stmt = $this->pdo->prepare("
-                INSERT INTO contab_anexos 
-                (documento_id, tipo_anexo, nome_original, nome_arquivo, caminho_arquivo, 
-                 tipo_mime, tamanho_bytes, criado_em) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-            ");
-            
-            $stmt->execute([
-                $documento_id,
-                $tipo_anexo,
-                $arquivo['name'],
-                $resultado['filename'],
-                $resultado['url'],
-                $arquivo['type'],
-                $arquivo['size']
-            ]);
-            
-            return [
-                'sucesso' => true,
-                'anexo_id' => $this->pdo->lastInsertId(),
-                'url' => $resultado['url'],
-                'provider' => 'Magalu Object Storage'
-            ];
-            
-        } catch (Exception $e) {
-            return [
-                'sucesso' => false,
-                'erro' => 'Erro: ' . $e->getMessage()
-            ];
-        }
-    }
-    
-    /**
      * Upload de anexo para Comercial (degustações)
      */
     public function uploadAnexoComercial($arquivo, $degustacao_id, $tipo_anexo = 'degustacao') {

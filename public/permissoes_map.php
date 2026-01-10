@@ -105,7 +105,5 @@ return [
     'portao' => 'perm_portao',
     'dados_contrato' => 'perm_dados_contrato',
     'uso_fiorino' => 'perm_uso_fiorino',
-    'contab_link' => 'perm_financeiro',
-    'contab_gerar_link' => 'perm_financeiro',
 ];
 
