@@ -587,6 +587,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <?php
             $autoload_existe = file_exists(__DIR__ . '/../vendor/autoload.php');
             $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer');
+            $resend_disponivel = class_exists('\Resend\Resend');
+            $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
             ?>
             <div class="validacao-item <?= $autoload_existe ? 'ok' : 'erro' ?>">
                 <?= $autoload_existe ? '✅' : '❌' ?> vendor/autoload.php: <?= $autoload_existe ? 'Existe' : 'Não encontrado' ?>
@@ -594,6 +596,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <div class="validacao-item <?= $phpmailer_disponivel ? 'ok' : 'erro' ?>">
                 <?= $phpmailer_disponivel ? '✅' : '❌' ?> PHPMailer: <?= $phpmailer_disponivel ? 'Disponível' : 'Não disponível' ?>
             </div>
+            <div class="validacao-item <?= $resend_disponivel ? 'ok' : 'erro' ?>">
+                <?= $resend_disponivel ? '✅' : '❌' ?> Resend SDK: <?= $resend_disponivel ? 'Disponível' : 'Não disponível' ?>
+            </div>
+            <div class="validacao-item <?= $resend_api_key ? 'ok' : 'warning' ?>" style="border-color: <?= $resend_api_key ? '#059669' : '#f59e0b' ?>; background: <?= $resend_api_key ? '#d1fae5' : '#fef3c7' ?>;">
+                <?= $resend_api_key ? '✅' : '⚠️' ?> RESEND_API_KEY: <?= $resend_api_key ? 'Configurada' : 'Não configurada (recomendado para Railway)' ?>
+            </div>
+            
+            <?php if ($resend_api_key && $resend_disponivel): ?>
+            <div class="info-box" style="background: #d1fae5; border-color: #059669;">
+                <p><strong>✅ Resend configurado!</strong></p>
+                <p>O sistema usará Resend para enviar e-mails. Não é necessário configurar SMTP.</p>
+            </div>
+            <?php elseif ($resend_api_key && !$resend_disponivel): ?>
+            <div class="info-box">
+                <p><strong>⚠️ RESEND_API_KEY configurada, mas SDK não instalado</p>
+                <p>Execute no servidor:</p>
+                <div class="code-block">
+composer install --no-dev --optimize-autoloader
+                </div>
+            </div>
+            <?php elseif (!$resend_api_key): ?>
+            <div class="info-box">
+                <p><strong>💡 Recomendação para Railway:</strong></p>
+                <p>Configure <code>RESEND_API_KEY</code> como variável de ambiente no Railway para usar Resend (funciona perfeitamente, sem bloqueio de portas).</p>
+                <p style="margin-top: 0.5rem;">Veja instruções em: <code>CONFIGURAR_RESEND_RAILWAY.md</code></p>
+            </div>
+            <?php endif; ?>
             
             <?php if (!$autoload_existe || !$phpmailer_disponivel): ?>
             <div class="info-box">
