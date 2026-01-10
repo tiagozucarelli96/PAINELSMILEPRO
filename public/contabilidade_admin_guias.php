@@ -342,8 +342,8 @@ body {
                     </span>
                 </td>
                 <td>
-                    <?php if ($guia['arquivo_url']): ?>
-                        <a href="<?= htmlspecialchars($guia['arquivo_url']) ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
+                    <?php if ($guia['chave_storage'] || $guia['arquivo_url']): ?>
+                        <a href="contabilidade_download.php?tipo=guia&id=<?= $guia['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
                     <?php else: ?>
                         -
                     <?php endif; ?>

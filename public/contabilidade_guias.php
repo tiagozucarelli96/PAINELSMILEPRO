@@ -46,7 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 $uploader = new MagaluUpload();
                 $resultado = $uploader->upload($_FILES['arquivo'], 'contabilidade/guias');
                 
+                // Salvar chave_storage (para presigned URLs) e URL (fallback)
                 $arquivo_url = $resultado['url'] ?? null;
+                $chave_storage = $resultado['chave_storage'] ?? null;
                 $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             } catch (Exception $e) {
                 throw new Exception('Erro ao fazer upload: ' . $e->getMessage());
@@ -114,11 +116,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_guias 
-                (arquivo_url, arquivo_nome, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
-                VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
+                (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
+                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
             ");
             $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
             $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
+            $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
             $stmt->bindValue(':vencimento', $data_vencimento, PDO::PARAM_STR);
             $stmt->bindValue(':desc', $descricao, PDO::PARAM_STR);
             $stmt->bindValue(':e_parcela', $e_parcela_bool, PDO::PARAM_BOOL);

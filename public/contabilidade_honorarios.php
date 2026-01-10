@@ -40,7 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $uploader = new MagaluUpload();
             $resultado = $uploader->upload($_FILES['arquivo'], 'contabilidade/honorarios');
             
+            // Salvar chave_storage (para presigned URLs) e URL (fallback)
             $arquivo_url = $resultado['url'] ?? null;
+            $chave_storage = $resultado['chave_storage'] ?? null;
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir honorário
