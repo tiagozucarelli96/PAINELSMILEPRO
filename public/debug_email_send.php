@@ -563,18 +563,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                         <li><strong>Host ou porta incorretos:</strong> Verifique se o host e porta estão corretos</li>
                         <li><strong>Problema de rede temporário:</strong> Tente novamente em alguns minutos</li>
                     </ul>
-                    <?php if ((int)$config['smtp_port'] === 465): ?>
-                    <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
-                        <p><strong>⚠️ Recomendação para Railway:</strong></p>
-                        <p>O Railway frequentemente bloqueia a porta 465. Tente usar a porta <strong>587 com STARTTLS</strong>:</p>
+                    <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
+                        <p><strong>🚀 Solução Recomendada: Usar Resend</strong></p>
+                        <p>O Railway bloqueia portas SMTP (465 e 587). A melhor solução é usar <strong>Resend</strong> (serviço de email via API):</p>
                         <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                            <li>Acesse <a href="index.php?page=config_email_global" style="color: #1e3a8a; text-decoration: underline;">Configuração de E-mail</a></li>
-                            <li>Altere a porta de <strong>465</strong> para <strong>587</strong></li>
-                            <li>Altere a encriptação de <strong>SSL</strong> para <strong>TLS</strong></li>
-                            <li>Salve e teste novamente</li>
+                            <li>Acesse o painel do Railway → <strong>Variables</strong></li>
+                            <li>Adicione: <code style="background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px;">RESEND_API_KEY</code> = sua API key do Resend</li>
+                            <li>Faça um novo deploy</li>
+                            <li>O sistema usará Resend automaticamente (sem necessidade de SMTP)</li>
                         </ol>
+                        <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;">
+                            Veja instruções completas em: <code>CONFIGURAR_RESEND_RAILWAY.md</code>
+                        </p>
                     </div>
-                    <?php endif; ?>
                 </div>
             </div>
             <?php endif; ?>
