@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         // Processar upload
         try {
             $magalu = new MagaluIntegrationHelper($pdo);
-            $resultado = $magalu->uploadAnexoRH($_FILES['arquivo'], 0, 'honorario');
+            $resultado = $magalu->uploadContabilidade($_FILES['arquivo'], 'contabilidade/honorarios');
             
             if (!$resultado['sucesso']) {
                 throw new Exception('Erro no upload: ' . ($resultado['erro'] ?? 'Erro desconhecido'));

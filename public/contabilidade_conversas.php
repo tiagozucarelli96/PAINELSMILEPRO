@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] === UPLOAD_ERR_OK) {
                 try {
                     $magalu = new MagaluIntegrationHelper($pdo);
-                    $resultado = $magalu->uploadAnexoRH($_FILES['anexo'], $conversa_id, 'conversa');
+                    $resultado = $magalu->uploadContabilidade($_FILES['anexo'], 'contabilidade/conversas/' . $conversa_id);
                     
                     if ($resultado['sucesso']) {
                         $anexo_url = $resultado['url'] ?? $resultado['caminho_arquivo'] ?? null;

@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         if (isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK) {
             try {
                 $magalu = new MagaluIntegrationHelper($pdo);
-                $resultado = $magalu->uploadAnexoRH($_FILES['arquivo'], 0, 'guia');
+                $resultado = $magalu->uploadContabilidade($_FILES['arquivo'], 'contabilidade/guias');
                 
                 if ($resultado['sucesso']) {
                     $arquivo_url = $resultado['url'] ?? $resultado['caminho_arquivo'] ?? null;
