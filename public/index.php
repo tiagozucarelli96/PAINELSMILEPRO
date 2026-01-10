@@ -299,6 +299,7 @@ $routes = [
   'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
   'executar_drop_modulo_estoque' => 'executar_drop_modulo_estoque.php', // Remover módulo Estoque + Lista de Compras
   'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
+  'test_magalu_contabilidade' => 'test_magalu_contabilidade.php', // Teste de configuração Magalu para Contabilidade
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
