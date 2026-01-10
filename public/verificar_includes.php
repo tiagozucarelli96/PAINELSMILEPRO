@@ -101,8 +101,7 @@ class VerificadorIncludes {
             'demandas_helper.php' => 'Helper para demandas',
             'estoque_helper.php' => 'Helper para estoque',
             'comercial_helper.php' => 'Helper para comercial',
-            'rh_helper.php' => 'Helper para RH',
-            'contab_helper.php' => 'Helper para contabilidade'
+            'rh_helper.php' => 'Helper para RH'
         ];
         
         $includesFuncionais = [];

@@ -37,11 +37,6 @@ $modulos = [
         'permissao' => 'Sistema novo (lc_permissions_helper.php)',
         'status' => '✅ Implementado'
     ],
-    'Contabilidade' => [
-        'paginas' => ['contab_dashboard.php', 'contab_documentos.php', 'contab_doc_ver.php', 'contab_link.php'],
-        'permissao' => 'Sistema novo (lc_permissions_helper.php)',
-        'status' => '✅ Implementado'
-    ],
     'Usuários' => [
         'paginas' => ['usuarios.php', 'usuarios_v2.php', 'usuarios_modal.php'],
         'permissao' => 'perm_usuarios',
@@ -62,7 +57,7 @@ echo "</table>";
 echo "<h3>⚠️ Problemas Identificados</h3>";
 echo "<ol>";
 echo "<li><strong>Dois sistemas de permissão:</strong> Sistema antigo (perm_*) e novo (lc_permissions_helper.php)</li>";
-echo "<li><strong>Inconsistência na sidebar:</strong> Não inclui novos módulos (RH e Contabilidade)</li>";
+echo "<li><strong>Inconsistência na sidebar:</strong> Não inclui novos módulos (RH)</li>";
 echo "<li><strong>Dashboard fragmentado:</strong> Múltiplos dashboards em vez de um centralizado</li>";
 echo "<li><strong>UI de usuários desatualizada:</strong> Interface antiga sem integração RH</li>";
 echo "<li><strong>Falta de padronização:</strong> Diferentes estilos e estruturas entre módulos</li>";
