@@ -86,7 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $uploader = new MagaluUpload();
                     $resultado = $uploader->upload($_FILES['anexo'], 'contabilidade/conversas/' . $conversa_id);
                     
+                    // Salvar chave_storage (para presigned URLs) e URL (fallback)
                     $anexo_url = $resultado['url'] ?? null;
+                    $chave_storage = $resultado['chave_storage'] ?? null;
                     $anexo_nome = $resultado['nome_original'] ?? $_FILES['anexo']['name'];
                 } catch (Exception $e) {
                     error_log("Erro ao fazer upload de anexo: " . $e->getMessage());

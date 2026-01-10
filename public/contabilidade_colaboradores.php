@@ -48,20 +48,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $uploader = new MagaluUpload();
             $resultado = $uploader->upload($_FILES['arquivo'], 'contabilidade/colaboradores/' . $colaborador_id);
             
+            // Salvar chave_storage (para presigned URLs) e URL (fallback)
             $arquivo_url = $resultado['url'] ?? null;
+            $chave_storage = $resultado['chave_storage'] ?? null;
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir documento
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_colaboradores_documentos 
-                (colaborador_id, tipo_documento, arquivo_url, arquivo_nome, descricao)
-                VALUES (:colab_id, :tipo, :arquivo_url, :arquivo_nome, :desc)
+                (colaborador_id, tipo_documento, arquivo_url, arquivo_nome, chave_storage, descricao)
+                VALUES (:colab_id, :tipo, :arquivo_url, :arquivo_nome, :chave_storage, :desc)
             ");
             $stmt->execute([
                 ':colab_id' => $colaborador_id,
                 ':tipo' => $tipo_documento,
                 ':arquivo_url' => $arquivo_url,
                 ':arquivo_nome' => $arquivo_nome,
+                ':chave_storage' => $chave_storage,
                 ':desc' => !empty($descricao) ? $descricao : null
             ]);
             
