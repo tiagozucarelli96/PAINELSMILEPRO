@@ -8,11 +8,20 @@ class MagaluStorageHelper {
     private $endpoint;
     
     public function __construct() {
-        $this->access_key = $_ENV['MAGALU_ACCESS_KEY'] ?? '';
-        $this->secret_key = $_ENV['MAGALU_SECRET_KEY'] ?? '';
-        $this->bucket = $_ENV['MAGALU_BUCKET'] ?? '';
-        $this->region = $_ENV['MAGALU_REGION'] ?? 'br-se1';
-        $this->endpoint = $_ENV['MAGALU_ENDPOINT'] ?? 'https://br-se1.magaluobjects.com';
+        // Carregar variáveis de ambiente (tentar múltiplas fontes para compatibilidade com Railway)
+        $this->access_key = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY') ?: '';
+        $this->secret_key = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY') ?: '';
+        $this->bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: '';
+        $this->region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+        $this->endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+        
+        // Log de inicialização (sem expor credenciais completas)
+        error_log("MAGALU Storage Helper inicializado:");
+        error_log("  - Bucket: " . ($this->bucket ?: 'NÃO CONFIGURADO'));
+        error_log("  - Region: {$this->region}");
+        error_log("  - Endpoint: {$this->endpoint}");
+        error_log("  - Access Key: " . ($this->access_key ? 'CONFIGURADO (' . substr($this->access_key, 0, 10) . '...)' : 'NÃO CONFIGURADO'));
+        error_log("  - Secret Key: " . ($this->secret_key ? 'CONFIGURADO (' . substr($this->secret_key, 0, 10) . '...)' : 'NÃO CONFIGURADO'));
     }
     
     /**
