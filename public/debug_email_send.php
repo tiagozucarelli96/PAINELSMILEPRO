@@ -222,6 +222,9 @@ if ($config) {
 
 // Processar teste de envio
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'testar_envio') {
+    // Limitar tempo de execução para não travar
+    set_time_limit(30); // Máximo de 30 segundos
+    
     try {
         if (!$config) {
             throw new Exception('Configuração não encontrada');
@@ -239,22 +242,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('PHPMailer não está disponível. Verifique se o Composer foi executado (composer install).');
         }
         
-        // Tentar enviar e-mail
-        $emailHelper = new EmailGlobalHelper();
+        // Tentar enviar e-mail com PHPMailer diretamente para capturar erros detalhados
+        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
         
-        $assunto = 'Teste de Diagnóstico - Portal Grupo Smile';
-        $corpo = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p></body></html>';
-        
-        $enviado = $emailHelper->enviarEmail($config['email_administrador'], $assunto, $corpo, true);
-        
-        if ($enviado) {
+        try {
+            // Configurações do servidor
+            $mail->isSMTP();
+            $mail->Host = $config['smtp_host'];
+            $mail->SMTPAuth = true;
+            $mail->Username = $config['smtp_username'];
+            $mail->Password = $config['smtp_password'];
+            
+            $port = (int)$config['smtp_port'];
+            $encryption = strtolower($config['smtp_encryption'] ?? 'ssl');
+            
+            // Para porta 465, usar SSL implícito (SMTPS)
+            if ($port === 465) {
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+                $mail->SMTPAutoTLS = false; // Não tentar STARTTLS na porta 465
+            } elseif ($encryption === 'tls') {
+                // Outras portas com TLS: usar STARTTLS
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+            } else {
+                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+            }
+            
+            $mail->Port = $port;
+            $mail->CharSet = 'UTF-8';
+            $mail->SMTPDebug = 2; // Ativar debug para capturar detalhes
+            $mail->Timeout = 15; // Timeout de 15 segundos para conexão SMTP
+            
+            // Capturar output do debug
+            $debug_output = '';
+            $mail->Debugoutput = function($str, $level) use (&$debug_output) {
+                $debug_output .= $str . "\n";
+            };
+            
+            // Remetente e destinatário
+            $mail->setFrom($config['email_remetente'], 'Portal Grupo Smile');
+            $mail->addAddress($config['email_administrador']);
+            
+            // Conteúdo
+            $mail->isHTML(true);
+            $mail->Subject = 'Teste de Diagnóstico - Portal Grupo Smile';
+            $mail->Body = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p></body></html>';
+            
+            $mail->send();
+            
             $resultado_teste = [
                 'sucesso' => true,
                 'mensagem' => 'E-mail enviado com sucesso!',
                 'detalhes' => [
                     'para' => $config['email_administrador'],
                     'phpmailer_disponivel' => $phpmailer_disponivel,
-                    'autoload_existe' => $autoload_existe
+                    'autoload_existe' => $autoload_existe,
+                    'debug' => $debug_output
                 ]
             ];
             
@@ -263,8 +305,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 'host' => $config['smtp_host'],
                 'porta' => $config['smtp_port']
             ]);
-        } else {
-            throw new Exception('Falha ao enviar e-mail (retornou false)');
+            
+        } catch (PHPMailer\PHPMailer\Exception $e) {
+            $erro_detalhado = $e->getMessage();
+            $erro_detalhado .= "\n\n[SMTP Debug Output]\n" . $debug_output;
+            
+            throw new Exception($erro_detalhado);
         }
         
     } catch (Exception $e) {
@@ -437,6 +483,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             padding: 1rem;
             border-radius: 4px;
             margin: 1rem 0;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
