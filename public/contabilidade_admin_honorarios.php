@@ -236,7 +236,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 </td>
                 <td>
                     <?php if ($honorario['arquivo_url']): ?>
-                        <a href="<?= htmlspecialchars($honorario['arquivo_url']) ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
+                        <a href="contabilidade_download.php?tipo=honorario&id=<?= $honorario['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
                     <?php else: ?>
                         -
                     <?php endif; ?>
