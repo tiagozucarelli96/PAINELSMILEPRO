@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS contabilidade_guias (
     id BIGSERIAL PRIMARY KEY,
     arquivo_url TEXT,
     arquivo_nome VARCHAR(255),
+    chave_storage VARCHAR(500),
     data_vencimento DATE,
     descricao TEXT NOT NULL,
     e_parcela BOOLEAN NOT NULL DEFAULT FALSE,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS contabilidade_holerites (
     id BIGSERIAL PRIMARY KEY,
     arquivo_url TEXT NOT NULL,
     arquivo_nome VARCHAR(255) NOT NULL,
+    chave_storage VARCHAR(500),
     mes_competencia VARCHAR(7) NOT NULL, -- Formato: MM/AAAA
     e_ajuste BOOLEAN NOT NULL DEFAULT FALSE,
     observacao TEXT,
@@ -69,6 +71,7 @@ CREATE TABLE IF NOT EXISTS contabilidade_honorarios (
     id BIGSERIAL PRIMARY KEY,
     arquivo_url TEXT NOT NULL,
     arquivo_nome VARCHAR(255) NOT NULL,
+    chave_storage VARCHAR(500),
     data_vencimento DATE,
     descricao TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'pago', 'vencido', 'cancelado')),
@@ -94,6 +97,7 @@ CREATE TABLE IF NOT EXISTS contabilidade_conversas_mensagens (
     mensagem TEXT,
     anexo_url TEXT,
     anexo_nome VARCHAR(255),
+    chave_storage VARCHAR(500),
     criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -104,6 +108,7 @@ CREATE TABLE IF NOT EXISTS contabilidade_colaboradores_documentos (
     tipo_documento VARCHAR(50) NOT NULL, -- 'contrato', 'ajuste', 'advertencia', 'outro'
     arquivo_url TEXT NOT NULL,
     arquivo_nome VARCHAR(255) NOT NULL,
+    chave_storage VARCHAR(500),
     descricao TEXT,
     criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -115,8 +120,11 @@ CREATE INDEX IF NOT EXISTS idx_contabilidade_sessoes_ativo ON contabilidade_sess
 CREATE INDEX IF NOT EXISTS idx_contabilidade_parcelamentos_status ON contabilidade_parcelamentos(status);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_guias_status ON contabilidade_guias(status);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_guias_parcelamento ON contabilidade_guias(parcelamento_id);
+CREATE INDEX IF NOT EXISTS idx_contabilidade_guias_chave_storage ON contabilidade_guias(chave_storage);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_holerites_status ON contabilidade_holerites(status);
+CREATE INDEX IF NOT EXISTS idx_contabilidade_holerites_chave_storage ON contabilidade_holerites(chave_storage);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_honorarios_status ON contabilidade_honorarios(status);
+CREATE INDEX IF NOT EXISTS idx_contabilidade_honorarios_chave_storage ON contabilidade_honorarios(chave_storage);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_conversas_status ON contabilidade_conversas(status);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_conversas_mensagens_conversa ON contabilidade_conversas_mensagens(conversa_id);
 CREATE INDEX IF NOT EXISTS idx_contabilidade_colaboradores_docs_colab ON contabilidade_colaboradores_documentos(colaborador_id);
