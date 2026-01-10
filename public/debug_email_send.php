@@ -214,9 +214,11 @@ if ($config) {
         $validacao[] = ['tipo' => 'erro', 'mensagem' => 'Porta SMTP inválida'];
     }
     
-    // Testar conexão TCP/SSL
+    // Testar conexão TCP/SSL (com timeout curto para não travar a página)
     if (!empty($config['smtp_host']) && !empty($config['smtp_port'])) {
-        $resultado_conexao = testarConexaoTCP($config['smtp_host'], (int)$config['smtp_port']);
+        // Timeout de 3 segundos para não travar a página
+        set_time_limit(10); // Limite total de 10 segundos para o script
+        $resultado_conexao = testarConexaoTCP($config['smtp_host'], (int)$config['smtp_port'], 3);
     }
 }
 
