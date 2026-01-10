@@ -318,43 +318,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     } catch (Exception $e) {
         $erro_detalhado = $e->getMessage();
         
-        // Tentar capturar erro do PHPMailer se disponível
-        if (class_exists('PHPMailer\PHPMailer\PHPMailer')) {
-            try {
-                $mail = new PHPMailer\PHPMailer\PHPMailer(true);
-                $mail->isSMTP();
-                $mail->Host = $config['smtp_host'];
-                $mail->SMTPAuth = true;
-                $mail->Username = $config['smtp_username'];
-                $mail->Password = $config['smtp_password'];
-                
-                $port = (int)$config['smtp_port'];
-                if ($port === 465) {
-                    $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-                    $mail->SMTPAutoTLS = false;
-                } else {
-                    $mail->SMTPSecure = $config['smtp_encryption'] === 'tls' 
-                        ? PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS 
-                        : PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-                }
-                $mail->Port = $port;
-                $mail->SMTPDebug = 2; // Ativar debug para capturar erro
-                $mail->Debugoutput = function($str, $level) use (&$erro_detalhado) {
-                    $erro_detalhado .= "\n[SMTP Debug] $str";
-                };
-                
-                $mail->setFrom($config['email_remetente'], 'Portal Grupo Smile');
-                $mail->addAddress($config['email_administrador']);
-                $mail->isHTML(true);
-                $mail->Subject = 'Teste';
-                $mail->Body = '<p>Teste</p>';
-                
-                $mail->send();
-            } catch (PHPMailer\PHPMailer\Exception $e) {
-                $erro_detalhado = $e->getMessage();
-            }
-        }
-        
         $resultado_teste = [
             'sucesso' => false,
             'mensagem' => 'Erro ao enviar e-mail',
