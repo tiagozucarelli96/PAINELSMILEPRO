@@ -2,9 +2,12 @@
 // email_global_helper.php — Helper para envio de e-mails usando configuração global (ETAPA 12)
 require_once __DIR__ . '/../conexao.php';
 
-// Carregar autoload do Composer (para PHPMailer)
-if (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
-    require_once __DIR__ . '/../../vendor/autoload.php';
+// Carregar autoload do Composer apenas uma vez (verificar se já foi carregado)
+if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+    $autoload_path = __DIR__ . '/../../vendor/autoload.php';
+    if (file_exists($autoload_path)) {
+        require_once $autoload_path;
+    }
 }
 
 class EmailGlobalHelper {

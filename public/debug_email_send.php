@@ -10,13 +10,9 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+// email_global_helper.php já carrega o autoload, não precisa carregar novamente
 require_once __DIR__ . '/core/email_global_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
-
-// Carregar autoload do Composer
-if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
-    require_once __DIR__ . '/../vendor/autoload.php';
-}
 
 header('Content-Type: text/html; charset=UTF-8');
 
