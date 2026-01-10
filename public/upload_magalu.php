@@ -90,8 +90,12 @@ class MagaluUpload {
         // Validar MIME type
         $allowedTypes = [
             'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-            'application/pdf', 'text/plain', 'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            'application/pdf', 'text/plain', 'text/csv',
+            'application/msword', // .doc
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+            'application/vnd.ms-excel', // .xls
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+            'application/vnd.ms-excel.sheet.macroEnabled.12', // .xlsm
         ];
         
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
