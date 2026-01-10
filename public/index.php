@@ -300,6 +300,7 @@ $routes = [
   'executar_drop_modulo_estoque' => 'executar_drop_modulo_estoque.php', // Remover módulo Estoque + Lista de Compras
   'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
   'test_magalu_contabilidade' => 'test_magalu_contabilidade.php', // Teste de configuração Magalu para Contabilidade
+  'executar_add_chave_storage' => 'executar_add_chave_storage.php', // Adicionar coluna chave_storage na contabilidade
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
