@@ -73,7 +73,7 @@ header('Content-Type: text/html; charset=utf-8');
                 $essentials = [
                     'perm_agenda',
                     'perm_comercial',
-                    'perm_logistico',
+                    // 'perm_logistico', // REMOVIDO: Módulo desativado
                     'perm_configuracoes',
                     'perm_cadastros',
                     'perm_financeiro',

@@ -26,9 +26,9 @@ try {
     // Permissões existentes (ainda em uso)
     'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios',
     'perm_portao','perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
-    'perm_estoque_logistico','perm_dados_contrato','perm_uso_fiorino',
+    'perm_dados_contrato','perm_uso_fiorino',
     // Módulos principais da sidebar
-    'perm_agenda','perm_comercial','perm_logistico','perm_configuracoes',
+    'perm_agenda','perm_comercial','perm_configuracoes',
     'perm_cadastros','perm_financeiro','perm_administrativo',
     // Permissões específicas de Agenda (usadas em agenda_helper.php)
     'perm_agenda_ver','perm_agenda_meus','perm_agenda_relatorios',

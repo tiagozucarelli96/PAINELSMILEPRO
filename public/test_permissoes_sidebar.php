@@ -169,7 +169,7 @@ require_once __DIR__ . '/permissoes_boot.php';
             'perm_agenda' => 'Agenda',
             'perm_demandas' => 'Demandas',
             'perm_comercial' => 'Comercial',
-            'perm_logistico' => 'Logístico',
+            // 'perm_logistico' => 'Logístico', // REMOVIDO: Módulo desativado
             'perm_configuracoes' => 'Configurações',
             'perm_cadastros' => 'Cadastros',
             'perm_financeiro' => 'Financeiro',
@@ -353,7 +353,7 @@ require_once __DIR__ . '/permissoes_boot.php';
                     'perm_agenda' => '📅',
                     'perm_demandas' => '📝',
                     'perm_comercial' => '📋',
-                    'perm_logistico' => '📦',
+                    // 'perm_logistico' => '📦', // REMOVIDO: Módulo desativado
                     'perm_configuracoes' => '⚙️',
                     'perm_cadastros' => '📝',
                     'perm_financeiro' => '💰',

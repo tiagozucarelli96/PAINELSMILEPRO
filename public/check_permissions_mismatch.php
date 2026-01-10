@@ -12,7 +12,7 @@ $form_permissions = [
     // Módulos da sidebar
     'perm_agenda',
     'perm_comercial',
-    'perm_logistico',
+    // 'perm_logistico', // REMOVIDO: Módulo desativado
     'perm_configuracoes',
     'perm_cadastros',
     'perm_financeiro',
@@ -26,7 +26,7 @@ $form_permissions = [
     'perm_demandas',
     'perm_portao',
     'perm_notas_fiscais',
-    'perm_estoque_logistico',
+    // 'perm_estoque_logistico', // REMOVIDO: Módulo desativado
     'perm_dados_contrato',
     'perm_uso_fiorino'
 ];

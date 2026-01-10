@@ -36,7 +36,7 @@ $colAtivo   = in_array('ativo',$cols,true) ? 'ativo' : (in_array('status',$cols,
 $permKeys = array_values(array_intersect([
   'perm_usuarios','perm_pagamentos','perm_tarefas','perm_demandas',
   'perm_portao','perm_banco_smile','perm_banco_smile_admin',
-  'perm_dados_contrato','perm_uso_fiorino','perm_estoque_logistico'
+  'perm_dados_contrato','perm_uso_fiorino' // REMOVIDO: 'perm_estoque_logistico'
 ], $cols));
 
 // label bonito

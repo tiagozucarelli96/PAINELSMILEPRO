@@ -58,7 +58,7 @@ if ($action === 'save') {
             'perm_banco_smile' => isset($_POST['perm_banco_smile']) ? 1 : 0,
             'perm_banco_smile_admin' => isset($_POST['perm_banco_smile_admin']) ? 1 : 0,
             'perm_notas_fiscais' => isset($_POST['perm_notas_fiscais']) ? 1 : 0,
-            'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']) ? 1 : 0,
+            // 'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']) ? 1 : 0, // REMOVIDO: Módulo desativado
             'perm_dados_contrato' => isset($_POST['perm_dados_contrato']) ? 1 : 0,
             'perm_uso_fiorino' => isset($_POST['perm_uso_fiorino']) ? 1 : 0
         ];
@@ -692,8 +692,7 @@ try {
                                 <label for="perm_notas_fiscais">Notas Fiscais</label>
                             </div>
                             <div class="permission-checkbox">
-                                <input type="checkbox" id="perm_estoque_logistico" name="perm_estoque_logistico" value="1">
-                                <label for="perm_estoque_logistico">Estoque Logístico</label>
+                                <!-- REMOVIDO: perm_estoque_logistico (módulo desativado) -->
                             </div>
                             <div class="permission-checkbox">
                                 <input type="checkbox" id="perm_dados_contrato" name="perm_dados_contrato" value="1">

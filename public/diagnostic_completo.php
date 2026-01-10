@@ -10,7 +10,7 @@ $_SESSION['perfil'] = 'ADM';
 $_SESSION['perm_usuarios'] = 1;
 $_SESSION['perm_comercial_ver'] = 1;
 $_SESSION['perm_pagamentos'] = 1;
-$_SESSION['perm_estoque_logistico'] = 1;
+// $_SESSION['perm_estoque_logistico'] = 1; // REMOVIDO: Módulo desativado
 
 echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Diagnóstico Completo</title>";
 echo "<style>body{font-family:Arial,sans-serif;margin:20px;background:#f5f5f5;}";

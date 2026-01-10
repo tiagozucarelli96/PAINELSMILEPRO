@@ -38,7 +38,7 @@ $colAtivo  = in_array('ativo',$cols,true) ? 'ativo' : (in_array('status',$cols,t
 $permKeys = array_values(array_intersect([
   'perm_usuarios','perm_pagamentos','perm_tarefas','perm_demandas',
   'perm_portao','perm_banco_smile','perm_banco_smile_admin',
-  'perm_dados_contrato','perm_uso_fiorino','perm_estoque_logistico'
+  'perm_dados_contrato','perm_uso_fiorino' // REMOVIDO: 'perm_estoque_logistico'
 ], $cols));
 
 // Labels personalizados
@@ -52,7 +52,7 @@ $permLabels = [
   'perm_banco_smile_admin' => 'Banco Smile (Admin)',
   'perm_dados_contrato' => 'Dados Contrato',
   'perm_uso_fiorino' => 'Uso do Fiorino',
-  'perm_estoque_logistico' => 'Estoque Logístico',
+  // 'perm_estoque_logistico' => 'Estoque Logístico', // REMOVIDO: Módulo desativado
 ];
 
 // --- Carrega usuário

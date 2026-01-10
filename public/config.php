@@ -17,7 +17,7 @@ function temPerm(string $k){ return !empty($_SESSION[$k]) && (int)$_SESSION[$k] 
  *  - perm_banco_smile
  *  - perm_banco_smile_admin
  *  - perm_notas_fiscais
- *  - perm_estoque_logistico
+ *  - perm_estoque_logistico (REMOVIDO: Módulo desativado)
  *  - perm_dados_contrato
  *  - perm_uso_fiorino
  */
@@ -27,7 +27,7 @@ function refreshPermissoes(PDO $pdo) {
     $sql = "SELECT id, nome, status,
                    perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios, perm_portao,
                    perm_banco_smile, perm_banco_smile_admin, perm_notas_fiscais,
-                   perm_estoque_logistico, perm_dados_contrato, perm_uso_fiorino
+                   perm_dados_contrato, perm_uso_fiorino // REMOVIDO: perm_estoque_logistico
             FROM usuarios
             WHERE id = :id
             LIMIT 1";
@@ -41,7 +41,7 @@ function refreshPermissoes(PDO $pdo) {
         $keys = [
             'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios','perm_portao',
             'perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
-            'perm_estoque_logistico','perm_dados_contrato','perm_uso_fiorino'
+            'perm_dados_contrato','perm_uso_fiorino' // REMOVIDO: 'perm_estoque_logistico'
         ];
         foreach ($keys as $k) {
             $_SESSION[$k] = (int)($u[$k] ?? 0);

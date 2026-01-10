@@ -969,7 +969,7 @@ ob_start();
                     // Módulos principais da sidebar (conforme solicitado)
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
-                    'perm_logistico' => '📦 Logístico',
+                    // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
                     'perm_financeiro' => '💰 Financeiro',
@@ -982,7 +982,7 @@ ob_start();
                 $sidebar_perms = [
                     'perm_agenda',
                     'perm_demandas',
-                    'perm_logistico',
+                    // 'perm_logistico', // REMOVIDO: Módulo desativado
                     'perm_configuracoes',
                     'perm_cadastros',
                     'perm_financeiro',

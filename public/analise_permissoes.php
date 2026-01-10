@@ -55,7 +55,7 @@ $permissoes_sistema = [
     'perm_banco_smile' => 'Banco Smile',
     'perm_banco_smile_admin' => 'Banco Smile Admin',
     'perm_notas_fiscais' => 'Notas Fiscais',
-    'perm_estoque_logistico' => 'Estoque Logístico',
+    // 'perm_estoque_logistico' => 'Estoque Logístico', // REMOVIDO: Módulo desativado
     'perm_dados_contrato' => 'Dados do Contrato',
     'perm_uso_fiorino' => 'Uso Fiorino'
 ];

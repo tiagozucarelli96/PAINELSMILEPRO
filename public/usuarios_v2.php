@@ -20,7 +20,7 @@ try {
                pix_tipo, pix_chave, status_empregado, perfil, ativo,
                perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios, perm_portao,
                perm_banco_smile, perm_banco_smile_admin, perm_notas_fiscais,
-               perm_estoque_logistico, perm_dados_contrato, perm_uso_fiorino,
+               perm_dados_contrato, perm_uso_fiorino, // REMOVIDO: perm_estoque_logistico
                criado_em, atualizado_em
         FROM usuarios 
         ORDER BY nome
@@ -444,7 +444,7 @@ try {
                         'perm_banco_smile' => 'Banco Smile',
                         'perm_banco_smile_admin' => 'Banco Smile Admin',
                         'perm_notas_fiscais' => 'Notas Fiscais',
-                        'perm_estoque_logistico' => 'Estoque Logístico',
+                        // 'perm_estoque_logistico' => 'Estoque Logístico', // REMOVIDO: Módulo desativado
                         'perm_dados_contrato' => 'Dados do Contrato',
                         'perm_uso_fiorino' => 'Uso Fiorino'
                     ];
@@ -672,7 +672,7 @@ try {
                     const permissoes = [
                         'perm_tarefas', 'perm_lista', 'perm_demandas', 'perm_pagamentos', 
                         'perm_usuarios', 'perm_portao', 'perm_banco_smile', 'perm_banco_smile_admin',
-                        'perm_notas_fiscais', 'perm_estoque_logistico', 'perm_dados_contrato', 'perm_uso_fiorino'
+                        'perm_notas_fiscais', 'perm_dados_contrato', 'perm_uso_fiorino' // REMOVIDO: perm_estoque_logistico
                     ];
                     
                     permissoes.forEach(perm => {

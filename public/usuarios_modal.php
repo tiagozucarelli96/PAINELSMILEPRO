@@ -48,7 +48,7 @@ try {
                 'perm_banco_smile' => isset($_POST['perm_banco_smile']),
                 'perm_banco_smile_admin' => isset($_POST['perm_banco_smile_admin']),
                 'perm_notas_fiscais' => isset($_POST['perm_notas_fiscais']),
-                'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']),
+                // 'perm_estoque_logistico' => isset($_POST['perm_estoque_logistico']), // REMOVIDO: Módulo desativado
                 'perm_dados_contrato' => isset($_POST['perm_dados_contrato']),
                 'perm_uso_fiorino' => isset($_POST['perm_uso_fiorino'])
             ];

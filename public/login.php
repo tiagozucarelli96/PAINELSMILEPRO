@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         require_once __DIR__ . '/permissoes_boot.php';
                         $is_admin = !empty($_SESSION['perm_administrativo']);
                         $is_internal = $is_admin || !empty($_SESSION['perm_agenda']) || !empty($_SESSION['perm_demandas']) || 
-                                       !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_financeiro']);
+                                       !empty($_SESSION['perm_financeiro']); // REMOVIDO: perm_logistico
                         
                         if ($is_internal) {
                             // Verificar consentimento de push

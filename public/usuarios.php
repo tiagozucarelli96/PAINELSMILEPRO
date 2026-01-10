@@ -1116,7 +1116,7 @@ ob_start();
                                 // Módulos da sidebar
                                 'perm_agenda' => 'Agenda',
                                 'perm_comercial' => 'Comercial',
-                                'perm_logistico' => 'Logístico',
+                                // 'perm_logistico' => 'Logístico', // REMOVIDO: Módulo desativado
                                 'perm_configuracoes' => 'Configurações',
                                 'perm_cadastros' => 'Cadastros',
                                 'perm_financeiro' => 'Financeiro',
@@ -1130,7 +1130,7 @@ ob_start();
                                 'perm_demandas' => 'Demandas',
                                 'perm_portao' => 'Portão',
                                 'perm_notas_fiscais' => 'Notas Fiscais',
-                                'perm_estoque_logistico' => 'Estoque',
+                                // 'perm_estoque_logistico' => 'Estoque', // REMOVIDO: Módulo desativado
                                 'perm_dados_contrato' => 'Contratos',
                                 'perm_uso_fiorino' => 'Fiorino'
                             ];
@@ -1262,7 +1262,7 @@ ob_start();
                         $permissions_sidebar_all = [
                             'perm_agenda' => '📅 Agenda',
                             'perm_comercial' => '📋 Comercial',
-                            'perm_logistico' => '📦 Logístico',
+                            // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
                             'perm_configuracoes' => '⚙️ Configurações',
                             'perm_cadastros' => '📝 Cadastros',
                             'perm_financeiro' => '💰 Financeiro',
@@ -1316,7 +1316,7 @@ ob_start();
                             'perm_demandas' => '📋 Demandas',
                             'perm_portao' => '🚪 Portão',
                             'perm_notas_fiscais' => '📄 Notas Fiscais',
-                            'perm_estoque_logistico' => '📦 Estoque',
+                            // 'perm_estoque_logistico' => '📦 Estoque', // REMOVIDO: Módulo desativado
                             'perm_dados_contrato' => '📋 Dados Contrato',
                             'perm_uso_fiorino' => '🚐 Uso Fiorino'
                         ];
