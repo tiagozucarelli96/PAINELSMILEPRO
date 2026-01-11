@@ -55,6 +55,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erro = $e->getMessage();
         }
     }
+    
+    if ($acao === 'criar_conversa') {
+        try {
+            $assunto = trim($_POST['assunto'] ?? '');
+            if (empty($assunto)) {
+                throw new Exception('Assunto é obrigatório');
+            }
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO contabilidade_conversas (assunto, criado_por)
+                VALUES (:assunto, 'admin')
+                RETURNING id
+            ");
+            $stmt->execute([':assunto' => $assunto]);
+            $conversa_id = $stmt->fetchColumn();
+            
+            header('Location: contabilidade_conversas.php?id=' . $conversa_id);
+            exit;
+        } catch (Exception $e) {
+            $erro = $e->getMessage();
+        }
+    }
 }
 
 // Filtros
@@ -168,12 +190,49 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 }
 .btn-view { background: #1e40af; color: white; }
 .btn-delete { background: #dc2626; color: white; }
+.btn-primary {
+    background: #1e40af;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 1rem;
+}
+.btn-secondary {
+    background: #6b7280;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    font-size: 1rem;
+}
+.form-input {
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+    width: 100%;
+}
+.form-input:focus {
+    outline: none;
+    border-color: #1e40af;
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+}
 </style>
 
 <div class="container">
     <div class="header">
         <h1>💬 Conversas - Gestão Administrativa</h1>
-        <a href="index.php?page=contabilidade" class="btn-back">← Voltar</a>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button onclick="abrirModalNovaConversa()" style="background: white; color: #1e40af; padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 600; cursor: pointer;">
+                ➕ Nova Conversa
+            </button>
+            <a href="index.php?page=contabilidade" class="btn-back">← Voltar</a>
+        </div>
     </div>
     
     <?php if ($mensagem): ?>
@@ -256,7 +315,46 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <?php endif; ?>
         </tbody>
     </table>
+    
+    <!-- Modal Nova Conversa -->
+    <div id="modal-nova-conversa" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;" onclick="if(event.target === this) this.style.display='none'">
+        <div style="background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);" onclick="event.stopPropagation()">
+            <h3 style="margin-bottom: 1.5rem; color: #1e40af; font-size: 1.5rem;">Nova Conversa</h3>
+            <form method="POST">
+                <input type="hidden" name="acao" value="criar_conversa">
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label class="form-label">Assunto *</label>
+                    <input type="text" name="assunto" class="form-input" required autofocus placeholder="Digite o assunto da conversa">
+                </div>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+                    <button type="submit" class="btn-primary">Criar</button>
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('modal-nova-conversa').style.display='none'">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
+
+<style>
+#modal-nova-conversa {
+    display: none;
+}
+#modal-nova-conversa[style*="display: block"], 
+#modal-nova-conversa[style*="display:flex"] {
+    display: flex !important;
+}
+</style>
+
+<script>
+function abrirModalNovaConversa() {
+    const modal = document.getElementById('modal-nova-conversa');
+    modal.style.display = 'flex';
+    const input = modal.querySelector('input[name="assunto"]');
+    if (input) {
+        setTimeout(() => input.focus(), 100);
+    }
+}
+</script>
 
 <?php
 $conteudo = ob_get_clean();

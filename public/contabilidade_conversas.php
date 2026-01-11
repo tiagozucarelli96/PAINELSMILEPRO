@@ -79,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $anexo_url = null;
             $anexo_nome = null;
+            $chave_storage = null;
             
             // Processar anexo se houver
             if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] === UPLOAD_ERR_OK) {
@@ -548,9 +549,9 @@ if ($conversa_id > 0) {
                         <?php if ($msg['mensagem']): ?>
                         <div class="mensagem-texto"><?= nl2br(htmlspecialchars($msg['mensagem'])) ?></div>
                         <?php endif; ?>
-                        <?php if ($msg['anexo_url']): ?>
+                        <?php if (!empty($msg['anexo_url']) || !empty($msg['chave_storage'])): ?>
                         <div class="mensagem-anexo">
-                            <a href="<?= htmlspecialchars($msg['anexo_url']) ?>" target="_blank">
+                            <a href="contabilidade_download.php?tipo=conversa_anexo&id=<?= $msg['id'] ?>" target="_blank">
                                 📎 <?= htmlspecialchars($msg['anexo_nome']) ?>
                             </a>
                         </div>
