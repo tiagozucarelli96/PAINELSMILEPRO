@@ -186,15 +186,15 @@ body.login-bg{
   display:flex;
   align-items:center;
   justify-content:center;
-  margin-bottom:18px;
+  margin-bottom:22px;
 }
 .login-logo{
-  width:62px;height:62px;border-radius:14px;
+  width:120px;height:120px;border-radius:0;
   display:block;
   object-fit:contain;
-  background:rgba(255,255,255,0.08);
-  padding:8px;
-  box-shadow:0 10px 20px rgba(0,0,0,0.35);
+  background:transparent;
+  padding:0;
+  box-shadow:none;
 }
 h2{text-align:center;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
 .login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
