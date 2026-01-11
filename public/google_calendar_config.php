@@ -297,7 +297,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <?php if (empty($calendars)): ?>
         <p style="color: #64748b;">Carregando calendários...</p>
         <?php else: ?>
-        <form method="POST">
+        <form method="POST" onsubmit="return validateCalendarSelection()">
             <input type="hidden" name="acao" value="salvar_calendario">
             
             <div class="form-group">
@@ -432,6 +432,26 @@ function updateCalendarSelection() {
     document.querySelectorAll('input[name="calendar_id"]:checked').forEach(radio => {
         radio.closest('.calendar-item').classList.add('selected');
     });
+}
+
+function validateCalendarSelection() {
+    const checkedRadio = document.querySelector('input[name="calendar_id"]:checked');
+    if (!checkedRadio) {
+        alert('Por favor, selecione um calendário');
+        return false;
+    }
+    
+    const calendarId = checkedRadio.value;
+    const calendarItem = checkedRadio.closest('.calendar-item');
+    const calendarName = calendarItem.querySelector('strong').textContent.trim();
+    const nameField = document.getElementById('selected_calendar_name');
+    
+    if (nameField) {
+        nameField.value = calendarName;
+        console.log('Enviando formulário - Calendário ID:', calendarId, 'Nome:', calendarName);
+    }
+    
+    return true;
 }
 
 // Inicializar seleção e campo hidden
