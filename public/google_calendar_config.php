@@ -65,6 +65,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
+    if ($acao === 'ativar_webhook') {
+        try {
+            $config = $helper->getConfig();
+            if (!$config) {
+                throw new Exception('Configure um calendário primeiro');
+            }
+            
+            $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
+            
+            error_log("[GOOGLE_CALENDAR_CONFIG] Ativando webhook para: {$config['google_calendar_id']}");
+            
+            $resultado = $helper->registerWebhook($config['google_calendar_id'], $webhook_url);
+            
+            $mensagem = 'Sincronização automática ativada com sucesso! O sistema será notificado quando houver mudanças no calendário.';
+        } catch (Exception $e) {
+            $erro = 'Erro ao ativar webhook: ' . $e->getMessage();
+            error_log("[GOOGLE_CALENDAR_CONFIG] Erro ao ativar webhook: " . $e->getMessage());
+        }
+    }
+    
     if ($acao === 'sincronizar') {
         try {
             $config = $helper->getConfig();
@@ -363,6 +383,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <input type="hidden" name="acao" value="sincronizar">
             <button type="submit" class="btn btn-primary">🔄 Sincronizar Agora</button>
         </form>
+        
+        <?php if (!empty($config['webhook_resource_id'])): ?>
+        <span style="margin-left: 10px; color: #10b981; font-weight: 500;">✅ Webhook Ativo</span>
+        <?php else: ?>
+        <form method="POST" style="display: inline; margin-left: 10px;">
+            <input type="hidden" name="acao" value="ativar_webhook">
+            <button type="submit" class="btn btn-secondary">🔔 Ativar Sincronização Automática</button>
+        </form>
+        <?php endif; ?>
         
         <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">
             🔍 Debug

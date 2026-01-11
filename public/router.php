@@ -19,6 +19,15 @@ if ($path === '/google/callback' || strpos($path, '/google/callback') !== false)
     }
 }
 
+// Se for webhook do Google Calendar, servir DIRETAMENTE
+if ($path === '/google/webhook' || strpos($path, '/google/webhook') !== false) {
+    $webhook_file = realpath(__DIR__ . '/google_calendar_webhook.php');
+    if ($webhook_file && is_file($webhook_file)) {
+        require $webhook_file;
+        exit;
+    }
+}
+
 // Se for webhook Asaas, servir DIRETAMENTE sem passar por nada
 if (strpos($path, 'asaas_webhook.php') !== false || strpos($request_uri, 'asaas_webhook.php') !== false) {
     $webhook_file = realpath(__DIR__ . '/asaas_webhook.php');
@@ -43,7 +52,7 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
                      'contabilidade_login.php', 'contabilidade_painel.php', 'contabilidade_guias.php', 'contabilidade_holerites.php',
                      'contabilidade_honorarios.php', 'contabilidade_conversas.php', 'contabilidade_colaboradores.php',
                      'push_get_public_key.php', 'push_check_consent.php', 'push_register_subscription.php', 'push_unregister_subscription.php',
-                     'push_debug_env.php', 'google_callback.php'];
+                     'push_debug_env.php', 'google_callback.php', 'google_calendar_webhook.php'];
     
     // Verificação ESPECIAL para webhooks - SEM conexão automática, eles gerenciam sua própria conexão
     if (strpos($path, 'asaas_webhook.php') !== false || basename($file) === 'asaas_webhook.php') {

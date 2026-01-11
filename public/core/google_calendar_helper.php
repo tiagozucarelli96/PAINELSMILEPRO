@@ -483,4 +483,58 @@ class GoogleCalendarHelper {
         $stmt = $this->pdo->query("SELECT * FROM google_calendar_config WHERE ativo = TRUE LIMIT 1");
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
+    
+    /**
+     * Registrar webhook para notificações de mudanças
+     */
+    public function registerWebhook($calendar_id, $webhook_url) {
+        $access_token = $this->getValidAccessToken();
+        
+        // Primeiro, criar um canal (watch) no Google Calendar
+        $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/watch";
+        
+        $data = [
+            'id' => uniqid('channel_', true),
+            'type' => 'web_hook',
+            'address' => $webhook_url,
+            'token' => bin2hex(random_bytes(16)) // Token aleatório para segurança
+        ];
+        
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $access_token,
+            'Content-Type: application/json'
+        ]);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code !== 200) {
+            $error_data = json_decode($response, true);
+            $error_message = isset($error_data['error']['message']) 
+                ? $error_data['error']['message'] 
+                : "Erro desconhecido";
+            throw new Exception("Erro ao registrar webhook (HTTP $http_code): $error_message");
+        }
+        
+        $result = json_decode($response, true);
+        
+        // Salvar informações do webhook no banco
+        $stmt = $this->pdo->prepare("
+            UPDATE google_calendar_config 
+            SET webhook_resource_id = :resource_id, webhook_expiration = :expiration, atualizado_em = NOW()
+            WHERE google_calendar_id = :calendar_id
+        ");
+        $stmt->execute([
+            ':resource_id' => $result['resourceId'] ?? null,
+            ':expiration' => isset($result['expiration']) ? date('Y-m-d H:i:s', strtotime($result['expiration'])) : null,
+            ':calendar_id' => $calendar_id
+        ]);
+        
+        return $result;
+    }
 }

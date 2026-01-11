@@ -49,7 +49,7 @@ try {
                 $stmt = $pdo->prepare("
                     SELECT 
                         id,
-                        'google_' || id as id_formatado,
+                        'google_' || id::text as id_formatado,
                         titulo,
                         descricao,
                         inicio,
@@ -57,10 +57,12 @@ try {
                         localizacao,
                         organizador_email,
                         html_link,
-                        eh_visita_agendada,
-                        contrato_fechado
+                        COALESCE(eh_visita_agendada, false) as eh_visita_agendada,
+                        COALESCE(contrato_fechado, false) as contrato_fechado
                     FROM google_calendar_eventos
-                    WHERE inicio >= :start AND inicio <= :end
+                    WHERE (inicio >= :start AND inicio <= :end)
+                       OR (fim >= :start AND fim <= :end)
+                       OR (inicio <= :start AND fim >= :end)
                     AND status = 'confirmed'
                     ORDER BY inicio ASC
                 ");
