@@ -48,14 +48,17 @@ try {
                 $pdo = $GLOBALS['pdo'];
                 $stmt = $pdo->prepare("
                     SELECT 
-                        'google_' || id as id,
+                        id,
+                        'google_' || id as id_formatado,
                         titulo,
                         descricao,
                         inicio,
                         fim,
                         localizacao,
                         organizador_email,
-                        html_link
+                        html_link,
+                        eh_visita_agendada,
+                        contrato_fechado
                     FROM google_calendar_eventos
                     WHERE inicio >= :start AND inicio <= :end
                     AND status = 'confirmed'
@@ -70,7 +73,8 @@ try {
                 // Adicionar eventos do Google aos eventos da agenda
                 foreach ($google_eventos as $google_evento) {
                     $eventos[] = [
-                        'id' => $google_evento['id'],
+                        'id' => $google_evento['id_formatado'],
+                        'google_id' => $google_evento['id'], // ID real para updates
                         'tipo' => 'google',
                         'titulo' => $google_evento['titulo'],
                         'descricao' => $google_evento['descricao'],
@@ -78,7 +82,9 @@ try {
                         'fim' => $google_evento['fim'],
                         'status' => 'agendado',
                         'compareceu' => false,
-                        'fechou_contrato' => false,
+                        'fechou_contrato' => (bool)$google_evento['contrato_fechado'],
+                        'eh_visita_agendada' => (bool)$google_evento['eh_visita_agendada'],
+                        'contrato_fechado' => (bool)$google_evento['contrato_fechado'],
                         'cor_evento' => '#10b981', // Verde para eventos do Google
                         'responsavel_nome' => $google_evento['organizador_email'] ?? 'Google Calendar',
                         'espaco_nome' => $google_evento['localizacao'] ?? null,
@@ -128,6 +134,17 @@ try {
             $extended_props['google_link'] = $evento['google_link'];
         }
         
+        // Adicionar campos específicos do Google Calendar
+        if (isset($evento['google_id'])) {
+            $extended_props['google_id'] = $evento['google_id'];
+        }
+        if (isset($evento['eh_visita_agendada'])) {
+            $extended_props['eh_visita_agendada'] = $evento['eh_visita_agendada'];
+        }
+        if (isset($evento['contrato_fechado'])) {
+            $extended_props['contrato_fechado'] = $evento['contrato_fechado'];
+        }
+        
         $eventos_formatados[] = [
             'id' => $evento['id'],
             'title' => $evento['titulo'],
@@ -135,7 +152,7 @@ try {
             'end' => $evento['fim'],
             'color' => $cor,
             'extendedProps' => $extended_props,
-            // Eventos do Google são read-only
+            // Eventos do Google são read-only (não editáveis, mas podem ter checkboxes)
             'editable' => !isset($evento['tipo']) || $evento['tipo'] !== 'google'
         ];
     }

@@ -92,23 +92,39 @@ if ($current_page === 'dashboard') {
         $stmt->execute();
         $stats['eventos_criados'] = $stmt->fetchColumn() ?: 0;
         
-        // 3. Visitas Realizadas (Agenda)
+        // 3. Visitas Realizadas (Agenda + Google Calendar)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
-            FROM agenda_eventos 
-            WHERE tipo = 'visita'
-            AND status = 'realizado'
-            AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+            FROM (
+                SELECT inicio 
+                FROM agenda_eventos 
+                WHERE tipo = 'visita'
+                AND status = 'realizado'
+                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+                UNION ALL
+                SELECT inicio 
+                FROM google_calendar_eventos 
+                WHERE eh_visita_agendada = true
+                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+            ) as todas_visitas
         ");
         $stmt->execute();
         $stats['visitas_realizadas'] = $stmt->fetchColumn() ?: 0;
         
-        // 4. Fechamentos Realizados (Agenda)
+        // 4. Fechamentos Realizados (Agenda + Google Calendar)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
-            FROM agenda_eventos 
-            WHERE fechou_contrato = true
-            AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+            FROM (
+                SELECT inicio 
+                FROM agenda_eventos 
+                WHERE fechou_contrato = true
+                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+                UNION ALL
+                SELECT inicio 
+                FROM google_calendar_eventos 
+                WHERE contrato_fechado = true
+                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+            ) as todos_contratos
         ");
         $stmt->execute();
         $stats['fechamentos_realizados'] = $stmt->fetchColumn() ?: 0;

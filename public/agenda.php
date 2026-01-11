@@ -666,6 +666,25 @@ includeSidebar('Agenda');
                     </div>
                 </div>
                 
+                <!-- Seção específica para eventos do Google Calendar -->
+                <div id="googleEventGroup" style="display: none; padding: 1rem; background: #eff6ff; border-radius: 8px; margin-top: 1rem; border-left: 4px solid #10b981;">
+                    <p style="margin: 0 0 1rem 0; color: #1e40af; font-weight: 600;">
+                        📅 Evento do Google Calendar (somente leitura)
+                    </p>
+                    <div class="form-row" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+                            <input type="checkbox" id="google_eh_visita" style="margin: 0; width: 16px; height: 16px;" onchange="updateGoogleEvent(this)"> É visita agendada?
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+                            <input type="checkbox" id="google_contrato_fechado" style="margin: 0; width: 16px; height: 16px;" onchange="updateGoogleEvent(this)"> Contrato fechado?
+                        </label>
+                    </div>
+                    <input type="hidden" id="google_event_id" value="">
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: #64748b;">
+                        Marque os checkboxes para que este evento seja contabilizado nas visitas e contratos fechados.
+                    </p>
+                </div>
+                
                 <div id="conflictWarning" class="conflict-warning" style="display: none;">
                     <h4>⚠️ Conflito Detectado</h4>
                     <div class="conflict-details" id="conflictDetails"></div>
@@ -862,8 +881,51 @@ includeSidebar('Agenda');
             
             if (event) {
                 // Editar evento existente
-                title.textContent = 'Editar Evento';
                 const eventTipo = event.extendedProps.tipo;
+                const isGoogleEvent = eventTipo === 'google';
+                
+                // Configurar título e campos baseado no tipo
+                if (isGoogleEvent) {
+                    title.textContent = 'Evento do Google Calendar';
+                    // Ocultar campos de edição para eventos do Google
+                    form.querySelectorAll('.form-group:not(#googleEventGroup)').forEach(el => {
+                        if (el.id !== 'googleEventGroup') {
+                            el.style.display = 'none';
+                        }
+                    });
+                    document.getElementById('googleEventGroup').style.display = 'block';
+                    document.getElementById('google_event_id').value = event.extendedProps.google_id || '';
+                    
+                    // Carregar checkboxes do Google
+                    const ehVisita = event.extendedProps.eh_visita_agendada || false;
+                    const contratoFechado = event.extendedProps.contrato_fechado || false;
+                    document.getElementById('google_eh_visita').checked = ehVisita;
+                    document.getElementById('google_contrato_fechado').checked = contratoFechado;
+                    
+                    // Ocultar botões de ação que não fazem sentido para Google
+                    deleteBtn.style.display = 'none';
+                    forceBtn.style.display = 'none';
+                    document.querySelector('button[type="submit"]').style.display = 'none';
+                    
+                    // Mostrar link para Google Calendar
+                    if (event.extendedProps.google_link) {
+                        const linkDiv = document.createElement('div');
+                        linkDiv.className = 'form-group';
+                        linkDiv.style.marginTop = '1rem';
+                        linkDiv.innerHTML = `<a href="${event.extendedProps.google_link}" target="_blank" class="btn btn-outline" style="text-decoration: none;">🔗 Abrir no Google Calendar</a>`;
+                        if (!document.getElementById('google_link_div')) {
+                            linkDiv.id = 'google_link_div';
+                            document.getElementById('googleEventGroup').appendChild(linkDiv);
+                        }
+                    }
+                } else {
+                    title.textContent = 'Editar Evento';
+                    // Mostrar todos os campos para eventos normais
+                    form.querySelectorAll('.form-group').forEach(el => {
+                        el.style.display = '';
+                    });
+                    document.getElementById('googleEventGroup').style.display = 'none';
+                }
                 
                 document.getElementById('eventId').value = event.id;
                 document.getElementById('eventTipo').value = eventTipo;
@@ -1198,6 +1260,57 @@ includeSidebar('Agenda');
         function forceConflict() {
             document.getElementById('forceBtn').style.display = 'none';
             document.getElementById('conflictWarning').style.display = 'none';
+        }
+        
+        // Atualizar evento do Google Calendar
+        function updateGoogleEvent(checkboxElement = null) {
+            const eventId = document.getElementById('google_event_id').value;
+            if (!eventId) {
+                console.error('ID do evento Google não encontrado');
+                return;
+            }
+            
+            const ehVisita = document.getElementById('google_eh_visita').checked;
+            const contratoFechado = document.getElementById('google_contrato_fechado').checked;
+            
+            const formData = new FormData();
+            formData.append('event_id', eventId);
+            formData.append('eh_visita_agendada', ehVisita ? '1' : '0');
+            formData.append('contrato_fechado', contratoFechado ? '1' : '0');
+            
+            fetch('agenda_google_event_update.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Feedback visual
+                    if (checkboxElement) {
+                        const originalBg = checkboxElement.style.backgroundColor;
+                        checkboxElement.style.backgroundColor = '#10b981';
+                        setTimeout(() => {
+                            checkboxElement.style.backgroundColor = originalBg;
+                        }, 500);
+                    }
+                    
+                    // Recarregar eventos para atualizar contadores
+                    calendar.refetchEvents();
+                } else {
+                    customAlert('Erro ao atualizar evento: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+                    // Reverter checkbox
+                    if (checkboxElement) {
+                        checkboxElement.checked = !checkboxElement.checked;
+                    }
+                }
+            })
+            .catch(error => {
+                customAlert('Erro de conexão: ' + error.message, '❌ Erro');
+                // Reverter checkbox
+                if (checkboxElement) {
+                    checkboxElement.checked = !checkboxElement.checked;
+                }
+            });
         }
         
         // Excluir evento

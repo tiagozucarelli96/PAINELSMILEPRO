@@ -27,10 +27,10 @@ $responsavel_id = $_GET['responsavel_id'] ?? null;
 // Obter relatório
 $relatorio = $agenda->obterRelatorioConversao($data_inicio, $data_fim, $espaco_id, $responsavel_id);
 
-// Obter detalhes das visitas
-$stmt = $GLOBALS['pdo']->prepare("
+// Obter detalhes das visitas (Agenda + Google Calendar)
+$sql_visitas = "
     SELECT 
-        ae.id,
+        'agenda_' || ae.id as id,
         ae.titulo,
         ae.inicio,
         ae.fim,
@@ -38,7 +38,8 @@ $stmt = $GLOBALS['pdo']->prepare("
         ae.fechou_contrato,
         ae.fechou_ref,
         u.nome as responsavel_nome,
-        esp.nome as espaco_nome
+        esp.nome as espaco_nome,
+        'agenda' as origem
     FROM agenda_eventos ae
     JOIN usuarios u ON ae.responsavel_usuario_id = u.id
     LEFT JOIN agenda_espacos esp ON ae.espaco_id = esp.id
@@ -46,13 +47,34 @@ $stmt = $GLOBALS['pdo']->prepare("
     AND DATE(ae.inicio) BETWEEN ? AND ?
     " . ($espaco_id ? "AND ae.espaco_id = ?" : "") . "
     " . ($responsavel_id ? "AND ae.responsavel_usuario_id = ?" : "") . "
-    ORDER BY ae.inicio DESC
-");
+    
+    UNION ALL
+    
+    SELECT 
+        'google_' || gce.id as id,
+        gce.titulo,
+        gce.inicio,
+        gce.fim,
+        false as compareceu,
+        gce.contrato_fechado as fechou_contrato,
+        null as fechou_ref,
+        COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
+        gce.localizacao as espaco_nome,
+        'google' as origem
+    FROM google_calendar_eventos gce
+    WHERE gce.eh_visita_agendada = true
+    AND DATE(gce.inicio) BETWEEN ? AND ?
+    ORDER BY inicio DESC
+";
 
 $params = [$data_inicio, $data_fim];
 if ($espaco_id) $params[] = $espaco_id;
 if ($responsavel_id) $params[] = $responsavel_id;
+// Parâmetros duplicados para a parte do Google Calendar
+$params[] = $data_inicio;
+$params[] = $data_fim;
 
+$stmt = $GLOBALS['pdo']->prepare($sql_visitas);
 $stmt->execute($params);
 $visitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
