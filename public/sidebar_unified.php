@@ -1461,6 +1461,13 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_administrativo']) && getenv('ENABLE_LOGISTICA_PLACEHOLDER') === '1'): ?>
+                <a href="index.php?page=logistica" class="nav-item <?= isActiveUnified('logistica') ?>">
+                    <span class="nav-item-icon">📦</span>
+                    Logística
+                </a>
+                <?php endif; ?>
+                
                 <?php /* REMOVIDO: Módulo Logístico (Estoque + Lista de Compras) */ ?>
                 
                 <?php if (!empty($_SESSION['perm_configuracoes'])): ?>

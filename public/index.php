@@ -170,6 +170,11 @@ $routes = [
   // Dashboard e blocos
   'dashboard' => 'sidebar_unified.php',
   'comercial' => 'comercial_landing.php',
+  // Logística (placeholders)
+  'logistica' => 'logistica.php',
+  'logistica_operacional' => 'logistica_operacional.php',
+  'logistica_divergencias' => 'logistica_divergencias.php',
+  'logistica_financeiro' => 'logistica_financeiro.php',
   // 'logistico' => 'lc_index.php', // REMOVIDO: Módulo desativado
   'configuracoes' => 'configuracoes.php',
   'cadastros' => 'cadastros.php',

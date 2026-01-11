@@ -16,6 +16,11 @@ return [
     'comercial' => 'perm_comercial',
     // 'logistico' => 'perm_logistico', // REMOVIDO: Módulo desativado
     // 'lc_index' => 'perm_logistico', // REMOVIDO: Módulo desativado
+    // Logística (placeholders)
+    'logistica' => 'perm_administrativo',
+    'logistica_operacional' => 'perm_administrativo',
+    'logistica_divergencias' => 'perm_administrativo',
+    'logistica_financeiro' => 'perm_administrativo',
     'configuracoes' => 'perm_configuracoes',
     'cadastros' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
