@@ -17,6 +17,16 @@ if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'
 $mensagem = '';
 $erro = '';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 // Processar cadastro de holerite
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_holerite') {
     try {
@@ -51,14 +61,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             // Garantir que e_ajuste seja boolean explícito
             $e_ajuste_bool = (bool)$e_ajuste;
             
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_holerites 
-                (arquivo_url, arquivo_nome, chave_storage, mes_competencia, e_ajuste, observacao)
-                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :competencia, :e_ajuste, :obs)
-            ");
+            $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_holerites', 'chave_storage');
+            if ($has_chave_storage) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_holerites 
+                    (arquivo_url, arquivo_nome, chave_storage, mes_competencia, e_ajuste, observacao)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :competencia, :e_ajuste, :obs)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_holerites 
+                    (arquivo_url, arquivo_nome, mes_competencia, e_ajuste, observacao)
+                    VALUES (:arquivo_url, :arquivo_nome, :competencia, :e_ajuste, :obs)
+                ");
+            }
             $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
             $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
-            $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
+            if ($has_chave_storage) {
+                $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
+            }
             $stmt->bindValue(':competencia', $mes_competencia, PDO::PARAM_STR);
             $stmt->bindValue(':e_ajuste', $e_ajuste_bool, PDO::PARAM_BOOL);
             $stmt->bindValue(':obs', !empty($observacao) ? $observacao : null, PDO::PARAM_STR);

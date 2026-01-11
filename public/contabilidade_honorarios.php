@@ -17,6 +17,16 @@ if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'
 $mensagem = '';
 $erro = '';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 // Processar cadastro de honorário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_honorario') {
     try {
@@ -46,18 +56,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir honorário
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_honorarios 
-                (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao)
-                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc)
-            ");
-            $stmt->execute([
+            $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_honorarios', 'chave_storage');
+            if ($has_chave_storage) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_honorarios 
+                    (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_honorarios 
+                    (arquivo_url, arquivo_nome, data_vencimento, descricao)
+                    VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc)
+                ");
+            }
+            $params = [
                 ':arquivo_url' => $arquivo_url,
                 ':arquivo_nome' => $arquivo_nome,
-                ':chave_storage' => $chave_storage,
                 ':vencimento' => $data_vencimento,
                 ':desc' => $descricao
-            ]);
+            ];
+            if ($has_chave_storage) {
+                $params[':chave_storage'] = $chave_storage;
+            }
+            $stmt->execute($params);
             
             $mensagem = 'Honorário cadastrado com sucesso!';
             

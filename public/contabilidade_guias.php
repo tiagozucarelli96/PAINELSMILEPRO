@@ -18,6 +18,16 @@ if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'
 $mensagem = '';
 $erro = '';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 // Processar cadastro de guia
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_guia') {
     try {
@@ -40,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         // Processar upload do arquivo
         $arquivo_url = null;
         $arquivo_nome = null;
+        $chave_storage = null;
         
         if (isset($_FILES['arquivo']) && $_FILES['arquivo']['error'] === UPLOAD_ERR_OK) {
             try {
@@ -114,14 +125,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             // Garantir que e_parcela seja boolean explícito
             $e_parcela_bool = (bool)$e_parcela;
             
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_guias 
-                (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
-                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
-            ");
+            $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'chave_storage');
+            if ($has_chave_storage) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_guias 
+                    (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_guias 
+                    (arquivo_url, arquivo_nome, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
+                    VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
+                ");
+            }
+
             $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
             $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
-            $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
+            if ($has_chave_storage) {
+                $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
+            }
             $stmt->bindValue(':vencimento', $data_vencimento, PDO::PARAM_STR);
             $stmt->bindValue(':desc', $descricao, PDO::PARAM_STR);
             $stmt->bindValue(':e_parcela', $e_parcela_bool, PDO::PARAM_BOOL);

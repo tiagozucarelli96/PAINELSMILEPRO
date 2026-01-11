@@ -7,6 +7,43 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
+function contabilidadeExtrairChaveStorage(string $arquivo_url, string $endpoint, string $bucket): ?string
+{
+    $parsed = parse_url($arquivo_url);
+    if (empty($parsed['host'] ?? null) || empty($parsed['path'] ?? null)) {
+        return null;
+    }
+
+    $path = ltrim($parsed['path'], '/');
+    $bucket = strtolower($bucket);
+    $endpoint_host = parse_url($endpoint, PHP_URL_HOST);
+
+    if ($endpoint_host && str_starts_with($parsed['host'], $bucket . '.')) {
+        return $path ?: null;
+    }
+
+    if (str_contains($path, $bucket . '/')) {
+        $parts = explode($bucket . '/', $path, 2);
+        return $parts[1] ?? null;
+    }
+
+    if ($endpoint_host && $parsed['host'] === $endpoint_host && str_starts_with($path, $bucket . '/')) {
+        return substr($path, strlen($bucket . '/')) ?: null;
+    }
+
+    return null;
+}
+
 // Verificar permissão (admin ou contabilidade logada)
 $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo']);
 $is_contabilidade = !empty($_SESSION['contabilidade_logado']) && $_SESSION['contabilidade_logado'] === true;
@@ -27,57 +64,81 @@ if (empty($tipo) || $id <= 0) {
 try {
     $chave_storage = null;
     $nome_arquivo = null;
+    $arquivo_url = null;
     $mime_type = null;
+
+    $has_chave_storage_guias = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'chave_storage');
+    $has_chave_storage_holerites = contabilidadeColunaExiste($pdo, 'contabilidade_holerites', 'chave_storage');
+    $has_chave_storage_honorarios = contabilidadeColunaExiste($pdo, 'contabilidade_honorarios', 'chave_storage');
+    $has_chave_storage_conversas = contabilidadeColunaExiste($pdo, 'contabilidade_conversas_mensagens', 'chave_storage');
+    $has_chave_storage_docs = contabilidadeColunaExiste($pdo, 'contabilidade_colaboradores_documentos', 'chave_storage');
+
+    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+    $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+    $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+    $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+    $bucket = strtolower($bucket);
     
     // Buscar chave_storage de acordo com o tipo
     switch ($tipo) {
         case 'guia':
-            $stmt = $pdo->prepare("SELECT chave_storage, arquivo_nome FROM contabilidade_guias WHERE id = :id");
+            $select_cols = $has_chave_storage_guias ? 'chave_storage, arquivo_nome, arquivo_url' : 'arquivo_nome, arquivo_url';
+            $stmt = $pdo->prepare("SELECT {$select_cols} FROM contabilidade_guias WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
-                $chave_storage = $arquivo['chave_storage'];
+                $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
             }
             break;
             
         case 'holerite':
-            $stmt = $pdo->prepare("SELECT chave_storage, arquivo_nome FROM contabilidade_holerites WHERE id = :id");
+            $select_cols = $has_chave_storage_holerites ? 'chave_storage, arquivo_nome, arquivo_url' : 'arquivo_nome, arquivo_url';
+            $stmt = $pdo->prepare("SELECT {$select_cols} FROM contabilidade_holerites WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
-                $chave_storage = $arquivo['chave_storage'];
+                $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
             }
             break;
             
         case 'honorario':
-            $stmt = $pdo->prepare("SELECT chave_storage, arquivo_nome FROM contabilidade_honorarios WHERE id = :id");
+            $select_cols = $has_chave_storage_honorarios ? 'chave_storage, arquivo_nome, arquivo_url' : 'arquivo_nome, arquivo_url';
+            $stmt = $pdo->prepare("SELECT {$select_cols} FROM contabilidade_honorarios WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
-                $chave_storage = $arquivo['chave_storage'];
+                $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
             }
             break;
             
         case 'conversa_anexo':
-            $stmt = $pdo->prepare("SELECT chave_storage, anexo_nome FROM contabilidade_conversas_mensagens WHERE id = :id");
+            $select_cols = $has_chave_storage_conversas ? 'chave_storage, anexo_nome, anexo_url' : 'anexo_nome, anexo_url';
+            $stmt = $pdo->prepare("SELECT {$select_cols} FROM contabilidade_conversas_mensagens WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
-                $chave_storage = $arquivo['chave_storage'];
+                $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['anexo_nome'];
+                $arquivo_url = $arquivo['anexo_url'] ?? null;
             }
             break;
             
         case 'colaborador_doc':
-            $stmt = $pdo->prepare("SELECT chave_storage, arquivo_nome FROM contabilidade_colaboradores_documentos WHERE id = :id");
+            $select_cols = $has_chave_storage_docs ? 'chave_storage, arquivo_nome, arquivo_url' : 'arquivo_nome, arquivo_url';
+            $stmt = $pdo->prepare("SELECT {$select_cols} FROM contabilidade_colaboradores_documentos WHERE id = :id");
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
-                $chave_storage = $arquivo['chave_storage'];
+                $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
             }
             break;
             
@@ -86,9 +147,13 @@ try {
             die('Tipo inválido');
     }
     
-    if (empty($chave_storage)) {
+    if (empty($chave_storage) && empty($arquivo_url)) {
         http_response_code(404);
         die('Arquivo não encontrado ou chave de storage não disponível');
+    }
+
+    if (empty($chave_storage) && !empty($arquivo_url)) {
+        $chave_storage = contabilidadeExtrairChaveStorage($arquivo_url, $endpoint, $bucket);
     }
     
     // Tentar usar AWS SDK para gerar presigned URL
@@ -96,14 +161,7 @@ try {
         require_once __DIR__ . '/../vendor/autoload.php';
         
         if (class_exists('Aws\S3\S3Client')) {
-            $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
-            $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
-            $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
-            $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
-            $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
-            $bucket = strtolower($bucket);
-            
-            if ($accessKey && $secretKey) {
+            if ($accessKey && $secretKey && !empty($chave_storage)) {
                 try {
                     $s3Client = new \Aws\S3\S3Client([
                         'region' => $region,
@@ -166,9 +224,10 @@ try {
     }
     
     // Fallback: construir URL direta (pode não funcionar se arquivo não for público)
-    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
-    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
-    $bucket = strtolower($bucket);
+    if (!empty($arquivo_url)) {
+        header("Location: {$arquivo_url}");
+        exit;
+    }
     $url = "{$endpoint}/{$bucket}/{$chave_storage}";
     
     // Redirecionar para URL do arquivo (pode falhar se não for público)

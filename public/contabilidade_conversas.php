@@ -25,6 +25,16 @@ $autor = $is_admin ? 'admin' : 'contabilidade';
 $mensagem = '';
 $erro = '';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -79,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $anexo_url = null;
             $anexo_nome = null;
+            $chave_storage = null;
             
             // Processar anexo se houver
             if (isset($_FILES['anexo']) && $_FILES['anexo']['error'] === UPLOAD_ERR_OK) {
@@ -100,19 +111,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Inserir mensagem
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_conversas_mensagens 
-                (conversa_id, autor, mensagem, anexo_url, anexo_nome, chave_storage)
-                VALUES (:conversa_id, :autor, :mensagem, :anexo_url, :anexo_nome, :chave_storage)
-            ");
-            $stmt->execute([
+            $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_conversas_mensagens', 'chave_storage');
+            if ($has_chave_storage) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_conversas_mensagens 
+                    (conversa_id, autor, mensagem, anexo_url, anexo_nome, chave_storage)
+                    VALUES (:conversa_id, :autor, :mensagem, :anexo_url, :anexo_nome, :chave_storage)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_conversas_mensagens 
+                    (conversa_id, autor, mensagem, anexo_url, anexo_nome)
+                    VALUES (:conversa_id, :autor, :mensagem, :anexo_url, :anexo_nome)
+                ");
+            }
+            $params = [
                 ':conversa_id' => $conversa_id,
                 ':autor' => $autor,
                 ':mensagem' => !empty($texto) ? $texto : null,
                 ':anexo_url' => $anexo_url,
-                ':anexo_nome' => $anexo_nome,
-                ':chave_storage' => $chave_storage
-            ]);
+                ':anexo_nome' => $anexo_nome
+            ];
+            if ($has_chave_storage) {
+                $params[':chave_storage'] = $chave_storage;
+            }
+            $stmt->execute($params);
             
             // Atualizar data da conversa
             $stmt = $pdo->prepare("

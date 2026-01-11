@@ -342,7 +342,7 @@ body {
                     </span>
                 </td>
                 <td>
-                    <?php if ($guia['chave_storage'] || $guia['arquivo_url']): ?>
+                    <?php if (!empty($guia['chave_storage'] ?? null) || !empty($guia['arquivo_url'] ?? null)): ?>
                         <a href="contabilidade_download.php?tipo=guia&id=<?= $guia['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
                     <?php else: ?>
                         -
