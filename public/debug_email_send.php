@@ -232,83 +232,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('E-mail do administrador não configurado');
         }
         
-        // Verificar se PHPMailer está disponível
-        $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer');
-        $autoload_existe = file_exists(__DIR__ . '/../vendor/autoload.php');
+        // Verificar se Resend está configurado (prioridade 1)
+        $resend_api_key = getenv('RESEND_API_KEY') 
+            ?: ($_ENV['RESEND_API_KEY'] ?? null)
+            ?: ($_SERVER['RESEND_API_KEY'] ?? null);
         
-        if (!$phpmailer_disponivel) {
-            throw new Exception('PHPMailer não está disponível. Verifique se o Composer foi executado (composer install).');
-        }
+        // Usar EmailGlobalHelper que já tem a lógica correta (Resend primeiro, depois SMTP)
+        $email_helper = new EmailGlobalHelper();
         
-        // Tentar enviar e-mail com PHPMailer diretamente para capturar erros detalhados
-        $mail = new PHPMailer\PHPMailer\PHPMailer(true);
+        $assunto = 'Teste de Diagnóstico - Portal Grupo Smile';
+        $corpo = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p><p>Método usado: ' . ($resend_api_key ? 'Resend (API)' : 'SMTP') . '</p></body></html>';
         
-        try {
-            // Configurações do servidor
-            $mail->isSMTP();
-            $mail->Host = $config['smtp_host'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $config['smtp_username'];
-            $mail->Password = $config['smtp_password'];
-            
-            $port = (int)$config['smtp_port'];
-            $encryption = strtolower($config['smtp_encryption'] ?? 'ssl');
-            
-            // Para porta 465, usar SSL implícito (SMTPS)
-            if ($port === 465) {
-                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-                $mail->SMTPAutoTLS = false; // Não tentar STARTTLS na porta 465
-            } elseif ($encryption === 'tls') {
-                // Outras portas com TLS: usar STARTTLS
-                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            } else {
-                $mail->SMTPSecure = PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
-            }
-            
-            $mail->Port = $port;
-            $mail->CharSet = 'UTF-8';
-            $mail->SMTPDebug = 2; // Ativar debug para capturar detalhes
-            $mail->Timeout = 15; // Timeout de 15 segundos para conexão SMTP
-            
-            // Capturar output do debug
-            $debug_output = '';
-            $mail->Debugoutput = function($str, $level) use (&$debug_output) {
-                $debug_output .= $str . "\n";
-            };
-            
-            // Remetente e destinatário
-            $mail->setFrom($config['email_remetente'], 'Portal Grupo Smile');
-            $mail->addAddress($config['email_administrador']);
-            
-            // Conteúdo
-            $mail->isHTML(true);
-            $mail->Subject = 'Teste de Diagnóstico - Portal Grupo Smile';
-            $mail->Body = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p></body></html>';
-            
-            $mail->send();
-            
+        $sucesso = $email_helper->enviarEmail($config['email_administrador'], $assunto, $corpo, true);
+        
+        if ($sucesso) {
             $resultado_teste = [
                 'sucesso' => true,
                 'mensagem' => 'E-mail enviado com sucesso!',
                 'detalhes' => [
                     'para' => $config['email_administrador'],
-                    'phpmailer_disponivel' => $phpmailer_disponivel,
-                    'autoload_existe' => $autoload_existe,
-                    'debug' => $debug_output
+                    'metodo' => $resend_api_key ? 'Resend (API)' : 'SMTP',
+                    'resend_configurado' => !empty($resend_api_key)
                 ]
             ];
             
             registrarLogEmail($pdo, 'sucesso', 'E-mail de teste enviado com sucesso', [
                 'para' => $config['email_administrador'],
-                'host' => $config['smtp_host'],
-                'porta' => $config['smtp_port']
+                'metodo' => $resend_api_key ? 'Resend' : 'SMTP'
             ]);
+        } else {
+            // Verificar se Resend está configurado para dar mensagem mais específica
+            $resend_api_key = getenv('RESEND_API_KEY') 
+                ?: ($_ENV['RESEND_API_KEY'] ?? null)
+                ?: ($_SERVER['RESEND_API_KEY'] ?? null);
             
-        } catch (PHPMailer\PHPMailer\Exception $e) {
-            $erro_detalhado = $e->getMessage();
-            $erro_detalhado .= "\n\n[SMTP Debug Output]\n" . $debug_output;
-            
-            throw new Exception($erro_detalhado);
+            if (!$resend_api_key) {
+                throw new Exception('RESEND_API_KEY não configurada. O sistema requer Resend para enviar e-mails no Railway. Configure a variável de ambiente RESEND_API_KEY no Railway (Variables → + New Variable). Veja instruções em: CONFIGURAR_RESEND_RAILWAY.md');
+            } else {
+                throw new Exception('Falha ao enviar e-mail com Resend. Verifique os logs do sistema para mais detalhes. A API key foi detectada, mas o envio falhou. Verifique se a API key está correta e se o domínio remetente está verificado no Resend.');
+            }
         }
         
     } catch (Exception $e) {
@@ -320,13 +282,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             'erro' => $erro_detalhado
         ];
         
-        // Registrar erro no log (sem senha)
+        // Registrar erro no log
         $detalhes_erro = [
-            'host' => $config['smtp_host'] ?? 'N/A',
-            'porta' => $config['smtp_port'] ?? 'N/A',
-            'usuario' => $config['smtp_username'] ?? 'N/A',
-            'encryption' => $config['smtp_encryption'] ?? 'N/A',
-            'erro' => $erro_detalhado
+            'erro' => $erro_detalhado,
+            'resend_configurado' => !empty($resend_api_key ?? null)
         ];
         
         registrarLogEmail($pdo, 'erro', 'Falha ao enviar e-mail de teste', $detalhes_erro);

@@ -47,9 +47,19 @@ class EmailGlobalHelper {
             ?: ($_SERVER['RESEND_API_KEY'] ?? null);
         
         if (!$resend_api_key) {
-            error_log("[EMAIL] ❌ ERRO: RESEND_API_KEY não configurada. Configure no Railway: Variables → RESEND_API_KEY");
+            // Debug: verificar todas as fontes possíveis
+            $debug_env = [
+                'getenv' => getenv('RESEND_API_KEY') ? 'SIM' : 'NÃO',
+                '_ENV' => isset($_ENV['RESEND_API_KEY']) ? 'SIM' : 'NÃO',
+                '_SERVER' => isset($_SERVER['RESEND_API_KEY']) ? 'SIM' : 'NÃO'
+            ];
+            error_log("[EMAIL] ❌ ERRO: RESEND_API_KEY não configurada.");
+            error_log("[EMAIL] Debug - Verificações: " . json_encode($debug_env));
+            error_log("[EMAIL] Configure no Railway: Variables → RESEND_API_KEY");
             return false;
         }
+        
+        error_log("[EMAIL] ✅ RESEND_API_KEY encontrada! (tamanho: " . strlen($resend_api_key) . " caracteres)");
         
         if (!class_exists('\Resend\Resend', false)) {
             error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível. Execute: composer install");
