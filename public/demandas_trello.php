@@ -349,7 +349,7 @@ includeSidebar('Demandas');
     flex: 1;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 1.5rem 1.75rem 2rem;
+    padding: 2.25rem 1.75rem 2rem;
     display: flex;
     gap: var(--list-gap);
     align-items: flex-start;
