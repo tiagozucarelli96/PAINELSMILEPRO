@@ -29,6 +29,10 @@ RUN composer show phpmailer/phpmailer 2>/dev/null || echo "PHPMailer não encont
 RUN composer show resend/resend-php 2>/dev/null || echo "Resend não encontrado"
 
 EXPOSE 8080
+
+# Tornar script executável
+RUN chmod +x /app/start_railway.sh
+
 # IMPORTANTE: usa o router.php (e não o index.php) para evitar loops
-# Usar formato de string para permitir expansão de variável PORT
-CMD php -S 0.0.0.0:${PORT:-8080} -t public public/router.php
+# Usar script wrapper para garantir expansão correta da variável PORT
+CMD ["/app/start_railway.sh"]
