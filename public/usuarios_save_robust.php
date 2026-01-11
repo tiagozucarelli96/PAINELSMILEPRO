@@ -144,6 +144,17 @@ class UsuarioSaveManager {
             if (empty($email)) {
                 throw new Exception("Email é obrigatório");
             }
+
+            // Normalizar escopo de unidade
+            if (array_key_exists('unidade_scope', $data)) {
+                $data['unidade_scope'] = trim((string)$data['unidade_scope']);
+                if ($data['unidade_scope'] === '') {
+                    $data['unidade_scope'] = 'nenhuma';
+                }
+                if ($data['unidade_scope'] !== 'unidade') {
+                    $data['unidade_id'] = null;
+                }
+            }
             
             // Verificar se senha é obrigatória (coluna existe e é novo usuário)
             if ($this->columnExists('senha') && $userId === 0 && empty($senha)) {
@@ -388,7 +399,7 @@ class UsuarioSaveManager {
                         error_log("DEBUG UPDATE FOTO: Campo foto NÃO está em data[], não será incluído no UPDATE");
                     }
                 } elseif ($field === 'unidade_id') {
-                    if (isset($data[$field])) {
+                    if (array_key_exists($field, $data)) {
                         if ($value !== null) {
                             $sql .= ", $field = :$field";
                             $params[":$field"] = $value;

@@ -230,6 +230,15 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Unidades internas para Logística (dropdown)
+$unidades_internas = [];
+try {
+    $stmt_unidades = $pdo->query("SELECT id, codigo, nome FROM logistica_unidades WHERE ativo IS TRUE ORDER BY id");
+    $unidades_internas = $stmt_unidades->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Erro ao carregar unidades internas: " . $e->getMessage());
+}
+
 // Buscar usuário para edição
 $usuario_edit = null;
 if ($user_id > 0) {
@@ -1265,7 +1274,14 @@ ob_start();
 
                     <div class="form-group" id="unidadeIdGroup" style="display: none;">
                         <label class="form-label">Unidade ID</label>
-                        <input type="number" name="unidade_id" class="form-input" min="1" step="1">
+                        <select name="unidade_id" class="form-input">
+                            <option value="">Selecione...</option>
+                            <?php foreach ($unidades_internas as $unidade): ?>
+                                <option value="<?= (int)$unidade['id'] ?>">
+                                    <?= h($unidade['nome'] ?: $unidade['codigo']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 </div>
                 
@@ -1597,7 +1613,7 @@ ob_start();
                             const unidadeScopeInput = formToFill.querySelector('select[name="unidade_scope"]');
                             if (unidadeScopeInput) unidadeScopeInput.value = user.unidade_scope || 'nenhuma';
 
-                            const unidadeIdInput = formToFill.querySelector('input[name="unidade_id"]');
+                            const unidadeIdInput = formToFill.querySelector('select[name="unidade_id"]');
                             if (unidadeIdInput) unidadeIdInput.value = user.unidade_id || '';
 
                             toggleUnidadeId();
@@ -1671,7 +1687,7 @@ ob_start();
                 group.style.display = '';
             } else {
                 group.style.display = 'none';
-                const input = group.querySelector('input[name="unidade_id"]');
+                const input = group.querySelector('select[name="unidade_id"]');
                 if (input) input.value = '';
             }
         }

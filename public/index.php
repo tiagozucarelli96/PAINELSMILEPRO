@@ -187,6 +187,7 @@ $routes = [
   'contabilidade_admin_conversas' => 'contabilidade_admin_conversas.php',
   'contabilidade_admin_colaboradores' => 'contabilidade_admin_colaboradores.php',
   'config_email_global' => 'config_email_global.php',
+  'config_logistica' => 'config_logistica.php',
   'google_calendar_config' => 'google_calendar_config.php',
   'google_calendar_debug' => 'google_calendar_debug.php',
   'agenda' => 'agenda.php',

@@ -146,6 +146,16 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <!-- Logística -->
+        <a href="index.php?page=config_logistica" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #22c55e, #16a34a);">
+                <span class="funcionalidade-card-icon">📦</span>
+                <div class="funcionalidade-card-title">Logística</div>
+                <div class="funcionalidade-card-subtitle">Mapeamento ME e sincronização</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- Sistema -->
         <a href="index.php?page=configuracoes" class="funcionalidade-card">
