@@ -164,6 +164,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $messages = [];
             }
 
+            if (!empty($componentes_norm)) {
+                $unidade_receita = trim((string)($_POST['unidade_medida'] ?? ''));
+                foreach ($componentes_norm as &$comp) {
+                    $comp['unidade_medida'] = $unidade_receita !== '' ? $unidade_receita : $comp['unidade_medida'];
+                }
+                unset($comp);
+            }
+
             $visivel = !empty($_POST['visivel_na_lista']);
             $ativo = !empty($_POST['ativo']);
             $dados = [
@@ -431,7 +439,6 @@ foreach ($receitas as $rec) {
         $linhas[] = [
             'item' => $item_nome,
             'item_tipo' => $item_tipo,
-            'medida_caseira' => $comp['medida_caseira'] ?? '',
             'unidade_medida' => $comp['unidade_medida'] ?? '',
             'qtde_bruta' => $qtde_bruta,
             'qtde_liquida' => $qtde_liquida,
@@ -643,7 +650,7 @@ includeSidebar('Receitas - Logística');
                 </div>
                 <div>
                     <label>Unidade</label>
-                    <select class="form-input" name="unidade_medida">
+                    <select class="form-input" name="unidade_medida" id="unidade_medida_header">
                         <option value="">Selecione...</option>
                         <?php if (empty($unidades_medida)): ?>
                             <option value="" disabled>Nenhuma unidade cadastrada</option>
@@ -676,11 +683,10 @@ includeSidebar('Receitas - Logística');
                     </div>
                     <div class="upload-actions">
                         <input type="file" id="foto_file" name="foto_file" accept="image/*">
-                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
                     </div>
                     <div style="margin-top:0.5rem;">
-                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
                         <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
+                        <input type="hidden" name="foto_url" id="foto_url" value="<?= h($edit_item['foto_url'] ?? '') ?>">
                     </div>
                 </div>
             </div>
@@ -693,7 +699,6 @@ includeSidebar('Receitas - Logística');
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Medida caseira</th>
                             <th>Unidade</th>
                             <th>Qtde bruta</th>
                             <th>Qtde líquida</th>
@@ -722,8 +727,7 @@ includeSidebar('Receitas - Logística');
                         foreach ($componentes_render as $comp):
                             $tipo = $comp['item_tipo'] ?? 'insumo';
                             $item_id = (int)($comp['item_id'] ?? 0);
-                            $medida_caseira = $comp['medida_caseira'] ?? '';
-                            $unidade_medida = $comp['unidade_medida'] ?? '';
+                        $unidade_medida = $comp['unidade_medida'] ?? '';
                             $qtde_bruta = $comp['qtde_bruta'] ?? '';
                             $qtde_liquida = $comp['qtde_liquida'] ?? '';
                         ?>
@@ -751,14 +755,13 @@ includeSidebar('Receitas - Logística');
                                         <?php endif; ?>
                                     </select>
                                 </td>
-                                <td><input class="form-input medida-caseira" name="componentes[<?= $row_index ?>][medida_caseira]" value="<?= h($medida_caseira) ?>"></td>
-                                <td><input class="form-input unidade-medida" name="componentes[<?= $row_index ?>][unidade_medida]" value="<?= h($unidade_medida) ?>"></td>
+                                <td><input class="form-input unidade-medida" name="componentes[<?= $row_index ?>][unidade_medida]" readonly value="<?= h($unidade_medida ?: ($edit_item['unidade_medida'] ?? '')) ?>"></td>
                                 <td><input class="form-input qtde-bruta" name="componentes[<?= $row_index ?>][qtde_bruta]" type="number" step="0.001" value="<?= h($qtde_bruta) ?>"></td>
                                 <td><input class="form-input qtde-liquida" name="componentes[<?= $row_index ?>][qtde_liquida]" type="number" step="0.001" value="<?= h($qtde_liquida) ?>"></td>
-                                <td class="fc-cell">-</td>
+                                <td><input class="form-input fc-input" name="componentes[<?= $row_index ?>][fc]" readonly value=""></td>
                                 <?php if ($can_see_cost): ?>
-                                    <td class="custo-unit">-</td>
-                                    <td class="custo-total">-</td>
+                                    <td><input class="form-input custo-unit" readonly value=""></td>
+                                    <td><input class="form-input custo-total" readonly value=""></td>
                                 <?php endif; ?>
                                 <td><button type="button" class="btn-secondary remover-linha">Remover</button></td>
                             </tr>
@@ -767,6 +770,16 @@ includeSidebar('Receitas - Logística');
                         endforeach;
                         ?>
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="<?= $can_see_cost ? '6' : '4' ?>" style="text-align:right;font-weight:700;">Total da receita</td>
+                            <?php if ($can_see_cost): ?>
+                                <td></td>
+                                <td><input class="form-input" id="total-receita" readonly value="R$ 0,00"></td>
+                            <?php endif; ?>
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
                 <div style="margin-top:0.75rem;">
                     <button type="button" class="btn-secondary" id="add-linha">Adicionar linha</button>
@@ -889,6 +902,13 @@ function updateItemSelect(row) {
     select.innerHTML = buildOptions(list, current, tipo);
 }
 
+function syncUnidadeMedida() {
+    const unidade = document.getElementById('unidade_medida_header')?.value || '';
+    document.querySelectorAll('.unidade-medida').forEach(input => {
+        input.value = unidade;
+    });
+}
+
 function calcRow(row) {
     const brutaInput = row.querySelector('.qtde-bruta');
     const liquidaInput = row.querySelector('.qtde-liquida');
@@ -905,7 +925,10 @@ function calcRow(row) {
         }
     }
     const fc = liquida > 0 ? bruta / liquida : 1;
-    fcCell.textContent = formatNumber(fc, 3);
+    const fcInput = row.querySelector('.fc-input');
+    if (fcInput) {
+        fcInput.value = formatNumber(fc, 3);
+    }
 
     if (!CAN_SEE_COST) return;
 
@@ -920,24 +943,57 @@ function calcRow(row) {
         }
     }
     const custoTotal = custoUnit !== null ? bruta * custoUnit : null;
-    row.querySelector('.custo-unit').textContent = formatCurrency(custoUnit);
-    row.querySelector('.custo-total').textContent = formatCurrency(custoTotal);
+    const custoUnitInput = row.querySelector('.custo-unit');
+    const custoTotalInput = row.querySelector('.custo-total');
+    if (custoUnitInput) custoUnitInput.value = formatCurrency(custoUnit);
+    if (custoTotalInput) custoTotalInput.value = formatCurrency(custoTotal);
+}
+
+function updateTotalReceita() {
+    if (!CAN_SEE_COST) return;
+    let total = 0;
+    document.querySelectorAll('.componente-row').forEach(row => {
+        const custoTotalInput = row.querySelector('.custo-total');
+        if (!custoTotalInput) return;
+        const raw = (custoTotalInput.value || '').replace(/[^0-9,]/g, '').replace(',', '.');
+        const num = parseFloat(raw);
+        if (!Number.isNaN(num)) total += num;
+    });
+    const totalEl = document.getElementById('total-receita');
+    if (totalEl) totalEl.value = formatCurrency(total);
 }
 
 function attachRowEvents(row) {
     row.querySelector('.item-tipo').addEventListener('change', () => {
         updateItemSelect(row);
         calcRow(row);
+        updateTotalReceita();
     });
-    row.querySelector('.item-id').addEventListener('change', () => calcRow(row));
-    row.querySelector('.qtde-bruta').addEventListener('input', () => calcRow(row));
-    row.querySelector('.qtde-liquida').addEventListener('input', () => calcRow(row));
-    row.querySelector('.remover-linha').addEventListener('click', () => row.remove());
+    row.querySelector('.item-id').addEventListener('change', () => {
+        calcRow(row);
+        updateTotalReceita();
+    });
+    row.querySelector('.qtde-bruta').addEventListener('input', () => {
+        calcRow(row);
+        updateTotalReceita();
+    });
+    row.querySelector('.qtde-liquida').addEventListener('input', () => {
+        calcRow(row);
+        updateTotalReceita();
+    });
+    row.querySelector('.remover-linha').addEventListener('click', () => {
+        row.remove();
+        updateTotalReceita();
+    });
     updateItemSelect(row);
     calcRow(row);
 }
 
 document.querySelectorAll('.componente-row').forEach(row => attachRowEvents(row));
+syncUnidadeMedida();
+document.getElementById('unidade_medida_header')?.addEventListener('change', () => {
+    syncUnidadeMedida();
+});
 
 let nextIndex = document.querySelectorAll('.componente-row').length;
 document.getElementById('add-linha')?.addEventListener('click', () => {
@@ -955,7 +1011,7 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
             <select class=\"form-input item-id\" name=\"componentes[${nextIndex}][item_id]\" style=\"margin-top:0.35rem;\"></select>
         </td>
         <td><input class=\"form-input medida-caseira\" name=\"componentes[${nextIndex}][medida_caseira]\"></td>
-        <td><input class=\"form-input unidade-medida\" name=\"componentes[${nextIndex}][unidade_medida]\"></td>
+        <td><input class=\"form-input unidade-medida\" name=\"componentes[${nextIndex}][unidade_medida]\" readonly></td>
         <td><input class=\"form-input qtde-bruta\" name=\"componentes[${nextIndex}][qtde_bruta]\" type=\"number\" step=\"0.001\"></td>
         <td><input class=\"form-input qtde-liquida\" name=\"componentes[${nextIndex}][qtde_liquida]\" type=\"number\" step=\"0.001\"></td>
         <td class=\"fc-cell\">-</td>
@@ -964,6 +1020,8 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
     `;
     tbody.appendChild(row);
     attachRowEvents(row);
+    syncUnidadeMedida();
+    updateTotalReceita();
     nextIndex += 1;
 });
 
@@ -980,7 +1038,6 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
         const rowsHtml = linhas.map(l => `
             <tr>
                 <td>${l.item}</td>
-                <td>${l.medida_caseira || '-'}</td>
                 <td>${l.unidade_medida || '-'}</td>
                 <td>${formatNumber(l.qtde_bruta, 3)}</td>
                 <td>${formatNumber(l.qtde_liquida, 3)}</td>
@@ -1001,7 +1058,6 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
                 <thead>
                     <tr>
                         <th>Item</th>
-                        <th>Medida caseira</th>
                         <th>Unidade</th>
                         <th title=\"Quantidade bruta usada para compra\">Qtde bruta</th>
                         <th>Qtde líquida</th>
@@ -1010,8 +1066,17 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
                     </tr>
                 </thead>
                 <tbody>
-                    ${rowsHtml || '<tr><td colspan=\"' + (CAN_SEE_COST ? 8 : 6) + '\">Nenhum componente cadastrado.</td></tr>'}
+                    ${rowsHtml || '<tr><td colspan=\"' + (CAN_SEE_COST ? 7 : 5) + '\">Nenhum componente cadastrado.</td></tr>'}
                 </tbody>
+                ${CAN_SEE_COST ? `
+                <tfoot>
+                    <tr>
+                        <td colspan=\"5\" style=\"text-align:right;font-weight:700;\">Total da receita</td>
+                        <td></td>
+                        <td>${formatCurrency(linhas.reduce((sum, l) => sum + (l.custo_total || 0), 0))}</td>
+                    </tr>
+                </tfoot>
+                ` : ''}
             </table>
             <div style=\"margin-top:0.75rem;\">\n                <a class=\"btn-primary\" href=\"index.php?page=logistica_receitas&edit_id=${data.id}\">Editar</a>\n            </div>
         `;
@@ -1068,6 +1133,7 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
     };
     reader.readAsDataURL(file);
 });
+</script>
 
 document.getElementById('foto_url')?.addEventListener('input', (e) => {
     const chaveInput = document.getElementById('foto_chave_storage');
