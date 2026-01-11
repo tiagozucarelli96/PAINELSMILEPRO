@@ -70,6 +70,10 @@ return [
     // 'usuario_novo' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     // 'usuario_editar' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     'config_logistica' => 'perm_configuracoes',
+    'logistica_tipologias' => 'perm_logistico',
+    'logistica_insumos' => 'perm_logistico',
+    'logistica_receitas' => 'perm_logistico',
+    'logistica_upload' => 'perm_logistico',
     // REMOVIDO: Módulo desativado
     // 'config_insumos' => 'perm_configuracoes',
     // 'config_categorias' => 'perm_configuracoes',
