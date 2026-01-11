@@ -287,12 +287,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 <div class="calendar-list">
                     <?php foreach ($calendars as $cal): ?>
                     <div class="calendar-item <?= $config && $config['google_calendar_id'] === $cal['id'] ? 'selected' : '' ?>" 
-                         onclick="document.getElementById('calendar_<?= htmlspecialchars($cal['id']) ?>').checked = true; updateCalendarSelection()">
+                         onclick="selectCalendar('<?= htmlspecialchars($cal['id']) ?>', '<?= htmlspecialchars(addslashes($cal['summary'] ?? '')) ?>')">
                         <input type="radio" 
                                name="calendar_id" 
                                id="calendar_<?= htmlspecialchars($cal['id']) ?>" 
                                value="<?= htmlspecialchars($cal['id']) ?>"
                                <?= $config && $config['google_calendar_id'] === $cal['id'] ? 'checked' : '' ?>
+                               onchange="selectCalendar('<?= htmlspecialchars($cal['id']) ?>', '<?= htmlspecialchars(addslashes($cal['summary'] ?? '')) ?>')"
                                required>
                         <label for="calendar_<?= htmlspecialchars($cal['id']) ?>" style="cursor: pointer; margin-left: 0.5rem;">
                             <strong><?= htmlspecialchars($cal['summary'] ?? 'Sem nome') ?></strong>
@@ -300,9 +301,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                             <br><small style="color: #64748b;"><?= htmlspecialchars($cal['description']) ?></small>
                             <?php endif; ?>
                         </label>
-                        <input type="hidden" name="calendar_name" id="name_<?= htmlspecialchars($cal['id']) ?>" value="<?= htmlspecialchars($cal['summary'] ?? '') ?>">
                     </div>
                     <?php endforeach; ?>
+                    <!-- Campo único para o nome do calendário selecionado -->
+                    <input type="hidden" name="calendar_name" id="selected_calendar_name" value="<?= htmlspecialchars($config['google_calendar_name'] ?? '') ?>">
                 </div>
             </div>
             
