@@ -2,6 +2,9 @@
 // google_callback.php — Endpoint de callback OAuth do Google
 // Rota pública: /google/callback
 
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/google_calendar_helper.php';
+
 // Log da requisição
 $timestamp = date('Y-m-d H:i:s');
 $request_method = $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN';
@@ -55,21 +58,51 @@ if (!$code) {
     if ($error) {
         error_log("[GOOGLE_OAUTH_CALLBACK] Erro recebido: $error - $error_description");
         http_response_code(400);
-        echo "Callback Google recebido com erro: " . htmlspecialchars($error);
+        header('Content-Type: text/html; charset=UTF-8');
+        echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Erro OAuth</title></head><body>";
+        echo "<h1>Erro ao conectar Google Calendar</h1>";
+        echo "<p>Erro: " . htmlspecialchars($error) . "</p>";
         if ($error_description) {
-            echo " - " . htmlspecialchars($error_description);
+            echo "<p>" . htmlspecialchars($error_description) . "</p>";
         }
+        echo "<p><a href='index.php?page=google_calendar_config'>Voltar para configuração</a></p>";
+        echo "</body></html>";
         exit;
     }
     
     // Se não tem code nem error, pode ser uma requisição inválida
     error_log("[GOOGLE_OAUTH_CALLBACK] Aviso: Callback chamado sem parâmetro 'code'");
     http_response_code(400);
+    header('Content-Type: text/html; charset=UTF-8');
     echo "Callback Google recebido, mas parâmetro 'code' não encontrado.";
     exit;
 }
 
-// Callback recebido com sucesso
+// Processar o code e trocar por tokens
+try {
+    $helper = new GoogleCalendarHelper();
+    $tokens = $helper->exchangeCodeForTokens($code);
+    $helper->saveTokens($tokens);
+    
+    error_log("[GOOGLE_OAUTH_CALLBACK] Tokens salvos com sucesso");
+    
+    // Redirecionar para página de configuração
+    header('Location: index.php?page=google_calendar_config&oauth=success');
+    exit;
+    
+} catch (Exception $e) {
+    error_log("[GOOGLE_OAUTH_CALLBACK] Erro ao processar tokens: " . $e->getMessage());
+    http_response_code(500);
+    header('Content-Type: text/html; charset=UTF-8');
+    echo "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Erro OAuth</title></head><body>";
+    echo "<h1>Erro ao processar autorização</h1>";
+    echo "<p>" . htmlspecialchars($e->getMessage()) . "</p>";
+    echo "<p><a href='index.php?page=google_calendar_config'>Voltar para configuração</a></p>";
+    echo "</body></html>";
+    exit;
+}
+
+// Callback recebido com sucesso (fallback - não deve chegar aqui)
 http_response_code(200);
 header('Content-Type: text/html; charset=UTF-8');
 ?>

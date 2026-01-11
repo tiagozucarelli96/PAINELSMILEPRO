@@ -382,10 +382,6 @@ includeSidebar('Demandas');
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    background: #ebecf0;
-    z-index: 2;
 }
 
 .page-demandas-list-count {
