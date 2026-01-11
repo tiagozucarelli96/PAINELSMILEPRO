@@ -383,8 +383,8 @@ try {
                             </span>
                         </td>
                         <td>
-                            <?php if ($guia['arquivo_url']): ?>
-                                <a href="<?= htmlspecialchars($guia['arquivo_url']) ?>" target="_blank">📎 Ver</a>
+                            <?php if (!empty($guia['chave_storage']) || !empty($guia['arquivo_url'])): ?>
+                                <a href="contabilidade_download.php?tipo=guia&id=<?= $guia['id'] ?>" target="_blank">📎 Ver</a>
                             <?php else: ?>
                                 -
                             <?php endif; ?>

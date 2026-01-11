@@ -206,8 +206,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 <td><?= htmlspecialchars($doc['descricao'] ?? '-') ?></td>
                 <td><?= date('d/m/Y H:i', strtotime($doc['criado_em'])) ?></td>
                 <td>
-                    <?php if ($doc['arquivo_url']): ?>
-                        <a href="<?= htmlspecialchars($doc['arquivo_url']) ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
+                    <?php if (!empty($doc['chave_storage']) || !empty($doc['arquivo_url'])): ?>
+                        <a href="contabilidade_download.php?tipo=colaborador_doc&id=<?= $doc['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
                     <?php else: ?>
                         -
                     <?php endif; ?>

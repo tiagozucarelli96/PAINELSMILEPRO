@@ -201,8 +201,8 @@ try {
                             </span>
                         </td>
                         <td>
-                            <?php if ($honorario['arquivo_url']): ?>
-                                <a href="<?= htmlspecialchars($honorario['arquivo_url']) ?>" target="_blank">📎 Ver</a>
+                            <?php if (!empty($honorario['chave_storage']) || !empty($honorario['arquivo_url'])): ?>
+                                <a href="contabilidade_download.php?tipo=honorario&id=<?= $honorario['id'] ?>" target="_blank">📎 Ver</a>
                             <?php else: ?>
                                 -
                             <?php endif; ?>

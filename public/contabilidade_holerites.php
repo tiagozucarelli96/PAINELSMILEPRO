@@ -223,8 +223,8 @@ try {
                             </span>
                         </td>
                         <td>
-                            <?php if ($holerite['arquivo_url']): ?>
-                                <a href="<?= htmlspecialchars($holerite['arquivo_url']) ?>" target="_blank">📎 Ver</a>
+                            <?php if (!empty($holerite['chave_storage']) || !empty($holerite['arquivo_url'])): ?>
+                                <a href="contabilidade_download.php?tipo=holerite&id=<?= $holerite['id'] ?>" target="_blank">📎 Ver</a>
                             <?php else: ?>
                                 -
                             <?php endif; ?>

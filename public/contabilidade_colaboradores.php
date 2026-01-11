@@ -324,8 +324,8 @@ $colaborador_selecionado = isset($_GET['anexar']) ? (int)$_GET['anexar'] : 0;
                                     - <?= htmlspecialchars(substr($doc['descricao'], 0, 30)) ?>
                                 <?php endif; ?>
                             </span>
-                            <?php if ($doc['arquivo_url']): ?>
-                            <a href="<?= htmlspecialchars($doc['arquivo_url']) ?>" target="_blank" class="doc-link">📎 Ver</a>
+                            <?php if (!empty($doc['chave_storage']) || !empty($doc['arquivo_url'])): ?>
+                            <a href="contabilidade_download.php?tipo=colaborador_doc&id=<?= $doc['id'] ?>" target="_blank" class="doc-link">📎 Ver</a>
                             <?php endif; ?>
                         </div>
                         <?php endforeach; ?>
