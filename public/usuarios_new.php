@@ -245,9 +245,27 @@ if ($search) {
 $sql .= " ORDER BY nome ASC";
 
 try {
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Garantir superadmin para usuário admin (se existir e coluna disponível)
+try {
+    if (!empty($_SESSION['id'])) {
+        $stmt_admin = $pdo->prepare("SELECT login FROM usuarios WHERE id = :id");
+        $stmt_admin->execute([':id' => (int)$_SESSION['id']]);
+        $login_admin = $stmt_admin->fetchColumn();
+
+        if ($login_admin === 'admin') {
+            $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE");
+            $stmt_set = $pdo->prepare("UPDATE usuarios SET perm_superadmin = TRUE WHERE id = :id");
+            $stmt_set->execute([':id' => (int)$_SESSION['id']]);
+            $_SESSION['perm_superadmin'] = true;
+        }
+    }
+} catch (Exception $e) {
+    error_log("Erro ao garantir superadmin: " . $e->getMessage());
+}
 } catch (Exception $e) {
     $usuarios = [];
     $error_msg = "Erro ao buscar usuários: " . $e->getMessage();
@@ -961,6 +979,16 @@ ob_start();
                     } catch (Exception $e) {
                         error_log("Erro ao buscar permissões no modal: " . $e->getMessage());
                         $existing_perms = [];
+                    }
+                }
+
+                // Garantir que perm_superadmin exista no banco (auto-heal seguro)
+                if (!isset($existing_perms['perm_superadmin'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE");
+                        $existing_perms['perm_superadmin'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_superadmin: " . $e->getMessage());
                     }
                 }
                 
