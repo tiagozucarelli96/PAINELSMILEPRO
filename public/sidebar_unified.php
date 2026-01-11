@@ -329,8 +329,13 @@ if ($current_page === 'dashboard') {
                         <p>Nenhum evento agendado para hoje</p>
                     </div>' : 
                     implode('', array_map(function($evento) {
-                        $hora = date('H:i', strtotime($evento['data_inicio']));
-                        $tipo_icon = $evento['tipo'] === 'visita' ? '🏠' : ($evento['tipo'] === 'bloqueio' ? '🚫' : '📅');
+                        // Para eventos de dia todo do Google, mostrar "Dia todo"
+                        $is_all_day = ($evento['origem'] ?? 'interno') === 'google' && 
+                                      date('H:i', strtotime($evento['data_inicio'])) === '00:00' &&
+                                      date('H:i', strtotime($evento['data_fim'])) === '23:59';
+                        $hora = $is_all_day ? 'Dia todo' : date('H:i', strtotime($evento['data_inicio']));
+                        $tipo_icon = ($evento['origem'] ?? 'interno') === 'google' ? '📅' : 
+                                     ($evento['tipo'] === 'visita' ? '🏠' : ($evento['tipo'] === 'bloqueio' ? '🚫' : '📅'));
                         return '
                         <div class="agenda-item">
                             <div class="agenda-time">' . $hora . '</div>
