@@ -188,6 +188,7 @@ $routes = [
   'contabilidade_admin_colaboradores' => 'contabilidade_admin_colaboradores.php',
   'config_email_global' => 'config_email_global.php',
   'config_logistica' => 'config_logistica.php',
+  'logistica_conexao' => 'logistica_conexao.php',
   'logistica_tipologias' => 'logistica_tipologias.php',
   'logistica_insumos' => 'logistica_insumos.php',
   'logistica_receitas' => 'logistica_receitas.php',
