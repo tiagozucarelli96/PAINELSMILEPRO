@@ -60,17 +60,23 @@ try {
                         COALESCE(eh_visita_agendada, false) as eh_visita_agendada,
                         COALESCE(contrato_fechado, false) as contrato_fechado
                     FROM google_calendar_eventos
-                    WHERE (inicio >= :start AND inicio <= :end)
-                       OR (fim >= :start AND fim <= :end)
-                       OR (inicio <= :start AND fim >= :end)
-                    AND status = 'confirmed'
+                    WHERE status = 'confirmed'
+                      AND (
+                          (inicio >= :start AND inicio <= :end)
+                          OR (fim >= :start AND fim <= :end)
+                          OR (inicio <= :start AND fim >= :end)
+                      )
                     ORDER BY inicio ASC
                 ");
+                $start_date = date('Y-m-d 00:00:00', strtotime($start));
+                $end_date = date('Y-m-d 23:59:59', strtotime($end));
                 $stmt->execute([
-                    ':start' => date('Y-m-d 00:00:00', strtotime($start)),
-                    ':end' => date('Y-m-d 23:59:59', strtotime($end))
+                    ':start' => $start_date,
+                    ':end' => $end_date
                 ]);
                 $google_eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("[AGENDA_API] Eventos Google encontrados: " . count($google_eventos) . " no período $start_date até $end_date");
                 
                 // Adicionar eventos do Google aos eventos da agenda
                 foreach ($google_eventos as $google_evento) {
