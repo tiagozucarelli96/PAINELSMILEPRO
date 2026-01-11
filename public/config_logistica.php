@@ -234,9 +234,18 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
         return ['ok' => false, 'error' => $resp['error']];
     }
 
-    $items = $resp['data']['data'] ?? null;
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? $raw['eventos'] ?? null;
+        }
+    }
     if (!is_array($items)) {
-        return ['ok' => false, 'error' => 'Resposta da ME sem campo data para eventos.'];
+        $keys = is_array($raw) ? implode(',', array_keys($raw)) : gettype($raw);
+        return ['ok' => false, 'error' => 'Resposta da ME sem lista de eventos. Estrutura: ' . $keys];
     }
 
     $eventIds = [];
@@ -415,6 +424,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($novosLocais)) {
                 $novos_locais = array_values($novosLocais);
             }
+            $messages[] = 'Sincronização concluída com sucesso.';
         }
         }
     }
