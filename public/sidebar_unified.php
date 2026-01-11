@@ -1698,13 +1698,6 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_administrativo']) || !empty($_SESSION['perm_configuracoes'])): ?>
-                <a href="index.php?page=google_calendar_config" class="nav-item <?= isActiveUnified('google_calendar_config') ?>">
-                    <span class="nav-item-icon">📅</span>
-                    Google Calendar
-                </a>
-                <?php endif; ?>
-                
                 <?php if (!empty($_SESSION['perm_demandas'])): ?>
                 <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
                     <span class="nav-item-icon">📝</span>

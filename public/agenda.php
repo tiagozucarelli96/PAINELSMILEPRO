@@ -516,6 +516,11 @@ includeSidebar('Agenda');
                     <a href="agenda_config.php" class="btn btn-outline">
                         ⚙️ Config
                     </a>
+                    <?php if (!empty($_SESSION['perm_administrativo']) || !empty($_SESSION['perm_configuracoes'])): ?>
+                    <a href="index.php?page=google_calendar_config" class="btn btn-outline" style="text-decoration: none;">
+                        📅 Google Calendar
+                    </a>
+                    <?php endif; ?>
                 </div>
             </div>
 
