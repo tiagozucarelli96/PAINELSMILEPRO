@@ -427,6 +427,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <?php endif; ?>
         <?php endif; ?>
         
+        <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 8px;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">🔍 Diagnóstico do Webhook</h3>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
+                URL do Webhook: <code><?= htmlspecialchars($webhook_url ?? 'https://painelsmilepro-production.up.railway.app/google/webhook') ?></code>
+            </p>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
+                Status: <?= !empty($config['webhook_resource_id']) ? '✅ Registrado' : '❌ Não registrado' ?>
+            </p>
+            <?php if (!empty($config['webhook_resource_id'])): ?>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
+                Resource ID: <code><?= htmlspecialchars(substr($config['webhook_resource_id'], 0, 50)) ?>...</code>
+            </p>
+            <?php endif; ?>
+            <p style="margin: 0; font-size: 0.75rem; color: #9ca3af;">
+                <strong>Nota:</strong> O webhook expira após alguns dias. Se não receber notificações, reative o webhook.
+                O sistema também sincroniza automaticamente via cron como backup.
+            </p>
+        </div>
+        
         <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">
             🔍 Debug
         </a>

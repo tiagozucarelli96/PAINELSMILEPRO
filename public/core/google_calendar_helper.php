@@ -509,11 +509,13 @@ class GoogleCalendarHelper {
         $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/watch";
         
         $channel_id = uniqid('channel_', true);
+        // O token deve ser o calendar_id para identificar qual calendário está sendo notificado
+        $token = $calendar_id;
         $data = [
             'id' => $channel_id,
             'type' => 'web_hook',
             'address' => $webhook_url,
-            'token' => bin2hex(random_bytes(16)) // Token aleatório para segurança
+            'token' => $token // Usar calendar_id como token para identificar o calendário
         ];
         
         error_log("[GOOGLE_CALENDAR_WEBHOOK] Dados do canal: " . json_encode($data));
