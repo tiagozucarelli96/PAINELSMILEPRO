@@ -232,10 +232,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('E-mail do administrador não configurado');
         }
         
-        // Verificar se Resend está configurado (prioridade 1)
-        $resend_api_key = getenv('RESEND_API_KEY') 
-            ?: ($_ENV['RESEND_API_KEY'] ?? null)
-            ?: ($_SERVER['RESEND_API_KEY'] ?? null);
+        // Verificar se Resend está configurado (prioridade 1) - mesma lógica do helper
+        $resend_api_key = null;
+        $env_getenv = getenv('RESEND_API_KEY');
+        if ($env_getenv && !empty($env_getenv)) {
+            $resend_api_key = $env_getenv;
+        } elseif (isset($_ENV['RESEND_API_KEY']) && !empty($_ENV['RESEND_API_KEY'])) {
+            $resend_api_key = $_ENV['RESEND_API_KEY'];
+        } elseif (isset($_SERVER['RESEND_API_KEY']) && !empty($_SERVER['RESEND_API_KEY'])) {
+            $resend_api_key = $_SERVER['RESEND_API_KEY'];
+        } elseif (function_exists('apache_getenv')) {
+            $env_apache = apache_getenv('RESEND_API_KEY');
+            if ($env_apache && !empty($env_apache)) {
+                $resend_api_key = $env_apache;
+            }
+        }
         
         // Usar EmailGlobalHelper que já tem a lógica correta (Resend primeiro, depois SMTP)
         $email_helper = new EmailGlobalHelper();
@@ -557,9 +568,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $resend_disponivel = class_exists('\Resend\Resend', false);
             
             // Verificar RESEND_API_KEY em múltiplas fontes (Railway pode usar diferentes métodos)
-            $resend_api_key = getenv('RESEND_API_KEY') 
-                ?: ($_ENV['RESEND_API_KEY'] ?? null)
-                ?: ($_SERVER['RESEND_API_KEY'] ?? null);
+            $resend_api_key = null;
+            $fonte_detectada = null;
+            
+            // Método 1: getenv
+            $env_getenv = getenv('RESEND_API_KEY');
+            if ($env_getenv && !empty($env_getenv)) {
+                $resend_api_key = $env_getenv;
+                $fonte_detectada = 'getenv';
+            }
+            
+            // Método 2: $_ENV
+            if (!$resend_api_key && isset($_ENV['RESEND_API_KEY']) && !empty($_ENV['RESEND_API_KEY'])) {
+                $resend_api_key = $_ENV['RESEND_API_KEY'];
+                $fonte_detectada = '_ENV';
+            }
+            
+            // Método 3: $_SERVER
+            if (!$resend_api_key && isset($_SERVER['RESEND_API_KEY']) && !empty($_SERVER['RESEND_API_KEY'])) {
+                $resend_api_key = $_SERVER['RESEND_API_KEY'];
+                $fonte_detectada = '_SERVER';
+            }
+            
+            // Método 4: apache_getenv (se Apache)
+            if (!$resend_api_key && function_exists('apache_getenv')) {
+                $env_apache = apache_getenv('RESEND_API_KEY');
+                if ($env_apache && !empty($env_apache)) {
+                    $resend_api_key = $env_apache;
+                    $fonte_detectada = 'apache_getenv';
+                }
+            }
             
             // Debug: verificar se autoload existe mas classes não estão carregadas
             $vendor_path = __DIR__ . '/../vendor';
@@ -580,6 +618,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <div class="validacao-item <?= $resend_api_key ? 'ok' : 'warning' ?>" style="border-color: <?= $resend_api_key ? '#059669' : '#f59e0b' ?>; background: <?= $resend_api_key ? '#d1fae5' : '#fef3c7' ?>;">
                 <?= $resend_api_key ? '✅' : '⚠️' ?> RESEND_API_KEY: <?= $resend_api_key ? 'Configurada' : 'Não configurada (recomendado para Railway)' ?>
             </div>
+            
+            <?php if (!$resend_api_key): ?>
+            <div class="info-box" style="background: #fee2e2; border-color: #dc2626; margin-top: 1rem;">
+                <p><strong>🔍 Debug Detalhado - RESEND_API_KEY:</strong></p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem; font-family: monospace; font-size: 0.875rem;">
+                    <li>getenv('RESEND_API_KEY'): <?= getenv('RESEND_API_KEY') ? '✅ ' . substr(getenv('RESEND_API_KEY'), 0, 10) . '... (' . strlen(getenv('RESEND_API_KEY')) . ' chars)' : '❌ NULL' ?></li>
+                    <li>$_ENV['RESEND_API_KEY']: <?= isset($_ENV['RESEND_API_KEY']) && !empty($_ENV['RESEND_API_KEY']) ? '✅ ' . substr($_ENV['RESEND_API_KEY'], 0, 10) . '... (' . strlen($_ENV['RESEND_API_KEY']) . ' chars)' : '❌ Não definido' ?></li>
+                    <li>$_SERVER['RESEND_API_KEY']: <?= isset($_SERVER['RESEND_API_KEY']) && !empty($_SERVER['RESEND_API_KEY']) ? '✅ ' . substr($_SERVER['RESEND_API_KEY'], 0, 10) . '... (' . strlen($_SERVER['RESEND_API_KEY']) . ' chars)' : '❌ Não definido' ?></li>
+                    <li>apache_getenv('RESEND_API_KEY'): <?= function_exists('apache_getenv') ? (apache_getenv('RESEND_API_KEY') ? '✅ ' . substr(apache_getenv('RESEND_API_KEY'), 0, 10) . '...' : '❌ NULL') : 'N/A (função não disponível)' ?></li>
+                </ul>
+                <p style="margin-top: 0.75rem; padding: 0.75rem; background: #fef3c7; border-radius: 4px;">
+                    <strong>💡 Solução:</strong> Se a variável não está sendo detectada, faça um <strong>Redeploy</strong> no Railway após adicionar a variável. 
+                    Às vezes o Railway precisa reiniciar o serviço para carregar novas variáveis de ambiente.
+                </p>
+                <p style="margin-top: 0.5rem; font-size: 0.875rem;">
+                    <strong>Passos:</strong><br>
+                    1. Railway → Seu Serviço → <strong>Settings</strong> → <strong>Restart</strong><br>
+                    2. Ou: Railway → <strong>Deployments</strong> → <strong>Redeploy</strong>
+                </p>
+            </div>
+            <?php else: ?>
+            <div class="info-box" style="background: #d1fae5; border-color: #059669; margin-top: 0.5rem;">
+                <p><strong>✅ RESEND_API_KEY detectada!</strong></p>
+                <p style="font-family: monospace; font-size: 0.875rem; margin-top: 0.5rem;">
+                    Fonte: <strong><?= $fonte_detectada ?? 'desconhecida' ?></strong><br>
+                    Preview: <?= substr($resend_api_key, 0, 10) ?>...<?= substr($resend_api_key, -5) ?> (<?= strlen($resend_api_key) ?> caracteres)
+                </p>
+            </div>
+            <?php endif; ?>
             
             <?php if ($autoload_existe && (!$phpmailer_disponivel || !$resend_disponivel)): ?>
             <div class="info-box" style="background: #fef3c7; border-color: #f59e0b; margin-top: 1rem;">

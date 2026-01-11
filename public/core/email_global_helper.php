@@ -42,24 +42,55 @@ class EmailGlobalHelper {
         error_log("[EMAIL] Assunto: $assunto");
         
         // Verificar se Resend está configurado (Railway pode usar diferentes métodos)
-        $resend_api_key = getenv('RESEND_API_KEY') 
-            ?: ($_ENV['RESEND_API_KEY'] ?? null)
-            ?: ($_SERVER['RESEND_API_KEY'] ?? null);
+        // Tentar múltiplas formas de ler a variável de ambiente
+        $resend_api_key = null;
+        $fonte_detectada = null;
+        
+        // Método 1: getenv (mais comum)
+        $env_getenv = getenv('RESEND_API_KEY');
+        if ($env_getenv && !empty($env_getenv)) {
+            $resend_api_key = $env_getenv;
+            $fonte_detectada = 'getenv';
+        }
+        
+        // Método 2: $_ENV (alguns servidores)
+        if (!$resend_api_key && isset($_ENV['RESEND_API_KEY']) && !empty($_ENV['RESEND_API_KEY'])) {
+            $resend_api_key = $_ENV['RESEND_API_KEY'];
+            $fonte_detectada = '_ENV';
+        }
+        
+        // Método 3: $_SERVER (alguns servidores web)
+        if (!$resend_api_key && isset($_SERVER['RESEND_API_KEY']) && !empty($_SERVER['RESEND_API_KEY'])) {
+            $resend_api_key = $_SERVER['RESEND_API_KEY'];
+            $fonte_detectada = '_SERVER';
+        }
+        
+        // Método 4: apache_getenv (se Apache)
+        if (!$resend_api_key && function_exists('apache_getenv')) {
+            $env_apache = apache_getenv('RESEND_API_KEY');
+            if ($env_apache && !empty($env_apache)) {
+                $resend_api_key = $env_apache;
+                $fonte_detectada = 'apache_getenv';
+            }
+        }
         
         if (!$resend_api_key) {
             // Debug: verificar todas as fontes possíveis
             $debug_env = [
-                'getenv' => getenv('RESEND_API_KEY') ? 'SIM' : 'NÃO',
-                '_ENV' => isset($_ENV['RESEND_API_KEY']) ? 'SIM' : 'NÃO',
-                '_SERVER' => isset($_SERVER['RESEND_API_KEY']) ? 'SIM' : 'NÃO'
+                'getenv' => getenv('RESEND_API_KEY') ? 'SIM (' . strlen(getenv('RESEND_API_KEY')) . ' chars)' : 'NÃO',
+                '_ENV' => isset($_ENV['RESEND_API_KEY']) ? 'SIM (' . strlen($_ENV['RESEND_API_KEY']) . ' chars)' : 'NÃO',
+                '_SERVER' => isset($_SERVER['RESEND_API_KEY']) ? 'SIM (' . strlen($_SERVER['RESEND_API_KEY']) . ' chars)' : 'NÃO',
+                'apache_getenv' => function_exists('apache_getenv') ? (apache_getenv('RESEND_API_KEY') ? 'SIM' : 'NÃO') : 'N/A'
             ];
             error_log("[EMAIL] ❌ ERRO: RESEND_API_KEY não configurada.");
-            error_log("[EMAIL] Debug - Verificações: " . json_encode($debug_env));
+            error_log("[EMAIL] Debug - Verificações: " . json_encode($debug_env, JSON_PRETTY_PRINT));
             error_log("[EMAIL] Configure no Railway: Variables → RESEND_API_KEY");
+            error_log("[EMAIL] Após configurar, faça RESTART ou REDEPLOY no Railway");
             return false;
         }
         
-        error_log("[EMAIL] ✅ RESEND_API_KEY encontrada! (tamanho: " . strlen($resend_api_key) . " caracteres)");
+        error_log("[EMAIL] ✅ RESEND_API_KEY encontrada via $fonte_detectada! (tamanho: " . strlen($resend_api_key) . " caracteres)");
+        error_log("[EMAIL] Preview: " . substr($resend_api_key, 0, 10) . "..." . substr($resend_api_key, -5));
         
         if (!class_exists('\Resend\Resend', false)) {
             error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível. Execute: composer install");
