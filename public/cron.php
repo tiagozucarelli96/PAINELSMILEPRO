@@ -30,6 +30,20 @@ header('Content-Type: application/json; charset=utf-8');
 // Determinar qual cron executar
 $tipo = $_GET['tipo'] ?? '';
 
+if ($tipo === 'google_calendar_daily') {
+    // Sincronização diária do Google Calendar
+    require_once __DIR__ . '/cron_google_calendar_daily.php';
+    echo json_encode(['success' => true, 'message' => 'Sincronização diária do Google Calendar iniciada']);
+    exit;
+}
+
+if ($tipo === 'google_calendar_renewal') {
+    // Renovação de webhooks do Google Calendar
+    require_once __DIR__ . '/google_calendar_watch_renewal.php';
+    echo json_encode(['success' => true, 'message' => 'Renovação de webhooks do Google Calendar iniciada']);
+    exit;
+}
+
 if ($tipo === 'demandas_fixas') {
     // Incluir apenas o que é necessário para este cron específico
     require_once __DIR__ . '/conexao.php';
