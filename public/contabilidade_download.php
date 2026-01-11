@@ -28,6 +28,7 @@ if (!$is_admin && !$is_contabilidade) {
 
 $tipo = $_GET['tipo'] ?? '';
 $id = (int)($_GET['id'] ?? 0);
+$debug = !empty($_GET['debug']) && $is_admin;
 
 if (empty($tipo) || $id <= 0) {
     http_response_code(400);
@@ -208,7 +209,20 @@ try {
     exit;
     
 } catch (Exception $e) {
-    error_log("Erro em contabilidade_download.php: " . $e->getMessage());
+    $context = [
+        'tipo' => $tipo ?? null,
+        'id' => $id ?? null,
+        'has_sdk' => class_exists('Aws\\S3\\S3Client'),
+        'chave_storage' => $chave_storage ?? null,
+        'arquivo_url' => $arquivo_url ?? null,
+        'bucket' => $bucket ?? null,
+        'endpoint' => $endpoint ?? null,
+    ];
+    error_log("Erro em contabilidade_download.php: " . $e->getMessage() . " | " . json_encode($context));
     http_response_code(500);
+    if ($debug) {
+        echo 'Erro ao processar download: ' . htmlspecialchars($e->getMessage());
+        exit;
+    }
     die('Erro ao processar download');
 }
