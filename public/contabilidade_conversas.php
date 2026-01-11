@@ -412,7 +412,7 @@ if ($conversa_id > 0) {
         <div class="form-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <h2 class="form-section-title">💬 Conversas</h2>
-                <button onclick="document.getElementById('modal-nova-conversa').style.display='block'" class="btn-primary">
+                <button onclick="abrirModalNovaConversa()" class="btn-primary">
                     ➕ Nova Conversa
                 </button>
             </div>
@@ -448,8 +448,8 @@ if ($conversa_id > 0) {
         </div>
         
         <!-- Modal Nova Conversa -->
-        <div id="modal-nova-conversa" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-            <div style="background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%;">
+        <div id="modal-nova-conversa" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;" onclick="if(event.target === this) this.style.display='none'">
+            <div style="background: white; border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);" onclick="event.stopPropagation()">
                 <h3 style="margin-bottom: 1.5rem; color: #1e40af;">Nova Conversa</h3>
                 <form method="POST">
                     <input type="hidden" name="acao" value="criar_conversa">
@@ -464,6 +464,25 @@ if ($conversa_id > 0) {
                 </form>
             </div>
         </div>
+        
+        <style>
+        #modal-nova-conversa {
+            display: none;
+        }
+        #modal-nova-conversa[style*="display: block"], 
+        #modal-nova-conversa[style*="display:flex"] {
+            display: flex !important;
+        }
+        </style>
+        
+        <script>
+        function abrirModalNovaConversa() {
+            const modal = document.getElementById('modal-nova-conversa');
+            modal.style.display = 'flex';
+            const input = modal.querySelector('input[name="assunto"]');
+            if (input) input.focus();
+        }
+        </script>
         
         <?php else: ?>
         <!-- Visualização da Conversa -->

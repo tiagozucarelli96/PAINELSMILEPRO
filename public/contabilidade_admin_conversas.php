@@ -235,7 +235,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                     </span>
                 </td>
                 <td>
-                    <a href="index.php?page=contabilidade_conversas&id=<?= $conversa['id'] ?>" class="btn-action btn-view">👁️ Ver</a>
+                    <a href="contabilidade_conversas.php?id=<?= $conversa['id'] ?>" class="btn-action btn-view">👁️ Ver</a>
                     <form method="POST" style="display: inline;">
                         <input type="hidden" name="acao" value="alterar_status">
                         <input type="hidden" name="id" value="<?= $conversa['id'] ?>">
