@@ -32,9 +32,15 @@ try {
     $rows_updated = $stmt;
     error_log("[GOOGLE_CRON_DAILY] 📋 Marcados $rows_updated calendário(s) para sincronização");
     
-    // Chamar o processador (que já tem lock)
+    // Executar o processador (que já tem lock)
     // O processador vai verificar o flag e sincronizar
-    require __DIR__ . '/google_calendar_sync_processor.php';
+    $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
+    if (file_exists($processor_script)) {
+        // Executar via include para manter contexto
+        include $processor_script;
+    } else {
+        error_log("[GOOGLE_CRON_DAILY] ⚠️ Processador não encontrado: $processor_script");
+    }
     
     error_log("[GOOGLE_CRON_DAILY] ✅ Sincronização diária concluída");
     
