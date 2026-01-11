@@ -9,6 +9,16 @@
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($request_uri, PHP_URL_PATH) ?: '/';
 
+// Se for callback OAuth do Google, servir DIRETAMENTE sem passar por nada
+if ($path === '/google/callback' || strpos($path, '/google/callback') !== false) {
+    $callback_file = realpath(__DIR__ . '/google_callback.php');
+    if ($callback_file && is_file($callback_file)) {
+        // Servir callback DIRETAMENTE, sem injeção de conexão ou qualquer coisa
+        require $callback_file;
+        exit;
+    }
+}
+
 // Se for webhook Asaas, servir DIRETAMENTE sem passar por nada
 if (strpos($path, 'asaas_webhook.php') !== false || strpos($request_uri, 'asaas_webhook.php') !== false) {
     $webhook_file = realpath(__DIR__ . '/asaas_webhook.php');
@@ -33,7 +43,7 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
                      'contabilidade_login.php', 'contabilidade_painel.php', 'contabilidade_guias.php', 'contabilidade_holerites.php',
                      'contabilidade_honorarios.php', 'contabilidade_conversas.php', 'contabilidade_colaboradores.php',
                      'push_get_public_key.php', 'push_check_consent.php', 'push_register_subscription.php', 'push_unregister_subscription.php',
-                     'push_debug_env.php'];
+                     'push_debug_env.php', 'google_callback.php'];
     
     // Verificação ESPECIAL para webhooks - SEM conexão automática, eles gerenciam sua própria conexão
     if (strpos($path, 'asaas_webhook.php') !== false || basename($file) === 'asaas_webhook.php') {
