@@ -43,6 +43,13 @@ includeSidebar('Demandas');
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    --page-header-height: 72px;
+    --board-header-height: 56px;
+    --list-width: 360px;
+    --list-gap: 1.25rem;
+    --card-gap: 0.75rem;
+    --card-padding: 0.9rem;
+    --card-radius: 10px;
 }
 
 /* ============================================
@@ -57,6 +64,8 @@ includeSidebar('Demandas');
     align-items: center;
     flex-shrink: 0;
     z-index: 100;
+    position: sticky;
+    top: 0;
 }
 
 .page-demandas-header h1 {
@@ -314,10 +323,13 @@ includeSidebar('Demandas');
 }
 
 .page-demandas-board-header {
-    padding: 1rem 1.5rem;
+    padding: 0.9rem 1.5rem;
     background: white;
     border-bottom: 1px solid #e5e7eb;
     flex-shrink: 0;
+    position: sticky;
+    top: var(--page-header-height);
+    z-index: 90;
 }
 
 .page-demandas-board-header-title {
@@ -339,34 +351,41 @@ includeSidebar('Demandas');
     flex: 1;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 1.5rem;
+    padding: 1.5rem 1.75rem 2rem;
     display: flex;
-    gap: 1rem;
+    gap: var(--list-gap);
     align-items: flex-start;
+    scroll-snap-type: x proximity;
+    scrollbar-gutter: stable both-edges;
 }
 
 .page-demandas-list {
     background: #ebecf0;
-    border-radius: 8px;
-    padding: 0.75rem;
-    min-width: 340px;
-    max-width: 360px;
-    width: 340px;
+    border-radius: 10px;
+    padding: 0.85rem;
+    min-width: var(--list-width);
+    max-width: var(--list-width);
+    width: var(--list-width);
     display: flex;
     flex-direction: column;
     min-height: 70vh;
     max-height: calc(100vh - 200px);
+    scroll-snap-align: start;
 }
 
 .page-demandas-list-header {
     font-weight: 600;
-    padding: 0.75rem;
+    padding: 0.85rem 0.75rem;
     margin-bottom: 0.5rem;
     color: #172b4d;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    background: #ebecf0;
+    z-index: 2;
 }
 
 .page-demandas-list-count {
@@ -382,6 +401,9 @@ includeSidebar('Demandas');
     overflow-x: hidden;
     min-height: 200px;
     padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-gap);
 }
 
 .page-demandas-list-cards::-webkit-scrollbar {
@@ -410,11 +432,10 @@ includeSidebar('Demandas');
 
 .page-demandas-card {
     background: white;
-    border-radius: 6px;
-    padding: 0.75rem;
-    margin-bottom: 0.5rem;
+    border-radius: var(--card-radius);
+    padding: var(--card-padding);
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
     transition: all 0.2s;
     position: relative;
 }
@@ -448,6 +469,7 @@ includeSidebar('Demandas');
     margin-bottom: 0.5rem;
     color: #172b4d;
     font-size: 0.875rem;
+    line-height: 1.35;
 }
 
 .page-demandas-card-badges {
@@ -496,6 +518,19 @@ includeSidebar('Demandas');
     transition: background 0.2s;
     margin-top: 0.5rem;
     flex-shrink: 0;
+}
+
+.main-content.expanded .page-demandas-header,
+.main-content.expanded .page-demandas-board-header {
+    padding-left: 4.25rem;
+}
+
+.page-demandas.density-compact {
+    --list-width: 320px;
+    --list-gap: 1rem;
+    --card-gap: 0.5rem;
+    --card-padding: 0.7rem;
+    --card-radius: 8px;
 }
 
 .page-demandas-add-card-btn:hover {
@@ -923,30 +958,27 @@ includeSidebar('Demandas');
    RESPONSIVIDADE
    ============================================ */
 @media (min-width: 1440px) {
-    .page-demandas-list {
-        min-width: 360px;
-        width: 360px;
+    .page-demandas {
+        --list-width: 380px;
     }
 }
 
 @media (max-width: 1439px) and (min-width: 1280px) {
-    .page-demandas-list {
-        min-width: 340px;
-        width: 340px;
+    .page-demandas {
+        --list-width: 350px;
     }
 }
 
 @media (max-width: 1279px) and (min-width: 1024px) {
-    .page-demandas-list {
-        min-width: 320px;
-        width: 320px;
+    .page-demandas {
+        --list-width: 320px;
     }
 }
 
 @media (max-width: 1023px) {
-    .page-demandas-list {
-        min-width: 280px;
-        width: 280px;
+    .page-demandas {
+        --list-width: 280px;
+        --page-header-height: 64px;
     }
 }
 
@@ -1046,6 +1078,7 @@ includeSidebar('Demandas');
             <button class="btn btn-primary" onclick="abrirModalNovoCard()">➕ Novo Card</button>
             <button class="btn btn-outline" onclick="abrirModalNovaLista()">📋 Nova Lista</button>
             <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Demandas Fixas</button>
+            <button class="btn btn-outline" id="btn-density-toggle" type="button">↔ Modo compacto</button>
             <button class="btn-icon" onclick="toggleMenuActions()" aria-label="Mais ações">⋯</button>
         </div>
     </div>
@@ -1439,6 +1472,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Verificar responsividade
     verificarResponsividade();
     window.addEventListener('resize', verificarResponsividade);
+
+    // Densidade visual
+    const demandasRoot = document.querySelector('.page-demandas');
+    const densityButton = document.getElementById('btn-density-toggle');
+    const densityStored = localStorage.getItem('demandas_density') || 'comfort';
+    if (demandasRoot && densityStored === 'compact') {
+        demandasRoot.classList.add('density-compact');
+    }
+    if (densityButton) {
+        densityButton.textContent = densityStored === 'compact' ? '⬍ Modo confortável' : '↔ Modo compacto';
+        densityButton.addEventListener('click', function() {
+            if (!demandasRoot) return;
+            demandasRoot.classList.toggle('density-compact');
+            const isCompact = demandasRoot.classList.contains('density-compact');
+            localStorage.setItem('demandas_density', isCompact ? 'compact' : 'comfort');
+            densityButton.textContent = isCompact ? '⬍ Modo confortável' : '↔ Modo compacto';
+        });
+    }
     
     // Carregar dados
     carregarQuadros();
