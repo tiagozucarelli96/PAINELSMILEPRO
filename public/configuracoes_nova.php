@@ -20,9 +20,9 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
                 <div class="card-subtitle">Configurar integrações externas</div>
             </div>
             <div class="card-content">
-                <div class="card-item" onclick="window.location.href='index.php?page=configuracoes'">
+                <div class="card-item" onclick="window.location.href='index.php?page=config_email_global'">
                     <div class="item-icon">📧</div>
-                    <div class="item-text">E-mail SMTP</div>
+                    <div class="item-text">E-mail (Resend)</div>
                     <div class="item-arrow">→</div>
                 </div>
                 <div class="card-item" onclick="window.location.href='index.php?page=webhook_me_eventos'">
@@ -238,5 +238,4 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
     }
 }
 </style>
-
 

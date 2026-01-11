@@ -40,8 +40,7 @@ Após adicionar a variável:
 ## ✅ Como Funciona
 
 - **Prioridade 1:** Se `RESEND_API_KEY` estiver configurada, o sistema usa Resend automaticamente
-- **Prioridade 2:** Se Resend não estiver configurado, tenta SMTP (mas Railway bloqueia)
-- **Prioridade 3:** Fallback para `mail()` nativo (não recomendado)
+- **Prioridade 2:** Resend é obrigatório no Railway para envio de e-mails
 
 ## 📋 Verificação nos Logs
 

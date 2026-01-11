@@ -45,130 +45,7 @@ function registrarLogEmail($pdo, $tipo, $mensagem, $detalhes = null) {
     }
 }
 
-// Função para testar conexão TCP/SSL com múltiplas tentativas
-function testarConexaoTCP($host, $port, $timeout = 5) {
-    $inicio = microtime(true);
-    $resultado = [
-        'sucesso' => false,
-        'erro' => null,
-        'tempo' => 0,
-        'metodo' => null,
-        'tentativas' => []
-    ];
-    
-    // Tentar diferentes métodos de conexão
-    $metodos = [];
-    
-    if ($port == 465) {
-        // Porta 465: SSL implícito
-        $metodos[] = [
-            'nome' => 'SSL Implícito (ssl://)',
-            'url' => "ssl://{$host}:{$port}",
-            'context' => stream_context_create([
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true,
-                    'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT
-                ],
-                'socket' => [
-                    'bindto' => '0:0' // Não forçar interface específica
-                ]
-            ])
-        ];
-        
-        // Tentar também com TLS explícito
-        $metodos[] = [
-            'nome' => 'TLS Explícito (tls://)',
-            'url' => "tls://{$host}:{$port}",
-            'context' => stream_context_create([
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                ]
-            ])
-        ];
-    } else {
-        // Outras portas: TCP primeiro, depois TLS se necessário
-        $metodos[] = [
-            'nome' => 'TCP Simples',
-            'url' => "tcp://{$host}:{$port}",
-            'context' => null
-        ];
-    }
-    
-    foreach ($metodos as $metodo) {
-        $tentativa_inicio = microtime(true);
-        $socket = null;
-        
-        try {
-            if ($metodo['context']) {
-                $socket = @stream_socket_client(
-                    $metodo['url'],
-                    $errno,
-                    $errstr,
-                    $timeout,
-                    STREAM_CLIENT_CONNECT,
-                    $metodo['context']
-                );
-            } else {
-                $socket = @stream_socket_client(
-                    $metodo['url'],
-                    $errno,
-                    $errstr,
-                    $timeout
-                );
-            }
-            
-            $tentativa_tempo = round((microtime(true) - $tentativa_inicio) * 1000, 2);
-            
-            if ($socket) {
-                fclose($socket);
-                $resultado['sucesso'] = true;
-                $resultado['metodo'] = $metodo['nome'];
-                $resultado['tempo'] = round((microtime(true) - $inicio) * 1000, 2);
-                $resultado['tentativas'][] = [
-                    'metodo' => $metodo['nome'],
-                    'sucesso' => true,
-                    'tempo' => $tentativa_tempo
-                ];
-                return $resultado; // Sucesso, parar tentativas
-            } else {
-                $resultado['tentativas'][] = [
-                    'metodo' => $metodo['nome'],
-                    'sucesso' => false,
-                    'erro' => "Erro $errno: $errstr",
-                    'tempo' => $tentativa_tempo
-                ];
-            }
-        } catch (Exception $e) {
-            $tentativa_tempo = round((microtime(true) - $tentativa_inicio) * 1000, 2);
-            $resultado['tentativas'][] = [
-                'metodo' => $metodo['nome'],
-                'sucesso' => false,
-                'erro' => $e->getMessage(),
-                'tempo' => $tentativa_tempo
-            ];
-        }
-    }
-    
-    // Se chegou aqui, todas as tentativas falharam
-    $resultado['tempo'] = round((microtime(true) - $inicio) * 1000, 2);
-    
-    // Pegar o último erro como principal
-    if (!empty($resultado['tentativas'])) {
-        $ultima_tentativa = end($resultado['tentativas']);
-        $resultado['erro'] = $ultima_tentativa['erro'] ?? 'Todas as tentativas falharam';
-    } else {
-        $resultado['erro'] = 'Nenhuma tentativa foi realizada';
-    }
-    
-    return $resultado;
-}
-
 $resultado_teste = null;
-$resultado_conexao = null;
 $config = null;
 $validacao = [];
 
@@ -183,11 +60,7 @@ try {
 // Validar configuração
 if ($config) {
     $campos_obrigatorios = [
-        'smtp_host' => 'Host SMTP',
-        'smtp_port' => 'Porta SMTP',
-        'smtp_username' => 'Usuário SMTP',
-        'smtp_password' => 'Senha SMTP',
-        'smtp_encryption' => 'Tipo de segurança',
+        'email_remetente' => 'E-mail remetente',
         'email_administrador' => 'E-mail do administrador'
     ];
     
@@ -204,18 +77,7 @@ if ($config) {
         $validacao[] = ['tipo' => 'erro', 'mensagem' => 'E-mail do administrador inválido'];
     }
     
-    // Validar porta
-    $port = (int)$config['smtp_port'];
-    if ($port <= 0 || $port > 65535) {
-        $validacao[] = ['tipo' => 'erro', 'mensagem' => 'Porta SMTP inválida'];
-    }
-    
-    // Testar conexão TCP/SSL (com timeout curto para não travar a página)
-    if (!empty($config['smtp_host']) && !empty($config['smtp_port'])) {
-        // Timeout de 3 segundos para não travar a página
-        set_time_limit(10); // Limite total de 10 segundos para o script
-        $resultado_conexao = testarConexaoTCP($config['smtp_host'], (int)$config['smtp_port'], 3);
-    }
+    // Resend não requer validação de porta/host.
 }
 
 // Processar teste de envio
@@ -248,11 +110,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             }
         }
         
-        // Usar EmailGlobalHelper que já tem a lógica correta (Resend primeiro, depois SMTP)
+        // Usar EmailGlobalHelper que já tem a lógica correta (Resend)
         $email_helper = new EmailGlobalHelper();
         
         $assunto = 'Teste de Diagnóstico - Portal Grupo Smile';
-        $corpo = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p><p>Método usado: ' . ($resend_api_key ? 'Resend (API)' : 'SMTP') . '</p></body></html>';
+        $corpo = '<html><body><h1>Teste de E-mail</h1><p>Este é um e-mail de teste enviado pelo sistema de diagnóstico.</p><p>Data/Hora: ' . date('d/m/Y H:i:s') . '</p><p>Método usado: Resend (API)</p></body></html>';
         
         $sucesso = $email_helper->enviarEmail($config['email_administrador'], $assunto, $corpo, true);
         
@@ -262,14 +124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 'mensagem' => 'E-mail enviado com sucesso!',
                 'detalhes' => [
                     'para' => $config['email_administrador'],
-                    'metodo' => $resend_api_key ? 'Resend (API)' : 'SMTP',
+                    'metodo' => 'Resend (API)',
                     'resend_configurado' => !empty($resend_api_key)
                 ]
             ];
             
             registrarLogEmail($pdo, 'sucesso', 'E-mail de teste enviado com sucesso', [
                 'para' => $config['email_administrador'],
-                'metodo' => $resend_api_key ? 'Resend' : 'SMTP'
+                'metodo' => 'Resend'
             ]);
         } else {
             // Verificar se Resend está configurado para dar mensagem mais específica
@@ -450,26 +312,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                     <th>Valor</th>
                 </tr>
                 <tr>
-                    <td>Host SMTP</td>
-                    <td><?= htmlspecialchars($config['smtp_host'] ?? 'N/A') ?></td>
-                </tr>
-                <tr>
-                    <td>Porta</td>
-                    <td><?= htmlspecialchars($config['smtp_port'] ?? 'N/A') ?></td>
-                </tr>
-                <tr>
-                    <td>Usuário SMTP</td>
-                    <td><?= htmlspecialchars($config['smtp_username'] ?? 'N/A') ?></td>
-                </tr>
-                <tr>
-                    <td>Senha SMTP</td>
-                    <td class="valor-sensivel"><?= !empty($config['smtp_password']) ? '••••••••' : 'N/A' ?></td>
-                </tr>
-                <tr>
-                    <td>Encriptação</td>
-                    <td><?= strtoupper(htmlspecialchars($config['smtp_encryption'] ?? 'N/A')) ?></td>
-                </tr>
-                <tr>
                     <td>E-mail Remetente</td>
                     <td><?= htmlspecialchars($config['email_remetente'] ?? 'N/A') ?></td>
                 </tr>
@@ -490,64 +332,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <?php endforeach; ?>
         </div>
         
-        <!-- Teste de Conexão TCP/SSL -->
-        <?php if ($resultado_conexao): ?>
-        <div class="section">
-            <h2>🔌 Teste de Conexão TCP/SSL</h2>
-            <?php if ($resultado_conexao['sucesso']): ?>
-            <div class="resultado-box sucesso">
-                <p><strong>✅ Sucesso!</strong></p>
-                <p>Conexão estabelecida com <?= htmlspecialchars($config['smtp_host']) ?>:<?= htmlspecialchars($config['smtp_port']) ?></p>
-                <p>Método usado: <?= htmlspecialchars($resultado_conexao['metodo']) ?></p>
-                <p>Tempo de resposta: <?= $resultado_conexao['tempo'] ?>ms</p>
-            </div>
-            <?php else: ?>
-            <div class="resultado-box erro">
-                <p><strong>❌ Falha na conexão</strong></p>
-                <p>Erro: <?= htmlspecialchars($resultado_conexao['erro']) ?></p>
-                <p>Tempo total de tentativas: <?= $resultado_conexao['tempo'] ?>ms</p>
-                
-                <?php if (!empty($resultado_conexao['tentativas'])): ?>
-                <p style="margin-top: 1rem;"><strong>Tentativas realizadas:</strong></p>
-                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                    <?php foreach ($resultado_conexao['tentativas'] as $tentativa): ?>
-                    <li>
-                        <strong><?= htmlspecialchars($tentativa['metodo']) ?>:</strong>
-                        <?= $tentativa['sucesso'] ? '✅' : '❌' ?>
-                        <?= $tentativa['sucesso'] ? 'Sucesso' : htmlspecialchars($tentativa['erro'] ?? 'Falhou') ?>
-                        (<?= $tentativa['tempo'] ?>ms)
-                    </li>
-                    <?php endforeach; ?>
-                </ul>
-                <?php endif; ?>
-                
-                <div class="info-box" style="margin-top: 1rem;">
-                    <p><strong>💡 Possíveis causas:</strong></p>
-                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                        <li><strong>Firewall bloqueando:</strong> O Railway pode estar bloqueando conexões de saída na porta 465</li>
-                        <li><strong>Servidor SMTP inacessível:</strong> O servidor pode não estar acessível externamente</li>
-                        <li><strong>Host ou porta incorretos:</strong> Verifique se o host e porta estão corretos</li>
-                        <li><strong>Problema de rede temporário:</strong> Tente novamente em alguns minutos</li>
-                    </ul>
-                    <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 1rem; margin-top: 1rem; border-radius: 4px;">
-                        <p><strong>🚀 Solução Recomendada: Usar Resend</strong></p>
-                        <p>O Railway bloqueia portas SMTP (465 e 587). A melhor solução é usar <strong>Resend</strong> (serviço de email via API):</p>
-                        <ol style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                            <li>Acesse o painel do Railway → <strong>Variables</strong></li>
-                            <li>Adicione: <code style="background: #f3f4f6; padding: 0.25rem 0.5rem; border-radius: 4px;">RESEND_API_KEY</code> = sua API key do Resend</li>
-                            <li>Faça um novo deploy</li>
-                            <li>O sistema usará Resend automaticamente (sem necessidade de SMTP)</li>
-                        </ol>
-                        <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;">
-                            Veja instruções completas em: <code>CONFIGURAR_RESEND_RAILWAY.md</code>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
-        
         <!-- Verificação de Dependências -->
         <div class="section">
             <h2>📦 Verificação de Dependências</h2>
@@ -564,7 +348,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             }
             
             // Verificar classes (agora com autoload carregado, mas sem forçar autoload automático)
-            $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer', false);
             $resend_disponivel = class_exists('Resend', false) || class_exists('\Resend\Resend', false);
             
             // Verificar RESEND_API_KEY em múltiplas fontes (Railway pode usar diferentes métodos)
@@ -603,14 +386,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $vendor_path = __DIR__ . '/../vendor';
             $resend_path = $vendor_path . '/resend/resend-php';
             $resend_instalado = is_dir($resend_path);
-            $phpmailer_path = $vendor_path . '/phpmailer/phpmailer';
-            $phpmailer_instalado = is_dir($phpmailer_path);
             ?>
             <div class="validacao-item <?= $autoload_existe ? 'ok' : 'erro' ?>">
                 <?= $autoload_existe ? '✅' : '❌' ?> vendor/autoload.php: <?= $autoload_existe ? 'Existe' : 'Não encontrado' ?>
-            </div>
-            <div class="validacao-item <?= $phpmailer_disponivel ? 'ok' : 'erro' ?>">
-                <?= $phpmailer_disponivel ? '✅' : '❌' ?> PHPMailer: <?= $phpmailer_disponivel ? 'Disponível' : 'Não disponível' ?>
             </div>
             <div class="validacao-item <?= $resend_disponivel ? 'ok' : 'erro' ?>">
                 <?= $resend_disponivel ? '✅' : '❌' ?> Resend SDK: <?= $resend_disponivel ? 'Disponível' : 'Não disponível' ?>
@@ -648,17 +426,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             </div>
             <?php endif; ?>
             
-            <?php if ($autoload_existe && (!$phpmailer_disponivel || !$resend_disponivel)): ?>
+            <?php if ($autoload_existe && !$resend_disponivel): ?>
             <div class="info-box" style="background: #fef3c7; border-color: #f59e0b; margin-top: 1rem;">
                 <p><strong>🔍 Diagnóstico de Instalação:</strong></p>
                 <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
                     <li>vendor/autoload.php: <?= $autoload_existe ? '✅ Existe' : '❌ Não encontrado' ?></li>
-                    <li>PHPMailer instalado: <?= $phpmailer_instalado ? '✅ Sim' : '❌ Não' ?> (<?= $phpmailer_path ?>)</li>
                     <li>Resend SDK instalado: <?= $resend_instalado ? '✅ Sim' : '❌ Não' ?> (<?= $resend_path ?>)</li>
-                    <li>PHPMailer carregado: <?= $phpmailer_disponivel ? '✅ Sim' : '❌ Não (pode precisar recarregar autoload)' ?></li>
                     <li>Resend SDK carregado: <?= $resend_disponivel ? '✅ Sim' : '❌ Não (pode precisar recarregar autoload)' ?></li>
                 </ul>
-                <?php if (($phpmailer_instalado && !$phpmailer_disponivel) || ($resend_instalado && !$resend_disponivel)): ?>
+                <?php if ($resend_instalado && !$resend_disponivel): ?>
                 <p style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 4px;">
                     <strong>⚠️ Problema detectado:</strong> As bibliotecas estão instaladas mas não estão sendo carregadas pelo autoload. 
                     Isso pode indicar que o autoload precisa ser regenerado. Execute no Railway:
@@ -673,7 +449,7 @@ composer dump-autoload --optimize
             <?php if ($resend_api_key && $resend_disponivel): ?>
             <div class="info-box" style="background: #d1fae5; border-color: #059669;">
                 <p><strong>✅ Resend configurado!</strong></p>
-                <p>O sistema usará Resend para enviar e-mails. Não é necessário configurar SMTP.</p>
+                <p>O sistema usará Resend para enviar e-mails.</p>
             </div>
             <?php elseif ($resend_api_key && !$resend_disponivel): ?>
             <div class="info-box">
@@ -691,7 +467,7 @@ composer install --no-dev --optimize-autoloader
             </div>
             <?php endif; ?>
             
-            <?php if (!$autoload_existe || !$phpmailer_disponivel): ?>
+            <?php if (!$autoload_existe || !$resend_disponivel): ?>
             <div class="info-box">
                 <p><strong>⚠️ Ação necessária:</strong></p>
                 <p>Execute no servidor:</p>
@@ -732,16 +508,11 @@ composer install --no-dev --optimize-autoloader
                 <div class="info-box" style="margin-top: 1rem;">
                     <p><strong>💡 Soluções possíveis:</strong></p>
                     <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                        <li><strong>Connection timed out:</strong> Firewall bloqueando ou servidor SMTP inacessível. Tente porta 587 com STARTTLS.</li>
-                        <li><strong>Authentication failed:</strong> Verifique usuário e senha SMTP.</li>
-                        <li><strong>SSL/TLS error:</strong> Verifique se a porta e encriptação estão corretas (465 = SSL, 587 = TLS).</li>
-                        <li><strong>Could not connect:</strong> Verifique se o host está correto e acessível.</li>
+                        <li><strong>Domínio não verificado:</strong> Confirme se o remetente está validado no Resend.</li>
+                        <li><strong>RESEND_FROM:</strong> Verifique se o remetente é um e-mail válido.</li>
+                        <li><strong>API Key inválida:</strong> Gere uma nova chave e atualize no Railway.</li>
+                        <li><strong>Rate limit:</strong> Aguarde alguns minutos e tente novamente.</li>
                     </ul>
-                    <?php if ((int)$config['smtp_port'] === 465): ?>
-                    <p style="margin-top: 0.5rem; padding: 0.75rem; background: #fef3c7; border-radius: 4px;">
-                        <strong>💡 Dica:</strong> O Railway frequentemente bloqueia a porta 465. Tente usar a porta <strong>587 com TLS (STARTTLS)</strong> na configuração de e-mail.
-                    </p>
-                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
             </div>

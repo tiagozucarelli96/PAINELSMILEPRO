@@ -191,7 +191,7 @@ CREATE INDEX IF NOT EXISTS idx_sistema_notificacoes_pendentes_criado ON sistema_
 CREATE INDEX IF NOT EXISTS idx_sistema_notificacoes_pendentes_modulo ON sistema_notificacoes_pendentes(modulo);
 
 -- Comentários
-COMMENT ON TABLE sistema_email_config IS 'Configuração global de e-mail SMTP e preferências do administrador';
+COMMENT ON TABLE sistema_email_config IS 'Configuração global de e-mail e preferências do administrador';
 COMMENT ON TABLE sistema_notificacoes_pendentes IS 'Notificações pendentes de envio (consolidadas após inatividade)';
 COMMENT ON TABLE sistema_ultima_atividade IS 'Controle de última atividade global para envio consolidado de notificações';
 COMMENT ON TABLE sistema_notificacoes_navegador IS 'Preferências de notificações via navegador (Web Push)';

@@ -21,15 +21,6 @@ define('WEBHOOK_URL', $_ENV['WEBHOOK_URL'] ?? 'https://seudominio.railway.app/pu
 // Chave PIX para QR Codes estáticos (chave aleatória do Asaas)
 define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? '3e2aab51-53bb-4a0e-ace1-f12e2c2ad9e5');
 
-// Configurações de E-mail SMTP
-define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? '');
-define('SMTP_PORT', $_ENV['SMTP_PORT'] ?? '587');
-define('SMTP_USERNAME', $_ENV['SMTP_USERNAME'] ?? '');
-define('SMTP_PASSWORD', $_ENV['SMTP_PASSWORD'] ?? '');
-define('SMTP_FROM_NAME', $_ENV['SMTP_FROM_NAME'] ?? 'GRUPO Smile EVENTOS');
-define('SMTP_FROM_EMAIL', $_ENV['SMTP_FROM_EMAIL'] ?? '');
-define('SMTP_REPLY_TO', $_ENV['SMTP_REPLY_TO'] ?? '');
-
 // Configurações ME Eventos (se necessário)
 define('ME_BASE_URL', $_ENV['ME_BASE_URL'] ?? '');
 define('ME_API_KEY', $_ENV['ME_API_KEY'] ?? '');

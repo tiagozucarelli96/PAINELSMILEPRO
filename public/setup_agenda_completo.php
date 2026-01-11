@@ -70,13 +70,13 @@ function setupAgendaCompleto() {
     echo "<p class='info'>🔍 Verifica se todas as funcionalidades estão funcionando</p>";
     echo "</div></div>";
     
-    // Passo 5: Configurar e-mail
+    // Passo 5: Configurar e-mail (Resend)
     echo "<div class='step'>";
     echo "<h3>📧 Passo 5: Configurar Sistema de E-mail</h3>";
     echo "<div class='step-result'>";
     echo "<p>Configurando o sistema de e-mail para lembretes...</p>";
-    echo "<a href='setup_email_completo.php' class='btn' target='_blank'>📧 Configurar E-mail</a>";
-    echo "<p class='info'>📧 Configura SMTP: mail.smileeventos.com.br:465</p>";
+    echo "<a href='index.php?page=config_email_global' class='btn' target='_blank'>📧 Configurar E-mail</a>";
+    echo "<p class='info'>📧 Configuração centralizada do Resend</p>";
     echo "</div></div>";
     
     // Passo 6: Acessar sistema

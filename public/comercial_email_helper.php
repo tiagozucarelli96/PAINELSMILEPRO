@@ -1,5 +1,5 @@
 <?php
-// comercial_email_helper.php — Helper para envio de e-mails SMTP (usa EmailGlobalHelper)
+// comercial_email_helper.php — Helper para envio de e-mails (usa EmailGlobalHelper)
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/core/email_global_helper.php';
@@ -186,28 +186,11 @@ class ComercialEmailHelper {
         $subject = "Teste de E-mail - GRUPO Smile EVENTOS";
         $body = "
         <h2>Teste de E-mail</h2>
-        <p>Este é um e-mail de teste para verificar se a configuração SMTP está funcionando corretamente.</p>
+        <p>Este é um e-mail de teste para verificar se a configuração do Resend está funcionando corretamente.</p>
         <p>Data/Hora: " . date('d/m/Y H:i:s') . "</p>
         <p>Se você recebeu este e-mail, a configuração está funcionando!</p>
         ";
         
         return $this->sendEmail($to, $subject, $body, true);
-    }
-    
-    public function updateSmtpConfig($config) {
-        $sql = "UPDATE comercial_email_config SET 
-                smtp_host = :smtp_host, smtp_port = :smtp_port, smtp_username = :smtp_username,
-                smtp_password = :smtp_password, from_name = :from_name, from_email = :from_email,
-                reply_to = :reply_to, atualizado_em = NOW()
-                WHERE ativo = TRUE";
-        
-        $stmt = $this->pdo->prepare($sql);
-        $result = $stmt->execute($config);
-        
-        if ($result) {
-            $this->loadSmtpConfig(); // Recarregar configuração
-        }
-        
-        return $result;
     }
 }

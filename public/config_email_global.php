@@ -55,12 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new Exception('E-mail remetente é obrigatório');
         }
         
-        // Valores padrão para SMTP (mantidos para compatibilidade com banco, mas não são mais usados)
-        $smtp_host = 'mail.smileeventos.com.br';
-        $smtp_port = 465;
-        $smtp_username = $email_remetente;
-        $smtp_password = ''; // Não é mais usado
-        $smtp_encryption = 'ssl';
+        // Campos legados para compatibilidade com banco (não são usados no envio)
+        $smtp_host = $config['smtp_host'] ?? 'mail.smileeventos.com.br';
+        $smtp_port = (int)($config['smtp_port'] ?? 465);
+        $smtp_username = $config['smtp_username'] ?? $email_remetente;
+        $smtp_password = $config['smtp_password'] ?? 'not_used';
+        $smtp_encryption = $config['smtp_encryption'] ?? 'ssl';
         
         if ($config) {
             // Atualizar
@@ -152,6 +152,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('Configuração de e-mail não encontrada. Salve as configurações primeiro.');
         }
         
+        $remetente_teste = getenv('RESEND_FROM')
+            ?: ($_ENV['RESEND_FROM'] ?? null)
+            ?: ($_SERVER['RESEND_FROM'] ?? null)
+            ?: (getenv('RESEND_FROM_EMAIL') ?: ($_ENV['RESEND_FROM_EMAIL'] ?? null) ?: ($_SERVER['RESEND_FROM_EMAIL'] ?? null))
+            ?: ($config_teste['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br');
+
         // Criar helper e enviar e-mail de teste
         $emailHelper = new EmailGlobalHelper();
         
@@ -186,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                     <div class="info-box">
                         <h3 style="color: #1e40af; margin: 0 0 10px 0;">📋 Informações da Configuração:</h3>
                         <p style="margin: 5px 0;"><strong>Serviço:</strong> Resend (API)</p>
-                        <p style="margin: 5px 0;"><strong>Remetente:</strong> ' . htmlspecialchars($config_teste['email_remetente']) . '</p>
+                        <p style="margin: 5px 0;"><strong>Remetente:</strong> ' . htmlspecialchars($remetente_teste) . '</p>
                         <p style="margin: 5px 0;"><strong>Data/Hora:</strong> ' . date('d/m/Y H:i:s') . '</p>
                     </div>
                     
@@ -246,7 +252,7 @@ if ($resend_configurado) {
             $GLOBALS['autoload_carregado'] = true;
         }
         // Agora verificar se Resend está disponível
-        $resend_sdk_disponivel = class_exists('\Resend\Resend', false);
+        $resend_sdk_disponivel = class_exists('Resend', false) || class_exists('\Resend\Resend', false);
     }
 }
 
@@ -353,7 +359,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <?php if ($resend_configurado && $resend_sdk_disponivel): ?>
         <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
             <p style="color: #059669; font-weight: 600; margin-bottom: 0.5rem; font-size: 1.1rem;">✅ Resend configurado e pronto para uso!</p>
-            <p style="color: #374151; font-size: 0.875rem;">O sistema está usando <strong>APENAS Resend</strong> para enviar e-mails. SMTP não é mais usado.</p>
+            <p style="color: #374151; font-size: 0.875rem;">O sistema está usando <strong>APENAS Resend</strong> para enviar e-mails.</p>
             <p style="color: #374151; font-size: 0.875rem; margin-top: 0.5rem;">
                 Remetente: <strong><?= htmlspecialchars($resend_from ?: ($config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br')) ?></strong>
                 <?= $resend_from ? '(via RESEND_FROM)' : '(via configuração do sistema)' ?>

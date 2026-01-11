@@ -212,7 +212,7 @@ function executeAgendaSQL() {
         
         echo "<h3>🚀 Próximos Passos:</h3>";
         echo "<ol>";
-        echo "<li>Configure o e-mail: <a href='setup_email_completo.php'>setup_email_completo.php</a></li>";
+        echo "<li>Configure o e-mail: <a href='index.php?page=config_email_global'>config_email_global</a></li>";
         echo "<li>Teste o sistema: <a href='test_agenda.php'>test_agenda.php</a></li>";
         echo "<li>Acesse a agenda: <a href='index.php?page=agenda'>index.php?page=agenda</a></li>";
         echo "</ol>";

@@ -17,26 +17,17 @@ class EmailHelper {
     }
     
     /**
-     * Carregar configurações de e-mail do banco (compatibilidade)
-     * Agora usa sistema_email_config através do EmailGlobalHelper
+     * Carregar configurações de e-mail do banco
      */
     private function carregarConfiguracao() {
         try {
-            // Tentar carregar do sistema global primeiro
             $stmt = $this->pdo->query("SELECT * FROM sistema_email_config ORDER BY id DESC LIMIT 1");
             $global_config = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($global_config) {
                 $this->config = [
-                    'host' => $global_config['smtp_host'],
-                    'port' => (int)$global_config['smtp_port'],
-                    'username' => $global_config['smtp_username'],
-                    'password' => $global_config['smtp_password'],
-                    'from_name' => 'Portal Grupo Smile',
                     'from_email' => $global_config['email_remetente'],
-                    'reply_to' => $global_config['email_remetente'],
-                    'encryption' => $global_config['smtp_encryption'],
-                    'auth' => true,
+                    'email_administrador' => $global_config['email_administrador'],
                     'ativado' => true
                 ];
                 return;
@@ -44,43 +35,10 @@ class EmailHelper {
         } catch (Exception $e) {
             // Continuar para fallback
         }
-        
-        // Fallback: tentar carregar de demandas_configuracoes (compatibilidade)
-        try {
-            $stmt = $this->pdo->query("
-                SELECT chave, valor 
-                FROM demandas_configuracoes 
-                WHERE chave LIKE 'smtp_%' OR chave LIKE 'email_%'
-            ");
-            $configs = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
-            
-            $this->config = [
-                'host' => $configs['smtp_host'] ?? 'mail.smileeventos.com.br',
-                'port' => (int)($configs['smtp_port'] ?? 465),
-                'username' => $configs['smtp_username'] ?? 'contato@smileeventos.com.br',
-                'password' => $configs['smtp_password'] ?? 'ti1996august',
-                'from_name' => $configs['smtp_from_name'] ?? 'GRUPO Smile EVENTOS',
-                'from_email' => $configs['smtp_from_email'] ?? 'contato@smileeventos.com.br',
-                'reply_to' => $configs['smtp_reply_to'] ?? 'contato@smileeventos.com.br',
-                'encryption' => $configs['smtp_encryption'] ?? 'ssl',
-                'auth' => ($configs['smtp_auth'] ?? 'true') === 'true',
-                'ativado' => ($configs['email_ativado'] ?? 'true') === 'true'
-            ];
-        } catch (Exception $e) {
-            // Configurações padrão em caso de erro
-            $this->config = [
-                'host' => 'mail.smileeventos.com.br',
-                'port' => 465,
-                'username' => 'contato@smileeventos.com.br',
-                'password' => 'ti1996august',
-                'from_name' => 'GRUPO Smile EVENTOS',
-                'from_email' => 'contato@smileeventos.com.br',
-                'reply_to' => 'contato@smileeventos.com.br',
-                'encryption' => 'ssl',
-                'auth' => true,
-                'ativado' => true
-            ];
-        }
+
+        $this->config = [
+            'ativado' => false
+        ];
     }
     
     /**
