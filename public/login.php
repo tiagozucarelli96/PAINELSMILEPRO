@@ -185,20 +185,18 @@ body.login-bg{
 .brand-row{
   display:flex;
   align-items:center;
-  gap:12px;
-  margin-bottom:14px;
+  justify-content:center;
+  margin-bottom:18px;
 }
 .login-logo{
-  width:42px;height:42px;border-radius:10px;
+  width:62px;height:62px;border-radius:14px;
   display:block;
   object-fit:contain;
   background:rgba(255,255,255,0.08);
-  padding:6px;
-  box-shadow:0 6px 16px rgba(0,0,0,0.35);
+  padding:8px;
+  box-shadow:0 10px 20px rgba(0,0,0,0.35);
 }
-.brand-text{font-weight:700;font-size:1.05rem;line-height:1.1}
-.brand-sub{font-size:0.85rem;color:var(--muted);font-weight:600}
-h2{text-align:left;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
+h2{text-align:center;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
 .login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
 .login-field{
   width:100%;
@@ -238,10 +236,6 @@ h2{text-align:left;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
     <div class="login-box">
       <div class="brand-row">
         <img class="login-logo" src="logo.png" alt="Logo do Grupo Smile">
-        <div>
-          <div class="brand-text">Logo do Grupo</div>
-          <div class="brand-sub">Smile</div>
-        </div>
       </div>
       <h2>Acessar o Painel</h2>
 

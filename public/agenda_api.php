@@ -74,9 +74,9 @@ try {
                     FROM google_calendar_eventos
                     WHERE status = 'confirmed'
                       AND (
-                          (inicio::date >= :start::date AND inicio::date <= :end::date)
-                          OR (fim::date >= :start::date AND fim::date <= :end::date)
-                          OR (inicio::date <= :start::date AND fim::date >= :end::date)
+                          DATE(inicio) BETWEEN DATE(:start) AND DATE(:end)
+                          OR DATE(fim) BETWEEN DATE(:start) AND DATE(:end)
+                          OR (DATE(inicio) <= DATE(:start) AND DATE(fim) >= DATE(:end))
                       )
                     ORDER BY inicio ASC
                 ");
