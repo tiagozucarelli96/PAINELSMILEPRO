@@ -251,7 +251,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 </td>
                 <td><?= htmlspecialchars($holerite['observacao'] ?? '-') ?></td>
                 <td>
-                    <?php if ($holerite['chave_storage'] || $holerite['arquivo_url']): ?>
+                    <?php if (!empty($holerite['chave_storage'] ?? null) || !empty($holerite['arquivo_url'] ?? null)): ?>
                         <a href="contabilidade_download.php?tipo=holerite&id=<?= $holerite['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
                     <?php else: ?>
                         -

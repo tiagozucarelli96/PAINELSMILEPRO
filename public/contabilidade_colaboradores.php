@@ -24,6 +24,16 @@ if (!$is_admin && !$is_contabilidade) {
 $mensagem = '';
 $erro = '';
 
+function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = :tabela AND column_name = :coluna"
+    );
+    $stmt->execute([':tabela' => $tabela, ':coluna' => $coluna]);
+
+    return (bool) $stmt->fetchColumn();
+}
+
 // Processar cadastro de documento
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'anexar_documento') {
     try {
@@ -54,19 +64,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
             // Inserir documento
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_colaboradores_documentos 
-                (colaborador_id, tipo_documento, arquivo_url, arquivo_nome, chave_storage, descricao)
-                VALUES (:colab_id, :tipo, :arquivo_url, :arquivo_nome, :chave_storage, :desc)
-            ");
-            $stmt->execute([
+            $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_colaboradores_documentos', 'chave_storage');
+            if ($has_chave_storage) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_colaboradores_documentos 
+                    (colaborador_id, tipo_documento, arquivo_url, arquivo_nome, chave_storage, descricao)
+                    VALUES (:colab_id, :tipo, :arquivo_url, :arquivo_nome, :chave_storage, :desc)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_colaboradores_documentos 
+                    (colaborador_id, tipo_documento, arquivo_url, arquivo_nome, descricao)
+                    VALUES (:colab_id, :tipo, :arquivo_url, :arquivo_nome, :desc)
+                ");
+            }
+            $params = [
                 ':colab_id' => $colaborador_id,
                 ':tipo' => $tipo_documento,
                 ':arquivo_url' => $arquivo_url,
                 ':arquivo_nome' => $arquivo_nome,
-                ':chave_storage' => $chave_storage,
                 ':desc' => !empty($descricao) ? $descricao : null
-            ]);
+            ];
+            if ($has_chave_storage) {
+                $params[':chave_storage'] = $chave_storage;
+            }
+            $stmt->execute($params);
             
             $mensagem = 'Documento anexado com sucesso!';
             
