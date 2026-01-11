@@ -87,7 +87,9 @@ function me_request(string $path, array $params = []): array {
         return ['ok' => false, 'error' => 'Erro cURL: ' . $err];
     }
     if ($code < 200 || $code >= 300) {
-        return ['ok' => false, 'error' => 'HTTP ' . $code . ' da ME Eventos'];
+        $tokenStatus = $key ? 'presente' : 'ausente';
+        $baseInfo = $base ? $base : 'base não definida';
+        return ['ok' => false, 'error' => 'HTTP ' . $code . ' da ME Eventos (base: ' . $baseInfo . ', token: ' . $tokenStatus . ')'];
     }
 
     $data = json_decode($resp, true);
