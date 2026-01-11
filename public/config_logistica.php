@@ -57,7 +57,7 @@ function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bo
 
 function me_request(string $path, array $params = []): array {
     $base = getenv('ME_BASE_URL') ?: (defined('ME_BASE_URL') ? ME_BASE_URL : '');
-    $key  = getenv('ME_API_KEY') ?: (defined('ME_API_KEY') ? ME_API_KEY : '');
+    $key  = getenv('ME_API_TOKEN') ?: getenv('ME_API_KEY') ?: (defined('ME_API_KEY') ? ME_API_KEY : '');
 
     if (!$base || !$key) {
         return ['ok' => false, 'error' => 'ME_BASE_URL/ME_API_KEY ausentes.'];
@@ -92,14 +92,15 @@ function me_request(string $path, array $params = []): array {
 
     $data = json_decode($resp, true);
     if (!is_array($data)) {
-        return ['ok' => false, 'error' => 'JSON inválido da ME Eventos'];
+        $snippet = substr(trim((string)$resp), 0, 200);
+        return ['ok' => false, 'error' => 'JSON inválido da ME Eventos: ' . ($snippet !== '' ? $snippet : 'resposta vazia')];
     }
 
     return ['ok' => true, 'data' => $data];
 }
 
 function fetch_me_locais(): array {
-    $resp = me_request('/api/v1/eventlocations');
+    $resp = me_request('/api/v1/eventlocation');
     if (!$resp['ok']) {
         return ['ok' => false, 'error' => $resp['error']];
     }
