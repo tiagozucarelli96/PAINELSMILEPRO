@@ -50,6 +50,11 @@ try {
         $google_helper = new GoogleCalendarHelper();
         if ($google_helper->isConnected()) {
             $config = $google_helper->getConfig();
+            error_log("[AGENDA_API] Config encontrada: " . ($config ? 'SIM' : 'NÃO'));
+            if ($config) {
+                error_log("[AGENDA_API] Config ativo: " . ($config['ativo'] ? 'SIM' : 'NÃO'));
+                error_log("[AGENDA_API] Calendar ID: " . ($config['google_calendar_id'] ?? 'N/A'));
+            }
             if ($config && $config['ativo']) {
                 // Buscar eventos do Google Calendar no período
                 $pdo = $GLOBALS['pdo'];
