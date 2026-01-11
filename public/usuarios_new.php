@@ -175,10 +175,10 @@ if (!isset($pdo) || !$pdo) {
 }
 
 try {
-    // Primeiro tentar com schema 'public'
-    error_log("Buscando permissões - Estratégia 1: Com schema 'public'");
+    // Primeiro tentar com schema atual
+    error_log("Buscando permissões - Estratégia 1: Com schema atual");
     $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                         WHERE table_schema = 'public' AND table_name = 'usuarios' 
+                         WHERE table_schema = current_schema() AND table_name = 'usuarios' 
                          AND column_name LIKE 'perm_%' 
                          ORDER BY column_name");
     $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -995,7 +995,6 @@ ob_start();
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
                     // Módulos principais da sidebar (conforme solicitado)
-                    'perm_superadmin' => '⭐ Superadmin (bypass total)',
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
                     // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
@@ -1009,7 +1008,6 @@ ob_start();
                 // Filtrar APENAS permissões da sidebar (resumido)
                 // Definir lista fixa de permissões da sidebar
                 $sidebar_perms = [
-                    'perm_superadmin',
                     'perm_agenda',
                     'perm_demandas',
                     // 'perm_logistico', // REMOVIDO: Módulo desativado
@@ -1032,6 +1030,16 @@ ob_start();
                 }
                 ?>
                 
+                <div class="permissions-section">
+                    <h3 class="permissions-title">Permissões Especiais</h3>
+                    <div class="permissions-grid">
+                        <div class="permission-item">
+                            <input type="checkbox" name="perm_superadmin" id="perm_perm_superadmin" value="1">
+                            <label for="perm_perm_superadmin">⭐ Superadmin (bypass total)</label>
+                        </div>
+                    </div>
+                </div>
+
                 <?php if (!empty($available_perms)): ?>
                 <div class="permissions-section">
                     <h3 class="permissions-title">Permissões do Sistema</h3>
