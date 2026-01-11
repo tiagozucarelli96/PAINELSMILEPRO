@@ -428,12 +428,6 @@ class AgendaHelper {
         $stmt->execute([$data_inicio, $data_fim, $espaco_id, $responsavel_id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
-        $stmt = $this->pdo->prepare("
-            SELECT * FROM calcular_conversao_visitas(?, ?, ?, ?)
-        ");
-        $stmt->execute([$data_inicio, $data_fim, $espaco_id, $responsavel_id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
     
     /**
      * Gerar token ICS
