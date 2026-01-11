@@ -236,12 +236,12 @@ $routes = [
   // 'alertas' => 'estoque_alertas.php',
 
   // Cadastros / Configurações
-  'config_usuarios' => 'usuarios.php',
+  // 'config_usuarios' => 'usuarios.php', // REMOVIDO: tela antiga de usuários
   'usuarios' => 'usuarios_new.php',
   'apply_usuarios_schema' => 'apply_usuarios_schema.php',
   'limpar_e_recriar_permissoes' => 'limpar_e_recriar_permissoes.php',
-  'usuario_novo' => 'usuario_novo.php',
-  'usuario_editar' => 'usuario_editar.php',
+  // 'usuario_novo' => 'usuario_novo.php', // REMOVIDO: tela antiga de usuários
+  // 'usuario_editar' => 'usuario_editar.php', // REMOVIDO: tela antiga de usuários
   // REMOVIDO: Módulo desativado
   // 'config_insumos' => 'config_insumos.php',
   // 'config_categorias' => 'config_categorias.php',

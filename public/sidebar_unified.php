@@ -507,7 +507,7 @@ if ($current_page === 'dashboard') {
                 </div>
                 <div class="card-content">
                     <p>Criar novo usuário</p>
-                    <a href="index.php?page=usuario_novo" class="btn-primary">Acessar</a>
+                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
                 </div>
             </div>
         </div>

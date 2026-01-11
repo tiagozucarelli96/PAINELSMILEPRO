@@ -65,10 +65,10 @@ return [
     // 'ver' => 'perm_logistico',
     
     // Configurações
-    'config_usuarios' => 'perm_configuracoes',
     'usuarios' => 'perm_configuracoes',
-    'usuario_novo' => 'perm_configuracoes',
-    'usuario_editar' => 'perm_configuracoes',
+    // 'config_usuarios' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
+    // 'usuario_novo' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
+    // 'usuario_editar' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     'config_logistica' => 'perm_configuracoes',
     // REMOVIDO: Módulo desativado
     // 'config_insumos' => 'perm_configuracoes',
