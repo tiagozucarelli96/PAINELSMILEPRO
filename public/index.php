@@ -236,9 +236,6 @@ $routes = [
   'limpar_e_recriar_permissoes' => 'limpar_e_recriar_permissoes.php',
   'usuario_novo' => 'usuario_novo.php',
   'usuario_editar' => 'usuario_editar.php',
-  'config_fornecedores' => 'config_fornecedores.php',
-  'fornecedores' => 'fornecedores.php',
-  'fornecedor_link' => 'fornecedor_link.php',
   // REMOVIDO: Módulo desativado
   // 'config_insumos' => 'config_insumos.php',
   // 'config_categorias' => 'config_categorias.php',
@@ -248,19 +245,11 @@ $routes = [
   'config_sistema' => 'configuracoes.php',
 
   // Financeiro
-  'pagamentos' => 'pagamentos.php',
-  'pagamentos_painel' => 'pagamentos_painel.php',
-  'pagamentos_solicitar' => 'pagamentos_solicitar.php',
-  'pagamentos_minhas' => 'pagamentos_minhas.php',
-  'pagamentos_ver' => 'pagamentos_ver.php',
-  'admin_pagamentos' => 'admin_pagamentos.php',
-  'freelancer_cadastro' => 'freelancer_cadastro.php',
+  // Módulo de pagamentos removido
 
   // Administrativo
-  'administrativo_relatorios' => 'relatorio_analise_sistema.php',
   'administrativo_auditoria' => 'verificacao_completa_erros.php',
   'administrativo_stats' => 'sistema_unificado.php',
-  'administrativo_historico' => 'historico.php',
   
   // Scripts de migração/setup
   'apply_permissoes_sidebar_columns' => 'apply_permissoes_sidebar_columns.php',
@@ -291,15 +280,11 @@ $routes = [
   'forcar_chave_asaas' => 'forcar_chave_asaas.php',
   'verificar_inscricao_checkout' => 'verificar_inscricao_checkout.php',
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
-  'analisar_pagamentos_qrcode' => 'analisar_pagamentos_qrcode.php',
   'verificar_pagamento_1real' => 'verificar_pagamento_1real.php',
-  'processar_pagamento_manual' => 'processar_pagamento_manual.php',
-  'processar_pagamento_automatico' => 'processar_pagamento_automatico.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'testar_identificacao_pagamento' => 'testar_identificacao_pagamento.php',
   'login' => 'login.php', // Rota de login
   'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
-  'executar_drop_modulo_estoque' => 'executar_drop_modulo_estoque.php', // Remover módulo Estoque + Lista de Compras
   'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
   'test_magalu_contabilidade' => 'test_magalu_contabilidade.php', // Teste de configuração Magalu para Contabilidade
   'executar_add_chave_storage' => 'executar_add_chave_storage.php', // Adicionar coluna chave_storage na contabilidade

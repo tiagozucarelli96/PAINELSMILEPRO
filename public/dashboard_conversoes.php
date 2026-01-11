@@ -9,8 +9,6 @@ require_once __DIR__ . '/core/helpers.php';
 $stats = [
     'usuarios' => 0,
     'eventos' => 0,
-    'fornecedores' => 0,
-    'insumos' => 0,
     'contratos_fechados' => 0,
     'leads_total' => 0,
     'leads_negociacao' => 0,
@@ -32,20 +30,6 @@ try {
         $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
     } catch (Exception $e) {
         $erros[] = "Erro ao buscar usuários: " . $e->getMessage();
-    }
-    
-    // Buscar fornecedores ativos
-    try {
-        $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
-    } catch (Exception $e) {
-        $erros[] = "Erro ao buscar fornecedores: " . $e->getMessage();
-    }
-    
-    // Buscar insumos
-    try {
-        $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
-    } catch (Exception $e) {
-        $erros[] = "Erro ao buscar insumos: " . $e->getMessage();
     }
     
     // Buscar usuários com email
@@ -141,20 +125,6 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
             <div class="card-value"><?= $stats['eventos'] ?></div>
             <div class="card-label">Eventos Ativos</div>
             <div class="card-source">ME Eventos + Interno</div>
-        </div>
-        
-        <div class="dashboard-card">
-            <div class="card-icon">🏢</div>
-            <div class="card-value"><?= $stats['fornecedores'] ?></div>
-            <div class="card-label">Fornecedores Ativos</div>
-            <div class="card-source">Sistema Interno</div>
-        </div>
-        
-        <div class="dashboard-card">
-            <div class="card-icon">📦</div>
-            <div class="card-value"><?= $stats['insumos'] ?></div>
-            <div class="card-label">Insumos Cadastrados</div>
-            <div class="card-source">Sistema Interno</div>
         </div>
     </div>
 

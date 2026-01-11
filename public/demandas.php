@@ -490,7 +490,6 @@ includeSidebar('Demandas');
                     <select id="tipo_referencia" name="tipo_referencia">
                         <option value="">Nenhum</option>
                         <option value="comercial">Comercial</option>
-                        <option value="logistico">Logístico</option>
                         <option value="financeiro">Financeiro</option>
                         <option value="rh">RH</option>
                         <option value="outro">Outro</option>
@@ -1074,7 +1073,6 @@ function editarDemanda(id) {
                         <select id="edit-tipo_referencia" name="tipo_referencia">
                             <option value="">Nenhum</option>
                             <option value="comercial" ${demanda.tipo_referencia === 'comercial' ? 'selected' : ''}>Comercial</option>
-                            <option value="logistico" ${demanda.tipo_referencia === 'logistico' ? 'selected' : ''}>Logístico</option>
                             <option value="financeiro" ${demanda.tipo_referencia === 'financeiro' ? 'selected' : ''}>Financeiro</option>
                             <option value="rh" ${demanda.tipo_referencia === 'rh' ? 'selected' : ''}>RH</option>
                             <option value="outro" ${demanda.tipo_referencia === 'outro' ? 'selected' : ''}>Outro</option>

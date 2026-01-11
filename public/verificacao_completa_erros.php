@@ -26,9 +26,7 @@ try {
 // Verificar tabelas principais
 $tabelas_principais = [
     'usuarios', 'eventos', 'comercial_degustacoes', 'comercial_inscricoes',
-    'lc_insumos', 'lc_solicitacoes_pagamento', 'rh_holerites', 'fornecedores',
-    'lc_categorias', 'lc_encomendas_itens', 'contab_tokens', 'contab_documentos',
-    'lc_freelancers'
+    'rh_holerites', 'contab_tokens', 'contab_documentos'
 ];
 
 echo "<h2>📊 Verificação de Tabelas</h2>";
@@ -47,12 +45,8 @@ echo "<h2>🔍 Verificação de Colunas</h2>";
 $colunas_verificar = [
     'comercial_degustacoes' => ['status', 'nome', 'data', 'criado_por'],
     'usuarios' => ['cor_agenda', 'perm_forcar_conflito', 'admissao_data', 'salario_base', 'status_empregado'],
-    'lc_insumos' => ['unidade_compra'],
-    'lc_solicitacoes_pagamento' => ['fornecedor_id', 'criador_id'],
     'rh_holerites' => ['valor_liquido'],
-    'fornecedores' => ['modificado_em'],
-    'lc_categorias' => ['mostrar_no_gerar'],
-    'lc_encomendas_itens' => ['insumo_id']
+    'contab_documentos' => ['status']
 ];
 
 foreach ($colunas_verificar as $tabela => $colunas) {
@@ -73,7 +67,6 @@ $funcoes_verificar = [
     'obter_eventos_hoje' => 'SELECT COUNT(*) FROM obter_eventos_hoje(1, 24)', 
     'obter_eventos_semana' => 'SELECT COUNT(*) FROM obter_eventos_semana(1, 7)',
     'verificar_conflito_agenda' => 'SELECT verificar_conflito_agenda(1, NOW(), NOW() + INTERVAL \'1 hour\', NULL)',
-    'lc_gerar_token_publico' => 'SELECT lc_gerar_token_publico()',
     'contab_verificar_rate_limit' => 'SELECT contab_verificar_rate_limit(\'teste123456789\', 50)'
 ];
 
@@ -107,14 +100,6 @@ foreach ($enums_verificar as $enum => $valores) {
 
 // Testar queries específicas que podem estar falhando
 echo "<h2>🔬 Teste de Queries Específicas</h2>";
-
-// Query do dashboard
-try {
-    $stmt = $pdo->query("SELECT COUNT(*) FROM lc_categorias WHERE ativo = true");
-    echo "<p class='ok'>✅ Query dashboard categorias: OK</p>";
-} catch (Exception $e) {
-    echo "<p class='erro'>❌ Query dashboard categorias: " . $e->getMessage() . "</p>";
-}
 
 // Query da agenda
 try {

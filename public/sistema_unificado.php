@@ -864,12 +864,6 @@ class SistemaUnificado {
             // REMOVIDO: Módulo Compras (Lista de Compras)
             // REMOVIDO: Módulo Estoque
             [
-                'titulo' => 'Financeiro',
-                'link' => 'pagamentos_painel.php',
-                'icone' => 'fas fa-dollar-sign',
-                'perfis' => ['ADM', 'GERENTE']
-            ],
-            [
                 'titulo' => 'Tarefas',
                 'link' => 'demandas_quadros.php',
                 'icone' => 'fas fa-tasks',
@@ -958,15 +952,6 @@ class SistemaUnificado {
                     ['texto' => 'Novo Evento', 'link' => 'agenda_novo.php', 'classe' => 'btn-success']
                 ]
             ],
-            [
-                'titulo' => 'Financeiro',
-                'descricao' => 'Solicitações de pagamento e controle financeiro.',
-                'link' => 'pagamentos_painel.php',
-                'icone' => 'fas fa-dollar-sign',
-                'cor' => '#06b6d4',
-                'acoes' => [
-                    ['texto' => 'Nova Solicitação', 'link' => 'pagamentos_solicitar.php', 'classe' => 'btn-success']
-                ]
             ]
         ];
     }

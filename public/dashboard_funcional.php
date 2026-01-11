@@ -26,10 +26,8 @@ $stats = [];
 try {
     $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
     $stats['eventos'] = $pdo->query("SELECT COUNT(*) FROM eventos")->fetchColumn();
-    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
-    $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
 } catch (Exception $e) {
-    $stats = ['usuarios' => 0, 'eventos' => 0, 'fornecedores' => 0, 'insumos' => 0];
+    $stats = ['usuarios' => 0, 'eventos' => 0];
 }
 ?>
 
@@ -180,19 +178,7 @@ try {
             <div class="card-source">ME Eventos</div>
         </div>
         
-        <div class="dashboard-card">
-            <div class="card-icon">🏢</div>
-            <div class="card-value"><?= $stats['fornecedores'] ?></div>
-            <div class="card-label">Fornecedores Ativos</div>
-            <div class="card-source">Sistema Interno</div>
-        </div>
         
-        <div class="dashboard-card">
-            <div class="card-icon">📦</div>
-            <div class="card-value"><?= $stats['insumos'] ?></div>
-            <div class="card-label">Insumos Cadastrados</div>
-            <div class="card-source">Sistema Interno</div>
-        </div>
     </div>
 
     <!-- Informações Adicionais -->
@@ -218,11 +204,6 @@ try {
         </div>
     </div>
 </div>
-
-<!-- Botão Solicitar Pagamento -->
-<button class="payment-button" onclick="alert('Funcionalidade em desenvolvimento!')">
-    💸 Solicitar Pagamento
-</button>
 
 <script>
 // Adicionar interatividade básica

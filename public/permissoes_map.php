@@ -64,8 +64,6 @@ return [
     'usuarios' => 'perm_configuracoes',
     'usuario_novo' => 'perm_configuracoes',
     'usuario_editar' => 'perm_configuracoes',
-    'config_fornecedores' => 'perm_configuracoes',
-    'fornecedores' => 'perm_configuracoes',
     // REMOVIDO: Módulo desativado
     // 'config_insumos' => 'perm_configuracoes',
     // 'config_categorias' => 'perm_configuracoes',
@@ -74,24 +72,14 @@ return [
     // 'config_itens_fixos' => 'perm_configuracoes',
     'config_sistema' => 'perm_configuracoes',
     
-    // Cadastros
-    'fornecedor_link' => 'perm_cadastros',
+    // Cadastros (módulos removidos)
     
-    // Financeiro
-    'pagamentos' => 'perm_financeiro',
-    'pagamentos_painel' => 'perm_financeiro',
-    'pagamentos_solicitar' => 'perm_financeiro',
-    'pagamentos_minhas' => 'perm_financeiro',
-    'pagamentos_ver' => 'perm_financeiro',
-    'admin_pagamentos' => 'perm_financeiro',
-    'freelancer_cadastro' => 'perm_financeiro',
+    // Financeiro (módulo removido)
     
     // Administrativo
-    'administrativo_relatorios' => 'perm_administrativo',
     'administrativo_auditoria' => 'perm_administrativo',
     'administrativo_stats' => 'perm_administrativo',
     'administrativo_historico' => 'perm_administrativo',
-    'relatorio_analise_sistema' => 'perm_administrativo',
     'verificacao_completa_erros' => 'perm_administrativo',
     'sistema_unificado' => 'perm_administrativo',
     'historico' => 'perm_administrativo',
@@ -108,4 +96,3 @@ return [
     'dados_contrato' => 'perm_dados_contrato',
     'uso_fiorino' => 'perm_uso_fiorino',
 ];
-

@@ -16,32 +16,12 @@ if (!in_array($perfil, ['ADM', 'FIN'])) {
 
 // Buscar estatísticas
 $stats = [
-    'categorias' => 0,
-    'insumos' => 0,
-    'unidades' => 0,
-    'fornecedores' => 0,
-    'usuarios' => 0,
-    'freelancers' => 0
+    'usuarios' => 0
 ];
 
 try {
-    $stmt = $pdo->query("SELECT COUNT(*) FROM lc_categorias WHERE ativo = true");
-    $stats['categorias'] = $stmt->fetchColumn();
-    
-    $stmt = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true");
-    $stats['insumos'] = $stmt->fetchColumn();
-    
-    $stmt = $pdo->query("SELECT COUNT(*) FROM lc_unidades WHERE ativo = true");
-    $stats['unidades'] = $stmt->fetchColumn();
-    
-    $stmt = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true");
-    $stats['fornecedores'] = $stmt->fetchColumn();
-    
     $stmt = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true");
     $stats['usuarios'] = $stmt->fetchColumn();
-    
-    $stmt = $pdo->query("SELECT COUNT(*) FROM lc_freelancers WHERE ativo = true");
-    $stats['freelancers'] = $stmt->fetchColumn();
     
 } catch (Exception $e) {
     // Usar valores padrão
@@ -246,47 +226,16 @@ try {
         <!-- Estatísticas -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-number"><?= $stats['categorias'] ?></div>
-                <div class="stat-label">Categorias</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?= $stats['insumos'] ?></div>
-                <div class="stat-label">Insumos</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?= $stats['unidades'] ?></div>
-                <div class="stat-label">Unidades</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number"><?= $stats['fornecedores'] ?></div>
-                <div class="stat-label">Fornecedores</div>
-            </div>
-            <div class="stat-card">
                 <div class="stat-number"><?= $stats['usuarios'] ?></div>
                 <div class="stat-label">Usuários</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number"><?= $stats['freelancers'] ?></div>
-                <div class="stat-label">Freelancers</div>
-            </div>
+            
         </div>
         
         <!-- Ações Rápidas -->
         <div class="quick-actions">
             <h3>⚡ Ações Rápidas</h3>
             <div class="quick-actions-grid">
-                <a href="config_categorias.php" class="quick-btn">
-                    <span class="quick-btn-icon">📂</span>
-                    Gerenciar Categorias
-                </a>
-                <a href="config_insumos.php" class="quick-btn">
-                    <span class="quick-btn-icon">📦</span>
-                    Gerenciar Insumos
-                </a>
-                <a href="fornecedores.php" class="quick-btn">
-                    <span class="quick-btn-icon">🏢</span>
-                    Gerenciar Fornecedores
-                </a>
                 <a href="usuarios.php" class="quick-btn">
                     <span class="quick-btn-icon">👥</span>
                     Gerenciar Usuários
@@ -302,28 +251,13 @@ try {
                     <div class="section-icon">📋</div>
                     <div>
                         <h2 class="section-title">Cadastros Básicos</h2>
-                        <p class="section-description">Categorias, insumos e unidades</p>
+                        <p class="section-description">Cadastro de usuários e permissões</p>
                     </div>
                 </div>
                 <div class="section-actions">
-                    <a href="config_categorias.php" class="action-btn">
-                        <span class="action-btn-icon">📂</span>
-                        <span class="action-btn-text">Categorias</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="config_insumos.php" class="action-btn">
-                        <span class="action-btn-icon">📦</span>
-                        <span class="action-btn-text">Insumos</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="config_unidades.php" class="action-btn">
-                        <span class="action-btn-icon">📏</span>
-                        <span class="action-btn-text">Unidades</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="config_fornecedores.php" class="action-btn">
-                        <span class="action-btn-icon">🏢</span>
-                        <span class="action-btn-text">Fornecedores</span>
+                    <a href="usuarios.php" class="action-btn">
+                        <span class="action-btn-icon">👥</span>
+                        <span class="action-btn-text">Usuários</span>
                         <span class="action-btn-arrow">→</span>
                     </a>
                 </div>
@@ -357,67 +291,6 @@ try {
                 </div>
             </div>
             
-            <!-- Seção de Pagamentos -->
-            <div class="section-card">
-                <div class="section-header">
-                    <div class="section-icon">💰</div>
-                    <div>
-                        <h2 class="section-title">Pagamentos</h2>
-                        <p class="section-description">Configurar sistema de pagamentos</p>
-                    </div>
-                </div>
-                <div class="section-actions">
-                    <a href="pagamentos_painel.php" class="action-btn">
-                        <span class="action-btn-icon">⚡</span>
-                        <span class="action-btn-text">Painel Financeiro</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="freelancers.php" class="action-btn">
-                        <span class="action-btn-icon">👨‍💼</span>
-                        <span class="action-btn-text">Freelancers</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="fornecedores.php" class="action-btn">
-                        <span class="action-btn-icon">🏢</span>
-                        <span class="action-btn-text">Fornecedores</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                </div>
-            </div>
-            
-            <!-- Seção de Estoque -->
-            <div class="section-card">
-                <div class="section-header">
-                    <div class="section-icon">📦</div>
-                    <div>
-                        <h2 class="section-title">Estoque</h2>
-                        <p class="section-description">Configurar sistema de estoque</p>
-                    </div>
-                </div>
-                <div class="section-actions">
-                    <a href="estoque_contagens.php" class="action-btn">
-                        <span class="action-btn-icon">📊</span>
-                        <span class="action-btn-text">Contagens</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="estoque_alertas.php" class="action-btn">
-                        <span class="action-btn-icon">🚨</span>
-                        <span class="action-btn-text">Alertas</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="estoque_kardex.php" class="action-btn">
-                        <span class="action-btn-icon">📒</span>
-                        <span class="action-btn-text">Kardex</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="estoque_desvios.php" class="action-btn">
-                        <span class="action-btn-icon">📈</span>
-                        <span class="action-btn-text">Desvios</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                </div>
-            </div>
-            
             <!-- Seção de Sistema -->
             <div class="section-card">
                 <div class="section-header">
@@ -446,33 +319,6 @@ try {
                 </div>
             </div>
             
-            <!-- Seção de Relatórios -->
-            <div class="section-card">
-                <div class="section-header">
-                    <div class="section-icon">📊</div>
-                    <div>
-                        <h2 class="section-title">Relatórios</h2>
-                        <p class="section-description">Relatórios e análises do sistema</p>
-                    </div>
-                </div>
-                <div class="section-actions">
-                    <a href="relatorios_compras.php" class="action-btn">
-                        <span class="action-btn-icon">🛒</span>
-                        <span class="action-btn-text">Relatórios de Compras</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="relatorios_estoque.php" class="action-btn">
-                        <span class="action-btn-icon">📦</span>
-                        <span class="action-btn-text">Relatórios de Estoque</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                    <a href="relatorios_pagamentos.php" class="action-btn">
-                        <span class="action-btn-icon">💰</span>
-                        <span class="action-btn-text">Relatórios de Pagamentos</span>
-                        <span class="action-btn-arrow">→</span>
-                    </a>
-                </div>
-            </div>
         </div>
     </div>
 </body>

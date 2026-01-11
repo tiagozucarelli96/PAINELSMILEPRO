@@ -116,7 +116,6 @@ legend{padding:0 8px;color:#004aad;font-weight:700}
         <a href="index.php?page=dashboard">🏠 Painel</a>
         <a href="lista_compras.php">🛒 Lista de Compras</a>
         <a href="config_categorias.php">⚙️ Categorias</a>
-        <a href="config_fornecedores.php">🤝 Fornecedores</a>
         <a href="config_itens.php">🍽️ Itens</a>
         <a href="config_insumos.php">📦 Insumos</a>
         <a href="config_fichas.php">📑 Fichas</a>

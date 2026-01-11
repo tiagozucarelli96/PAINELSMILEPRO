@@ -119,7 +119,7 @@ ob_start();
     <!-- Header -->
     <div class="page-logistico-header">
         <h1>📝 Cadastros</h1>
-        <p>Gestão de usuários e fornecedores</p>
+        <p>Gestão de usuários</p>
     </div>
     
     <!-- Funcionalidades Principais -->
@@ -130,16 +130,6 @@ ob_start();
                 <span class="funcionalidade-card-icon">👥</span>
                 <div class="funcionalidade-card-title">Usuários</div>
                 <div class="funcionalidade-card-subtitle">Gerenciar usuários e permissões</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Fornecedores -->
-        <a href="index.php?page=config_fornecedores" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
-                <span class="funcionalidade-card-icon">🏢</span>
-                <div class="funcionalidade-card-title">Fornecedores</div>
-                <div class="funcionalidade-card-subtitle">Cadastro e gestão de fornecedores</div>
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>

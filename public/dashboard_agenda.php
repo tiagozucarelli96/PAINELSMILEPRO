@@ -24,51 +24,9 @@ $stats = [];
 try {
     // Métricas básicas do sistema
     $stats['usuarios'] = $pdo->query("SELECT COUNT(*) FROM usuarios WHERE ativo = true")->fetchColumn();
-    $stats['fornecedores'] = $pdo->query("SELECT COUNT(*) FROM fornecedores WHERE ativo = true")->fetchColumn();
-    
-    // Métricas de compras e receitas
-    $stats['categorias'] = $pdo->query("SELECT COUNT(*) FROM lc_categorias WHERE ativo = true")->fetchColumn();
-    $stats['insumos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
-    $stats['receitas'] = $pdo->query("SELECT COUNT(*) FROM lc_receitas WHERE ativo = true")->fetchColumn();
-    $stats['unidades'] = $pdo->query("SELECT COUNT(*) FROM lc_unidades WHERE ativo = true")->fetchColumn();
-    
-    // Métricas de atividade recente
-    $stats['receitas_recentes'] = $pdo->query("
-        SELECT COUNT(*) FROM lc_receitas 
-        WHERE ativo = true AND created_at >= NOW() - INTERVAL '7 days'
-    ")->fetchColumn();
-    
-    // Custo médio das receitas
-    $custo_medio = $pdo->query("
-        SELECT AVG(custo_total) FROM lc_receitas 
-        WHERE ativo = true AND custo_total > 0
-    ")->fetchColumn();
-    $stats['custo_medio'] = $custo_medio ? number_format($custo_medio, 2, ',', '.') : '0,00';
-    
-    // Métricas específicas por módulo (com verificação de permissão)
-    if (lc_can_access_module('compras')) {
-        $stats['listas_ativas'] = $pdo->query("SELECT COUNT(*) FROM lc_listas WHERE status = 'ativa'")->fetchColumn();
-        $stats['insumos_ativos'] = $pdo->query("SELECT COUNT(*) FROM lc_insumos WHERE ativo = true")->fetchColumn();
-    }
-    
-    if (lc_can_access_module('estoque')) {
-        $stats['contagens_abertas'] = $pdo->query("SELECT COUNT(*) FROM estoque_contagens WHERE status = 'aberta'")->fetchColumn();
-    }
-    
-    if (lc_can_access_module('pagamentos')) {
-        $stats['solicitacoes_pendentes'] = $pdo->query("SELECT COUNT(*) FROM lc_solicitacoes_pagamento WHERE status = 'aguardando'")->fetchColumn();
-    }
     
     if (lc_can_access_module('comercial')) {
         $stats['degustacoes_ativas'] = $pdo->query("SELECT COUNT(*) FROM comercial_degustacoes WHERE status = 'publicado'")->fetchColumn();
-    }
-    
-    // Métricas de estoque
-    if (lc_can_access_estoque()) {
-        $stats['contagens_abertas'] = $pdo->query("
-            SELECT COUNT(*) FROM estoque_contagens 
-            WHERE status = 'aberta'
-        ")->fetchColumn();
     }
     
     // Métricas de RH
@@ -90,16 +48,7 @@ try {
 } catch (Exception $e) {
     // Se der erro, usar valores padrão
     $stats = [
-        'categorias' => 0,
-        'insumos' => 0,
-        'receitas' => 0,
-        'unidades' => 0,
-        'receitas_recentes' => 0,
-        'custo_medio' => '0,00',
         'usuarios' => 0,
-        'fornecedores' => 0,
-        'solicitacoes_pendentes' => 0,
-        'contagens_abertas' => 0,
         'holerites_mes' => 0,
         'documentos_pendentes' => 0
     ];
@@ -480,55 +429,11 @@ if ($agenda->canAccessAgenda($usuario_id)) {
       <div class="kpis-grid">
         <div class="kpi-card">
           <div class="kpi-header">
-            <div class="kpi-icon">📦</div>
-          </div>
-          <div class="kpi-value"><?= h($stats['insumos']) ?></div>
-          <div class="kpi-label">Insumos Ativos</div>
-        </div>
-        
-        <div class="kpi-card">
-          <div class="kpi-header">
-            <div class="kpi-icon">🍽️</div>
-          </div>
-          <div class="kpi-value"><?= h($stats['receitas']) ?></div>
-          <div class="kpi-label">Receitas Ativas</div>
-        </div>
-        
-        <div class="kpi-card">
-          <div class="kpi-header">
             <div class="kpi-icon">👥</div>
           </div>
           <div class="kpi-value"><?= h($stats['usuarios']) ?></div>
           <div class="kpi-label">Usuários Ativos</div>
         </div>
-        
-        <div class="kpi-card">
-          <div class="kpi-header">
-            <div class="kpi-icon">🏢</div>
-          </div>
-          <div class="kpi-value"><?= h($stats['fornecedores']) ?></div>
-          <div class="kpi-label">Fornecedores</div>
-        </div>
-        
-        <?php if (lc_can_access_module('pagamentos') && $stats['solicitacoes_pendentes'] > 0): ?>
-        <div class="kpi-card">
-          <div class="kpi-header">
-            <div class="kpi-icon">💰</div>
-          </div>
-          <div class="kpi-value"><?= h($stats['solicitacoes_pendentes']) ?></div>
-          <div class="kpi-label">Solicitações Pendentes</div>
-        </div>
-        <?php endif; ?>
-        
-        <?php if (lc_can_access_estoque() && $stats['contagens_abertas'] > 0): ?>
-        <div class="kpi-card">
-          <div class="kpi-header">
-            <div class="kpi-icon">📊</div>
-          </div>
-          <div class="kpi-value"><?= h($stats['contagens_abertas']) ?></div>
-          <div class="kpi-label">Contagens Abertas</div>
-        </div>
-        <?php endif; ?>
       </div>
     </div>
 
@@ -536,34 +441,10 @@ if ($agenda->canAccessAgenda($usuario_id)) {
     <div class="quick-actions">
       <h2 class="quick-actions-title">🚀 Ações Rápidas</h2>
       <div class="quick-actions-grid">
-        <a href="index.php?page=lista" class="quick-action">
-          <span class="quick-action-icon">🛒</span>
-          <span>Gerar Lista de Compras</span>
-        </a>
-        
         <?php if ($agenda->canAccessAgenda($usuario_id)): ?>
         <a href="index.php?page=agenda" class="quick-action">
           <span class="quick-action-icon">📅</span>
           <span>Agenda Interna</span>
-        </a>
-        <?php endif; ?>
-        
-        <a href="index.php?page=lc_index" class="quick-action">
-          <span class="quick-action-icon">📋</span>
-          <span>Gestão de Compras</span>
-        </a>
-        
-        <?php if (lc_can_access_estoque()): ?>
-        <a href="index.php?page=estoque_logistico" class="quick-action">
-          <span class="quick-action-icon">📦</span>
-          <span>Controle de Estoque</span>
-        </a>
-        <?php endif; ?>
-        
-        <?php if (lc_can_access_module('pagamentos')): ?>
-        <a href="index.php?page=pagamentos" class="quick-action">
-          <span class="quick-action-icon">💰</span>
-          <span>Solicitar Pagamento</span>
         </a>
         <?php endif; ?>
         

@@ -887,27 +887,8 @@ function closePaymentModal() {
 // Envio do formulário de pagamento
 document.getElementById('paymentForm').addEventListener('submit', function(e) {
     e.preventDefault();
-    
-    const formData = new FormData(this);
-    
-    // Simular envio (substituir por chamada real para pagamentos_solicitar.php)
-    fetch('pagamentos_solicitar.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Pagamento solicitado com sucesso!');
-            closePaymentModal();
-        } else {
-            alert('Erro ao solicitar pagamento: ' + data.message);
-        }
-    })
-    .catch(error => {
-        alert('Erro ao solicitar pagamento');
-        console.error(error);
-    });
+    alert('Módulo de pagamentos removido.');
+    closePaymentModal();
 });
 
 // Filtros

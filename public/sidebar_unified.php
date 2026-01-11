@@ -431,100 +431,17 @@ if ($current_page === 'dashboard') {
     // NOTA: A página Comercial usa comercial_landing.php (definida no index.php)
     // Os cards duplicados foram removidos para evitar confusão
 } elseif ($current_page === 'logistico') {
-    // Conteúdo da página Logístico
+    // Conteúdo removido: módulo logístico desativado
     $logistico_content = '
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">📦 Logístico</h1>
-            <p class="page-subtitle">Controle de estoque e compras</p>
+            <p class="page-subtitle">Módulo removido</p>
         </div>
-        
         <div class="dashboard-grid">
             <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Lista de Compras</h3>
-                    <span class="card-icon">📋</span>
-                </div>
                 <div class="card-content">
-                    <p>Gerar e gerenciar listas de compras</p>
-                    <a href="index.php?page=lc_index" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🛒 Gerar Lista</h3>
-                    <span class="card-icon">🛒</span>
-                </div>
-                <div class="card-content">
-                    <p>Criar nova lista de compras</p>
-                    <a href="index.php?page=lista_compras" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📦 Estoque</h3>
-                    <span class="card-icon">📦</span>
-                </div>
-                <div class="card-content">
-                    <p>Controle de estoque logístico</p>
-                    <a href="index.php?page=estoque_logistico" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🔍 Ver Encomendas</h3>
-                    <span class="card-icon">🔍</span>
-                </div>
-                <div class="card-content">
-                    <p>Visualizar detalhes das encomendas</p>
-                    <a href="index.php?page=ver" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📊 Kardex</h3>
-                    <span class="card-icon">📊</span>
-                </div>
-                <div class="card-content">
-                    <p>Kardex de movimentações</p>
-                    <a href="index.php?page=estoque_kardex" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📈 Contagens</h3>
-                    <span class="card-icon">📈</span>
-                </div>
-                <div class="card-content">
-                    <p>Contagens de estoque</p>
-                    <a href="index.php?page=estoque_contagens" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>⚠️ Alertas</h3>
-                    <span class="card-icon">⚠️</span>
-                </div>
-                <div class="card-content">
-                    <p>Alertas de estoque</p>
-                    <a href="index.php?page=estoque_alertas" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📄 PDFs</h3>
-                    <span class="card-icon">📄</span>
-                </div>
-                <div class="card-content">
-                    <p>Gerar PDFs de compras</p>
-                    <a href="index.php?page=lc_pdf" class="btn-primary">Acessar</a>
+                    <p>Este módulo foi removido do sistema.</p>
                 </div>
             </div>
         </div>
@@ -552,39 +469,6 @@ if ($current_page === 'dashboard') {
             
             <div class="dashboard-card">
                 <div class="card-header">
-                    <h3>🏢 Fornecedores</h3>
-                    <span class="card-icon">🏢</span>
-                </div>
-                <div class="card-content">
-                    <p>Cadastro e gestão de fornecedores</p>
-                    <a href="index.php?page=config_fornecedores" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📦 Insumos</h3>
-                    <span class="card-icon">📦</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurar insumos e categorias</p>
-                    <a href="index.php?page=config_insumos" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Categorias</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Organizar categorias de produtos</p>
-                    <a href="index.php?page=config_categorias" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
                     <h3>🔧 Sistema</h3>
                     <span class="card-icon">🔧</span>
                 </div>
@@ -601,7 +485,7 @@ if ($current_page === 'dashboard') {
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">📝 Cadastros</h1>
-            <p class="page-subtitle">Gestão de usuários e fornecedores</p>
+            <p class="page-subtitle">Gestão de usuários</p>
         </div>
         
         <div class="dashboard-grid">
@@ -613,72 +497,6 @@ if ($current_page === 'dashboard') {
                 <div class="card-content">
                     <p>Gerenciar usuários e permissões</p>
                     <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🏢 Fornecedores</h3>
-                    <span class="card-icon">🏢</span>
-                </div>
-                <div class="card-content">
-                    <p>Cadastro e gestão de fornecedores</p>
-                    <a href="index.php?page=config_fornecedores" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📦 Insumos</h3>
-                    <span class="card-icon">📦</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurar insumos e categorias</p>
-                    <a href="index.php?page=config_insumos" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Categorias</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Organizar categorias de produtos</p>
-                    <a href="index.php?page=config_categorias" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📄 Fichas</h3>
-                    <span class="card-icon">📄</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurar fichas técnicas</p>
-                    <a href="index.php?page=config_fichas" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🔧 Itens</h3>
-                    <span class="card-icon">🔧</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurar itens e produtos</p>
-                    <a href="index.php?page=config_itens" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📌 Itens Fixos</h3>
-                    <span class="card-icon">📌</span>
-                </div>
-                <div class="card-content">
-                    <p>Configurar itens fixos</p>
-                    <a href="index.php?page=config_itens_fixos" class="btn-primary">Acessar</a>
                 </div>
             </div>
             
@@ -700,95 +518,13 @@ if ($current_page === 'dashboard') {
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">💰 Financeiro</h1>
-            <p class="page-subtitle">Pagamentos e solicitações</p>
+            <p class="page-subtitle">Módulo removido</p>
         </div>
         
         <div class="dashboard-grid">
             <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>💳 Solicitações</h3>
-                    <span class="card-icon">💳</span>
-                </div>
                 <div class="card-content">
-                    <p>Gerenciar solicitações de pagamento</p>
-                    <a href="index.php?page=pagamentos" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Painel Admin</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Painel administrativo de pagamentos</p>
-                    <a href="index.php?page=pagamentos_painel" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>➕ Solicitar</h3>
-                    <span class="card-icon">➕</span>
-                </div>
-                <div class="card-content">
-                    <p>Criar nova solicitação de pagamento</p>
-                    <a href="index.php?page=pagamentos_solicitar" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>👤 Freelancers</h3>
-                    <span class="card-icon">👤</span>
-                </div>
-                <div class="card-content">
-                    <p>Cadastro de freelancers</p>
-                    <a href="index.php?page=freelancer_cadastro" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🏢 Fornecedores</h3>
-                    <span class="card-icon">🏢</span>
-                </div>
-                <div class="card-content">
-                    <p>Gestão de fornecedores</p>
-                    <a href="index.php?page=fornecedores" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🔗 Portal Fornecedor</h3>
-                    <span class="card-icon">🔗</span>
-                </div>
-                <div class="card-content">
-                    <p>Portal público do fornecedor</p>
-                    <a href="index.php?page=fornecedor_link" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📊 Minhas Solicitações</h3>
-                    <span class="card-icon">📊</span>
-                </div>
-                <div class="card-content">
-                    <p>Minhas solicitações de pagamento</p>
-                    <a href="index.php?page=pagamentos_minhas" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>👁️ Ver Solicitação</h3>
-                    <span class="card-icon">👁️</span>
-                </div>
-                <div class="card-content">
-                    <p>Visualizar detalhes da solicitação</p>
-                    <a href="index.php?page=pagamentos_ver" class="btn-primary">Acessar</a>
+                    <p>Este módulo foi removido do sistema.</p>
                 </div>
             </div>
         </div>
@@ -803,17 +539,6 @@ if ($current_page === 'dashboard') {
         </div>
         
         <div class="dashboard-grid">
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📊 Relatórios</h3>
-                    <span class="card-icon">📊</span>
-                </div>
-                <div class="card-content">
-                    <p>Relatórios gerenciais e análises</p>
-                    <a href="index.php?page=relatorio_analise_sistema" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
             <div class="dashboard-card">
                 <div class="card-header">
                     <h3>🔍 Auditoria</h3>
@@ -844,17 +569,6 @@ if ($current_page === 'dashboard') {
                 <div class="card-content">
                     <p>Gestão de notas fiscais</p>
                     <a href="index.php?page=notas_fiscais" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>📋 Histórico</h3>
-                    <span class="card-icon">📋</span>
-                </div>
-                <div class="card-content">
-                    <p>Histórico de operações</p>
-                    <a href="index.php?page=historico" class="btn-primary">Acessar</a>
                 </div>
             </div>
             

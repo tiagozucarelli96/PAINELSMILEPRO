@@ -134,16 +134,6 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
         
-        <!-- Fornecedores -->
-        <a href="index.php?page=config_fornecedores" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
-                <span class="funcionalidade-card-icon">🏢</span>
-                <div class="funcionalidade-card-title">Fornecedores</div>
-                <div class="funcionalidade-card-subtitle">Cadastro e gestão de fornecedores</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
         <!-- REMOVIDO: Insumos (módulo desativado) -->
         <!-- REMOVIDO: Categorias (módulo desativado) -->
         

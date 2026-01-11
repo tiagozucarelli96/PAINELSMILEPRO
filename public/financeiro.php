@@ -119,50 +119,19 @@ ob_start();
     <!-- Header -->
     <div class="page-logistico-header">
         <h1>💰 Financeiro</h1>
-        <p>Pagamentos e solicitações</p>
+        <p>Módulo removido</p>
     </div>
     
     <!-- Funcionalidades Principais -->
     <div class="funcionalidades-grid">
-        <!-- Solicitações -->
-        <a href="index.php?page=pagamentos" class="funcionalidade-card">
+        <div class="funcionalidade-card">
             <div class="funcionalidade-card-header">
-                <span class="funcionalidade-card-icon">💳</span>
-                <div class="funcionalidade-card-title">Solicitações</div>
-                <div class="funcionalidade-card-subtitle">Gerenciar solicitações de pagamento</div>
+                <span class="funcionalidade-card-icon">ℹ️</span>
+                <div class="funcionalidade-card-title">Financeiro removido</div>
+                <div class="funcionalidade-card-subtitle">Este módulo foi removido do sistema.</div>
             </div>
             <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Painel Admin -->
-        <a href="index.php?page=pagamentos_painel" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #10b981, #059669);">
-                <span class="funcionalidade-card-icon">📋</span>
-                <div class="funcionalidade-card-title">Painel Admin</div>
-                <div class="funcionalidade-card-subtitle">Painel administrativo de pagamentos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Solicitar -->
-        <a href="index.php?page=pagamentos_solicitar" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <span class="funcionalidade-card-icon">➕</span>
-                <div class="funcionalidade-card-title">Solicitar</div>
-                <div class="funcionalidade-card-subtitle">Criar nova solicitação de pagamento</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-        
-        <!-- Freelancers -->
-        <a href="index.php?page=freelancer_cadastro" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                <span class="funcionalidade-card-icon">👤</span>
-                <div class="funcionalidade-card-title">Freelancers</div>
-                <div class="funcionalidade-card-subtitle">Cadastro de freelancers</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
+        </div>
     </div>
 </div>
 
