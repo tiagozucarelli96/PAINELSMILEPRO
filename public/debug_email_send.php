@@ -565,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             
             // Verificar classes (agora com autoload carregado, mas sem forçar autoload automático)
             $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer', false);
-            $resend_disponivel = class_exists('\Resend\Resend', false);
+            $resend_disponivel = class_exists('Resend', false) || class_exists('\Resend\Resend', false);
             
             // Verificar RESEND_API_KEY em múltiplas fontes (Railway pode usar diferentes métodos)
             $resend_api_key = null;

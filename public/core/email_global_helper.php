@@ -34,6 +34,20 @@ class EmailGlobalHelper {
         }
         return null;
     }
+
+    private function resendDisponivel() {
+        return class_exists('Resend', false) || class_exists('\Resend\Resend', false);
+    }
+
+    private function criarClienteResend($api_key) {
+        if (class_exists('Resend', false)) {
+            return Resend::client($api_key);
+        }
+        if (class_exists('\Resend\Resend', false)) {
+            return \Resend\Resend::client($api_key);
+        }
+        return null;
+    }
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
@@ -113,7 +127,7 @@ class EmailGlobalHelper {
         error_log("[EMAIL] Preview: " . substr($resend_api_key, 0, 10) . "..." . substr($resend_api_key, -5));
         
         // Verificar se classe Resend está disponível
-        if (!class_exists('\Resend\Resend', false)) {
+        if (!$this->resendDisponivel()) {
             // Tentar carregar manualmente se autoload não funcionou
             $resend_autoload_paths = [
                 __DIR__ . '/../../vendor/resend/resend-php/src/Resend.php',
@@ -132,7 +146,7 @@ class EmailGlobalHelper {
             }
             
             // Verificar novamente após tentativa manual
-            if (!class_exists('\Resend\Resend', false)) {
+            if (!$this->resendDisponivel()) {
                 error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível após tentativa manual.");
                 error_log("[EMAIL] Caminhos tentados: " . implode(', ', $resend_autoload_paths));
                 error_log("[EMAIL] Execute no Railway: composer dump-autoload --optimize");
@@ -162,7 +176,7 @@ class EmailGlobalHelper {
             }
             
             // Verificar se classe Resend existe antes de usar
-            if (!class_exists('\Resend\Resend', false)) {
+            if (!$this->resendDisponivel()) {
                 // Tentar carregar manualmente se autoload não funcionou
                 $resend_autoload_paths = [
                     __DIR__ . '/../../vendor/resend/resend-php/src/Resend.php',
@@ -181,15 +195,19 @@ class EmailGlobalHelper {
                 }
                 
                 // Verificar novamente após tentativa manual
-                if (!class_exists('\Resend\Resend', false)) {
+                if (!$this->resendDisponivel()) {
                     error_log("[EMAIL] ❌ ERRO: Classe Resend\Resend não encontrada após tentativa manual.");
                     error_log("[EMAIL] Caminhos tentados: " . implode(', ', $resend_autoload_paths));
                     error_log("[EMAIL] Execute no Railway: composer dump-autoload --optimize");
                     return false;
                 }
             }
-            
-            $resend = \Resend\Resend::client($api_key);
+
+            $resend = $this->criarClienteResend($api_key);
+            if (!$resend) {
+                error_log("[EMAIL] ❌ ERRO: Resend SDK disponível mas cliente não pôde ser criado.");
+                return false;
+            }
             
             $email_remetente = $this->getEnvVar('RESEND_FROM')
                 ?: $this->getEnvVar('RESEND_FROM_EMAIL')
