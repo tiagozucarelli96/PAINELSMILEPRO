@@ -39,6 +39,7 @@ try {
             
             // Permissões
             $permissoes = [
+                'perm_superadmin' => isset($_POST['perm_superadmin']),
                 'perm_tarefas' => isset($_POST['perm_tarefas']),
                 'perm_lista' => isset($_POST['perm_lista']),
                 'perm_demandas' => isset($_POST['perm_demandas']),

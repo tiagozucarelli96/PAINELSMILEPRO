@@ -435,6 +435,7 @@ try {
                 <div class="permissions-grid">
                     <?php
                     $permissoes_labels = [
+                        'perm_superadmin' => 'Superadmin',
                         'perm_tarefas' => 'Tarefas',
                         'perm_lista' => 'Lista de Compras',
                         'perm_demandas' => 'Solicitar Pagamento',
@@ -670,6 +671,7 @@ try {
                     
                     // Preencher permissões
                     const permissoes = [
+                        'perm_superadmin',
                         'perm_tarefas', 'perm_lista', 'perm_demandas', 'perm_pagamentos', 
                         'perm_usuarios', 'perm_portao', 'perm_banco_smile', 'perm_banco_smile_admin',
                         'perm_notas_fiscais', 'perm_dados_contrato', 'perm_uso_fiorino' // REMOVIDO: perm_estoque_logistico
