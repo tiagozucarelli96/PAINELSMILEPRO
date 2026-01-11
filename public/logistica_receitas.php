@@ -10,6 +10,7 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
+$can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
 
 if (!$can_manage) {
     http_response_code(403);
@@ -34,6 +35,16 @@ function ensure_unidades_medida(PDO $pdo): array {
     }
 
     return $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+}
+
+function parse_decimal($value): ?float {
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return null;
+    }
+    $normalized = preg_replace('/[^0-9,\\.]/', '', $raw);
+    $normalized = str_replace(['.', ','], ['', '.'], $normalized);
+    return $normalized === '' ? null : (float)$normalized;
 }
 
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
@@ -82,6 +93,45 @@ function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?
     return $fallback_url ?: null;
 }
 
+function calcular_custo_receita_total(int $receita_id, array $componentes_by_receita, array $insumo_cost, array $receita_yield, array &$memo, array &$stack): ?float {
+    if (isset($memo[$receita_id])) {
+        return $memo[$receita_id];
+    }
+    if (isset($stack[$receita_id])) {
+        return null;
+    }
+    $stack[$receita_id] = true;
+
+    $total = 0.0;
+    $componentes = $componentes_by_receita[$receita_id] ?? [];
+    foreach ($componentes as $comp) {
+        $qtde_bruta = (float)($comp['qtde_bruta'] ?? 0);
+        if ($qtde_bruta <= 0) {
+            continue;
+        }
+        if ($comp['item_tipo'] === 'insumo') {
+            $custo_unit = isset($insumo_cost[$comp['item_id']]) ? (float)$insumo_cost[$comp['item_id']] : 0.0;
+            $total += $qtde_bruta * $custo_unit;
+        } elseif ($comp['item_tipo'] === 'receita') {
+            $sub_total = calcular_custo_receita_total((int)$comp['item_id'], $componentes_by_receita, $insumo_cost, $receita_yield, $memo, $stack);
+            if ($sub_total === null) {
+                $total += 0.0;
+                continue;
+            }
+            $yield = (int)($receita_yield[$comp['item_id']] ?? 1);
+            if ($yield <= 0) {
+                $yield = 1;
+            }
+            $custo_unit = $sub_total / $yield;
+            $total += $qtde_bruta * $custo_unit;
+        }
+    }
+
+    unset($stack[$receita_id]);
+    $memo[$receita_id] = $total;
+    return $total;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save') {
@@ -90,18 +140,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nome === '') {
             $errors[] = 'Nome é obrigatório.';
         } else {
-            $foto_url = null;
-            $foto_chave = null;
+            $foto_url = trim((string)($_POST['foto_url'] ?? '')) ?: null;
+            $foto_chave = trim((string)($_POST['foto_chave_storage'] ?? '')) ?: null;
+
             if (!empty($_FILES['foto_file']['tmp_name']) && is_uploaded_file($_FILES['foto_file']['tmp_name'])) {
                 try {
                     $uploader = new MagaluUpload();
                     $result = $uploader->upload($_FILES['foto_file'], 'logistica/receitas');
-                    $foto_url = $result['url'] ?? null;
-                    $foto_chave = $result['chave_storage'] ?? null;
+                    $foto_url = $result['url'] ?? $foto_url;
+                    $foto_chave = $result['chave_storage'] ?? $foto_chave;
                 } catch (Throwable $e) {
                     $errors[] = 'Falha ao enviar foto: ' . $e->getMessage();
                 }
-            } elseif ($id > 0) {
+            } elseif ($id > 0 && empty($foto_url)) {
                 $stmt = $pdo->prepare("SELECT foto_url, foto_chave_storage FROM logistica_receitas WHERE id = :id");
                 $stmt->execute([':id' => $id]);
                 $current = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -126,36 +177,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
             ];
 
-            if ($id > 0) {
-                $sql = "
-                    UPDATE logistica_receitas
-                    SET nome = :nome,
-                        foto_url = :foto_url,
-                        foto_chave_storage = :foto_chave_storage,
-                        tipologia_receita_id = :tipologia_receita_id,
-                        unidade_medida = :unidade_medida,
-                        ativo = :ativo,
-                        visivel_na_lista = :visivel_na_lista,
-                        rendimento_base_pessoas = :rendimento_base_pessoas,
-                        updated_at = NOW()
-                    WHERE id = :id
-                ";
-                $dados[':id'] = $id;
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($dados);
-                $messages[] = 'Receita atualizada.';
-                $redirect_id = $id;
-            } else {
-                $sql = "
-                    INSERT INTO logistica_receitas
-                    (nome, foto_url, foto_chave_storage, tipologia_receita_id, unidade_medida, ativo, visivel_na_lista, rendimento_base_pessoas)
-                    VALUES
-                    (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :unidade_medida, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
-                ";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($dados);
-                $messages[] = 'Receita criada.';
-                $redirect_id = (int)$pdo->lastInsertId();
+            $componentes_post = $_POST['componentes'] ?? [];
+            $componentes_norm = [];
+
+            $valid_insumos = $pdo->query("SELECT id FROM logistica_insumos")->fetchAll(PDO::FETCH_COLUMN);
+            $valid_receitas = $pdo->query("SELECT id FROM logistica_receitas")->fetchAll(PDO::FETCH_COLUMN);
+            $valid_insumos = array_flip(array_map('intval', $valid_insumos));
+            $valid_receitas = array_flip(array_map('intval', $valid_receitas));
+
+            foreach ($componentes_post as $comp) {
+                $tipo = $comp['item_tipo'] ?? '';
+                $item_id = (int)($comp['item_id'] ?? 0);
+                $qtde_bruta = parse_decimal($comp['qtde_bruta'] ?? null);
+                $qtde_liquida = parse_decimal($comp['qtde_liquida'] ?? null);
+
+                if ($tipo !== 'insumo' && $tipo !== 'receita') {
+                    continue;
+                }
+                if ($item_id <= 0) {
+                    continue;
+                }
+                if ($tipo === 'receita' && $id > 0 && $item_id === $id) {
+                    $errors[] = 'Receita não pode referenciar ela mesma.';
+                    continue;
+                }
+                if ($qtde_bruta === null || $qtde_bruta <= 0) {
+                    continue;
+                }
+                if ($tipo === 'insumo' && !isset($valid_insumos[$item_id])) {
+                    continue;
+                }
+                if ($tipo === 'receita' && !isset($valid_receitas[$item_id])) {
+                    continue;
+                }
+
+                $componentes_norm[] = [
+                    'item_tipo' => $tipo,
+                    'item_id' => $item_id,
+                    'medida_caseira' => trim((string)($comp['medida_caseira'] ?? '')) ?: null,
+                    'unidade_medida' => trim((string)($comp['unidade_medida'] ?? '')) ?: null,
+                    'qtde_bruta' => $qtde_bruta,
+                    'qtde_liquida' => ($qtde_liquida === null || $qtde_liquida <= 0) ? $qtde_bruta : $qtde_liquida
+                ];
+            }
+
+            if (empty($errors)) {
+                try {
+                    $pdo->beginTransaction();
+                    if ($id > 0) {
+                        $sql = "
+                            UPDATE logistica_receitas
+                            SET nome = :nome,
+                                foto_url = :foto_url,
+                                foto_chave_storage = :foto_chave_storage,
+                                tipologia_receita_id = :tipologia_receita_id,
+                                unidade_medida = :unidade_medida,
+                                ativo = :ativo,
+                                visivel_na_lista = :visivel_na_lista,
+                                rendimento_base_pessoas = :rendimento_base_pessoas,
+                                updated_at = NOW()
+                            WHERE id = :id
+                        ";
+                        $dados[':id'] = $id;
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($dados);
+                        $receita_id = $id;
+                        $messages[] = 'Receita atualizada.';
+                        $redirect_id = $id;
+                    } else {
+                        $sql = "
+                            INSERT INTO logistica_receitas
+                            (nome, foto_url, foto_chave_storage, tipologia_receita_id, unidade_medida, ativo, visivel_na_lista, rendimento_base_pessoas)
+                            VALUES
+                            (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :unidade_medida, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
+                        ";
+                        $stmt = $pdo->prepare($sql);
+                        $stmt->execute($dados);
+                        $receita_id = (int)$pdo->lastInsertId();
+                        $messages[] = 'Receita criada.';
+                        $redirect_id = $receita_id;
+                    }
+
+                    if ($receita_id > 0) {
+                        $pdo->prepare("DELETE FROM logistica_receita_componentes WHERE receita_id = :id")
+                            ->execute([':id' => $receita_id]);
+
+                        if (!empty($componentes_norm)) {
+                            $stmt = $pdo->prepare("
+                                INSERT INTO logistica_receita_componentes
+                                (receita_id, item_tipo, item_id, medida_caseira, unidade_medida, qtde_bruta, qtde_liquida, created_at, updated_at)
+                                VALUES
+                                (:receita_id, :item_tipo, :item_id, :medida_caseira, :unidade_medida, :qtde_bruta, :qtde_liquida, NOW(), NOW())
+                            ");
+                            foreach ($componentes_norm as $comp) {
+                                if ($comp['item_tipo'] === 'receita' && $comp['item_id'] === $receita_id) {
+                                    throw new RuntimeException('Receita não pode referenciar ela mesma.');
+                                }
+                                $stmt->execute([
+                                    ':receita_id' => $receita_id,
+                                    ':item_tipo' => $comp['item_tipo'],
+                                    ':item_id' => $comp['item_id'],
+                                    ':medida_caseira' => $comp['medida_caseira'],
+                                    ':unidade_medida' => $comp['unidade_medida'],
+                                    ':qtde_bruta' => $comp['qtde_bruta'],
+                                    ':qtde_liquida' => $comp['qtde_liquida']
+                                ]);
+                            }
+                        }
+                    }
+
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    $pdo->rollBack();
+                    $errors[] = 'Erro ao salvar ficha técnica: ' . $e->getMessage();
+                    $messages = [];
+                }
             }
         }
     }
@@ -168,33 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if ($action === 'add_component') {
-        $receita_id = (int)($_POST['receita_id'] ?? 0);
-        $insumo_id = (int)($_POST['insumo_id'] ?? 0);
-        $quantidade = $_POST['quantidade_base'] ?? '';
-        if ($receita_id > 0 && $insumo_id > 0 && $quantidade !== '') {
-            $stmt = $pdo->prepare("
-                INSERT INTO logistica_receita_componentes (receita_id, insumo_id, quantidade_base, unidade)
-                VALUES (:receita_id, :insumo_id, :quantidade_base, :unidade)
-            ");
-            $stmt->execute([
-                ':receita_id' => $receita_id,
-                ':insumo_id' => $insumo_id,
-                ':quantidade_base' => (float)$quantidade,
-                ':unidade' => trim((string)($_POST['unidade'] ?? '')) ?: null
-            ]);
-            $messages[] = 'Componente adicionado.';
-        }
-    }
-
-    if ($action === 'remove_component') {
-        $id = (int)($_POST['component_id'] ?? 0);
-        if ($id > 0) {
-            $pdo->prepare("DELETE FROM logistica_receita_componentes WHERE id = :id")
-                ->execute([':id' => $id]);
-            $messages[] = 'Componente removido.';
-        }
-    }
+    // componentes são salvos junto com a receita (tabela completa)
 }
 
 if ($redirect_id > 0 && empty($errors)) {
@@ -221,8 +331,46 @@ $stmt->execute($params);
 $receitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_receita WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
-$insumos = $pdo->query("SELECT id, nome_oficial FROM logistica_insumos WHERE ativo IS TRUE ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
 $unidades_medida = ensure_unidades_medida($pdo);
+
+$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
+$receitas_all = $pdo->query("SELECT id, nome, rendimento_base_pessoas, ativo FROM logistica_receitas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
+$componentes_all = $pdo->query("SELECT * FROM logistica_receita_componentes ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+
+$insumos_select = array_values(array_filter($insumos_all, static fn($i) => !isset($i['ativo']) || $i['ativo']));
+$receitas_select = array_values(array_filter($receitas_all, static fn($r) => !isset($r['ativo']) || $r['ativo']));
+
+$insumo_nome = [];
+$insumo_cost = [];
+foreach ($insumos_all as $ins) {
+    $insumo_nome[(int)$ins['id']] = $ins['nome_oficial'];
+    if ($ins['custo_padrao'] !== null) {
+        $insumo_cost[(int)$ins['id']] = (float)$ins['custo_padrao'];
+    }
+}
+
+$receita_nome = [];
+$receita_yield = [];
+foreach ($receitas_all as $rec) {
+    $receita_nome[(int)$rec['id']] = $rec['nome'];
+    $receita_yield[(int)$rec['id']] = (int)($rec['rendimento_base_pessoas'] ?? 1);
+}
+
+$componentes_by_receita = [];
+foreach ($componentes_all as $comp) {
+    $rid = (int)$comp['receita_id'];
+    if (!isset($componentes_by_receita[$rid])) {
+        $componentes_by_receita[$rid] = [];
+    }
+    $componentes_by_receita[$rid][] = $comp;
+}
+
+$memo_cost = [];
+$stack_cost = [];
+$receita_cost_total = [];
+foreach (array_keys($receita_nome) as $rid) {
+    $receita_cost_total[$rid] = calcular_custo_receita_total((int)$rid, $componentes_by_receita, $insumo_cost, $receita_yield, $memo_cost, $stack_cost);
+}
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
@@ -232,15 +380,7 @@ if ($edit_id > 0) {
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->prepare("
-        SELECT c.*, i.nome_oficial
-        FROM logistica_receita_componentes c
-        JOIN logistica_insumos i ON i.id = c.insumo_id
-        WHERE c.receita_id = :id
-        ORDER BY i.nome_oficial
-    ");
-    $stmt->execute([':id' => $edit_id]);
-    $componentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $componentes = $componentes_by_receita[$edit_id] ?? [];
 }
 if ($edit_id > 0 && !$edit_item) {
     $errors[] = 'Receita não encontrada.';
@@ -248,6 +388,67 @@ if ($edit_id > 0 && !$edit_item) {
 $edit_foto_url = null;
 if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
+}
+
+$fichas = [];
+foreach ($receitas as $rec) {
+    $rid = (int)$rec['id'];
+    $foto_modal = gerarUrlPreviewMagalu($rec['foto_chave_storage'] ?? null, $rec['foto_url'] ?? null);
+    $linhas = [];
+    foreach ($componentes_by_receita[$rid] ?? [] as $comp) {
+        $item_tipo = $comp['item_tipo'] ?? 'insumo';
+        $item_id = (int)($comp['item_id'] ?? 0);
+        $item_nome = $item_tipo === 'receita'
+            ? ($receita_nome[$item_id] ?? ('Receita #' . $item_id))
+            : ($insumo_nome[$item_id] ?? ('Insumo #' . $item_id));
+        $qtde_bruta = (float)($comp['qtde_bruta'] ?? 0);
+        $qtde_liquida = (float)($comp['qtde_liquida'] ?? 0);
+        if ($qtde_liquida <= 0) {
+            $qtde_liquida = $qtde_bruta;
+        }
+        $fc = $qtde_liquida > 0 ? $qtde_bruta / $qtde_liquida : 1.0;
+
+        $custo_unit = null;
+        $custo_total = null;
+        if ($can_see_cost) {
+            if ($item_tipo === 'insumo') {
+                $custo_unit = $insumo_cost[$item_id] ?? null;
+            } else {
+                $sub_total = $receita_cost_total[$item_id] ?? null;
+                if ($sub_total !== null) {
+                    $yield = (int)($receita_yield[$item_id] ?? 1);
+                    if ($yield <= 0) {
+                        $yield = 1;
+                    }
+                    $custo_unit = $sub_total / $yield;
+                }
+            }
+            if ($custo_unit !== null) {
+                $custo_total = $qtde_bruta * $custo_unit;
+            }
+        }
+
+        $linhas[] = [
+            'item' => $item_nome,
+            'item_tipo' => $item_tipo,
+            'medida_caseira' => $comp['medida_caseira'] ?? '',
+            'unidade_medida' => $comp['unidade_medida'] ?? '',
+            'qtde_bruta' => $qtde_bruta,
+            'qtde_liquida' => $qtde_liquida,
+            'fc' => $fc,
+            'custo_unit' => $custo_unit,
+            'custo_total' => $custo_total
+        ];
+    }
+    $fichas[$rid] = [
+        'id' => $rid,
+        'nome' => $rec['nome'] ?? '',
+        'tipologia' => $rec['tipologia_nome'] ?? '',
+        'rendimento' => (int)($rec['rendimento_base_pessoas'] ?? 1),
+        'updated_at' => $rec['updated_at'] ?? '',
+        'foto' => $foto_modal,
+        'linhas' => $linhas
+    ];
 }
 
 includeSidebar('Receitas - Logística');
@@ -347,6 +548,61 @@ includeSidebar('Receitas - Logística');
     color: #64748b;
     cursor: pointer;
 }
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    width: min(1100px, 92vw);
+    max-height: 90vh;
+    overflow: auto;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    padding: 1.25rem;
+}
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.modal-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.modal-close {
+    border: none;
+    background: #e2e8f0;
+    color: #0f172a;
+    border-radius: 8px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+}
+.ficha-header {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.ficha-header .box {
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+}
+.ficha-photo img {
+    max-height: 120px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
 </style>
 
 <div class="page-container">
@@ -398,9 +654,6 @@ includeSidebar('Receitas - Logística');
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <div style="margin-top:0.35rem;">
-                        <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
-                    </div>
                 </div>
                 <div>
                     <label>Visível na lista</label>
@@ -423,7 +676,100 @@ includeSidebar('Receitas - Logística');
                     </div>
                     <div class="upload-actions">
                         <input type="file" id="foto_file" name="foto_file" accept="image/*">
+                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
                     </div>
+                    <div style="margin-top:0.5rem;">
+                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
+                        <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:1rem;">
+                <h3 style="margin:0 0 0.75rem 0;">Tabela de Insumos (Ficha Técnica)</h3>
+                <div class="link-muted" style="margin-bottom:0.75rem;">
+                    Componentes podem ser insumos ou sub-receitas. Qtde bruta usa compra.
+                </div>
+                <table class="table ficha-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Medida caseira</th>
+                            <th>Unidade</th>
+                            <th>Qtde bruta</th>
+                            <th>Qtde líquida</th>
+                            <th>FC</th>
+                            <?php if ($can_see_cost): ?>
+                                <th>Custo unitário</th>
+                                <th>Custo total</th>
+                            <?php endif; ?>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="componentes-body">
+                        <?php
+                        $row_index = 0;
+                        $componentes_render = $componentes ?: [];
+                        if (empty($componentes_render)) {
+                            $componentes_render[] = [
+                                'item_tipo' => 'insumo',
+                                'item_id' => 0,
+                                'medida_caseira' => '',
+                                'unidade_medida' => '',
+                                'qtde_bruta' => '',
+                                'qtde_liquida' => ''
+                            ];
+                        }
+                        foreach ($componentes_render as $comp):
+                            $tipo = $comp['item_tipo'] ?? 'insumo';
+                            $item_id = (int)($comp['item_id'] ?? 0);
+                            $medida_caseira = $comp['medida_caseira'] ?? '';
+                            $unidade_medida = $comp['unidade_medida'] ?? '';
+                            $qtde_bruta = $comp['qtde_bruta'] ?? '';
+                            $qtde_liquida = $comp['qtde_liquida'] ?? '';
+                        ?>
+                            <tr class="componente-row" data-index="<?= $row_index ?>">
+                                <td>
+                                    <select class="form-input item-tipo" name="componentes[<?= $row_index ?>][item_tipo]">
+                                        <option value="insumo" <?= $tipo === 'insumo' ? 'selected' : '' ?>>Insumo</option>
+                                        <option value="receita" <?= $tipo === 'receita' ? 'selected' : '' ?>>Receita</option>
+                                    </select>
+                                    <select class="form-input item-id" name="componentes[<?= $row_index ?>][item_id]" style="margin-top:0.35rem;">
+                                        <option value="">Selecione...</option>
+                                        <?php if ($tipo === 'insumo'): ?>
+                                            <?php foreach ($insumos_select as $ins): ?>
+                                                <option value="<?= (int)$ins['id'] ?>" <?= $item_id === (int)$ins['id'] ? 'selected' : '' ?>>
+                                                    <?= h($ins['nome_oficial']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <?php foreach ($receitas_select as $rec_opt): ?>
+                                                <?php if ($edit_id > 0 && (int)$rec_opt['id'] === $edit_id) continue; ?>
+                                                <option value="<?= (int)$rec_opt['id'] ?>" <?= $item_id === (int)$rec_opt['id'] ? 'selected' : '' ?>>
+                                                    <?= h($rec_opt['nome']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </select>
+                                </td>
+                                <td><input class="form-input medida-caseira" name="componentes[<?= $row_index ?>][medida_caseira]" value="<?= h($medida_caseira) ?>"></td>
+                                <td><input class="form-input unidade-medida" name="componentes[<?= $row_index ?>][unidade_medida]" value="<?= h($unidade_medida) ?>"></td>
+                                <td><input class="form-input qtde-bruta" name="componentes[<?= $row_index ?>][qtde_bruta]" type="number" step="0.001" value="<?= h($qtde_bruta) ?>"></td>
+                                <td><input class="form-input qtde-liquida" name="componentes[<?= $row_index ?>][qtde_liquida]" type="number" step="0.001" value="<?= h($qtde_liquida) ?>"></td>
+                                <td class="fc-cell">-</td>
+                                <?php if ($can_see_cost): ?>
+                                    <td class="custo-unit">-</td>
+                                    <td class="custo-total">-</td>
+                                <?php endif; ?>
+                                <td><button type="button" class="btn-secondary remover-linha">Remover</button></td>
+                            </tr>
+                        <?php
+                            $row_index++;
+                        endforeach;
+                        ?>
+                    </tbody>
+                </table>
+                <div style="margin-top:0.75rem;">
+                    <button type="button" class="btn-secondary" id="add-linha">Adicionar linha</button>
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -454,6 +800,7 @@ includeSidebar('Receitas - Logística');
             <tbody>
                 <?php foreach ($receitas as $rec): ?>
                     <?php $thumb_url = gerarUrlPreviewMagalu($rec['foto_chave_storage'] ?? null, $rec['foto_url'] ?? null); ?>
+                    <?php $ficha_json = isset($fichas[(int)$rec['id']]) ? htmlspecialchars(json_encode($fichas[(int)$rec['id']], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') : ''; ?>
                     <tr>
                         <td>
                             <?php if (!empty($thumb_url)): ?>
@@ -477,6 +824,7 @@ includeSidebar('Receitas - Logística');
                                 <input type="hidden" name="id" value="<?= (int)$rec['id'] ?>">
                                 <button class="btn-secondary" type="submit">Ativar/Desativar</button>
                             </form>
+                            <button type="button" class="btn-secondary ver-ficha" data-ficha="<?= $ficha_json ?>">Ver ficha</button>
                             <a class="btn-secondary" href="index.php?page=logistica_receitas&edit_id=<?= (int)$rec['id'] ?>">Editar</a>
                         </td>
                     </tr>
@@ -487,18 +835,245 @@ includeSidebar('Receitas - Logística');
             </tbody>
         </table>
     </div>
+
+    <div class="modal-overlay" id="modal-ficha">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Ficha Técnica</div>
+                <button class="modal-close" type="button" onclick="closeFicha()">Fechar</button>
+            </div>
+            <div id="ficha-conteudo"></div>
+        </div>
+    </div>
 </div>
 
 <script>
+const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
+const CURRENT_RECIPE_ID = <?= (int)$edit_id ?>;
+const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial']], $insumos_select), JSON_UNESCAPED_UNICODE) ?>;
+const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome']], $receitas_select), JSON_UNESCAPED_UNICODE) ?>;
+const COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE) ?>;
+const COST_RECEITA = <?= json_encode(array_map(function($total) use ($receita_yield) {
+    if ($total === null) { return null; }
+    return $total;
+}, $receita_cost_total), JSON_UNESCAPED_UNICODE) ?>;
+const YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE) ?>;
+
+function formatNumber(value, decimals = 3) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    return Number(value).toFixed(decimals).replace('.', ',');
+}
+
+function formatCurrency(value) {
+    if (value === null || value === undefined || Number.isNaN(value)) return '-';
+    return 'R$ ' + Number(value).toFixed(2).replace('.', ',');
+}
+
+function buildOptions(list, selectedId, type) {
+    let html = '<option value=\"\">Selecione...</option>';
+    list.forEach(item => {
+        if (type === 'receita' && CURRENT_RECIPE_ID && item.id === CURRENT_RECIPE_ID) {
+            return;
+        }
+        const selected = item.id === Number(selectedId) ? 'selected' : '';
+        html += `<option value=\"${item.id}\" ${selected}>${item.nome}</option>`;
+    });
+    return html;
+}
+
+function updateItemSelect(row) {
+    const tipo = row.querySelector('.item-tipo').value;
+    const select = row.querySelector('.item-id');
+    const current = select.value;
+    const list = tipo === 'receita' ? RECEITAS : INSUMOS;
+    select.innerHTML = buildOptions(list, current, tipo);
+}
+
+function calcRow(row) {
+    const brutaInput = row.querySelector('.qtde-bruta');
+    const liquidaInput = row.querySelector('.qtde-liquida');
+    const fcCell = row.querySelector('.fc-cell');
+    const tipo = row.querySelector('.item-tipo').value;
+    const itemId = parseInt(row.querySelector('.item-id').value || '0', 10);
+
+    let bruta = parseFloat(brutaInput.value || '0');
+    let liquida = parseFloat(liquidaInput.value || '0');
+    if (!liquida || liquida <= 0) {
+        liquida = bruta;
+        if (bruta > 0) {
+            liquidaInput.value = bruta;
+        }
+    }
+    const fc = liquida > 0 ? bruta / liquida : 1;
+    fcCell.textContent = formatNumber(fc, 3);
+
+    if (!CAN_SEE_COST) return;
+
+    let custoUnit = null;
+    if (tipo === 'insumo' && itemId > 0) {
+        custoUnit = COST_INSUMO[itemId] ?? null;
+    } else if (tipo === 'receita' && itemId > 0) {
+        const total = COST_RECEITA[itemId];
+        const yieldBase = YIELD_RECEITA[itemId] || 1;
+        if (total !== null && total !== undefined) {
+            custoUnit = Number(total) / Math.max(1, Number(yieldBase));
+        }
+    }
+    const custoTotal = custoUnit !== null ? bruta * custoUnit : null;
+    row.querySelector('.custo-unit').textContent = formatCurrency(custoUnit);
+    row.querySelector('.custo-total').textContent = formatCurrency(custoTotal);
+}
+
+function attachRowEvents(row) {
+    row.querySelector('.item-tipo').addEventListener('change', () => {
+        updateItemSelect(row);
+        calcRow(row);
+    });
+    row.querySelector('.item-id').addEventListener('change', () => calcRow(row));
+    row.querySelector('.qtde-bruta').addEventListener('input', () => calcRow(row));
+    row.querySelector('.qtde-liquida').addEventListener('input', () => calcRow(row));
+    row.querySelector('.remover-linha').addEventListener('click', () => row.remove());
+    updateItemSelect(row);
+    calcRow(row);
+}
+
+document.querySelectorAll('.componente-row').forEach(row => attachRowEvents(row));
+
+let nextIndex = document.querySelectorAll('.componente-row').length;
+document.getElementById('add-linha')?.addEventListener('click', () => {
+    const tbody = document.getElementById('componentes-body');
+    if (!tbody) return;
+    const row = document.createElement('tr');
+    row.className = 'componente-row';
+    row.dataset.index = nextIndex;
+    row.innerHTML = `
+        <td>
+            <select class=\"form-input item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\">
+                <option value=\"insumo\">Insumo</option>
+                <option value=\"receita\">Receita</option>
+            </select>
+            <select class=\"form-input item-id\" name=\"componentes[${nextIndex}][item_id]\" style=\"margin-top:0.35rem;\"></select>
+        </td>
+        <td><input class=\"form-input medida-caseira\" name=\"componentes[${nextIndex}][medida_caseira]\"></td>
+        <td><input class=\"form-input unidade-medida\" name=\"componentes[${nextIndex}][unidade_medida]\"></td>
+        <td><input class=\"form-input qtde-bruta\" name=\"componentes[${nextIndex}][qtde_bruta]\" type=\"number\" step=\"0.001\"></td>
+        <td><input class=\"form-input qtde-liquida\" name=\"componentes[${nextIndex}][qtde_liquida]\" type=\"number\" step=\"0.001\"></td>
+        <td class=\"fc-cell\">-</td>
+        ${CAN_SEE_COST ? '<td class=\"custo-unit\">-</td><td class=\"custo-total\">-</td>' : ''}
+        <td><button type=\"button\" class=\"btn-secondary remover-linha\">Remover</button></td>
+    `;
+    tbody.appendChild(row);
+    attachRowEvents(row);
+    nextIndex += 1;
+});
+
+function closeFicha() {
+    document.getElementById('modal-ficha').style.display = 'none';
+}
+
+document.querySelectorAll('.ver-ficha').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const data = btn.dataset.ficha ? JSON.parse(btn.dataset.ficha) : null;
+        if (!data) return;
+        const linhas = data.linhas || [];
+        const content = document.getElementById('ficha-conteudo');
+        const rowsHtml = linhas.map(l => `
+            <tr>
+                <td>${l.item}</td>
+                <td>${l.medida_caseira || '-'}</td>
+                <td>${l.unidade_medida || '-'}</td>
+                <td>${formatNumber(l.qtde_bruta, 3)}</td>
+                <td>${formatNumber(l.qtde_liquida, 3)}</td>
+                <td>${formatNumber(l.fc, 3)}</td>
+                ${CAN_SEE_COST ? `<td>${formatCurrency(l.custo_unit)}</td><td>${formatCurrency(l.custo_total)}</td>` : ''}
+            </tr>
+        `).join('');
+
+        content.innerHTML = `
+            <div class=\"ficha-header\">
+                <div class=\"box\"><strong>Nome</strong><div>${data.nome}</div></div>
+                <div class=\"box\"><strong>Categoria</strong><div>${data.tipologia || '-'}</div></div>
+                <div class=\"box\"><strong>Rendimento</strong><div>${data.rendimento}</div></div>
+                <div class=\"box\"><strong>Última alteração</strong><div>${data.updated_at || '-'}</div></div>
+                <div class=\"box ficha-photo\"><strong>Foto</strong><div>${data.foto ? `<img src=\"${data.foto}\" alt=\"Foto\">` : '-'}</div></div>
+            </div>
+            <table class=\"table\">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Medida caseira</th>
+                        <th>Unidade</th>
+                        <th title=\"Quantidade bruta usada para compra\">Qtde bruta</th>
+                        <th>Qtde líquida</th>
+                        <th>FC</th>
+                        ${CAN_SEE_COST ? '<th>Custo unitário</th><th>Custo total</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml || '<tr><td colspan=\"' + (CAN_SEE_COST ? 8 : 6) + '\">Nenhum componente cadastrado.</td></tr>'}
+                </tbody>
+            </table>
+            <div style=\"margin-top:0.75rem;\">\n                <a class=\"btn-primary\" href=\"index.php?page=logistica_receitas&edit_id=${data.id}\">Editar</a>\n            </div>
+        `;
+        document.getElementById('modal-ficha').style.display = 'flex';
+    });
+});
+
+document.getElementById('modal-ficha')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-ficha') {
+        closeFicha();
+    }
+});
+
+async function uploadFoto() {
+    const fileInput = document.getElementById('foto_file');
+    if (!fileInput.files.length) {
+        alert('Selecione um arquivo.');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('context', 'receita');
+
+    const response = await fetch('index.php?page=logistica_upload', {
+        method: 'POST',
+        body: formData
+    });
+    const result = await response.json();
+    if (!result.ok) {
+        alert('Erro no upload: ' + (result.error || ''));
+        return;
+    }
+    const urlInput = document.getElementById('foto_url');
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (urlInput) {
+        urlInput.value = result.url || '';
+    }
+    if (chaveInput) {
+        chaveInput.value = result.chave_storage || '';
+    }
+    const preview = document.getElementById('foto_preview');
+    if (preview) {
+        preview.innerHTML = '<img src=\"' + (result.url || '') + '\" alt=\"Preview\">';
+    }
+}
+
 document.getElementById('foto_file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
     const preview = document.getElementById('foto_preview');
     if (!file || !preview) return;
     const reader = new FileReader();
     reader.onload = () => {
-        preview.innerHTML = '<img src="' + reader.result + '" alt="Preview">';
+        preview.innerHTML = '<img src=\"' + reader.result + '\" alt=\"Preview\">';
     };
     reader.readAsDataURL(file);
+});
+
+document.getElementById('foto_url')?.addEventListener('input', (e) => {
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (chaveInput && e.target.value.trim() !== '') {
+        chaveInput.value = '';
+    }
 });
 </script>
 
