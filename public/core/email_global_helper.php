@@ -92,9 +92,32 @@ class EmailGlobalHelper {
         error_log("[EMAIL] ✅ RESEND_API_KEY encontrada via $fonte_detectada! (tamanho: " . strlen($resend_api_key) . " caracteres)");
         error_log("[EMAIL] Preview: " . substr($resend_api_key, 0, 10) . "..." . substr($resend_api_key, -5));
         
+        // Verificar se classe Resend está disponível
         if (!class_exists('\Resend\Resend', false)) {
-            error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível. Execute: composer install");
-            return false;
+            // Tentar carregar manualmente se autoload não funcionou
+            $resend_autoload_paths = [
+                __DIR__ . '/../../vendor/resend/resend-php/src/Resend.php',
+                __DIR__ . '/../vendor/resend/resend-php/src/Resend.php',
+                __DIR__ . '/vendor/resend/resend-php/src/Resend.php'
+            ];
+            
+            $resend_carregado = false;
+            foreach ($resend_autoload_paths as $resend_path) {
+                if (file_exists($resend_path)) {
+                    require_once $resend_path;
+                    error_log("[EMAIL] ⚠️ Carregando Resend manualmente de: $resend_path");
+                    $resend_carregado = true;
+                    break;
+                }
+            }
+            
+            // Verificar novamente após tentativa manual
+            if (!class_exists('\Resend\Resend', false)) {
+                error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível após tentativa manual.");
+                error_log("[EMAIL] Caminhos tentados: " . implode(', ', $resend_autoload_paths));
+                error_log("[EMAIL] Execute no Railway: composer dump-autoload --optimize");
+                return false;
+            }
         }
         
         // Usar APENAS Resend
@@ -120,8 +143,30 @@ class EmailGlobalHelper {
             
             // Verificar se classe Resend existe antes de usar
             if (!class_exists('\Resend\Resend', false)) {
-                error_log("[EMAIL] ❌ ERRO: Classe Resend\Resend não encontrada. Execute: composer install");
-                return false;
+                // Tentar carregar manualmente se autoload não funcionou
+                $resend_autoload_paths = [
+                    __DIR__ . '/../../vendor/resend/resend-php/src/Resend.php',
+                    __DIR__ . '/../vendor/resend/resend-php/src/Resend.php',
+                    __DIR__ . '/vendor/resend/resend-php/src/Resend.php'
+                ];
+                
+                $resend_carregado = false;
+                foreach ($resend_autoload_paths as $resend_path) {
+                    if (file_exists($resend_path)) {
+                        require_once $resend_path;
+                        error_log("[EMAIL] ⚠️ Carregando Resend manualmente de: $resend_path");
+                        $resend_carregado = true;
+                        break;
+                    }
+                }
+                
+                // Verificar novamente após tentativa manual
+                if (!class_exists('\Resend\Resend', false)) {
+                    error_log("[EMAIL] ❌ ERRO: Classe Resend\Resend não encontrada após tentativa manual.");
+                    error_log("[EMAIL] Caminhos tentados: " . implode(', ', $resend_autoload_paths));
+                    error_log("[EMAIL] Execute no Railway: composer dump-autoload --optimize");
+                    return false;
+                }
             }
             
             $resend = \Resend\Resend::client($api_key);
