@@ -101,16 +101,28 @@ if ($tipo === 'google_calendar_renewal') {
         error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar");
         
         // Buscar webhooks que expiram em menos de 6 horas
-        // Usar prepared statement para evitar SQL injection e problemas com tipos
+        // webhook_expiration pode ser BIGINT (ms) ou TIMESTAMP, então convertemos para comparar
+        // Se for BIGINT, comparamos diretamente; se for TIMESTAMP, convertemos ms para TIMESTAMP
         $stmt = $pdo->prepare("
             SELECT id, google_calendar_id, google_calendar_name, webhook_channel_id, webhook_resource_id, webhook_expiration
             FROM google_calendar_config
             WHERE ativo = TRUE 
             AND webhook_resource_id IS NOT NULL
             AND webhook_expiration IS NOT NULL
-            AND webhook_expiration > :now_ms
-            AND webhook_expiration <= :threshold_ms
-            ORDER BY webhook_expiration ASC
+            AND (
+                -- Se webhook_expiration for BIGINT (milissegundos), comparar diretamente
+                (webhook_expiration::BIGINT > :now_ms AND webhook_expiration::BIGINT <= :threshold_ms)
+                OR
+                -- Se webhook_expiration for TIMESTAMP, converter ms para TIMESTAMP e comparar
+                (webhook_expiration::TIMESTAMP > to_timestamp(:now_ms / 1000.0) 
+                 AND webhook_expiration::TIMESTAMP <= to_timestamp(:threshold_ms / 1000.0))
+            )
+            ORDER BY 
+                CASE 
+                    WHEN webhook_expiration::text ~ '^[0-9]+$' 
+                    THEN webhook_expiration::BIGINT 
+                    ELSE EXTRACT(EPOCH FROM webhook_expiration::TIMESTAMP)::BIGINT * 1000 
+                END ASC
         ");
         $stmt->execute([
             ':now_ms' => $now_ms,
