@@ -17,11 +17,16 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 COPY . /app
 
-# Instalar dependências do Composer (AWS SDK e Dompdf)
+# Instalar dependências do Composer (AWS SDK, Dompdf, PHPMailer, Resend)
 RUN composer install --no-dev --optimize-autoloader --no-interaction || true
 
-# Verificar se Dompdf foi instalado (para debug)
-RUN composer show dompdf/dompdf 2>/dev/null || echo "Dompdf não encontrado - será instalado no próximo build"
+# Regenerar autoload para garantir que todas as classes estejam mapeadas
+RUN composer dump-autoload --optimize --no-interaction || true
+
+# Verificar se as principais dependências foram instaladas (para debug)
+RUN composer show dompdf/dompdf 2>/dev/null || echo "Dompdf não encontrado"
+RUN composer show phpmailer/phpmailer 2>/dev/null || echo "PHPMailer não encontrado"
+RUN composer show resend/resend-php 2>/dev/null || echo "Resend não encontrado"
 
 EXPOSE 8080
 # IMPORTANTE: usa o router.php (e não o index.php) para evitar loops

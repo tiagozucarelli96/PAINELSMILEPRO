@@ -583,8 +583,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <h2>📦 Verificação de Dependências</h2>
             <?php
             $autoload_existe = file_exists(__DIR__ . '/../vendor/autoload.php');
+            
+            // Tentar carregar autoload se ainda não foi carregado
+            if ($autoload_existe && !isset($GLOBALS['autoload_carregado'])) {
+                $autoload_path = __DIR__ . '/../vendor/autoload.php';
+                if (file_exists($autoload_path)) {
+                    require_once $autoload_path;
+                    $GLOBALS['autoload_carregado'] = true;
+                }
+            }
+            
+            // Verificar classes (agora com autoload carregado, mas sem forçar autoload automático)
             $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer', false);
-            // Verificar Resend sem autoload automático para evitar erro de classe duplicada
             $resend_disponivel = class_exists('\Resend\Resend', false);
             
             // Verificar RESEND_API_KEY em múltiplas fontes (Railway pode usar diferentes métodos)
