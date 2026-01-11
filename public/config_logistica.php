@@ -13,6 +13,8 @@ $errors = [];
 $messages = [];
 $sync_summary = null;
 $novos_locais = [];
+$db_test_result = null;
+$db_summary = null;
 
 function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bool {
     try {
@@ -167,6 +169,86 @@ function load_mapeamentos(PDO $pdo): array {
         $byName[mb_strtolower(trim($row['me_local_nome']))] = $row;
     }
     return ['by_id' => $byId, 'by_name' => $byName, 'all' => $rows];
+}
+
+function build_db_diagnostic(PDO $pdo): array {
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+    $appEnv = getenv('APP_ENV') ?: getenv('RAILWAY_ENVIRONMENT') ?: '';
+
+    $strategy = '';
+    $host = '';
+    $port = '';
+    $db = '';
+
+    $dbUrl = getenv('DATABASE_URL') ?: '';
+    if ($dbUrl !== '') {
+        $strategy = 'DATABASE_URL';
+        $dbUrl = preg_replace('#^postgresql://#', 'postgres://', $dbUrl);
+        $parts = parse_url($dbUrl);
+        if ($parts) {
+            $host = $parts['host'] ?? '';
+            $port = (string)($parts['port'] ?? '');
+            $db = isset($parts['path']) ? ltrim($parts['path'], '/') : '';
+        }
+    } else {
+        $strategy = 'PG*';
+        $host = getenv('PGHOST') ?: getenv('DB_HOST') ?: '';
+        $port = getenv('PGPORT') ?: getenv('DB_PORT') ?: '';
+        $db = getenv('PGDATABASE') ?: getenv('DB_NAME') ?: '';
+    }
+
+    return [
+        'driver' => $driver,
+        'host' => $host,
+        'port' => $port,
+        'database' => $db,
+        'strategy' => $strategy,
+        'app_env' => $appEnv,
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+}
+
+function load_db_summary(PDO $pdo): array {
+    $summary = [];
+    $summary['locais_total'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_me_locais")->fetchColumn();
+    $summary['locais_sem_id'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_me_locais WHERE me_local_id IS NULL OR me_local_id = 0")->fetchColumn();
+    $summary['eventos_total'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_eventos_espelho")->fetchColumn();
+    $summary['arquivados_total'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_eventos_espelho WHERE arquivado IS TRUE")->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) 
+        FROM logistica_eventos_espelho
+        WHERE data_evento BETWEEN :ini AND :fim
+    ");
+    $stmt->execute([
+        ':ini' => date('Y-m-d'),
+        ':fim' => date('Y-m-d', strtotime('+30 days'))
+    ]);
+    $summary['eventos_ativos'] = (int)$stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM logistica_eventos_espelho
+        WHERE status_mapeamento = :status
+        AND arquivado IS FALSE
+    ");
+    $stmt->execute([':status' => 'PENDENTE']);
+    $summary['pendentes_mapeamento'] = (int)$stmt->fetchColumn();
+
+    $summary['locais_distintos_me'] = (int)$pdo->query("
+        SELECT COUNT(DISTINCT localevento)
+        FROM logistica_eventos_espelho
+    ")->fetchColumn();
+
+    $stmt = $pdo->query("
+        SELECT DISTINCT localevento
+        FROM logistica_eventos_espelho
+        ORDER BY localevento ASC
+        LIMIT 10
+    ");
+    $summary['locais_distintos_lista'] = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    return $summary;
 }
 
 function upsert_mapeamento(PDO $pdo, array $payload): void {
@@ -428,6 +510,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         }
     }
+
+    if ($action === 'test_db') {
+        try {
+            $pdo->query('SELECT 1');
+            $db_test_result = ['ok' => true, 'message' => 'Conexão OK'];
+        } catch (Throwable $e) {
+            $db_test_result = ['ok' => false, 'message' => 'Erro na conexão: ' . $e->getMessage()];
+        }
+    }
 }
 
 $locais_resp = fetch_me_locais();
@@ -444,6 +535,14 @@ if ($schema_ok) {
         $mapeamentos = load_mapeamentos($pdo);
     } catch (Throwable $e) {
         $errors[] = 'Erro ao carregar mapeamentos existentes: ' . $e->getMessage();
+    }
+}
+
+if ($schema_ok) {
+    try {
+        $db_summary = load_db_summary($pdo);
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao carregar resumo do banco: ' . $e->getMessage();
     }
 }
 
@@ -576,6 +675,12 @@ includeSidebar('Configurações - Logística');
         <?php endif; ?>
     <?php endif; ?>
 
+    <?php if ($db_test_result): ?>
+        <div class="alert <?= $db_test_result['ok'] ? 'alert-success' : 'alert-error' ?>">
+            <?= h($db_test_result['message']) ?>
+        </div>
+    <?php endif; ?>
+
     <div class="logistica-section">
         <h2>Mapeamento de Locais (ME → Unidade/Space)</h2>
         <form method="POST">
@@ -648,6 +753,66 @@ includeSidebar('Configurações - Logística');
             <button class="btn-primary" type="submit">Sincronizar agora</button>
         </form>
     </div>
+
+    <div class="logistica-section">
+        <h2>Resumo do Banco (Logística)</h2>
+        <?php if (!$db_summary): ?>
+            <p>Resumo indisponível.</p>
+        <?php else: ?>
+            <table class="logistica-table">
+                <tbody>
+                    <tr><td>Locais mapeados (total)</td><td><?= (int)$db_summary['locais_total'] ?></td></tr>
+                    <tr><td>Locais distintos nos eventos espelho</td><td><?= (int)$db_summary['locais_distintos_me'] ?></td></tr>
+                    <tr><td>Locais sem ID (0/NULL)</td><td><?= (int)$db_summary['locais_sem_id'] ?></td></tr>
+                    <tr><td>Eventos espelho (total)</td><td><?= (int)$db_summary['eventos_total'] ?></td></tr>
+                    <tr><td>Eventos ativos (hoje → +30)</td><td><?= (int)$db_summary['eventos_ativos'] ?></td></tr>
+                    <tr><td>Pendentes de mapeamento</td><td><?= (int)$db_summary['pendentes_mapeamento'] ?></td></tr>
+                    <tr><td>Arquivados (total)</td><td><?= (int)$db_summary['arquivados_total'] ?></td></tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top: 1rem;">
+                <strong>Últimos 10 locais distintos</strong>
+                <ul>
+                    <?php foreach ($db_summary['locais_distintos_lista'] as $local): ?>
+                        <li><?= h($local) ?></li>
+                    <?php endforeach; ?>
+                    <?php if (empty($db_summary['locais_distintos_lista'])): ?>
+                        <li>Nenhum local encontrado.</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <?php if (!empty($_SESSION['perm_superadmin'])): ?>
+        <?php $diag = build_db_diagnostic($pdo); ?>
+        <div class="logistica-section">
+            <h2>Diagnóstico de Conexão</h2>
+            <table class="logistica-table">
+                <tbody>
+                    <tr><td>Driver</td><td><?= h($diag['driver']) ?></td></tr>
+                    <tr><td>Host</td><td><?= h($diag['host']) ?></td></tr>
+                    <tr><td>Porta</td><td><?= h($diag['port']) ?></td></tr>
+                    <tr><td>Database</td><td><?= h($diag['database']) ?></td></tr>
+                    <tr><td>Strategy</td><td><?= h($diag['strategy']) ?></td></tr>
+                    <tr><td>Ambiente</td><td><?= h($diag['app_env']) ?></td></tr>
+                    <tr><td>Timestamp</td><td><?= h($diag['timestamp']) ?></td></tr>
+                </tbody>
+            </table>
+
+            <?php if ($diag['host'] === '' || $diag['database'] === '' || $diag['host'] === 'localhost'): ?>
+                <div class="alert alert-error" style="margin-top: 1rem;">
+                    Conexão parece apontar para banco local/placeholder. Verifique DATABASE_URL.
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" style="margin-top: 1rem;">
+                <input type="hidden" name="action" value="test_db">
+                <button class="btn-primary" type="submit">Testar conexão DB</button>
+            </form>
+        </div>
+    <?php endif; ?>
 </div>
 
 <?php endSidebar(); ?>
