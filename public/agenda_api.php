@@ -174,11 +174,23 @@ try {
             $extended_props['contrato_fechado'] = $evento['contrato_fechado'];
         }
         
+        // Formatar data para ISO 8601 (formato esperado pelo FullCalendar)
+        $start_formatted = $evento['inicio'];
+        $end_formatted = $evento['fim'];
+        
+        // Se já estiver em formato ISO, usar direto; caso contrário, converter
+        if (strpos($start_formatted, 'T') === false) {
+            $start_formatted = date('c', strtotime($evento['inicio']));
+        }
+        if (strpos($end_formatted, 'T') === false) {
+            $end_formatted = date('c', strtotime($evento['fim']));
+        }
+        
         $eventos_formatados[] = [
             'id' => $evento['id'],
             'title' => $evento['titulo'],
-            'start' => $evento['inicio'],
-            'end' => $evento['fim'],
+            'start' => $start_formatted,
+            'end' => $end_formatted,
             'color' => $cor,
             'extendedProps' => $extended_props,
             // Eventos do Google são read-only (não editáveis, mas podem ter checkboxes)
