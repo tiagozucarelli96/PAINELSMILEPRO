@@ -101,16 +101,21 @@ if ($tipo === 'google_calendar_renewal') {
         error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar");
         
         // Buscar webhooks que expiram em menos de 6 horas
-        $stmt = $pdo->query("
+        // Usar prepared statement para evitar SQL injection e problemas com tipos
+        $stmt = $pdo->prepare("
             SELECT id, google_calendar_id, google_calendar_name, webhook_channel_id, webhook_resource_id, webhook_expiration
             FROM google_calendar_config
             WHERE ativo = TRUE 
             AND webhook_resource_id IS NOT NULL
             AND webhook_expiration IS NOT NULL
-            AND webhook_expiration > $now_ms
-            AND webhook_expiration <= $threshold_ms
+            AND webhook_expiration > :now_ms
+            AND webhook_expiration <= :threshold_ms
             ORDER BY webhook_expiration ASC
         ");
+        $stmt->execute([
+            ':now_ms' => $now_ms,
+            ':threshold_ms' => $threshold_ms
+        ]);
         $webhooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         if (empty($webhooks)) {
