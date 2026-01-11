@@ -967,6 +967,7 @@ ob_start();
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
                     // Módulos principais da sidebar (conforme solicitado)
+                    'perm_superadmin' => '⭐ Superadmin (bypass total)',
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
                     // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
@@ -980,6 +981,7 @@ ob_start();
                 // Filtrar APENAS permissões da sidebar (resumido)
                 // Definir lista fixa de permissões da sidebar
                 $sidebar_perms = [
+                    'perm_superadmin',
                     'perm_agenda',
                     'perm_demandas',
                     // 'perm_logistico', // REMOVIDO: Módulo desativado
@@ -2362,4 +2364,3 @@ includeSidebar('Configurações');
 echo $conteudo;
 endSidebar();
 ?>
-
