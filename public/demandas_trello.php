@@ -50,6 +50,7 @@ includeSidebar('Demandas');
     --card-gap: 0.75rem;
     --card-padding: 0.9rem;
     --card-radius: 10px;
+    --sidebar-width: 280px;
 }
 
 /* ============================================
@@ -1122,7 +1123,7 @@ includeSidebar('Demandas');
     <!-- Botão para abrir sidebar no mobile -->
     <button class="btn btn-outline" 
             id="btn-toggle-sidebar"
-            style="display: none; position: fixed; top: calc(var(--page-header-height) + 12px); left: 1.5rem; z-index: 1200;"
+            style="display: none; position: fixed; top: calc(var(--page-header-height) + 12px); z-index: 1200;"
             onclick="toggleSidebarBoards()">
         📋 Quadros
     </button>
@@ -3230,3 +3231,10 @@ function customConfirm(mensagem, titulo = 'Confirmar') {
 </script>
 
 <?php endSidebar(); ?>
+.page-demandas #btn-toggle-sidebar {
+    left: calc(var(--sidebar-width) + 1.5rem);
+}
+
+.main-content.expanded .page-demandas #btn-toggle-sidebar {
+    left: 1.5rem;
+}
