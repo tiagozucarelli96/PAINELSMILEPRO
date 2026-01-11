@@ -77,9 +77,12 @@ try {
                 $google_eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
                 error_log("[AGENDA_API] Eventos Google encontrados: " . count($google_eventos) . " no período $start_date até $end_date");
+                error_log("[AGENDA_API] Config ativo: " . ($config['ativo'] ? 'SIM' : 'NÃO'));
+                error_log("[AGENDA_API] Calendar ID config: " . $config['google_calendar_id']);
                 
                 // Adicionar eventos do Google aos eventos da agenda
                 foreach ($google_eventos as $google_evento) {
+                    error_log("[AGENDA_API] Adicionando evento Google: " . $google_evento['titulo'] . " em " . $google_evento['inicio']);
                     $eventos[] = [
                         'id' => $google_evento['id_formatado'],
                         'google_id' => $google_evento['id'], // ID real para updates
@@ -165,8 +168,13 @@ try {
         ];
     }
 
+    error_log("[AGENDA_API] Total de eventos formatados: " . count($eventos_formatados));
+    error_log("[AGENDA_API] Eventos Google formatados: " . count(array_filter($eventos_formatados, fn($e) => isset($e['extendedProps']['tipo']) && $e['extendedProps']['tipo'] === 'google')));
+    
     echo json_encode($eventos_formatados);
 } catch (Exception $e) {
+    error_log("[AGENDA_API] ERRO: " . $e->getMessage());
+    error_log("[AGENDA_API] Stack trace: " . $e->getTraceAsString());
     echo json_encode(['error' => $e->getMessage()]);
 }
 ?>
