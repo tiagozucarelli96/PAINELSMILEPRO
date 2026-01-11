@@ -1,117 +1,109 @@
 <?php
 // google_calendar_webhook.php — Webhook para receber notificações do Google Calendar
 // Rota pública: /google/webhook
+// Requisitos: Aceitar POST, ler headers, marcar flag, responder 204 imediatamente
 
-// Desabilitar display_errors para não retornar HTML
+// Desabilitar display_errors
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 ini_set('log_errors', 1);
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/google_calendar_helper.php';
 require_once __DIR__ . '/core/helpers.php';
 
-// Log da requisição completa
-$request_method = $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN';
-$request_uri = $_SERVER['REQUEST_URI'] ?? 'UNKNOWN';
-$headers = getallheaders() ?: [];
-$body = file_get_contents('php://input');
+// Responder imediatamente com 204 No Content
+http_response_code(204);
+header('Content-Type: text/plain');
+exit; // Sair imediatamente após responder
 
-error_log("[GOOGLE_WEBHOOK] ========== WEBHOOK RECEBIDO ==========");
-error_log("[GOOGLE_WEBHOOK] Método: $request_method");
-error_log("[GOOGLE_WEBHOOK] URI: $request_uri");
-error_log("[GOOGLE_WEBHOOK] Headers: " . json_encode($headers));
-error_log("[GOOGLE_WEBHOOK] Body: " . substr($body, 0, 500));
+// Processar em segundo plano (após responder)
+// Nota: Em produção, isso pode não executar se o servidor fechar a conexão
+// Por isso, o processador de sincronização deve verificar o flag periodicamente
 
-// Verificar se é uma requisição de verificação (challenge) - Google envia GET com ?challenge=...
-if ($request_method === 'GET') {
-    $challenge = $_GET['challenge'] ?? null;
-    if ($challenge) {
-        header('Content-Type: text/plain');
-        header('HTTP/1.1 200 OK');
-        echo $challenge;
-        error_log("[GOOGLE_WEBHOOK] ✅ Challenge respondido: $challenge");
+try {
+    // Ler headers do Google
+    $channel_id = $_SERVER['HTTP_X_GOOG_CHANNEL_ID'] ?? null;
+    $resource_id = $_SERVER['HTTP_X_GOOG_RESOURCE_ID'] ?? null;
+    $resource_state = $_SERVER['HTTP_X_GOOG_RESOURCE_STATE'] ?? null;
+    $message_number = $_SERVER['HTTP_X_GOOG_MESSAGE_NUMBER'] ?? null;
+    $channel_token = $_SERVER['HTTP_X_GOOG_CHANNEL_TOKEN'] ?? null; // calendar_id
+    
+    // Log resumido (sem dumping de todos headers)
+    error_log(sprintf(
+        "[GOOGLE_WEBHOOK] POST | State: %s | Calendar: %s | Resource: %s",
+        $resource_state ?? 'N/A',
+        $channel_token ? substr($channel_token, 0, 30) . '...' : 'N/A',
+        $resource_id ? substr($resource_id, 0, 30) . '...' : 'N/A'
+    ));
+    
+    // Ignorar eventos com resource_state = "sync" (handshake inicial)
+    if ($resource_state === 'sync') {
+        error_log("[GOOGLE_WEBHOOK] Handshake inicial ignorado");
         exit;
     }
     
-    // Se não for challenge, retornar status OK para testes
-    header('Content-Type: text/plain');
-    echo "Google Calendar Webhook Endpoint - OK";
-    exit;
-}
-
-// Verificar se é uma notificação POST
-if ($request_method === 'POST') {
-    // Responder imediatamente com 200 OK para o Google (importante!)
-    header('HTTP/1.1 200 OK');
-    header('Content-Type: text/plain');
-    echo 'OK';
-    
-    // Processar a notificação em segundo plano (após responder)
-    // Extrair headers do Google
-    $x_goog_channel_id = $headers['X-Goog-Channel-Id'] ?? $_SERVER['HTTP_X_GOOG_CHANNEL_ID'] ?? null;
-    $x_goog_resource_id = $headers['X-Goog-Resource-Id'] ?? $_SERVER['HTTP_X_GOOG_RESOURCE_ID'] ?? null;
-    $x_goog_resource_state = $headers['X-Goog-Resource-State'] ?? $_SERVER['HTTP_X_GOOG_RESOURCE_STATE'] ?? null;
-    $x_goog_channel_token = $headers['X-Goog-Channel-Token'] ?? $_SERVER['HTTP_X_GOOG_CHANNEL_TOKEN'] ?? null;
-    $x_goog_message_number = $headers['X-Goog-Message-Number'] ?? $_SERVER['HTTP_X_GOOG_MESSAGE_NUMBER'] ?? null;
-    
-    error_log("[GOOGLE_WEBHOOK] Channel ID: $x_goog_channel_id");
-    error_log("[GOOGLE_WEBHOOK] Resource ID: $x_goog_resource_id");
-    error_log("[GOOGLE_WEBHOOK] Resource State: $x_goog_resource_state");
-    error_log("[GOOGLE_WEBHOOK] Channel Token: $x_goog_channel_token");
-    error_log("[GOOGLE_WEBHOOK] Message Number: $x_goog_message_number");
-    
-    // Se for uma notificação de mudança, sincronizar
-    if ($x_goog_resource_state === 'exists' || $x_goog_resource_state === 'sync') {
-        try {
-            $helper = new GoogleCalendarHelper();
-            
-            // Tentar obter config pelo calendar_id do token ou pela config ativa
-            $calendar_id = $x_goog_channel_token; // O token contém o calendar_id
-            
-            if ($calendar_id) {
-                // Buscar config pelo calendar_id
-                $stmt = $GLOBALS['pdo']->prepare("SELECT * FROM google_calendar_config WHERE google_calendar_id = :calendar_id AND ativo = TRUE LIMIT 1");
-                $stmt->execute([':calendar_id' => $calendar_id]);
-                $config = $stmt->fetch(PDO::FETCH_ASSOC);
-            } else {
-                // Fallback: buscar config ativa
-                $config = $helper->getConfig();
-            }
-            
-            if ($config && $config['ativo']) {
-                error_log("[GOOGLE_WEBHOOK] ✅ Iniciando sincronização automática para: {$config['google_calendar_id']}");
-                $resultado = $helper->syncCalendarEvents(
-                    $config['google_calendar_id'],
-                    $config['sync_dias_futuro'] ?? 180
-                );
-                error_log("[GOOGLE_WEBHOOK] ✅ Sincronização concluída: " . json_encode($resultado));
-            } else {
-                error_log("[GOOGLE_WEBHOOK] ⚠️ Config não encontrada ou inativa para calendar_id: $calendar_id");
-            }
-        } catch (Exception $e) {
-            error_log("[GOOGLE_WEBHOOK] ❌ Erro na sincronização: " . $e->getMessage());
-            error_log("[GOOGLE_WEBHOOK] Stack trace: " . $e->getTraceAsString());
-        }
-    } elseif ($x_goog_resource_state === 'not_exists') {
-        error_log("[GOOGLE_WEBHOOK] ⚠️ Canal expirado ou removido. Resource ID: $x_goog_resource_id");
-        // Limpar webhook expirado do banco
-        try {
-            $stmt = $GLOBALS['pdo']->prepare("UPDATE google_calendar_config SET webhook_resource_id = NULL, webhook_expiration = NULL WHERE webhook_resource_id = :resource_id");
-            $stmt->execute([':resource_id' => $x_goog_resource_id]);
-            error_log("[GOOGLE_WEBHOOK] ✅ Webhook expirado removido do banco");
-        } catch (Exception $e) {
-            error_log("[GOOGLE_WEBHOOK] ❌ Erro ao limpar webhook expirado: " . $e->getMessage());
-        }
-    } else {
-        error_log("[GOOGLE_WEBHOOK] ⚠️ Resource State desconhecido: $x_goog_resource_state");
+    // Validar que temos o calendar_id (channel_token)
+    if (!$channel_token) {
+        error_log("[GOOGLE_WEBHOOK] ⚠️ Channel token não encontrado");
+        exit;
     }
     
-    exit;
+    // Buscar configuração do calendário
+    $pdo = $GLOBALS['pdo'];
+    $stmt = $pdo->prepare("
+        SELECT id, google_calendar_id, webhook_channel_id, webhook_resource_id, ativo
+        FROM google_calendar_config
+        WHERE google_calendar_id = :calendar_id AND ativo = TRUE
+        LIMIT 1
+    ");
+    $stmt->execute([':calendar_id' => $channel_token]);
+    $config = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$config) {
+        error_log("[GOOGLE_WEBHOOK] ⚠️ Config não encontrada para calendar_id: " . substr($channel_token, 0, 30));
+        exit;
+    }
+    
+    // Validar que X-Goog-Channel-Id bate com o canal salvo (quando existir)
+    if ($config['webhook_channel_id'] && $config['webhook_channel_id'] !== $channel_id) {
+        error_log("[GOOGLE_WEBHOOK] ⚠️ Channel ID não confere. Esperado: " . substr($config['webhook_channel_id'], 0, 30) . ", Recebido: " . substr($channel_id, 0, 30));
+        exit;
+    }
+    
+    // Validar que X-Goog-Resource-Id bate com o resource salvo (quando existir)
+    if ($config['webhook_resource_id'] && $config['webhook_resource_id'] !== $resource_id) {
+        error_log("[GOOGLE_WEBHOOK] ⚠️ Resource ID não confere");
+        exit;
+    }
+    
+    // Se for notificação de mudança (exists) ou remoção (not_exists)
+    if ($resource_state === 'exists' || $resource_state === 'not_exists') {
+        // Marcar flag "precisa sincronizar" no banco
+        $stmt = $pdo->prepare("
+            UPDATE google_calendar_config
+            SET precisa_sincronizar = TRUE,
+                atualizado_em = NOW()
+            WHERE id = :config_id
+        ");
+        $stmt->execute([':config_id' => $config['id']]);
+        
+        error_log("[GOOGLE_WEBHOOK] ✅ Flag 'precisa_sincronizar' marcado para: " . substr($channel_token, 0, 30));
+    } elseif ($resource_state === 'not_exists') {
+        // Canal expirado - limpar webhook
+        $stmt = $pdo->prepare("
+            UPDATE google_calendar_config
+            SET webhook_channel_id = NULL,
+                webhook_resource_id = NULL,
+                webhook_expiration = NULL,
+                precisa_sincronizar = FALSE,
+                atualizado_em = NOW()
+            WHERE id = :config_id
+        ");
+        $stmt->execute([':config_id' => $config['id']]);
+        
+        error_log("[GOOGLE_WEBHOOK] ⚠️ Canal expirado removido para: " . substr($channel_token, 0, 30));
+    }
+    
+} catch (Exception $e) {
+    error_log("[GOOGLE_WEBHOOK] ❌ Erro: " . $e->getMessage());
 }
-
-// Se chegou aqui, método não suportado
-http_response_code(405);
-header('Content-Type: text/plain');
-echo "Method Not Allowed";
-error_log("[GOOGLE_WEBHOOK] ❌ Método não suportado: $request_method");

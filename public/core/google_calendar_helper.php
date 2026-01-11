@@ -560,15 +560,22 @@ class GoogleCalendarHelper {
         
         error_log("[GOOGLE_CALENDAR_WEBHOOK] Webhook registrado com sucesso. Resource ID: " . $result['resourceId']);
         
+        // Converter expiration de milissegundos para timestamp
+        $expiration_ms = isset($result['expiration']) ? (int)$result['expiration'] : null;
+        
         // Salvar informações do webhook no banco
         $stmt = $this->pdo->prepare("
             UPDATE google_calendar_config 
-            SET webhook_resource_id = :resource_id, webhook_expiration = :expiration, atualizado_em = NOW()
+            SET webhook_channel_id = :channel_id,
+                webhook_resource_id = :resource_id, 
+                webhook_expiration = :expiration,
+                atualizado_em = NOW()
             WHERE google_calendar_id = :calendar_id
         ");
         $stmt->execute([
+            ':channel_id' => $channel_id,
             ':resource_id' => $result['resourceId'] ?? null,
-            ':expiration' => isset($result['expiration']) ? date('Y-m-d H:i:s', strtotime($result['expiration'])) : null,
+            ':expiration' => $expiration_ms,
             ':calendar_id' => $calendar_id
         ]);
         
@@ -576,5 +583,39 @@ class GoogleCalendarHelper {
         error_log("[GOOGLE_CALENDAR_WEBHOOK] Config atualizada: $rows_updated linha(s)");
         
         return $result;
+    }
+    
+    /**
+     * Parar webhook (stop watch)
+     */
+    public function stopWebhook($resource_id) {
+        $access_token = $this->getValidAccessToken();
+        
+        $url = "https://www.googleapis.com/calendar/v3/channels/stop";
+        
+        $data = [
+            'id' => $resource_id,
+            'resourceId' => $resource_id
+        ];
+        
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $access_token,
+            'Content-Type: application/json'
+        ]);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code !== 204 && $http_code !== 200) {
+            error_log("[GOOGLE_CALENDAR_WEBHOOK] Erro ao parar webhook (HTTP $http_code): " . substr($response, 0, 200));
+            // Não lançar exceção - pode ser que o webhook já tenha expirado
+        }
+        
+        return true;
     }
 }
