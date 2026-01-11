@@ -72,9 +72,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Configure um calendário primeiro');
             }
             
+            // Verificar se o token tem o scope correto (calendar, não apenas readonly)
+            $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            $scope = $token_info['scope'] ?? '';
+            
+            if (strpos($scope, 'calendar.readonly') !== false && strpos($scope, 'calendar') === false) {
+                throw new Exception('Para ativar webhooks, você precisa reconectar o Google Calendar com permissões completas. Clique em "Conectar Google" novamente.');
+            }
+            
             $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
             
             error_log("[GOOGLE_CALENDAR_CONFIG] Ativando webhook para: {$config['google_calendar_id']}");
+            error_log("[GOOGLE_CALENDAR_CONFIG] Webhook URL: $webhook_url");
+            error_log("[GOOGLE_CALENDAR_CONFIG] Scope atual: $scope");
             
             $resultado = $helper->registerWebhook($config['google_calendar_id'], $webhook_url);
             
@@ -384,6 +394,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <button type="submit" class="btn btn-primary">🔄 Sincronizar Agora</button>
         </form>
         
+        <?php 
+        // Verificar scope do token
+        $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $scope = $token_info['scope'] ?? '';
+        $tem_scope_completo = strpos($scope, 'calendar') !== false && strpos($scope, 'calendar.readonly') === false;
+        ?>
+        
         <?php if (!empty($config['webhook_resource_id'])): ?>
         <span style="margin-left: 10px; color: #10b981; font-weight: 500;">
             ✅ Webhook Ativo
@@ -394,11 +411,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <?php else: ?>
         <form method="POST" style="display: inline; margin-left: 10px;">
             <input type="hidden" name="acao" value="ativar_webhook">
-            <button type="submit" class="btn btn-secondary">🔔 Ativar Sincronização Automática</button>
+            <button type="submit" class="btn btn-secondary" <?= !$tem_scope_completo ? 'disabled' : '' ?>>🔔 Ativar Sincronização Automática</button>
         </form>
+        <?php if (!$tem_scope_completo): ?>
+        <div style="margin-top: 0.5rem; padding: 0.75rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
+            <p style="margin: 0; font-size: 0.875rem; color: #92400e;">
+                <strong>⚠️ Ação necessária:</strong> Para ativar webhooks, você precisa reconectar o Google Calendar com permissões completas.
+                <br><a href="?acao=conectar" style="color: #1e40af; text-decoration: underline;">Clique aqui para reconectar</a>
+            </p>
+        </div>
+        <?php else: ?>
         <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;">
-            ⚠️ Nota: Para ativar webhooks, você precisará reconectar o Google Calendar com permissões completas.
+            Clique no botão acima para ativar a sincronização automática via webhook.
         </p>
+        <?php endif; ?>
         <?php endif; ?>
         
         <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">

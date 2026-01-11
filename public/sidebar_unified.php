@@ -139,21 +139,51 @@ if ($current_page === 'dashboard') {
         ];
     }
     
-    // Buscar agenda do dia atual
+    // Buscar agenda do dia atual (incluindo eventos do Google Calendar)
     $agenda_hoje = [];
     try {
         $stmt = $pdo->prepare("
-            SELECT ae.id, ae.titulo, ae.inicio as data_inicio, ae.fim as data_fim, ae.tipo, ae.cor_evento as cor, ae.descricao as observacoes,
-                   u.nome as responsavel_nome
+            SELECT 
+                ae.id, 
+                ae.titulo, 
+                ae.inicio as data_inicio, 
+                ae.fim as data_fim, 
+                ae.tipo, 
+                ae.cor_evento as cor, 
+                ae.descricao as observacoes,
+                u.nome as responsavel_nome,
+                'interno' as origem
             FROM agenda_eventos ae
             LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
             WHERE DATE(ae.inicio) = CURRENT_DATE
-            ORDER BY ae.inicio ASC
+            
+            UNION ALL
+            
+            SELECT 
+                gce.id, 
+                gce.titulo, 
+                gce.inicio as data_inicio, 
+                gce.fim as data_fim, 
+                'google' as tipo, 
+                '#10b981' as cor, 
+                gce.descricao as observacoes,
+                COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
+                'google' as origem
+            FROM google_calendar_eventos gce
+            WHERE DATE(gce.inicio) = CURRENT_DATE
+            AND EXISTS (
+                SELECT 1 FROM google_calendar_config gcc 
+                WHERE gcc.google_calendar_id = gce.google_calendar_id 
+                AND gcc.ativo = TRUE
+            )
+            
+            ORDER BY data_inicio ASC
             LIMIT 10
         ");
         $stmt->execute();
         $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
         $agenda_hoje = [];
     }
     

@@ -328,9 +328,6 @@ includeSidebar('Demandas');
     background: white;
     border-bottom: 1px solid #e5e7eb;
     flex-shrink: 0;
-    position: sticky;
-    top: var(--page-header-height);
-    z-index: 90;
 }
 
 .page-demandas-board-header-title {

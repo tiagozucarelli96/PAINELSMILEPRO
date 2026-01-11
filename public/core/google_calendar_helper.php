@@ -324,17 +324,28 @@ class GoogleCalendarHelper {
             // Processar data de início
             $inicio = null;
             if (isset($event['start']['dateTime'])) {
+                // Evento com hora específica - converter considerando timezone
                 $inicio = date('Y-m-d H:i:s', strtotime($event['start']['dateTime']));
             } elseif (isset($event['start']['date'])) {
-                $inicio = date('Y-m-d 00:00:00', strtotime($event['start']['date']));
+                // Evento de dia todo - usar a data exata (sem conversão de timezone)
+                // O Google retorna apenas a data (YYYY-MM-DD) sem timezone para eventos de dia todo
+                $date_str = $event['start']['date'];
+                $inicio = $date_str . ' 00:00:00';
             }
             
             // Processar data de fim
             $fim = null;
             if (isset($event['end']['dateTime'])) {
+                // Evento com hora específica - converter considerando timezone
                 $fim = date('Y-m-d H:i:s', strtotime($event['end']['dateTime']));
             } elseif (isset($event['end']['date'])) {
-                $fim = date('Y-m-d 23:59:59', strtotime($event['end']['date']));
+                // Evento de dia todo - o Google retorna a data do DIA SEGUINTE como fim
+                // Ex: evento de 26/01 tem end.date = 27/01 (exclusivo)
+                // Precisamos usar 26/01 23:59:59 como fim
+                $date_str = $event['end']['date'];
+                // Subtrair 1 dia porque o Google usa data exclusiva
+                $end_date = date('Y-m-d', strtotime($date_str . ' -1 day'));
+                $fim = $end_date . ' 23:59:59';
             }
             
             if (!$inicio || !$fim) {
