@@ -80,6 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $config['sync_dias_futuro'] ?? 180
             );
             
+            // Recarregar config para pegar a última sincronização atualizada
+            $config = $helper->getConfig();
+            
             $mensagem = sprintf(
                 'Sincronização concluída! Importados: %d, Atualizados: %d%s',
                 $resultado['importados'],

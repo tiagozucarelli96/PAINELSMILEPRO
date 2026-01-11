@@ -287,11 +287,15 @@ class GoogleCalendarHelper {
             
             if (!isset($response['items'])) {
                 error_log("[GOOGLE_CALENDAR_SYNC] Nenhum evento encontrado na resposta");
+                // Mesmo sem eventos, atualizar última sincronização
+                $this->updateLastSync($calendar_id);
                 return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
             }
             
             if (empty($response['items'])) {
-                error_log("[GOOGLE_CALENDAR_SYNC] Array de eventos vazio");
+                error_log("[GOOGLE_CALENDAR_SYNC] Array de eventos vazio - nenhum evento no período especificado");
+                // Mesmo sem eventos, atualizar última sincronização
+                $this->updateLastSync($calendar_id);
                 return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
             }
         } catch (Exception $e) {
@@ -407,7 +411,7 @@ class GoogleCalendarHelper {
             }
         }
         
-        // Registrar log de sincronização
+        // Registrar log de sincronização (sempre, mesmo se não houver eventos)
         $stmt = $this->pdo->prepare("
             INSERT INTO google_calendar_sync_logs (tipo, total_eventos, detalhes)
             VALUES ('importado', :total, :detalhes)
@@ -417,13 +421,15 @@ class GoogleCalendarHelper {
             ':detalhes' => json_encode([
                 'importados' => $importados,
                 'atualizados' => $atualizados,
+                'pulados' => $pulados,
+                'total_processado' => $total_processados,
                 'calendar_id' => $calendar_id,
                 'time_min' => $time_min,
                 'time_max' => $time_max
             ])
         ]);
         
-        // Atualizar última sincronização na config
+        // Atualizar última sincronização na config (sempre, mesmo se não houver eventos)
         $stmt = $this->pdo->prepare("
             UPDATE google_calendar_config 
             SET ultima_sincronizacao = NOW(), atualizado_em = NOW()
@@ -431,14 +437,17 @@ class GoogleCalendarHelper {
         ");
         $stmt->execute([':calendar_id' => $calendar_id]);
         
+        $rows_updated = $stmt->rowCount();
         error_log("[GOOGLE_CALENDAR_SYNC] Sincronização concluída. Importados: $importados, Atualizados: $atualizados, Pulados: $pulados, Total processado: $total_processados");
+        error_log("[GOOGLE_CALENDAR_SYNC] Config atualizada: $rows_updated linha(s)");
         
         return [
             'importados' => $importados,
             'atualizados' => $atualizados,
             'total' => $importados + $atualizados,
             'pulados' => $pulados,
-            'total_encontrado' => count($response['items'])
+            'total_encontrado' => count($response['items']),
+            'total_processado' => $total_processados
         ];
     }
     
