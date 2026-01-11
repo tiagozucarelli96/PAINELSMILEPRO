@@ -136,7 +136,16 @@ if ($tipo === 'google_calendar_renewal') {
         
         foreach ($webhooks as $webhook) {
             $calendar_id = $webhook['google_calendar_id'];
-            $expiration_date = date('Y-m-d H:i:s', $webhook['webhook_expiration'] / 1000);
+            // webhook_expiration está em milissegundos (BIGINT)
+            $expiration_ms = is_numeric($webhook['webhook_expiration']) 
+                ? (int)$webhook['webhook_expiration'] 
+                : null;
+            
+            if ($expiration_ms) {
+                $expiration_date = date('Y-m-d H:i:s', $expiration_ms / 1000);
+            } else {
+                $expiration_date = 'N/A';
+            }
             
             error_log("[GOOGLE_WATCH_RENEWAL] 🔄 Renovando webhook para: $calendar_id (expira em: $expiration_date)");
             
