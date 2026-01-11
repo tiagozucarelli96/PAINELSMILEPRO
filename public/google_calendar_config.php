@@ -417,7 +417,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div style="margin-top: 0.5rem; padding: 0.75rem; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
             <p style="margin: 0; font-size: 0.875rem; color: #92400e;">
                 <strong>⚠️ Ação necessária:</strong> Para ativar webhooks, você precisa reconectar o Google Calendar com permissões completas.
-                <br><a href="?acao=conectar" style="color: #1e40af; text-decoration: underline;">Clique aqui para reconectar</a>
+                <br><a href="<?= htmlspecialchars($helper->getAuthorizationUrl()) ?>" style="color: #1e40af; text-decoration: underline; font-weight: 600;">🔗 Clique aqui para reconectar</a>
             </p>
         </div>
         <?php else: ?>
