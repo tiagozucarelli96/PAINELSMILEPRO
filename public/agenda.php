@@ -1015,7 +1015,30 @@ includeSidebar('Agenda');
         
         // Fechar modal
         function closeEventModal() {
-            document.getElementById('eventModal').classList.remove('active');
+            const modal = document.getElementById('eventModal');
+            modal.classList.remove('active');
+            
+            // Resetar campos do Google
+            document.getElementById('googleEventGroup').style.display = 'none';
+            document.getElementById('google_event_id').value = '';
+            document.getElementById('google_eh_visita').checked = false;
+            document.getElementById('google_contrato_fechado').checked = false;
+            
+            // Remover link do Google se existir
+            const linkDiv = document.getElementById('google_link_div');
+            if (linkDiv) {
+                linkDiv.remove();
+            }
+            
+            // Mostrar todos os campos novamente
+            form.querySelectorAll('.form-group').forEach(el => {
+                if (el.id !== 'googleEventGroup') {
+                    el.style.display = '';
+                }
+            });
+            
+            // Mostrar botões novamente
+            document.querySelector('button[type="submit"]').style.display = '';
         }
         
         // Formatar data para input datetime-local
