@@ -385,12 +385,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         </form>
         
         <?php if (!empty($config['webhook_resource_id'])): ?>
-        <span style="margin-left: 10px; color: #10b981; font-weight: 500;">✅ Webhook Ativo</span>
+        <span style="margin-left: 10px; color: #10b981; font-weight: 500;">
+            ✅ Webhook Ativo
+            <?php if ($config['webhook_expiration']): ?>
+            <br><small style="color: #64748b; font-weight: normal;">Expira em: <?= date('d/m/Y H:i', strtotime($config['webhook_expiration'])) ?></small>
+            <?php endif; ?>
+        </span>
         <?php else: ?>
         <form method="POST" style="display: inline; margin-left: 10px;">
             <input type="hidden" name="acao" value="ativar_webhook">
             <button type="submit" class="btn btn-secondary">🔔 Ativar Sincronização Automática</button>
         </form>
+        <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;">
+            ⚠️ Nota: Para ativar webhooks, você precisará reconectar o Google Calendar com permissões completas.
+        </p>
         <?php endif; ?>
         
         <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">

@@ -28,7 +28,8 @@ class GoogleCalendarHelper {
             'client_id' => $this->client_id,
             'redirect_uri' => $this->redirect_uri,
             'response_type' => 'code',
-            'scope' => 'https://www.googleapis.com/auth/calendar.readonly',
+            // Usar scope completo para permitir webhooks (watch requer calendar, não apenas readonly)
+            'scope' => 'https://www.googleapis.com/auth/calendar',
             'access_type' => 'offline',
             'prompt' => 'consent'
         ];
