@@ -44,6 +44,52 @@ function find_duplicates(PDO $pdo, string $nome, array $sinonimos, int $excludeI
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
+    if (!empty($chave_storage)) {
+        if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+            require_once __DIR__ . '/../vendor/autoload.php';
+            if (class_exists('Aws\\S3\\S3Client')) {
+                try {
+                    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                    $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+                    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                    $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+                    $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+                    $bucket = strtolower($bucket);
+
+                    if ($accessKey && $secretKey) {
+                        $s3Client = new \Aws\S3\S3Client([
+                            'region' => $region,
+                            'version' => 'latest',
+                            'credentials' => [
+                                'key' => $accessKey,
+                                'secret' => $secretKey,
+                            ],
+                            'endpoint' => $endpoint,
+                            'use_path_style_endpoint' => true,
+                        ]);
+
+                        $cmd = $s3Client->getCommand('GetObject', [
+                            'Bucket' => $bucket,
+                            'Key' => $chave_storage,
+                        ]);
+                        $presignedUrl = $s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
+                        return (string)$presignedUrl;
+                    }
+                } catch (Throwable $e) {
+                    error_log("Erro ao gerar URL presigned (insumo): " . $e->getMessage());
+                }
+            }
+        }
+
+        $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+        $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+        return rtrim($endpoint, '/') . '/' . strtolower($bucket) . '/' . ltrim($chave_storage, '/');
+    }
+
+    return $fallback_url ?: null;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save') {
@@ -65,16 +111,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors && !$duplicate_warning) {
+            $visivel = !empty($_POST['visivel_na_lista']);
+            $ativo = !empty($_POST['ativo']);
+            $fracionavel = !empty($_POST['fracionavel']);
+
             $dados = [
                 ':nome_oficial' => $nome,
                 ':foto_url' => trim((string)($_POST['foto_url'] ?? '')) ?: null,
+                ':foto_chave_storage' => trim((string)($_POST['foto_chave_storage'] ?? '')) ?: null,
                 ':unidade_medida' => trim((string)($_POST['unidade_medida'] ?? '')) ?: null,
                 ':tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
-                ':visivel_na_lista' => !empty($_POST['visivel_na_lista']) ? 'TRUE' : 'FALSE',
-                ':ativo' => !empty($_POST['ativo']) ? 'TRUE' : 'FALSE',
+                ':visivel_na_lista' => $visivel,
+                ':ativo' => $ativo,
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
-                ':fracionavel' => !empty($_POST['fracionavel']) ? 'TRUE' : 'FALSE',
+                ':fracionavel' => $fracionavel,
                 ':tamanho_embalagem' => $_POST['tamanho_embalagem'] !== '' ? (float)$_POST['tamanho_embalagem'] : null,
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
@@ -89,13 +140,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     UPDATE logistica_insumos
                     SET nome_oficial = :nome_oficial,
                         foto_url = :foto_url,
+                        foto_chave_storage = :foto_chave_storage,
                         unidade_medida = :unidade_medida,
                         tipologia_insumo_id = :tipologia_insumo_id,
-                        visivel_na_lista = {$dados[':visivel_na_lista']},
-                        ativo = {$dados[':ativo']},
+                        visivel_na_lista = :visivel_na_lista,
+                        ativo = :ativo,
                         sinonimos = :sinonimos,
                         barcode = :barcode,
-                        fracionavel = {$dados[':fracionavel']},
+                        fracionavel = :fracionavel,
                         tamanho_embalagem = :tamanho_embalagem,
                         unidade_embalagem = :unidade_embalagem,
                         observacoes = :observacoes,
@@ -110,17 +162,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute($dados);
                 $messages[] = 'Insumo atualizado.';
             } else {
+                $cols = [
+                    'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'tipologia_insumo_id',
+                    'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
+                    'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
+                ];
+                $vals = [
+                    ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':tipologia_insumo_id',
+                    ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
+                    ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
+                ];
+                if ($can_see_cost) {
+                    $cols[] = 'custo_padrao';
+                    $vals[] = ':custo_padrao';
+                }
+
                 $sql = "
                     INSERT INTO logistica_insumos
-                    (nome_oficial, foto_url, unidade_medida, tipologia_insumo_id, visivel_na_lista, ativo,
-                     sinonimos, barcode, fracionavel, tamanho_embalagem, unidade_embalagem, custo_padrao, observacoes)
+                    (" . implode(', ', $cols) . ")
                     VALUES
-                    (:nome_oficial, :foto_url, :unidade_medida, :tipologia_insumo_id, {$dados[':visivel_na_lista']}, {$dados[':ativo']},
-                     :sinonimos, :barcode, {$dados[':fracionavel']}, :tamanho_embalagem, :unidade_embalagem, :custo_padrao, :observacoes)
+                    (" . implode(', ', $vals) . ")
                 ";
-                if (!$can_see_cost) {
-                    $sql = str_replace(':custo_padrao', 'NULL', $sql);
-                }
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
                 $messages[] = 'Insumo criado.';
@@ -156,6 +218,12 @@ $stmt->execute($params);
 $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_insumo WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+$unidades_medida = [];
+try {
+    $unidades_medida = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {
+    $unidades_medida = [];
+}
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
@@ -163,6 +231,10 @@ if ($edit_id > 0) {
     $stmt = $pdo->prepare("SELECT * FROM logistica_insumos WHERE id = :id");
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
+}
+$edit_foto_url = null;
+if ($edit_item) {
+    $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
 }
 
 includeSidebar('Insumos - Logística');
@@ -187,11 +259,33 @@ includeSidebar('Insumos - Logística');
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1rem;
 }
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
 .form-input {
     width: 100%;
     padding: 0.6rem 0.75rem;
     border: 1px solid #cbd5f5;
     border-radius: 8px;
+}
+.input-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid #cbd5f5;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+.input-group span {
+    padding: 0.55rem 0.7rem;
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    border-right: 1px solid #e2e8f0;
+}
+.input-group input {
+    border: none;
+    padding: 0.6rem 0.75rem;
+    width: 100%;
 }
 .btn-primary {
     background: #2563eb;
@@ -242,6 +336,32 @@ includeSidebar('Insumos - Logística');
     border-radius: 8px;
     border: 1px solid #e5e7eb;
 }
+.upload-box {
+    border: 1px dashed #cbd5f5;
+    border-radius: 10px;
+    padding: 0.75rem;
+    background: #f8fafc;
+}
+.upload-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.link-muted {
+    font-size: 0.85rem;
+    color: #64748b;
+    cursor: pointer;
+}
+.camera-box {
+    display: none;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
 </style>
 
 <div class="page-container">
@@ -274,13 +394,9 @@ includeSidebar('Insumos - Logística');
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
             <div class="form-grid">
-                <div>
+                <div class="span-2">
                     <label>Nome oficial *</label>
                     <input class="form-input" name="nome_oficial" required value="<?= h($edit_item['nome_oficial'] ?? '') ?>">
-                </div>
-                <div>
-                    <label>Unidade medida</label>
-                    <input class="form-input" name="unidade_medida" placeholder="kg, un, pacote" value="<?= h($edit_item['unidade_medida'] ?? '') ?>">
                 </div>
                 <div>
                     <label>Tipologia</label>
@@ -294,8 +410,31 @@ includeSidebar('Insumos - Logística');
                     </select>
                 </div>
                 <div>
+                    <label>Unidade de medida</label>
+                    <select class="form-input" name="unidade_medida">
+                        <option value="">Selecione...</option>
+                        <?php if (!empty($edit_item['unidade_medida']) && !in_array($edit_item['unidade_medida'], $unidades_medida, true)): ?>
+                            <option value="<?= h($edit_item['unidade_medida']) ?>" selected>
+                                <?= h($edit_item['unidade_medida']) ?> (atual)
+                            </option>
+                        <?php endif; ?>
+                        <?php foreach ($unidades_medida as $un): ?>
+                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_medida'] ?? '') === $un ? 'selected' : '' ?>>
+                                <?= h($un) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div style="margin-top:0.35rem;">
+                        <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
+                    </div>
+                </div>
+                <div>
                     <label>Barcode</label>
-                    <input class="form-input" name="barcode" value="<?= h($edit_item['barcode'] ?? '') ?>">
+                    <div class="upload-actions">
+                        <input class="form-input" id="barcode_input" name="barcode" value="<?= h($edit_item['barcode'] ?? '') ?>">
+                        <button type="button" class="btn-secondary" onclick="openBarcodeCamera()">Ler câmera</button>
+                    </div>
+                    <input type="file" id="barcode_file" accept="image/*" capture="environment" style="display:none;">
                 </div>
                 <div>
                     <label>Fracionável</label>
@@ -303,16 +442,31 @@ includeSidebar('Insumos - Logística');
                 </div>
                 <div>
                     <label>Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" type="number" step="0.0001" value="<?= h($edit_item['tamanho_embalagem'] ?? '') ?>">
+                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="number" step="0.001" value="<?= h($edit_item['tamanho_embalagem'] ?? '') ?>">
                 </div>
                 <div>
                     <label>Unidade embalagem</label>
-                    <input class="form-input" name="unidade_embalagem" value="<?= h($edit_item['unidade_embalagem'] ?? '') ?>">
+                    <select class="form-input" name="unidade_embalagem">
+                        <option value="">Selecione...</option>
+                        <?php if (!empty($edit_item['unidade_embalagem']) && !in_array($edit_item['unidade_embalagem'], $unidades_medida, true)): ?>
+                            <option value="<?= h($edit_item['unidade_embalagem']) ?>" selected>
+                                <?= h($edit_item['unidade_embalagem']) ?> (atual)
+                            </option>
+                        <?php endif; ?>
+                        <?php foreach ($unidades_medida as $un): ?>
+                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_embalagem'] ?? '') === $un ? 'selected' : '' ?>>
+                                <?= h($un) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <?php if ($can_see_cost): ?>
                 <div>
                     <label>Custo padrão</label>
-                    <input class="form-input" name="custo_padrao" type="number" step="0.0001" value="<?= h($edit_item['custo_padrao'] ?? '') ?>">
+                    <div class="input-group">
+                        <span>R$</span>
+                        <input name="custo_padrao" type="number" step="0.01" value="<?= h($edit_item['custo_padrao'] ?? '') ?>">
+                    </div>
                 </div>
                 <?php endif; ?>
                 <div>
@@ -325,16 +479,24 @@ includeSidebar('Insumos - Logística');
                 </div>
             </div>
             <div style="margin-top:1rem;">
-                <label>Foto (URL)</label>
-                <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL ou faça upload" value="<?= h($edit_item['foto_url'] ?? '') ?>">
-                <div class="upload-preview" style="margin-top:0.5rem;">
-                    <?php if (!empty($edit_item['foto_url'])): ?>
-                        <img src="<?= h($edit_item['foto_url']) ?>" alt="Preview">
-                    <?php endif; ?>
-                </div>
-                <div style="margin-top:0.5rem;">
-                    <input type="file" id="foto_file" accept="image/*">
-                    <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
+                <label>Foto</label>
+                <div class="upload-box">
+                    <div class="upload-preview" id="foto_preview">
+                        <?php if (!empty($edit_foto_url)): ?>
+                            <img src="<?= h($edit_foto_url) ?>" alt="Preview">
+                        <?php else: ?>
+                            <span class="link-muted">Nenhuma foto enviada.</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="upload-actions">
+                        <input type="file" id="foto_file" accept="image/*">
+                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
+                        <span class="link-muted" onclick="toggleManualUrl()">Inserir URL manual</span>
+                    </div>
+                    <div id="manual_url_box" style="display:none; margin-top:0.5rem;">
+                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
+                    </div>
+                    <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -382,7 +544,7 @@ includeSidebar('Insumos - Logística');
                             </span>
                         </td>
                         <?php if ($can_see_cost): ?>
-                            <td><?= $insumo['custo_padrao'] !== null ? number_format((float)$insumo['custo_padrao'], 2, ',', '.') : '-' ?></td>
+                            <td><?= $insumo['custo_padrao'] !== null ? 'R$ ' . number_format((float)$insumo['custo_padrao'], 2, ',', '.') : '-' ?></td>
                         <?php endif; ?>
                         <td>
                             <form method="POST" style="display:inline;">
@@ -403,6 +565,12 @@ includeSidebar('Insumos - Logística');
 </div>
 
 <script>
+function toggleManualUrl() {
+    const box = document.getElementById('manual_url_box');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' || box.style.display === '' ? 'block' : 'none';
+}
+
 async function uploadFoto() {
     const fileInput = document.getElementById('foto_file');
     if (!fileInput.files.length) {
@@ -423,10 +591,63 @@ async function uploadFoto() {
         return;
     }
     const urlInput = document.getElementById('foto_url');
-    urlInput.value = result.url;
-    const preview = document.querySelector('.upload-preview');
-    preview.innerHTML = '<img src="' + result.url + '" alt="Preview">';
+    if (urlInput) {
+        urlInput.value = result.url || '';
+    }
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (chaveInput) {
+        chaveInput.value = result.chave_storage || '';
+    }
+    const preview = document.getElementById('foto_preview');
+    if (preview) {
+        preview.innerHTML = '<img src="' + (result.url || '') + '" alt="Preview">';
+    }
 }
+
+async function openBarcodeCamera() {
+    const fileInput = document.getElementById('barcode_file');
+    if (!fileInput) return;
+
+    if (!('BarcodeDetector' in window)) {
+        alert('Leitura por câmera não suportada neste navegador. Digite o código manualmente.');
+        return;
+    }
+    fileInput.click();
+}
+
+document.getElementById('barcode_file')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+        const bitmap = await createImageBitmap(file);
+        const detector = new BarcodeDetector({ formats: ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code'] });
+        const codes = await detector.detect(bitmap);
+        if (codes.length) {
+            const input = document.getElementById('barcode_input');
+            if (input) input.value = codes[0].rawValue || '';
+        } else {
+            alert('Nenhum código detectado na imagem.');
+        }
+    } catch (err) {
+        alert('Falha ao ler o código: ' + err.message);
+    }
+});
+
+document.getElementById('tamanho_embalagem')?.addEventListener('blur', (e) => {
+    const val = e.target.value;
+    if (val === '') return;
+    const num = Number(val);
+    if (!Number.isNaN(num)) {
+        e.target.value = num.toFixed(3);
+    }
+});
+
+document.getElementById('foto_url')?.addEventListener('input', (e) => {
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (chaveInput && e.target.value.trim() !== '') {
+        chaveInput.value = '';
+    }
+});
 </script>
 
 <?php endSidebar(); ?>

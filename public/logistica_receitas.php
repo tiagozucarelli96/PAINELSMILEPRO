@@ -19,6 +19,52 @@ if (!$can_manage) {
 $errors = [];
 $messages = [];
 
+function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
+    if (!empty($chave_storage)) {
+        if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+            require_once __DIR__ . '/../vendor/autoload.php';
+            if (class_exists('Aws\\S3\\S3Client')) {
+                try {
+                    $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+                    $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+                    $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+                    $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+                    $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+                    $bucket = strtolower($bucket);
+
+                    if ($accessKey && $secretKey) {
+                        $s3Client = new \Aws\S3\S3Client([
+                            'region' => $region,
+                            'version' => 'latest',
+                            'credentials' => [
+                                'key' => $accessKey,
+                                'secret' => $secretKey,
+                            ],
+                            'endpoint' => $endpoint,
+                            'use_path_style_endpoint' => true,
+                        ]);
+
+                        $cmd = $s3Client->getCommand('GetObject', [
+                            'Bucket' => $bucket,
+                            'Key' => $chave_storage,
+                        ]);
+                        $presignedUrl = $s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
+                        return (string)$presignedUrl;
+                    }
+                } catch (Throwable $e) {
+                    error_log("Erro ao gerar URL presigned (receita): " . $e->getMessage());
+                }
+            }
+        }
+
+        $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+        $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+        return rtrim($endpoint, '/') . '/' . strtolower($bucket) . '/' . ltrim($chave_storage, '/');
+    }
+
+    return $fallback_url ?: null;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     if ($action === 'save') {
@@ -27,12 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($nome === '') {
             $errors[] = 'Nome é obrigatório.';
         } else {
+            $visivel = !empty($_POST['visivel_na_lista']);
+            $ativo = !empty($_POST['ativo']);
             $dados = [
                 ':nome' => $nome,
                 ':foto_url' => trim((string)($_POST['foto_url'] ?? '')) ?: null,
+                ':foto_chave_storage' => trim((string)($_POST['foto_chave_storage'] ?? '')) ?: null,
                 ':tipologia_receita_id' => !empty($_POST['tipologia_receita_id']) ? (int)$_POST['tipologia_receita_id'] : null,
-                ':ativo' => !empty($_POST['ativo']) ? 'TRUE' : 'FALSE',
-                ':visivel_na_lista' => !empty($_POST['visivel_na_lista']) ? 'TRUE' : 'FALSE',
+                ':ativo' => $ativo,
+                ':visivel_na_lista' => $visivel,
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
             ];
 
@@ -41,9 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     UPDATE logistica_receitas
                     SET nome = :nome,
                         foto_url = :foto_url,
+                        foto_chave_storage = :foto_chave_storage,
                         tipologia_receita_id = :tipologia_receita_id,
-                        ativo = {$dados[':ativo']},
-                        visivel_na_lista = {$dados[':visivel_na_lista']},
+                        ativo = :ativo,
+                        visivel_na_lista = :visivel_na_lista,
                         rendimento_base_pessoas = :rendimento_base_pessoas,
                         updated_at = NOW()
                     WHERE id = :id
@@ -55,9 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $sql = "
                     INSERT INTO logistica_receitas
-                    (nome, foto_url, tipologia_receita_id, ativo, visivel_na_lista, rendimento_base_pessoas)
+                    (nome, foto_url, foto_chave_storage, tipologia_receita_id, ativo, visivel_na_lista, rendimento_base_pessoas)
                     VALUES
-                    (:nome, :foto_url, :tipologia_receita_id, {$dados[':ativo']}, {$dados[':visivel_na_lista']}, :rendimento_base_pessoas)
+                    (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
                 ";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
@@ -123,6 +173,12 @@ $receitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_receita WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $insumos = $pdo->query("SELECT id, nome_oficial FROM logistica_insumos WHERE ativo IS TRUE ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
+$unidades_medida = [];
+try {
+    $unidades_medida = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {
+    $unidades_medida = [];
+}
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
@@ -141,6 +197,10 @@ if ($edit_id > 0) {
     ");
     $stmt->execute([':id' => $edit_id]);
     $componentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+$edit_foto_url = null;
+if ($edit_item) {
+    $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
 }
 
 includeSidebar('Receitas - Logística');
@@ -165,6 +225,8 @@ includeSidebar('Receitas - Logística');
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1rem;
 }
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
 .form-input {
     width: 100%;
     padding: 0.6rem 0.75rem;
@@ -220,6 +282,24 @@ includeSidebar('Receitas - Logística');
     border-radius: 8px;
     border: 1px solid #e5e7eb;
 }
+.upload-box {
+    border: 1px dashed #cbd5f5;
+    border-radius: 10px;
+    padding: 0.75rem;
+    background: #f8fafc;
+}
+.upload-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.link-muted {
+    font-size: 0.85rem;
+    color: #64748b;
+    cursor: pointer;
+}
 </style>
 
 <div class="page-container">
@@ -239,7 +319,7 @@ includeSidebar('Receitas - Logística');
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <div class="form-grid">
-                <div>
+                <div class="span-2">
                     <label>Nome *</label>
                     <input class="form-input" name="nome" required value="<?= h($edit_item['nome'] ?? '') ?>">
                 </div>
@@ -256,7 +336,7 @@ includeSidebar('Receitas - Logística');
                 </div>
                 <div>
                     <label>Rendimento base (pessoas)</label>
-                    <input class="form-input" name="rendimento_base_pessoas" type="number" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
+                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
                 <div>
                     <label>Visível na lista</label>
@@ -268,16 +348,24 @@ includeSidebar('Receitas - Logística');
                 </div>
             </div>
             <div style="margin-top:1rem;">
-                <label>Foto (URL)</label>
-                <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL ou faça upload" value="<?= h($edit_item['foto_url'] ?? '') ?>">
-                <div class="upload-preview" style="margin-top:0.5rem;">
-                    <?php if (!empty($edit_item['foto_url'])): ?>
-                        <img src="<?= h($edit_item['foto_url']) ?>" alt="Preview">
-                    <?php endif; ?>
-                </div>
-                <div style="margin-top:0.5rem;">
-                    <input type="file" id="foto_file" accept="image/*">
-                    <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
+                <label>Foto</label>
+                <div class="upload-box">
+                    <div class="upload-preview" id="foto_preview">
+                        <?php if (!empty($edit_foto_url)): ?>
+                            <img src="<?= h($edit_foto_url) ?>" alt="Preview">
+                        <?php else: ?>
+                            <span class="link-muted">Nenhuma foto enviada.</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="upload-actions">
+                        <input type="file" id="foto_file" accept="image/*">
+                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
+                        <span class="link-muted" onclick="toggleManualUrl()">Inserir URL manual</span>
+                    </div>
+                    <div id="manual_url_box" style="display:none; margin-top:0.5rem;">
+                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
+                    </div>
+                    <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -289,11 +377,14 @@ includeSidebar('Receitas - Logística');
     <?php if ($edit_item): ?>
     <div class="section-card">
         <h2>Componentes</h2>
+        <div class="link-muted" style="margin-bottom:0.75rem;">
+            Monte a ficha técnica com os insumos cadastrados e suas quantidades base.
+        </div>
         <form method="POST" style="margin-bottom: 1rem;">
             <input type="hidden" name="action" value="add_component">
             <input type="hidden" name="receita_id" value="<?= (int)$edit_item['id'] ?>">
             <div class="form-grid">
-                <div>
+                <div class="span-2">
                     <label>Insumo</label>
                     <select class="form-input" name="insumo_id" required>
                         <option value="">Selecione...</option>
@@ -304,11 +395,16 @@ includeSidebar('Receitas - Logística');
                 </div>
                 <div>
                     <label>Quantidade base</label>
-                    <input class="form-input" name="quantidade_base" type="number" step="0.0001" required>
+                    <input class="form-input" name="quantidade_base" type="number" step="0.001" required>
                 </div>
                 <div>
                     <label>Unidade</label>
-                    <input class="form-input" name="unidade" placeholder="kg, un, maço">
+                    <select class="form-input" name="unidade">
+                        <option value="">Selecione...</option>
+                        <?php foreach ($unidades_medida as $un): ?>
+                            <option value="<?= h($un) ?>"><?= h($un) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -394,6 +490,12 @@ includeSidebar('Receitas - Logística');
 </div>
 
 <script>
+function toggleManualUrl() {
+    const box = document.getElementById('manual_url_box');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' || box.style.display === '' ? 'block' : 'none';
+}
+
 async function uploadFoto() {
     const fileInput = document.getElementById('foto_file');
     if (!fileInput.files.length) {
@@ -414,10 +516,25 @@ async function uploadFoto() {
         return;
     }
     const urlInput = document.getElementById('foto_url');
-    urlInput.value = result.url;
-    const preview = document.querySelector('.upload-preview');
-    preview.innerHTML = '<img src="' + result.url + '" alt="Preview">';
+    if (urlInput) {
+        urlInput.value = result.url || '';
+    }
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (chaveInput) {
+        chaveInput.value = result.chave_storage || '';
+    }
+    const preview = document.getElementById('foto_preview');
+    if (preview) {
+        preview.innerHTML = '<img src="' + (result.url || '') + '" alt="Preview">';
+    }
 }
+
+document.getElementById('foto_url')?.addEventListener('input', (e) => {
+    const chaveInput = document.getElementById('foto_chave_storage');
+    if (chaveInput && e.target.value.trim() !== '') {
+        chaveInput.value = '';
+    }
+});
 </script>
 
 <?php endSidebar(); ?>

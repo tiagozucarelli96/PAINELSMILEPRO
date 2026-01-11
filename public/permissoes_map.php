@@ -71,6 +71,7 @@ return [
     // 'usuario_editar' => 'perm_configuracoes', // REMOVIDO: tela antiga de usuários
     'config_logistica' => 'perm_configuracoes',
     'logistica_conexao' => 'perm_configuracoes',
+    'logistica_unidades_medida' => 'perm_configuracoes',
     'logistica_tipologias' => 'perm_logistico',
     'logistica_insumos' => 'perm_logistico',
     'logistica_receitas' => 'perm_logistico',
