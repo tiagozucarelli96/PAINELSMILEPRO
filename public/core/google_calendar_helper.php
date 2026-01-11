@@ -490,15 +490,21 @@ class GoogleCalendarHelper {
     public function registerWebhook($calendar_id, $webhook_url) {
         $access_token = $this->getValidAccessToken();
         
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] Tentando registrar webhook para: $calendar_id");
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] URL do webhook: $webhook_url");
+        
         // Primeiro, criar um canal (watch) no Google Calendar
         $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/watch";
         
+        $channel_id = uniqid('channel_', true);
         $data = [
-            'id' => uniqid('channel_', true),
+            'id' => $channel_id,
             'type' => 'web_hook',
             'address' => $webhook_url,
             'token' => bin2hex(random_bytes(16)) // Token aleatório para segurança
         ];
+        
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] Dados do canal: " . json_encode($data));
         
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -511,17 +517,34 @@ class GoogleCalendarHelper {
         
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
         curl_close($ch);
+        
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] HTTP Code: $http_code");
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] Response: " . substr($response, 0, 500));
+        
+        if ($curl_error) {
+            throw new Exception("Erro cURL ao registrar webhook: $curl_error");
+        }
         
         if ($http_code !== 200) {
             $error_data = json_decode($response, true);
             $error_message = isset($error_data['error']['message']) 
                 ? $error_data['error']['message'] 
                 : "Erro desconhecido";
-            throw new Exception("Erro ao registrar webhook (HTTP $http_code): $error_message");
+            $error_code = isset($error_data['error']['code']) ? $error_data['error']['code'] : 'N/A';
+            error_log("[GOOGLE_CALENDAR_WEBHOOK] Erro completo: " . json_encode($error_data));
+            throw new Exception("Erro ao registrar webhook (HTTP $http_code, Code: $error_code): $error_message");
         }
         
         $result = json_decode($response, true);
+        
+        if (!$result || !isset($result['resourceId'])) {
+            error_log("[GOOGLE_CALENDAR_WEBHOOK] Resposta inválida: " . $response);
+            throw new Exception("Resposta inválida do Google ao registrar webhook");
+        }
+        
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] Webhook registrado com sucesso. Resource ID: " . $result['resourceId']);
         
         // Salvar informações do webhook no banco
         $stmt = $this->pdo->prepare("
@@ -534,6 +557,9 @@ class GoogleCalendarHelper {
             ':expiration' => isset($result['expiration']) ? date('Y-m-d H:i:s', strtotime($result['expiration'])) : null,
             ':calendar_id' => $calendar_id
         ]);
+        
+        $rows_updated = $stmt->rowCount();
+        error_log("[GOOGLE_CALENDAR_WEBHOOK] Config atualizada: $rows_updated linha(s)");
         
         return $result;
     }

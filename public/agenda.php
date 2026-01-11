@@ -677,6 +677,31 @@ includeSidebar('Agenda');
                     <p style="margin: 0 0 1rem 0; color: #1e40af; font-weight: 600;">
                         📅 Evento do Google Calendar (somente leitura)
                     </p>
+                    
+                    <!-- Dados do Evento (somente leitura) -->
+                    <div id="googleEventDetails" style="background: white; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong style="color: #374151;">Título:</strong>
+                            <div id="google_event_titulo" style="color: #64748b; margin-top: 0.25rem;"></div>
+                        </div>
+                        <div style="margin-bottom: 0.75rem;">
+                            <strong style="color: #374151;">Data/Hora:</strong>
+                            <div id="google_event_datas" style="color: #64748b; margin-top: 0.25rem;"></div>
+                        </div>
+                        <div id="google_event_descricao_group" style="margin-bottom: 0.75rem; display: none;">
+                            <strong style="color: #374151;">Descrição:</strong>
+                            <div id="google_event_descricao" style="color: #64748b; margin-top: 0.25rem; white-space: pre-wrap;"></div>
+                        </div>
+                        <div id="google_event_localizacao_group" style="margin-bottom: 0.75rem; display: none;">
+                            <strong style="color: #374151;">Localização:</strong>
+                            <div id="google_event_localizacao" style="color: #64748b; margin-top: 0.25rem;"></div>
+                        </div>
+                        <div id="google_event_organizador_group" style="margin-bottom: 0.75rem; display: none;">
+                            <strong style="color: #374151;">Organizador:</strong>
+                            <div id="google_event_organizador" style="color: #64748b; margin-top: 0.25rem;"></div>
+                        </div>
+                    </div>
+                    
                     <div class="form-row" style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                         <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
                             <input type="checkbox" id="google_eh_visita" style="margin: 0; width: 16px; height: 16px;" onchange="updateGoogleEvent(this)"> É visita agendada?
@@ -924,6 +949,52 @@ includeSidebar('Agenda');
                     // Mostrar seção do Google
                     document.getElementById('googleEventGroup').style.display = 'block';
                     document.getElementById('google_event_id').value = event.extendedProps.google_id || '';
+                    
+                    // Carregar dados do evento do Google
+                    const googleEventDetails = document.getElementById('googleEventDetails');
+                    if (googleEventDetails) {
+                        // Título
+                        document.getElementById('google_event_titulo').textContent = event.title || 'Sem título';
+                        
+                        // Data/Hora
+                        const startDate = new Date(event.start);
+                        const endDate = new Date(event.end);
+                        const startStr = startDate.toLocaleString('pt-BR', { 
+                            day: '2-digit', month: '2-digit', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                        });
+                        const endStr = endDate.toLocaleString('pt-BR', { 
+                            hour: '2-digit', minute: '2-digit'
+                        });
+                        document.getElementById('google_event_datas').textContent = `${startStr} - ${endStr}`;
+                        
+                        // Descrição
+                        const descricao = event.extendedProps.descricao;
+                        if (descricao) {
+                            document.getElementById('google_event_descricao').textContent = descricao;
+                            document.getElementById('google_event_descricao_group').style.display = 'block';
+                        } else {
+                            document.getElementById('google_event_descricao_group').style.display = 'none';
+                        }
+                        
+                        // Localização
+                        const localizacao = event.extendedProps.espaco_nome;
+                        if (localizacao) {
+                            document.getElementById('google_event_localizacao').textContent = localizacao;
+                            document.getElementById('google_event_localizacao_group').style.display = 'block';
+                        } else {
+                            document.getElementById('google_event_localizacao_group').style.display = 'none';
+                        }
+                        
+                        // Organizador
+                        const organizador = event.extendedProps.responsavel_nome;
+                        if (organizador && organizador !== 'Google Calendar') {
+                            document.getElementById('google_event_organizador').textContent = organizador;
+                            document.getElementById('google_event_organizador_group').style.display = 'block';
+                        } else {
+                            document.getElementById('google_event_organizador_group').style.display = 'none';
+                        }
+                    }
                     
                     // Carregar checkboxes do Google
                     const ehVisita = event.extendedProps.eh_visita_agendada || false;
