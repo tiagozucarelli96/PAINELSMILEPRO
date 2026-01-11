@@ -452,6 +452,19 @@ class GoogleCalendarHelper {
     }
     
     /**
+     * Atualizar última sincronização
+     */
+    private function updateLastSync($calendar_id) {
+        $stmt = $this->pdo->prepare("
+            UPDATE google_calendar_config 
+            SET ultima_sincronizacao = NOW(), atualizado_em = NOW()
+            WHERE google_calendar_id = :calendar_id
+        ");
+        $stmt->execute([':calendar_id' => $calendar_id]);
+        error_log("[GOOGLE_CALENDAR_SYNC] Última sincronização atualizada para calendário: $calendar_id");
+    }
+    
+    /**
      * Verificar se está conectado
      */
     public function isConnected() {
