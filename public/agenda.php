@@ -887,12 +887,19 @@ includeSidebar('Agenda');
                 // Configurar título e campos baseado no tipo
                 if (isGoogleEvent) {
                     title.textContent = 'Evento do Google Calendar';
+                    
                     // Ocultar campos de edição para eventos do Google
-                    form.querySelectorAll('.form-group:not(#googleEventGroup)').forEach(el => {
-                        if (el.id !== 'googleEventGroup') {
-                            el.style.display = 'none';
-                        }
-                    });
+                    document.getElementById('responsavel').closest('.form-group').style.display = 'none';
+                    document.getElementById('espacoGroup').style.display = 'none';
+                    document.getElementById('titulo').closest('.form-group').style.display = 'none';
+                    document.getElementById('inicio').closest('.form-group').style.display = 'none';
+                    document.getElementById('fim').closest('.form-group').style.display = 'none';
+                    document.getElementById('descricao').closest('.form-group').style.display = 'none';
+                    document.getElementById('lembrete').closest('.form-group').style.display = 'none';
+                    statusGroup.style.display = 'none';
+                    conversionGroup.style.display = 'none';
+                    
+                    // Mostrar seção do Google
                     document.getElementById('googleEventGroup').style.display = 'block';
                     document.getElementById('google_event_id').value = event.extendedProps.google_id || '';
                     
@@ -908,21 +915,22 @@ includeSidebar('Agenda');
                     document.querySelector('button[type="submit"]').style.display = 'none';
                     
                     // Mostrar link para Google Calendar
-                    if (event.extendedProps.google_link) {
-                        const linkDiv = document.createElement('div');
+                    let linkDiv = document.getElementById('google_link_div');
+                    if (!linkDiv && event.extendedProps.google_link) {
+                        linkDiv = document.createElement('div');
                         linkDiv.className = 'form-group';
+                        linkDiv.id = 'google_link_div';
                         linkDiv.style.marginTop = '1rem';
                         linkDiv.innerHTML = `<a href="${event.extendedProps.google_link}" target="_blank" class="btn btn-outline" style="text-decoration: none;">🔗 Abrir no Google Calendar</a>`;
-                        if (!document.getElementById('google_link_div')) {
-                            linkDiv.id = 'google_link_div';
-                            document.getElementById('googleEventGroup').appendChild(linkDiv);
-                        }
+                        document.getElementById('googleEventGroup').appendChild(linkDiv);
                     }
                 } else {
                     title.textContent = 'Editar Evento';
                     // Mostrar todos os campos para eventos normais
                     form.querySelectorAll('.form-group').forEach(el => {
-                        el.style.display = '';
+                        if (el.id !== 'googleEventGroup') {
+                            el.style.display = '';
+                        }
                     });
                     document.getElementById('googleEventGroup').style.display = 'none';
                 }
