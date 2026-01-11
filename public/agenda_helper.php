@@ -421,6 +421,13 @@ class AgendaHelper {
      * Obter relatório de conversão
      */
     public function obterRelatorioConversao($data_inicio, $data_fim, $espaco_id = null, $responsavel_id = null) {
+        // Usar função SQL que já inclui eventos do Google Calendar (atualizada)
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM calcular_conversao_visitas(?, ?, ?, ?)
+        ");
+        $stmt->execute([$data_inicio, $data_fim, $espaco_id, $responsavel_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
         $stmt = $this->pdo->prepare("
             SELECT * FROM calcular_conversao_visitas(?, ?, ?, ?)
         ");
