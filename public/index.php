@@ -183,6 +183,7 @@ $routes = [
   'contabilidade_admin_colaboradores' => 'contabilidade_admin_colaboradores.php',
   'config_email_global' => 'config_email_global.php',
   'google_calendar_config' => 'google_calendar_config.php',
+  'google_calendar_debug' => 'google_calendar_debug.php',
   'agenda' => 'agenda.php',
   'demandas' => 'demandas_trello.php',
   'demandas_old' => 'demandas.php', // Versão antiga mantida

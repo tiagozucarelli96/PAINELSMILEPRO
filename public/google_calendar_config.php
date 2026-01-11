@@ -340,6 +340,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <input type="hidden" name="acao" value="sincronizar">
             <button type="submit" class="btn btn-primary">🔄 Sincronizar Agora</button>
         </form>
+        
+        <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">
+            🔍 Debug
+        </a>
     </div>
     
     <!-- Logs de Sincronização -->
