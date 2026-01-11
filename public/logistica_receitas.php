@@ -19,6 +19,7 @@ if (!$can_manage) {
 
 $errors = [];
 $messages = [];
+$redirect_id = 0;
 
 function ensure_unidades_medida(PDO $pdo): array {
     $rows = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
@@ -141,6 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
                 $messages[] = 'Receita atualizada.';
+                $redirect_id = $id;
             } else {
                 $sql = "
                     INSERT INTO logistica_receitas
@@ -151,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
                 $messages[] = 'Receita criada.';
+                $redirect_id = (int)$pdo->lastInsertId();
             }
         }
     }
@@ -190,6 +193,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages[] = 'Componente removido.';
         }
     }
+}
+
+if ($redirect_id > 0 && empty($errors)) {
+    header('Location: index.php?page=logistica_receitas&edit_id=' . $redirect_id);
+    exit;
 }
 
 $search = trim((string)($_GET['q'] ?? ''));
@@ -478,6 +486,40 @@ includeSidebar('Receitas - Logística');
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+    <?php else: ?>
+    <div class="section-card">
+        <h2>Componentes</h2>
+        <div class="link-muted" style="margin-bottom:0.75rem;">
+            Salve a receita para liberar a ficha técnica e o preenchimento das unidades.
+        </div>
+        <div class="form-grid">
+            <div class="span-2">
+                <label>Insumo</label>
+                <select class="form-input" disabled>
+                    <option value="">Selecione...</option>
+                </select>
+            </div>
+            <div>
+                <label>Quantidade base</label>
+                <input class="form-input" type="number" step="0.001" disabled>
+            </div>
+            <div>
+                <label>Unidade</label>
+                <select class="form-input" disabled>
+                    <option value="">Selecione...</option>
+                    <?php if (empty($unidades_medida)): ?>
+                        <option value="" disabled>Nenhuma unidade cadastrada</option>
+                    <?php endif; ?>
+                    <?php foreach ($unidades_medida as $un): ?>
+                        <option value="<?= h($un) ?>"><?= h($un) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div style="margin-top:0.35rem;">
+                    <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
+                </div>
+            </div>
+        </div>
     </div>
     <?php endif; ?>
 
