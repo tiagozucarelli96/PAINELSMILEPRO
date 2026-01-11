@@ -14,6 +14,26 @@ if (!isset($GLOBALS['autoload_carregado'])) {
 class EmailGlobalHelper {
     private $pdo;
     private $config;
+
+    private function getEnvVar($name) {
+        $value = getenv($name);
+        if ($value !== false && $value !== '') {
+            return $value;
+        }
+        if (isset($_ENV[$name]) && $_ENV[$name] !== '') {
+            return $_ENV[$name];
+        }
+        if (isset($_SERVER[$name]) && $_SERVER[$name] !== '') {
+            return $_SERVER[$name];
+        }
+        if (function_exists('apache_getenv')) {
+            $apache_value = apache_getenv($name);
+            if ($apache_value !== false && $apache_value !== '') {
+                return $apache_value;
+            }
+        }
+        return null;
+    }
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
@@ -171,7 +191,14 @@ class EmailGlobalHelper {
             
             $resend = \Resend\Resend::client($api_key);
             
-            $email_remetente = $this->config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br';
+            $email_remetente = $this->getEnvVar('RESEND_FROM')
+                ?: $this->getEnvVar('RESEND_FROM_EMAIL')
+                ?: ($this->config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br');
+
+            if (!filter_var($email_remetente, FILTER_VALIDATE_EMAIL)) {
+                error_log("[EMAIL] ❌ Remetente inválido para Resend: $email_remetente");
+                return false;
+            }
             
             // Resend retorna um objeto Email com propriedade id
             $result = $resend->emails->send([

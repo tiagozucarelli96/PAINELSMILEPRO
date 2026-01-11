@@ -229,6 +229,11 @@ $resend_api_key = getenv('RESEND_API_KEY')
     ?: ($_SERVER['RESEND_API_KEY'] ?? null);
 $resend_configurado = !empty($resend_api_key);
 
+$resend_from = getenv('RESEND_FROM')
+    ?: ($_ENV['RESEND_FROM'] ?? null)
+    ?: ($_SERVER['RESEND_FROM'] ?? null)
+    ?: (getenv('RESEND_FROM_EMAIL') ?: ($_ENV['RESEND_FROM_EMAIL'] ?? null) ?: ($_SERVER['RESEND_FROM_EMAIL'] ?? null));
+
 // Verificar se SDK está disponível (sem carregar a classe)
 $resend_sdk_disponivel = false;
 if ($resend_configurado) {
@@ -349,6 +354,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
             <p style="color: #059669; font-weight: 600; margin-bottom: 0.5rem; font-size: 1.1rem;">✅ Resend configurado e pronto para uso!</p>
             <p style="color: #374151; font-size: 0.875rem;">O sistema está usando <strong>APENAS Resend</strong> para enviar e-mails. SMTP não é mais usado.</p>
+            <p style="color: #374151; font-size: 0.875rem; margin-top: 0.5rem;">
+                Remetente: <strong><?= htmlspecialchars($resend_from ?: ($config['email_remetente'] ?? 'painelsmilenotifica@smileeventos.com.br')) ?></strong>
+                <?= $resend_from ? '(via RESEND_FROM)' : '(via configuração do sistema)' ?>
+            </p>
         </div>
         <?php elseif ($resend_configurado && !$resend_sdk_disponivel): ?>
         <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
