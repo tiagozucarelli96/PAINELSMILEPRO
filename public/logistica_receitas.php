@@ -120,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':foto_url' => $foto_url,
                 ':foto_chave_storage' => $foto_chave,
                 ':tipologia_receita_id' => !empty($_POST['tipologia_receita_id']) ? (int)$_POST['tipologia_receita_id'] : null,
+                ':unidade_medida' => trim((string)($_POST['unidade_medida'] ?? '')) ?: null,
                 ':ativo' => $ativo,
                 ':visivel_na_lista' => $visivel,
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
@@ -132,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         foto_url = :foto_url,
                         foto_chave_storage = :foto_chave_storage,
                         tipologia_receita_id = :tipologia_receita_id,
+                        unidade_medida = :unidade_medida,
                         ativo = :ativo,
                         visivel_na_lista = :visivel_na_lista,
                         rendimento_base_pessoas = :rendimento_base_pessoas,
@@ -146,9 +148,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $sql = "
                     INSERT INTO logistica_receitas
-                    (nome, foto_url, foto_chave_storage, tipologia_receita_id, ativo, visivel_na_lista, rendimento_base_pessoas)
+                    (nome, foto_url, foto_chave_storage, tipologia_receita_id, unidade_medida, ativo, visivel_na_lista, rendimento_base_pessoas)
                     VALUES
-                    (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
+                    (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :unidade_medida, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
                 ";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
@@ -384,6 +386,23 @@ includeSidebar('Receitas - Logística');
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
                 <div>
+                    <label>Unidade</label>
+                    <select class="form-input" name="unidade_medida">
+                        <option value="">Selecione...</option>
+                        <?php if (empty($unidades_medida)): ?>
+                            <option value="" disabled>Nenhuma unidade cadastrada</option>
+                        <?php endif; ?>
+                        <?php foreach ($unidades_medida as $un): ?>
+                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_medida'] ?? '') === $un ? 'selected' : '' ?>>
+                                <?= h($un) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div style="margin-top:0.35rem;">
+                        <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
+                    </div>
+                </div>
+                <div>
                     <label>Visível na lista</label>
                     <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
                 </div>
@@ -426,6 +445,7 @@ includeSidebar('Receitas - Logística');
                     <th>Foto</th>
                     <th>Nome</th>
                     <th>Tipologia</th>
+                    <th>Unidade</th>
                     <th>Rendimento</th>
                     <th>Status</th>
                     <th>Ações</th>
@@ -444,6 +464,7 @@ includeSidebar('Receitas - Logística');
                         </td>
                         <td><?= h($rec['nome']) ?></td>
                         <td><?= h($rec['tipologia_nome'] ?? '') ?></td>
+                        <td><?= h($rec['unidade_medida'] ?? '') ?></td>
                         <td><?= (int)($rec['rendimento_base_pessoas'] ?? 0) ?></td>
                         <td>
                             <span class="status-pill <?= $rec['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
@@ -461,7 +482,7 @@ includeSidebar('Receitas - Logística');
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($receitas)): ?>
-                    <tr><td colspan="6">Nenhuma receita encontrada.</td></tr>
+                    <tr><td colspan="7">Nenhuma receita encontrada.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
