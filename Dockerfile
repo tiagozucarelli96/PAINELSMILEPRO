@@ -30,4 +30,5 @@ RUN composer show resend/resend-php 2>/dev/null || echo "Resend não encontrado"
 
 EXPOSE 8080
 # IMPORTANTE: usa o router.php (e não o index.php) para evitar loops
-CMD ["bash", "-lc", "php -S 0.0.0.0:${PORT:-8080} -t public public/router.php"]
+# Usar formato de string para permitir expansão de variável PORT
+CMD php -S 0.0.0.0:${PORT:-8080} -t public public/router.php
