@@ -17,6 +17,32 @@ function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bo
     return (bool) $stmt->fetchColumn();
 }
 
+function contabilidadeDownloadErro(string $mensagem, ?string $detalhe = null): void
+{
+    $voltar = $_SERVER['HTTP_REFERER'] ?? 'contabilidade_painel.php';
+    $mensagem_segura = htmlspecialchars($mensagem);
+    $detalhe_seguro = $detalhe ? htmlspecialchars($detalhe) : '';
+
+    echo '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
+    echo '<title>Arquivo indisponivel</title>';
+    echo '<style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:32px}';
+    echo '.card{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;box-shadow:0 4px 12px rgba(15,23,42,.08)}';
+    echo '.title{font-size:20px;font-weight:700;margin-bottom:8px}';
+    echo '.desc{color:#475569;margin-bottom:16px}';
+    echo '.detail{background:#f1f5f9;border-radius:8px;padding:12px;color:#0f172a;font-size:14px}';
+    echo '.actions{margin-top:20px}';
+    echo '.btn{display:inline-block;background:#1e40af;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px}';
+    echo '</style></head><body><div class="card">';
+    echo '<div class="title">Arquivo indisponivel</div>';
+    echo '<div class="desc">' . $mensagem_segura . '</div>';
+    if ($detalhe_seguro) {
+        echo '<div class="detail">' . $detalhe_seguro . '</div>';
+    }
+    echo '<div class="actions"><a class="btn" href="' . htmlspecialchars($voltar) . '">Voltar</a></div>';
+    echo '</div></body></html>';
+    exit;
+}
+
 // Verificar permissão (admin ou contabilidade logada)
 $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo']);
 $is_contabilidade = !empty($_SESSION['contabilidade_logado']) && $_SESSION['contabilidade_logado'] === true;
@@ -32,7 +58,7 @@ $debug = !empty($_GET['debug']) && $is_admin;
 
 if (empty($tipo) || $id <= 0) {
     http_response_code(400);
-    die('Parâmetros inválidos');
+    contabilidadeDownloadErro('Parametros invalidos para download.');
 }
 
 try {
@@ -116,7 +142,7 @@ try {
     
     if (empty($chave_storage) && empty($arquivo_url)) {
         http_response_code(404);
-        die('Arquivo não encontrado ou chave de storage não disponível');
+        contabilidadeDownloadErro('Arquivo nao encontrado ou chave de storage indisponivel.');
     }
     
     // Tentar usar AWS SDK para gerar presigned URL
@@ -224,5 +250,5 @@ try {
         echo 'Erro ao processar download: ' . htmlspecialchars($e->getMessage());
         exit;
     }
-    die('Erro ao processar download');
+    contabilidadeDownloadErro('Erro ao processar o download.', $e->getMessage());
 }
