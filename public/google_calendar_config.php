@@ -63,12 +63,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             
             $mensagem = sprintf(
-                'Sincronização concluída! Importados: %d, Atualizados: %d',
+                'Sincronização concluída! Importados: %d, Atualizados: %d%s',
                 $resultado['importados'],
-                $resultado['atualizados']
+                $resultado['atualizados'],
+                isset($resultado['total_encontrado']) ? " (Total encontrado: {$resultado['total_encontrado']})" : ''
             );
+            
+            if (isset($resultado['pulados']) && $resultado['pulados'] > 0) {
+                $mensagem .= " | Pulados: {$resultado['pulados']}";
+            }
         } catch (Exception $e) {
-            $erro = $e->getMessage();
+            $erro = 'Erro ao sincronizar: ' . $e->getMessage();
+            error_log("[GOOGLE_CALENDAR_CONFIG] Erro na sincronização: " . $e->getMessage());
+            error_log("[GOOGLE_CALENDAR_CONFIG] Stack trace: " . $e->getTraceAsString());
         }
     }
 }

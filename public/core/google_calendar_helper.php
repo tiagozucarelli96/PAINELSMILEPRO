@@ -233,11 +233,25 @@ class GoogleCalendarHelper {
         }
         
         if ($http_code !== 200) {
-            error_log("[GOOGLE_CALENDAR] Erro HTTP $http_code: $response");
-            throw new Exception("Erro na API do Google. HTTP $http_code");
+            $error_data = json_decode($response, true);
+            $error_message = isset($error_data['error']['message']) 
+                ? $error_data['error']['message'] 
+                : "Erro desconhecido";
+            
+            error_log("[GOOGLE_CALENDAR] Erro HTTP $http_code na URL: $url");
+            error_log("[GOOGLE_CALENDAR] Resposta: $response");
+            
+            throw new Exception("Erro na API do Google (HTTP $http_code): $error_message");
         }
         
-        return json_decode($response, true);
+        $decoded = json_decode($response, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("[GOOGLE_CALENDAR] Erro ao decodificar JSON: " . json_last_error_msg());
+            error_log("[GOOGLE_CALENDAR] Resposta recebida: " . substr($response, 0, 500));
+            throw new Exception("Resposta inválida da API do Google");
+        }
+        
+        return $decoded;
     }
     
     /**
@@ -252,8 +266,12 @@ class GoogleCalendarHelper {
      * Sincronizar eventos de um calendário
      */
     public function syncCalendarEvents($calendar_id, $dias_futuro = 180) {
-        $time_min = date('Y-m-d\T00:00:00\Z');
-        $time_max = date('Y-m-d\T23:59:59\Z', strtotime("+$dias_futuro days"));
+        // Usar timezone UTC para garantir compatibilidade
+        $time_min = gmdate('Y-m-d\TH:i:s\Z', strtotime('today midnight'));
+        $time_max = gmdate('Y-m-d\TH:i:s\Z', strtotime("+$dias_futuro days 23:59:59"));
+        
+        error_log("[GOOGLE_CALENDAR_SYNC] Iniciando sincronização do calendário: $calendar_id");
+        error_log("[GOOGLE_CALENDAR_SYNC] Período: $time_min até $time_max");
         
         $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events";
         $url .= "?timeMin=" . urlencode($time_min);
@@ -262,16 +280,34 @@ class GoogleCalendarHelper {
         $url .= "&orderBy=startTime";
         $url .= "&maxResults=2500";
         
-        $response = $this->makeApiRequest($url);
-        
-        if (!isset($response['items'])) {
-            return ['importados' => 0, 'atualizados' => 0];
+        try {
+            $response = $this->makeApiRequest($url);
+            
+            error_log("[GOOGLE_CALENDAR_SYNC] Resposta recebida. Total de itens: " . (isset($response['items']) ? count($response['items']) : 0));
+            
+            if (!isset($response['items'])) {
+                error_log("[GOOGLE_CALENDAR_SYNC] Nenhum evento encontrado na resposta");
+                return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
+            }
+            
+            if (empty($response['items'])) {
+                error_log("[GOOGLE_CALENDAR_SYNC] Array de eventos vazio");
+                return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
+            }
+        } catch (Exception $e) {
+            error_log("[GOOGLE_CALENDAR_SYNC] Erro ao buscar eventos: " . $e->getMessage());
+            throw $e;
         }
         
         $importados = 0;
         $atualizados = 0;
+        $pulados = 0;
+        $total_processados = 0;
+        
+        error_log("[GOOGLE_CALENDAR_SYNC] Processando " . count($response['items']) . " eventos");
         
         foreach ($response['items'] as $event) {
+            $total_processados++;
             $google_event_id = $event['id'];
             $titulo = $event['summary'] ?? 'Sem título';
             $descricao = $event['description'] ?? null;
@@ -297,7 +333,19 @@ class GoogleCalendarHelper {
             }
             
             if (!$inicio || !$fim) {
+                $pulados++;
+                error_log("[GOOGLE_CALENDAR_SYNC] Evento pulado (sem data válida): " . ($titulo ?? 'Sem título'));
                 continue; // Pular eventos sem data válida
+            }
+            
+            // Verificar se o evento está no período correto (filtro adicional)
+            $inicio_timestamp = strtotime($inicio);
+            $time_min_timestamp = strtotime($time_min);
+            $time_max_timestamp = strtotime($time_max);
+            
+            if ($inicio_timestamp < $time_min_timestamp || $inicio_timestamp > $time_max_timestamp) {
+                $pulados++;
+                continue; // Pular eventos fora do período
             }
             
             // Verificar se já existe
@@ -383,10 +431,14 @@ class GoogleCalendarHelper {
         ");
         $stmt->execute([':calendar_id' => $calendar_id]);
         
+        error_log("[GOOGLE_CALENDAR_SYNC] Sincronização concluída. Importados: $importados, Atualizados: $atualizados, Pulados: $pulados, Total processado: $total_processados");
+        
         return [
             'importados' => $importados,
             'atualizados' => $atualizados,
-            'total' => $importados + $atualizados
+            'total' => $importados + $atualizados,
+            'pulados' => $pulados,
+            'total_encontrado' => count($response['items'])
         ];
     }
     
