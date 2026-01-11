@@ -24,9 +24,16 @@ try {
         exit;
     }
 
-    // Obter parâmetros
-    $start = $_GET['start'] ?? date('Y-m-d');
-    $end = $_GET['end'] ?? date('Y-m-d', strtotime('+1 month'));
+    // Obter parâmetros (FullCalendar envia em formato ISO: 2026-01-11T00:00:00-03:00)
+    $start_raw = $_GET['start'] ?? date('Y-m-d');
+    $end_raw = $_GET['end'] ?? date('Y-m-d', strtotime('+1 month'));
+    
+    // Converter para formato de data simples (remover hora se presente)
+    $start = preg_replace('/T.*$/', '', $start_raw);
+    $end = preg_replace('/T.*$/', '', $end_raw);
+    
+    error_log("[AGENDA_API] Parâmetros recebidos - start_raw: $start_raw, end_raw: $end_raw");
+    error_log("[AGENDA_API] Parâmetros processados - start: $start, end: $end");
     $responsavel_id = $_GET['responsavel_id'] ?? null;
     $espaco_id = $_GET['espaco_id'] ?? null;
 
@@ -68,8 +75,15 @@ try {
                       )
                     ORDER BY inicio ASC
                 ");
-                $start_date = date('Y-m-d 00:00:00', strtotime($start));
-                $end_date = date('Y-m-d 23:59:59', strtotime($end));
+                // Converter para timestamp completo para comparação
+                $start_timestamp = strtotime($start);
+                $end_timestamp = strtotime($end);
+                
+                $start_date = date('Y-m-d 00:00:00', $start_timestamp);
+                $end_date = date('Y-m-d 23:59:59', $end_timestamp);
+                
+                error_log("[AGENDA_API] Buscando eventos Google de $start_date até $end_date");
+                
                 $stmt->execute([
                     ':start' => $start_date,
                     ':end' => $end_date
@@ -77,6 +91,10 @@ try {
                 $google_eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
                 error_log("[AGENDA_API] Eventos Google encontrados: " . count($google_eventos) . " no período $start_date até $end_date");
+                
+                if (count($google_eventos) > 0) {
+                    error_log("[AGENDA_API] Primeiro evento: " . json_encode($google_eventos[0]));
+                }
                 error_log("[AGENDA_API] Config ativo: " . ($config['ativo'] ? 'SIM' : 'NÃO'));
                 error_log("[AGENDA_API] Calendar ID config: " . $config['google_calendar_id']);
                 
