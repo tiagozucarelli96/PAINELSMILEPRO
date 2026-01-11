@@ -432,10 +432,16 @@ includeSidebar('Receitas - Logística');
                     <label>Unidade</label>
                     <select class="form-input" name="unidade">
                         <option value="">Selecione...</option>
+                        <?php if (empty($unidades_medida)): ?>
+                            <option value="" disabled>Nenhuma unidade cadastrada</option>
+                        <?php endif; ?>
                         <?php foreach ($unidades_medida as $un): ?>
                             <option value="<?= h($un) ?>"><?= h($un) ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <div style="margin-top:0.35rem;">
+                        <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
+                    </div>
                 </div>
             </div>
             <div style="margin-top:1rem;">
