@@ -41,8 +41,10 @@ class EmailGlobalHelper {
         error_log("[EMAIL] Destinatário: $para");
         error_log("[EMAIL] Assunto: $assunto");
         
-        // Verificar se Resend está configurado
-        $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+        // Verificar se Resend está configurado (Railway pode usar diferentes métodos)
+        $resend_api_key = getenv('RESEND_API_KEY') 
+            ?: ($_ENV['RESEND_API_KEY'] ?? null)
+            ?: ($_SERVER['RESEND_API_KEY'] ?? null);
         
         if (!$resend_api_key) {
             error_log("[EMAIL] ❌ ERRO: RESEND_API_KEY não configurada. Configure no Railway: Variables → RESEND_API_KEY");

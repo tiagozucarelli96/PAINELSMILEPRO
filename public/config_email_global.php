@@ -31,7 +31,9 @@ try {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         // Verificar se Resend está configurado antes de salvar
-        $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+        $resend_api_key = getenv('RESEND_API_KEY') 
+            ?: ($_ENV['RESEND_API_KEY'] ?? null)
+            ?: ($_SERVER['RESEND_API_KEY'] ?? null);
         if (!$resend_api_key) {
             throw new Exception('RESEND_API_KEY não configurada. Configure no Railway antes de salvar as configurações.');
         }
@@ -221,8 +223,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
-// Verificar se Resend está configurado
-$resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+// Verificar se Resend está configurado (Railway pode usar diferentes métodos)
+$resend_api_key = getenv('RESEND_API_KEY') 
+    ?: ($_ENV['RESEND_API_KEY'] ?? null)
+    ?: ($_SERVER['RESEND_API_KEY'] ?? null);
 $resend_configurado = !empty($resend_api_key);
 
 // Verificar se SDK está disponível (sem carregar a classe)

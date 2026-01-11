@@ -586,7 +586,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer', false);
             // Verificar Resend sem autoload automático para evitar erro de classe duplicada
             $resend_disponivel = class_exists('\Resend\Resend', false);
-            $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
+            
+            // Verificar RESEND_API_KEY em múltiplas fontes (Railway pode usar diferentes métodos)
+            $resend_api_key = getenv('RESEND_API_KEY') 
+                ?: ($_ENV['RESEND_API_KEY'] ?? null)
+                ?: ($_SERVER['RESEND_API_KEY'] ?? null);
+            
+            // Debug: verificar se autoload existe mas classes não estão carregadas
+            $vendor_path = __DIR__ . '/../vendor';
+            $resend_path = $vendor_path . '/resend/resend-php';
+            $resend_instalado = is_dir($resend_path);
+            $phpmailer_path = $vendor_path . '/phpmailer/phpmailer';
+            $phpmailer_instalado = is_dir($phpmailer_path);
             ?>
             <div class="validacao-item <?= $autoload_existe ? 'ok' : 'erro' ?>">
                 <?= $autoload_existe ? '✅' : '❌' ?> vendor/autoload.php: <?= $autoload_existe ? 'Existe' : 'Não encontrado' ?>
@@ -600,6 +611,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <div class="validacao-item <?= $resend_api_key ? 'ok' : 'warning' ?>" style="border-color: <?= $resend_api_key ? '#059669' : '#f59e0b' ?>; background: <?= $resend_api_key ? '#d1fae5' : '#fef3c7' ?>;">
                 <?= $resend_api_key ? '✅' : '⚠️' ?> RESEND_API_KEY: <?= $resend_api_key ? 'Configurada' : 'Não configurada (recomendado para Railway)' ?>
             </div>
+            
+            <?php if ($autoload_existe && (!$phpmailer_disponivel || !$resend_disponivel)): ?>
+            <div class="info-box" style="background: #fef3c7; border-color: #f59e0b; margin-top: 1rem;">
+                <p><strong>🔍 Diagnóstico de Instalação:</strong></p>
+                <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                    <li>vendor/autoload.php: <?= $autoload_existe ? '✅ Existe' : '❌ Não encontrado' ?></li>
+                    <li>PHPMailer instalado: <?= $phpmailer_instalado ? '✅ Sim' : '❌ Não' ?> (<?= $phpmailer_path ?>)</li>
+                    <li>Resend SDK instalado: <?= $resend_instalado ? '✅ Sim' : '❌ Não' ?> (<?= $resend_path ?>)</li>
+                    <li>PHPMailer carregado: <?= $phpmailer_disponivel ? '✅ Sim' : '❌ Não (pode precisar recarregar autoload)' ?></li>
+                    <li>Resend SDK carregado: <?= $resend_disponivel ? '✅ Sim' : '❌ Não (pode precisar recarregar autoload)' ?></li>
+                </ul>
+                <?php if (($phpmailer_instalado && !$phpmailer_disponivel) || ($resend_instalado && !$resend_disponivel)): ?>
+                <p style="margin-top: 0.75rem; padding: 0.75rem; background: #fee2e2; border-radius: 4px;">
+                    <strong>⚠️ Problema detectado:</strong> As bibliotecas estão instaladas mas não estão sendo carregadas pelo autoload. 
+                    Isso pode indicar que o autoload precisa ser regenerado. Execute no Railway:
+                </p>
+                <div class="code-block" style="margin-top: 0.5rem;">
+composer dump-autoload --optimize
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
             
             <?php if ($resend_api_key && $resend_disponivel): ?>
             <div class="info-box" style="background: #d1fae5; border-color: #059669;">
