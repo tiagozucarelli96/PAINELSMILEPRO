@@ -176,28 +176,69 @@ try {
             $extended_props['contrato_fechado'] = $evento['contrato_fechado'];
         }
         
-        // Formatar data para ISO 8601 (formato esperado pelo FullCalendar)
-        $start_formatted = $evento['inicio'];
-        $end_formatted = $evento['fim'];
+        // Detectar se é evento de dia inteiro
+        // Evento de dia inteiro: início às 00:00:00 e fim às 23:59:59 do mesmo dia
+        $inicio_ts = strtotime($evento['inicio']);
+        $fim_ts = strtotime($evento['fim']);
+        $inicio_date = date('Y-m-d', $inicio_ts);
+        $fim_date = date('Y-m-d', $fim_ts);
+        $inicio_time = date('H:i:s', $inicio_ts);
+        $fim_time = date('H:i:s', $fim_ts);
         
-        // Se já estiver em formato ISO, usar direto; caso contrário, converter
-        if (strpos($start_formatted, 'T') === false) {
-            $start_formatted = date('c', strtotime($evento['inicio']));
-        }
-        if (strpos($end_formatted, 'T') === false) {
-            $end_formatted = date('c', strtotime($evento['fim']));
+        // Verificar se é dia inteiro: mesma data, início 00:00:00, fim 23:59:59
+        // Também considerar se a diferença é de menos de 1 segundo antes da meia-noite
+        $is_all_day = ($inicio_date === $fim_date) && 
+                      ($inicio_time === '00:00:00') &&
+                      ($fim_time === '23:59:59');
+        
+        // Log para debug de eventos de dia inteiro
+        if ($is_all_day && isset($evento['tipo']) && $evento['tipo'] === 'google') {
+            error_log("[AGENDA_API] Evento de dia inteiro detectado: {$evento['titulo']} em $inicio_date");
         }
         
-        $eventos_formatados[] = [
+        // Formatar data para FullCalendar
+        if ($is_all_day) {
+            // Evento de dia inteiro: usar apenas a data (sem hora) e allDay: true
+            $start_formatted = $inicio_date;
+            // Para eventos de dia inteiro, o FullCalendar espera que 'end' seja o dia seguinte (exclusivo)
+            // Mas como salvamos como 23:59:59, precisamos adicionar 1 dia
+            $end_formatted = date('Y-m-d', strtotime($fim_date . ' +1 day'));
+        } else {
+            // Evento com hora: usar formato ISO 8601 completo
+            $start_formatted = $evento['inicio'];
+            $end_formatted = $evento['fim'];
+            
+            // Se já estiver em formato ISO, usar direto; caso contrário, converter
+            if (strpos($start_formatted, 'T') === false) {
+                $start_formatted = date('c', $inicio_ts);
+            }
+            if (strpos($end_formatted, 'T') === false) {
+                $end_formatted = date('c', $fim_ts);
+            }
+        }
+        
+        $evento_formatado = [
             'id' => $evento['id'],
             'title' => $evento['titulo'],
             'start' => $start_formatted,
-            'end' => $end_formatted,
             'color' => $cor,
             'extendedProps' => $extended_props,
             // Eventos do Google são read-only (não editáveis, mas podem ter checkboxes)
             'editable' => !isset($evento['tipo']) || $evento['tipo'] !== 'google'
         ];
+        
+        // Adicionar allDay e end apenas se necessário
+        if ($is_all_day) {
+            $evento_formatado['allDay'] = true;
+            // Para eventos de dia inteiro, o FullCalendar usa 'end' como exclusivo
+            // Se não especificar, assume que é o mesmo dia
+            // Mas se especificar, deve ser o dia seguinte
+            $evento_formatado['end'] = $end_formatted;
+        } else {
+            $evento_formatado['end'] = $end_formatted;
+        }
+        
+        $eventos_formatados[] = $evento_formatado;
     }
 
     error_log("[AGENDA_API] Total de eventos formatados: " . count($eventos_formatados));
