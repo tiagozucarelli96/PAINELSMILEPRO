@@ -132,7 +132,8 @@ includeSidebar('Agenda');
         }
 
         .agenda-container {
-            max-width: 1400px;
+            max-width: 100%;
+            width: 100%;
             margin: 0 auto;
             background-color: #fff;
             padding: 30px;
@@ -839,6 +840,22 @@ includeSidebar('Agenda');
             });
             
             calendar.render();
+
+            setTimeout(() => {
+                if (calendar && calendar.updateSize) {
+                    calendar.updateSize();
+                }
+            }, 50);
+
+            const mainContent = document.getElementById('mainContent');
+            if (mainContent && 'MutationObserver' in window) {
+                const observer = new MutationObserver(() => {
+                    if (calendar && calendar.updateSize) {
+                        setTimeout(() => calendar.updateSize(), 50);
+                    }
+                });
+                observer.observe(mainContent, { attributes: true, attributeFilter: ['class', 'style'] });
+            }
         });
         
         // Carregar eventos
