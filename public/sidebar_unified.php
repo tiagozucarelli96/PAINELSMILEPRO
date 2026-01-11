@@ -1820,6 +1820,9 @@ if ($current_page === 'dashboard') {
                 mainContent.style.marginLeft = '0';
                 mainContent.style.width = '100%';
             }
+
+            // Forçar recalculo de layouts dependentes de largura (ex: FullCalendar).
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
         }
         
         // Função para voltar
