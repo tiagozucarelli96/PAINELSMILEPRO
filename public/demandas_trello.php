@@ -1122,7 +1122,7 @@ includeSidebar('Demandas');
     <!-- Botão para abrir sidebar no mobile -->
     <button class="btn btn-outline" 
             id="btn-toggle-sidebar"
-            style="display: none; position: fixed; top: 80px; left: 1rem; z-index: 999;"
+            style="display: none; position: fixed; top: calc(var(--page-header-height) + 12px); left: 1.5rem; z-index: 1200;"
             onclick="toggleSidebarBoards()">
         📋 Quadros
     </button>
