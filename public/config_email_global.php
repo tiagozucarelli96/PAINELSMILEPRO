@@ -231,9 +231,10 @@ if ($resend_configurado) {
     // Verificar se autoload existe e se a classe está disponível
     $autoload_path = __DIR__ . '/../vendor/autoload.php';
     if (file_exists($autoload_path)) {
-        // Verificar se já foi carregado
-        if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+        // Verificar se já foi carregado usando flag global
+        if (!isset($GLOBALS['autoload_carregado'])) {
             require_once $autoload_path;
+            $GLOBALS['autoload_carregado'] = true;
         }
         // Agora verificar se Resend está disponível
         $resend_sdk_disponivel = class_exists('\Resend\Resend', false);

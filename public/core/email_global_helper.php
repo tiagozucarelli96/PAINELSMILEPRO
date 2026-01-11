@@ -2,11 +2,12 @@
 // email_global_helper.php — Helper para envio de e-mails usando configuração global (ETAPA 12)
 require_once __DIR__ . '/../conexao.php';
 
-// Carregar autoload do Composer apenas uma vez (verificar se já foi carregado)
-if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+// Carregar autoload do Composer apenas uma vez (usar flag global para evitar duplicação)
+if (!isset($GLOBALS['autoload_carregado'])) {
     $autoload_path = __DIR__ . '/../../vendor/autoload.php';
     if (file_exists($autoload_path)) {
         require_once $autoload_path;
+        $GLOBALS['autoload_carregado'] = true;
     }
 }
 
@@ -48,7 +49,7 @@ class EmailGlobalHelper {
             return false;
         }
         
-        if (!class_exists('\Resend\Resend')) {
+        if (!class_exists('\Resend\Resend', false)) {
             error_log("[EMAIL] ❌ ERRO: Resend SDK não disponível. Execute: composer install");
             return false;
         }
@@ -66,10 +67,11 @@ class EmailGlobalHelper {
     private function enviarComResend($para, $assunto, $corpo, $eh_html, $api_key) {
         try {
             // Garantir que autoload foi carregado (sem duplicar)
-            if (!class_exists('Composer\Autoload\ClassLoader', false)) {
+            if (!isset($GLOBALS['autoload_carregado'])) {
                 $autoload_path = __DIR__ . '/../../vendor/autoload.php';
                 if (file_exists($autoload_path)) {
                     require_once $autoload_path;
+                    $GLOBALS['autoload_carregado'] = true;
                 }
             }
             

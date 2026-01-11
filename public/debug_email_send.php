@@ -583,8 +583,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             <h2>📦 Verificação de Dependências</h2>
             <?php
             $autoload_existe = file_exists(__DIR__ . '/../vendor/autoload.php');
-            $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer');
-            $resend_disponivel = class_exists('\Resend\Resend');
+            $phpmailer_disponivel = class_exists('PHPMailer\PHPMailer\PHPMailer', false);
+            // Verificar Resend sem autoload automático para evitar erro de classe duplicada
+            $resend_disponivel = class_exists('\Resend\Resend', false);
             $resend_api_key = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? null);
             ?>
             <div class="validacao-item <?= $autoload_existe ? 'ok' : 'erro' ?>">
