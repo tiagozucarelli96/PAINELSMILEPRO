@@ -1,6 +1,7 @@
 <?php
 // me_api_helper.php
 // Helper para integração com API ME Eventos
+// DEPRECATED: manter apenas para compatibilidade; não usar no novo módulo Logística.
 
 /**
  * Buscar eventos dos próximos dois finais de semana

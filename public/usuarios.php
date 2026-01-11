@@ -1113,10 +1113,11 @@ ob_start();
                             // Verificar se há permissões ativas
                             $permissoes_ativas = [];
                             $permissoes_nomes = [
+                                'perm_superadmin' => 'Superadmin',
                                 // Módulos da sidebar
                                 'perm_agenda' => 'Agenda',
                                 'perm_comercial' => 'Comercial',
-                                // 'perm_logistico' => 'Logístico', // REMOVIDO: Módulo desativado
+                                'perm_logistico' => 'Logística',
                                 'perm_configuracoes' => 'Configurações',
                                 'perm_cadastros' => 'Cadastros',
                                 'perm_financeiro' => 'Financeiro',
@@ -1130,7 +1131,8 @@ ob_start();
                                 'perm_demandas' => 'Demandas',
                                 'perm_portao' => 'Portão',
                                 'perm_notas_fiscais' => 'Notas Fiscais',
-                                // 'perm_estoque_logistico' => 'Estoque', // REMOVIDO: Módulo desativado
+                                'perm_logistico_divergencias' => 'Logística - Divergências',
+                                'perm_logistico_financeiro' => 'Logística - Financeiro',
                                 'perm_dados_contrato' => 'Contratos',
                                 'perm_uso_fiorino' => 'Fiorino'
                             ];
@@ -1251,6 +1253,20 @@ ob_start();
                             <option value="inativo">Inativo</option>
                         </select>
                     </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Escopo de Unidade</label>
+                        <select name="unidade_scope" class="form-input" id="unidadeScope">
+                            <option value="nenhuma">Nenhuma</option>
+                            <option value="todas">Todas</option>
+                            <option value="unidade">Unidade</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="unidadeIdGroup" style="display: none;">
+                        <label class="form-label">Unidade ID</label>
+                        <input type="number" name="unidade_id" class="form-input" min="1" step="1">
+                    </div>
                 </div>
                 
                 <div class="permissions-section">
@@ -1262,7 +1278,7 @@ ob_start();
                         $permissions_sidebar_all = [
                             'perm_agenda' => '📅 Agenda',
                             'perm_comercial' => '📋 Comercial',
-                            // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
+                            'perm_logistico' => '📦 Logística',
                             'perm_configuracoes' => '⚙️ Configurações',
                             'perm_cadastros' => '📝 Cadastros',
                             'perm_financeiro' => '💰 Financeiro',
@@ -1310,13 +1326,15 @@ ob_start();
                         <?php
                         // Verificar quais permissões existem no banco antes de exibir
                         $permissions_especificas_all = [
+                            'perm_superadmin' => '⭐ Superadmin (bypass total)',
                             'perm_usuarios' => '👥 Usuários',
                             'perm_pagamentos' => '💳 Pagamentos',
                             'perm_tarefas' => '📋 Tarefas',
                             'perm_demandas' => '📋 Demandas',
                             'perm_portao' => '🚪 Portão',
                             'perm_notas_fiscais' => '📄 Notas Fiscais',
-                            // 'perm_estoque_logistico' => '📦 Estoque', // REMOVIDO: Módulo desativado
+                            'perm_logistico_divergencias' => '🧭 Logística - Divergências',
+                            'perm_logistico_financeiro' => '💰 Logística - Financeiro',
                             'perm_dados_contrato' => '📋 Dados Contrato',
                             'perm_uso_fiorino' => '🚐 Uso Fiorino'
                         ];
@@ -1575,6 +1593,14 @@ ob_start();
                             
                             const statusInput = formToFill.querySelector('select[name="status_empregado"]');
                             if (statusInput) statusInput.value = user.status_empregado || 'ativo';
+
+                            const unidadeScopeInput = formToFill.querySelector('select[name="unidade_scope"]');
+                            if (unidadeScopeInput) unidadeScopeInput.value = user.unidade_scope || 'nenhuma';
+
+                            const unidadeIdInput = formToFill.querySelector('input[name="unidade_id"]');
+                            if (unidadeIdInput) unidadeIdInput.value = user.unidade_id || '';
+
+                            toggleUnidadeId();
                             
                             // Preencher permissões - todas as que começam com perm_
                             Object.keys(user).forEach(key => {
@@ -1631,9 +1657,30 @@ ob_start();
                     if (userIdInput) userIdInput.value = '0';
                     // Limpar todos os checkboxes
                     form.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                    toggleUnidadeId();
                 }
             }
         }
+
+        function toggleUnidadeId() {
+            const scopeSelect = document.getElementById('unidadeScope');
+            const group = document.getElementById('unidadeIdGroup');
+            if (!scopeSelect || !group) return;
+
+            if (scopeSelect.value === 'unidade') {
+                group.style.display = '';
+            } else {
+                group.style.display = 'none';
+                const input = group.querySelector('input[name="unidade_id"]');
+                if (input) input.value = '';
+            }
+        }
+
+        document.addEventListener('change', (event) => {
+            if (event.target && event.target.id === 'unidadeScope') {
+                toggleUnidadeId();
+            }
+        });
         
         // Pesquisar usuários
         function searchUsers(query = '') {

@@ -157,7 +157,9 @@ class UsuarioSaveManager {
                 // Campos de dados pessoais
                 'nome_completo', 'rg', 'telefone', 'celular',
                 'endereco_cep', 'endereco_logradouro', 'endereco_numero',
-                'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_estado'
+                'endereco_complemento', 'endereco_bairro', 'endereco_cidade', 'endereco_estado',
+                // Logística - escopo de unidade
+                'unidade_scope', 'unidade_id'
             ];
             
             // Campos obrigatórios que podem ter valores padrão
@@ -364,6 +366,8 @@ class UsuarioSaveManager {
                     $value = !empty($value) ? trim($value) : null;
                     error_log("DEBUG UPDATE FOTO: Campo foto encontrado, value = " . ($value ? substr($value, 0, 100) . '...' : 'NULL/VAZIO'));
                     error_log("DEBUG UPDATE FOTO: isset(data['foto']) = " . (isset($data[$field]) ? 'SIM' : 'NÃO'));
+                } elseif ($field === 'unidade_id') {
+                    $value = isset($data[$field]) && $data[$field] !== '' ? (int)$data[$field] : null;
                 } else {
                     $value = trim($value ?? '');
                 }
@@ -382,6 +386,15 @@ class UsuarioSaveManager {
                         }
                     } else {
                         error_log("DEBUG UPDATE FOTO: Campo foto NÃO está em data[], não será incluído no UPDATE");
+                    }
+                } elseif ($field === 'unidade_id') {
+                    if (isset($data[$field])) {
+                        if ($value !== null) {
+                            $sql .= ", $field = :$field";
+                            $params[":$field"] = $value;
+                        } else {
+                            $sql .= ", $field = NULL";
+                        }
                     }
                 } elseif ($value !== null && $value !== '') {
                     // Para outros campos: só adicionar se tiver valor
@@ -620,6 +633,8 @@ class UsuarioSaveManager {
                     $value = !empty($value) ? trim($value) : null;
                     error_log("DEBUG INSERT FOTO: Campo foto encontrado, value = " . ($value ? substr($value, 0, 100) . '...' : 'NULL/VAZIO'));
                     error_log("DEBUG INSERT FOTO: isset(data['foto']) = " . (isset($data[$field]) ? 'SIM' : 'NÃO'));
+                } elseif ($field === 'unidade_id') {
+                    $value = isset($data[$field]) && $data[$field] !== '' ? (int)$data[$field] : null;
                 } else {
                     $value = trim($value ?? '');
                 }
@@ -633,6 +648,13 @@ class UsuarioSaveManager {
                         error_log("DEBUG INSERT FOTO: ✅ Adicionando campo foto ao INSERT com URL: " . substr($value, 0, 100) . '...');
                     } else {
                         error_log("DEBUG INSERT FOTO: Campo foto NÃO será incluído no INSERT (não está em data[] ou está vazio)");
+                    }
+                } elseif ($field === 'unidade_id') {
+                    if ($value !== null) {
+                        $sqlCols[] = $field;
+                        $sqlVals[] = ":$field";
+                        $params[":$field"] = $value;
+                        error_log("DEBUG INSERT: Adicionando campo opcional $field = " . $value);
                     }
                 } elseif ($value !== null && $value !== '') {
                     // Para outros campos: só adicionar se tiver valor
@@ -669,4 +691,3 @@ class UsuarioSaveManager {
         return ['success' => true, 'message' => 'Usuário criado com sucesso', 'id' => $newId];
     }
 }
-

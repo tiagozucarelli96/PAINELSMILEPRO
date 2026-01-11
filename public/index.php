@@ -335,7 +335,8 @@ $permissoes_map = require __DIR__ . '/permissoes_map.php';
 // Verificar se a página requer permissão
 $required_permission = $permissoes_map[$page] ?? null;
 
-if ($required_permission !== null && (empty($_SESSION[$required_permission]) || !$_SESSION[$required_permission])) {
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+if ($required_permission !== null && !$is_superadmin && (empty($_SESSION[$required_permission]) || !$_SESSION[$required_permission])) {
     // Usuário não tem permissão - exibir mensagem
     http_response_code(403);
     

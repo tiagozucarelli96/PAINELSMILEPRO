@@ -1461,7 +1461,7 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_administrativo']) && getenv('ENABLE_LOGISTICA_PLACEHOLDER') === '1'): ?>
+                <?php if (!empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_superadmin'])): ?>
                 <a href="index.php?page=logistica" class="nav-item <?= isActiveUnified('logistica') ?>">
                     <span class="nav-item-icon">📦</span>
                     Logística

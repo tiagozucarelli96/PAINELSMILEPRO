@@ -114,6 +114,8 @@ ob_start();
     </div>
 
     <div class="funcionalidades-grid">
+        <?php $is_superadmin = !empty($_SESSION['perm_superadmin']); ?>
+        <?php if (!empty($_SESSION['perm_logistico']) || $is_superadmin): ?>
         <a href="index.php?page=logistica_operacional" class="funcionalidade-card">
             <div class="funcionalidade-card-header">
                 <span class="funcionalidade-card-icon">🗂️</span>
@@ -122,7 +124,9 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+        <?php endif; ?>
 
+        <?php if (!empty($_SESSION['perm_logistico_divergencias']) || $is_superadmin): ?>
         <a href="index.php?page=logistica_divergencias" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f97316, #ea580c);">
                 <span class="funcionalidade-card-icon">🧭</span>
@@ -131,7 +135,9 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+        <?php endif; ?>
 
+        <?php if (!empty($_SESSION['perm_logistico_financeiro']) || $is_superadmin): ?>
         <a href="index.php?page=logistica_financeiro" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
                 <span class="funcionalidade-card-icon">💰</span>
@@ -140,6 +146,7 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+        <?php endif; ?>
     </div>
 </div>
 
