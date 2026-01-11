@@ -299,9 +299,22 @@ ob_start();
             
             <div class="form-group">
                 <label class="form-label">Link Público de Acesso *</label>
-                <input type="text" name="link_publico" class="form-input" 
-                       value="<?= htmlspecialchars($config_acesso['link_publico'] ?? '/contabilidade') ?>" 
-                       placeholder="/contabilidade" required>
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                    <input type="text" name="link_publico" class="form-input" 
+                           value="<?= htmlspecialchars($config_acesso['link_publico'] ?? '/contabilidade') ?>" 
+                           placeholder="/contabilidade" required style="flex: 1;">
+                    <?php if ($config_acesso): ?>
+                    <?php
+                    $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host = $_SERVER['HTTP_HOST'] ?? 'painelsmilepro-production.up.railway.app';
+                    $link_completo = $protocolo . '://' . $host . $config_acesso['link_publico'];
+                    ?>
+                    <button type="button" onclick="copiarLinkCompleto('<?= htmlspecialchars($link_completo, ENT_QUOTES) ?>')" 
+                            style="background: #1e40af; color: white; border: none; padding: 0.75rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.875rem; white-space: nowrap; margin-top: 0;">
+                        📋 Copiar Link
+                    </button>
+                    <?php endif; ?>
+                </div>
                 <small style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem;">
                     Exemplo: /contabilidade ou /contabilidade-externa
                 </small>
@@ -349,23 +362,6 @@ ob_start();
         <div class="info-box">
             <div class="info-box-title">ℹ️ Informações</div>
             <div class="info-box-text">
-                <?php
-                // Construir URL completa
-                $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? 'painelsmilepro-production.up.railway.app';
-                $link_completo = $protocolo . '://' . $host . $config_acesso['link_publico'];
-                ?>
-                <div style="margin-bottom: 0.75rem;">
-                    <strong>Link de acesso:</strong><br>
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.75rem; background: white; border-radius: 6px; border: 1px solid #d1d5db;">
-                        <input type="text" id="link_completo" value="<?= htmlspecialchars($link_completo) ?>" 
-                               readonly style="flex: 1; border: none; background: transparent; font-family: monospace; font-size: 0.875rem; color: #374151;">
-                        <button type="button" onclick="copiarLink()" 
-                                style="background: #1e40af; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.875rem; white-space: nowrap;">
-                            📋 Copiar
-                        </button>
-                    </div>
-                </div>
                 <div style="margin-bottom: 0.5rem;">
                     <strong>Status:</strong> <?= ucfirst($config_acesso['status']) ?>
                 </div>
@@ -376,28 +372,10 @@ ob_start();
         </div>
         
         <script>
-        function copiarLink() {
-            const input = document.getElementById('link_completo');
-            input.select();
-            input.setSelectionRange(0, 99999); // Para mobile
-            
+        function copiarLinkCompleto(link) {
             try {
-                document.execCommand('copy');
-                
-                // Feedback visual
-                const btn = event.target;
-                const textoOriginal = btn.textContent;
-                btn.textContent = '✅ Copiado!';
-                btn.style.background = '#10b981';
-                
-                setTimeout(() => {
-                    btn.textContent = textoOriginal;
-                    btn.style.background = '#1e40af';
-                }, 2000);
-            } catch (err) {
-                // Fallback para navegadores modernos
                 if (navigator.clipboard) {
-                    navigator.clipboard.writeText(input.value).then(() => {
+                    navigator.clipboard.writeText(link).then(() => {
                         const btn = event.target;
                         const textoOriginal = btn.textContent;
                         btn.textContent = '✅ Copiado!';
@@ -409,8 +387,28 @@ ob_start();
                         }, 2000);
                     });
                 } else {
-                    alert('Não foi possível copiar. Link: ' + input.value);
+                    // Fallback para navegadores antigos
+                    const textarea = document.createElement('textarea');
+                    textarea.value = link;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    
+                    const btn = event.target;
+                    const textoOriginal = btn.textContent;
+                    btn.textContent = '✅ Copiado!';
+                    btn.style.background = '#10b981';
+                    
+                    setTimeout(() => {
+                        btn.textContent = textoOriginal;
+                        btn.style.background = '#1e40af';
+                    }, 2000);
                 }
+            } catch (err) {
+                alert('Não foi possível copiar. Link: ' + link);
             }
         }
         </script>
