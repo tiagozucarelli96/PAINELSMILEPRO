@@ -14,6 +14,47 @@ $messages = [];
 $sync_summary = null;
 $novos_locais = [];
 
+function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bool {
+    try {
+        $required = ['logistica_unidades', 'logistica_me_locais', 'logistica_eventos_espelho'];
+        $placeholders = implode(',', array_fill(0, count($required), '?'));
+        $stmt = $pdo->prepare("
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name IN ($placeholders)
+        ");
+        $stmt->execute($required);
+        $found = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $found = array_flip($found);
+
+        $missing = [];
+        foreach ($required as $table) {
+            if (!isset($found[$table])) {
+                $missing[] = $table;
+            }
+        }
+
+        if (!$missing) {
+            return true;
+        }
+
+        $sql_path = __DIR__ . '/../sql/023_logistica_base.sql';
+        if (is_file($sql_path)) {
+            $sql = file_get_contents($sql_path);
+            $pdo->exec($sql);
+            $messages[] = 'Base Logística criada automaticamente (tabelas faltantes).';
+            return true;
+        }
+
+        $errors[] = 'Tabelas da Logística não encontradas (' . implode(', ', $missing) . '). Execute o SQL 023.';
+        return false;
+    } catch (Throwable $e) {
+        $errors[] = 'Falha ao validar/criar base Logística: ' . $e->getMessage();
+        return false;
+    }
+}
+
 function me_request(string $path, array $params = []): array {
     $base = getenv('ME_BASE_URL') ?: (defined('ME_BASE_URL') ? ME_BASE_URL : '');
     $key  = getenv('ME_API_KEY') ?: (defined('ME_API_KEY') ? ME_API_KEY : '');
@@ -295,16 +336,18 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     ];
 }
 
-try {
-    $unidades = get_unidades_internas($pdo);
-    $unidadesByCodigo = [];
-    foreach ($unidades as $u) {
-        $unidadesByCodigo[$u['codigo']] = (int)$u['id'];
+$schema_ok = ensure_logistica_schema($pdo, $errors, $messages);
+$unidades = [];
+$unidadesByCodigo = [];
+if ($schema_ok) {
+    try {
+        $unidades = get_unidades_internas($pdo);
+        foreach ($unidades as $u) {
+            $unidadesByCodigo[$u['codigo']] = (int)$u['id'];
+        }
+    } catch (Throwable $e) {
+        $errors[] = 'Tabela de unidades internas não encontrada. Execute o SQL de base da Logística.';
     }
-} catch (Throwable $e) {
-    $errors[] = 'Tabela de unidades internas não encontrada. Execute o SQL de base da Logística.';
-    $unidades = [];
-    $unidadesByCodigo = [];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -347,6 +390,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'sync') {
+        if (!$schema_ok) {
+            $errors[] = 'Base Logística ausente. Execute o SQL antes de sincronizar.';
+        } else {
         $mapeamentos = load_mapeamentos($pdo);
         $novosLocais = [];
         $sync = sync_eventos($pdo, $mapeamentos, $unidadesByCodigo, $novosLocais);
@@ -357,6 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($novosLocais)) {
                 $novos_locais = array_values($novosLocais);
             }
+        }
         }
     }
 }
@@ -369,7 +416,14 @@ if (!$locais_resp['ok']) {
     $me_locais = $locais_resp['data'];
 }
 
-$mapeamentos = load_mapeamentos($pdo);
+$mapeamentos = ['by_id' => [], 'by_name' => [], 'all' => []];
+if ($schema_ok) {
+    try {
+        $mapeamentos = load_mapeamentos($pdo);
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao carregar mapeamentos existentes: ' . $e->getMessage();
+    }
+}
 
 $space_options = [
     'Lisbon Garden',
