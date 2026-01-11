@@ -145,31 +145,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Painel Smile – Login</title>
 <link rel="stylesheet" href="estilo.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-/* Layout do login (igual ao antigo) */
+/* Layout do login */
+:root {
+  --bg-1: #081126;
+  --bg-2: #0b1b3a;
+  --bg-3: #0d2147;
+  --card: rgba(255,255,255,0.06);
+  --card-border: rgba(255,255,255,0.12);
+  --field: rgba(7, 15, 32, 0.72);
+  --field-border: rgba(255,255,255,0.18);
+  --text: #e9edf7;
+  --muted: #b8c2d8;
+  --brand: #2b6cff;
+  --brand-strong: #1f56d8;
+}
 body.login-bg{
   min-height:100vh;margin:0;
-  background:linear-gradient(135deg,#0b1b3a,#0a1630 60%,#081024);
+  background:
+    radial-gradient(700px 420px at 15% 20%, rgba(39,79,170,0.25), transparent 60%),
+    radial-gradient(700px 420px at 85% 80%, rgba(24,119,242,0.18), transparent 60%),
+    linear-gradient(135deg, var(--bg-2), var(--bg-1) 55%, #060c1c);
   display:grid;place-items:center;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff
+  font-family:"Manrope", "Segoe UI", sans-serif;
+  color:var(--text);
 }
-.login-container{width:100%;max-width:420px;padding:16px}
-.login-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
-  border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.45);backdrop-filter:blur(6px)}
-.login-logo{width:140px;display:block;margin:0 auto 12px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35))}
-h2{text-align:center;margin:6px 0 18px;font-weight:600}
+.login-container{width:100%;max-width:460px;padding:18px}
+.login-box{
+  background:var(--card);
+  border:1px solid var(--card-border);
+  border-radius:20px;
+  padding:28px;
+  box-shadow:0 20px 50px rgba(4, 9, 20, 0.6);
+  backdrop-filter:blur(10px);
+}
+.brand-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:14px;
+}
+.login-logo{
+  width:42px;height:42px;border-radius:10px;
+  display:block;
+  object-fit:contain;
+  background:rgba(255,255,255,0.08);
+  padding:6px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.35);
+}
+.brand-text{font-weight:700;font-size:1.05rem;line-height:1.1}
+.brand-sub{font-size:0.85rem;color:var(--muted);font-weight:600}
+h2{text-align:left;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
 .login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}
-form input{width:100%;padding:12px 14px;margin:8px 0;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(0,0,0,.35);color:#fff;outline:none}
-form input::placeholder{color:#cdd3e1}
-form button{width:100%;padding:12px 14px;margin-top:10px;border-radius:10px;border:0;background:#1e66ff;color:#fff;font-weight:600;cursor:pointer}
-form button:hover{filter:brightness(1.08)}
-.footer-note{text-align:center;margin-top:10px;font-size:12px;opacity:.8}
+.login-field{
+  width:100%;
+  padding:14px 16px;
+  margin:10px 0;
+  border-radius:12px;
+  border:1px solid var(--field-border);
+  background:var(--field);
+  color:var(--text);
+  outline:none;
+  font-size:1rem;
+}
+.login-field::placeholder{color:var(--muted)}
+.login-field:focus{
+  border-color:rgba(43,108,255,0.65);
+  box-shadow:0 0 0 3px rgba(43,108,255,0.2);
+}
+.login-submit{
+  width:100%;
+  padding:14px 16px;
+  margin-top:12px;
+  border-radius:12px;
+  border:0;
+  background:linear-gradient(180deg,var(--brand),var(--brand-strong));
+  color:#fff;
+  font-weight:700;
+  font-size:1rem;
+  cursor:pointer;
+  letter-spacing:0.2px;
+}
+.login-submit:hover{filter:brightness(1.05)}
+.footer-note{text-align:center;margin-top:14px;font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body class="login-bg">
   <div class="login-container">
     <div class="login-box">
-      <img class="login-logo" src="logo.png" alt="Logo do Grupo Smile">
+      <div class="brand-row">
+        <img class="login-logo" src="logo.png" alt="Logo do Grupo Smile">
+        <div>
+          <div class="brand-text">Logo do Grupo</div>
+          <div class="brand-sub">Smile</div>
+        </div>
+      </div>
       <h2>Acessar o Painel</h2>
 
       <?php if (!empty($_GET['erro']) && $_GET['erro'] === 'desativado'): ?>
@@ -184,9 +257,9 @@ form button:hover{filter:brightness(1.08)}
 
       <form method="post" autocomplete="off">
         <!-- Mantemos o nome "login" e também aceitamos "loguin" no PHP -->
-        <input type="text" name="login" placeholder="Login (usuário ou e-mail)" required>
-        <input type="password" name="senha" placeholder="Senha" required>
-        <button type="submit">Entrar</button>
+        <input class="login-field" type="text" name="login" placeholder="Login (usuário ou e-mail)" required>
+        <input class="login-field" type="password" name="senha" placeholder="Senha" required>
+        <button class="login-submit" type="submit">Entrar</button>
       </form>
 
       <div class="footer-note">© Grupo Smile Eventos</div>
