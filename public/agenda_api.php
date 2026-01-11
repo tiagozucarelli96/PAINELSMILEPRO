@@ -61,31 +61,28 @@ try {
                 $stmt = $pdo->prepare("
                     SELECT 
                         id,
-                        'google_' || id::text as id_formatado,
+                        CONCAT('google_', id::text) as id_formatado,
                         titulo,
-                        descricao,
+                        COALESCE(descricao, '') as descricao,
                         inicio,
                         fim,
-                        localizacao,
-                        organizador_email,
-                        html_link,
+                        COALESCE(localizacao, '') as localizacao,
+                        COALESCE(organizador_email, '') as organizador_email,
+                        COALESCE(html_link, '') as html_link,
                         COALESCE(eh_visita_agendada, false) as eh_visita_agendada,
                         COALESCE(contrato_fechado, false) as contrato_fechado
                     FROM google_calendar_eventos
                     WHERE status = 'confirmed'
                       AND (
-                          (inicio >= :start AND inicio <= :end)
-                          OR (fim >= :start AND fim <= :end)
-                          OR (inicio <= :start AND fim >= :end)
+                          (inicio::date >= :start::date AND inicio::date <= :end::date)
+                          OR (fim::date >= :start::date AND fim::date <= :end::date)
+                          OR (inicio::date <= :start::date AND fim::date >= :end::date)
                       )
                     ORDER BY inicio ASC
                 ");
-                // Converter para timestamp completo para comparação
-                $start_timestamp = strtotime($start);
-                $end_timestamp = strtotime($end);
-                
-                $start_date = date('Y-m-d 00:00:00', $start_timestamp);
-                $end_date = date('Y-m-d 23:59:59', $end_timestamp);
+                // Converter para formato de data simples (apenas data, sem hora)
+                $start_date = date('Y-m-d', strtotime($start));
+                $end_date = date('Y-m-d', strtotime($end));
                 
                 error_log("[AGENDA_API] Buscando eventos Google de $start_date até $end_date");
                 
