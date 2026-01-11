@@ -11,23 +11,51 @@ ini_set('log_errors', 1);
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 
-// Responder imediatamente com 204 No Content
+// Verificar se é GET (challenge do Google)
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $challenge = $_GET['challenge'] ?? null;
+    if ($challenge) {
+        header('Content-Type: text/plain');
+        header('HTTP/1.1 200 OK');
+        echo $challenge;
+        error_log("[GOOGLE_WEBHOOK] Challenge respondido");
+        exit;
+    }
+    // Se não for challenge, retornar status OK para testes
+    header('Content-Type: text/plain');
+    echo "Google Calendar Webhook Endpoint - OK";
+    exit;
+}
+
+// Verificar se é POST
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    header('Content-Type: text/plain');
+    echo "Method Not Allowed";
+    exit;
+}
+
+// Ler headers ANTES de responder
+$channel_id = $_SERVER['HTTP_X_GOOG_CHANNEL_ID'] ?? null;
+$resource_id = $_SERVER['HTTP_X_GOOG_RESOURCE_ID'] ?? null;
+$resource_state = $_SERVER['HTTP_X_GOOG_RESOURCE_STATE'] ?? null;
+$message_number = $_SERVER['HTTP_X_GOOG_MESSAGE_NUMBER'] ?? null;
+$channel_token = $_SERVER['HTTP_X_GOOG_CHANNEL_TOKEN'] ?? null; // calendar_id
+
+// Responder imediatamente com 204 No Content (ANTES de qualquer processamento pesado)
 http_response_code(204);
 header('Content-Type: text/plain');
-exit; // Sair imediatamente após responder
+// Não enviar body em 204
+if (ob_get_level() > 0) {
+    ob_end_clean();
+}
+// Fechar conexão com cliente (fastcgi_finish_request se disponível)
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+}
 
 // Processar em segundo plano (após responder)
-// Nota: Em produção, isso pode não executar se o servidor fechar a conexão
-// Por isso, o processador de sincronização deve verificar o flag periodicamente
-
 try {
-    // Ler headers do Google
-    $channel_id = $_SERVER['HTTP_X_GOOG_CHANNEL_ID'] ?? null;
-    $resource_id = $_SERVER['HTTP_X_GOOG_RESOURCE_ID'] ?? null;
-    $resource_state = $_SERVER['HTTP_X_GOOG_RESOURCE_STATE'] ?? null;
-    $message_number = $_SERVER['HTTP_X_GOOG_MESSAGE_NUMBER'] ?? null;
-    $channel_token = $_SERVER['HTTP_X_GOOG_CHANNEL_TOKEN'] ?? null; // calendar_id
-    
     // Log resumido (sem dumping de todos headers)
     error_log(sprintf(
         "[GOOGLE_WEBHOOK] POST | State: %s | Calendar: %s | Resource: %s",
@@ -76,8 +104,8 @@ try {
         exit;
     }
     
-    // Se for notificação de mudança (exists) ou remoção (not_exists)
-    if ($resource_state === 'exists' || $resource_state === 'not_exists') {
+    // Se for notificação de mudança (exists)
+    if ($resource_state === 'exists') {
         // Marcar flag "precisa sincronizar" no banco
         $stmt = $pdo->prepare("
             UPDATE google_calendar_config
