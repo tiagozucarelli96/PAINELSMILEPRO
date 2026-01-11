@@ -31,6 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Selecione um calendário');
             }
             
+            // Log para debug
+            error_log("[GOOGLE_CALENDAR_CONFIG] Salvando calendário - ID: $calendar_id, Nome: $calendar_name");
+            
             // Deletar configs antigas
             $pdo->exec("DELETE FROM google_calendar_config");
             
@@ -44,9 +47,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':dias_futuro' => $dias_futuro
             ]);
             
+            // Verificar se foi salvo corretamente
+            $stmt_check = $pdo->prepare("SELECT * FROM google_calendar_config WHERE google_calendar_id = :calendar_id");
+            $stmt_check->execute([':calendar_id' => $calendar_id]);
+            $saved = $stmt_check->fetch(PDO::FETCH_ASSOC);
+            
+            if ($saved) {
+                error_log("[GOOGLE_CALENDAR_CONFIG] Calendário salvo: ID={$saved['google_calendar_id']}, Nome={$saved['google_calendar_name']}");
+            } else {
+                error_log("[GOOGLE_CALENDAR_CONFIG] ERRO: Calendário não foi salvo!");
+            }
+            
             $mensagem = 'Calendário configurado com sucesso!';
         } catch (Exception $e) {
             $erro = $e->getMessage();
+            error_log("[GOOGLE_CALENDAR_CONFIG] Erro ao salvar: " . $e->getMessage());
         }
     }
     
@@ -56,6 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$config) {
                 throw new Exception('Configure um calendário primeiro');
             }
+            
+            // Log para debug
+            error_log("[GOOGLE_CALENDAR_CONFIG] Sincronizando - ID: {$config['google_calendar_id']}, Nome: {$config['google_calendar_name']}");
             
             $resultado = $helper->syncCalendarEvents(
                 $config['google_calendar_id'],
@@ -389,6 +407,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 </div>
 
 <script>
+function selectCalendar(calendarId, calendarName) {
+    // Marcar o radio button
+    const radio = document.getElementById('calendar_' + calendarId);
+    if (radio) {
+        radio.checked = true;
+    }
+    
+    // Atualizar o campo hidden com o nome do calendário selecionado
+    const nameField = document.getElementById('selected_calendar_name');
+    if (nameField) {
+        nameField.value = calendarName;
+        console.log('Calendário selecionado:', calendarId, 'Nome:', calendarName);
+    }
+    
+    // Atualizar visualmente a seleção
+    updateCalendarSelection();
+}
+
 function updateCalendarSelection() {
     document.querySelectorAll('.calendar-item').forEach(item => {
         item.classList.remove('selected');
@@ -398,8 +434,21 @@ function updateCalendarSelection() {
     });
 }
 
-// Inicializar seleção
-updateCalendarSelection();
+// Inicializar seleção e campo hidden
+document.addEventListener('DOMContentLoaded', function() {
+    updateCalendarSelection();
+    
+    // Garantir que o campo hidden tenha o valor correto do calendário já selecionado
+    const checkedRadio = document.querySelector('input[name="calendar_id"]:checked');
+    if (checkedRadio) {
+        const calendarItem = checkedRadio.closest('.calendar-item');
+        const calendarName = calendarItem.querySelector('strong').textContent.trim();
+        const nameField = document.getElementById('selected_calendar_name');
+        if (nameField) {
+            nameField.value = calendarName;
+        }
+    }
+});
 </script>
 
 <?php
