@@ -226,9 +226,16 @@ class EmailGlobalHelper {
                 'html' => $eh_html ? $corpo : nl2br(htmlspecialchars($corpo)),
             ]);
             
-            // Verificar se tem ID (indica sucesso)
-            if (isset($result->id) && !empty($result->id)) {
-                error_log("[EMAIL] ✅ Resend: E-mail enviado com sucesso! ID: " . $result->id);
+            // Verificar se tem ID (indica sucesso) - SDK pode retornar objeto ou array
+            $result_id = null;
+            if (is_object($result) && isset($result->id)) {
+                $result_id = $result->id;
+            } elseif (is_array($result) && isset($result['id'])) {
+                $result_id = $result['id'];
+            }
+
+            if (!empty($result_id)) {
+                error_log("[EMAIL] ✅ Resend: E-mail enviado com sucesso! ID: " . $result_id);
                 return true;
             } else {
                 error_log("[EMAIL] ❌ Resend: Resposta inesperada (sem ID): " . json_encode($result));
