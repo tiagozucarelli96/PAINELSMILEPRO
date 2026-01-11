@@ -107,9 +107,18 @@ function fetch_me_locais(): array {
         return ['ok' => false, 'error' => $resp['error']];
     }
 
-    $items = $resp['data']['data'] ?? null;
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? null;
+        }
+    }
     if (!is_array($items)) {
-        return ['ok' => false, 'error' => 'Resposta da ME sem campo data para locais.'];
+        $keys = is_array($raw) ? implode(',', array_keys($raw)) : gettype($raw);
+        return ['ok' => false, 'error' => 'Resposta da ME sem lista de locais. Estrutura: ' . $keys];
     }
 
     $locais = [];
