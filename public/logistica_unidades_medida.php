@@ -59,6 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $unidades = $pdo->query("SELECT * FROM logistica_unidades_medida ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+if (empty($unidades)) {
+    $defaults = ['un', 'kg', 'g', 'l', 'ml', 'cx', 'pct'];
+    $stmt = $pdo->prepare("INSERT INTO logistica_unidades_medida (nome, ordem, ativo) VALUES (:nome, :ordem, TRUE)");
+    foreach ($defaults as $idx => $nome) {
+        $stmt->execute([':nome' => $nome, ':ordem' => ($idx + 1) * 10]);
+    }
+    $unidades = $pdo->query("SELECT * FROM logistica_unidades_medida ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
+}
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
 if ($edit_id > 0) {

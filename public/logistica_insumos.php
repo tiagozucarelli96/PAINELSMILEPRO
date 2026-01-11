@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
@@ -42,6 +43,21 @@ function find_duplicates(PDO $pdo, string $nome, array $sinonimos, int $excludeI
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function ensure_unidades_medida(PDO $pdo): array {
+    $rows = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+    if (!empty($rows)) {
+        return $rows;
+    }
+
+    $defaults = ['un', 'kg', 'g', 'l', 'ml', 'cx', 'pct'];
+    $stmt = $pdo->prepare("INSERT INTO logistica_unidades_medida (nome, ordem, ativo) VALUES (:nome, :ordem, TRUE)");
+    foreach ($defaults as $idx => $nome) {
+        $stmt->execute([':nome' => $nome, ':ordem' => ($idx + 1) * 10]);
+    }
+
+    return $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
 }
 
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
@@ -111,14 +127,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors && !$duplicate_warning) {
+            $foto_url = null;
+            $foto_chave = null;
+
+            if (!empty($_FILES['foto_file']['tmp_name']) && is_uploaded_file($_FILES['foto_file']['tmp_name'])) {
+                try {
+                    $uploader = new MagaluUpload();
+                    $result = $uploader->upload($_FILES['foto_file'], 'logistica/insumos');
+                    $foto_url = $result['url'] ?? null;
+                    $foto_chave = $result['chave_storage'] ?? null;
+                } catch (Throwable $e) {
+                    $errors[] = 'Falha ao enviar foto: ' . $e->getMessage();
+                }
+            } elseif ($id > 0) {
+                $stmt = $pdo->prepare("SELECT foto_url, foto_chave_storage FROM logistica_insumos WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                $current = $stmt->fetch(PDO::FETCH_ASSOC);
+                $foto_url = $current['foto_url'] ?? null;
+                $foto_chave = $current['foto_chave_storage'] ?? null;
+            }
+
+            if ($errors) {
+                $duplicate_warning = null;
+            }
+        }
+
+        if (!$errors && !$duplicate_warning) {
             $visivel = !empty($_POST['visivel_na_lista']);
             $ativo = !empty($_POST['ativo']);
             $fracionavel = !empty($_POST['fracionavel']);
 
             $dados = [
                 ':nome_oficial' => $nome,
-                ':foto_url' => trim((string)($_POST['foto_url'] ?? '')) ?: null,
-                ':foto_chave_storage' => trim((string)($_POST['foto_chave_storage'] ?? '')) ?: null,
+                ':foto_url' => $foto_url,
+                ':foto_chave_storage' => $foto_chave,
                 ':unidade_medida' => trim((string)($_POST['unidade_medida'] ?? '')) ?: null,
                 ':tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
                 ':visivel_na_lista' => $visivel,
@@ -132,7 +174,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             if ($can_see_cost) {
-                $dados[':custo_padrao'] = $_POST['custo_padrao'] !== '' ? (float)$_POST['custo_padrao'] : null;
+                $custo_raw = trim((string)($_POST['custo_padrao'] ?? ''));
+                $custo_norm = str_replace(['.', ','], ['', '.'], preg_replace('/[^0-9,\.]/', '', $custo_raw));
+                $dados[':custo_padrao'] = $custo_norm !== '' ? (float)$custo_norm : null;
             }
 
             if ($id > 0) {
@@ -218,12 +262,7 @@ $stmt->execute($params);
 $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_insumo WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
-$unidades_medida = [];
-try {
-    $unidades_medida = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
-} catch (Throwable $e) {
-    $unidades_medida = [];
-}
+$unidades_medida = ensure_unidades_medida($pdo);
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
@@ -389,7 +428,7 @@ includeSidebar('Insumos - Logística');
 
     <div class="section-card">
         <h2>Novo / Editar Insumo</h2>
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
@@ -465,7 +504,7 @@ includeSidebar('Insumos - Logística');
                     <label>Custo padrão</label>
                     <div class="input-group">
                         <span>R$</span>
-                        <input name="custo_padrao" type="number" step="0.01" value="<?= h($edit_item['custo_padrao'] ?? '') ?>">
+                        <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= h($edit_item['custo_padrao'] ?? '') ?>">
                     </div>
                 </div>
                 <?php endif; ?>
@@ -489,14 +528,8 @@ includeSidebar('Insumos - Logística');
                         <?php endif; ?>
                     </div>
                     <div class="upload-actions">
-                        <input type="file" id="foto_file" accept="image/*">
-                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
-                        <span class="link-muted" onclick="toggleManualUrl()">Inserir URL manual</span>
+                        <input type="file" id="foto_file" name="foto_file" accept="image/*">
                     </div>
-                    <div id="manual_url_box" style="display:none; margin-top:0.5rem;">
-                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
-                    </div>
-                    <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -519,23 +552,32 @@ includeSidebar('Insumos - Logística');
             <input type="hidden" name="page" value="logistica_insumos">
             <input class="form-input" name="q" placeholder="Buscar por nome ou sinônimo" value="<?= h($search) ?>">
         </form>
-        <table class="table">
-            <thead>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Foto</th>
+                <th>Nome</th>
+                <th>Tipologia</th>
+                <th>Unidade</th>
+                <th>Status</th>
+                <?php if ($can_see_cost): ?>
+                    <th>Custo</th>
+                <?php endif; ?>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($insumos as $insumo): ?>
+                <?php $thumb_url = gerarUrlPreviewMagalu($insumo['foto_chave_storage'] ?? null, $insumo['foto_url'] ?? null); ?>
                 <tr>
-                    <th>Nome</th>
-                    <th>Tipologia</th>
-                    <th>Unidade</th>
-                    <th>Status</th>
-                    <?php if ($can_see_cost): ?>
-                        <th>Custo</th>
-                    <?php endif; ?>
-                    <th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($insumos as $insumo): ?>
-                    <tr>
-                        <td><?= h($insumo['nome_oficial']) ?></td>
+                    <td>
+                        <?php if (!empty($thumb_url)): ?>
+                            <img src="<?= h($thumb_url) ?>" alt="Foto" style="max-height:44px;border-radius:6px;border:1px solid #e5e7eb;">
+                        <?php else: ?>
+                            -
+                        <?php endif; ?>
+                    </td>
+                    <td><?= h($insumo['nome_oficial']) ?></td>
                         <td><?= h($insumo['tipologia_nome'] ?? '') ?></td>
                         <td><?= h($insumo['unidade_medida'] ?? '') ?></td>
                         <td>
@@ -557,7 +599,7 @@ includeSidebar('Insumos - Logística');
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($insumos)): ?>
-                    <tr><td colspan="<?= $can_see_cost ? '6' : '5' ?>">Nenhum insumo encontrado.</td></tr>
+                    <tr><td colspan="<?= $can_see_cost ? '7' : '6' ?>">Nenhum insumo encontrado.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -565,44 +607,16 @@ includeSidebar('Insumos - Logística');
 </div>
 
 <script>
-function toggleManualUrl() {
-    const box = document.getElementById('manual_url_box');
-    if (!box) return;
-    box.style.display = box.style.display === 'none' || box.style.display === '' ? 'block' : 'none';
-}
-
-async function uploadFoto() {
-    const fileInput = document.getElementById('foto_file');
-    if (!fileInput.files.length) {
-        alert('Selecione um arquivo.');
-        return;
-    }
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    formData.append('context', 'insumo');
-
-    const response = await fetch('index.php?page=logistica_upload', {
-        method: 'POST',
-        body: formData
-    });
-    const result = await response.json();
-    if (!result.ok) {
-        alert('Erro no upload: ' + (result.error || ''));
-        return;
-    }
-    const urlInput = document.getElementById('foto_url');
-    if (urlInput) {
-        urlInput.value = result.url || '';
-    }
-    const chaveInput = document.getElementById('foto_chave_storage');
-    if (chaveInput) {
-        chaveInput.value = result.chave_storage || '';
-    }
+document.getElementById('foto_file')?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
     const preview = document.getElementById('foto_preview');
-    if (preview) {
-        preview.innerHTML = '<img src="' + (result.url || '') + '" alt="Preview">';
-    }
-}
+    if (!file || !preview) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        preview.innerHTML = '<img src="' + reader.result + '" alt="Preview">';
+    };
+    reader.readAsDataURL(file);
+});
 
 async function openBarcodeCamera() {
     const fileInput = document.getElementById('barcode_file');
@@ -642,12 +656,21 @@ document.getElementById('tamanho_embalagem')?.addEventListener('blur', (e) => {
     }
 });
 
-document.getElementById('foto_url')?.addEventListener('input', (e) => {
-    const chaveInput = document.getElementById('foto_chave_storage');
-    if (chaveInput && e.target.value.trim() !== '') {
-        chaveInput.value = '';
+const custoInput = document.getElementById('custo_padrao');
+if (custoInput) {
+    const formatCurrency = (raw) => {
+        const digits = raw.replace(/[^0-9]/g, '');
+        if (!digits) return '';
+        const value = (parseInt(digits, 10) / 100).toFixed(2);
+        return value.replace('.', ',');
+    };
+    custoInput.addEventListener('input', (e) => {
+        e.target.value = formatCurrency(e.target.value);
+    });
+    if (custoInput.value !== '') {
+        custoInput.value = formatCurrency(custoInput.value);
     }
-});
+}
 </script>
 
 <?php endSidebar(); ?>
