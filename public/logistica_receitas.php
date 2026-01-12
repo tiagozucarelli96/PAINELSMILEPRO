@@ -23,7 +23,7 @@ $messages = [];
 $redirect_id = 0;
 
 function ensure_unidades_medida(PDO $pdo): array {
-    $rows = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+    $rows = $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
     if (!empty($rows)) {
         return $rows;
     }
@@ -34,7 +34,7 @@ function ensure_unidades_medida(PDO $pdo): array {
         $stmt->execute([':nome' => $nome, ':ordem' => ($idx + 1) * 10]);
     }
 
-    return $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+    return $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function parse_decimal($value): ?float {
@@ -105,13 +105,21 @@ function calcular_custo_receita_total(int $receita_id, array $componentes_by_rec
     $total = 0.0;
     $componentes = $componentes_by_receita[$receita_id] ?? [];
     foreach ($componentes as $comp) {
-        $qtde_bruta = (float)($comp['qtde_bruta'] ?? 0);
-        if ($qtde_bruta <= 0) {
+        $peso_bruto = (float)($comp['peso_bruto'] ?? 0);
+        if ($peso_bruto <= 0) {
+            $peso_liquido = (float)($comp['peso_liquido'] ?? 0);
+            $fator = (float)($comp['fator_correcao'] ?? 1);
+            if ($fator <= 0) {
+                $fator = 1.0;
+            }
+            $peso_bruto = $peso_liquido * $fator;
+        }
+        if ($peso_bruto <= 0) {
             continue;
         }
         if ($comp['item_tipo'] === 'insumo') {
             $custo_unit = isset($insumo_cost[$comp['item_id']]) ? (float)$insumo_cost[$comp['item_id']] : 0.0;
-            $total += $qtde_bruta * $custo_unit;
+            $total += $peso_bruto * $custo_unit;
         } elseif ($comp['item_tipo'] === 'receita') {
             $sub_total = calcular_custo_receita_total((int)$comp['item_id'], $componentes_by_receita, $insumo_cost, $receita_yield, $memo, $stack);
             if ($sub_total === null) {
@@ -123,7 +131,7 @@ function calcular_custo_receita_total(int $receita_id, array $componentes_by_rec
                 $yield = 1;
             }
             $custo_unit = $sub_total / $yield;
-            $total += $qtde_bruta * $custo_unit;
+            $total += $peso_bruto * $custo_unit;
         }
     }
 
@@ -164,14 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $messages = [];
             }
 
-            if (!empty($componentes_norm)) {
-                $unidade_receita = trim((string)($_POST['unidade_medida'] ?? ''));
-                foreach ($componentes_norm as &$comp) {
-                    $comp['unidade_medida'] = $unidade_receita !== '' ? $unidade_receita : $comp['unidade_medida'];
-                }
-                unset($comp);
-            }
-
             $visivel = !empty($_POST['visivel_na_lista']);
             $ativo = !empty($_POST['ativo']);
             $dados = [
@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':foto_url' => $foto_url,
                 ':foto_chave_storage' => $foto_chave,
                 ':tipologia_receita_id' => !empty($_POST['tipologia_receita_id']) ? (int)$_POST['tipologia_receita_id'] : null,
-                ':unidade_medida' => trim((string)($_POST['unidade_medida'] ?? '')) ?: null,
+                ':unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
                 ':ativo' => $ativo,
                 ':visivel_na_lista' => $visivel,
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
@@ -196,8 +196,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($componentes_post as $comp) {
                 $tipo = $comp['item_tipo'] ?? '';
                 $item_id = (int)($comp['item_id'] ?? 0);
-                $qtde_bruta = parse_decimal($comp['qtde_bruta'] ?? null);
-                $qtde_liquida = parse_decimal($comp['qtde_liquida'] ?? null);
+                $peso_liquido = parse_decimal($comp['peso_liquido'] ?? null);
+                $fator = parse_decimal($comp['fator_correcao'] ?? null);
+                $unidade_id = !empty($comp['unidade_medida_id']) ? (int)$comp['unidade_medida_id'] : null;
 
                 if ($tipo !== 'insumo' && $tipo !== 'receita') {
                     continue;
@@ -209,7 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $errors[] = 'Receita não pode referenciar ela mesma.';
                     continue;
                 }
-                if ($qtde_bruta === null || $qtde_bruta <= 0) {
+                if ($peso_liquido === null || $peso_liquido <= 0) {
                     continue;
                 }
                 if ($tipo === 'insumo' && !isset($valid_insumos[$item_id])) {
@@ -219,13 +220,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
+                if ($fator === null || $fator <= 0) {
+                    $fator = 1.0;
+                }
+                $peso_bruto = $peso_liquido * $fator;
+
                 $componentes_norm[] = [
                     'item_tipo' => $tipo,
                     'item_id' => $item_id,
-                    'medida_caseira' => trim((string)($comp['medida_caseira'] ?? '')) ?: null,
-                    'unidade_medida' => trim((string)($comp['unidade_medida'] ?? '')) ?: null,
-                    'qtde_bruta' => $qtde_bruta,
-                    'qtde_liquida' => ($qtde_liquida === null || $qtde_liquida <= 0) ? $qtde_bruta : $qtde_liquida
+                    'unidade_medida_id' => $unidade_id,
+                    'peso_liquido' => $peso_liquido,
+                    'fator_correcao' => $fator,
+                    'peso_bruto' => $peso_bruto
                 ];
             }
 
@@ -234,17 +240,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->beginTransaction();
                     if ($id > 0) {
                         $sql = "
-                            UPDATE logistica_receitas
-                            SET nome = :nome,
-                                foto_url = :foto_url,
-                                foto_chave_storage = :foto_chave_storage,
-                                tipologia_receita_id = :tipologia_receita_id,
-                                unidade_medida = :unidade_medida,
-                                ativo = :ativo,
-                                visivel_na_lista = :visivel_na_lista,
-                                rendimento_base_pessoas = :rendimento_base_pessoas,
-                                updated_at = NOW()
-                            WHERE id = :id
+                    UPDATE logistica_receitas
+                    SET nome = :nome,
+                        foto_url = :foto_url,
+                        foto_chave_storage = :foto_chave_storage,
+                        tipologia_receita_id = :tipologia_receita_id,
+                        unidade_medida_padrao_id = :unidade_medida_padrao_id,
+                        ativo = :ativo,
+                        visivel_na_lista = :visivel_na_lista,
+                        rendimento_base_pessoas = :rendimento_base_pessoas,
+                        updated_at = NOW()
+                    WHERE id = :id
                         ";
                         $dados[':id'] = $id;
                         $stmt = $pdo->prepare($sql);
@@ -254,11 +260,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $redirect_id = $id;
                     } else {
                         $sql = "
-                            INSERT INTO logistica_receitas
-                            (nome, foto_url, foto_chave_storage, tipologia_receita_id, unidade_medida, ativo, visivel_na_lista, rendimento_base_pessoas)
-                            VALUES
-                            (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :unidade_medida, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
-                        ";
+                    INSERT INTO logistica_receitas
+                    (nome, foto_url, foto_chave_storage, tipologia_receita_id, unidade_medida_padrao_id, ativo, visivel_na_lista, rendimento_base_pessoas)
+                    VALUES
+                    (:nome, :foto_url, :foto_chave_storage, :tipologia_receita_id, :unidade_medida_padrao_id, :ativo, :visivel_na_lista, :rendimento_base_pessoas)
+                ";
                         $stmt = $pdo->prepare($sql);
                         $stmt->execute($dados);
                         $receita_id = (int)$pdo->lastInsertId();
@@ -273,9 +279,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!empty($componentes_norm)) {
                             $stmt = $pdo->prepare("
                                 INSERT INTO logistica_receita_componentes
-                                (receita_id, item_tipo, item_id, medida_caseira, unidade_medida, qtde_bruta, qtde_liquida, created_at, updated_at)
+                                (receita_id, item_tipo, item_id, unidade_medida_id, peso_liquido, fator_correcao, peso_bruto, created_at, updated_at)
                                 VALUES
-                                (:receita_id, :item_tipo, :item_id, :medida_caseira, :unidade_medida, :qtde_bruta, :qtde_liquida, NOW(), NOW())
+                                (:receita_id, :item_tipo, :item_id, :unidade_medida_id, :peso_liquido, :fator_correcao, :peso_bruto, NOW(), NOW())
                             ");
                             foreach ($componentes_norm as $comp) {
                                 if ($comp['item_tipo'] === 'receita' && $comp['item_id'] === $receita_id) {
@@ -285,10 +291,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     ':receita_id' => $receita_id,
                                     ':item_tipo' => $comp['item_tipo'],
                                     ':item_id' => $comp['item_id'],
-                                    ':medida_caseira' => $comp['medida_caseira'],
-                                    ':unidade_medida' => $comp['unidade_medida'],
-                                    ':qtde_bruta' => $comp['qtde_bruta'],
-                                    ':qtde_liquida' => $comp['qtde_liquida']
+                                    ':unidade_medida_id' => $comp['unidade_medida_id'],
+                                    ':peso_liquido' => $comp['peso_liquido'],
+                                    ':fator_correcao' => $comp['fator_correcao'],
+                                    ':peso_bruto' => $comp['peso_bruto']
                                 ]);
                             }
                         }
@@ -309,6 +315,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id > 0) {
             $pdo->prepare("UPDATE logistica_receitas SET ativo = NOT ativo, updated_at = NOW() WHERE id = :id")
                 ->execute([':id' => $id]);
+        }
+    }
+
+    if ($action === 'delete') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
+            $pdo->prepare("DELETE FROM logistica_receitas WHERE id = :id")
+                ->execute([':id' => $id]);
+            $messages[] = 'Receita excluída.';
         }
     }
 
@@ -340,9 +355,13 @@ $receitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_receita WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $unidades_medida = ensure_unidades_medida($pdo);
+$unidades_medida_map = [];
+foreach ($unidades_medida as $un) {
+    $unidades_medida_map[(int)$un['id']] = $un['nome'];
+}
 
-$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
-$receitas_all = $pdo->query("SELECT id, nome, rendimento_base_pessoas, ativo FROM logistica_receitas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
+$insumos_all = $pdo->query("SELECT id, nome_oficial, custo_padrao, ativo, unidade_medida_padrao_id FROM logistica_insumos ORDER BY nome_oficial")->fetchAll(PDO::FETCH_ASSOC);
+$receitas_all = $pdo->query("SELECT id, nome, rendimento_base_pessoas, ativo, unidade_medida_padrao_id FROM logistica_receitas ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $componentes_all = $pdo->query("SELECT * FROM logistica_receita_componentes ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
 
 $insumos_select = array_values(array_filter($insumos_all, static fn($i) => !isset($i['ativo']) || $i['ativo']));
@@ -409,12 +428,12 @@ foreach ($receitas as $rec) {
         $item_nome = $item_tipo === 'receita'
             ? ($receita_nome[$item_id] ?? ('Receita #' . $item_id))
             : ($insumo_nome[$item_id] ?? ('Insumo #' . $item_id));
-        $qtde_bruta = (float)($comp['qtde_bruta'] ?? 0);
-        $qtde_liquida = (float)($comp['qtde_liquida'] ?? 0);
-        if ($qtde_liquida <= 0) {
-            $qtde_liquida = $qtde_bruta;
+        $peso_liquido = (float)($comp['peso_liquido'] ?? 0);
+        $fator = (float)($comp['fator_correcao'] ?? 1);
+        if ($fator <= 0) {
+            $fator = 1.0;
         }
-        $fc = $qtde_liquida > 0 ? $qtde_bruta / $qtde_liquida : 1.0;
+        $peso_bruto = (float)($comp['peso_bruto'] ?? ($peso_liquido * $fator));
 
         $custo_unit = null;
         $custo_total = null;
@@ -432,17 +451,17 @@ foreach ($receitas as $rec) {
                 }
             }
             if ($custo_unit !== null) {
-                $custo_total = $qtde_bruta * $custo_unit;
+                $custo_total = $peso_bruto * $custo_unit;
             }
         }
 
         $linhas[] = [
             'item' => $item_nome,
             'item_tipo' => $item_tipo,
-            'unidade_medida' => $comp['unidade_medida'] ?? '',
-            'qtde_bruta' => $qtde_bruta,
-            'qtde_liquida' => $qtde_liquida,
-            'fc' => $fc,
+            'unidade_medida' => $unidades_medida_map[(int)($comp['unidade_medida_id'] ?? 0)] ?? '',
+            'peso_liquido' => $peso_liquido,
+            'fator' => $fator,
+            'peso_bruto' => $peso_bruto,
             'custo_unit' => $custo_unit,
             'custo_total' => $custo_total
         ];
@@ -550,6 +569,21 @@ includeSidebar('Receitas - Logística');
     align-items: center;
     margin-top: 0.5rem;
 }
+.item-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+}
+.item-option.selected {
+    border-color: #2563eb;
+    background: #dbeafe;
+}
 .link-muted {
     font-size: 0.85rem;
     color: #64748b;
@@ -649,15 +683,15 @@ includeSidebar('Receitas - Logística');
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
                 <div>
-                    <label>Unidade</label>
-                    <select class="form-input" name="unidade_medida" id="unidade_medida_header">
+                    <label>Unidade padrão</label>
+                    <select class="form-input" name="unidade_medida_padrao_id" id="unidade_medida_padrao_id">
                         <option value="">Selecione...</option>
                         <?php if (empty($unidades_medida)): ?>
                             <option value="" disabled>Nenhuma unidade cadastrada</option>
                         <?php endif; ?>
                         <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_medida'] ?? '') === $un ? 'selected' : '' ?>>
-                                <?= h($un) ?>
+                            <option value="<?= (int)$un['id'] ?>" <?= (int)($edit_item['unidade_medida_padrao_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                                <?= h($un['nome']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -683,29 +717,30 @@ includeSidebar('Receitas - Logística');
                     </div>
                     <div class="upload-actions">
                         <input type="file" id="foto_file" name="foto_file" accept="image/*">
+                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
                     </div>
                     <div style="margin-top:0.5rem;">
                         <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
-                        <input type="hidden" name="foto_url" id="foto_url" value="<?= h($edit_item['foto_url'] ?? '') ?>">
+                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
                     </div>
                 </div>
             </div>
             <div style="margin-top:1rem;">
                 <h3 style="margin:0 0 0.75rem 0;">Tabela de Insumos (Ficha Técnica)</h3>
                 <div class="link-muted" style="margin-bottom:0.75rem;">
-                    Componentes podem ser insumos ou sub-receitas. Qtde bruta usa compra.
+                    Componentes podem ser insumos ou sub-receitas. Peso bruto = peso líquido × fator.
                 </div>
                 <table class="table ficha-table">
                     <thead>
                         <tr>
-                            <th>Item</th>
+                            <th>Itens</th>
+                            <th>Peso líquido</th>
                             <th>Unidade</th>
-                            <th>Qtde bruta</th>
-                            <th>Qtde líquida</th>
-                            <th>FC</th>
+                            <th>Fator de correção</th>
+                            <th>Peso bruto</th>
                             <?php if ($can_see_cost): ?>
-                                <th>Custo unitário</th>
-                                <th>Custo total</th>
+                                <th>Valor unidade</th>
+                                <th>Valor total</th>
                             <?php endif; ?>
                             <th></th>
                         </tr>
@@ -718,47 +753,43 @@ includeSidebar('Receitas - Logística');
                             $componentes_render[] = [
                                 'item_tipo' => 'insumo',
                                 'item_id' => 0,
-                                'medida_caseira' => '',
-                                'unidade_medida' => '',
-                                'qtde_bruta' => '',
-                                'qtde_liquida' => ''
+                                'unidade_medida_id' => null,
+                                'peso_liquido' => '',
+                                'fator_correcao' => '1',
+                                'peso_bruto' => ''
                             ];
                         }
                         foreach ($componentes_render as $comp):
                             $tipo = $comp['item_tipo'] ?? 'insumo';
                             $item_id = (int)($comp['item_id'] ?? 0);
-                        $unidade_medida = $comp['unidade_medida'] ?? '';
-                            $qtde_bruta = $comp['qtde_bruta'] ?? '';
-                            $qtde_liquida = $comp['qtde_liquida'] ?? '';
+                            $item_nome = $tipo === 'receita'
+                                ? ($receita_nome[$item_id] ?? '')
+                                : ($insumo_nome[$item_id] ?? '');
+                            $unidade_id = (int)($comp['unidade_medida_id'] ?? 0);
+                            $peso_liquido = $comp['peso_liquido'] ?? '';
+                            $fator_correcao = $comp['fator_correcao'] ?? '';
+                            $peso_bruto = $comp['peso_bruto'] ?? '';
                         ?>
                             <tr class="componente-row" data-index="<?= $row_index ?>">
                                 <td>
-                                    <select class="form-input item-tipo" name="componentes[<?= $row_index ?>][item_tipo]">
-                                        <option value="insumo" <?= $tipo === 'insumo' ? 'selected' : '' ?>>Insumo</option>
-                                        <option value="receita" <?= $tipo === 'receita' ? 'selected' : '' ?>>Receita</option>
-                                    </select>
-                                    <select class="form-input item-id" name="componentes[<?= $row_index ?>][item_id]" style="margin-top:0.35rem;">
+                                    <input class="form-input item-nome" name="componentes[<?= $row_index ?>][item_nome]" readonly value="<?= h($item_nome) ?>">
+                                    <input type="hidden" class="item-tipo" name="componentes[<?= $row_index ?>][item_tipo]" value="<?= h($tipo) ?>">
+                                    <input type="hidden" class="item-id" name="componentes[<?= $row_index ?>][item_id]" value="<?= (int)$item_id ?>">
+                                    <button type="button" class="btn-secondary abrir-modal">🔍</button>
+                                </td>
+                                <td><input class="form-input peso-liquido" name="componentes[<?= $row_index ?>][peso_liquido]" type="text" inputmode="decimal" value="<?= h($peso_liquido) ?>"></td>
+                                <td>
+                                    <select class="form-input unidade-medida" name="componentes[<?= $row_index ?>][unidade_medida_id]">
                                         <option value="">Selecione...</option>
-                                        <?php if ($tipo === 'insumo'): ?>
-                                            <?php foreach ($insumos_select as $ins): ?>
-                                                <option value="<?= (int)$ins['id'] ?>" <?= $item_id === (int)$ins['id'] ? 'selected' : '' ?>>
-                                                    <?= h($ins['nome_oficial']) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        <?php else: ?>
-                                            <?php foreach ($receitas_select as $rec_opt): ?>
-                                                <?php if ($edit_id > 0 && (int)$rec_opt['id'] === $edit_id) continue; ?>
-                                                <option value="<?= (int)$rec_opt['id'] ?>" <?= $item_id === (int)$rec_opt['id'] ? 'selected' : '' ?>>
-                                                    <?= h($rec_opt['nome']) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        <?php endif; ?>
+                                        <?php foreach ($unidades_medida as $un): ?>
+                                            <option value="<?= (int)$un['id'] ?>" <?= $unidade_id === (int)$un['id'] ? 'selected' : '' ?>>
+                                                <?= h($un['nome']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
                                     </select>
                                 </td>
-                                <td><input class="form-input unidade-medida" name="componentes[<?= $row_index ?>][unidade_medida]" readonly value="<?= h($unidade_medida ?: ($edit_item['unidade_medida'] ?? '')) ?>"></td>
-                                <td><input class="form-input qtde-bruta" name="componentes[<?= $row_index ?>][qtde_bruta]" type="number" step="0.001" value="<?= h($qtde_bruta) ?>"></td>
-                                <td><input class="form-input qtde-liquida" name="componentes[<?= $row_index ?>][qtde_liquida]" type="number" step="0.001" value="<?= h($qtde_liquida) ?>"></td>
-                                <td><input class="form-input fc-input" name="componentes[<?= $row_index ?>][fc]" readonly value=""></td>
+                                <td><input class="form-input fator-correcao" name="componentes[<?= $row_index ?>][fator_correcao]" type="text" inputmode="decimal" value="<?= h($fator_correcao) ?>"></td>
+                                <td><input class="form-input peso-bruto" name="componentes[<?= $row_index ?>][peso_bruto]" readonly value="<?= h($peso_bruto) ?>"></td>
                                 <?php if ($can_see_cost): ?>
                                     <td><input class="form-input custo-unit" readonly value=""></td>
                                     <td><input class="form-input custo-total" readonly value=""></td>
@@ -771,14 +802,19 @@ includeSidebar('Receitas - Logística');
                         ?>
                     </tbody>
                     <tfoot>
-                        <tr>
-                            <td colspan="<?= $can_see_cost ? '6' : '4' ?>" style="text-align:right;font-weight:700;">Total da receita</td>
-                            <?php if ($can_see_cost): ?>
+                        <?php if ($can_see_cost): ?>
+                            <tr>
+                                <td colspan="5" style="text-align:right;font-weight:700;">Total</td>
                                 <td></td>
                                 <td><input class="form-input" id="total-receita" readonly value="R$ 0,00"></td>
-                            <?php endif; ?>
-                            <td></td>
-                        </tr>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="6" style="text-align:right;font-weight:700;">Total por porção</td>
+                                <td><input class="form-input" id="total-por-porcao" readonly value="R$ 0,00"></td>
+                                <td></td>
+                            </tr>
+                        <?php endif; ?>
                     </tfoot>
                 </table>
                 <div style="margin-top:0.75rem;">
@@ -804,7 +840,6 @@ includeSidebar('Receitas - Logística');
                     <th>Foto</th>
                     <th>Nome</th>
                     <th>Tipologia</th>
-                    <th>Unidade</th>
                     <th>Rendimento</th>
                     <th>Status</th>
                     <th>Ações</th>
@@ -824,7 +859,6 @@ includeSidebar('Receitas - Logística');
                         </td>
                         <td><?= h($rec['nome']) ?></td>
                         <td><?= h($rec['tipologia_nome'] ?? '') ?></td>
-                        <td><?= h($rec['unidade_medida'] ?? '') ?></td>
                         <td><?= (int)($rec['rendimento_base_pessoas'] ?? 0) ?></td>
                         <td>
                             <span class="status-pill <?= $rec['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
@@ -839,11 +873,16 @@ includeSidebar('Receitas - Logística');
                             </form>
                             <button type="button" class="btn-secondary ver-ficha" data-ficha="<?= $ficha_json ?>">Ver ficha</button>
                             <a class="btn-secondary" href="index.php?page=logistica_receitas&edit_id=<?= (int)$rec['id'] ?>">Editar</a>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir esta receita?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= (int)$rec['id'] ?>">
+                                <button class="btn-secondary" type="submit">Excluir</button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($receitas)): ?>
-                    <tr><td colspan="7">Nenhuma receita encontrada.</td></tr>
+                    <tr><td colspan="6">Nenhuma receita encontrada.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -858,19 +897,47 @@ includeSidebar('Receitas - Logística');
             <div id="ficha-conteudo"></div>
         </div>
     </div>
+
+    <div class="modal-overlay" id="modal-item">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Selecionar item</div>
+                <button class="modal-close" type="button" onclick="closeItemModal()">Fechar</button>
+            </div>
+            <div class="upload-actions" style="margin-bottom:0.75rem;">
+                <button type="button" class="btn-secondary" id="tab-insumos">Insumos</button>
+                <button type="button" class="btn-secondary" id="tab-receitas">Receitas</button>
+                <input class="form-input" id="item-search" placeholder="Buscar...">
+            </div>
+            <div id="item-list" style="max-height:50vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:0.5rem;"></div>
+            <div style="margin-top:0.75rem;">
+                <button class="btn-primary" type="button" id="confirm-item">Selecionar</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
 const CURRENT_RECIPE_ID = <?= (int)$edit_id ?>;
-const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial']], $insumos_select), JSON_UNESCAPED_UNICODE) ?>;
-const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome']], $receitas_select), JSON_UNESCAPED_UNICODE) ?>;
+const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE) ?>;
+const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE) ?>;
+const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE) ?>;
 const COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE) ?>;
 const COST_RECEITA = <?= json_encode(array_map(function($total) use ($receita_yield) {
     if ($total === null) { return null; }
     return $total;
 }, $receita_cost_total), JSON_UNESCAPED_UNICODE) ?>;
 const YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE) ?>;
+
+function parseNumber(value) {
+    if (value === null || value === undefined) return 0;
+    const raw = String(value).trim();
+    if (raw === '') return 0;
+    const normalized = raw.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(normalized);
+    return Number.isNaN(num) ? 0 : num;
+}
 
 function formatNumber(value, decimals = 3) {
     if (value === null || value === undefined || Number.isNaN(value)) return '-';
@@ -882,52 +949,24 @@ function formatCurrency(value) {
     return 'R$ ' + Number(value).toFixed(2).replace('.', ',');
 }
 
-function buildOptions(list, selectedId, type) {
-    let html = '<option value=\"\">Selecione...</option>';
-    list.forEach(item => {
-        if (type === 'receita' && CURRENT_RECIPE_ID && item.id === CURRENT_RECIPE_ID) {
-            return;
-        }
-        const selected = item.id === Number(selectedId) ? 'selected' : '';
-        html += `<option value=\"${item.id}\" ${selected}>${item.nome}</option>`;
-    });
-    return html;
-}
-
-function updateItemSelect(row) {
-    const tipo = row.querySelector('.item-tipo').value;
-    const select = row.querySelector('.item-id');
-    const current = select.value;
-    const list = tipo === 'receita' ? RECEITAS : INSUMOS;
-    select.innerHTML = buildOptions(list, current, tipo);
-}
-
-function syncUnidadeMedida() {
-    const unidade = document.getElementById('unidade_medida_header')?.value || '';
-    document.querySelectorAll('.unidade-medida').forEach(input => {
-        input.value = unidade;
-    });
-}
-
 function calcRow(row) {
-    const brutaInput = row.querySelector('.qtde-bruta');
-    const liquidaInput = row.querySelector('.qtde-liquida');
-    const fcCell = row.querySelector('.fc-cell');
+    const pesoLiquidoInput = row.querySelector('.peso-liquido');
+    const fatorInput = row.querySelector('.fator-correcao');
+    const pesoBrutoInput = row.querySelector('.peso-bruto');
     const tipo = row.querySelector('.item-tipo').value;
     const itemId = parseInt(row.querySelector('.item-id').value || '0', 10);
 
-    let bruta = parseFloat(brutaInput.value || '0');
-    let liquida = parseFloat(liquidaInput.value || '0');
-    if (!liquida || liquida <= 0) {
-        liquida = bruta;
-        if (bruta > 0) {
-            liquidaInput.value = bruta;
+    const pesoLiquido = parseNumber(pesoLiquidoInput.value);
+    let fator = parseNumber(fatorInput.value);
+    if (!fator || fator <= 0) {
+        fator = 1;
+        if (fatorInput.value.trim() === '') {
+            fatorInput.value = '1';
         }
     }
-    const fc = liquida > 0 ? bruta / liquida : 1;
-    const fcInput = row.querySelector('.fc-input');
-    if (fcInput) {
-        fcInput.value = formatNumber(fc, 3);
+    const pesoBruto = pesoLiquido * fator;
+    if (pesoBrutoInput) {
+        pesoBrutoInput.value = pesoLiquido > 0 ? formatNumber(pesoBruto, 3) : '';
     }
 
     if (!CAN_SEE_COST) return;
@@ -942,42 +981,36 @@ function calcRow(row) {
             custoUnit = Number(total) / Math.max(1, Number(yieldBase));
         }
     }
-    const custoTotal = custoUnit !== null ? bruta * custoUnit : null;
+    const custoTotal = custoUnit !== null ? pesoBruto * custoUnit : null;
     const custoUnitInput = row.querySelector('.custo-unit');
     const custoTotalInput = row.querySelector('.custo-total');
     if (custoUnitInput) custoUnitInput.value = formatCurrency(custoUnit);
     if (custoTotalInput) custoTotalInput.value = formatCurrency(custoTotal);
+    row.dataset.custoTotal = custoTotal !== null ? String(custoTotal) : '0';
 }
 
 function updateTotalReceita() {
     if (!CAN_SEE_COST) return;
     let total = 0;
     document.querySelectorAll('.componente-row').forEach(row => {
-        const custoTotalInput = row.querySelector('.custo-total');
-        if (!custoTotalInput) return;
-        const raw = (custoTotalInput.value || '').replace(/[^0-9,]/g, '').replace(',', '.');
+        const raw = row.dataset.custoTotal || '0';
         const num = parseFloat(raw);
         if (!Number.isNaN(num)) total += num;
     });
     const totalEl = document.getElementById('total-receita');
     if (totalEl) totalEl.value = formatCurrency(total);
+    const rendimento = parseInt(document.querySelector('[name=\"rendimento_base_pessoas\"]')?.value || '1', 10) || 1;
+    const totalPorPorcao = total / Math.max(1, rendimento);
+    const totalPorcaoEl = document.getElementById('total-por-porcao');
+    if (totalPorcaoEl) totalPorcaoEl.value = formatCurrency(totalPorPorcao);
 }
 
 function attachRowEvents(row) {
-    row.querySelector('.item-tipo').addEventListener('change', () => {
-        updateItemSelect(row);
+    row.querySelector('.peso-liquido').addEventListener('input', () => {
         calcRow(row);
         updateTotalReceita();
     });
-    row.querySelector('.item-id').addEventListener('change', () => {
-        calcRow(row);
-        updateTotalReceita();
-    });
-    row.querySelector('.qtde-bruta').addEventListener('input', () => {
-        calcRow(row);
-        updateTotalReceita();
-    });
-    row.querySelector('.qtde-liquida').addEventListener('input', () => {
+    row.querySelector('.fator-correcao').addEventListener('input', () => {
         calcRow(row);
         updateTotalReceita();
     });
@@ -985,15 +1018,13 @@ function attachRowEvents(row) {
         row.remove();
         updateTotalReceita();
     });
-    updateItemSelect(row);
+    row.querySelector('.abrir-modal').addEventListener('click', () => openItemModal(row));
     calcRow(row);
 }
 
 document.querySelectorAll('.componente-row').forEach(row => attachRowEvents(row));
-syncUnidadeMedida();
-document.getElementById('unidade_medida_header')?.addEventListener('change', () => {
-    syncUnidadeMedida();
-});
+updateTotalReceita();
+document.querySelector('[name=\"rendimento_base_pessoas\"]')?.addEventListener('input', updateTotalReceita);
 
 let nextIndex = document.querySelectorAll('.componente-row').length;
 document.getElementById('add-linha')?.addEventListener('click', () => {
@@ -1004,23 +1035,25 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
     row.dataset.index = nextIndex;
     row.innerHTML = `
         <td>
-            <select class=\"form-input item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\">
-                <option value=\"insumo\">Insumo</option>
-                <option value=\"receita\">Receita</option>
-            </select>
-            <select class=\"form-input item-id\" name=\"componentes[${nextIndex}][item_id]\" style=\"margin-top:0.35rem;\"></select>
+            <input class=\"form-input item-nome\" name=\"componentes[${nextIndex}][item_nome]\" readonly>
+            <input type=\"hidden\" class=\"item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\" value=\"\">
+            <input type=\"hidden\" class=\"item-id\" name=\"componentes[${nextIndex}][item_id]\" value=\"\">
+            <button type=\"button\" class=\"btn-secondary abrir-modal\">🔍</button>
         </td>
-        <td><input class=\"form-input medida-caseira\" name=\"componentes[${nextIndex}][medida_caseira]\"></td>
-        <td><input class=\"form-input unidade-medida\" name=\"componentes[${nextIndex}][unidade_medida]\" readonly></td>
-        <td><input class=\"form-input qtde-bruta\" name=\"componentes[${nextIndex}][qtde_bruta]\" type=\"number\" step=\"0.001\"></td>
-        <td><input class=\"form-input qtde-liquida\" name=\"componentes[${nextIndex}][qtde_liquida]\" type=\"number\" step=\"0.001\"></td>
-        <td class=\"fc-cell\">-</td>
-        ${CAN_SEE_COST ? '<td class=\"custo-unit\">-</td><td class=\"custo-total\">-</td>' : ''}
+        <td><input class=\"form-input peso-liquido\" name=\"componentes[${nextIndex}][peso_liquido]\" type=\"text\" inputmode=\"decimal\"></td>
+        <td>
+            <select class=\"form-input unidade-medida\" name=\"componentes[${nextIndex}][unidade_medida_id]\">
+                <option value=\"\">Selecione...</option>
+                ${UNIDADES.map(un => `<option value=\"${un.id}\">${un.nome}</option>`).join('')}
+            </select>
+        </td>
+        <td><input class=\"form-input fator-correcao\" name=\"componentes[${nextIndex}][fator_correcao]\" type=\"text\" inputmode=\"decimal\" value=\"1\"></td>
+        <td><input class=\"form-input peso-bruto\" name=\"componentes[${nextIndex}][peso_bruto]\" readonly></td>
+        ${CAN_SEE_COST ? '<td><input class=\"form-input custo-unit\" readonly value=\"\"></td><td><input class=\"form-input custo-total\" readonly value=\"\"></td>' : ''}
         <td><button type=\"button\" class=\"btn-secondary remover-linha\">Remover</button></td>
     `;
     tbody.appendChild(row);
     attachRowEvents(row);
-    syncUnidadeMedida();
     updateTotalReceita();
     nextIndex += 1;
 });
@@ -1038,13 +1071,16 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
         const rowsHtml = linhas.map(l => `
             <tr>
                 <td>${l.item}</td>
+                <td>${formatNumber(l.peso_liquido, 3)}</td>
                 <td>${l.unidade_medida || '-'}</td>
-                <td>${formatNumber(l.qtde_bruta, 3)}</td>
-                <td>${formatNumber(l.qtde_liquida, 3)}</td>
-                <td>${formatNumber(l.fc, 3)}</td>
+                <td>${formatNumber(l.fator, 3)}</td>
+                <td>${formatNumber(l.peso_bruto, 3)}</td>
                 ${CAN_SEE_COST ? `<td>${formatCurrency(l.custo_unit)}</td><td>${formatCurrency(l.custo_total)}</td>` : ''}
             </tr>
         `).join('');
+
+        const total = linhas.reduce((sum, l) => sum + (l.custo_total || 0), 0);
+        const totalPorPorcao = total / Math.max(1, Number(data.rendimento || 1));
 
         content.innerHTML = `
             <div class=\"ficha-header\">
@@ -1058,10 +1094,10 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
                 <thead>
                     <tr>
                         <th>Item</th>
+                        <th>Peso líquido</th>
                         <th>Unidade</th>
-                        <th title=\"Quantidade bruta usada para compra\">Qtde bruta</th>
-                        <th>Qtde líquida</th>
-                        <th>FC</th>
+                        <th>Fator</th>
+                        <th>Peso bruto</th>
                         ${CAN_SEE_COST ? '<th>Custo unitário</th><th>Custo total</th>' : ''}
                     </tr>
                 </thead>
@@ -1073,7 +1109,11 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
                     <tr>
                         <td colspan=\"5\" style=\"text-align:right;font-weight:700;\">Total da receita</td>
                         <td></td>
-                        <td>${formatCurrency(linhas.reduce((sum, l) => sum + (l.custo_total || 0), 0))}</td>
+                        <td>${formatCurrency(total)}</td>
+                    </tr>
+                    <tr>
+                        <td colspan=\"6\" style=\"text-align:right;font-weight:700;\">Total por porção</td>
+                        <td>${formatCurrency(totalPorPorcao)}</td>
                     </tr>
                 </tfoot>
                 ` : ''}
@@ -1087,6 +1127,92 @@ document.querySelectorAll('.ver-ficha').forEach(btn => {
 document.getElementById('modal-ficha')?.addEventListener('click', (e) => {
     if (e.target.id === 'modal-ficha') {
         closeFicha();
+    }
+});
+
+let modalTargetRow = null;
+let modalTab = 'insumos';
+let modalSelected = null;
+
+function openItemModal(row) {
+    modalTargetRow = row;
+    modalTab = 'insumos';
+    modalSelected = null;
+    document.getElementById('item-search').value = '';
+    renderItemList();
+    document.getElementById('modal-item').style.display = 'flex';
+}
+
+function closeItemModal() {
+    document.getElementById('modal-item').style.display = 'none';
+    modalTargetRow = null;
+    modalSelected = null;
+}
+
+function renderItemList() {
+    const listEl = document.getElementById('item-list');
+    if (!listEl) return;
+    const query = (document.getElementById('item-search').value || '').toLowerCase();
+    const source = modalTab === 'receitas' ? RECEITAS : INSUMOS;
+    const items = source.filter(item => {
+        if (modalTab === 'receitas' && CURRENT_RECIPE_ID && item.id === CURRENT_RECIPE_ID) {
+            return false;
+        }
+        const name = (item.nome || '').toLowerCase();
+        if (name.includes(query)) return true;
+        if (modalTab === 'insumos' && item.sinonimos) {
+            return item.sinonimos.toLowerCase().includes(query);
+        }
+        return query === '';
+    });
+    listEl.innerHTML = items.map(item => {
+        const selected = modalSelected && modalSelected.id === item.id ? ' selected' : '';
+        return `<button type=\"button\" class=\"item-option${selected}\" data-id=\"${item.id}\" data-nome=\"${item.nome}\">${item.nome}</button>`;
+    }).join('');
+    listEl.querySelectorAll('.item-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = parseInt(btn.dataset.id || '0', 10);
+            const nome = btn.dataset.nome || '';
+            const item = source.find(i => i.id === id);
+            modalSelected = {
+                id,
+                nome,
+                tipo: modalTab === 'receitas' ? 'receita' : 'insumo',
+                unidade_padrao: item ? (item.unidade_padrao || 0) : 0
+            };
+            renderItemList();
+        });
+    });
+}
+
+document.getElementById('tab-insumos')?.addEventListener('click', () => {
+    modalTab = 'insumos';
+    modalSelected = null;
+    renderItemList();
+});
+document.getElementById('tab-receitas')?.addEventListener('click', () => {
+    modalTab = 'receitas';
+    modalSelected = null;
+    renderItemList();
+});
+document.getElementById('item-search')?.addEventListener('input', renderItemList);
+document.getElementById('confirm-item')?.addEventListener('click', () => {
+    if (!modalTargetRow || !modalSelected) return;
+    modalTargetRow.querySelector('.item-nome').value = modalSelected.nome;
+    modalTargetRow.querySelector('.item-tipo').value = modalSelected.tipo;
+    modalTargetRow.querySelector('.item-id').value = modalSelected.id;
+    const unidadeSelect = modalTargetRow.querySelector('.unidade-medida');
+    if (unidadeSelect && modalSelected.unidade_padrao) {
+        unidadeSelect.value = String(modalSelected.unidade_padrao);
+    }
+    calcRow(modalTargetRow);
+    updateTotalReceita();
+    closeItemModal();
+});
+
+document.getElementById('modal-item')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-item') {
+        closeItemModal();
     }
 });
 
@@ -1133,7 +1259,6 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
     };
     reader.readAsDataURL(file);
 });
-</script>
 
 document.getElementById('foto_url')?.addEventListener('input', (e) => {
     const chaveInput = document.getElementById('foto_chave_storage');

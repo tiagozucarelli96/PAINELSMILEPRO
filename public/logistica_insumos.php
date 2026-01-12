@@ -46,7 +46,7 @@ function find_duplicates(PDO $pdo, string $nome, array $sinonimos, int $excludeI
 }
 
 function ensure_unidades_medida(PDO $pdo): array {
-    $rows = $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+    $rows = $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
     if (!empty($rows)) {
         return $rows;
     }
@@ -57,7 +57,7 @@ function ensure_unidades_medida(PDO $pdo): array {
         $stmt->execute([':nome' => $nome, ':ordem' => ($idx + 1) * 10]);
     }
 
-    return $pdo->query("SELECT nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_COLUMN);
+    return $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
@@ -157,11 +157,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ativo = !empty($_POST['ativo']);
             $fracionavel = !empty($_POST['fracionavel']);
 
+            $unidade_id = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
+            $unidade_nome = null;
+            if ($unidade_id) {
+                $stmt = $pdo->prepare("SELECT nome FROM logistica_unidades_medida WHERE id = :id");
+                $stmt->execute([':id' => $unidade_id]);
+                $unidade_nome = $stmt->fetchColumn() ?: null;
+            }
+
             $dados = [
                 ':nome_oficial' => $nome,
                 ':foto_url' => $foto_url,
                 ':foto_chave_storage' => $foto_chave,
-                ':unidade_medida' => trim((string)($_POST['unidade_medida'] ?? '')) ?: null,
+                ':unidade_medida' => $unidade_nome,
+                ':unidade_medida_padrao_id' => $unidade_id,
                 ':tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
                 ':visivel_na_lista' => $visivel,
                 ':ativo' => $ativo,
@@ -186,6 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         foto_url = :foto_url,
                         foto_chave_storage = :foto_chave_storage,
                         unidade_medida = :unidade_medida,
+                        unidade_medida_padrao_id = :unidade_medida_padrao_id,
                         tipologia_insumo_id = :tipologia_insumo_id,
                         visivel_na_lista = :visivel_na_lista,
                         ativo = :ativo,
@@ -207,12 +217,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $messages[] = 'Insumo atualizado.';
             } else {
                 $cols = [
-                    'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'tipologia_insumo_id',
+                    'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                     'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
                     'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
                 ];
                 $vals = [
-                    ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':tipologia_insumo_id',
+                    ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                     ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
                     ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
                 ];
@@ -252,9 +262,10 @@ if ($search !== '') {
 }
 
 $stmt = $pdo->prepare("
-    SELECT i.*, t.nome AS tipologia_nome
+    SELECT i.*, t.nome AS tipologia_nome, u.nome AS unidade_nome
     FROM logistica_insumos i
     LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
+    LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
     {$where}
     ORDER BY i.nome_oficial
 ");
@@ -449,23 +460,15 @@ includeSidebar('Insumos - Logística');
                     </select>
                 </div>
                 <div>
-                    <label>Unidade de medida</label>
-                    <select class="form-input" name="unidade_medida">
+                    <label>Unidade de medida (padrão)</label>
+                    <select class="form-input" name="unidade_medida_padrao_id">
                         <option value="">Selecione...</option>
-                        <?php if (!empty($edit_item['unidade_medida']) && !in_array($edit_item['unidade_medida'], $unidades_medida, true)): ?>
-                            <option value="<?= h($edit_item['unidade_medida']) ?>" selected>
-                                <?= h($edit_item['unidade_medida']) ?> (atual)
-                            </option>
-                        <?php endif; ?>
                         <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_medida'] ?? '') === $un ? 'selected' : '' ?>>
-                                <?= h($un) ?>
+                            <option value="<?= (int)$un['id'] ?>" <?= (int)($edit_item['unidade_medida_padrao_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                                <?= h($un['nome']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <div style="margin-top:0.35rem;">
-                        <a class="link-muted" href="index.php?page=logistica_unidades_medida">Gerenciar unidades</a>
-                    </div>
                 </div>
                 <div>
                     <label>Barcode</label>
@@ -487,14 +490,9 @@ includeSidebar('Insumos - Logística');
                     <label>Unidade embalagem</label>
                     <select class="form-input" name="unidade_embalagem">
                         <option value="">Selecione...</option>
-                        <?php if (!empty($edit_item['unidade_embalagem']) && !in_array($edit_item['unidade_embalagem'], $unidades_medida, true)): ?>
-                            <option value="<?= h($edit_item['unidade_embalagem']) ?>" selected>
-                                <?= h($edit_item['unidade_embalagem']) ?> (atual)
-                            </option>
-                        <?php endif; ?>
                         <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= h($un) ?>" <?= ($edit_item['unidade_embalagem'] ?? '') === $un ? 'selected' : '' ?>>
-                                <?= h($un) ?>
+                            <option value="<?= h($un['nome']) ?>" <?= ($edit_item['unidade_embalagem'] ?? '') === $un['nome'] ? 'selected' : '' ?>>
+                                <?= h($un['nome']) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
