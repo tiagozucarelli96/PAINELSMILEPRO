@@ -174,12 +174,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $visivel = !empty($_POST['visivel_na_lista']);
             $ativo = !empty($_POST['ativo']);
+            $unidade_padrao = null;
+            if (array_key_exists('unidade_medida_padrao_id', $_POST)) {
+                $unidade_padrao = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
+            } elseif ($id > 0) {
+                $stmt = $pdo->prepare("SELECT unidade_medida_padrao_id FROM logistica_receitas WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                $unidade_padrao = $stmt->fetchColumn() ?: null;
+            }
             $dados = [
                 ':nome' => $nome,
                 ':foto_url' => $foto_url,
                 ':foto_chave_storage' => $foto_chave,
                 ':tipologia_receita_id' => !empty($_POST['tipologia_receita_id']) ? (int)$_POST['tipologia_receita_id'] : null,
-                ':unidade_medida_padrao_id' => !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null,
+                ':unidade_medida_padrao_id' => $unidade_padrao,
                 ':ativo' => $ativo,
                 ':visivel_na_lista' => $visivel,
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
@@ -499,6 +507,18 @@ includeSidebar('Receitas - Logística');
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1rem;
 }
+.checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: center;
+}
+.checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+}
 .span-2 { grid-column: span 2; }
 .span-3 { grid-column: span 3; }
 .form-input {
@@ -583,6 +603,15 @@ includeSidebar('Receitas - Logística');
 .item-option.selected {
     border-color: #2563eb;
     background: #dbeafe;
+}
+.item-label {
+    min-height: 38px;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #cbd5f5;
+    border-radius: 8px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
 }
 .link-muted {
     font-size: 0.85rem;
@@ -682,27 +711,15 @@ includeSidebar('Receitas - Logística');
                     <label>Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
-                <div>
-                    <label>Unidade padrão</label>
-                    <select class="form-input" name="unidade_medida_padrao_id" id="unidade_medida_padrao_id">
-                        <option value="">Selecione...</option>
-                        <?php if (empty($unidades_medida)): ?>
-                            <option value="" disabled>Nenhuma unidade cadastrada</option>
-                        <?php endif; ?>
-                        <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= (int)$un['id'] ?>" <?= (int)($edit_item['unidade_medida_padrao_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
-                                <?= h($un['nome']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div>
-                    <label>Visível na lista</label>
-                    <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
-                </div>
-                <div>
-                    <label>Ativo</label>
-                    <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
+                        Visível na lista
+                    </label>
+                    <label>
+                        <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                        Ativo
+                    </label>
                 </div>
             </div>
             <div style="margin-top:1rem;">
@@ -717,19 +734,11 @@ includeSidebar('Receitas - Logística');
                     </div>
                     <div class="upload-actions">
                         <input type="file" id="foto_file" name="foto_file" accept="image/*">
-                        <button type="button" class="btn-secondary" onclick="uploadFoto()">Upload Magalu</button>
-                    </div>
-                    <div style="margin-top:0.5rem;">
-                        <input type="hidden" name="foto_chave_storage" id="foto_chave_storage" value="<?= h($edit_item['foto_chave_storage'] ?? '') ?>">
-                        <input class="form-input" name="foto_url" id="foto_url" placeholder="Cole a URL da foto" value="<?= h($edit_item['foto_url'] ?? '') ?>">
                     </div>
                 </div>
             </div>
             <div style="margin-top:1rem;">
                 <h3 style="margin:0 0 0.75rem 0;">Tabela de Insumos (Ficha Técnica)</h3>
-                <div class="link-muted" style="margin-bottom:0.75rem;">
-                    Componentes podem ser insumos ou sub-receitas. Peso bruto = peso líquido × fator.
-                </div>
                 <table class="table ficha-table">
                     <thead>
                         <tr>
@@ -772,7 +781,7 @@ includeSidebar('Receitas - Logística');
                         ?>
                             <tr class="componente-row" data-index="<?= $row_index ?>">
                                 <td>
-                                    <input class="form-input item-nome" name="componentes[<?= $row_index ?>][item_nome]" readonly value="<?= h($item_nome) ?>">
+                                    <div class="item-label item-nome"><?= $item_nome !== '' ? h($item_nome) : '-' ?></div>
                                     <input type="hidden" class="item-tipo" name="componentes[<?= $row_index ?>][item_tipo]" value="<?= h($tipo) ?>">
                                     <input type="hidden" class="item-id" name="componentes[<?= $row_index ?>][item_id]" value="<?= (int)$item_id ?>">
                                     <button type="button" class="btn-secondary abrir-modal">🔍</button>
@@ -821,9 +830,9 @@ includeSidebar('Receitas - Logística');
                     <button type="button" class="btn-secondary" id="add-linha">Adicionar linha</button>
                 </div>
             </div>
-            <div style="margin-top:1rem;">
-                <button class="btn-primary" type="submit">Salvar</button>
-            </div>
+                <div style="margin-top:1rem;">
+                    <button class="btn-primary" type="submit">Salvar</button>
+                </div>
         </form>
     </div>
 
@@ -872,7 +881,6 @@ includeSidebar('Receitas - Logística');
                                 <button class="btn-secondary" type="submit">Ativar/Desativar</button>
                             </form>
                             <button type="button" class="btn-secondary ver-ficha" data-ficha="<?= $ficha_json ?>">Ver ficha</button>
-                            <a class="btn-secondary" href="index.php?page=logistica_receitas&edit_id=<?= (int)$rec['id'] ?>">Editar</a>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir esta receita?');">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="id" value="<?= (int)$rec['id'] ?>">
@@ -1035,7 +1043,7 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
     row.dataset.index = nextIndex;
     row.innerHTML = `
         <td>
-            <input class=\"form-input item-nome\" name=\"componentes[${nextIndex}][item_nome]\" readonly>
+            <div class=\"item-label item-nome\">-</div>
             <input type=\"hidden\" class=\"item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\" value=\"\">
             <input type=\"hidden\" class=\"item-id\" name=\"componentes[${nextIndex}][item_id]\" value=\"\">
             <button type=\"button\" class=\"btn-secondary abrir-modal\">🔍</button>
@@ -1198,7 +1206,10 @@ document.getElementById('tab-receitas')?.addEventListener('click', () => {
 document.getElementById('item-search')?.addEventListener('input', renderItemList);
 document.getElementById('confirm-item')?.addEventListener('click', () => {
     if (!modalTargetRow || !modalSelected) return;
-    modalTargetRow.querySelector('.item-nome').value = modalSelected.nome;
+    const itemLabel = modalTargetRow.querySelector('.item-nome');
+    if (itemLabel) {
+        itemLabel.textContent = modalSelected.nome;
+    }
     modalTargetRow.querySelector('.item-tipo').value = modalSelected.tipo;
     modalTargetRow.querySelector('.item-id').value = modalSelected.id;
     const unidadeSelect = modalTargetRow.querySelector('.unidade-medida');
@@ -1216,39 +1227,6 @@ document.getElementById('modal-item')?.addEventListener('click', (e) => {
     }
 });
 
-async function uploadFoto() {
-    const fileInput = document.getElementById('foto_file');
-    if (!fileInput.files.length) {
-        alert('Selecione um arquivo.');
-        return;
-    }
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-    formData.append('context', 'receita');
-
-    const response = await fetch('index.php?page=logistica_upload', {
-        method: 'POST',
-        body: formData
-    });
-    const result = await response.json();
-    if (!result.ok) {
-        alert('Erro no upload: ' + (result.error || ''));
-        return;
-    }
-    const urlInput = document.getElementById('foto_url');
-    const chaveInput = document.getElementById('foto_chave_storage');
-    if (urlInput) {
-        urlInput.value = result.url || '';
-    }
-    if (chaveInput) {
-        chaveInput.value = result.chave_storage || '';
-    }
-    const preview = document.getElementById('foto_preview');
-    if (preview) {
-        preview.innerHTML = '<img src=\"' + (result.url || '') + '\" alt=\"Preview\">';
-    }
-}
-
 document.getElementById('foto_file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
     const preview = document.getElementById('foto_preview');
@@ -1258,13 +1236,6 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
         preview.innerHTML = '<img src=\"' + reader.result + '\" alt=\"Preview\">';
     };
     reader.readAsDataURL(file);
-});
-
-document.getElementById('foto_url')?.addEventListener('input', (e) => {
-    const chaveInput = document.getElementById('foto_chave_storage');
-    if (chaveInput && e.target.value.trim() !== '') {
-        chaveInput.value = '';
-    }
 });
 </script>
 
