@@ -28,6 +28,23 @@ function contabilidadeColunaExiste(PDO $pdo, string $tabela, string $coluna): bo
     return (bool) $stmt->fetchColumn();
 }
 
+// Processar exclusão de guia
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'excluir_guia') {
+    try {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            throw new Exception('ID inválido');
+        }
+        
+        $stmt = $pdo->prepare("DELETE FROM contabilidade_guias WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        
+        $mensagem = 'Guia excluída com sucesso!';
+    } catch (Exception $e) {
+        $erro = $e->getMessage();
+    }
+}
+
 // Processar cadastro de guia
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_guia') {
     try {

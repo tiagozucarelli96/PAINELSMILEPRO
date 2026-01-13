@@ -47,9 +47,12 @@ function contabilidadeDownloadErro(string $mensagem, ?string $detalhe = null): v
 $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo']);
 $is_contabilidade = !empty($_SESSION['contabilidade_logado']) && $_SESSION['contabilidade_logado'] === true;
 
+// Log para debug
+error_log("[CONTABILIDADE_DOWNLOAD] Verificando permissão - Admin: " . ($is_admin ? 'sim' : 'não') . ", Contabilidade: " . ($is_contabilidade ? 'sim' : 'não'));
+
 if (!$is_admin && !$is_contabilidade) {
     http_response_code(403);
-    die('Acesso negado');
+    contabilidadeDownloadErro('Acesso negado. Você precisa estar logado como administrador ou contador.');
 }
 
 $tipo = $_GET['tipo'] ?? '';

@@ -17,6 +17,23 @@ if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'
 $mensagem = '';
 $erro = '';
 
+// Processar exclusão de honorário
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'excluir_honorario') {
+    try {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            throw new Exception('ID inválido');
+        }
+        
+        $stmt = $pdo->prepare("DELETE FROM contabilidade_honorarios WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        
+        $mensagem = 'Honorário excluído com sucesso!';
+    } catch (Exception $e) {
+        $erro = $e->getMessage();
+    }
+}
+
 // Processar cadastro de honorário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_honorario') {
     try {

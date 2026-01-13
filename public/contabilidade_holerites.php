@@ -17,6 +17,23 @@ if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'
 $mensagem = '';
 $erro = '';
 
+// Processar exclusão de holerite
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'excluir_holerite') {
+    try {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            throw new Exception('ID inválido');
+        }
+        
+        $stmt = $pdo->prepare("DELETE FROM contabilidade_holerites WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        
+        $mensagem = 'Holerite excluído com sucesso!';
+    } catch (Exception $e) {
+        $erro = $e->getMessage();
+    }
+}
+
 // Processar cadastro de holerite
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_holerite') {
     try {
@@ -259,6 +276,7 @@ try {
                         <th>Status</th>
                         <th>Arquivo</th>
                         <th>Data</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -285,6 +303,13 @@ try {
                             <?php endif; ?>
                         </td>
                         <td><?= date('d/m/Y H:i', strtotime($holerite['criado_em'])) ?></td>
+                        <td>
+                            <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir este holerite?');">
+                                <input type="hidden" name="acao" value="excluir_holerite">
+                                <input type="hidden" name="id" value="<?= $holerite['id'] ?>">
+                                <button type="submit" style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🗑️ Excluir</button>
+                            </form>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
