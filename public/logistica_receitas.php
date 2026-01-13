@@ -653,9 +653,27 @@ includeSidebar('Receitas - Logística');
     background: #e2e8f0;
     color: #0f172a;
     border-radius: 8px;
-    padding: 0.4rem 0.7rem;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
+    font-weight: 700;
 }
+.btn-icon {
+    background: #e2e8f0;
+    color: #1f2937;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 700;
+}
+.col-item { width: 28%; }
+.col-fator { width: 120px; }
+.fator-correcao { max-width: 110px; }
 .ficha-header {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -742,10 +760,10 @@ includeSidebar('Receitas - Logística');
                 <table class="table ficha-table">
                     <thead>
                         <tr>
-                            <th>Itens</th>
+                            <th class="col-item">Itens</th>
                             <th>Peso líquido</th>
                             <th>Unidade</th>
-                            <th>Fator de correção</th>
+                            <th class="col-fator">Fator de correção</th>
                             <th>Peso bruto</th>
                             <?php if ($can_see_cost): ?>
                                 <th>Valor unidade</th>
@@ -803,7 +821,7 @@ includeSidebar('Receitas - Logística');
                                     <td><input class="form-input custo-unit" readonly value=""></td>
                                     <td><input class="form-input custo-total" readonly value=""></td>
                                 <?php endif; ?>
-                                <td><button type="button" class="btn-secondary remover-linha">Remover</button></td>
+                                <td><button type="button" class="btn-icon remover-linha">X</button></td>
                             </tr>
                         <?php
                             $row_index++;
@@ -900,7 +918,7 @@ includeSidebar('Receitas - Logística');
         <div class="modal">
             <div class="modal-header">
                 <div class="modal-title">Ficha Técnica</div>
-                <button class="modal-close" type="button" onclick="closeFicha()">Fechar</button>
+                <button class="modal-close" type="button" onclick="closeFicha()">X</button>
             </div>
             <div id="ficha-conteudo"></div>
         </div>
@@ -910,7 +928,7 @@ includeSidebar('Receitas - Logística');
         <div class="modal">
             <div class="modal-header">
                 <div class="modal-title">Selecionar item</div>
-                <button class="modal-close" type="button" onclick="closeItemModal()">Fechar</button>
+                <button class="modal-close" type="button" onclick="closeItemModal()">X</button>
             </div>
             <div class="upload-actions" style="margin-bottom:0.75rem;">
                 <button type="button" class="btn-secondary" id="tab-insumos">Insumos</button>
@@ -919,7 +937,7 @@ includeSidebar('Receitas - Logística');
             </div>
             <div id="item-list" style="max-height:50vh;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:0.5rem;"></div>
             <div style="margin-top:0.75rem;">
-                <button class="btn-primary" type="button" id="confirm-item">Selecionar</button>
+                <button class="btn-primary" type="button" id="confirm-item" onclick="confirmItem()">Selecionar</button>
             </div>
         </div>
     </div>
@@ -1057,7 +1075,7 @@ function addLinha() {
         <td><input class=\"form-input fator-correcao\" name=\"componentes[${nextIndex}][fator_correcao]\" type=\"text\" inputmode=\"decimal\" value=\"1\"></td>
         <td><input class=\"form-input peso-bruto\" name=\"componentes[${nextIndex}][peso_bruto]\" readonly></td>
         ${CAN_SEE_COST ? '<td><input class=\"form-input custo-unit\" readonly value=\"\"></td><td><input class=\"form-input custo-total\" readonly value=\"\"></td>' : ''}
-        <td><button type=\"button\" class=\"btn-secondary remover-linha\">Remover</button></td>
+        <td><button type=\"button\" class=\"btn-icon remover-linha\">X</button></td>
     `;
     tbody.appendChild(row);
     attachRowEvents(row);
@@ -1203,7 +1221,7 @@ document.getElementById('tab-receitas')?.addEventListener('click', () => {
     renderItemList();
 });
 document.getElementById('item-search')?.addEventListener('input', renderItemList);
-document.getElementById('confirm-item')?.addEventListener('click', () => {
+function confirmItem() {
     if (!modalTargetRow || !modalSelected) return;
     const itemLabel = modalTargetRow.querySelector('.item-nome');
     if (itemLabel) {
@@ -1218,7 +1236,8 @@ document.getElementById('confirm-item')?.addEventListener('click', () => {
     calcRow(modalTargetRow);
     updateTotalReceita();
     closeItemModal();
-});
+}
+document.getElementById('confirm-item')?.addEventListener('click', confirmItem);
 
 document.getElementById('modal-item')?.addEventListener('click', (e) => {
     if (e.target.id === 'modal-item') {
