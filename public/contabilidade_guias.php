@@ -431,6 +431,7 @@ try {
                         <th>Parcela</th>
                         <th>Status</th>
                         <th>Arquivo</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -459,6 +460,13 @@ try {
                             <?php else: ?>
                                 -
                             <?php endif; ?>
+                        </td>
+                        <td>
+                            <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir esta guia?');">
+                                <input type="hidden" name="acao" value="excluir_guia">
+                                <input type="hidden" name="id" value="<?= $guia['id'] ?>">
+                                <button type="submit" style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🗑️ Excluir</button>
+                            </form>
                         </td>
                     </tr>
                     <?php endforeach; ?>
