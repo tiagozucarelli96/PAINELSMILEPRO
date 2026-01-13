@@ -992,6 +992,9 @@ function calcRow(row) {
     const pesoLiquidoInput = row.querySelector('.peso-liquido');
     const fatorInput = row.querySelector('.fator-correcao');
     const pesoBrutoInput = row.querySelector('.peso-bruto');
+    if (!pesoLiquidoInput || !fatorInput || !pesoBrutoInput) {
+        return;
+    }
     const tipo = row.querySelector('.item-tipo').value;
     const itemId = parseInt(row.querySelector('.item-id').value || '0', 10);
 
@@ -1004,9 +1007,7 @@ function calcRow(row) {
         }
     }
     const pesoBruto = pesoLiquido * fator;
-    if (pesoBrutoInput) {
-        pesoBrutoInput.value = pesoLiquido > 0 ? formatNumber(pesoBruto, 3) : '';
-    }
+    pesoBrutoInput.value = pesoLiquido > 0 ? formatNumber(pesoBruto, 3) : '';
 
     if (!CAN_SEE_COST) return;
 
@@ -1063,6 +1064,28 @@ function attachRowEvents(row) {
 document.querySelectorAll('.componente-row').forEach(row => attachRowEvents(row));
 updateTotalReceita();
 document.querySelector('[name=\"rendimento_base_pessoas\"]')?.addEventListener('input', updateTotalReceita);
+
+document.addEventListener('input', (event) => {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (event.target.classList.contains('peso-liquido') || event.target.classList.contains('fator-correcao')) {
+        const row = event.target.closest('.componente-row');
+        if (row) {
+            calcRow(row);
+            updateTotalReceita();
+        }
+    }
+});
+
+document.addEventListener('change', (event) => {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (event.target.classList.contains('peso-liquido') || event.target.classList.contains('fator-correcao')) {
+        const row = event.target.closest('.componente-row');
+        if (row) {
+            calcRow(row);
+            updateTotalReceita();
+        }
+    }
+});
 
 let nextIndex = document.querySelectorAll('.componente-row').length;
 function addLinha() {
