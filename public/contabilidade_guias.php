@@ -88,7 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         
         try {
             // Se é parcela e precisa criar parcelamento
-            if ($e_parcela && $criar_parcelamento && $total_parcelas) {
+            if ($e_parcela && $criar_parcelamento && $total_parcelas && $parcela_atual) {
+                // Validar que parcela_atual não seja maior que total_parcelas
+                if ($parcela_atual > $total_parcelas) {
+                    throw new Exception("A parcela atual ({$parcela_atual}) não pode ser maior que o total de parcelas ({$total_parcelas})");
+                }
+                
                 $stmt = $pdo->prepare("
                     INSERT INTO contabilidade_parcelamentos (descricao, total_parcelas, parcela_atual, status)
                     VALUES (:desc, :total, :atual, 'ativo')
@@ -392,8 +397,10 @@ try {
                         <select name="parcelamento_id" id="parcelamento_id" class="form-select" onchange="handleParcelamentoChange()">
                             <option value="">Selecione um parcelamento...</option>
                             <?php foreach ($parcelamentos_ativos as $parc): ?>
-                            <option value="<?= $parc['id'] ?>" data-descricao="<?= htmlspecialchars($parc['descricao']) ?>">
-                                <?= htmlspecialchars($parc['descricao']) ?> 
+                            <option value="<?= $parc['id'] ?>" 
+                                    data-descricao="<?= htmlspecialchars($parc['descricao'] ?? $parc['primeira_descricao'] ?? '') ?>"
+                                    data-empresa-id="<?= $parc['empresa_id'] ?? '' ?>">
+                                <?= htmlspecialchars($parc['descricao'] ?? $parc['primeira_descricao'] ?? 'Sem descrição') ?> 
                                 (Parcela <?= $parc['parcela_atual'] ?>/<?= $parc['total_parcelas'] ?>)
                             </option>
                             <?php endforeach; ?>
