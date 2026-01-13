@@ -399,13 +399,20 @@ try {
                             <?php foreach ($parcelamentos_ativos as $parc): ?>
                             <option value="<?= $parc['id'] ?>" 
                                     data-descricao="<?= htmlspecialchars($parc['descricao'] ?? $parc['primeira_descricao'] ?? '') ?>"
-                                    data-empresa-id="<?= $parc['empresa_id'] ?? '' ?>">
-                                <?= htmlspecialchars($parc['descricao'] ?? $parc['primeira_descricao'] ?? 'Sem descrição') ?> 
-                                (Parcela <?= $parc['parcela_atual'] ?>/<?= $parc['total_parcelas'] ?>)
+                                    data-empresa-id="<?= $parc['empresa_id'] ?? '' ?>"
+                                    data-parcela-atual="<?= $parc['parcela_atual'] ?>"
+                                    data-total-parcelas="<?= $parc['total_parcelas'] ?>">
+                                <?= htmlspecialchars($parc['descricao'] ?? $parc['primeira_descricao'] ?? 'Sem descrição') ?>
                             </option>
                             <?php endforeach; ?>
                             <option value="novo">+ Criar novo parcelamento</option>
                         </select>
+                    </div>
+                    
+                    <!-- Mostrar parcela que será cadastrada (quando parcelamento existente selecionado) -->
+                    <div id="parcela-info" style="display: none; background: #e0f2fe; border: 1px solid #0ea5e9; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem;">
+                        <strong style="color: #0c4a6e;">Parcela a ser cadastrada:</strong>
+                        <span id="parcela-texto" style="color: #0369a1; font-weight: 600;"></span>
                     </div>
                     
                     <!-- Novo parcelamento -->
@@ -538,6 +545,7 @@ try {
                 // Limpar campos quando desmarcar
                 document.getElementById('parcelamento_id').value = '';
                 document.getElementById('novo-parcelamento').style.display = 'none';
+                document.getElementById('parcela-info').style.display = 'none';
                 document.getElementById('descricao').value = '';
                 document.getElementById('empresa_id').value = '';
             }
@@ -546,12 +554,15 @@ try {
         function handleParcelamentoChange() {
             const select = document.getElementById('parcelamento_id');
             const novoDiv = document.getElementById('novo-parcelamento');
+            const parcelaInfoDiv = document.getElementById('parcela-info');
+            const parcelaTexto = document.getElementById('parcela-texto');
             const descricaoInput = document.getElementById('descricao');
             const empresaSelect = document.getElementById('empresa_id');
             
             if (select.value === 'novo') {
                 // Mostrar campos de novo parcelamento
                 novoDiv.style.display = 'block';
+                parcelaInfoDiv.style.display = 'none';
                 // Limpar campos (usuário vai preencher)
                 descricaoInput.value = '';
                 empresaSelect.value = '';
@@ -560,6 +571,20 @@ try {
                 novoDiv.style.display = 'none';
                 
                 // Buscar dados do parcelamento selecionado
+                const selectedOption = select.options[select.selectedIndex];
+                const parcelaAtual = parseInt(selectedOption.getAttribute('data-parcela-atual')) || 0;
+                const totalParcelas = parseInt(selectedOption.getAttribute('data-total-parcelas')) || 0;
+                const proximaParcela = parcelaAtual + 1;
+                
+                // Mostrar informação da parcela que será cadastrada
+                if (proximaParcela <= totalParcelas) {
+                    parcelaTexto.textContent = `Parcela ${proximaParcela} de ${totalParcelas}`;
+                    parcelaInfoDiv.style.display = 'block';
+                } else {
+                    parcelaInfoDiv.style.display = 'none';
+                }
+                
+                // Buscar dados do parcelamento selecionado para preencher campos
                 const parcelamentoId = parseInt(select.value);
                 const parcelamento = parcelamentosData.find(p => p.id === parcelamentoId);
                 
@@ -577,6 +602,7 @@ try {
             } else {
                 // Limpar quando nenhum parcelamento selecionado
                 novoDiv.style.display = 'none';
+                parcelaInfoDiv.style.display = 'none';
                 descricaoInput.value = '';
                 empresaSelect.value = '';
             }
