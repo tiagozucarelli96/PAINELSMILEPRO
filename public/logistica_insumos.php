@@ -302,13 +302,32 @@ body {
 }
 .page-container {
     max-width: 100%;
-    padding: 1rem;
+    padding: 0.5rem;
 }
 .section-card {
     border: none;
     box-shadow: none;
     padding: 0;
     margin: 0;
+}
+.page-container h1 {
+    display: none;
+}
+.section-card h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+.form-grid {
+    gap: 0.65rem;
+}
+.form-input {
+    padding: 0.5rem 0.65rem;
+}
+.upload-box {
+    padding: 0.5rem;
+}
+.upload-actions {
+    margin-top: 0.35rem;
 }
 <?php endif; ?>
 .page-container {
