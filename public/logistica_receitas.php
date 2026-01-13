@@ -497,6 +497,21 @@ if (!$is_modal) {
 ?>
 
 <style>
+<?php if ($is_modal): ?>
+body {
+    background: transparent;
+}
+.page-container {
+    max-width: 100%;
+    padding: 1rem;
+}
+.section-card {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
+}
+<?php endif; ?>
 .page-container {
     max-width: 1300px;
     margin: 0 auto;

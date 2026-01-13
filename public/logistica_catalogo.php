@@ -23,6 +23,21 @@ $tipo = in_array($tipo, ['todos', 'insumos', 'receitas'], true) ? $tipo : 'todos
 $status = in_array($status, ['todos', 'ativos', 'inativos'], true) ? $status : 'todos';
 
 $itens = [];
+$catalog_messages = [];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id > 0) {
+        if ($action === 'delete_insumo') {
+            $pdo->prepare("DELETE FROM logistica_insumos WHERE id = :id")->execute([':id' => $id]);
+            $catalog_messages[] = 'Insumo excluído.';
+        } elseif ($action === 'delete_receita') {
+            $pdo->prepare("DELETE FROM logistica_receitas WHERE id = :id")->execute([':id' => $id]);
+            $catalog_messages[] = 'Receita excluída.';
+        }
+    }
+}
 
 if ($tipo === 'todos' || $tipo === 'insumos') {
     $sql = "
@@ -187,8 +202,8 @@ includeSidebar('Catálogo Logístico');
 .modal {
     background: #fff;
     border-radius: 12px;
-    width: min(1100px, 95vw);
-    max-height: 90vh;
+    width: min(1200px, 96vw);
+    height: 90vh;
     overflow: hidden;
     box-shadow: 0 20px 50px rgba(0,0,0,0.25);
     display: flex;
@@ -201,6 +216,7 @@ includeSidebar('Catálogo Logístico');
     gap: 1rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
 }
 .modal-title {
     font-size: 1.1rem;
@@ -222,16 +238,20 @@ includeSidebar('Catálogo Logístico');
 }
 .modal-body {
     flex: 1;
+    background: #ffffff;
 }
 .modal-iframe {
     width: 100%;
-    height: 78vh;
+    height: 100%;
     border: none;
 }
 </style>
 
 <div class="catalogo-container">
     <div class="section-card">
+        <?php foreach ($catalog_messages as $msg): ?>
+            <div class="alert alert-success"><?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endforeach; ?>
         <div class="form-row" style="justify-content: space-between;">
             <div class="form-row">
                 <button class="btn-primary" type="button" onclick="openCatalogModal('insumo')">+ Insumo</button>
@@ -283,6 +303,11 @@ includeSidebar('Catálogo Logístico');
                         </td>
                         <td>
                             <button class="btn-secondary" type="button" onclick="openCatalogModal('<?= $item['page'] === 'logistica_insumos' ? 'insumo' : 'receita' ?>', <?= (int)$item['id'] ?>)">Editar</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir este item?');">
+                                <input type="hidden" name="action" value="<?= $item['page'] === 'logistica_insumos' ? 'delete_insumo' : 'delete_receita' ?>">
+                                <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
+                                <button class="btn-secondary" type="submit">Excluir</button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>
