@@ -246,6 +246,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <table class="table">
         <thead>
             <tr>
+                <th>Empresa</th>
                 <th>Descrição</th>
                 <th>Vencimento</th>
                 <th>Status</th>
@@ -256,13 +257,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <tbody>
             <?php if (empty($honorarios)): ?>
             <tr>
-                <td colspan="5" style="text-align: center; padding: 3rem; color: #64748b;">
+                <td colspan="6" style="text-align: center; padding: 3rem; color: #64748b;">
                     Nenhum honorário encontrado.
                 </td>
             </tr>
             <?php else: ?>
             <?php foreach ($honorarios as $honorario): ?>
             <tr>
+                <td><?= $honorario['empresa_nome'] ? htmlspecialchars($honorario['empresa_nome']) : '-' ?></td>
                 <td><?= htmlspecialchars($honorario['descricao']) ?></td>
                 <td><?= $honorario['data_vencimento'] ? date('d/m/Y', strtotime($honorario['data_vencimento'])) : '-' ?></td>
                 <td>
