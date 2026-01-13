@@ -10,6 +10,7 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
+$no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
@@ -174,8 +175,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $messages = [];
             }
 
-            $visivel = !empty($_POST['visivel_na_lista']);
-            $ativo = !empty($_POST['ativo']);
+            $visivel = $no_checks ? true : !empty($_POST['visivel_na_lista']);
+            $ativo = $no_checks ? true : !empty($_POST['ativo']);
             $unidade_padrao = null;
             if (array_key_exists('unidade_medida_padrao_id', $_POST)) {
                 $unidade_padrao = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
@@ -740,6 +741,11 @@ body {
             <?php if ($is_modal): ?>
                 <input type="hidden" name="modal" value="1">
             <?php endif; ?>
+            <?php if ($no_checks): ?>
+                <input type="hidden" name="nochecks" value="1">
+                <input type="hidden" name="visivel_na_lista" value="1">
+                <input type="hidden" name="ativo" value="1">
+            <?php endif; ?>
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <div class="form-grid">
                 <div class="span-2">
@@ -761,6 +767,7 @@ body {
                     <label>Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
+                <?php if (!$no_checks): ?>
                 <div class="checkbox-group">
                     <label>
                         <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
@@ -771,6 +778,7 @@ body {
                         Ativo
                     </label>
                 </div>
+                <?php endif; ?>
             </div>
             <div style="margin-top:1rem;">
                 <label>Foto</label>

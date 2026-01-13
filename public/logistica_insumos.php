@@ -10,6 +10,7 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
+$no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
@@ -155,9 +156,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (!$errors && !$duplicate_warning) {
-            $visivel = !empty($_POST['visivel_na_lista']);
-            $ativo = !empty($_POST['ativo']);
-            $fracionavel = !empty($_POST['fracionavel']);
+            $visivel = $no_checks ? true : !empty($_POST['visivel_na_lista']);
+            $ativo = $no_checks ? true : !empty($_POST['ativo']);
+            $fracionavel = $no_checks ? true : !empty($_POST['fracionavel']);
 
             $unidade_id = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
             $unidade_nome = null;
@@ -463,6 +464,12 @@ body {
             <?php if ($is_modal): ?>
                 <input type="hidden" name="modal" value="1">
             <?php endif; ?>
+            <?php if ($no_checks): ?>
+                <input type="hidden" name="nochecks" value="1">
+                <input type="hidden" name="visivel_na_lista" value="1">
+                <input type="hidden" name="ativo" value="1">
+                <input type="hidden" name="fracionavel" value="1">
+            <?php endif; ?>
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
             <div class="form-grid">
@@ -500,10 +507,12 @@ body {
                     </div>
                     <input type="file" id="barcode_file" accept="image/*" capture="environment" style="display:none;">
                 </div>
+                <?php if (!$no_checks): ?>
                 <div>
                     <label>Fracionável</label>
                     <input type="checkbox" name="fracionavel" <?= !isset($edit_item) || !empty($edit_item['fracionavel']) ? 'checked' : '' ?>>
                 </div>
+                <?php endif; ?>
                 <div>
                     <label>Tamanho embalagem</label>
                     <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="number" step="0.001" value="<?= h($edit_item['tamanho_embalagem'] ?? '') ?>">
@@ -528,6 +537,7 @@ body {
                     </div>
                 </div>
                 <?php endif; ?>
+                <?php if (!$no_checks): ?>
                 <div>
                     <label>Visível na lista</label>
                     <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
@@ -536,6 +546,7 @@ body {
                     <label>Ativo</label>
                     <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
                 </div>
+                <?php endif; ?>
             </div>
             <div style="margin-top:1rem;">
                 <label>Foto</label>
