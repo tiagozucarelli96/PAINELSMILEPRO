@@ -590,12 +590,11 @@ try {
                 section.style.display = 'block';
             } else {
                 section.style.display = 'none';
-                // Limpar campos quando desmarcar
+                // Limpar campos de parcelamento quando desmarcar (mas manter empresa_id, pois é obrigatório)
                 document.getElementById('parcelamento_id').value = '';
                 document.getElementById('novo-parcelamento').style.display = 'none';
                 document.getElementById('parcela-info').style.display = 'none';
-                document.getElementById('descricao').value = '';
-                document.getElementById('empresa_id').value = '';
+                // Não limpar descricao e empresa_id, pois são campos obrigatórios
             }
         }
         
@@ -655,6 +654,33 @@ try {
                 empresaSelect.value = '';
             }
         }
+        // Validação do formulário antes de enviar
+        document.getElementById('form-guia').addEventListener('submit', function(e) {
+            const empresaId = document.getElementById('empresa_id').value;
+            const descricao = document.getElementById('descricao').value;
+            const dataVencimento = document.getElementById('data_vencimento').value;
+            
+            if (!empresaId) {
+                e.preventDefault();
+                alert('Por favor, selecione uma empresa.');
+                document.getElementById('empresa_id').focus();
+                return false;
+            }
+            
+            if (!descricao.trim()) {
+                e.preventDefault();
+                alert('Por favor, preencha a descrição.');
+                document.getElementById('descricao').focus();
+                return false;
+            }
+            
+            if (!dataVencimento) {
+                e.preventDefault();
+                alert('Por favor, preencha a data de vencimento.');
+                document.getElementById('data_vencimento').focus();
+                return false;
+            }
+        });
     </script>
 </body>
 </html>
