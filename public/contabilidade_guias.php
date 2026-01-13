@@ -94,6 +94,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                     throw new Exception("A parcela atual ({$parcela_atual}) não pode ser maior que o total de parcelas ({$total_parcelas})");
                 }
                 
+                // Verificar se coluna empresa_id existe na tabela parcelamentos
+                $has_empresa_id_parc = contabilidadeColunaExiste($pdo, 'contabilidade_parcelamentos', 'empresa_id');
+                
+                if ($has_empresa_id_parc && $empresa_id) {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO contabilidade_parcelamentos (descricao, total_parcelas, parcela_atual, status, empresa_id)
+                        VALUES (:desc, :total, :atual, 'ativo', :empresa_id)
+                        RETURNING id
+                    ");
+                    $stmt->execute([
+                        ':desc' => $descricao,
+                        ':total' => $total_parcelas,
+                        ':atual' => $parcela_atual,
+                        ':empresa_id' => $empresa_id
+                    ]);
+                } else {
                 $stmt = $pdo->prepare("
                     INSERT INTO contabilidade_parcelamentos (descricao, total_parcelas, parcela_atual, status)
                     VALUES (:desc, :total, :atual, 'ativo')
@@ -102,8 +118,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 $stmt->execute([
                     ':desc' => $descricao,
                     ':total' => $total_parcelas,
-                    ':atual' => $parcela_atual
+                        ':atual' => $parcela_atual
                 ]);
+                }
                 $parcelamento_id = $stmt->fetchColumn();
             }
             
@@ -255,11 +272,30 @@ try {
     error_log("Erro ao buscar empresas: " . $e->getMessage());
 }
 
-// Buscar parcelamentos ativos com dados da primeira guia (para empresa e descrição)
+// Buscar parcelamentos ativos com dados da primeira guia (para descrição) e empresa do parcelamento
 $parcelamentos_ativos = [];
 try {
-    $has_empresa_id = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
-    if ($has_empresa_id) {
+    $has_empresa_id_parc = contabilidadeColunaExiste($pdo, 'contabilidade_parcelamentos', 'empresa_id');
+    $has_empresa_id_guias = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
+    
+    if ($has_empresa_id_parc) {
+        // Se parcelamentos tem empresa_id, usar diretamente
+        $stmt = $pdo->query("
+            SELECT 
+                p.id, 
+                p.descricao, 
+                p.total_parcelas, 
+                p.parcela_atual, 
+                p.status,
+                p.empresa_id,
+                g.descricao as primeira_descricao
+            FROM contabilidade_parcelamentos p
+            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            WHERE p.status = 'ativo'
+            ORDER BY p.criado_em DESC
+        ");
+    } elseif ($has_empresa_id_guias) {
+        // Se não tem empresa_id em parcelamentos, buscar da primeira guia
         $stmt = $pdo->query("
             SELECT 
                 p.id, 
@@ -275,6 +311,7 @@ try {
             ORDER BY p.criado_em DESC
         ");
     } else {
+        // Fallback: sem empresa_id
         $stmt = $pdo->query("
             SELECT 
                 p.id, 
