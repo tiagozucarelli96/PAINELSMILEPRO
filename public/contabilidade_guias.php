@@ -405,6 +405,20 @@ try {
 // Buscar guias
 $guias = [];
 try {
+    $has_empresa_id = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
+    
+    if ($has_empresa_id) {
+        $stmt = $pdo->query("
+            SELECT g.*, 
+                   p.descricao as parcelamento_desc, 
+                   p.total_parcelas,
+                   e.nome as empresa_nome
+            FROM contabilidade_guias g
+            LEFT JOIN contabilidade_parcelamentos p ON p.id = g.parcelamento_id
+            LEFT JOIN contabilidade_empresas e ON e.id = g.empresa_id
+            ORDER BY g.data_vencimento DESC, g.criado_em DESC
+        ");
+    } else {
     $stmt = $pdo->query("
         SELECT g.*, p.descricao as parcelamento_desc, p.total_parcelas
         FROM contabilidade_guias g
@@ -412,9 +426,11 @@ try {
         ORDER BY g.criado_em DESC
         LIMIT 50
     ");
+    }
     $guias = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Tabela pode não existir
+    error_log("Erro ao buscar guias: " . $e->getMessage());
 }
 ?>
 <!DOCTYPE html>
@@ -581,6 +597,7 @@ try {
             <table class="table">
                 <thead>
                     <tr>
+                        <th>Empresa</th>
                         <th>Descrição</th>
                         <th>Vencimento</th>
                         <th>Parcela</th>
@@ -592,6 +609,13 @@ try {
                 <tbody>
                     <?php foreach ($guias as $guia): ?>
                     <tr>
+                        <td>
+                            <?php if (!empty($guia['empresa_nome'])): ?>
+                                <strong style="color: #1e40af;"><?= htmlspecialchars($guia['empresa_nome']) ?></strong>
+                            <?php else: ?>
+                                <span style="color: #94a3b8;">-</span>
+                            <?php endif; ?>
+                        </td>
                         <td><?= htmlspecialchars($guia['descricao']) ?></td>
                         <td><?= date('d/m/Y', strtotime($guia['data_vencimento'])) ?></td>
                         <td>
