@@ -9,6 +9,8 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
 
+$is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
+
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
 
@@ -339,7 +341,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($redirect_id > 0 && empty($errors)) {
-    header('Location: index.php?page=logistica_receitas&edit_id=' . $redirect_id);
+    $target = 'index.php?page=logistica_receitas&edit_id=' . $redirect_id;
+    if ($is_modal) {
+        $target .= '&modal=1';
+    }
+    header('Location: ' . $target);
     exit;
 }
 
@@ -485,7 +491,9 @@ foreach ($receitas as $rec) {
     ];
 }
 
-includeSidebar('Receitas - Logística');
+if (!$is_modal) {
+    includeSidebar('Receitas - Logística');
+}
 ?>
 
 <style>
@@ -714,6 +722,9 @@ includeSidebar('Receitas - Logística');
         <h2>Nova / Editar Receita</h2>
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
+            <?php if ($is_modal): ?>
+                <input type="hidden" name="modal" value="1">
+            <?php endif; ?>
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <div class="form-grid">
                 <div class="span-2">
@@ -863,6 +874,7 @@ includeSidebar('Receitas - Logística');
     </div>
 
 
+    <?php if (!$is_modal): ?>
     <div class="section-card">
         <h2>Lista de Receitas</h2>
         <form method="GET" style="margin-bottom:1rem;">
@@ -921,6 +933,7 @@ includeSidebar('Receitas - Logística');
             </tbody>
         </table>
     </div>
+    <?php endif; ?>
 
     <div class="modal-overlay" id="modal-ficha">
         <div class="modal">
@@ -1306,4 +1319,4 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
 });
 </script>
 
-<?php endSidebar(); ?>
+<?php if (!$is_modal) { endSidebar(); } ?>

@@ -9,6 +9,8 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
 
+$is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
+
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
 
@@ -287,7 +289,9 @@ if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
 }
 
-includeSidebar('Insumos - Logística');
+if (!$is_modal) {
+    includeSidebar('Insumos - Logística');
+}
 ?>
 
 <style>
@@ -441,6 +445,9 @@ includeSidebar('Insumos - Logística');
         <h2>Novo / Editar Insumo</h2>
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
+            <?php if ($is_modal): ?>
+                <input type="hidden" name="modal" value="1">
+            <?php endif; ?>
             <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
             <div class="form-grid">
@@ -544,6 +551,7 @@ includeSidebar('Insumos - Logística');
         </form>
     </div>
 
+    <?php if (!$is_modal): ?>
     <div class="section-card">
         <h2>Lista de Insumos</h2>
         <form method="GET" style="margin-bottom:1rem;">
@@ -602,6 +610,7 @@ includeSidebar('Insumos - Logística');
             </tbody>
         </table>
     </div>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -671,4 +680,4 @@ if (custoInput) {
 }
 </script>
 
-<?php endSidebar(); ?>
+<?php if (!$is_modal) { endSidebar(); } ?>

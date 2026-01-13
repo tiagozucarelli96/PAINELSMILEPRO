@@ -120,20 +120,11 @@ includeSidebar('Configurações - Logística');
             <div class="funcionalidade-card-content"></div>
         </a>
 
-        <a href="index.php?page=logistica_insumos" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #22c55e, #16a34a);">
-                <span class="funcionalidade-card-icon">🧺</span>
-                <div class="funcionalidade-card-title">Insumos</div>
-                <div class="funcionalidade-card-subtitle">Catálogo de insumos</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-
-        <a href="index.php?page=logistica_receitas" class="funcionalidade-card">
-            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f97316, #ea580c);">
-                <span class="funcionalidade-card-icon">📘</span>
-                <div class="funcionalidade-card-title">Receitas</div>
-                <div class="funcionalidade-card-subtitle">Fichas técnicas</div>
+        <a href="index.php?page=logistica_catalogo" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #22c55e, #f97316);">
+                <span class="funcionalidade-card-icon">📚</span>
+                <div class="funcionalidade-card-title">Catálogo</div>
+                <div class="funcionalidade-card-subtitle">Insumos e Receitas</div>
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
