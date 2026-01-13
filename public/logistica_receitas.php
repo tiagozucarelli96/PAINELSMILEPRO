@@ -612,6 +612,12 @@ includeSidebar('Receitas - Logística');
     background: #f8fafc;
     display: flex;
     align-items: center;
+    flex: 1 1 auto;
+}
+.item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 .link-muted {
     font-size: 0.85rem;
@@ -799,10 +805,12 @@ includeSidebar('Receitas - Logística');
                         ?>
                             <tr class="componente-row" data-index="<?= $row_index ?>">
                                 <td>
-                                    <div class="item-label item-nome"><?= $item_nome !== '' ? h($item_nome) : '-' ?></div>
+                                    <div class="item-row">
+                                        <div class="item-label item-nome"><?= $item_nome !== '' ? h($item_nome) : '-' ?></div>
+                                        <button type="button" class="btn-secondary abrir-modal" onclick="openItemModal(this.closest('.componente-row'))">🔍</button>
+                                    </div>
                                     <input type="hidden" class="item-tipo" name="componentes[<?= $row_index ?>][item_tipo]" value="<?= h($tipo) ?>">
                                     <input type="hidden" class="item-id" name="componentes[<?= $row_index ?>][item_id]" value="<?= (int)$item_id ?>">
-                                    <button type="button" class="btn-secondary abrir-modal" onclick="openItemModal(this.closest('.componente-row'))">🔍</button>
                                 </td>
                                 <td><input class="form-input peso-liquido" name="componentes[<?= $row_index ?>][peso_liquido]" type="text" inputmode="decimal" value="<?= h($peso_liquido) ?>"></td>
                                 <td>
@@ -960,7 +968,12 @@ function parseNumber(value) {
     if (value === null || value === undefined) return 0;
     const raw = String(value).trim();
     if (raw === '') return 0;
-    const normalized = raw.replace(/\./g, '').replace(',', '.');
+    let normalized = raw.replace(/\s/g, '');
+    if (normalized.includes(',') && normalized.includes('.')) {
+        normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else {
+        normalized = normalized.replace(',', '.');
+    }
     const num = parseFloat(normalized);
     return Number.isNaN(num) ? 0 : num;
 }
@@ -1060,10 +1073,12 @@ function addLinha() {
     row.dataset.index = nextIndex;
     row.innerHTML = `
         <td>
-            <div class=\"item-label item-nome\">-</div>
+            <div class=\"item-row\">
+                <div class=\"item-label item-nome\">-</div>
+                <button type=\"button\" class=\"btn-secondary abrir-modal\" onclick=\"openItemModal(this.closest('.componente-row'))\">🔍</button>
+            </div>
             <input type=\"hidden\" class=\"item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\" value=\"\">
             <input type=\"hidden\" class=\"item-id\" name=\"componentes[${nextIndex}][item_id]\" value=\"\">
-            <button type=\"button\" class=\"btn-secondary abrir-modal\" onclick=\"openItemModal(this.closest('.componente-row'))\">🔍</button>
         </td>
         <td><input class=\"form-input peso-liquido\" name=\"componentes[${nextIndex}][peso_liquido]\" type=\"text\" inputmode=\"decimal\"></td>
         <td>
