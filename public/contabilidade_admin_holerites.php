@@ -260,6 +260,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <table class="table">
         <thead>
             <tr>
+                <th>Empresa</th>
                 <th>Competência</th>
                 <th>Tipo</th>
                 <th>Status</th>
@@ -271,13 +272,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <tbody>
             <?php if (empty($holerites)): ?>
             <tr>
-                <td colspan="6" style="text-align: center; padding: 3rem; color: #64748b;">
+                <td colspan="7" style="text-align: center; padding: 3rem; color: #64748b;">
                     Nenhum holerite encontrado.
                 </td>
             </tr>
             <?php else: ?>
             <?php foreach ($holerites as $holerite): ?>
             <tr>
+                <td><?= $holerite['empresa_nome'] ? htmlspecialchars($holerite['empresa_nome']) : '-' ?></td>
                 <td><?= htmlspecialchars($holerite['mes_competencia']) ?></td>
                 <td><?= $holerite['e_ajuste'] ? 'Ajuste' : 'Normal' ?></td>
                 <td>
