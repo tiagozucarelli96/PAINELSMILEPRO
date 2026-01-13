@@ -201,6 +201,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             // Garantir que e_parcela seja boolean explícito
             $e_parcela_bool = (bool)$e_parcela;
             
+            error_log("[CONTABILIDADE_GUIAS] Preparando inserção. É parcela: " . ($e_parcela ? 'sim' : 'não') . ", Empresa ID: " . ($empresa_id ?? 'null'));
+            
             $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'chave_storage');
             $has_empresa_id = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
             
@@ -220,24 +222,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $campos[] = 'data_vencimento';
             $campos[] = 'descricao';
             $campos[] = 'e_parcela';
-            $campos[] = 'parcelamento_id';
-            $campos[] = 'numero_parcela';
+            
+            // Só adicionar parcelamento_id e numero_parcela se for parcela
+            if ($e_parcela) {
+                $campos[] = 'parcelamento_id';
+                $campos[] = 'numero_parcela';
+                $valores[] = ':parc_id';
+                $valores[] = ':num_parc';
+                $bindings[':parc_id'] = $parcelamento_id;
+                $bindings[':num_parc'] = $numero_parcela;
+            }
+            
             $valores[] = ':vencimento';
             $valores[] = ':desc';
             $valores[] = ':e_parcela';
-            $valores[] = ':parc_id';
-            $valores[] = ':num_parc';
             $bindings[':vencimento'] = $data_vencimento;
             $bindings[':desc'] = $descricao;
             $bindings[':e_parcela'] = $e_parcela_bool;
-            $bindings[':parc_id'] = $parcelamento_id;
-            $bindings[':num_parc'] = $numero_parcela;
             
-            if ($has_empresa_id && $empresa_id) {
+            // Empresa_id é sempre obrigatório
+            if ($has_empresa_id) {
+                if (!$empresa_id) {
+                    throw new Exception('Empresa é obrigatória');
+                }
                 $campos[] = 'empresa_id';
                 $valores[] = ':empresa_id';
                 $bindings[':empresa_id'] = $empresa_id;
             }
+            
+            error_log("[CONTABILIDADE_GUIAS] Campos a inserir: " . implode(', ', $campos));
             
             $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_guias (" . implode(', ', $campos) . ")
@@ -261,6 +274,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $stmt->execute();
             
             $guia_id = $pdo->lastInsertId();
+            
+            error_log("[CONTABILIDADE_GUIAS] Guia inserida com sucesso. ID: $guia_id, É parcela: " . ($e_parcela ? 'sim' : 'não'));
             
             $pdo->commit();
             $mensagem = 'Guia cadastrada com sucesso!';
