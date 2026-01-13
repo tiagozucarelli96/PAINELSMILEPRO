@@ -152,6 +152,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Honorários - Contabilidade</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -285,7 +286,7 @@ try {
                         </td>
                         <td><?= date('d/m/Y H:i', strtotime($honorario['criado_em'])) ?></td>
                         <td>
-                            <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir este honorário?');">
+                            <form method="POST" style="display: inline;" class="form-excluir-honorario" data-honorario-id="<?= $honorario['id'] ?>">
                                 <input type="hidden" name="acao" value="excluir_honorario">
                                 <input type="hidden" name="id" value="<?= $honorario['id'] ?>">
                                 <button type="submit" style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🗑️ Excluir</button>
@@ -298,5 +299,19 @@ try {
             <?php endif; ?>
         </div>
     </div>
+    
+    <script src="assets/js/custom_modals.js"></script>
+    <script>
+        // Handler para exclusão de honorários com confirmação customizada
+        document.addEventListener('submit', async function(e) {
+            if (e.target.classList.contains('form-excluir-honorario')) {
+                e.preventDefault();
+                const confirmado = await customConfirm('Tem certeza que deseja excluir este honorário?', 'Confirmar Exclusão');
+                if (confirmado) {
+                    e.target.submit();
+                }
+            }
+        });
+    </script>
 </body>
 </html>
