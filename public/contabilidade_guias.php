@@ -252,8 +252,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             }
             
             error_log("[CONTABILIDADE_GUIAS] Campos a inserir: " . implode(', ', $campos));
+            error_log("[CONTABILIDADE_GUIAS] Valores: " . json_encode($bindings));
             
-            $stmt = $pdo->prepare("
+                $stmt = $pdo->prepare("
                 INSERT INTO contabilidade_guias (" . implode(', ', $campos) . ")
                 VALUES (" . implode(', ', $valores) . ")
             ");
@@ -268,11 +269,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                     } else {
                         $stmt->bindValue($key, $value, PDO::PARAM_INT);
                     }
-                } else {
+            } else {
                     $stmt->bindValue($key, $value, PDO::PARAM_STR);
                 }
             }
-            $stmt->execute();
+            
+            try {
+                $stmt->execute();
+            } catch (PDOException $e) {
+                error_log("[CONTABILIDADE_GUIAS] Erro ao executar INSERT: " . $e->getMessage());
+                error_log("[CONTABILIDADE_GUIAS] SQL: INSERT INTO contabilidade_guias (" . implode(', ', $campos) . ") VALUES (" . implode(', ', $valores) . ")");
+                throw $e;
+            }
             
             $guia_id = $pdo->lastInsertId();
             
