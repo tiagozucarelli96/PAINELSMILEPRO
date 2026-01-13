@@ -65,6 +65,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('Data de vencimento é obrigatória');
         }
         
+        if (empty($empresa_id)) {
+            throw new Exception('Empresa é obrigatória');
+        }
+        
         // Processar upload do arquivo
         $arquivo_url = null;
         $arquivo_nome = null;
@@ -201,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $bindings[':parc_id'] = $parcelamento_id;
             $bindings[':num_parc'] = $numero_parcela;
             
-            if ($has_empresa_id) {
+            if ($has_empresa_id && $empresa_id) {
                 $campos[] = 'empresa_id';
                 $valores[] = ':empresa_id';
                 $bindings[':empresa_id'] = $empresa_id;
@@ -216,7 +220,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 if ($key === ':e_parcela') {
                     $stmt->bindValue($key, $value, PDO::PARAM_BOOL);
                 } elseif ($key === ':parc_id' || $key === ':num_parc' || $key === ':empresa_id') {
-                    $stmt->bindValue($key, $value, PDO::PARAM_INT);
+                    // Permitir null para campos opcionais
+                    if ($value === null) {
+                        $stmt->bindValue($key, $value, PDO::PARAM_NULL);
+                    } else {
+                        $stmt->bindValue($key, $value, PDO::PARAM_INT);
+                    }
                 } else {
                     $stmt->bindValue($key, $value, PDO::PARAM_STR);
                 }
