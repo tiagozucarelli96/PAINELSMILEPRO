@@ -1009,7 +1009,13 @@ function calcRow(row) {
     const pesoBruto = pesoLiquido * fator;
     pesoBrutoInput.value = pesoLiquido > 0 ? formatNumber(pesoBruto, 3) : '';
 
-    if (!CAN_SEE_COST) return;
+    const custoUnitInput = row.querySelector('.custo-unit');
+    const custoTotalInput = row.querySelector('.custo-total');
+
+    if (!CAN_SEE_COST) {
+        row.dataset.custoTotal = '0';
+        return;
+    }
 
     let custoUnit = null;
     if (tipo === 'insumo' && itemId > 0) {
@@ -1021,20 +1027,27 @@ function calcRow(row) {
             custoUnit = Number(total) / Math.max(1, Number(yieldBase));
         }
     }
-    const custoTotal = custoUnit !== null ? pesoBruto * custoUnit : null;
-    const custoUnitInput = row.querySelector('.custo-unit');
-    const custoTotalInput = row.querySelector('.custo-total');
-    if (custoUnitInput) custoUnitInput.value = formatCurrency(custoUnit);
-    if (custoTotalInput) custoTotalInput.value = formatCurrency(custoTotal);
-    row.dataset.custoTotal = custoTotal !== null ? String(custoTotal) : '0';
+    if (custoUnitInput) {
+        if (custoUnit !== null && custoUnit !== undefined) {
+            custoUnitInput.value = formatCurrency(custoUnit);
+        } else if (!custoUnitInput.value) {
+            custoUnitInput.value = formatCurrency(0);
+        }
+    }
+    const valorUnidade = custoUnit !== null ? custoUnit : parseNumber(custoUnitInput?.value || '0');
+    const valorTotal = pesoBruto > 0 ? pesoBruto * valorUnidade : 0;
+    if (custoTotalInput) {
+        custoTotalInput.value = formatCurrency(valorTotal);
+    }
+    row.dataset.custoTotal = String(valorTotal);
 }
 
 function updateTotalReceita() {
     if (!CAN_SEE_COST) return;
     let total = 0;
     document.querySelectorAll('.componente-row').forEach(row => {
-        const raw = row.dataset.custoTotal || '0';
-        const num = parseFloat(raw);
+        const raw = row.dataset.custoTotal || '';
+        const num = raw !== '' ? parseFloat(raw) : parseNumber(row.querySelector('.custo-total')?.value || '0');
         if (!Number.isNaN(num)) total += num;
     });
     const totalEl = document.getElementById('total-receita');
