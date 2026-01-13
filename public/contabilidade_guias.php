@@ -36,8 +36,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             throw new Exception('ID inválido');
         }
         
+        // Buscar parcelamento_id antes de excluir
+        $stmt = $pdo->prepare("SELECT parcelamento_id FROM contabilidade_guias WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        $guia = $stmt->fetch(PDO::FETCH_ASSOC);
+        $parcelamento_id = $guia['parcelamento_id'] ?? null;
+        
+        // Excluir a guia
         $stmt = $pdo->prepare("DELETE FROM contabilidade_guias WHERE id = :id");
         $stmt->execute([':id' => $id]);
+        
+        // Se a guia estava associada a um parcelamento, verificar se ainda há outras guias
+        if ($parcelamento_id) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as total 
+                FROM contabilidade_guias 
+                WHERE parcelamento_id = :parc_id
+            ");
+            $stmt->execute([':parc_id' => $parcelamento_id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Se não há mais guias, marcar parcelamento como encerrado
+            if ($result['total'] == 0) {
+                $stmt = $pdo->prepare("
+                    UPDATE contabilidade_parcelamentos 
+                    SET status = 'encerrado', atualizado_em = NOW() 
+                    WHERE id = :parc_id
+                ");
+                $stmt->execute([':parc_id' => $parcelamento_id]);
+            }
+        }
         
         $mensagem = 'Guia excluída com sucesso!';
     } catch (Exception $e) {
@@ -291,8 +319,9 @@ try {
     
     if ($has_empresa_id_parc) {
         // Se parcelamentos tem empresa_id, usar diretamente
+        // Só mostrar parcelamentos que têm pelo menos uma guia associada
         $stmt = $pdo->query("
-            SELECT 
+            SELECT DISTINCT
                 p.id, 
                 p.descricao, 
                 p.total_parcelas, 
@@ -301,39 +330,44 @@ try {
                 p.empresa_id,
                 g.descricao as primeira_descricao
             FROM contabilidade_parcelamentos p
-            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            INNER JOIN contabilidade_guias g ON g.parcelamento_id = p.id
+            LEFT JOIN contabilidade_guias g1 ON g1.parcelamento_id = p.id AND g1.numero_parcela = 1
             WHERE p.status = 'ativo'
             ORDER BY p.criado_em DESC
         ");
     } elseif ($has_empresa_id_guias) {
         // Se não tem empresa_id em parcelamentos, buscar da primeira guia
+        // Só mostrar parcelamentos que têm pelo menos uma guia associada
         $stmt = $pdo->query("
-            SELECT 
+            SELECT DISTINCT
                 p.id, 
                 p.descricao, 
                 p.total_parcelas, 
                 p.parcela_atual, 
                 p.status,
-                g.empresa_id,
-                g.descricao as primeira_descricao
+                g1.empresa_id,
+                g1.descricao as primeira_descricao
             FROM contabilidade_parcelamentos p
-            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            INNER JOIN contabilidade_guias g ON g.parcelamento_id = p.id
+            LEFT JOIN contabilidade_guias g1 ON g1.parcelamento_id = p.id AND g1.numero_parcela = 1
             WHERE p.status = 'ativo'
             ORDER BY p.criado_em DESC
         ");
     } else {
         // Fallback: sem empresa_id
+        // Só mostrar parcelamentos que têm pelo menos uma guia associada
         $stmt = $pdo->query("
-            SELECT 
+            SELECT DISTINCT
                 p.id, 
                 p.descricao, 
                 p.total_parcelas, 
                 p.parcela_atual, 
                 p.status,
                 NULL as empresa_id,
-                g.descricao as primeira_descricao
+                g1.descricao as primeira_descricao
             FROM contabilidade_parcelamentos p
-            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            INNER JOIN contabilidade_guias g ON g.parcelamento_id = p.id
+            LEFT JOIN contabilidade_guias g1 ON g1.parcelamento_id = p.id AND g1.numero_parcela = 1
             WHERE p.status = 'ativo'
             ORDER BY p.criado_em DESC
         ");
