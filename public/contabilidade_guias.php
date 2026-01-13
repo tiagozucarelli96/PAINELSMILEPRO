@@ -602,7 +602,13 @@ try {
                         </td>
                         <td>
                             <?php if (!empty($guia['chave_storage']) || !empty($guia['arquivo_url'])): ?>
-                                <a href="contabilidade_download.php?tipo=guia&id=<?= $guia['id'] ?>" target="_blank">📎 Ver</a>
+                                <button type="button" 
+                                        class="btn-ver-arquivo" 
+                                        data-guia-id="<?= $guia['id'] ?>"
+                                        data-arquivo-nome="<?= htmlspecialchars($guia['arquivo_nome'] ?? 'arquivo') ?>"
+                                        style="background: #1e40af; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">
+                                    📎 Ver
+                                </button>
                             <?php else: ?>
                                 -
                             <?php endif; ?>
