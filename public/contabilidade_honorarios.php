@@ -135,7 +135,7 @@ try {
 $honorarios = [];
 try {
     $stmt = $pdo->query("
-        SELECT h.*, e.nome as empresa_nome, e.cnpj as empresa_cnpj
+        SELECT h.*, e.nome as empresa_nome, e.documento as empresa_documento
         FROM contabilidade_honorarios h
         LEFT JOIN contabilidade_empresas e ON e.id = h.empresa_id
         ORDER BY h.data_vencimento DESC, h.criado_em DESC
@@ -223,7 +223,7 @@ try {
                             <option value="">Selecione uma empresa...</option>
                             <?php foreach ($empresas as $emp): ?>
                             <option value="<?= $emp['id'] ?>">
-                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['cnpj']) ?>
+                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['documento'] ?? $emp['cnpj'] ?? '') ?>
                             </option>
                             <?php endforeach; ?>
                         </select>

@@ -95,7 +95,7 @@ $where_sql = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) 
 $honorarios = [];
 try {
     $sql = "
-        SELECT h.*, e.nome as empresa_nome, e.cnpj as empresa_cnpj
+        SELECT h.*, e.nome as empresa_nome, e.documento as empresa_documento
         FROM contabilidade_honorarios h
         LEFT JOIN contabilidade_empresas e ON e.id = h.empresa_id
         $where_sql 

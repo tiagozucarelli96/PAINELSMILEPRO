@@ -537,7 +537,7 @@ try {
                             <option value="">Selecione uma empresa...</option>
                             <?php foreach ($empresas as $emp): ?>
                             <option value="<?= $emp['id'] ?>">
-                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['cnpj']) ?>
+                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['documento'] ?? $emp['cnpj'] ?? '') ?>
                             </option>
                             <?php endforeach; ?>
                         </select>

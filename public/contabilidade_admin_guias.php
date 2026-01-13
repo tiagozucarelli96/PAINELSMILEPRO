@@ -123,7 +123,7 @@ $guias = [];
 try {
     $sql = "
         SELECT g.*, p.descricao as parcelamento_desc, p.total_parcelas,
-               e.nome as empresa_nome, e.cnpj as empresa_cnpj
+               e.nome as empresa_nome, e.documento as empresa_documento
         FROM contabilidade_guias g
         LEFT JOIN contabilidade_parcelamentos p ON p.id = g.parcelamento_id
         LEFT JOIN contabilidade_empresas e ON e.id = g.empresa_id
