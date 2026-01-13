@@ -21,6 +21,7 @@ $erro = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'cadastrar_holerite') {
     try {
         $mes_competencia = trim($_POST['mes_competencia'] ?? '');
+        $empresa_id = !empty($_POST['empresa_id']) ? (int)$_POST['empresa_id'] : null;
         $e_ajuste = isset($_POST['e_ajuste']) && $_POST['e_ajuste'] === '1';
         $observacao = trim($_POST['observacao'] ?? '');
         
@@ -51,17 +52,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             // Garantir que e_ajuste seja boolean explícito
             $e_ajuste_bool = (bool)$e_ajuste;
             
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_holerites 
-                (arquivo_url, arquivo_nome, chave_storage, mes_competencia, e_ajuste, observacao)
-                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :competencia, :e_ajuste, :obs)
-            ");
+            // Verificar se coluna empresa_id existe
+            $has_empresa_id = false;
+            try {
+                $stmt_check = $pdo->prepare("
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_schema = current_schema() 
+                    AND table_name = 'contabilidade_holerites' 
+                    AND column_name = 'empresa_id'
+                ");
+                $stmt_check->execute();
+                $has_empresa_id = (bool)$stmt_check->fetchColumn();
+            } catch (Exception $e) {
+                // Ignorar
+            }
+            
+            if ($has_empresa_id) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_holerites 
+                    (arquivo_url, arquivo_nome, chave_storage, mes_competencia, e_ajuste, observacao, empresa_id)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :competencia, :e_ajuste, :obs, :empresa_id)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_holerites 
+                    (arquivo_url, arquivo_nome, chave_storage, mes_competencia, e_ajuste, observacao)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :competencia, :e_ajuste, :obs)
+                ");
+            }
             $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
             $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
             $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
             $stmt->bindValue(':competencia', $mes_competencia, PDO::PARAM_STR);
             $stmt->bindValue(':e_ajuste', $e_ajuste_bool, PDO::PARAM_BOOL);
             $stmt->bindValue(':obs', !empty($observacao) ? $observacao : null, PDO::PARAM_STR);
+            if ($has_empresa_id) {
+                $stmt->bindValue(':empresa_id', $empresa_id, PDO::PARAM_INT);
+            }
             $stmt->execute();
             
             $mensagem = 'Holerite cadastrado com sucesso!';
@@ -160,6 +187,18 @@ try {
                 <input type="hidden" name="acao" value="cadastrar_holerite">
                 
                 <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Empresa *</label>
+                        <select name="empresa_id" class="form-input" required>
+                            <option value="">Selecione uma empresa...</option>
+                            <?php foreach ($empresas as $emp): ?>
+                            <option value="<?= $emp['id'] ?>">
+                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['cnpj']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
                     <div class="form-group">
                         <label class="form-label">Mês de Competência (MM/AAAA) *</label>
                         <input type="text" name="mes_competencia" class="form-input" 

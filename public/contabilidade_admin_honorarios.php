@@ -53,21 +53,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Buscar empresas para filtro
+$empresas = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_empresas
+        WHERE ativo = TRUE
+        ORDER BY nome ASC
+    ");
+    $empresas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+}
+
 // Filtros
 $filtro_status = $_GET['status'] ?? '';
 $filtro_mes = $_GET['mes'] ?? '';
+$filtro_empresa = $_GET['empresa'] ?? '';
 
 $where_conditions = [];
 $params = [];
 
 if ($filtro_status) {
-    $where_conditions[] = "status = :status";
+    $where_conditions[] = "h.status = :status";
     $params[':status'] = $filtro_status;
 }
 
 if ($filtro_mes) {
-    $where_conditions[] = "TO_CHAR(data_vencimento, 'YYYY-MM') = :mes";
+    $where_conditions[] = "TO_CHAR(h.data_vencimento, 'YYYY-MM') = :mes";
     $params[':mes'] = $filtro_mes;
+}
+
+if ($filtro_empresa) {
+    $where_conditions[] = "h.empresa_id = :empresa";
+    $params[':empresa'] = (int)$filtro_empresa;
 }
 
 $where_sql = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
@@ -75,7 +94,13 @@ $where_sql = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) 
 // Buscar honorários
 $honorarios = [];
 try {
-    $sql = "SELECT * FROM contabilidade_honorarios $where_sql ORDER BY data_vencimento DESC, criado_em DESC";
+    $sql = "
+        SELECT h.*, e.nome as empresa_nome, e.cnpj as empresa_cnpj
+        FROM contabilidade_honorarios h
+        LEFT JOIN contabilidade_empresas e ON e.id = h.empresa_id
+        $where_sql 
+        ORDER BY h.data_vencimento DESC, h.criado_em DESC
+    ";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     $honorarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -201,6 +226,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 <div class="form-group">
                     <label class="form-label">Mês (YYYY-MM)</label>
                     <input type="month" name="mes" class="form-input" value="<?= htmlspecialchars($filtro_mes) ?>" onchange="this.form.submit()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa</label>
+                    <select name="empresa" class="form-select" onchange="this.form.submit()">
+                        <option value="">Todas</option>
+                        <?php foreach ($empresas as $emp): ?>
+                        <option value="<?= $emp['id'] ?>" <?= $filtro_empresa == $emp['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($emp['nome']) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
         </form>

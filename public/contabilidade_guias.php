@@ -33,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     try {
         $descricao = trim($_POST['descricao'] ?? '');
         $data_vencimento = trim($_POST['data_vencimento'] ?? '');
+        $empresa_id = !empty($_POST['empresa_id']) ? (int)$_POST['empresa_id'] : null;
         $e_parcela = isset($_POST['e_parcela']) && $_POST['e_parcela'] === '1';
         $parcelamento_id = !empty($_POST['parcelamento_id']) ? (int)$_POST['parcelamento_id'] : null;
         $criar_parcelamento = isset($_POST['criar_parcelamento']) && $_POST['criar_parcelamento'] === '1';
@@ -126,30 +127,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $e_parcela_bool = (bool)$e_parcela;
             
             $has_chave_storage = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'chave_storage');
+            $has_empresa_id = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
+            
+            $campos = ['arquivo_url', 'arquivo_nome'];
+            $valores = [':arquivo_url', ':arquivo_nome'];
+            $bindings = [
+                ':arquivo_url' => $arquivo_url,
+                ':arquivo_nome' => $arquivo_nome
+            ];
+            
             if ($has_chave_storage) {
-                $stmt = $pdo->prepare("
-                    INSERT INTO contabilidade_guias 
-                    (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
-                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO contabilidade_guias 
-                    (arquivo_url, arquivo_nome, data_vencimento, descricao, e_parcela, parcelamento_id, numero_parcela)
-                    VALUES (:arquivo_url, :arquivo_nome, :vencimento, :desc, :e_parcela, :parc_id, :num_parc)
-                ");
+                $campos[] = 'chave_storage';
+                $valores[] = ':chave_storage';
+                $bindings[':chave_storage'] = $chave_storage;
             }
-
-            $stmt->bindValue(':arquivo_url', $arquivo_url, PDO::PARAM_STR);
-            $stmt->bindValue(':arquivo_nome', $arquivo_nome, PDO::PARAM_STR);
-            if ($has_chave_storage) {
-                $stmt->bindValue(':chave_storage', $chave_storage, PDO::PARAM_STR);
+            
+            $campos[] = 'data_vencimento';
+            $campos[] = 'descricao';
+            $campos[] = 'e_parcela';
+            $campos[] = 'parcelamento_id';
+            $campos[] = 'numero_parcela';
+            $valores[] = ':vencimento';
+            $valores[] = ':desc';
+            $valores[] = ':e_parcela';
+            $valores[] = ':parc_id';
+            $valores[] = ':num_parc';
+            $bindings[':vencimento'] = $data_vencimento;
+            $bindings[':desc'] = $descricao;
+            $bindings[':e_parcela'] = $e_parcela_bool;
+            $bindings[':parc_id'] = $parcelamento_id;
+            $bindings[':num_parc'] = $numero_parcela;
+            
+            if ($has_empresa_id) {
+                $campos[] = 'empresa_id';
+                $valores[] = ':empresa_id';
+                $bindings[':empresa_id'] = $empresa_id;
             }
-            $stmt->bindValue(':vencimento', $data_vencimento, PDO::PARAM_STR);
-            $stmt->bindValue(':desc', $descricao, PDO::PARAM_STR);
-            $stmt->bindValue(':e_parcela', $e_parcela_bool, PDO::PARAM_BOOL);
-            $stmt->bindValue(':parc_id', $parcelamento_id, PDO::PARAM_INT);
-            $stmt->bindValue(':num_parc', $numero_parcela, PDO::PARAM_INT);
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO contabilidade_guias (" . implode(', ', $campos) . ")
+                VALUES (" . implode(', ', $valores) . ")
+            ");
+            
+            foreach ($bindings as $key => $value) {
+                if ($key === ':e_parcela') {
+                    $stmt->bindValue($key, $value, PDO::PARAM_BOOL);
+                } elseif ($key === ':parc_id' || $key === ':num_parc' || $key === ':empresa_id') {
+                    $stmt->bindValue($key, $value, PDO::PARAM_INT);
+                } else {
+                    $stmt->bindValue($key, $value, PDO::PARAM_STR);
+                }
+            }
             $stmt->execute();
             
             $guia_id = $pdo->lastInsertId();
@@ -290,6 +318,18 @@ try {
                 <input type="hidden" name="acao" value="cadastrar_guia">
                 
                 <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Empresa *</label>
+                        <select name="empresa_id" class="form-select" required>
+                            <option value="">Selecione uma empresa...</option>
+                            <?php foreach ($empresas as $emp): ?>
+                            <option value="<?= $emp['id'] ?>">
+                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['cnpj']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
                     <div class="form-group">
                         <label class="form-label">Descrição *</label>
                         <input type="text" name="descricao" class="form-input" required>

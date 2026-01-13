@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     try {
         $descricao = trim($_POST['descricao'] ?? '');
         $data_vencimento = trim($_POST['data_vencimento'] ?? '');
+        $empresa_id = !empty($_POST['empresa_id']) ? (int)$_POST['empresa_id'] : null;
         
         if (empty($descricao)) {
             throw new Exception('Descrição é obrigatória');
@@ -45,19 +46,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $chave_storage = $resultado['chave_storage'] ?? null;
             $arquivo_nome = $resultado['nome_original'] ?? $_FILES['arquivo']['name'];
             
+            // Verificar se coluna empresa_id existe
+            $has_empresa_id = false;
+            try {
+                $stmt_check = $pdo->prepare("
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_schema = current_schema() 
+                    AND table_name = 'contabilidade_honorarios' 
+                    AND column_name = 'empresa_id'
+                ");
+                $stmt_check->execute();
+                $has_empresa_id = (bool)$stmt_check->fetchColumn();
+            } catch (Exception $e) {
+                // Ignorar
+            }
+            
             // Inserir honorário
-            $stmt = $pdo->prepare("
-                INSERT INTO contabilidade_honorarios 
-                (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao)
-                VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc)
-            ");
-            $stmt->execute([
+            if ($has_empresa_id) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_honorarios 
+                    (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao, empresa_id)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc, :empresa_id)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO contabilidade_honorarios 
+                    (arquivo_url, arquivo_nome, chave_storage, data_vencimento, descricao)
+                    VALUES (:arquivo_url, :arquivo_nome, :chave_storage, :vencimento, :desc)
+                ");
+            }
+            
+            $params = [
                 ':arquivo_url' => $arquivo_url,
                 ':arquivo_nome' => $arquivo_nome,
                 ':chave_storage' => $chave_storage,
                 ':vencimento' => $data_vencimento,
                 ':desc' => $descricao
-            ]);
+            ];
+            
+            if ($has_empresa_id) {
+                $params[':empresa_id'] = $empresa_id;
+            }
+            
+            $stmt->execute($params);
             
             $mensagem = 'Honorário cadastrado com sucesso!';
             
@@ -70,12 +101,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
+// Buscar empresas
+$empresas = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_empresas
+        WHERE ativo = TRUE
+        ORDER BY nome ASC
+    ");
+    $empresas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+}
+
 // Buscar honorários
 $honorarios = [];
 try {
     $stmt = $pdo->query("
-        SELECT * FROM contabilidade_honorarios
-        ORDER BY data_vencimento DESC, criado_em DESC
+        SELECT h.*, e.nome as empresa_nome, e.cnpj as empresa_cnpj
+        FROM contabilidade_honorarios h
+        LEFT JOIN contabilidade_empresas e ON e.id = h.empresa_id
+        ORDER BY h.data_vencimento DESC, h.criado_em DESC
         LIMIT 50
     ");
     $honorarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -154,6 +200,18 @@ try {
                 <input type="hidden" name="acao" value="cadastrar_honorario">
                 
                 <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Empresa *</label>
+                        <select name="empresa_id" class="form-input" required>
+                            <option value="">Selecione uma empresa...</option>
+                            <?php foreach ($empresas as $emp): ?>
+                            <option value="<?= $emp['id'] ?>">
+                                <?= htmlspecialchars($emp['nome']) ?> - <?= htmlspecialchars($emp['cnpj']) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
                     <div class="form-group">
                         <label class="form-label">Descrição *</label>
                         <input type="text" name="descricao" class="form-input" required>

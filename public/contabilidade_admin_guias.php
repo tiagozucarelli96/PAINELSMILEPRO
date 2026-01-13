@@ -71,10 +71,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Buscar empresas para filtro
+$empresas = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_empresas
+        WHERE ativo = TRUE
+        ORDER BY nome ASC
+    ");
+    $empresas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+}
+
 // Filtros
 $filtro_status = $_GET['status'] ?? '';
 $filtro_mes = $_GET['mes'] ?? '';
 $filtro_tipo = $_GET['tipo'] ?? '';
+$filtro_empresa = $_GET['empresa'] ?? '';
 
 $where_conditions = [];
 $params = [];
@@ -97,15 +111,22 @@ if ($filtro_tipo) {
     }
 }
 
+if ($filtro_empresa) {
+    $where_conditions[] = "g.empresa_id = :empresa";
+    $params[':empresa'] = (int)$filtro_empresa;
+}
+
 $where_sql = $where_conditions ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
 
 // Buscar guias
 $guias = [];
 try {
     $sql = "
-        SELECT g.*, p.descricao as parcelamento_desc, p.total_parcelas
+        SELECT g.*, p.descricao as parcelamento_desc, p.total_parcelas,
+               e.nome as empresa_nome, e.cnpj as empresa_cnpj
         FROM contabilidade_guias g
         LEFT JOIN contabilidade_parcelamentos p ON p.id = g.parcelamento_id
+        LEFT JOIN contabilidade_empresas e ON e.id = g.empresa_id
         $where_sql
         ORDER BY g.criado_em DESC
     ";
@@ -301,6 +322,17 @@ body {
                         <option value="unica" <?= $filtro_tipo === 'unica' ? 'selected' : '' ?>>Únicas</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Empresa</label>
+                    <select name="empresa" class="form-select" onchange="this.form.submit()">
+                        <option value="">Todas</option>
+                        <?php foreach ($empresas as $emp): ?>
+                        <option value="<?= $emp['id'] ?>" <?= $filtro_empresa == $emp['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($emp['nome']) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
         </form>
     </div>
@@ -309,6 +341,7 @@ body {
     <table class="table">
         <thead>
             <tr>
+                <th>Empresa</th>
                 <th>Descrição</th>
                 <th>Vencimento</th>
                 <th>Parcela</th>
@@ -320,13 +353,14 @@ body {
         <tbody>
             <?php if (empty($guias)): ?>
             <tr>
-                <td colspan="6" style="text-align: center; padding: 3rem; color: #64748b;">
+                <td colspan="7" style="text-align: center; padding: 3rem; color: #64748b;">
                     Nenhuma guia encontrada com os filtros selecionados.
                 </td>
             </tr>
             <?php else: ?>
             <?php foreach ($guias as $guia): ?>
             <tr>
+                <td><?= $guia['empresa_nome'] ? htmlspecialchars($guia['empresa_nome']) : '-' ?></td>
                 <td><?= htmlspecialchars($guia['descricao']) ?></td>
                 <td><?= $guia['data_vencimento'] ? date('d/m/Y', strtotime($guia['data_vencimento'])) : '-' ?></td>
                 <td>
