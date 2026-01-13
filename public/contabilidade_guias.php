@@ -439,6 +439,7 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Guias para Pagamento - Contabilidade</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -647,7 +648,7 @@ try {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <form method="POST" style="display: inline;" onsubmit="return confirm('Tem certeza que deseja excluir esta guia?');">
+                            <form method="POST" style="display: inline;" class="form-excluir-guia" data-guia-id="<?= $guia['id'] ?>">
                                 <input type="hidden" name="acao" value="excluir_guia">
                                 <input type="hidden" name="id" value="<?= $guia['id'] ?>">
                                 <button type="submit" style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🗑️ Excluir</button>
@@ -771,22 +772,25 @@ try {
             
             if (!empresaId) {
                 e.preventDefault();
-                alert('Por favor, selecione uma empresa.');
-                document.getElementById('empresa_id').focus();
+                customAlert('Por favor, selecione uma empresa.', 'Atenção').then(() => {
+                    document.getElementById('empresa_id').focus();
+                });
                 return false;
             }
             
             if (!descricao.trim()) {
                 e.preventDefault();
-                alert('Por favor, preencha a descrição.');
-                document.getElementById('descricao').focus();
+                customAlert('Por favor, preencha a descrição.', 'Atenção').then(() => {
+                    document.getElementById('descricao').focus();
+                });
                 return false;
             }
             
             if (!dataVencimento) {
                 e.preventDefault();
-                alert('Por favor, preencha a data de vencimento.');
-                document.getElementById('data_vencimento').focus();
+                customAlert('Por favor, preencha a data de vencimento.', 'Atenção').then(() => {
+                    document.getElementById('data_vencimento').focus();
+                });
                 return false;
             }
             
@@ -797,8 +801,9 @@ try {
                 
                 if (!parcelamentoId) {
                     e.preventDefault();
-                    alert('Por favor, selecione um parcelamento ou crie um novo.');
-                    document.getElementById('parcelamento_id').focus();
+                    customAlert('Por favor, selecione um parcelamento ou crie um novo.', 'Atenção').then(() => {
+                        document.getElementById('parcelamento_id').focus();
+                    });
                     return false;
                 }
                 
@@ -808,19 +813,21 @@ try {
                     
                     if (!parcelaAtualVal || !totalParcelasVal) {
                         e.preventDefault();
-                        alert('Por favor, preencha a parcela e o total de parcelas.');
-                        if (!parcelaAtualVal) {
-                            parcelaAtual.focus();
-                        } else {
-                            totalParcelas.focus();
-                        }
+                        customAlert('Por favor, preencha a parcela e o total de parcelas.', 'Atenção').then(() => {
+                            if (!parcelaAtualVal) {
+                                parcelaAtual.focus();
+                            } else {
+                                totalParcelas.focus();
+                            }
+                        });
                         return false;
                     }
                     
                     if (parseInt(parcelaAtualVal) > parseInt(totalParcelasVal)) {
                         e.preventDefault();
-                        alert('A parcela atual não pode ser maior que o total de parcelas.');
-                        parcelaAtual.focus();
+                        customAlert('A parcela atual não pode ser maior que o total de parcelas.', 'Atenção').then(() => {
+                            parcelaAtual.focus();
+                        });
                         return false;
                     }
                 }

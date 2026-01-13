@@ -1,20 +1,18 @@
-/**
- * Custom Modals CSS - Estilos para alertas e confirmações customizados
- */
+/* Custom Modals - Estilos para alertas e confirmações customizados */
 
-.custom-alert-overlay {
+.custom-alert-overlay,
+.custom-prompt-overlay {
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
     z-index: 10000;
-    animation: fadeIn 0.2s;
-    backdrop-filter: blur(2px);
+    animation: fadeIn 0.2s ease;
 }
 
 @keyframes fadeIn {
@@ -29,18 +27,17 @@
 .custom-alert {
     background: white;
     border-radius: 12px;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    padding: 0;
-    max-width: 450px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
     width: 90%;
     max-height: 90vh;
-    overflow-y: auto;
-    animation: slideUp 0.3s ease-out;
+    overflow: auto;
+    animation: slideIn 0.3s ease;
 }
 
-@keyframes slideUp {
+@keyframes slideIn {
     from {
-        transform: translateY(20px);
+        transform: translateY(-20px);
         opacity: 0;
     }
     to {
@@ -51,75 +48,71 @@
 
 .custom-alert-header {
     padding: 1.5rem;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    color: white;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 1.25rem;
     font-weight: 600;
-    font-size: 1.1rem;
+    color: #1f2937;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    color: white;
     border-radius: 12px 12px 0 0;
 }
 
 .custom-alert-body {
     padding: 1.5rem;
     color: #374151;
+    font-size: 1rem;
     line-height: 1.6;
-    font-size: 0.95rem;
-    word-wrap: break-word;
 }
 
 .custom-alert-actions {
     padding: 1rem 1.5rem;
-    display: flex;
-    gap: 0.75rem;
-    justify-content: flex-end;
     border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
     background: #f9fafb;
+    border-radius: 0 0 12px 12px;
 }
 
 .custom-alert-btn {
-    padding: 0.625rem 1.25rem;
+    padding: 0.75rem 1.5rem;
+    border: none;
     border-radius: 6px;
+    font-size: 1rem;
     font-weight: 500;
     cursor: pointer;
-    border: none;
-    transition: all 0.2s;
-    font-size: 0.875rem;
-    min-width: 80px;
-}
-
-.custom-alert-btn:focus {
-    outline: 2px solid #3b82f6;
-    outline-offset: 2px;
+    transition: all 0.2s ease;
+    min-width: 100px;
 }
 
 .custom-alert-btn-primary {
-    background: #3b82f6;
+    background: #1e40af;
     color: white;
 }
 
 .custom-alert-btn-primary:hover {
-    background: #2563eb;
+    background: #1e3a8a;
     transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
 }
 
 .custom-alert-btn-primary:active {
     transform: translateY(0);
 }
 
-/* Prompt customizado (usa as mesmas classes do alert, mas com input) */
-.custom-prompt-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    animation: fadeIn 0.2s;
-    backdrop-filter: blur(2px);
+.custom-alert-btn-secondary {
+    background: #6b7280;
+    color: white;
+}
+
+.custom-alert-btn-secondary:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+.custom-alert-btn-secondary:active {
+    transform: translateY(0);
 }
 
 .custom-prompt-input {
@@ -128,61 +121,29 @@
     border: 1px solid #d1d5db;
     border-radius: 6px;
     font-size: 1rem;
-    font-family: inherit;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    transition: border-color 0.2s ease;
 }
 
 .custom-prompt-input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.custom-alert-btn-secondary {
-    background: #f3f4f6;
-    color: #374151;
-}
-
-.custom-alert-btn-secondary:hover {
-    background: #e5e7eb;
-    transform: translateY(-1px);
-}
-
-.custom-alert-btn-secondary:active {
-    transform: translateY(0);
-}
-
-.custom-alert-btn-danger {
-    background: #ef4444;
-    color: white;
-}
-
-.custom-alert-btn-danger:hover {
-    background: #dc2626;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.custom-alert-btn-danger:active {
-    transform: translateY(0);
+    border-color: #1e40af;
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
 }
 
 /* Responsividade */
 @media (max-width: 640px) {
     .custom-alert {
         width: 95%;
-        max-width: none;
         margin: 1rem;
     }
     
     .custom-alert-header {
-        padding: 1.25rem;
-        font-size: 1rem;
+        padding: 1rem;
+        font-size: 1.1rem;
     }
     
     .custom-alert-body {
-        padding: 1.25rem;
-        font-size: 0.9rem;
+        padding: 1rem;
     }
     
     .custom-alert-actions {
@@ -193,4 +154,3 @@
         width: 100%;
     }
 }
-
