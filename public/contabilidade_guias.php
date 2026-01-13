@@ -264,6 +264,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         
     } catch (Exception $e) {
         $erro = $e->getMessage();
+        error_log("[CONTABILIDADE_GUIAS] Erro ao cadastrar guia: " . $e->getMessage());
+        error_log("[CONTABILIDADE_GUIAS] Stack trace: " . $e->getTraceAsString());
     }
 }
 
