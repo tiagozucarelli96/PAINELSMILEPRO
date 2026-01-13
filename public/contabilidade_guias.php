@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         $parcelamento_id = !empty($_POST['parcelamento_id']) ? (int)$_POST['parcelamento_id'] : null;
         $criar_parcelamento = isset($_POST['criar_parcelamento']) && $_POST['criar_parcelamento'] === '1';
         $total_parcelas = !empty($_POST['total_parcelas']) ? (int)$_POST['total_parcelas'] : null;
-        $parcela_inicial = !empty($_POST['parcela_inicial']) ? (int)$_POST['parcela_inicial'] : 1;
+        $parcela_atual = !empty($_POST['parcela_atual']) ? (int)$_POST['parcela_atual'] : 1;
         
         if (empty($descricao)) {
             throw new Exception('Descrição é obrigatória');
@@ -104,14 +104,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             
             // Determinar número da parcela
             $numero_parcela = null;
-            if ($e_parcela && $parcelamento_id) {
-                // Buscar parcela atual do parcelamento
+            if ($e_parcela && $criar_parcelamento && $parcela_atual) {
+                // Se está criando novo parcelamento, usar o valor informado pelo usuário
+                $numero_parcela = $parcela_atual;
+                // Não incrementar parcela_atual ainda, pois esta é a primeira guia do parcelamento
+            } elseif ($e_parcela && $parcelamento_id) {
+                // Se está usando parcelamento existente, buscar parcela atual e incrementar
                 $stmt = $pdo->prepare("SELECT parcela_atual FROM contabilidade_parcelamentos WHERE id = :id");
                 $stmt->execute([':id' => $parcelamento_id]);
-                $parcela_atual = $stmt->fetchColumn();
-                $numero_parcela = $parcela_atual;
+                $parcela_atual_db = $stmt->fetchColumn();
+                $numero_parcela = $parcela_atual_db;
                 
-                // Atualizar parcela atual
+                // Atualizar parcela atual (incrementar para próxima)
                 $stmt = $pdo->prepare("
                     UPDATE contabilidade_parcelamentos 
                     SET parcela_atual = parcela_atual + 1,
@@ -246,18 +250,45 @@ try {
     error_log("Erro ao buscar empresas: " . $e->getMessage());
 }
 
-// Buscar parcelamentos ativos
+// Buscar parcelamentos ativos com dados da primeira guia (para empresa e descrição)
 $parcelamentos_ativos = [];
 try {
-    $stmt = $pdo->query("
-        SELECT id, descricao, total_parcelas, parcela_atual, status
-        FROM contabilidade_parcelamentos
-        WHERE status = 'ativo'
-        ORDER BY criado_em DESC
-    ");
+    $has_empresa_id = contabilidadeColunaExiste($pdo, 'contabilidade_guias', 'empresa_id');
+    if ($has_empresa_id) {
+        $stmt = $pdo->query("
+            SELECT 
+                p.id, 
+                p.descricao, 
+                p.total_parcelas, 
+                p.parcela_atual, 
+                p.status,
+                g.empresa_id,
+                g.descricao as primeira_descricao
+            FROM contabilidade_parcelamentos p
+            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            WHERE p.status = 'ativo'
+            ORDER BY p.criado_em DESC
+        ");
+    } else {
+        $stmt = $pdo->query("
+            SELECT 
+                p.id, 
+                p.descricao, 
+                p.total_parcelas, 
+                p.parcela_atual, 
+                p.status,
+                NULL as empresa_id,
+                g.descricao as primeira_descricao
+            FROM contabilidade_parcelamentos p
+            LEFT JOIN contabilidade_guias g ON g.parcelamento_id = p.id AND g.numero_parcela = 1
+            WHERE p.status = 'ativo'
+            ORDER BY p.criado_em DESC
+        ");
+    }
     $parcelamentos_ativos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     // Tabela pode não existir
+    error_log("Erro ao buscar parcelamentos: " . $e->getMessage());
 }
 
 // Buscar guias
