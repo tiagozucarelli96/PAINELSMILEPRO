@@ -220,8 +220,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             }
             
             $campos[] = 'data_vencimento';
+            $valores[] = ':vencimento';
+            $bindings[':vencimento'] = $data_vencimento;
+            
             $campos[] = 'descricao';
+            $valores[] = ':desc';
+            $bindings[':desc'] = $descricao;
+            
             $campos[] = 'e_parcela';
+            $valores[] = ':e_parcela';
+            $bindings[':e_parcela'] = $e_parcela_bool;
             
             // Só adicionar parcelamento_id e numero_parcela se for parcela
             if ($e_parcela) {
@@ -232,13 +240,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 $bindings[':parc_id'] = $parcelamento_id;
                 $bindings[':num_parc'] = $numero_parcela;
             }
-            
-            $valores[] = ':vencimento';
-            $valores[] = ':desc';
-            $valores[] = ':e_parcela';
-            $bindings[':vencimento'] = $data_vencimento;
-            $bindings[':desc'] = $descricao;
-            $bindings[':e_parcela'] = $e_parcela_bool;
             
             // Empresa_id é sempre obrigatório
             if ($has_empresa_id) {
@@ -518,9 +519,9 @@ try {
                             <label class="form-label">Parcela e Total *</label>
                             <div style="display: flex; align-items: center; gap: 0.5rem;">
                                 <span>Parcela</span>
-                                <input type="number" name="parcela_atual" id="parcela_atual" class="form-input" style="width: 80px;" min="1" required>
+                                <input type="number" name="parcela_atual" id="parcela_atual" class="form-input" style="width: 80px;" min="1">
                                 <span>de um total de</span>
-                                <input type="number" name="total_parcelas" id="total_parcelas" class="form-input" style="width: 80px;" min="2" required>
+                                <input type="number" name="total_parcelas" id="total_parcelas" class="form-input" style="width: 80px;" min="2">
                             </div>
                             <small style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem; display: block;">
                                 Exemplo: Parcela 5 de um total de 30
@@ -641,6 +642,9 @@ try {
         function toggleParcelamento() {
             const checkbox = document.getElementById('e_parcela');
             const section = document.getElementById('parcelamento-section');
+            const parcelaAtual = document.getElementById('parcela_atual');
+            const totalParcelas = document.getElementById('total_parcelas');
+            
             if (checkbox.checked) {
                 section.style.display = 'block';
             } else {
@@ -649,6 +653,13 @@ try {
                 document.getElementById('parcelamento_id').value = '';
                 document.getElementById('novo-parcelamento').style.display = 'none';
                 document.getElementById('parcela-info').style.display = 'none';
+                // Remover required de campos hidden
+                if (parcelaAtual && totalParcelas) {
+                    parcelaAtual.removeAttribute('required');
+                    totalParcelas.removeAttribute('required');
+                    parcelaAtual.value = '';
+                    totalParcelas.value = '';
+                }
                 // Não limpar descricao e empresa_id, pois são campos obrigatórios
             }
         }
@@ -714,6 +725,17 @@ try {
             const empresaId = document.getElementById('empresa_id').value;
             const descricao = document.getElementById('descricao').value;
             const dataVencimento = document.getElementById('data_vencimento').value;
+            const eParcela = document.getElementById('e_parcela').checked;
+            const parcelamentoSection = document.getElementById('parcelamento-section');
+            const novoParcelamento = document.getElementById('novo-parcelamento');
+            const parcelaAtual = document.getElementById('parcela_atual');
+            const totalParcelas = document.getElementById('total_parcelas');
+            
+            // Remover required de campos hidden
+            if (parcelaAtual && totalParcelas) {
+                parcelaAtual.removeAttribute('required');
+                totalParcelas.removeAttribute('required');
+            }
             
             if (!empresaId) {
                 e.preventDefault();
@@ -734,6 +756,42 @@ try {
                 alert('Por favor, preencha a data de vencimento.');
                 document.getElementById('data_vencimento').focus();
                 return false;
+            }
+            
+            // Validar parcelamento se for parcela
+            if (eParcela) {
+                const parcelamentoId = document.getElementById('parcelamento_id').value;
+                const criarParcelamento = novoParcelamento.style.display !== 'none';
+                
+                if (!parcelamentoId) {
+                    e.preventDefault();
+                    alert('Por favor, selecione um parcelamento ou crie um novo.');
+                    document.getElementById('parcelamento_id').focus();
+                    return false;
+                }
+                
+                if (criarParcelamento) {
+                    const parcelaAtualVal = parcelaAtual.value;
+                    const totalParcelasVal = totalParcelas.value;
+                    
+                    if (!parcelaAtualVal || !totalParcelasVal) {
+                        e.preventDefault();
+                        alert('Por favor, preencha a parcela e o total de parcelas.');
+                        if (!parcelaAtualVal) {
+                            parcelaAtual.focus();
+                        } else {
+                            totalParcelas.focus();
+                        }
+                        return false;
+                    }
+                    
+                    if (parseInt(parcelaAtualVal) > parseInt(totalParcelasVal)) {
+                        e.preventDefault();
+                        alert('A parcela atual não pode ser maior que o total de parcelas.');
+                        parcelaAtual.focus();
+                        return false;
+                    }
+                }
             }
         });
     </script>
