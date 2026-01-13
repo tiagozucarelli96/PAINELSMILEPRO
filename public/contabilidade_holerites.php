@@ -102,12 +102,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
+// Buscar empresas
+$empresas = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_empresas
+        WHERE ativo = TRUE
+        ORDER BY nome ASC
+    ");
+    $empresas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+    error_log("Erro ao buscar empresas: " . $e->getMessage());
+}
+
 // Buscar holerites
 $holerites = [];
 try {
     $stmt = $pdo->query("
-        SELECT * FROM contabilidade_holerites
-        ORDER BY mes_competencia DESC, criado_em DESC
+        SELECT h.*, e.nome as empresa_nome, e.cnpj as empresa_cnpj
+        FROM contabilidade_holerites h
+        LEFT JOIN contabilidade_empresas e ON e.id = h.empresa_id
+        ORDER BY h.mes_competencia DESC, h.criado_em DESC
         LIMIT 50
     ");
     $holerites = $stmt->fetchAll(PDO::FETCH_ASSOC);
