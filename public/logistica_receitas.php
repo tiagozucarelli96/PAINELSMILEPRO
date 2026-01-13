@@ -784,7 +784,7 @@ includeSidebar('Receitas - Logística');
                                     <div class="item-label item-nome"><?= $item_nome !== '' ? h($item_nome) : '-' ?></div>
                                     <input type="hidden" class="item-tipo" name="componentes[<?= $row_index ?>][item_tipo]" value="<?= h($tipo) ?>">
                                     <input type="hidden" class="item-id" name="componentes[<?= $row_index ?>][item_id]" value="<?= (int)$item_id ?>">
-                                    <button type="button" class="btn-secondary abrir-modal">🔍</button>
+                                    <button type="button" class="btn-secondary abrir-modal" onclick="openItemModal(this.closest('.componente-row'))">🔍</button>
                                 </td>
                                 <td><input class="form-input peso-liquido" name="componentes[<?= $row_index ?>][peso_liquido]" type="text" inputmode="decimal" value="<?= h($peso_liquido) ?>"></td>
                                 <td>
@@ -827,7 +827,7 @@ includeSidebar('Receitas - Logística');
                     </tfoot>
                 </table>
                 <div style="margin-top:0.75rem;">
-                    <button type="button" class="btn-secondary" id="add-linha">Adicionar linha</button>
+                    <button type="button" class="btn-secondary" id="add-linha" onclick="addLinha()">Adicionar linha</button>
                 </div>
             </div>
                 <div style="margin-top:1rem;">
@@ -928,15 +928,15 @@ includeSidebar('Receitas - Logística');
 <script>
 const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
 const CURRENT_RECIPE_ID = <?= (int)$edit_id ?>;
-const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE) ?>;
-const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE) ?>;
-const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE) ?>;
-const COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE) ?>;
+const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const COST_INSUMO = <?= json_encode($insumo_cost, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const COST_RECEITA = <?= json_encode(array_map(function($total) use ($receita_yield) {
     if ($total === null) { return null; }
     return $total;
-}, $receita_cost_total), JSON_UNESCAPED_UNICODE) ?>;
-const YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE) ?>;
+}, $receita_cost_total), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const YIELD_RECEITA = <?= json_encode($receita_yield, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 function parseNumber(value) {
     if (value === null || value === undefined) return 0;
@@ -1026,7 +1026,6 @@ function attachRowEvents(row) {
         row.remove();
         updateTotalReceita();
     });
-    row.querySelector('.abrir-modal').addEventListener('click', () => openItemModal(row));
     calcRow(row);
 }
 
@@ -1035,7 +1034,7 @@ updateTotalReceita();
 document.querySelector('[name=\"rendimento_base_pessoas\"]')?.addEventListener('input', updateTotalReceita);
 
 let nextIndex = document.querySelectorAll('.componente-row').length;
-document.getElementById('add-linha')?.addEventListener('click', () => {
+function addLinha() {
     const tbody = document.getElementById('componentes-body');
     if (!tbody) return;
     const row = document.createElement('tr');
@@ -1046,7 +1045,7 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
             <div class=\"item-label item-nome\">-</div>
             <input type=\"hidden\" class=\"item-tipo\" name=\"componentes[${nextIndex}][item_tipo]\" value=\"\">
             <input type=\"hidden\" class=\"item-id\" name=\"componentes[${nextIndex}][item_id]\" value=\"\">
-            <button type=\"button\" class=\"btn-secondary abrir-modal\">🔍</button>
+            <button type=\"button\" class=\"btn-secondary abrir-modal\" onclick=\"openItemModal(this.closest('.componente-row'))\">🔍</button>
         </td>
         <td><input class=\"form-input peso-liquido\" name=\"componentes[${nextIndex}][peso_liquido]\" type=\"text\" inputmode=\"decimal\"></td>
         <td>
@@ -1064,7 +1063,7 @@ document.getElementById('add-linha')?.addEventListener('click', () => {
     attachRowEvents(row);
     updateTotalReceita();
     nextIndex += 1;
-});
+}
 
 function closeFicha() {
     document.getElementById('modal-ficha').style.display = 'none';
