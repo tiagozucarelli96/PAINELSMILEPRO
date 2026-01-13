@@ -215,6 +215,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
+// Buscar empresas
+$empresas = [];
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM contabilidade_empresas
+        WHERE ativo = TRUE
+        ORDER BY nome ASC
+    ");
+    $empresas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Tabela pode não existir
+    error_log("Erro ao buscar empresas: " . $e->getMessage());
+}
+
 // Buscar parcelamentos ativos
 $parcelamentos_ativos = [];
 try {
