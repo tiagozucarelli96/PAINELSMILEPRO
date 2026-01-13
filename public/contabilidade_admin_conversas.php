@@ -71,7 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([':assunto' => $assunto]);
             $conversa_id = $stmt->fetchColumn();
             
-            header('Location: contabilidade_conversas.php?id=' . $conversa_id);
+            // Redirecionar de volta para o painel administrativo
+            header('Location: contabilidade_admin_conversas.php');
             exit;
         } catch (Exception $e) {
             $erro = $e->getMessage();
