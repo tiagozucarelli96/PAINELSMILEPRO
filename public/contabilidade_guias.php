@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
                 $stmt->execute([
                     ':desc' => $descricao,
                     ':total' => $total_parcelas,
-                    ':atual' => $parcela_inicial
+                    ':atual' => $parcela_atual
                 ]);
                 $parcelamento_id = $stmt->fetchColumn();
             }
@@ -345,13 +345,53 @@ try {
         <!-- Formulário de Cadastro -->
         <div class="form-section">
             <h2 class="form-section-title">➕ Cadastrar Nova Guia</h2>
-            <form method="POST" enctype="multipart/form-data">
+            <form method="POST" enctype="multipart/form-data" id="form-guia">
                 <input type="hidden" name="acao" value="cadastrar_guia">
+                
+                <!-- Checkbox É parcela? no topo -->
+                <div class="checkbox-group" style="margin-bottom: 1.5rem;">
+                    <input type="checkbox" name="e_parcela" id="e_parcela" value="1" onchange="toggleParcelamento()">
+                    <label for="e_parcela" style="font-weight: 600; font-size: 1.1rem;">É parcela?</label>
+                </div>
+                
+                <!-- Seção de Parcelamento (aparece quando É parcela? está marcado) -->
+                <div id="parcelamento-section" class="parcelamento-section" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label class="form-label">Parcelamento</label>
+                        <select name="parcelamento_id" id="parcelamento_id" class="form-select" onchange="handleParcelamentoChange()">
+                            <option value="">Selecione um parcelamento...</option>
+                            <?php foreach ($parcelamentos_ativos as $parc): ?>
+                            <option value="<?= $parc['id'] ?>" data-descricao="<?= htmlspecialchars($parc['descricao']) ?>">
+                                <?= htmlspecialchars($parc['descricao']) ?> 
+                                (Parcela <?= $parc['parcela_atual'] ?>/<?= $parc['total_parcelas'] ?>)
+                            </option>
+                            <?php endforeach; ?>
+                            <option value="novo">+ Criar novo parcelamento</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Novo parcelamento -->
+                    <div id="novo-parcelamento" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Parcela e Total *</label>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span>Parcela</span>
+                                <input type="number" name="parcela_atual" id="parcela_atual" class="form-input" style="width: 80px;" min="1" required>
+                                <span>de um total de</span>
+                                <input type="number" name="total_parcelas" id="total_parcelas" class="form-input" style="width: 80px;" min="2" required>
+                            </div>
+                            <small style="color: #64748b; font-size: 0.875rem; margin-top: 0.25rem; display: block;">
+                                Exemplo: Parcela 5 de um total de 30
+                            </small>
+                        </div>
+                        <input type="hidden" name="criar_parcelamento" value="1">
+                    </div>
+                </div>
                 
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Empresa *</label>
-                        <select name="empresa_id" class="form-select" required>
+                        <select name="empresa_id" id="empresa_id" class="form-select" required>
                             <option value="">Selecione uma empresa...</option>
                             <?php foreach ($empresas as $emp): ?>
                             <option value="<?= $emp['id'] ?>">
@@ -363,7 +403,7 @@ try {
                     
                     <div class="form-group">
                         <label class="form-label">Descrição *</label>
-                        <input type="text" name="descricao" class="form-input" required>
+                        <input type="text" name="descricao" id="descricao" class="form-input" required>
                     </div>
                     
                     <div class="form-group">
@@ -374,42 +414,6 @@ try {
                     <div class="form-group">
                         <label class="form-label">Arquivo</label>
                         <input type="file" name="arquivo" class="form-input" accept=".pdf,.jpg,.jpeg,.png">
-                    </div>
-                </div>
-                
-                <div class="checkbox-group">
-                    <input type="checkbox" name="e_parcela" id="e_parcela" value="1" onchange="toggleParcelamento()">
-                    <label for="e_parcela">É parcela?</label>
-                </div>
-                
-                <!-- Seção de Parcelamento -->
-                <div id="parcelamento-section" class="parcelamento-section">
-                    <div class="form-group" style="margin-bottom: 1rem;">
-                        <label class="form-label">Parcelamento Ativo</label>
-                        <select name="parcelamento_id" id="parcelamento_id" class="form-select" onchange="toggleCriarParcelamento()">
-                            <option value="">Selecione um parcelamento...</option>
-                            <?php foreach ($parcelamentos_ativos as $parc): ?>
-                            <option value="<?= $parc['id'] ?>">
-                                <?= htmlspecialchars($parc['descricao']) ?> 
-                                (Parcela <?= $parc['parcela_atual'] ?>/<?= $parc['total_parcelas'] ?>)
-                            </option>
-                            <?php endforeach; ?>
-                            <option value="novo">+ Criar novo parcelamento</option>
-                        </select>
-                    </div>
-                    
-                    <div id="novo-parcelamento" style="display: none;">
-                        <div class="form-grid">
-                            <div class="form-group">
-                                <label class="form-label">Total de Parcelas *</label>
-                                <input type="number" name="total_parcelas" class="form-input" min="2">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Parcela Inicial</label>
-                                <input type="number" name="parcela_inicial" class="form-input" value="1" min="1">
-                            </div>
-                        </div>
-                        <input type="hidden" name="criar_parcelamento" value="1">
                     </div>
                 </div>
                 
@@ -477,23 +481,66 @@ try {
     </div>
     
     <script>
+        // Dados dos parcelamentos para preenchimento automático
+        const parcelamentosData = <?= json_encode(array_map(function($p) {
+            return [
+                'id' => $p['id'],
+                'descricao' => $p['descricao'] ?? $p['primeira_descricao'] ?? '',
+                'empresa_id' => $p['empresa_id'] ?? null
+            ];
+        }, $parcelamentos_ativos)) ?>;
+        
         function toggleParcelamento() {
             const checkbox = document.getElementById('e_parcela');
             const section = document.getElementById('parcelamento-section');
             if (checkbox.checked) {
-                section.classList.add('active');
+                section.style.display = 'block';
             } else {
-                section.classList.remove('active');
+                section.style.display = 'none';
+                // Limpar campos quando desmarcar
+                document.getElementById('parcelamento_id').value = '';
+                document.getElementById('novo-parcelamento').style.display = 'none';
+                document.getElementById('descricao').value = '';
+                document.getElementById('empresa_id').value = '';
             }
         }
         
-        function toggleCriarParcelamento() {
+        function handleParcelamentoChange() {
             const select = document.getElementById('parcelamento_id');
             const novoDiv = document.getElementById('novo-parcelamento');
+            const descricaoInput = document.getElementById('descricao');
+            const empresaSelect = document.getElementById('empresa_id');
+            
             if (select.value === 'novo') {
+                // Mostrar campos de novo parcelamento
                 novoDiv.style.display = 'block';
-            } else {
+                // Limpar campos (usuário vai preencher)
+                descricaoInput.value = '';
+                empresaSelect.value = '';
+            } else if (select.value) {
+                // Esconder campos de novo parcelamento
                 novoDiv.style.display = 'none';
+                
+                // Buscar dados do parcelamento selecionado
+                const parcelamentoId = parseInt(select.value);
+                const parcelamento = parcelamentosData.find(p => p.id === parcelamentoId);
+                
+                if (parcelamento) {
+                    // Preencher descrição automaticamente
+                    if (parcelamento.descricao) {
+                        descricaoInput.value = parcelamento.descricao;
+                    }
+                    
+                    // Preencher empresa automaticamente
+                    if (parcelamento.empresa_id) {
+                        empresaSelect.value = parcelamento.empresa_id;
+                    }
+                }
+            } else {
+                // Limpar quando nenhum parcelamento selecionado
+                novoDiv.style.display = 'none';
+                descricaoInput.value = '';
+                empresaSelect.value = '';
             }
         }
     </script>
