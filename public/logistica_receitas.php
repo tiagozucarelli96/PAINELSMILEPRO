@@ -999,12 +999,10 @@ function calcRow(row) {
     const itemId = parseInt(row.querySelector('.item-id').value || '0', 10);
 
     const pesoLiquido = parseNumber(pesoLiquidoInput.value);
-    let fator = parseNumber(fatorInput.value);
+    const fatorRaw = fatorInput.value.trim();
+    let fator = parseNumber(fatorRaw);
     if (!fator || fator <= 0) {
         fator = 1;
-        if (fatorInput.value.trim() === '') {
-            fatorInput.value = '1';
-        }
     }
     const pesoBruto = pesoLiquido * fator;
     pesoBrutoInput.value = pesoLiquido > 0 ? formatNumber(pesoBruto, 3) : '';
