@@ -833,7 +833,20 @@ try {
                 }
             }
         });
+        
+        // Handler para exclusão de guias com confirmação customizada
+        document.addEventListener('submit', async function(e) {
+            if (e.target.classList.contains('form-excluir-guia')) {
+                e.preventDefault();
+                const confirmado = await customConfirm('Tem certeza que deseja excluir esta guia?', 'Confirmar Exclusão');
+                if (confirmado) {
+                    e.target.submit();
+                }
+            }
+        });
     </script>
+    
+    <script src="assets/js/custom_modals.js"></script>
     
     <!-- Modal de Preview de Arquivo -->
     <div id="modal-arquivo" class="modal-arquivo" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; overflow: auto;">
