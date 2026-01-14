@@ -157,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $id > 0) {
 $lista = null;
 $lista_eventos = [];
 $lista_itens = [];
+$transfer_stats = ['total' => 0, 'recebidas' => 0];
 
 if ($id > 0) {
     $stmt = $pdo->prepare("
@@ -183,6 +184,16 @@ if ($id > 0) {
         ");
         $stmt->execute([':id' => $id]);
         $lista_itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmt = $pdo->prepare("
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'recebida' THEN 1 ELSE 0 END) AS recebidas
+            FROM logistica_transferencias
+            WHERE lista_id = :id
+        ");
+        $stmt->execute([':id' => $id]);
+        $transfer_stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: $transfer_stats;
     }
 }
 
@@ -257,6 +268,20 @@ includeSidebar('Separação - Logística');
                 <?= $lista['space_visivel'] ? '· ' . h($lista['space_visivel']) : '' ?>
                 · Gerada em <?= h(date('d/m/Y H:i', strtotime($lista['criado_em']))) ?>
             </p>
+            <?php
+                $separado_por_nome = '-';
+                if (!empty($lista['separado_por'])) {
+                    $stmt = $pdo->prepare("SELECT nome FROM usuarios WHERE id = :id");
+                    $stmt->execute([':id' => (int)$lista['separado_por']]);
+                    $separado_por_nome = $stmt->fetchColumn() ?: '-';
+                }
+            ?>
+            <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.75rem;">
+                <div>Garden separado: <?= $lista['separado_garden'] ? '✅' : '❌' ?></div>
+                <div>Transferências geradas: <?= (int)($transfer_stats['total'] ?? 0) ?></div>
+                <div>Transferências recebidas: <?= (int)($transfer_stats['recebidas'] ?? 0) ?> de <?= (int)($transfer_stats['total'] ?? 0) ?></div>
+                <div>Separado por: <?= h($separado_por_nome) ?> · <?= $lista['separado_em'] ? h(date('d/m/Y H:i', strtotime($lista['separado_em']))) : '-' ?></div>
+            </div>
 
             <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;">
                 <form method="post">
@@ -267,6 +292,7 @@ includeSidebar('Separação - Logística');
                     <input type="hidden" name="action" value="marcar_garden">
                     <button class="btn-secondary" type="submit">Marcar Garden como separado</button>
                 </form>
+                <button class="btn-secondary" type="button" id="copy-checklist">Copiar checklist</button>
             </div>
         </div>
 
@@ -319,5 +345,24 @@ includeSidebar('Separação - Logística');
         </div>
     <?php endif; ?>
 </div>
+
+<?php if ($lista_itens): ?>
+<script>
+document.getElementById('copy-checklist').addEventListener('click', () => {
+    const items = <?= json_encode(array_map(function ($it) {
+        return [
+            'nome' => $it['nome_oficial'] ?? '',
+            'quantidade' => $it['quantidade_total_bruto'] ?? 0,
+            'unidade' => $it['unidade_nome'] ?? ''
+        ];
+    }, $lista_itens), JSON_UNESCAPED_UNICODE) ?>;
+    const lines = items.map(i => `${i.nome} - ${Number(i.quantidade).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${i.unidade}`);
+    const text = `Checklist da lista #<?= (int)$lista['id'] ?>\n` + lines.join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+        alert('Checklist copiado.');
+    });
+});
+</script>
+<?php endif; ?>
 
 <?php endSidebar(); ?>

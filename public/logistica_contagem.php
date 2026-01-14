@@ -100,6 +100,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':ordem' => (int)($_POST['ordem'] ?? 0)
         ]);
 
+        $posicao = (int)($_POST['posicao_atual'] ?? 0);
+        if ($posicao > 0) {
+            $pdo->prepare("UPDATE logistica_estoque_contagens SET posicao_atual = :pos, posicao_atual_em = NOW() WHERE id = :id")
+                ->execute([':pos' => $posicao, ':id' => $contagem_id]);
+        }
+
         echo json_encode(['ok' => true]);
         exit;
     }
@@ -200,6 +206,7 @@ $contagem_id = (int)($_GET['contagem_id'] ?? 0);
 $contagem = null;
 $insumos = [];
 $itens_map = [];
+$last_counts = [];
 
 if ($contagem_id > 0) {
     $stmt = $pdo->prepare("
@@ -224,6 +231,19 @@ if ($contagem_id > 0) {
         $stmt->execute([':cid' => $contagem_id]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $itens_map[(int)$row['insumo_id']] = $row;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT ON (ci.insumo_id)
+                ci.insumo_id, ci.quantidade_contada
+            FROM logistica_estoque_contagens c
+            JOIN logistica_estoque_contagens_itens ci ON ci.contagem_id = c.id
+            WHERE c.status = 'finalizada' AND c.unidade_id = :uid
+            ORDER BY ci.insumo_id, c.finalizada_em DESC NULLS LAST
+        ");
+        $stmt->execute([':uid' => (int)$contagem['unidade_id']]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $last_counts[(int)$row['insumo_id']] = $row['quantidade_contada'];
         }
     } else {
         $errors[] = 'Contagem não encontrada.';
@@ -335,6 +355,10 @@ includeSidebar('Contagem de Estoque - Logística');
                 </div>
                 <div id="wizard-progress">Item 1 de <?= count($insumos) ?></div>
             </div>
+            <div style="margin-bottom:.75rem;">
+                <label>Buscar insumo</label>
+                <input type="text" id="wizard-search" placeholder="Digite para pular">
+            </div>
             <div class="wizard-item">
                 <div class="wizard-photo" id="wizard-photo">📦</div>
                 <div class="wizard-fields">
@@ -343,6 +367,7 @@ includeSidebar('Contagem de Estoque - Logística');
                         <div style="min-width:220px;">
                             <label>Quantidade contada</label>
                             <input type="text" id="wizard-quantidade" placeholder="0,00">
+                            <div id="wizard-last" style="color:#64748b;font-size:.85rem;margin-top:.35rem;"></div>
                         </div>
                         <div style="min-width:180px;">
                             <label>Unidade</label>
@@ -369,7 +394,8 @@ includeSidebar('Contagem de Estoque - Logística');
 const CONTAGEM_ID = <?= (int)$contagem['id'] ?>;
 const INSUMOS = <?= json_encode($insumos, JSON_UNESCAPED_UNICODE) ?>;
 const ITENS_MAP = <?= json_encode($itens_map, JSON_UNESCAPED_UNICODE) ?>;
-let currentIndex = 0;
+const LAST_COUNTS = <?= json_encode($last_counts, JSON_UNESCAPED_UNICODE) ?>;
+let currentIndex = Math.max(0, <?= (int)($contagem['posicao_atual'] ?? 1) ?> - 1);
 let debounce = null;
 
 function formatNumber(value) {
@@ -387,6 +413,8 @@ function renderCurrent() {
     document.getElementById('wizard-name').textContent = item.nome_oficial || '-';
     document.getElementById('wizard-quantidade').value = saved.quantidade_contada ? formatNumber(saved.quantidade_contada) : '';
     document.getElementById('wizard-unidade').value = item.unidade_nome || 'Sem unidade';
+    const last = LAST_COUNTS[item.id];
+    document.getElementById('wizard-last').textContent = last ? `Última contagem: ${formatNumber(last)}` : '';
 
     const photo = document.getElementById('wizard-photo');
     if (item.foto_url) {
@@ -406,6 +434,7 @@ function saveCurrent() {
     payload.set('unidade_medida_id', item.unidade_medida_padrao_id || '');
     payload.set('quantidade', quantidade);
     payload.set('ordem', currentIndex + 1);
+    payload.set('posicao_atual', currentIndex + 1);
 
     fetch('index.php?page=logistica_contagem', {
         method: 'POST',
@@ -423,6 +452,23 @@ document.getElementById('wizard-quantidade').addEventListener('input', () => {
     debounce = setTimeout(saveCurrent, 400);
 });
 
+document.getElementById('wizard-quantidade').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            if (currentIndex > 0) {
+                currentIndex -= 1;
+                renderCurrent();
+            }
+        } else {
+            if (currentIndex < INSUMOS.length - 1) {
+                currentIndex += 1;
+                renderCurrent();
+            }
+        }
+    }
+});
+
 document.getElementById('prev-btn').addEventListener('click', () => {
     if (currentIndex > 0) {
         currentIndex -= 1;
@@ -432,6 +478,16 @@ document.getElementById('prev-btn').addEventListener('click', () => {
 document.getElementById('next-btn').addEventListener('click', () => {
     if (currentIndex < INSUMOS.length - 1) {
         currentIndex += 1;
+        renderCurrent();
+    }
+});
+
+document.getElementById('wizard-search').addEventListener('input', (e) => {
+    const term = (e.target.value || '').toLowerCase();
+    if (!term) return;
+    const idx = INSUMOS.findIndex(i => (i.nome_oficial || '').toLowerCase().includes(term));
+    if (idx >= 0) {
+        currentIndex = idx;
         renderCurrent();
     }
 });

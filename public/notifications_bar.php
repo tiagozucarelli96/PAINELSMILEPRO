@@ -117,10 +117,14 @@ if (!function_exists('build_logistica_notifications_bar')) {
             ];
         }
         if (!empty($eventos_alertas['conflitos'])) {
-            $alerts[] = [
+            $alert = [
                 'level' => 'danger',
                 'text' => 'Conflito de listas prontas: ' . count($eventos_alertas['conflitos'])
             ];
+            if ($is_superadmin) {
+                $alert['link'] = 'index.php?page=logistica_resolver_conflitos';
+            }
+            $alerts[] = $alert;
         }
         if (!empty($eventos_alertas['sem_detalhe'])) {
             $alerts[] = [
@@ -153,6 +157,13 @@ if (!function_exists('build_logistica_notifications_bar')) {
         if (!$alerts) {
             return '';
         }
+
+        $priority = ['danger' => 0, 'warning' => 1, 'info' => 2];
+        usort($alerts, function ($a, $b) use ($priority) {
+            $pa = $priority[$a['level']] ?? 9;
+            $pb = $priority[$b['level']] ?? 9;
+            return $pa <=> $pb;
+        });
 
         ob_start();
         ?>

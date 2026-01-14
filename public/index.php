@@ -199,6 +199,7 @@ $routes = [
   'logistica_lista_pdf' => 'logistica_lista_pdf.php',
   'logistica_separacao_lista' => 'logistica_separacao_lista.php',
   'logistica_faltas_evento' => 'logistica_faltas_evento.php',
+  'logistica_resolver_conflitos' => 'logistica_resolver_conflitos.php',
   'logistica_estoque' => 'logistica_estoque.php',
   'logistica_contagem' => 'logistica_contagem.php',
   'logistica_entrada' => 'logistica_entrada.php',

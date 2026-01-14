@@ -208,6 +208,10 @@ includeSidebar('Divergências - Logística');
             </div>
         <?php endif; ?>
     </div>
+    <div class="card">
+        <h3>Resolver conflitos</h3>
+        <a class="btn btn-secondary" href="index.php?page=logistica_resolver_conflitos">Abrir tela</a>
+    </div>
     <?php endif; ?>
 
     <div class="card">

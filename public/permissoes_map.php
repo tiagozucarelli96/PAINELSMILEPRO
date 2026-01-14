@@ -81,6 +81,7 @@ return [
     'logistica_lista_pdf' => 'perm_logistico',
     'logistica_separacao_lista' => 'perm_logistico',
     'logistica_faltas_evento' => 'perm_logistico',
+    'logistica_resolver_conflitos' => 'perm_superadmin',
     'logistica_estoque' => 'perm_logistico',
     'logistica_contagem' => 'perm_logistico',
     'logistica_entrada' => 'perm_logistico',
