@@ -566,7 +566,7 @@ body {
                     <label>Custo padrão</label>
                     <div class="input-group">
                         <span>R$</span>
-                        <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= h($edit_item['custo_padrao'] ?? '') ?>">
+                        <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= isset($edit_item['custo_padrao']) && $edit_item['custo_padrao'] !== null ? number_format((float)$edit_item['custo_padrao'], 2, ',', '.') : '' ?>">
                     </div>
                 </div>
                 <?php endif; ?>
@@ -722,21 +722,6 @@ document.getElementById('tamanho_embalagem')?.addEventListener('blur', (e) => {
     }
 });
 
-const custoInput = document.getElementById('custo_padrao');
-if (custoInput) {
-    const formatCurrency = (raw) => {
-        const digits = raw.replace(/[^0-9]/g, '');
-        if (!digits) return '';
-        const value = (parseInt(digits, 10) / 100).toFixed(2);
-        return value.replace('.', ',');
-    };
-    custoInput.addEventListener('input', (e) => {
-        e.target.value = formatCurrency(e.target.value);
-    });
-    if (custoInput.value !== '') {
-        custoInput.value = formatCurrency(custoInput.value);
-    }
-}
 </script>
 
 <?php if (!$is_modal) { endSidebar(); } ?>
