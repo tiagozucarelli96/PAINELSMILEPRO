@@ -72,6 +72,7 @@ return [
     'config_logistica' => 'perm_configuracoes',
     'logistica_catalogo' => 'perm_logistico',
     'logistica_conexao' => 'perm_configuracoes',
+    'logistica_diagnostico' => 'perm_superadmin',
     'logistica_unidades_medida' => 'perm_configuracoes',
     'logistica_tipologias' => 'perm_logistico',
     'logistica_insumos' => 'perm_logistico',

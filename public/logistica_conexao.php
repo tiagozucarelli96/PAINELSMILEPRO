@@ -962,6 +962,12 @@ includeSidebar('Configurações - Logística');
                 <button class="btn-primary" type="submit">Testar conexão DB</button>
             </form>
         </div>
+
+        <div class="logistica-section">
+            <h2>Diagnóstico (rotas, migrações e cron)</h2>
+            <p style="margin-top: 0.25rem;">Validação técnica do módulo Logística usando o mesmo banco do painel.</p>
+            <a class="btn-primary" href="index.php?page=logistica_diagnostico">Abrir diagnóstico</a>
+        </div>
     <?php endif; ?>
 </div>
 
