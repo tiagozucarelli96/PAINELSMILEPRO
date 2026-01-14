@@ -208,6 +208,18 @@ function build_db_diagnostic(PDO $pdo): array {
     ];
 }
 
+function has_column(PDO $pdo, string $table, string $column): bool {
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = :table
+          AND column_name = :column
+        LIMIT 1
+    ");
+    $stmt->execute([':table' => $table, ':column' => $column]);
+    return (bool)$stmt->fetchColumn();
+}
+
 function load_db_summary(PDO $pdo): array {
     $summary = [];
     $summary['locais_total'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_me_locais")->fetchColumn();
@@ -248,13 +260,17 @@ function load_db_summary(PDO $pdo): array {
     ");
     $summary['locais_distintos_lista'] = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-    $stmt = $pdo->query("
-        SELECT data_evento, hora_inicio, nome_evento, localevento
-        FROM logistica_eventos_espelho
-        ORDER BY data_evento DESC, hora_inicio DESC NULLS LAST
-        LIMIT 3
-    ");
-    $summary['eventos_exemplos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (has_column($pdo, 'logistica_eventos_espelho', 'nome_evento')) {
+        $stmt = $pdo->query("
+            SELECT data_evento, hora_inicio, nome_evento, localevento
+            FROM logistica_eventos_espelho
+            ORDER BY data_evento DESC, hora_inicio DESC NULLS LAST
+            LIMIT 3
+        ");
+        $summary['eventos_exemplos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $summary['eventos_exemplos'] = [];
+    }
 
     return $summary;
 }
@@ -313,7 +329,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
     ]);
 }
 
-function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, array &$novosLocais): array {
+function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, array &$novosLocais, bool $hasNomeEvento): array {
     $hoje = new DateTimeImmutable('today');
     $fim = $hoje->modify('+30 days');
     $resp = me_request('/api/v1/events', [
@@ -357,27 +373,50 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     $updated = 0;
     $pendentes = 0;
 
-    $sql = "
-        INSERT INTO logistica_eventos_espelho
-        (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento, nome_evento,
-         unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
-        VALUES
-        (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento, :nome_evento,
-         :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
-        ON CONFLICT (me_event_id) DO UPDATE SET
-            data_evento = EXCLUDED.data_evento,
-            hora_inicio = EXCLUDED.hora_inicio,
-            convidados = EXCLUDED.convidados,
-            idlocalevento = EXCLUDED.idlocalevento,
-            localevento = EXCLUDED.localevento,
-            nome_evento = EXCLUDED.nome_evento,
-            unidade_interna_id = EXCLUDED.unidade_interna_id,
-            space_visivel = EXCLUDED.space_visivel,
-            status_mapeamento = EXCLUDED.status_mapeamento,
-            arquivado = FALSE,
-            synced_at = NOW(),
-            updated_at = NOW()
-    ";
+    if ($hasNomeEvento) {
+        $sql = "
+            INSERT INTO logistica_eventos_espelho
+            (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento, nome_evento,
+             unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
+            VALUES
+            (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento, :nome_evento,
+             :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
+            ON CONFLICT (me_event_id) DO UPDATE SET
+                data_evento = EXCLUDED.data_evento,
+                hora_inicio = EXCLUDED.hora_inicio,
+                convidados = EXCLUDED.convidados,
+                idlocalevento = EXCLUDED.idlocalevento,
+                localevento = EXCLUDED.localevento,
+                nome_evento = EXCLUDED.nome_evento,
+                unidade_interna_id = EXCLUDED.unidade_interna_id,
+                space_visivel = EXCLUDED.space_visivel,
+                status_mapeamento = EXCLUDED.status_mapeamento,
+                arquivado = FALSE,
+                synced_at = NOW(),
+                updated_at = NOW()
+        ";
+    } else {
+        $sql = "
+            INSERT INTO logistica_eventos_espelho
+            (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento,
+             unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
+            VALUES
+            (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento,
+             :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
+            ON CONFLICT (me_event_id) DO UPDATE SET
+                data_evento = EXCLUDED.data_evento,
+                hora_inicio = EXCLUDED.hora_inicio,
+                convidados = EXCLUDED.convidados,
+                idlocalevento = EXCLUDED.idlocalevento,
+                localevento = EXCLUDED.localevento,
+                unidade_interna_id = EXCLUDED.unidade_interna_id,
+                space_visivel = EXCLUDED.space_visivel,
+                status_mapeamento = EXCLUDED.status_mapeamento,
+                arquivado = FALSE,
+                synced_at = NOW(),
+                updated_at = NOW()
+        ";
+    }
     $stmtUpsert = $pdo->prepare($sql);
 
     foreach ($items as $item) {
@@ -426,18 +465,21 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
             ];
         }
 
-        $stmtUpsert->execute([
+        $payload = [
             ':me_event_id' => $meEventId,
             ':data_evento' => $dataEvento,
             ':hora_inicio' => $horaInicio,
             ':convidados' => $convidados,
             ':idlocalevento' => $idLocalEvento,
             ':localevento' => $localEvento,
-            ':nome_evento' => $nomeEvento,
             ':unidade_interna_id' => $unidadeId,
             ':space_visivel' => $spaceVisivel,
             ':status_mapeamento' => $status
-        ]);
+        ];
+        if ($hasNomeEvento) {
+            $payload[':nome_evento'] = $nomeEvento;
+        }
+        $stmtUpsert->execute($payload);
 
         if (isset($existingSet[$meEventId])) {
             $updated++;
@@ -459,6 +501,10 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
 }
 
 $schema_ok = ensure_logistica_schema($pdo, $errors, $messages);
+$has_nome_evento = $schema_ok && has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
+if (!$has_nome_evento) {
+    $errors[] = 'Coluna nome_evento ainda não existe. Rode o SQL 030 (logistica_eventos_nome) e sincronize novamente.';
+}
 $unidades = [];
 $unidadesByCodigo = [];
 if ($schema_ok) {
@@ -517,7 +563,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
         $mapeamentos = load_mapeamentos($pdo);
         $novosLocais = [];
-        $sync = sync_eventos($pdo, $mapeamentos, $unidadesByCodigo, $novosLocais);
+        $sync = sync_eventos($pdo, $mapeamentos, $unidadesByCodigo, $novosLocais, $has_nome_evento);
         if (!$sync['ok']) {
             $errors[] = $sync['error'];
         } else {
