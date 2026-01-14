@@ -248,6 +248,14 @@ function load_db_summary(PDO $pdo): array {
     ");
     $summary['locais_distintos_lista'] = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
+    $stmt = $pdo->query("
+        SELECT data_evento, hora_inicio, nome_evento, localevento
+        FROM logistica_eventos_espelho
+        ORDER BY data_evento DESC, hora_inicio DESC NULLS LAST
+        LIMIT 3
+    ");
+    $summary['eventos_exemplos'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     return $summary;
 }
 
@@ -351,10 +359,10 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
 
     $sql = "
         INSERT INTO logistica_eventos_espelho
-        (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento,
+        (me_event_id, data_evento, hora_inicio, convidados, idlocalevento, localevento, nome_evento,
          unidade_interna_id, space_visivel, status_mapeamento, arquivado, synced_at, updated_at)
         VALUES
-        (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento,
+        (:me_event_id, :data_evento, :hora_inicio, :convidados, :idlocalevento, :localevento, :nome_evento,
          :unidade_interna_id, :space_visivel, :status_mapeamento, FALSE, NOW(), NOW())
         ON CONFLICT (me_event_id) DO UPDATE SET
             data_evento = EXCLUDED.data_evento,
@@ -362,6 +370,7 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
             convidados = EXCLUDED.convidados,
             idlocalevento = EXCLUDED.idlocalevento,
             localevento = EXCLUDED.localevento,
+            nome_evento = EXCLUDED.nome_evento,
             unidade_interna_id = EXCLUDED.unidade_interna_id,
             space_visivel = EXCLUDED.space_visivel,
             status_mapeamento = EXCLUDED.status_mapeamento,
@@ -384,6 +393,15 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
         $idLocalEvento = isset($item['idlocalevento']) ? (int)$item['idlocalevento'] : 0;
         $horaInicio = !empty($item['horaevento']) ? $item['horaevento'] : null;
         $convidados = isset($item['convidados']) ? (int)$item['convidados'] : null;
+        $nomeEvento = trim((string)($item['nomeevento'] ?? ''));
+        if ($nomeEvento === '') {
+            $fallbackNome = trim((string)($item['nomeCliente'] ?? ''));
+            $fallbackTipo = trim((string)($item['tipoEvento'] ?? ''));
+            $nomeEvento = trim($fallbackNome . ($fallbackTipo !== '' ? ' - ' . $fallbackTipo : ''));
+            if ($nomeEvento === '') {
+                $nomeEvento = 'Evento';
+            }
+        }
 
         $mapping = null;
         if ($idLocalEvento > 0 && isset($mapeamentos['by_id'][$idLocalEvento])) {
@@ -415,6 +433,7 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
             ':convidados' => $convidados,
             ':idlocalevento' => $idLocalEvento,
             ':localevento' => $localEvento,
+            ':nome_evento' => $nomeEvento,
             ':unidade_interna_id' => $unidadeId,
             ':space_visivel' => $spaceVisivel,
             ':status_mapeamento' => $status
@@ -844,6 +863,22 @@ includeSidebar('Configurações - Logística');
                     <?php endforeach; ?>
                     <?php if (empty($db_summary['locais_distintos_lista'])): ?>
                         <li>Nenhum local encontrado.</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+
+            <div style="margin-top: 1rem;">
+                <strong>Exemplos de eventos (data/hora + nome + local)</strong>
+                <ul>
+                    <?php foreach ($db_summary['eventos_exemplos'] as $ev): ?>
+                        <li>
+                            <?= h(($ev['data_evento'] ?? '') . ' ' . ($ev['hora_inicio'] ?? '')) ?>
+                            — <?= h($ev['nome_evento'] ?? 'Evento') ?>
+                            — <?= h($ev['localevento'] ?? '') ?>
+                        </li>
+                    <?php endforeach; ?>
+                    <?php if (empty($db_summary['eventos_exemplos'])): ?>
+                        <li>Nenhum evento encontrado.</li>
                     <?php endif; ?>
                 </ul>
             </div>
