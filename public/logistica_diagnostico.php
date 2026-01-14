@@ -16,18 +16,19 @@ if (empty($_SESSION['perm_superadmin'])) {
 
 function table_exists(PDO $pdo, string $table): bool {
     $stmt = $pdo->prepare("SELECT to_regclass(:name) IS NOT NULL");
-    $stmt->execute([':name' => 'public.' . $table]);
+    $stmt->execute([':name' => $table]);
     return (bool)$stmt->fetchColumn();
 }
 
 function column_exists(PDO $pdo, string $table, string $column): bool {
+    $schema = $pdo->query("SELECT current_schema()")->fetchColumn();
     $stmt = $pdo->prepare("
         SELECT 1
         FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = :table AND column_name = :column
+        WHERE table_schema = :schema AND table_name = :table AND column_name = :column
         LIMIT 1
     ");
-    $stmt->execute([':table' => $table, ':column' => $column]);
+    $stmt->execute([':schema' => $schema, ':table' => $table, ':column' => $column]);
     return (bool)$stmt->fetchColumn();
 }
 
@@ -48,6 +49,7 @@ $tables = [
     'logistica_cron_execucoes' => []
 ];
 
+$current_schema = $pdo->query("SELECT current_schema()")->fetchColumn();
 $table_status = [];
 foreach ($tables as $table => $cols) {
     $exists = table_exists($pdo, $table);
@@ -121,6 +123,7 @@ includeSidebar('Logística - Diagnóstico');
 
 <div class="logistica-config">
     <h1>Diagnóstico Logística</h1>
+    <p class="muted">Schema ativo: <span class="mono"><?= h($current_schema) ?></span></p>
 
     <div class="diag-section">
         <h2>Rotas (logistica_*)</h2>
