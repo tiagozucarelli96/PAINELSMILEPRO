@@ -9,6 +9,8 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/logistica_alertas_helper.php';
 require_once __DIR__ . '/logistica_baixa_helper.php';
+define('LOGISTICA_CRON_INTERNAL', true);
+require_once __DIR__ . '/logistica_cron_runner.php';
 
 $is_superadmin = !empty($_SESSION['perm_superadmin']);
 $can_view = $is_superadmin || !empty($_SESSION['perm_logistico_divergencias']);
@@ -19,17 +21,23 @@ if (!$can_view) {
 }
 
 $messages = [];
+$cron_summary = null;
 $scope = $_SESSION['unidade_scope'] ?? 'todas';
 $unit_id = (int)($_SESSION['unidade_id'] ?? 0);
 $filter_unit = !$is_superadmin && ($scope === 'unidade' && $unit_id > 0);
 $block_scope = !$is_superadmin && ($scope === 'nenhuma');
 
-$eventos_alertas = $block_scope ? ['conflitos' => [], 'sem_lista' => [], 'sem_detalhe' => [], 'faltas' => []]
+$eventos_alertas = $block_scope ? ['eventos_total' => 0, 'conflitos' => [], 'sem_lista' => [], 'sem_detalhe' => [], 'faltas' => []]
     : logistica_compute_alertas_eventos($pdo, 3, $filter_unit, $unit_id);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'baixar_eventos') {
-    $summary = logistica_processar_baixa_eventos($pdo, date('Y-m-d'), $filter_unit, $unit_id, (int)($_SESSION['id'] ?? 0));
-    $messages[] = 'Baixa do dia: ' . $summary['eventos_baixados'] . ' baixados, ' . $summary['eventos_bloqueados'] . ' bloqueados.';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rodar_rotina' && $is_superadmin) {
+    $result = logistica_run_daily($pdo, ['filter_unit' => false]);
+    if (!empty($result['ok'])) {
+        $cron_summary = $result['summary'];
+        $messages[] = 'Rotina executada com sucesso.';
+    } else {
+        $messages[] = 'Erro ao executar rotina: ' . ($result['error'] ?? 'desconhecido');
+    }
 }
 
 function parse_delta_from_obs(?string $obs, float $fallback): float {
@@ -186,13 +194,21 @@ includeSidebar('Divergências - Logística');
         <div class="alert-success"><?= htmlspecialchars($m) ?></div>
     <?php endforeach; ?>
 
+    <?php if ($is_superadmin): ?>
     <div class="card">
-        <h3>Baixa automática do dia</h3>
+        <h3>Rotina diária (manual)</h3>
         <form method="post">
-            <input type="hidden" name="action" value="baixar_eventos">
-            <button class="btn btn-secondary" type="submit">Executar baixa do dia</button>
+            <input type="hidden" name="action" value="rodar_rotina">
+            <button class="btn btn-secondary" type="submit">Rodar rotina agora</button>
         </form>
+        <?php if ($cron_summary): ?>
+            <div style="margin-top:1rem;">
+                <strong>Resumo:</strong>
+                <pre style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:.75rem;margin-top:.5rem;white-space:pre-wrap;"><?= htmlspecialchars(json_encode($cron_summary, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)) ?></pre>
+            </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <div class="card">
         <h3>Ajustes de contagem (últimos 30 dias)</h3>

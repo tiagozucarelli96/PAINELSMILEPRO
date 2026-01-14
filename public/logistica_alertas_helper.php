@@ -131,6 +131,7 @@ function logistica_compute_alertas_eventos(PDO $pdo, int $dias, bool $filter_uni
     }
 
     return [
+        'eventos_total' => count($eventos),
         'conflitos' => $conflitos,
         'sem_lista' => $sem_lista,
         'sem_detalhe' => $sem_detalhe,

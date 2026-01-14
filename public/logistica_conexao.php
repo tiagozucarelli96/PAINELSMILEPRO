@@ -500,6 +500,10 @@ function sync_eventos(PDO $pdo, array $mapeamentos, array $unidadesByCodigo, arr
     ];
 }
 
+if (defined('LOGISTICA_SYNC_ONLY')) {
+    return;
+}
+
 $schema_ok = ensure_logistica_schema($pdo, $errors, $messages);
 $has_nome_evento = $schema_ok && has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
 if (!$has_nome_evento) {

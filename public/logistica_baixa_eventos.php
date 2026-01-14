@@ -1,5 +1,6 @@
 <?php
 // logistica_baixa_eventos.php — Endpoint manual/cron para baixa automática
+date_default_timezone_set('America/Sao_Paulo');
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
