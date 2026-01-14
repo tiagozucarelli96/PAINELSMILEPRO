@@ -1,5 +1,6 @@
 <?php
 // logistica_alertas_helper.php — Alertas operacionais e faltas por evento
+date_default_timezone_set('America/Sao_Paulo');
 
 function logistica_fetch_eventos_proximos(PDO $pdo, int $dias, bool $filter_unit, int $unit_id): array {
     $params = [

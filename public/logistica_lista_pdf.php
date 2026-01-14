@@ -13,7 +13,14 @@ require_once __DIR__ . '/core/helpers.php';
 
 $lista_id = isset($_GET['lista_id']) ? (int)$_GET['lista_id'] : 0;
 if ($lista_id <= 0) { echo "lista_id inválido."; exit; }
-$show_values = !empty($_GET['show_values']) && (!empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']));
+$requested_values = !empty($_GET['show_values']);
+$can_values = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
+if ($requested_values && !$can_values) {
+    http_response_code(403);
+    echo "Acesso negado.";
+    exit;
+}
+$show_values = $requested_values && $can_values;
 
 $stmt = $pdo->prepare("
     SELECT l.*, u.nome AS unidade_nome

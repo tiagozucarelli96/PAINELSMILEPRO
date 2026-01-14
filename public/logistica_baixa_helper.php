@@ -1,5 +1,6 @@
 <?php
 // logistica_baixa_helper.php — Baixa automática por evento
+date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/logistica_alertas_helper.php';
 
