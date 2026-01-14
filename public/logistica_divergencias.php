@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_divergencias.php — Divergências e auditoria
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

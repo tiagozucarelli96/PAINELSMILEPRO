@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_unidades_medida.php — Cadastro de unidades de medida
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

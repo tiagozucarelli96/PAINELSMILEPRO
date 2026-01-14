@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_separacao_lista.php — Separação/Distribuição por lista
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

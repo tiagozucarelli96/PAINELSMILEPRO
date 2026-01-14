@@ -1,6 +1,6 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_baixa_helper.php — Baixa automática por evento
-date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/logistica_alertas_helper.php';
 
@@ -90,6 +90,14 @@ function logistica_processar_baixa_eventos(PDO $pdo, string $data, bool $filter_
         ");
         $stmt->execute([':lid' => $lista_id, ':eid' => $evento_id]);
         if ((int)$stmt->fetchColumn() > 0) {
+            logistica_log_alert($pdo, [
+                'tipo' => 'saida_evento_duplicada',
+                'unidade_id' => $unidade_evento,
+                'referencia_tipo' => 'evento',
+                'referencia_id' => $evento_id,
+                'mensagem' => 'Baixa automática já realizada para este evento.',
+                'criado_por' => $user_id
+            ]);
             continue;
         }
 

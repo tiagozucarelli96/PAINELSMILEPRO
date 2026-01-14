@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_tipologias.php — Cadastro de tipologias (Insumo/Receita)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

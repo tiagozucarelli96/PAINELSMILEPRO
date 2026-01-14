@@ -1461,7 +1461,10 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_superadmin'])): ?>
+                <?php
+                $scope_none = (($_SESSION['unidade_scope'] ?? 'todas') === 'nenhuma') && empty($_SESSION['perm_superadmin']);
+                ?>
+                <?php if ((!empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_superadmin'])) && !$scope_none): ?>
                 <a href="index.php?page=logistica" class="nav-item <?= isActiveUnified('logistica') ?>">
                     <span class="nav-item-icon">📦</span>
                     Logística
@@ -1527,6 +1530,41 @@ if ($current_page === 'dashboard') {
     <!-- Conteúdo principal -->
     <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
             <div id="pageContent">
+                <?php
+                $logistica_breadcrumbs = [
+                    'logistica' => 'Logística',
+                    'logistica_operacional' => 'Logística > Operacional',
+                    'logistica_estoque' => 'Logística > Estoque',
+                    'logistica_contagem' => 'Logística > Estoque > Contagem',
+                    'logistica_entrada' => 'Logística > Estoque > Entrada',
+                    'logistica_saldo' => 'Logística > Estoque > Saldo',
+                    'logistica_transferencias' => 'Logística > Estoque > Transferências',
+                    'logistica_transferencia_ver' => 'Logística > Estoque > Transferências > Detalhe',
+                    'logistica_transferencia_receber' => 'Logística > Estoque > Transferências > Receber',
+                    'logistica_gerar_lista' => 'Logística > Listas > Gerar',
+                    'logistica_listas' => 'Logística > Listas > Histórico',
+                    'logistica_separacao_lista' => 'Logística > Listas > Separação',
+                    'logistica_faltas_evento' => 'Logística > Alertas > Faltas',
+                    'logistica_divergencias' => 'Logística > Divergências',
+                    'logistica_resolver_conflitos' => 'Logística > Divergências > Resolver conflitos',
+                    'logistica_financeiro' => 'Logística > Financeiro',
+                    'logistica_financeiro_estoque' => 'Logística > Financeiro > Estoque',
+                    'logistica_financeiro_lista' => 'Logística > Financeiro > Lista',
+                    'logistica_revisar_custos' => 'Logística > Financeiro > Revisar custos',
+                    'logistica_catalogo' => 'Logística > Catálogo',
+                    'logistica_tipologias' => 'Logística > Catálogo > Tipologias',
+                    'logistica_insumos' => 'Logística > Catálogo > Insumos',
+                    'logistica_receitas' => 'Logística > Catálogo > Receitas',
+                    'logistica_conexao' => 'Logística > Configurações > Conexão',
+                    'logistica_unidades_medida' => 'Logística > Configurações > Unidades de medida',
+                    'logistica_diagnostico' => 'Logística > Configurações > Diagnóstico',
+                    'logistica_upload' => 'Logística > Upload'
+                ];
+                if (isset($logistica_breadcrumbs[$current_page])): ?>
+                    <div style="margin: 12px 24px 0 24px; font-size: 0.9rem; color: #64748b;">
+                        <?= htmlspecialchars($logistica_breadcrumbs[$current_page]) ?>
+                    </div>
+                <?php endif; ?>
                 <?php 
                 // Renderizar conteúdo diretamente se for uma página especial
                 // NOTA: 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo' agora usam

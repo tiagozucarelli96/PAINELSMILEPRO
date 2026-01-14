@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica.php — HUB (placeholder) do módulo Logística
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -113,8 +114,18 @@ ob_start();
         <p>Hub operacional do módulo de Logística (placeholder)</p>
     </div>
 
+    <?php
+    $is_superadmin = !empty($_SESSION['perm_superadmin']);
+    $scope_none = (($_SESSION['unidade_scope'] ?? 'todas') === 'nenhuma') && !$is_superadmin;
+    ?>
+
+    <?php if ($scope_none): ?>
+        <div class="placeholder-card">
+            <h2>Sem acesso logístico</h2>
+            <p>Seu usuário está com escopo de unidade definido como “nenhuma”.</p>
+        </div>
+    <?php else: ?>
     <div class="funcionalidades-grid">
-        <?php $is_superadmin = !empty($_SESSION['perm_superadmin']); ?>
         <?php if (!empty($_SESSION['perm_logistico']) || $is_superadmin): ?>
         <a href="index.php?page=logistica_operacional" class="funcionalidade-card">
             <div class="funcionalidade-card-header">
@@ -175,6 +186,7 @@ ob_start();
         </a>
         <?php endif; ?>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php

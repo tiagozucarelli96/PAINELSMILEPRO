@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_resolver_conflitos.php — Resolver conflitos de listas prontas
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

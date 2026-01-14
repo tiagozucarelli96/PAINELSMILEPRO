@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_insumos.php — Cadastro de insumos
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

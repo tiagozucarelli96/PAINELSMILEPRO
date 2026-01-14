@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_lista_pdf.php — PDF/HTML da lista de compras
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -95,6 +96,9 @@ th{background:#f4f6fb}
   </div>
   <div class="no-print">
     <button onclick="window.print()">Imprimir</button>
+    <?php if (!$show_values): ?>
+      <button onclick="copyChecklist()">Copiar para WhatsApp</button>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -162,6 +166,23 @@ th{background:#f4f6fb}
   </div>
 <?php endif; ?>
 
+<?php if (!$show_values): ?>
+<script>
+function copyChecklist() {
+    const texto = <?= json_encode("LISTA DE COMPRAS\\n" . implode("\\n", array_map(function($it){
+        $nome = $it['nome_oficial'] ?? '';
+        $uni = $it['unidade_nome'] ?? '';
+        $qtd = number_format((float)$it['quantidade_total_bruto'], 4, ',', '.');
+        return "- {$nome}: {$qtd} {$uni}";
+    }, $itens)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    navigator.clipboard.writeText(texto).then(() => {
+        alert('Checklist copiado.');
+    }).catch(() => {
+        alert('Não foi possível copiar.');
+    });
+}
+</script>
+<?php endif; ?>
 </body>
 </html>
 <?php

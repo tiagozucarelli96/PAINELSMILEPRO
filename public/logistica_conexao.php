@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_conexao.php — Conexão Logística (mapeamento ME + sync)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

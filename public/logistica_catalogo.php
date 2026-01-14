@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_catalogo.php — Catálogo unificado (Insumos + Receitas)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_gerar_lista.php — Gerador de lista de compras (sem estoque)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -106,7 +107,7 @@ function build_lista_consolidada(
         if ($unit_lock === null) {
             $unit_lock = (int)$evento['unidade_interna_id'];
         } elseif ($unit_lock !== (int)$evento['unidade_interna_id']) {
-            $errors[] = 'Eventos com unidades diferentes não podem ser misturados.';
+            $errors[] = 'Você tentou misturar unidades. Separe por unidade.';
             continue;
         }
 
@@ -577,7 +578,7 @@ addBtn.addEventListener('click', () => {
         return;
     }
     if (unitLock && unitLock !== ev.unidade_interna_id) {
-        alert('Eventos com unidades diferentes não podem ser misturados.');
+        alert('Você tentou misturar unidades. Separe por unidade.');
         return;
     }
     if (!unitLock) unitLock = ev.unidade_interna_id;

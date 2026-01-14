@@ -1,6 +1,6 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // notifications_bar.php — Barra de alertas logísticos
-date_default_timezone_set('America/Sao_Paulo');
 
 require_once __DIR__ . '/logistica_alertas_helper.php';
 

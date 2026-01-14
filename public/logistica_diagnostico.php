@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/logistica_tz.php';
 // logistica_diagnostico.php — Diagnóstico técnico (rotas, migrações e cron)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
