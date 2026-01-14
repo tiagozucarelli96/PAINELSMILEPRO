@@ -18,6 +18,28 @@ $errors = [];
 $messages = [];
 $id = (int)($_GET['id'] ?? 0);
 
+function log_alert(PDO $pdo, array $data): void {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO logistica_alertas_log
+                (tipo, unidade_id, insumo_id, referencia_tipo, referencia_id, mensagem, criado_em, criado_por)
+            VALUES
+                (:tipo, :unidade_id, :insumo_id, :ref_tipo, :ref_id, :mensagem, NOW(), :criado_por)
+        ");
+        $stmt->execute([
+            ':tipo' => $data['tipo'],
+            ':unidade_id' => $data['unidade_id'] ?? null,
+            ':insumo_id' => $data['insumo_id'] ?? null,
+            ':ref_tipo' => $data['ref_tipo'] ?? null,
+            ':ref_id' => $data['ref_id'] ?? null,
+            ':mensagem' => $data['mensagem'] ?? null,
+            ':criado_por' => $data['criado_por'] ?? null
+        ]);
+    } catch (Throwable $e) {
+        // Falha no log não deve bloquear o fluxo principal.
+    }
+}
+
 if ($id <= 0) {
     $errors[] = 'Transferência inválida.';
 }
@@ -87,6 +109,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $id > 0) {
                 $saldo_stmt->execute([':uid' => $origem_id, ':iid' => $insumo_id]);
                 $saldo_atual = (float)($saldo_stmt->fetchColumn() ?? 0);
                 if ($saldo_atual < $quantidade) {
+                    log_alert($pdo, [
+                        'tipo' => 'saldo_negativo_bloqueado',
+                        'unidade_id' => $origem_id,
+                        'insumo_id' => $insumo_id,
+                        'ref_tipo' => 'transferencia',
+                        'ref_id' => $id,
+                        'mensagem' => 'Saldo insuficiente no Garden para receber transferência.',
+                        'criado_por' => (int)($_SESSION['id'] ?? 0)
+                    ]);
                     throw new RuntimeException('Saldo insuficiente no Garden para ' . ($it['nome_oficial'] ?? 'item') . '.');
                 }
 

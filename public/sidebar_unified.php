@@ -18,6 +18,8 @@ if (!isset($pdo) && isset($GLOBALS['pdo'])) {
     $pdo = $GLOBALS['pdo'];
 }
 
+require_once __DIR__ . '/notifications_bar.php';
+
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';
 
@@ -274,10 +276,8 @@ if ($current_page === 'dashboard') {
                 <h1 class="page-title">🏠 Dashboard</h1>
                 <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
             </div>
-            <div class="dashboard-notificacoes-badge" onclick="toggleDashboardNotificacoes(event)" aria-label="Notificações" style="position: relative; cursor: pointer; padding: 0.5rem; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; min-width: 128px; min-height: 128px; transition: transform 0.2s;">
-                <img src="assets/icons/bell_custom.png" alt="Notificações" style="width: 112px; height: 112px; display: block;" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'inline\';">
-                <span style="font-size: 1.5rem; display: none;">🔔</span>
-                <span id="dashboard-notificacoes-count" class="dashboard-notificacoes-count" style="position: absolute; top: 8px; right: 8px; background: transparent; color: white; font-size: 1.2rem; font-weight: 700; min-width: 24px; text-align: center; line-height: 1.2; pointer-events: none; text-shadow: 0 2px 4px rgba(0,0,0,0.4); ' . ($notificacoes_nao_lidas > 0 ? '' : 'display: none;') . '">' . htmlspecialchars($notificacoes_nao_lidas > 99 ? '99+' : $notificacoes_nao_lidas) . '</span>
+            <div class="dashboard-notificacoes-bar" style="min-width: 320px; display: flex; justify-content: flex-end;">
+                ' . (function_exists('build_logistica_notifications_bar') ? build_logistica_notifications_bar($pdo) : '') . '
             </div>
         </div>
         
