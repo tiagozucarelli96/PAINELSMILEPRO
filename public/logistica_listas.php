@@ -65,7 +65,7 @@ if ($list_id > 0) {
 }
 
 $listas = $pdo->query("
-    SELECT l.id, l.criado_em, l.unidade_interna_id, l.space_visivel, u.nome AS unidade_nome,
+    SELECT l.id, l.criado_em, l.unidade_interna_id, l.space_visivel, l.status, u.nome AS unidade_nome,
            (SELECT COUNT(*) FROM logistica_lista_eventos le WHERE le.lista_id = l.id) AS eventos_total
     FROM logistica_listas l
     LEFT JOIN logistica_unidades u ON u.id = l.unidade_interna_id
@@ -206,6 +206,7 @@ includeSidebar('Logística - Histórico de Listas');
                     <th>Data</th>
                     <th>Unidade</th>
                     <th>Eventos</th>
+                    <th>Status</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -216,8 +217,10 @@ includeSidebar('Logística - Histórico de Listas');
                         <td><?= h(date('d/m/Y H:i', strtotime($l['criado_em']))) ?></td>
                         <td><?= h($l['unidade_nome'] ?? '') ?></td>
                         <td><?= (int)$l['eventos_total'] ?></td>
+                        <td><?= h($l['status'] ?? 'gerada') ?></td>
                         <td>
                             <a class="btn-secondary" href="index.php?page=logistica_listas&list_id=<?= (int)$l['id'] ?>">Ver</a>
+                            <a class="btn-secondary" href="index.php?page=logistica_separacao_lista&id=<?= (int)$l['id'] ?>">Separação</a>
                             <a class="btn-secondary" href="index.php?page=logistica_lista_pdf&lista_id=<?= (int)$l['id'] ?>" target="_blank">PDF</a>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir esta lista?');">
                                 <input type="hidden" name="action" value="delete">

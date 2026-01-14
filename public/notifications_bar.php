@@ -1,6 +1,8 @@
 <?php
 // notifications_bar.php — Barra de alertas logísticos
 
+require_once __DIR__ . '/logistica_alertas_helper.php';
+
 if (!function_exists('build_logistica_notifications_bar')) {
     function build_logistica_notifications_bar(PDO $pdo): string {
         $is_superadmin = !empty($_SESSION['perm_superadmin']);
@@ -20,6 +22,8 @@ if (!function_exists('build_logistica_notifications_bar')) {
         $target_url = ($is_superadmin || !empty($_SESSION['perm_logistico_divergencias']))
             ? 'index.php?page=logistica_divergencias'
             : 'index.php?page=logistica_estoque';
+
+        $eventos_alertas = logistica_compute_alertas_eventos($pdo, 3, $filter_unit, $unit_id);
 
         // Contagens atrasadas
         $stmt = $pdo->query("
@@ -87,6 +91,41 @@ if (!function_exists('build_logistica_notifications_bar')) {
             $alerts[] = [
                 'level' => 'danger',
                 'text' => "Ajustes grandes na contagem: {$ajustes}"
+            ];
+        }
+
+        // Faltas em eventos próximos
+        foreach (array_slice($eventos_alertas['faltas'], 0, 3) as $ev) {
+            $alerts[] = [
+                'level' => 'danger',
+                'text' => "Faltando insumos para " . ($ev['nome_evento'] ?: 'Evento') . " ({$ev['space_visivel']}): {$ev['faltas_total']} de {$ev['itens_total']}",
+                'link' => 'index.php?page=logistica_faltas_evento&event_id=' . (int)$ev['id']
+            ];
+        }
+        if (count($eventos_alertas['faltas']) > 3) {
+            $alerts[] = [
+                'level' => 'danger',
+                'text' => 'Mais eventos com faltas: ' . (count($eventos_alertas['faltas']) - 3)
+            ];
+        }
+
+        // Eventos sem lista pronta
+        if (!empty($eventos_alertas['sem_lista'])) {
+            $alerts[] = [
+                'level' => 'warning',
+                'text' => 'Eventos sem lista pronta: ' . count($eventos_alertas['sem_lista'])
+            ];
+        }
+        if (!empty($eventos_alertas['conflitos'])) {
+            $alerts[] = [
+                'level' => 'danger',
+                'text' => 'Conflito de listas prontas: ' . count($eventos_alertas['conflitos'])
+            ];
+        }
+        if (!empty($eventos_alertas['sem_detalhe'])) {
+            $alerts[] = [
+                'level' => 'warning',
+                'text' => 'Lista pronta sem detalhamento: ' . count($eventos_alertas['sem_detalhe'])
             ];
         }
 
@@ -167,9 +206,17 @@ if (!function_exists('build_logistica_notifications_bar')) {
         </style>
         <div class="logistica-notifications-bar" role="status" aria-live="polite">
             <?php foreach ($alerts as $alert): ?>
-                <span class="logistica-notification-pill <?= htmlspecialchars($alert['level']) ?>">
-                    <?= htmlspecialchars($alert['text']) ?>
-                </span>
+                <?php if (!empty($alert['link'])): ?>
+                    <a href="<?= htmlspecialchars($alert['link']) ?>">
+                        <span class="logistica-notification-pill <?= htmlspecialchars($alert['level']) ?>">
+                            <?= htmlspecialchars($alert['text']) ?>
+                        </span>
+                    </a>
+                <?php else: ?>
+                    <span class="logistica-notification-pill <?= htmlspecialchars($alert['level']) ?>">
+                        <?= htmlspecialchars($alert['text']) ?>
+                    </span>
+                <?php endif; ?>
             <?php endforeach; ?>
             <a class="logistica-notification-link" href="<?= htmlspecialchars($target_url) ?>">Ver tudo →</a>
         </div>

@@ -165,6 +165,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $id > 0) {
             $pdo->prepare("UPDATE logistica_transferencias SET status = 'recebida', recebido_em = NOW() WHERE id = :id")
                 ->execute([':id' => $id]);
 
+            if (!empty($transfer['lista_id'])) {
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) FROM logistica_transferencias
+                    WHERE lista_id = :lid AND status != 'recebida'
+                ");
+                $stmt->execute([':lid' => (int)$transfer['lista_id']]);
+                $pendentes = (int)$stmt->fetchColumn();
+                if ($pendentes === 0) {
+                    $pdo->prepare("UPDATE logistica_listas SET status = 'pronta' WHERE id = :id")
+                        ->execute([':id' => (int)$transfer['lista_id']]);
+                }
+            }
+
             $pdo->commit();
             $messages[] = 'Transferência recebida.';
         } catch (Throwable $e) {

@@ -7,6 +7,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/logistica_alertas_helper.php';
+require_once __DIR__ . '/logistica_baixa_helper.php';
 
 $is_superadmin = !empty($_SESSION['perm_superadmin']);
 $can_view = $is_superadmin || !empty($_SESSION['perm_logistico_divergencias']);
@@ -16,10 +18,19 @@ if (!$can_view) {
     exit;
 }
 
+$messages = [];
 $scope = $_SESSION['unidade_scope'] ?? 'todas';
 $unit_id = (int)($_SESSION['unidade_id'] ?? 0);
 $filter_unit = !$is_superadmin && ($scope === 'unidade' && $unit_id > 0);
 $block_scope = !$is_superadmin && ($scope === 'nenhuma');
+
+$eventos_alertas = $block_scope ? ['conflitos' => [], 'sem_lista' => [], 'sem_detalhe' => [], 'faltas' => []]
+    : logistica_compute_alertas_eventos($pdo, 3, $filter_unit, $unit_id);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'baixar_eventos') {
+    $summary = logistica_processar_baixa_eventos($pdo, date('Y-m-d'), $filter_unit, $unit_id, (int)($_SESSION['id'] ?? 0));
+    $messages[] = 'Baixa do dia: ' . $summary['eventos_baixados'] . ' baixados, ' . $summary['eventos_bloqueados'] . ' bloqueados.';
+}
 
 function parse_delta_from_obs(?string $obs, float $fallback): float {
     if (!$obs) return $fallback;
@@ -164,10 +175,24 @@ includeSidebar('Divergências - Logística');
 .btn { padding:.4rem .8rem; border-radius:8px; border:none; cursor:pointer; }
 .btn-secondary { background:#e2e8f0; color:#0f172a; }
 .text-danger { color:#dc2626; font-weight:600; }
+.alert-success { background:#dcfce7; color:#166534; padding:.6rem .9rem; border-radius:8px; margin-bottom:1rem; }
+.alert-error { background:#fee2e2; color:#991b1b; padding:.6rem .9rem; border-radius:8px; margin-bottom:1rem; }
 </style>
 
 <div class="divergencias-container">
     <h1>🧭 Divergências</h1>
+
+    <?php foreach ($messages as $m): ?>
+        <div class="alert-success"><?= htmlspecialchars($m) ?></div>
+    <?php endforeach; ?>
+
+    <div class="card">
+        <h3>Baixa automática do dia</h3>
+        <form method="post">
+            <input type="hidden" name="action" value="baixar_eventos">
+            <button class="btn btn-secondary" type="submit">Executar baixa do dia</button>
+        </form>
+    </div>
 
     <div class="card">
         <h3>Ajustes de contagem (últimos 30 dias)</h3>
@@ -273,6 +298,102 @@ includeSidebar('Divergências - Logística');
                             <?php if ($t['status'] === 'em_transito'): ?>
                                 <a class="btn btn-secondary" href="index.php?page=logistica_transferencia_receber&id=<?= (int)$t['id'] ?>">Receber</a>
                             <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Eventos sem lista pronta</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Evento</th>
+                    <th>Unidade</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($eventos_alertas['sem_lista']) && empty($eventos_alertas['sem_detalhe'])): ?>
+                <tr><td colspan="4">Nenhum evento sem lista pronta.</td></tr>
+            <?php else: ?>
+                <?php foreach ($eventos_alertas['sem_lista'] as $ev): ?>
+                    <tr>
+                        <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
+                        <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
+                        <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
+                        <td>Sem lista pronta</td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php foreach ($eventos_alertas['sem_detalhe'] as $ev): ?>
+                    <tr>
+                        <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
+                        <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
+                        <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
+                        <td>Lista pronta sem detalhamento</td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Conflito de listas prontas</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Evento</th>
+                    <th>Unidade</th>
+                    <th>Listas</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($eventos_alertas['conflitos'])): ?>
+                <tr><td colspan="4">Nenhum conflito encontrado.</td></tr>
+            <?php else: ?>
+                <?php foreach ($eventos_alertas['conflitos'] as $ev): ?>
+                    <tr>
+                        <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
+                        <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
+                        <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
+                        <td><?= htmlspecialchars(implode(', ', $ev['listas'] ?? [])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Faltando insumos (próximos 3 dias)</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Evento</th>
+                    <th>Unidade</th>
+                    <th>Faltas</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if (empty($eventos_alertas['faltas'])): ?>
+                <tr><td colspan="5">Nenhuma falta encontrada.</td></tr>
+            <?php else: ?>
+                <?php foreach ($eventos_alertas['faltas'] as $ev): ?>
+                    <tr>
+                        <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
+                        <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
+                        <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
+                        <td><?= (int)$ev['faltas_total'] ?> de <?= (int)$ev['itens_total'] ?></td>
+                        <td>
+                            <a class="btn btn-secondary" href="index.php?page=logistica_faltas_evento&event_id=<?= (int)$ev['id'] ?>">Ver detalhes</a>
                         </td>
                     </tr>
                 <?php endforeach; ?>

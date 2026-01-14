@@ -135,6 +135,37 @@ function build_lista_consolidada(
     return [$totais, $unit_lock];
 }
 
+function build_totais_evento(
+    array $itens,
+    array $insumos_map,
+    array $receitas_yield,
+    array $componentes_by_receita,
+    array &$errors
+): array {
+    $totais = [];
+    foreach ($itens as $item) {
+        $tipo = $item['tipo'] ?? '';
+        $item_id = (int)($item['item_id'] ?? 0);
+        $quantidade = (float)($item['quantidade'] ?? 0);
+        if ($item_id <= 0 || $quantidade <= 0) { continue; }
+
+        if ($tipo === 'insumo') {
+            if (!isset($insumos_map[$item_id])) { continue; }
+            $totais[$item_id] = ($totais[$item_id] ?? 0) + $quantidade;
+        } else {
+            $yield = (float)($receitas_yield[$item_id] ?? 0);
+            if ($yield <= 0) {
+                $errors[] = 'Receita sem rendimento (ID ' . $item_id . ').';
+                continue;
+            }
+            $multiplicador = $quantidade / $yield;
+            $stack = [];
+            explode_receita($item_id, $multiplicador, $componentes_by_receita, $insumos_map, $receitas_yield, $totais, $stack, $errors);
+        }
+    }
+    return $totais;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $payload_raw = $_POST['payload'] ?? '';
@@ -193,8 +224,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $stmt = $pdo->prepare("
-                        INSERT INTO logistica_listas (unidade_interna_id, space_visivel, criado_por, criado_em)
-                        VALUES (:unidade_interna_id, :space_visivel, :criado_por, NOW())
+                        INSERT INTO logistica_listas (unidade_interna_id, space_visivel, criado_por, criado_em, status)
+                        VALUES (:unidade_interna_id, :space_visivel, :criado_por, NOW(), 'gerada')
                         RETURNING id
                     ");
                     $stmt->execute([
@@ -224,6 +255,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ':space_visivel' => $evento['space_visivel'],
                             ':unidade_interna_id' => $evento['unidade_interna_id']
                         ]);
+                    }
+
+                    $stmtListaEvento = $pdo->prepare("
+                        INSERT INTO logistica_lista_evento_itens
+                            (lista_id, evento_id, insumo_id, unidade_medida_id, quantidade_total_bruto)
+                        VALUES
+                            (:lista_id, :evento_id, :insumo_id, :unidade_medida_id, :quantidade_total_bruto)
+                    ");
+                    foreach ($payload['eventos'] as $ev) {
+                        $event_id = (int)($ev['evento_id'] ?? 0);
+                        if ($event_id <= 0) { continue; }
+                        $totais_evento = build_totais_evento(
+                            $ev['itens'] ?? [],
+                            $insumos_map,
+                            $receitas_yield,
+                            $componentes_by_receita,
+                            $errors
+                        );
+                        foreach ($totais_evento as $insumo_id => $quantidade) {
+                            $un_medida_id = $insumos_map[$insumo_id]['unidade_medida_padrao_id'] ?? null;
+                            $stmtListaEvento->execute([
+                                ':lista_id' => $lista_id,
+                                ':evento_id' => $event_id,
+                                ':insumo_id' => $insumo_id,
+                                ':unidade_medida_id' => $un_medida_id,
+                                ':quantidade_total_bruto' => $quantidade
+                            ]);
+                        }
                     }
 
                     $stmtItem = $pdo->prepare("
