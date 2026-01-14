@@ -113,7 +113,7 @@ if (!function_exists('build_logistica_notifications_bar')) {
         if (!empty($eventos_alertas['sem_lista'])) {
             $alerts[] = [
                 'level' => 'warning',
-                'text' => 'Eventos sem lista pronta: ' . count($eventos_alertas['sem_lista'])
+                'text' => 'Evento sem lista pronta: ' . count($eventos_alertas['sem_lista'])
             ];
         }
         if (!empty($eventos_alertas['conflitos'])) {
@@ -125,7 +125,7 @@ if (!function_exists('build_logistica_notifications_bar')) {
         if (!empty($eventos_alertas['sem_detalhe'])) {
             $alerts[] = [
                 'level' => 'warning',
-                'text' => 'Lista pronta sem detalhamento: ' . count($eventos_alertas['sem_detalhe'])
+                'text' => 'Lista antiga sem detalhamento — gere nova lista: ' . count($eventos_alertas['sem_detalhe'])
             ];
         }
 

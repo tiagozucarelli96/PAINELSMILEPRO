@@ -326,7 +326,7 @@ includeSidebar('Divergências - Logística');
                         <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
                         <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
                         <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
-                        <td>Sem lista pronta</td>
+                        <td>Evento sem lista pronta</td>
                     </tr>
                 <?php endforeach; ?>
                 <?php foreach ($eventos_alertas['sem_detalhe'] as $ev): ?>
@@ -334,7 +334,7 @@ includeSidebar('Divergências - Logística');
                         <td><?= format_date($ev['data_evento'] ?? null, 'd/m/Y') ?></td>
                         <td><?= htmlspecialchars($ev['nome_evento'] ?? 'Evento') ?></td>
                         <td><?= htmlspecialchars($ev['space_visivel'] ?? '') ?></td>
-                        <td>Lista pronta sem detalhamento</td>
+                        <td>Lista antiga sem detalhamento — gere uma nova lista para esse evento ou mantenha sem baixa automática.</td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
