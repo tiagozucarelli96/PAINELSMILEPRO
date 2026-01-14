@@ -169,6 +169,33 @@ function build_totais_evento(
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+    if ($action === 'log_unmapped') {
+        $event_id = (int)($_POST['evento_id'] ?? 0);
+        if ($event_id > 0) {
+            $stmt = $pdo->prepare("
+                SELECT nome_evento, localevento, unidade_interna_id
+                FROM logistica_eventos_espelho
+                WHERE id = :id
+            ");
+            $stmt->execute([':id' => $event_id]);
+            $ev = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($ev && empty($ev['unidade_interna_id'])) {
+                $pdo->prepare("
+                    INSERT INTO logistica_alertas_log
+                        (tipo, unidade_id, referencia_tipo, referencia_id, mensagem, criado_em, criado_por)
+                    VALUES
+                        ('local_nao_mapeado', NULL, 'evento', :ref_id, :mensagem, NOW(), :criado_por)
+                ")->execute([
+                    ':ref_id' => $event_id,
+                    ':mensagem' => 'Local não mapeado: ' . ($ev['nome_evento'] ?? 'Evento') . ' — ' . ($ev['localevento'] ?? ''),
+                    ':criado_por' => (int)($_SESSION['id'] ?? 0)
+                ]);
+            }
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true]);
+        exit;
+    }
     $payload_raw = $_POST['payload'] ?? '';
     $payload = json_decode($payload_raw, true);
     if (!is_array($payload)) {
@@ -394,6 +421,32 @@ includeSidebar('Logística - Gerar Lista');
     border-radius: 12px;
     padding: 1rem;
     margin-bottom: 1rem;
+    background: #fff;
+    cursor: pointer;
+}
+.event-card.pending {
+    border-color: #fecaca;
+    background: #fff5f5;
+}
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+.status-badge.mapeado { background: #dcfce7; color: #166534; }
+.status-badge.pendente { background: #fee2e2; color: #991b1b; }
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
 }
 .item-row {
     display: grid;
@@ -439,7 +492,7 @@ includeSidebar('Logística - Gerar Lista');
     <div class="section-card">
         <h2>Selecionar eventos</h2>
         <div style="display:flex;gap:0.75rem;align-items:center;">
-            <input class="form-input" id="evento-search" placeholder="Buscar evento por nome ou local">
+            <input class="form-input" id="evento-search" placeholder="Buscar evento por nome, data ou local">
             <button class="btn-secondary" type="button" id="btn-add-evento">Adicionar evento</button>
         </div>
         <div id="evento-sugestoes" style="margin-top:0.5rem;"></div>
@@ -545,12 +598,24 @@ function renderSuggestions() {
     const list = EVENTOS.filter(ev => {
         const nome = (ev.nome_evento || '').toLowerCase();
         const local = (ev.localevento || '').toLowerCase();
-        return nome.includes(q) || local.includes(q);
+        const data = (ev.data_evento || '').toLowerCase();
+        const hora = (ev.hora_inicio || '').toLowerCase();
+        return nome.includes(q) || local.includes(q) || data.includes(q) || hora.includes(q);
     }).slice(0, 10);
     suggestions.innerHTML = list.map(ev => `
-        <div class="event-card" data-id="${ev.id}">
-            <strong>${ev.nome_evento || 'Evento'}</strong><br>
-            ${ev.data_evento} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
+        <div class="event-card ${ev.unidade_interna_id ? '' : 'pending'}" data-id="${ev.id}">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <strong>${ev.nome_evento || 'Evento'}</strong>
+                <span class="status-badge ${ev.unidade_interna_id ? 'mapeado' : 'pendente'}">
+                    ${ev.unidade_interna_id ? 'MAPEADO' : 'PENDENTE'}
+                </span>
+            </div>
+            <div style="margin-top:0.35rem;font-size:0.9rem;color:#334155;">
+                ${ev.data_evento || ''} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
+            </div>
+            <div style="margin-top:0.25rem;font-size:0.85rem;color:#64748b;">
+                Convidados: ${ev.convidados || 0} · Unidade: ${ev.unidade_nome || '-'}
+            </div>
         </div>
     `).join('');
     suggestions.querySelectorAll('.event-card').forEach(card => {
@@ -574,6 +639,11 @@ addBtn.addEventListener('click', () => {
         return;
     }
     if (!ev.unidade_interna_id) {
+        fetch('index.php?page=logistica_gerar_lista', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ action: 'log_unmapped', evento_id: ev.id })
+        });
         alert('Evento sem unidade mapeada. Faça o mapeamento antes.');
         return;
     }
