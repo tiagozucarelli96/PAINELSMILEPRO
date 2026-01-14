@@ -290,18 +290,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!empty($componentes_norm)) {
                             $stmt = $pdo->prepare("
                                 INSERT INTO logistica_receita_componentes
-                                (receita_id, item_tipo, item_id, unidade_medida_id, peso_liquido, fator_correcao, peso_bruto, created_at, updated_at)
+                                (receita_id, item_tipo, item_id, quantidade_base, unidade, unidade_medida_id, peso_liquido, fator_correcao, peso_bruto, created_at, updated_at)
                                 VALUES
-                                (:receita_id, :item_tipo, :item_id, :unidade_medida_id, :peso_liquido, :fator_correcao, :peso_bruto, NOW(), NOW())
+                                (:receita_id, :item_tipo, :item_id, :quantidade_base, :unidade, :unidade_medida_id, :peso_liquido, :fator_correcao, :peso_bruto, NOW(), NOW())
                             ");
                             foreach ($componentes_norm as $comp) {
                                 if ($comp['item_tipo'] === 'receita' && $comp['item_id'] === $receita_id) {
                                     throw new RuntimeException('Receita não pode referenciar ela mesma.');
                                 }
+                                $unidade_nome = null;
+                                if (!empty($comp['unidade_medida_id'])) {
+                                    $unidade_nome = $unidades_medida_map[(int)$comp['unidade_medida_id']] ?? null;
+                                }
                                 $stmt->execute([
                                     ':receita_id' => $receita_id,
                                     ':item_tipo' => $comp['item_tipo'],
                                     ':item_id' => $comp['item_id'],
+                                    ':quantidade_base' => $comp['peso_bruto'],
+                                    ':unidade' => $unidade_nome,
                                     ':unidade_medida_id' => $comp['unidade_medida_id'],
                                     ':peso_liquido' => $comp['peso_liquido'],
                                     ':fator_correcao' => $comp['fator_correcao'],
