@@ -1,5 +1,6 @@
 <?php
 // logistica_revisar_custos.php — Revisão mensal de custos
+date_default_timezone_set('America/Sao_Paulo');
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
