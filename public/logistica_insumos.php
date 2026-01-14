@@ -63,6 +63,21 @@ function ensure_unidades_medida(PDO $pdo): array {
     return $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function parse_decimal_input(string $value): ?float {
+    $raw = trim($value);
+    if ($raw === '') {
+        return null;
+    }
+    $normalized = preg_replace('/[^0-9,\\.]/', '', $raw);
+    if (strpos($normalized, ',') !== false && strpos($normalized, '.') !== false) {
+        $normalized = str_replace('.', '', $normalized);
+        $normalized = str_replace(',', '.', $normalized);
+    } else {
+        $normalized = str_replace(',', '.', $normalized);
+    }
+    return $normalized === '' ? null : (float)$normalized;
+}
+
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
     if (!empty($chave_storage)) {
         if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
@@ -180,15 +195,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':fracionavel' => $fracionavel,
-                ':tamanho_embalagem' => $_POST['tamanho_embalagem'] !== '' ? (float)$_POST['tamanho_embalagem'] : null,
+                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? '')),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
             ];
 
             if ($can_see_cost) {
-                $custo_raw = trim((string)($_POST['custo_padrao'] ?? ''));
-                $custo_norm = str_replace(['.', ','], ['', '.'], preg_replace('/[^0-9,\.]/', '', $custo_raw));
-                $dados[':custo_padrao'] = $custo_norm !== '' ? (float)$custo_norm : null;
+                $custo_raw = (string)($_POST['custo_padrao'] ?? '');
+                $dados[':custo_padrao'] = parse_decimal_input($custo_raw);
             }
 
             if ($id > 0) {
