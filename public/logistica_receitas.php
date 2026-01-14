@@ -348,10 +348,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($redirect_id > 0 && empty($errors)) {
-    $target = 'index.php?page=logistica_receitas&edit_id=' . $redirect_id;
     if ($is_modal) {
-        $target .= '&modal=1';
+        echo "<script>
+            if (window.parent) {
+                if (typeof window.parent.closeCatalogModal === 'function') {
+                    window.parent.closeCatalogModal();
+                }
+                window.parent.location.href = 'index.php?page=logistica_catalogo';
+            } else {
+                window.location.href = 'index.php?page=logistica_catalogo';
+            }
+        </script>";
+        exit;
     }
+    $target = 'index.php?page=logistica_receitas&edit_id=' . $redirect_id;
     header('Location: ' . $target);
     exit;
 }
