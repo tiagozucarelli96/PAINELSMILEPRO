@@ -79,6 +79,13 @@ return [
     'logistica_gerar_lista' => 'perm_logistico',
     'logistica_listas' => 'perm_logistico',
     'logistica_lista_pdf' => 'perm_logistico',
+    'logistica_estoque' => 'perm_logistico',
+    'logistica_contagem' => 'perm_logistico',
+    'logistica_entrada' => 'perm_logistico',
+    'logistica_transferencias' => 'perm_logistico',
+    'logistica_transferencia_ver' => 'perm_logistico',
+    'logistica_transferencia_receber' => 'perm_logistico',
+    'logistica_saldo' => 'perm_logistico',
     'logistica_upload' => 'perm_logistico',
     // REMOVIDO: Módulo desativado
     // 'config_insumos' => 'perm_configuracoes',

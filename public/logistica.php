@@ -142,6 +142,15 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=logistica_estoque" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #9333ea, #6d28d9);">
+                <span class="funcionalidade-card-icon">📦</span>
+                <div class="funcionalidade-card-title">Estoque</div>
+                <div class="funcionalidade-card-subtitle">Contagem, entrada e transferências</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         <?php endif; ?>
 
         <?php if (!empty($_SESSION['perm_logistico_divergencias']) || $is_superadmin): ?>
