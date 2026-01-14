@@ -124,6 +124,24 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=logistica_gerar_lista" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                <span class="funcionalidade-card-icon">🛒</span>
+                <div class="funcionalidade-card-title">Gerar Lista</div>
+                <div class="funcionalidade-card-subtitle">Selecionar eventos e consolidar insumos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_listas" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #14b8a6);">
+                <span class="funcionalidade-card-icon">📄</span>
+                <div class="funcionalidade-card-title">Histórico</div>
+                <div class="funcionalidade-card-subtitle">Listas geradas e PDF</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         <?php endif; ?>
 
         <?php if (!empty($_SESSION['perm_logistico_divergencias']) || $is_superadmin): ?>

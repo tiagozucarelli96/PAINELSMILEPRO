@@ -76,6 +76,9 @@ return [
     'logistica_tipologias' => 'perm_logistico',
     'logistica_insumos' => 'perm_logistico',
     'logistica_receitas' => 'perm_logistico',
+    'logistica_gerar_lista' => 'perm_logistico',
+    'logistica_listas' => 'perm_logistico',
+    'logistica_lista_pdf' => 'perm_logistico',
     'logistica_upload' => 'perm_logistico',
     // REMOVIDO: Módulo desativado
     // 'config_insumos' => 'perm_configuracoes',
