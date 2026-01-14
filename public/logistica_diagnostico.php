@@ -68,6 +68,7 @@ foreach ($route_files as $file) {
     $base = basename($file, '.php');
     if (preg_match('/_helper$/', $base)) { continue; }
     if ($base === 'logistica_cron_runner') { continue; }
+    if ($base === 'logistica_baixa_eventos') { continue; }
     $routes[] = $base;
 }
 sort($routes);
