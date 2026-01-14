@@ -13,6 +13,7 @@ require_once __DIR__ . '/core/helpers.php';
 
 $lista_id = isset($_GET['lista_id']) ? (int)$_GET['lista_id'] : 0;
 if ($lista_id <= 0) { echo "lista_id inválido."; exit; }
+$show_values = !empty($_GET['show_values']) && (!empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']));
 
 $stmt = $pdo->prepare("
     SELECT l.*, u.nome AS unidade_nome
@@ -29,7 +30,7 @@ $stmt->execute([':id' => $lista_id]);
 $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $stmt = $pdo->prepare("
-    SELECT li.*, i.nome_oficial, u.nome AS unidade_nome, t.nome AS tipologia_nome
+    SELECT li.*, i.nome_oficial, i.custo_padrao, u.nome AS unidade_nome, t.nome AS tipologia_nome
     FROM logistica_lista_itens li
     LEFT JOIN logistica_insumos i ON i.id = li.insumo_id
     LEFT JOIN logistica_unidades_medida u ON u.id = li.unidade_medida_id
@@ -39,6 +40,19 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([':id' => $lista_id]);
 $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$total_valor = 0.0;
+if ($show_values) {
+    foreach ($itens as &$it) {
+        if ($it['custo_padrao'] === null || $it['custo_padrao'] === '') {
+            $it['custo_total'] = null;
+        } else {
+            $it['custo_total'] = (float)$it['quantidade_total_bruto'] * (float)$it['custo_padrao'];
+            $total_valor += (float)$it['custo_total'];
+        }
+    }
+    unset($it);
+}
 
 ob_start();
 ?>
@@ -112,6 +126,10 @@ th{background:#f4f6fb}
         <th>Item</th>
         <th>Unidade</th>
         <th class="right">Quantidade total (bruto)</th>
+        <?php if ($show_values): ?>
+        <th class="right">Custo padrão</th>
+        <th class="right">Custo total</th>
+        <?php endif; ?>
       </tr>
     </thead>
     <tbody>
@@ -121,11 +139,21 @@ th{background:#f4f6fb}
           <td><?= h($it['nome_oficial'] ?? '') ?></td>
           <td><?= h($it['unidade_nome'] ?? '') ?></td>
           <td class="right"><?= number_format((float)$it['quantidade_total_bruto'], 4, ',', '.') ?></td>
+          <?php if ($show_values): ?>
+            <td class="right"><?= $it['custo_padrao'] === null || $it['custo_padrao'] === '' ? '-' : format_currency($it['custo_padrao']) ?></td>
+            <td class="right"><?= $it['custo_total'] === null ? '-' : format_currency($it['custo_total']) ?></td>
+          <?php endif; ?>
         </tr>
       <?php endforeach; ?>
     </tbody>
   </table>
 </div>
+
+<?php if ($show_values): ?>
+  <div style="margin-top:12px;text-align:right;">
+    <strong>Total:</strong> <?= format_currency($total_valor) ?>
+  </div>
+<?php endif; ?>
 
 </body>
 </html>

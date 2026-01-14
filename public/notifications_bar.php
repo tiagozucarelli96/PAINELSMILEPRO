@@ -133,6 +133,21 @@ if (!function_exists('build_logistica_notifications_bar')) {
             ];
         }
 
+        if ($is_superadmin) {
+            $mes_atual = (new DateTime('now', new DateTimeZone('America/Sao_Paulo')))->format('Y-m');
+            $stmt = $pdo->prepare("SELECT MAX(criado_em) FROM logistica_custos_log");
+            $stmt->execute();
+            $ultima = $stmt->fetchColumn();
+            $mes_ultima = $ultima ? date('Y-m', strtotime($ultima)) : null;
+            if ($mes_ultima !== $mes_atual) {
+                $alerts[] = [
+                    'level' => 'warning',
+                    'text' => 'Revisar custos do mês',
+                    'link' => 'index.php?page=logistica_revisar_custos'
+                ];
+            }
+        }
+
         // Alertas operacionais (saldo negativo bloqueado)
         $params = [];
         $where = "WHERE tipo = 'saldo_negativo_bloqueado' AND criado_em >= (NOW() - INTERVAL '7 days')";

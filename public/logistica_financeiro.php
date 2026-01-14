@@ -1,11 +1,18 @@
 <?php
-// logistica_financeiro.php — placeholder financeiro
+// logistica_financeiro.php — HUB financeiro
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+
+$is_financeiro = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
+if (!$is_financeiro) {
+    http_response_code(403);
+    echo '<div class="alert-error">Acesso negado.</div>';
+    exit;
+}
 
 ob_start();
 ?>
@@ -46,11 +53,25 @@ ob_start();
 
 <div class="page-logistica-placeholder">
     <h1>💰 Logística Financeira</h1>
-    <p>Placeholder visual — área restrita com valores.</p>
+    <p>Relatórios e revisão de custos.</p>
 
-    <div class="placeholder-card">
-        <h2>Em construção</h2>
-        <p>Custos, rateios e relatórios financeiros serão implementados nas próximas etapas.</p>
+    <div class="funcionalidades-grid">
+        <a href="index.php?page=logistica_financeiro_estoque" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #1d4ed8, #2563eb);">
+                <span class="funcionalidade-card-icon">📊</span>
+                <div class="funcionalidade-card-title">Valor do Estoque</div>
+                <div class="funcionalidade-card-subtitle">Por unidade e total</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+        <a href="index.php?page=logistica_revisar_custos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">🧾</span>
+                <div class="funcionalidade-card-title">Revisão de Custos</div>
+                <div class="funcionalidade-card-subtitle">Wizard mensal</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
     </div>
 </div>
 
