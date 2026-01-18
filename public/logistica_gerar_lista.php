@@ -461,6 +461,14 @@ includeSidebar('Logística - Gerar Lista');
     align-items: center;
     justify-content: center;
 }
+.modal-card {
+    width: min(980px, 94vw);
+    max-height: 90vh;
+    overflow: auto;
+    padding: 1rem;
+    border-radius: 12px;
+    background: #fff;
+}
 .item-row {
     display: grid;
     grid-template-columns: 1.5fr 1fr 0.9fr 0.25fr;
@@ -578,7 +586,7 @@ includeSidebar('Logística - Gerar Lista');
 </div>
 
 <div class="modal-overlay" id="modal-item">
-    <div class="modal" style="width:min(900px,94vw);max-height:90vh;overflow:auto;padding:1rem;border-radius:12px;background:#fff;">
+    <div class="modal-card">
         <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
             <div class="modal-title" style="font-weight:700;">Selecionar item</div>
             <button class="btn-secondary" type="button" onclick="closeItemModal()">X</button>
@@ -595,6 +603,20 @@ includeSidebar('Logística - Gerar Lista');
     </div>
 </div>
 
+<div class="modal-overlay" id="modal-evento">
+    <div class="modal-card">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+            <div class="modal-title" id="modal-evento-title" style="font-weight:700;">Itens do Evento</div>
+            <button class="btn-secondary" type="button" onclick="closeEventoModal()">X</button>
+        </div>
+        <div id="modal-evento-subtitle" style="margin-bottom:0.75rem;color:#64748b;"></div>
+        <div id="modal-evento-itens"></div>
+        <div style="margin-top:0.75rem;">
+            <button class="btn-secondary" type="button" onclick="adicionarItemModal()">Adicionar item</button>
+        </div>
+    </div>
+</div>
+
 <script>
 const EVENTOS = <?= json_encode($eventos, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -602,6 +624,7 @@ const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'no
 
 let selectedEvents = [];
 let unitLock = null;
+let modalEventoId = null;
 
 const searchInput = document.getElementById('evento-search');
 const suggestions = document.getElementById('evento-sugestoes');
@@ -711,17 +734,16 @@ function renderSelectedEvents() {
             </div>
             <div style="margin-top:0.75rem;">
                 <strong>Itens do Evento</strong>
-                <div id="itens-${ev.id}"></div>
-                <button class="btn-secondary" type="button" onclick="adicionarItem(${ev.id})">Adicionar item</button>
+                <div style="margin-top:0.35rem;color:#64748b;">Itens cadastrados: ${ev.itens.length}</div>
+                <button class="btn-secondary" type="button" style="margin-top:0.5rem;" onclick="openEventoModal(${ev.id})">Editar itens</button>
             </div>
         </div>
     `).join('');
-    selectedEvents.forEach(ev => renderItems(ev.id));
 }
 
-function renderItems(eventId) {
+function renderItems(eventId, target) {
     const ev = selectedEvents.find(e => e.id === eventId);
-    const container = document.getElementById(`itens-${eventId}`);
+    const container = document.getElementById(target);
     if (!ev || !container) return;
     container.innerHTML = ev.itens.map((it, idx) => `
         <div class="item-row">
@@ -749,7 +771,11 @@ function adicionarItem(eventId) {
         quantidade: ev.convidados || 0,
         modo: 'auto'
     });
-    renderItems(eventId);
+    renderItems(eventId, 'modal-evento-itens');
+}
+
+function adicionarItemModal() {
+    if (modalEventoId) adicionarItem(modalEventoId);
 }
 
 function removerEvento(eventId) {
@@ -762,7 +788,10 @@ function removerItem(eventId, idx) {
     const ev = selectedEvents.find(e => e.id === eventId);
     if (!ev) return;
     ev.itens.splice(idx, 1);
-    renderItems(eventId);
+    if (modalEventoId === eventId) {
+        renderItems(eventId, 'modal-evento-itens');
+    }
+    renderSelectedEvents();
 }
 
 function updateQuantidade(eventId, idx, value) {
@@ -778,7 +807,24 @@ function updateModo(eventId, idx, value) {
     if (value === 'auto') {
         ev.itens[idx].quantidade = ev.convidados || 0;
     }
-    renderItems(eventId);
+    renderItems(eventId, 'modal-evento-itens');
+}
+
+function openEventoModal(eventId) {
+    const ev = selectedEvents.find(e => e.id === eventId);
+    if (!ev) return;
+    modalEventoId = eventId;
+    const title = document.getElementById('modal-evento-title');
+    const subtitle = document.getElementById('modal-evento-subtitle');
+    if (title) title.textContent = `Itens do Evento — ${ev.nome}`;
+    if (subtitle) subtitle.textContent = `${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}`;
+    renderItems(eventId, 'modal-evento-itens');
+    document.getElementById('modal-evento').style.display = 'flex';
+}
+
+function closeEventoModal() {
+    document.getElementById('modal-evento').style.display = 'none';
+    modalEventoId = null;
 }
 
 let modalTarget = null;
@@ -841,13 +887,19 @@ function confirmItem() {
     if (item.modo === 'auto') {
         item.quantidade = ev.convidados || 0;
     }
-    renderItems(ev.id);
+    renderItems(ev.id, 'modal-evento-itens');
     closeItemModal();
 }
 
 document.getElementById('modal-item').addEventListener('click', (e) => {
     if (e.target.id === 'modal-item') {
         closeItemModal();
+    }
+});
+
+document.getElementById('modal-evento').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-evento') {
+        closeEventoModal();
     }
 });
 
