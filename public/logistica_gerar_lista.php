@@ -463,7 +463,7 @@ includeSidebar('Logística - Gerar Lista');
 }
 .item-row {
     display: grid;
-    grid-template-columns: 1.5fr 0.6fr 0.8fr 0.4fr;
+    grid-template-columns: 1.5fr 1fr 0.9fr 0.25fr;
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.5rem;
@@ -729,11 +729,11 @@ function renderItems(eventId) {
                 <div class="item-label">${it.nome || '-'}</div>
                 <button class="btn-secondary" type="button" onclick="openItemModal(${eventId}, ${idx})">🔍</button>
             </div>
-            <input class="form-input" type="text" value="${it.quantidade || ''}" oninput="updateQuantidade(${eventId}, ${idx}, this.value)">
-            <select class="form-input" onchange="updateTipoQtd(${eventId}, ${idx}, this.value)">
-                <option value="pessoas" ${it.tipo_qtd === 'pessoas' ? 'selected' : ''}>Pessoas</option>
-                <option value="unidade" ${it.tipo_qtd === 'unidade' ? 'selected' : ''}>Unidade</option>
+            <select class="form-input" onchange="updateModo(${eventId}, ${idx}, this.value)">
+                <option value="auto" ${it.modo === 'auto' ? 'selected' : ''}>Por convidados (automático)</option>
+                <option value="fixo" ${it.modo === 'fixo' ? 'selected' : ''}>Quantidade fixa</option>
             </select>
+            <input class="form-input" type="text" value="${it.modo === 'fixo' ? (it.quantidade || '') : ''}" ${it.modo === 'fixo' ? '' : 'disabled'} oninput="updateQuantidade(${eventId}, ${idx}, this.value)">
             <button class="btn-secondary" type="button" onclick="removerItem(${eventId}, ${idx})">X</button>
         </div>
     `).join('');
@@ -747,7 +747,7 @@ function adicionarItem(eventId) {
         item_id: 0,
         nome: '',
         quantidade: ev.convidados || 0,
-        tipo_qtd: 'pessoas'
+        modo: 'auto'
     });
     renderItems(eventId);
 }
@@ -771,10 +771,14 @@ function updateQuantidade(eventId, idx, value) {
     ev.itens[idx].quantidade = value;
 }
 
-function updateTipoQtd(eventId, idx, value) {
+function updateModo(eventId, idx, value) {
     const ev = selectedEvents.find(e => e.id === eventId);
     if (!ev) return;
-    ev.itens[idx].tipo_qtd = value;
+    ev.itens[idx].modo = value;
+    if (value === 'auto') {
+        ev.itens[idx].quantidade = ev.convidados || 0;
+    }
+    renderItems(eventId);
 }
 
 let modalTarget = null;
@@ -834,13 +838,8 @@ function confirmItem() {
     item.tipo = modalSelected.tipo;
     item.item_id = modalSelected.id;
     item.nome = modalSelected.nome;
-    if (item.tipo === 'receita') {
-        item.tipo_qtd = 'pessoas';
-        if (!item.quantidade) {
-            item.quantidade = ev.convidados || 0;
-        }
-    } else {
-        item.tipo_qtd = 'unidade';
+    if (item.modo === 'auto') {
+        item.quantidade = ev.convidados || 0;
     }
     renderItems(ev.id);
     closeItemModal();
@@ -860,7 +859,9 @@ function buildPayload() {
             itens: ev.itens.map(it => ({
                 tipo: it.tipo,
                 item_id: it.item_id,
-                quantidade: parseFloat((it.quantidade || '0').toString().replace(',', '.')) || 0
+                quantidade: it.modo === 'auto'
+                    ? (ev.convidados || 0)
+                    : (parseFloat((it.quantidade || '0').toString().replace(',', '.')) || 0)
             }))
         }))
     };
