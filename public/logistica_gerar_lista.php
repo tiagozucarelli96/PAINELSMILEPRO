@@ -341,16 +341,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$eventos = $pdo->query("
+$eventos_stmt = $pdo->prepare("
     SELECT e.id, e.me_event_id, e.data_evento, e.hora_inicio, e.convidados, e.localevento,
            e.nome_evento, e.space_visivel, e.unidade_interna_id, e.status_mapeamento,
            u.nome AS unidade_nome
     FROM logistica_eventos_espelho e
     LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
     WHERE e.arquivado IS FALSE
-      AND e.data_evento BETWEEN CURRENT_DATE AND (CURRENT_DATE + INTERVAL '30 days')
-    ORDER BY e.data_evento ASC, e.hora_inicio ASC NULLS LAST
-")->fetchAll(PDO::FETCH_ASSOC);
+      AND (e.data_evento IS NULL OR e.data_evento BETWEEN :ini AND :fim)
+    ORDER BY e.data_evento ASC NULLS LAST, e.hora_inicio ASC NULLS LAST
+");
+$eventos_stmt->execute([
+    ':ini' => date('Y-m-d', strtotime('-30 days')),
+    ':fim' => date('Y-m-d', strtotime('+365 days'))
+]);
+$eventos = $eventos_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $insumos_select = $pdo->query("
     SELECT id, nome_oficial, unidade_medida_padrao_id, sinonimos
@@ -496,6 +501,7 @@ includeSidebar('Logística - Gerar Lista');
             <button class="btn-secondary" type="button" id="btn-add-evento">Adicionar evento</button>
         </div>
         <div id="evento-sugestoes" style="margin-top:0.5rem;"></div>
+        <div id="evento-vazio" style="margin-top:0.5rem;color:#64748b;display:none;">Nenhum evento encontrado.</div>
     </div>
 
     <form method="POST" id="form-gerar">
@@ -591,7 +597,15 @@ let unitLock = null;
 
 const searchInput = document.getElementById('evento-search');
 const suggestions = document.getElementById('evento-sugestoes');
+const emptyHint = document.getElementById('evento-vazio');
 const addBtn = document.getElementById('btn-add-evento');
+
+function formatDateBR(value) {
+    if (!value) return '';
+    const parts = value.split('-');
+    if (parts.length !== 3) return value;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
 
 function renderSuggestions() {
     const q = (searchInput.value || '').toLowerCase();
@@ -599,8 +613,9 @@ function renderSuggestions() {
         const nome = (ev.nome_evento || '').toLowerCase();
         const local = (ev.localevento || '').toLowerCase();
         const data = (ev.data_evento || '').toLowerCase();
+        const dataBr = formatDateBR(ev.data_evento || '').toLowerCase();
         const hora = (ev.hora_inicio || '').toLowerCase();
-        return nome.includes(q) || local.includes(q) || data.includes(q) || hora.includes(q);
+        return nome.includes(q) || local.includes(q) || data.includes(q) || dataBr.includes(q) || hora.includes(q);
     }).slice(0, 10);
     suggestions.innerHTML = list.map(ev => `
         <div class="event-card ${ev.unidade_interna_id ? '' : 'pending'}" data-id="${ev.id}">
@@ -611,13 +626,16 @@ function renderSuggestions() {
                 </span>
             </div>
             <div style="margin-top:0.35rem;font-size:0.9rem;color:#334155;">
-                ${ev.data_evento || ''} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
+                ${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
             </div>
             <div style="margin-top:0.25rem;font-size:0.85rem;color:#64748b;">
                 Convidados: ${ev.convidados || 0} · Unidade: ${ev.unidade_nome || '-'}
             </div>
         </div>
     `).join('');
+    if (emptyHint) {
+        emptyHint.style.display = list.length ? 'none' : 'block';
+    }
     suggestions.querySelectorAll('.event-card').forEach(card => {
         card.addEventListener('click', () => {
             const ev = EVENTOS.find(e => e.id == card.dataset.id);
@@ -630,6 +648,7 @@ function renderSuggestions() {
 }
 
 searchInput.addEventListener('input', renderSuggestions);
+searchInput.addEventListener('focus', renderSuggestions);
 
 addBtn.addEventListener('click', () => {
     const id = parseInt(searchInput.dataset.selectedId || '0', 10);
