@@ -461,6 +461,9 @@ includeSidebar('Logística - Gerar Lista');
     align-items: center;
     justify-content: center;
 }
+#modal-item {
+    z-index: 2100;
+}
 .modal-card {
     width: min(980px, 94vw);
     max-height: 90vh;
