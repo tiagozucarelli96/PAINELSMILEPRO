@@ -348,11 +348,11 @@ $eventos_stmt = $pdo->prepare("
     FROM logistica_eventos_espelho e
     LEFT JOIN logistica_unidades u ON u.id = e.unidade_interna_id
     WHERE e.arquivado IS FALSE
-      AND (e.data_evento IS NULL OR e.data_evento BETWEEN :ini AND :fim)
-    ORDER BY e.data_evento ASC NULLS LAST, e.hora_inicio ASC NULLS LAST
+      AND e.data_evento BETWEEN :ini AND :fim
+    ORDER BY e.data_evento ASC, e.hora_inicio ASC NULLS LAST
 ");
 $eventos_stmt->execute([
-    ':ini' => date('Y-m-d', strtotime('-30 days')),
+    ':ini' => date('Y-m-d'),
     ':fim' => date('Y-m-d', strtotime('+365 days'))
 ]);
 $eventos = $eventos_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -423,15 +423,23 @@ includeSidebar('Logística - Gerar Lista');
 }
 .event-card {
     border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
     background: #fff;
     cursor: pointer;
 }
 .event-card.pending {
     border-color: #fecaca;
     background: #fff5f5;
+}
+.event-list {
+    max-height: 280px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.5rem;
+    background: #fff;
 }
 .status-badge {
     display: inline-flex;
@@ -500,7 +508,7 @@ includeSidebar('Logística - Gerar Lista');
             <input class="form-input" id="evento-search" placeholder="Buscar evento por nome, data ou local">
             <button class="btn-secondary" type="button" id="btn-add-evento">Adicionar evento</button>
         </div>
-        <div id="evento-sugestoes" style="margin-top:0.5rem;"></div>
+        <div id="evento-sugestoes" class="event-list" style="margin-top:0.5rem;"></div>
         <div id="evento-vazio" style="margin-top:0.5rem;color:#64748b;display:none;">Nenhum evento encontrado.</div>
     </div>
 
