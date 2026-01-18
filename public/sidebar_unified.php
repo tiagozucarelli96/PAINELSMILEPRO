@@ -1643,8 +1643,10 @@ if ($current_page === 'dashboard') {
                 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
                 'comercial_degust_public', 'comercial_pagamento'
             ];
-            
-            if (!pagesWithOwnRender.includes(currentPage)) {
+
+            const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');
+
+            if (!pagesWithOwnRender.includes(currentPage) && !isLogistica) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
