@@ -423,22 +423,36 @@ includeSidebar('Logística - Gerar Lista');
 }
 .event-card {
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 0.5rem;
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem;
     background: #fff;
     cursor: pointer;
+    transition: border-color .2s ease, background .2s ease;
+}
+.event-card:hover {
+    border-color: #3b82f6;
+    background: #f8fafc;
 }
 .event-card.pending {
     border-color: #fecaca;
     background: #fff5f5;
 }
-.event-select {
-    width: 100%;
-    padding: 0.55rem 0.7rem;
-    border: 1px solid #cbd5f5;
-    border-radius: 8px;
+.event-list {
+    position: relative;
+}
+.event-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
     background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    max-height: 280px;
+    overflow: auto;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+    z-index: 1200;
 }
 .status-badge {
     display: inline-flex;
@@ -514,11 +528,11 @@ includeSidebar('Logística - Gerar Lista');
 
     <div class="section-card">
         <h2>Selecionar eventos</h2>
-        <div style="display:flex;gap:0.75rem;align-items:center;">
-            <input class="form-input" id="evento-search" placeholder="Buscar evento por nome, data ou local">
+        <div class="event-list" style="display:flex;gap:0.75rem;align-items:center;position:relative;">
+            <input class="form-input" id="evento-search" placeholder="Buscar evento..." autocomplete="off">
             <button class="btn-secondary" type="button" id="btn-add-evento">Adicionar evento</button>
+            <div id="evento-sugestoes" class="event-dropdown" style="display:none;"></div>
         </div>
-        <select id="evento-select" class="event-select" size="6" style="margin-top:0.5rem;"></select>
         <div id="evento-vazio" style="margin-top:0.5rem;color:#64748b;display:none;">Nenhum evento encontrado.</div>
     </div>
 
@@ -629,7 +643,7 @@ let unitLock = null;
 let modalEventoId = null;
 
 const searchInput = document.getElementById('evento-search');
-const selectBox = document.getElementById('evento-select');
+const suggestions = document.getElementById('evento-sugestoes');
 const emptyHint = document.getElementById('evento-vazio');
 const addBtn = document.getElementById('btn-add-evento');
 
@@ -650,36 +664,48 @@ function renderSuggestions() {
         const hora = (ev.hora_inicio || '').toLowerCase();
         return nome.includes(q) || local.includes(q) || data.includes(q) || dataBr.includes(q) || hora.includes(q);
     }).slice(0, 10);
-    selectBox.innerHTML = list.map(ev => {
-        const status = ev.unidade_interna_id ? 'MAPEADO' : 'PENDENTE';
-        const label = [
-            `${ev.nome_evento || 'Evento'}`,
-            `${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''}`.trim(),
-            `${ev.localevento || ''}`,
-            `${ev.space_visivel || ''}`,
-            `Conv: ${ev.convidados || 0}`,
-            `Unidade: ${ev.unidade_nome || '-'}`,
-            status
-        ].filter(Boolean).join(' • ');
-        return `<option value="${ev.id}">${label}</option>`;
-    }).join('');
+    suggestions.innerHTML = list.map(ev => `
+        <div class="event-card ${ev.unidade_interna_id ? '' : 'pending'}" data-id="${ev.id}">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <strong>${ev.nome_evento || 'Evento'}</strong>
+                <span class="status-badge ${ev.unidade_interna_id ? 'mapeado' : 'pendente'}">
+                    ${ev.unidade_interna_id ? 'MAPEADO' : 'PENDENTE'}
+                </span>
+            </div>
+            <div style="margin-top:0.2rem;font-size:0.9rem;color:#334155;">
+                ${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
+            </div>
+            <div style="margin-top:0.2rem;font-size:0.85rem;color:#64748b;">
+                Convidados: ${ev.convidados || 0} · Unidade: ${ev.unidade_nome || '-'}
+            </div>
+        </div>
+    `).join('');
     if (emptyHint) {
         emptyHint.style.display = list.length ? 'none' : 'block';
     }
+    suggestions.style.display = list.length ? 'block' : 'none';
+    suggestions.querySelectorAll('.event-card').forEach(card => {
+        card.addEventListener('click', () => addEventoFromCard(card.dataset.id));
+    });
 }
 
 searchInput.addEventListener('input', renderSuggestions);
 searchInput.addEventListener('focus', renderSuggestions);
-selectBox.addEventListener('change', () => {
-    const id = parseInt(selectBox.value || '0', 10);
-    const ev = EVENTOS.find(e => e.id === id);
-    if (ev) {
-        searchInput.value = ev.nome_evento || '';
-        searchInput.dataset.selectedId = ev.id;
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.event-list')) {
+        suggestions.style.display = 'none';
     }
 });
 
-addBtn.addEventListener('click', () => {
+function addEventoFromCard(rawId) {
+    const id = parseInt(rawId || '0', 10);
+    const ev = EVENTOS.find(e => e.id === id);
+    if (!ev) return;
+    searchInput.dataset.selectedId = ev.id;
+    addSelectedEvent();
+}
+
+function addSelectedEvent() {
     const id = parseInt(searchInput.dataset.selectedId || '0', 10);
     const ev = EVENTOS.find(e => e.id === id);
     if (!ev) {
@@ -719,7 +745,9 @@ addBtn.addEventListener('click', () => {
     searchInput.value = '';
     searchInput.dataset.selectedId = '';
     renderSuggestions();
-});
+}
+
+addBtn.addEventListener('click', addSelectedEvent);
 
 function renderSelectedEvents() {
     const container = document.getElementById('eventos-lista');
