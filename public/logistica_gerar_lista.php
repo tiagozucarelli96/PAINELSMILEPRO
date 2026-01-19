@@ -433,12 +433,11 @@ includeSidebar('Logística - Gerar Lista');
     border-color: #fecaca;
     background: #fff5f5;
 }
-.event-list {
-    max-height: 280px;
-    overflow: auto;
-    border: 1px solid #e5e7eb;
+.event-select {
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #cbd5f5;
     border-radius: 8px;
-    padding: 0.5rem;
     background: #fff;
 }
 .status-badge {
@@ -519,7 +518,7 @@ includeSidebar('Logística - Gerar Lista');
             <input class="form-input" id="evento-search" placeholder="Buscar evento por nome, data ou local">
             <button class="btn-secondary" type="button" id="btn-add-evento">Adicionar evento</button>
         </div>
-        <div id="evento-sugestoes" class="event-list" style="margin-top:0.5rem;"></div>
+        <select id="evento-select" class="event-select" size="6" style="margin-top:0.5rem;"></select>
         <div id="evento-vazio" style="margin-top:0.5rem;color:#64748b;display:none;">Nenhum evento encontrado.</div>
     </div>
 
@@ -630,7 +629,7 @@ let unitLock = null;
 let modalEventoId = null;
 
 const searchInput = document.getElementById('evento-search');
-const suggestions = document.getElementById('evento-sugestoes');
+const selectBox = document.getElementById('evento-select');
 const emptyHint = document.getElementById('evento-vazio');
 const addBtn = document.getElementById('btn-add-evento');
 
@@ -651,38 +650,34 @@ function renderSuggestions() {
         const hora = (ev.hora_inicio || '').toLowerCase();
         return nome.includes(q) || local.includes(q) || data.includes(q) || dataBr.includes(q) || hora.includes(q);
     }).slice(0, 10);
-    suggestions.innerHTML = list.map(ev => `
-        <div class="event-card ${ev.unidade_interna_id ? '' : 'pending'}" data-id="${ev.id}">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <strong>${ev.nome_evento || 'Evento'}</strong>
-                <span class="status-badge ${ev.unidade_interna_id ? 'mapeado' : 'pendente'}">
-                    ${ev.unidade_interna_id ? 'MAPEADO' : 'PENDENTE'}
-                </span>
-            </div>
-            <div style="margin-top:0.35rem;font-size:0.9rem;color:#334155;">
-                ${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''} · ${ev.localevento || ''} · ${ev.space_visivel || ''}
-            </div>
-            <div style="margin-top:0.25rem;font-size:0.85rem;color:#64748b;">
-                Convidados: ${ev.convidados || 0} · Unidade: ${ev.unidade_nome || '-'}
-            </div>
-        </div>
-    `).join('');
+    selectBox.innerHTML = list.map(ev => {
+        const status = ev.unidade_interna_id ? 'MAPEADO' : 'PENDENTE';
+        const label = [
+            `${ev.nome_evento || 'Evento'}`,
+            `${formatDateBR(ev.data_evento)} ${ev.hora_inicio || ''}`.trim(),
+            `${ev.localevento || ''}`,
+            `${ev.space_visivel || ''}`,
+            `Conv: ${ev.convidados || 0}`,
+            `Unidade: ${ev.unidade_nome || '-'}`,
+            status
+        ].filter(Boolean).join(' • ');
+        return `<option value="${ev.id}">${label}</option>`;
+    }).join('');
     if (emptyHint) {
         emptyHint.style.display = list.length ? 'none' : 'block';
     }
-    suggestions.querySelectorAll('.event-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const ev = EVENTOS.find(e => e.id == card.dataset.id);
-            if (ev) {
-                searchInput.value = ev.nome_evento || '';
-                searchInput.dataset.selectedId = ev.id;
-            }
-        });
-    });
 }
 
 searchInput.addEventListener('input', renderSuggestions);
 searchInput.addEventListener('focus', renderSuggestions);
+selectBox.addEventListener('change', () => {
+    const id = parseInt(selectBox.value || '0', 10);
+    const ev = EVENTOS.find(e => e.id === id);
+    if (ev) {
+        searchInput.value = ev.nome_evento || '';
+        searchInput.dataset.selectedId = ev.id;
+    }
+});
 
 addBtn.addEventListener('click', () => {
     const id = parseInt(searchInput.dataset.selectedId || '0', 10);
@@ -721,6 +716,9 @@ addBtn.addEventListener('click', () => {
         itens: []
     });
     renderSelectedEvents();
+    searchInput.value = '';
+    searchInput.dataset.selectedId = '';
+    renderSuggestions();
 });
 
 function renderSelectedEvents() {
