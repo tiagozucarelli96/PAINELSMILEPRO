@@ -12,6 +12,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/notificacoes_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
 $mensagem = '';
