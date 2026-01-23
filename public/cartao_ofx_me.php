@@ -899,6 +899,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
+                    header('Location: index.php?page=cartao_ofx_me');
+                    exit;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
