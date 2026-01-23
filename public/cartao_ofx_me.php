@@ -152,12 +152,13 @@ function cartao_ofx_detect_parcela(string $texto): ?array {
 function cartao_ofx_parse_fatura_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
+    $descartados = [];
     $buffer = [];
     $valorBuffer = null;
     $foundFirstDate = false;
     $dateRegex = '/^(\d{1,2}\/\d{1,2})\b/';
 
-    $isNoise = function(string $linha): bool {
+    $isNoise = function(string $linha) {
         $up = mb_strtoupper($linha, 'UTF-8');
         $ruidos = [
             'LANÇAMENTOS', 'LANCAMENTOS', 'DATA', 'ESTABELECIMENTO',
@@ -174,14 +175,33 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         return false;
     };
 
-    $flushItem = function() use (&$buffer, &$valorBuffer, &$itens) {
+    $extractValor = function(array $partes) {
+        $joined = implode(' ', $partes);
+        $valor = null;
+        $matches = [];
+        // padrões válidos
+        if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}/', $joined, $matches)) {
+            $ultimo = end($matches[0]);
+            $valor = cartao_ofx_parse_valor(str_replace('.', ',', $ultimo));
+        } elseif (preg_match_all('/\b\d{3,6}\b/', $joined, $matches)) {
+            $ultimo = end($matches[0]);
+            $valor = ((int)$ultimo) / 100;
+        }
+        return $valor;
+    };
+
+    $flushItem = function() use (&$buffer, &$valorBuffer, &$itens, &$descartados) {
         if ($valorBuffer === null) {
+            if (!empty($buffer)) {
+                $descartados[] = ['linha' => implode(' ', $buffer), 'motivo' => 'sem valor detectado'];
+            }
             $buffer = [];
             return;
         }
         $descricaoParte = trim(implode(' ', $buffer));
         $descricaoParte = preg_replace('/\s+/', ' ', $descricaoParte);
         if ($descricaoParte === '') {
+            $descartados[] = ['linha' => '(vazio)', 'motivo' => 'sem descricao'];
             $buffer = [];
             $valorBuffer = null;
             return;
@@ -189,10 +209,15 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
         if ($parcelaInfo) {
             $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
+            if ($parcelaInfo['total'] > 1 && $parcelaInfo['atual'] >= $parcelaInfo['total']) {
+                // última parcela: tratar como 1x
+                $parcelaInfo = null;
+            }
         }
         $descricaoParte = trim($descricaoParte);
         $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
         if ($descricaoNormalizada === '') {
+            $descartados[] = ['linha' => $descricaoParte, 'motivo' => 'formato inválido'];
             $buffer = [];
             $valorBuffer = null;
             return;
@@ -204,7 +229,9 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
             'valor_total' => abs($valorBuffer),
             'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
             'total_parcelas' => $parcelaInfo['total'] ?? 1,
+            'parcela_atual' => $parcelaInfo['atual'] ?? null,
             'is_credito' => $isCredito,
+            'descartados' => [],
         ];
         $buffer = [];
         $valorBuffer = null;
@@ -223,42 +250,43 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
             }
             $foundFirstDate = true;
             if ($isNoise($linha)) {
+                $descartados[] = ['linha' => $linha, 'motivo' => 'linha de ruído/cabeçalho'];
                 $buffer = [];
                 $valorBuffer = null;
                 continue;
             }
             $resto = trim(preg_replace($dateRegex, '', $linha, 1));
-            $valorEncontrado = null;
-            if (preg_match_all('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})/', $resto, $matches)) {
-                $ultimoValor = end($matches[0]);
-                $valorEncontrado = cartao_ofx_parse_valor($ultimoValor);
-                $resto = trim(str_replace($ultimoValor, '', $resto));
-            }
+            $valorEncontrado = $extractValor([$resto]);
             if ($resto !== '') {
-                $buffer[] = $resto;
+                // remove o valor encontrado do texto para não poluir descrição
+                if ($valorEncontrado !== null && preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b)/', $resto, $m)) {
+                    $resto = trim(str_replace($m[0], '', $resto));
+                }
+                if ($resto !== '') {
+                    $buffer[] = $resto;
+                }
             }
-            if ($valorEncontrado !== null) {
-                $valorBuffer = $valorEncontrado;
-            }
+            $valorBuffer = $valorEncontrado;
             continue;
         }
 
         if (!$foundFirstDate) {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'linha de ruído/cabeçalho'];
             continue;
         }
 
         if ($isNoise($linha)) {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'linha de ruído/cabeçalho'];
             continue;
         }
 
-        $valorEncontrado = null;
-        if (preg_match_all('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})/', $linha, $matches)) {
-            $ultimoValor = end($matches[0]);
-            $valorEncontrado = cartao_ofx_parse_valor($ultimoValor);
-            $linha = trim(str_replace($ultimoValor, '', $linha));
+        $valorEncontrado = $extractValor([$linha]);
+        $linhaSemValor = $linha;
+        if (preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b)/', $linha, $m)) {
+            $linhaSemValor = trim(str_replace($m[0], '', $linha));
         }
-        if ($linha !== '') {
-            $buffer[] = $linha;
+        if ($linhaSemValor !== '') {
+            $buffer[] = $linhaSemValor;
         }
         if ($valorEncontrado !== null) {
             $valorBuffer = $valorEncontrado;
@@ -269,7 +297,7 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         $flushItem();
     }
 
-    return $itens;
+    return ['itens' => $itens, 'descartados' => $descartados];
 }
 
 function cartao_ofx_split_parcelas(float $valorTotal, int $totalParcelas): array {
@@ -488,7 +516,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $snippet = $rawLen > 600 ? substr($rawText, 0, 600) . '...' : $rawText;
                     error_log('[CARTAO_OFX] OCR texto len=' . $rawLen . ' snippet="' . str_replace(["\n", "\r"], ['\\n', ''], $snippet) . '"');
 
-                    $itensBase = cartao_ofx_parse_fatura_texto($rawText);
+                    $parseResult = cartao_ofx_parse_fatura_texto($rawText);
+                    $itensBase = $parseResult['itens'] ?? [];
+                    $descartados = $parseResult['descartados'] ?? [];
                     error_log('[CARTAO_OFX] Itens base identificados: ' . count($itensBase));
 
                     if (empty($itensBase)) {
@@ -501,6 +531,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $baseItems = [];
 
                         foreach ($itensBase as $index => $item) {
+                            $totalParcelas = max(1, (int)$item['total_parcelas']);
+                            if (!empty($item['parcela_atual']) && $totalParcelas > 1 && (int)$item['parcela_atual'] >= $totalParcelas) {
+                                // Última parcela vira 1x
+                                $totalParcelas = 1;
+                                $item['indicador_parcela'] = null;
+                            }
                             $baseHash = cartao_ofx_hash_base(
                                 $cartaoId,
                                 $item['descricao_normalizada'],
@@ -508,7 +544,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $item['indicador_parcela'],
                                 $competencia
                             );
-                            $totalParcelas = max(1, (int)$item['total_parcelas']);
                             $parcelas = cartao_ofx_split_parcelas($item['valor_total'], $totalParcelas);
                             $baseDate = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, 0);
                             $baseDateStr = $baseDate->format('Ymd');
@@ -578,6 +613,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'competencia' => $competencia,
                             'base_items' => $baseItems,
                             'transacoes' => $previewTransacoes,
+                            'descartados' => $descartados,
                         ];
                         error_log('[CARTAO_OFX] Previa pronta. Transacoes: ' . count($previewTransacoes));
                         $_SESSION['cartao_ofx_preview'] = $preview;
@@ -1119,6 +1155,36 @@ ob_start();
                 </div>
             </form>
         </div>
+
+        <?php if (!empty($preview['descartados'])): ?>
+            <div class="ofx-card">
+                <h4>Itens descartados</h4>
+                <p class="ofx-muted">Linhas ignoradas pelo parser e motivo.</p>
+                <?php
+                $maxDescartados = 30;
+                $mostrar = array_slice($preview['descartados'], 0, $maxDescartados);
+                ?>
+                <table class="ofx-table">
+                    <thead>
+                        <tr>
+                            <th>Motivo</th>
+                            <th>Linha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($mostrar as $desc): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($desc['motivo'] ?? ''); ?></td>
+                                <td><?php echo htmlspecialchars($desc['linha'] ?? ''); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if (count($preview['descartados']) > $maxDescartados): ?>
+                    <div class="ofx-muted" style="margin-top:8px;">... e mais <?php echo count($preview['descartados']) - $maxDescartados; ?> linhas. (Considere ajustar o OCR ou a fatura.)</div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 
