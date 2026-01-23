@@ -124,6 +124,68 @@ function cartao_ofx_identificar_cobranca(string $descricaoNormalizada): ?string 
     return null;
 }
 
+function cartao_ofx_filtrar_estornos_cobranca(array $itens): array {
+    $chargeMap = [];
+    $keep = [];
+    foreach ($itens as $item) {
+        $kind = cartao_ofx_identificar_cobranca($item['descricao_normalizada']);
+        $isEstorno = false;
+        if ($kind !== null && preg_match('/ESTORNO|CREDITO|REVERS|CANCEL/i', $item['descricao_original'])) {
+            $isEstorno = true;
+        }
+
+        if ($kind !== null && !$isEstorno) {
+            $key = $kind . '|' . number_format($item['valor_total'], 2, '.', '');
+            if (!isset($chargeMap[$key])) {
+                $chargeMap[$key] = [];
+            }
+            $chargeMap[$key][] = $item;
+            $keep[] = $item;
+            continue;
+        }
+
+        if ($isEstorno && $kind !== null) {
+            $key = $kind . '|' . number_format($item['valor_total'], 2, '.', '');
+            if (!empty($chargeMap[$key])) {
+                array_pop($chargeMap[$key]);
+                for ($i = count($keep) - 1; $i >= 0; $i--) {
+                    $kitem = $keep[$i];
+                    $kkind = cartao_ofx_identificar_cobranca($kitem['descricao_normalizada']);
+                    if ($kkind === $kind && abs($kitem['valor_total'] - $item['valor_total']) < 0.001) {
+                        array_splice($keep, $i, 1);
+                        break;
+                    }
+                }
+                continue;
+            } else {
+                $item['is_credito'] = true;
+                $keep[] = $item;
+                continue;
+            }
+        }
+
+        $keep[] = $item;
+    }
+    return $keep;
+}
+
+function cartao_ofx_identificar_cobranca(string $descricaoNormalizada): ?string {
+    $kinds = [
+        'iof' => ['IOF'],
+        'juros' => ['JUROS'],
+        'anuidade' => ['ANUID'],
+        'tarifa' => ['TARIFA','TAXA','ENCARGO','SEGURO'],
+    ];
+    foreach ($kinds as $kind => $terms) {
+        foreach ($terms as $t) {
+            if (strpos($descricaoNormalizada, $t) !== false) {
+                return $kind;
+            }
+        }
+    }
+    return null;
+}
+
 function cartao_ofx_detect_parcela(string $texto): ?array {
     // Permitir parcelas mesmo coladas a letras (ex.: KA01/02)
     if (!preg_match_all('/(\d{1,2})\s*\/\s*(\d{1,2})/', $texto, $matches, PREG_OFFSET_CAPTURE)) {
