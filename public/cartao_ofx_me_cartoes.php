@@ -201,6 +201,40 @@ ob_start();
     color: #166534;
     border: 1px solid #bbf7d0;
 }
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+}
+
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    max-width: 600px;
+    width: 90%;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    color: #475569;
+}
 </style>
 
 <div class="ofx-container">
@@ -224,29 +258,29 @@ ob_start();
     <?php endforeach; ?>
 
     <div class="ofx-card">
-        <h3><?php echo $editCard ? 'Editar cartao' : 'Novo cartao'; ?></h3>
+        <h3>Novo cartao</h3>
         <form method="post">
             <input type="hidden" name="action" value="salvar">
-            <input type="hidden" name="id" value="<?php echo $editCard ? (int)$editCard['id'] : 0; ?>">
+            <input type="hidden" name="id" value="0">
             <div class="ofx-grid">
                 <div class="ofx-field">
                     <label>Nome do cartao</label>
-                    <input type="text" name="nome_cartao" value="<?php echo htmlspecialchars($editCard['nome_cartao'] ?? ''); ?>" required>
+                    <input type="text" name="nome_cartao" required>
                 </div>
                 <div class="ofx-field">
                     <label>Dia do vencimento</label>
-                    <input type="number" name="dia_vencimento" min="1" max="31" value="<?php echo htmlspecialchars($editCard['dia_vencimento'] ?? ''); ?>" required>
+                    <input type="number" name="dia_vencimento" min="1" max="31" required>
                 </div>
                 <div class="ofx-field">
                     <label>Status</label>
                     <select name="status">
-                        <option value="1" <?php echo (!isset($editCard['status']) || $editCard['status']) ? 'selected' : ''; ?>>Ativo</option>
-                        <option value="0" <?php echo (isset($editCard['status']) && !$editCard['status']) ? 'selected' : ''; ?>>Inativo</option>
+                        <option value="1" selected>Ativo</option>
+                        <option value="0">Inativo</option>
                     </select>
                 </div>
                 <div class="ofx-field">
                     <label>Cor</label>
-                    <input type="color" name="cor" value="<?php echo htmlspecialchars($editCard['cor'] ?? '#2563eb'); ?>">
+                    <input type="color" name="cor" value="#2563eb">
                 </div>
             </div>
             <div style="margin-top: 1rem;">
@@ -268,7 +302,11 @@ ob_start();
             </thead>
             <tbody>
                 <?php foreach ($cartoes as $cartao): ?>
-                    <tr>
+                    <tr data-id="<?php echo (int)$cartao['id']; ?>"
+                        data-nome="<?php echo htmlspecialchars($cartao['nome_cartao']); ?>"
+                        data-dia="<?php echo (int)$cartao['dia_vencimento']; ?>"
+                        data-status="<?php echo (int)$cartao['status']; ?>"
+                        data-cor="<?php echo htmlspecialchars($cartao['cor'] ?? '#2563eb'); ?>">
                         <td><?php echo htmlspecialchars($cartao['nome_cartao']); ?></td>
                         <td>Dia <?php echo (int)$cartao['dia_vencimento']; ?></td>
                         <td>
@@ -277,7 +315,7 @@ ob_start();
                             </span>
                         </td>
                         <td>
-                            <a href="index.php?page=cartao_ofx_me_cartoes&edit=<?php echo (int)$cartao['id']; ?>">Editar</a>
+                            <button type="button" class="ofx-button edit-card-btn" data-id="<?php echo (int)$cartao['id']; ?>" style="padding:0.35rem 0.6rem;">Editar</button>
                             <form method="post" style="display:inline-block;margin-left:0.5rem;">
                                 <input type="hidden" name="action" value="toggle">
                                 <input type="hidden" name="id" value="<?php echo (int)$cartao['id']; ?>">
@@ -290,6 +328,80 @@ ob_start();
         </table>
     </div>
 </div>
+
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Editar cartao</h3>
+            <button class="modal-close" type="button" id="closeModal">×</button>
+        </div>
+        <form method="post">
+            <input type="hidden" name="action" value="salvar">
+            <input type="hidden" name="id" id="editId">
+            <div class="ofx-grid">
+                <div class="ofx-field">
+                    <label>Nome do cartao</label>
+                    <input type="text" name="nome_cartao" id="editNome" required>
+                </div>
+                <div class="ofx-field">
+                    <label>Dia do vencimento</label>
+                    <input type="number" name="dia_vencimento" id="editDia" min="1" max="31" required>
+                </div>
+                <div class="ofx-field">
+                    <label>Status</label>
+                    <select name="status" id="editStatus">
+                        <option value="1">Ativo</option>
+                        <option value="0">Inativo</option>
+                    </select>
+                </div>
+                <div class="ofx-field">
+                    <label>Cor</label>
+                    <input type="color" name="cor" id="editCor" value="#2563eb">
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <button class="ofx-button" type="submit">Salvar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    var modal = document.getElementById('editModal');
+    var closeModal = document.getElementById('closeModal');
+
+    function openModal(cardRow) {
+        if (!cardRow) return;
+        document.getElementById('editId').value = cardRow.dataset.id || '';
+        document.getElementById('editNome').value = cardRow.dataset.nome || '';
+        document.getElementById('editDia').value = cardRow.dataset.dia || '';
+        document.getElementById('editStatus').value = cardRow.dataset.status || '1';
+        document.getElementById('editCor').value = cardRow.dataset.cor || '#2563eb';
+        modal.style.display = 'flex';
+    }
+
+    function hideModal() {
+        modal.style.display = 'none';
+    }
+
+    document.querySelectorAll('.edit-card-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var id = this.getAttribute('data-id');
+            var row = document.querySelector('tr[data-id="' + id + '"]');
+            openModal(row);
+        });
+    });
+
+    if (closeModal) {
+        closeModal.addEventListener('click', hideModal);
+    }
+
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) hideModal();
+    });
+})();
+</script>
 
 <?php
 $conteudo = ob_get_clean();

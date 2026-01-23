@@ -14,6 +14,14 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/magalu_storage_helper.php';
 require_once __DIR__ . '/core/ocr_google_vision.php';
 
+$debugLocal = getenv('APP_DEBUG') === '1';
+if ($debugLocal) {
+    @ini_set('display_errors', 1);
+    error_reporting(E_ALL);
+} else {
+    @ini_set('display_errors', 0);
+}
+
 $pdo = $GLOBALS['pdo'];
 
 function cartao_ofx_normalize_uploads(array $files): array {
