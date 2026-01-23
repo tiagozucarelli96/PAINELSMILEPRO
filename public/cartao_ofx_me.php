@@ -312,6 +312,8 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
             $descartados[] = ['linha' => $linha, 'motivo' => 'sem valor detectado'];
             continue;
         }
+        $isCredito = $valor < 0;
+        $valorAbs = abs($valor);
 
         $parcelaInfo = null;
         if ($parcelaStr !== '') {
@@ -341,11 +343,11 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         $itens[] = [
             'descricao_original' => $descricao,
             'descricao_normalizada' => $descricaoNormalizada,
-            'valor_total' => abs($valor),
+            'valor_total' => $valorAbs,
             'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
             'total_parcelas' => $parcelaInfo['total'] ?? 1,
             'parcela_atual' => $parcelaInfo['atual'] ?? null,
-            'is_credito' => false,
+            'is_credito' => $isCredito,
         ];
     }
 
@@ -537,7 +539,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($erros)) {
             try {
                 $parseResult = cartao_ofx_parse_manual_texto($textoCru);
-                $itensBase = $parseResult['itens'] ?? [];
+                $itensBase = cartao_ofx_filtrar_estornos_cobranca($parseResult['itens'] ?? []);
                 $descartados = $parseResult['descartados'] ?? [];
                 error_log('[CARTAO_OFX] Itens base identificados (manual): ' . count($itensBase));
 
@@ -1296,3 +1298,67 @@ includeSidebar('Administrativo');
 echo $conteudo;
 endSidebar();
 ?>
+function cartao_ofx_identificar_cobranca(string $descricaoNormalizada): ?string {
+    $kinds = [
+        'iof' => ['IOF'],
+        'juros' => ['JUROS'],
+        'anuidade' => ['ANUID'],
+        'tarifa' => ['TARIFA','TAXA','ENCARGO','SEGURO'],
+    ];
+    foreach ($kinds as $kind => $terms) {
+        foreach ($terms as $t) {
+            if (strpos($descricaoNormalizada, $t) !== false) {
+                return $kind;
+            }
+        }
+    }
+    return null;
+}
+
+function cartao_ofx_filtrar_estornos_cobranca(array $itens): array {
+    $chargeMap = [];
+    $keep = [];
+    foreach ($itens as $item) {
+        $kind = cartao_ofx_identificar_cobranca($item['descricao_normalizada']);
+        $isEstorno = false;
+        if ($kind !== null && preg_match('/ESTORNO|CREDITO|REVERS|CANCEL/i', $item['descricao_original'])) {
+            $isEstorno = true;
+        }
+
+        if ($kind !== null && !$isEstorno) {
+            $key = $kind . '|' . number_format($item['valor_total'], 2, '.', '');
+            if (!isset($chargeMap[$key])) {
+                $chargeMap[$key] = [];
+            }
+            $chargeMap[$key][] = $item;
+            $keep[] = $item;
+            continue;
+        }
+
+        if ($isEstorno && $kind !== null) {
+            $key = $kind . '|' . number_format($item['valor_total'], 2, '.', '');
+            if (!empty($chargeMap[$key])) {
+                // Remove um charge correspondente (zera)
+                array_pop($chargeMap[$key]);
+                // também remover do keep a última ocorrência correspondente
+                for ($i = count($keep) - 1; $i >= 0; $i--) {
+                    $kitem = $keep[$i];
+                    $kkind = cartao_ofx_identificar_cobranca($kitem['descricao_normalizada']);
+                    if ($kkind === $kind && abs($kitem['valor_total'] - $item['valor_total']) < 0.001) {
+                        array_splice($keep, $i, 1);
+                        break;
+                    }
+                }
+                continue; // estorno descartado
+            } else {
+                // estorno sem par: mantém como crédito
+                $item['is_credito'] = true;
+                $keep[] = $item;
+                continue;
+            }
+        }
+
+        $keep[] = $item;
+    }
+    return $keep;
+}
