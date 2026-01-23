@@ -23,9 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nome = trim($_POST['nome_cartao'] ?? '');
         $diaVencimento = (int)($_POST['dia_vencimento'] ?? 0);
         $status = !empty($_POST['status']) ? 1 : 0;
-        $apelido = trim($_POST['apelido'] ?? '');
         $cor = trim($_POST['cor'] ?? '');
-        $final = trim($_POST['final'] ?? '');
 
         if ($nome === '') {
             $erros[] = 'Informe o nome do cartao.';
@@ -38,18 +36,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($id > 0) {
                 $stmt = $pdo->prepare('
                     UPDATE cartao_ofx_cartoes
-                    SET nome_cartao = ?, dia_vencimento = ?, status = ?, apelido = ?, cor = ?, final = ?, atualizado_em = NOW()
+                    SET nome_cartao = ?, dia_vencimento = ?, status = ?, cor = ?, atualizado_em = NOW()
                     WHERE id = ?
                 ');
-                $stmt->execute([$nome, $diaVencimento, $status, $apelido ?: null, $cor ?: null, $final ?: null, $id]);
+                $stmt->execute([$nome, $diaVencimento, $status, $cor ?: null, $id]);
                 $mensagens[] = 'Cartao atualizado.';
             } else {
                 $stmt = $pdo->prepare('
                     INSERT INTO cartao_ofx_cartoes
-                    (nome_cartao, dia_vencimento, status, apelido, cor, final, criado_em, atualizado_em)
-                    VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    (nome_cartao, dia_vencimento, status, cor, criado_em, atualizado_em)
+                    VALUES (?, ?, ?, ?, NOW(), NOW())
                 ');
-                $stmt->execute([$nome, $diaVencimento, $status, $apelido ?: null, $cor ?: null, $final ?: null]);
+                $stmt->execute([$nome, $diaVencimento, $status, $cor ?: null]);
                 $mensagens[] = 'Cartao cadastrado.';
             }
         }
@@ -247,16 +245,8 @@ ob_start();
                     </select>
                 </div>
                 <div class="ofx-field">
-                    <label>Apelido</label>
-                    <input type="text" name="apelido" value="<?php echo htmlspecialchars($editCard['apelido'] ?? ''); ?>">
-                </div>
-                <div class="ofx-field">
                     <label>Cor</label>
-                    <input type="text" name="cor" value="<?php echo htmlspecialchars($editCard['cor'] ?? ''); ?>">
-                </div>
-                <div class="ofx-field">
-                    <label>Final</label>
-                    <input type="text" name="final" value="<?php echo htmlspecialchars($editCard['final'] ?? ''); ?>">
+                    <input type="color" name="cor" value="<?php echo htmlspecialchars($editCard['cor'] ?? '#2563eb'); ?>">
                 </div>
             </div>
             <div style="margin-top: 1rem;">
