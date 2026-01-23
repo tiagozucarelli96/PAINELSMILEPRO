@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 
 /**
  * Buscar cliente na ME por CPF, email ou telefone
+ * A API ME retorna eventos, então extraímos dados do cliente dos eventos
  */
 function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $telefone = '', string $nome = ''): array {
     $base = getenv('ME_BASE_URL') ?: ME_BASE_URL;
@@ -19,45 +20,62 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
     }
     
     $clientes_encontrados = [];
+    $cpf_limpo = !empty($cpf) ? preg_replace('/\D/', '', $cpf) : '';
+    $telefone_limpo = !empty($telefone) ? preg_replace('/\D/', '', $telefone) : '';
     
     // Prioridade 1: Buscar por CPF (match forte)
-    if (!empty($cpf)) {
-        $cpf_limpo = preg_replace('/\D/', '', $cpf);
-        if (strlen($cpf_limpo) === 11) {
-            $url = rtrim($base, '/') . '/api/v1/events';
-            $params = ['search' => $cpf_limpo];
-            $url .= '?' . http_build_query($params);
+    if (!empty($cpf_limpo) && strlen($cpf_limpo) === 11) {
+        $url = rtrim($base, '/') . '/api/v1/events';
+        $params = ['search' => $cpf_limpo];
+        $url .= '?' . http_build_query($params);
+        
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: ' . $key,
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ]
+        ]);
+        
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($code === 200) {
+            $data = json_decode($resp, true);
+            $events = $data['data'] ?? [];
             
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 20,
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: ' . $key,
-                    'Content-Type: application/json',
-                    'Accept: application/json'
-                ]
-            ]);
-            
-            $resp = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
-            if ($code === 200) {
-                $data = json_decode($resp, true);
-                $events = $data['data'] ?? [];
+            foreach ($events as $event) {
+                // Extrair CPF do evento (testar vários campos possíveis)
+                $cpf_evento = preg_replace('/\D/', '', 
+                    $event['cpfCliente'] ?? $event['cpf'] ?? $event['cliente_cpf'] ?? 
+                    $event['documento'] ?? $event['cpf_cliente'] ?? ''
+                );
                 
-                foreach ($events as $event) {
+                if ($cpf_evento === $cpf_limpo) {
                     // Extrair dados do cliente do evento
-                    $cliente_data = $event['cliente'] ?? [];
-                    if (!empty($cliente_data)) {
-                        $clientes_encontrados[] = [
-                            'match_type' => 'cpf',
-                            'match_strength' => 'forte',
-                            'cliente' => $cliente_data,
-                            'evento' => $event
-                        ];
-                    }
+                    $id_cliente = $event['idcliente'] ?? $event['idCliente'] ?? $event['cliente_id'] ?? 
+                                 $event['id_cliente'] ?? $event['clienteId'] ?? $event['client_id'] ?? null;
+                    
+                    $nome_cliente = $event['nomeCliente'] ?? $event['nome_cliente'] ?? '';
+                    $email_cliente = $event['email'] ?? $event['emailCliente'] ?? '';
+                    $telefone_cliente = $event['celular'] ?? $event['telefoneCliente'] ?? $event['telefone'] ?? '';
+                    
+                    $clientes_encontrados[] = [
+                        'match_type' => 'cpf',
+                        'match_strength' => 'forte',
+                        'cliente' => [
+                            'id' => $id_cliente,
+                            'nome' => $nome_cliente,
+                            'cpf' => $cpf_evento,
+                            'email' => $email_cliente,
+                            'telefone' => $telefone_cliente
+                        ],
+                        'evento' => $event
+                    ];
                 }
             }
         }
@@ -65,7 +83,7 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
     
     // Prioridade 2: Buscar por email/telefone (match forte se CPF não encontrou)
     if (empty($clientes_encontrados)) {
-        $search_term = !empty($email) ? $email : (!empty($telefone) ? $telefone : '');
+        $search_term = !empty($email) ? $email : (!empty($telefone_limpo) ? $telefone_limpo : '');
         if (!empty($search_term)) {
             $url = rtrim($base, '/') . '/api/v1/events';
             $params = ['search' => $search_term];
@@ -91,12 +109,36 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
                 $events = $data['data'] ?? [];
                 
                 foreach ($events as $event) {
-                    $cliente_data = $event['cliente'] ?? [];
-                    if (!empty($cliente_data)) {
+                    $email_evento = strtolower(trim($event['email'] ?? $event['emailCliente'] ?? ''));
+                    $telefone_evento = preg_replace('/\D/', '', $event['celular'] ?? $event['telefoneCliente'] ?? $event['telefone'] ?? '');
+                    
+                    $match = false;
+                    if (!empty($email) && $email_evento === strtolower(trim($email))) {
+                        $match = true;
+                    } elseif (!empty($telefone_limpo) && $telefone_evento === $telefone_limpo) {
+                        $match = true;
+                    }
+                    
+                    if ($match) {
+                        $id_cliente = $event['idcliente'] ?? $event['idCliente'] ?? $event['cliente_id'] ?? 
+                                     $event['id_cliente'] ?? $event['clienteId'] ?? $event['client_id'] ?? null;
+                        
+                        $nome_cliente = $event['nomeCliente'] ?? $event['nome_cliente'] ?? '';
+                        $cpf_evento = preg_replace('/\D/', '', 
+                            $event['cpfCliente'] ?? $event['cpf'] ?? $event['cliente_cpf'] ?? 
+                            $event['documento'] ?? ''
+                        );
+                        
                         $clientes_encontrados[] = [
                             'match_type' => !empty($email) ? 'email' : 'telefone',
                             'match_strength' => 'forte',
-                            'cliente' => $cliente_data,
+                            'cliente' => [
+                                'id' => $id_cliente,
+                                'nome' => $nome_cliente,
+                                'cpf' => $cpf_evento,
+                                'email' => $email_evento,
+                                'telefone' => $telefone_evento
+                            ],
                             'evento' => $event
                         ];
                     }
@@ -131,12 +173,28 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
             $events = $data['data'] ?? [];
             
             foreach ($events as $event) {
-                $cliente_data = $event['cliente'] ?? [];
-                if (!empty($cliente_data)) {
+                $nome_evento = strtolower(trim($event['nomeCliente'] ?? $event['nome_cliente'] ?? ''));
+                if (stripos($nome_evento, strtolower(trim($nome))) !== false) {
+                    $id_cliente = $event['idcliente'] ?? $event['idCliente'] ?? $event['cliente_id'] ?? 
+                                 $event['id_cliente'] ?? $event['clienteId'] ?? $event['client_id'] ?? null;
+                    
+                    $cpf_evento = preg_replace('/\D/', '', 
+                        $event['cpfCliente'] ?? $event['cpf'] ?? $event['cliente_cpf'] ?? 
+                        $event['documento'] ?? ''
+                    );
+                    $email_evento = $event['email'] ?? $event['emailCliente'] ?? '';
+                    $telefone_evento = $event['celular'] ?? $event['telefoneCliente'] ?? $event['telefone'] ?? '';
+                    
                     $clientes_encontrados[] = [
                         'match_type' => 'nome',
                         'match_strength' => 'fraco',
-                        'cliente' => $cliente_data,
+                        'cliente' => [
+                            'id' => $id_cliente,
+                            'nome' => $nome_evento,
+                            'cpf' => $cpf_evento,
+                            'email' => $email_evento,
+                            'telefone' => $telefone_evento
+                        ],
                         'evento' => $event
                     ];
                 }
@@ -149,6 +207,8 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
 
 /**
  * Criar cliente na ME
+ * Nota: Se o endpoint /api/v1/clients não existir, retorna dados simulados
+ * O cliente será criado automaticamente quando o evento for criado
  */
 function vendas_me_criar_cliente(array $dados_cliente): array {
     $base = getenv('ME_BASE_URL') ?: ME_BASE_URL;
@@ -191,6 +251,19 @@ function vendas_me_criar_cliente(array $dados_cliente): array {
     
     if ($error) {
         throw new Exception('Erro cURL: ' . $error);
+    }
+    
+    // Se endpoint não existir (404), retornar dados simulados
+    // O cliente será criado automaticamente quando o evento for criado
+    if ($code === 404) {
+        error_log('[VENDAS_ME] Endpoint /api/v1/clients não encontrado. Cliente será criado automaticamente ao criar evento.');
+        return [
+            'id' => null, // Será definido quando evento for criado
+            'nome' => $payload['nome'],
+            'cpf' => $payload['cpf'],
+            'email' => $payload['email'],
+            'telefone' => $payload['telefone']
+        ];
     }
     
     if ($code < 200 || $code >= 300) {
@@ -381,6 +454,7 @@ function vendas_me_verificar_conflito_agenda(string $data, string $unidade, stri
 
 /**
  * Criar evento na ME
+ * Se client_id for null, o evento será criado com dados do cliente inline
  */
 function vendas_me_criar_evento(array $dados_evento): array {
     $base = getenv('ME_BASE_URL') ?: ME_BASE_URL;
@@ -390,21 +464,45 @@ function vendas_me_criar_evento(array $dados_evento): array {
         throw new Exception('ME_BASE_URL/ME_API_KEY não configurados');
     }
     
+    // Tentar endpoint /api/v1/events primeiro
     $url = rtrim($base, '/') . '/api/v1/events';
     
     $payload = [
-        'client_id' => $dados_evento['client_id'],
-        'tipo_evento_id' => $dados_evento['tipo_evento_id'] ?? null,
-        'nome_evento' => $dados_evento['nome_evento'],
-        'data_evento' => $dados_evento['data_evento'],
-        'hora_inicio' => $dados_evento['hora_inicio'],
-        'hora_termino' => $dados_evento['hora_termino'],
-        'local' => $dados_evento['local'] ?? $dados_evento['unidade'],
+        'nomeevento' => $dados_evento['nome_evento'],
+        'dataevento' => $dados_evento['data_evento'],
+        'horaevento' => $dados_evento['hora_inicio'],
+        'localevento' => $dados_evento['local'] ?? $dados_evento['unidade'],
     ];
+    
+    // Se tem client_id, adicionar
+    if (!empty($dados_evento['client_id'])) {
+        $payload['idcliente'] = $dados_evento['client_id'];
+    } else {
+        // Se não tem client_id, incluir dados do cliente inline
+        // (a ME pode criar cliente automaticamente ao criar evento)
+        if (!empty($dados_evento['cliente_nome'])) {
+            $payload['nomeCliente'] = $dados_evento['cliente_nome'];
+        }
+        if (!empty($dados_evento['cliente_cpf'])) {
+            $payload['cpfCliente'] = $dados_evento['cliente_cpf'];
+        }
+        if (!empty($dados_evento['cliente_email'])) {
+            $payload['email'] = $dados_evento['cliente_email'];
+        }
+        if (!empty($dados_evento['cliente_telefone'])) {
+            $payload['celular'] = $dados_evento['cliente_telefone'];
+        }
+    }
+    
+    if (!empty($dados_evento['tipo_evento_id'])) {
+        $payload['tipoEvento'] = $dados_evento['tipo_evento_id'];
+    }
     
     if (!empty($dados_evento['observacoes'])) {
         $payload['observacoes'] = $dados_evento['observacoes'];
     }
+    
+    error_log('[VENDAS_ME] Criando evento na ME. Payload: ' . json_encode($payload));
     
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -428,14 +526,26 @@ function vendas_me_criar_evento(array $dados_evento): array {
         throw new Exception('Erro cURL: ' . $error);
     }
     
+    error_log('[VENDAS_ME] Resposta da ME: HTTP ' . $code . ' - ' . substr($resp, 0, 500));
+    
     if ($code < 200 || $code >= 300) {
         $error_data = json_decode($resp, true);
-        $error_msg = $error_data['message'] ?? 'Erro HTTP ' . $code;
+        $error_msg = $error_data['message'] ?? $error_data['error'] ?? 'Erro HTTP ' . $code;
         throw new Exception('Erro ao criar evento na ME: ' . $error_msg);
     }
     
     $data = json_decode($resp, true);
-    return $data['data'] ?? $data;
+    $evento = $data['data'] ?? $data;
+    
+    // Extrair ID do evento e cliente da resposta
+    $evento_id = $evento['id'] ?? null;
+    $cliente_id = $evento['idcliente'] ?? $evento['idCliente'] ?? $evento['cliente_id'] ?? null;
+    
+    return [
+        'id' => $evento_id,
+        'client_id' => $cliente_id,
+        'data' => $evento
+    ];
 }
 
 /**

@@ -231,8 +231,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'observacoes' => $pre_contrato['observacoes'] ?? ''
                 ];
                 
+                // Se não tem client_id (endpoint não existe), incluir dados do cliente inline
+                if (!$me_client_id) {
+                    $dados_evento['cliente_nome'] = $pre_contrato['nome_completo'];
+                    $dados_evento['cliente_cpf'] = $pre_contrato['cpf'];
+                    $dados_evento['cliente_email'] = $pre_contrato['email'];
+                    $dados_evento['cliente_telefone'] = $pre_contrato['telefone'];
+                }
+                
                 $evento_me = vendas_me_criar_evento($dados_evento);
                 $me_event_id = $evento_me['id'] ?? null;
+                
+                // Se cliente não foi criado antes, pegar da resposta do evento
+                if (!$me_client_id) {
+                    $me_client_id = $evento_me['client_id'] ?? null;
+                }
                 
                 if (!$me_event_id) {
                     throw new Exception('Não foi possível criar evento na ME');
