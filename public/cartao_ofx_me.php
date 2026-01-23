@@ -876,10 +876,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pasta = 'administrativo/cartao_ofx';
                     $upload = $uploader->uploadFromPath($ofxPath, $pasta, 'ofx_' . date('Ymd_His') . '.ofx', 'application/x-ofx');
                     error_log('[CARTAO_OFX] Upload Magalu resultado: ' . json_encode($upload));
-                    if (empty($upload['success'])) {
-                        $detail = $upload['error'] ?? '';
+                    // Verificar se o upload foi bem-sucedido (tem chave_storage ou url)
+                    if (empty($upload['chave_storage']) && empty($upload['url'])) {
+                        $detail = $upload['error'] ?? 'Sem chave de armazenamento nem URL retornada';
+                        error_log('[CARTAO_OFX] ERRO: Upload falhou - ' . $detail);
                         throw new RuntimeException('Falha ao enviar OFX para Magalu.' . ($detail ? ' ' . $detail : ''));
                     }
+                    error_log('[CARTAO_OFX] Upload bem-sucedido! Key: ' . ($upload['chave_storage'] ?? 'N/A') . ', URL: ' . ($upload['url'] ?? 'N/A'));
 
                     $pdo->beginTransaction();
                     $baseIds = [];
