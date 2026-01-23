@@ -580,6 +580,8 @@ $mensagens = [];
 $erros = [];
 $preview = $_SESSION['cartao_ofx_preview'] ?? null;
 $ofxGerado = null;
+$flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
+unset($_SESSION['cartao_ofx_flash']);
 
 $cartoesStmt = $pdo->query('SELECT * FROM cartao_ofx_cartoes WHERE status = TRUE ORDER BY nome_cartao');
 $cartoes = $cartoesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -891,6 +893,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'url' => $upload['url'] ?? null,
                         'quantidade' => count($transacoesFinal),
                     ];
+                    $_SESSION['cartao_ofx_flash'] = $ofxGerado;
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
@@ -1119,12 +1122,13 @@ ob_start();
         </div>
     <?php endif; ?>
 
-    <?php if ($ofxGerado): ?>
+    <?php if ($ofxGerado || $flashSuccess): ?>
         <div class="ofx-alert success">
-            OFX gerado com sucesso! Transacoes: <?php echo (int)$ofxGerado['quantidade']; ?>
-            <?php if (!empty($ofxGerado['url'])): ?>
+            <?php $successData = $ofxGerado ?: $flashSuccess; ?>
+            OFX gerado com sucesso! Transacoes: <?php echo (int)($successData['quantidade'] ?? 0); ?>
+            <?php if (!empty($successData['url'])): ?>
                 <div style="margin-top:6px;">
-                    <a class="ofx-button" href="<?php echo htmlspecialchars($ofxGerado['url']); ?>" target="_blank">Baixar OFX</a>
+                    <a class="ofx-button" href="<?php echo htmlspecialchars($successData['url']); ?>" target="_blank">Baixar OFX</a>
                     <a class="ofx-button" style="background:#0f172a;margin-left:6px;" href="index.php?page=cartao_ofx_me_historico">Ver histórico</a>
                 </div>
             <?php endif; ?>

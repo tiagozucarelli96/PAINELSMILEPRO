@@ -67,7 +67,11 @@ if ($downloadId > 0) {
                 'use_path_style_endpoint' => true,
                 'signature_version' => 'v4',
             ]);
-            $cmd = $s3->getCommand('GetObject', ['Bucket' => strtolower($bucket), 'Key' => $key]);
+            $cmd = $s3->getCommand('GetObject', [
+                'Bucket' => strtolower($bucket),
+                'Key' => $key,
+                'ResponseContentDisposition' => 'attachment; filename="ofx.ofx"'
+            ]);
             $presigned = $s3->createPresignedRequest($cmd, '+15 minutes')->getUri();
             header('Location: ' . (string)$presigned);
             exit;
