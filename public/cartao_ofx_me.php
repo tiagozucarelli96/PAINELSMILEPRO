@@ -179,8 +179,9 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
     };
     $extractValor = function(array $partes) {
         $joined = implode(' ', $partes);
+        $joinedClean = preg_replace('/[^0-9,.\-]+/', ' ', $joined);
         $valor = null;
-        if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b/', $joined, $matches)) {
+        if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b/', $joinedClean, $matches)) {
             $ultimo = end($matches[0]);
             $valor = cartao_ofx_parse_valor($ultimo);
         }
