@@ -728,11 +728,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hashesSelecionadas = [];
 
         foreach ($txRows as $row) {
-            if (!isset($row['include'])) {
-                continue;
-            }
+            $isExcluded = isset($row['include']); // agora checkbox significa excluir
             $hashParcela = $row['hash_parcela'] ?? '';
             if ($hashParcela === '') {
+                continue;
+            }
+            if ($isExcluded) {
                 continue;
             }
             $descricao = trim($row['descricao'] ?? '');
@@ -758,11 +759,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($selecionadas)) {
-            $erros[] = 'Nenhuma transacao selecionada.';
+            $erros[] = 'Nenhuma transacao selecionada (todas marcadas para excluir?).';
             error_log('[CARTAO_OFX] Confirmar: nenhuma transacao selecionada');
         }
 
         if (empty($erros)) {
+            error_log('[CARTAO_OFX] Confirmar: selecionadas=' . count($selecionadas));
             $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesSelecionadas);
             $duplicados = array_flip($duplicados);
 
@@ -795,6 +797,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (empty($transacoesFinal)) {
                 $erros[] = 'Todas as transacoes selecionadas ja existiam.';
+                error_log('[CARTAO_OFX] Confirmar: todas selecionadas ja existiam');
             } else {
                 try {
                     $ofxContent = cartao_ofx_generate_ofx($transacoesFinal);
@@ -1199,8 +1202,8 @@ ob_start();
                                 </td>
                                 <td>
                                     <label class="ofx-inline">
-                                        <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]" <?php echo $tx['duplicado'] ? '' : 'checked'; ?>>
-                                        Incluir
+                                        <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]">
+                                        Nao incluir
                                     </label>
                                 </td>
                             </tr>
