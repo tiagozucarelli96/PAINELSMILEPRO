@@ -609,10 +609,11 @@ $erros = [];
 $preview = $_SESSION['cartao_ofx_preview'] ?? null;
 $ofxGerado = null;
 $flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
-error_log('[CARTAO_OFX] Flash message lido da sessao: ' . ($flashSuccess ? json_encode($flashSuccess) : 'NULL'));
 if ($flashSuccess) {
+    error_log('[CARTAO_OFX] Flash message lido da sessao: ' . json_encode($flashSuccess));
     unset($_SESSION['cartao_ofx_flash']);
-    error_log('[CARTAO_OFX] Flash message removido da sessao');
+} else {
+    error_log('[CARTAO_OFX] Nenhum flash message encontrado na sessao');
 }
 
 // Se há parâmetro success mas não há flash message, buscar último arquivo gerado
@@ -1224,13 +1225,11 @@ ob_start();
     <?php 
     // Debug: verificar se temos dados para exibir banner
     $hasBannerData = $ofxGerado || $flashSuccess || !empty($_GET['success']);
-    error_log('[CARTAO_OFX] Verificando banner - ofxGerado: ' . ($ofxGerado ? 'SIM' : 'NAO') . ', flashSuccess: ' . ($flashSuccess ? 'SIM' : 'NAO') . ', success param: ' . (!empty($_GET['success']) ? 'SIM' : 'NAO'));
     ?>
     <?php if ($hasBannerData): ?>
         <?php $successData = $ofxGerado ?: $flashSuccess; ?>
         <?php if ($successData || !empty($_GET['success'])): ?>
-            <?php error_log('[CARTAO_OFX] Exibindo banner! successData: ' . ($successData ? json_encode($successData) : 'NULL')); ?>
-            <div class="ofx-alert success ofx-success-banner">
+            <div class="ofx-alert success ofx-success-banner" style="display: block !important; visibility: visible !important;">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <div>
                         <strong style="font-size: 1.1rem;">✓ Arquivo gerado com sucesso!</strong>
