@@ -410,9 +410,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($erros)) {
                     error_log('[CARTAO_OFX] OCR realizado. Paginas: ' . $paginas . ', arquivos: ' . count($uploads));
                     $itensBase = cartao_ofx_parse_fatura_texto($ocrResultado['text']);
+                    error_log('[CARTAO_OFX] Itens base identificados: ' . count($itensBase));
 
                     if (empty($itensBase)) {
                         $erros[] = 'Nenhum lancamento identificado. Ajuste a qualidade do arquivo.';
+                        error_log('[CARTAO_OFX] Nenhum lançamento identificado na fatura.');
                     } else {
                         [$mes, $ano] = $competenciaInfo;
                         $hashesParcelas = [];
@@ -498,10 +500,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'base_items' => $baseItems,
                             'transacoes' => $previewTransacoes,
                         ];
+                        error_log('[CARTAO_OFX] Previa pronta. Transacoes: ' . count($previewTransacoes));
                     }
                 }
             } catch (OcrException $e) {
                 $erros[] = $e->getMessage();
+                error_log('[CARTAO_OFX] Erro OCR: ' . $e->getMessage());
             } catch (Exception $e) {
                 $erros[] = 'Erro ao processar OCR.';
                 error_log('[CARTAO_OFX] Erro OCR: ' . $e->getMessage());
