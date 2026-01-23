@@ -77,7 +77,7 @@ class MagaluUpload {
     
     public function upload($file, $prefix = 'demandas') {
         // Validar arquivo
-        if (!isset($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        if (!isset($file['tmp_name']) || (!is_uploaded_file($file['tmp_name']) && !file_exists($file['tmp_name']))) {
             throw new Exception('Arquivo inválido');
         }
         
