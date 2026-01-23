@@ -75,22 +75,42 @@
 ## 🔗 Como acessar
 
 ### Links Públicos (sem login)
-1. **Casamento:** `https://painelsmilepro-production.up.railway.app/vendas_form_casamento.php`
-2. **Infantil:** `https://painelsmilepro-production.up.railway.app/vendas_form_infantil.php`
-3. **PJ:** `https://painelsmilepro-production.up.railway.app/vendas_form_pj.php`
+1. **Casamento:** 
+   - URL: `https://painelsmilepro-production.up.railway.app/vendas_form_casamento.php`
+   - Ou: `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_form_casamento`
+2. **Infantil:** 
+   - URL: `https://painelsmilepro-production.up.railway.app/vendas_form_infantil.php`
+   - Ou: `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_form_infantil`
+3. **PJ:** 
+   - URL: `https://painelsmilepro-production.up.railway.app/vendas_form_pj.php`
+   - Ou: `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_form_pj`
 
 ### Painel Interno (requer login e permissão comercial)
-1. **Pré-contratos:** `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_pre_contratos`
-2. **Kanban:** `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_kanban`
+1. **Pré-contratos:** 
+   - `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_pre_contratos`
+   - Ou através do menu: **Comercial > Vendas > Pré-contratos**
+2. **Kanban:** 
+   - `https://painelsmilepro-production.up.railway.app/index.php?page=vendas_kanban`
+   - Ou através do menu: **Comercial > Vendas > Acompanhamento de Contratos**
 
-**Ou através do menu Comercial > Vendas**
+**Acesso rápido:** Menu Comercial > Vendas (card laranja na landing)
 
 ## 📋 Checklist de Verificação
 
+### ⚠️ IMPORTANTE: Executar SQL primeiro!
+**Antes de testar, execute o arquivo SQL:**
+```sql
+-- Executar no banco de dados PostgreSQL
+\i sql/041_modulo_vendas.sql
+```
+
+Ou copie e cole o conteúdo do arquivo `sql/041_modulo_vendas.sql` no cliente SQL.
+
 ### Etapa 1: Executar SQL
 - [ ] Executar `sql/041_modulo_vendas.sql` no banco de dados
-- [ ] Verificar se as tabelas foram criadas
-- [ ] Verificar se o quadro padrão e colunas foram criados
+- [ ] Verificar se as tabelas foram criadas (8 tabelas)
+- [ ] Verificar se o quadro padrão "Acompanhamento de Contratos" foi criado
+- [ ] Verificar se as 8 colunas padrão foram criadas
 
 ### Etapa 2: Testar Formulários Públicos
 - [ ] Acessar link de Casamento e preencher formulário
