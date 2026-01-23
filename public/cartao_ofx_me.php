@@ -182,8 +182,15 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         $joined = implode(' ', $partes);
         $joinedClean = preg_replace('/[^0-9,.\-]+/', ' ', $joined);
         $valor = null;
+        $matches = [];
+        // Tenta encontrar o último valor
         if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b/', $joinedClean, $matches)) {
             $ultimo = end($matches[0]);
+            $valor = cartao_ofx_parse_valor($ultimo);
+        }
+        // Se ainda não achou, tenta pegar qualquer número com vírgula/ponto em todo o texto
+        if ($valor === null && preg_match_all('/\d+[,\.]\d{2}/', $joined, $m2)) {
+            $ultimo = end($m2[0]);
             $valor = cartao_ofx_parse_valor($ultimo);
         }
         return $valor;
@@ -976,6 +983,20 @@ ob_start();
     border-top: 0;
 }
 
+.toggle-btn {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #e2e8f0;
+    color: #0f172a;
+    font-weight: 700;
+}
+
 @media (max-width: 900px) {
     .ofx-table th:nth-child(1),
     .ofx-table td:nth-child(1) {
@@ -1086,7 +1107,7 @@ ob_start();
                             <tr class="ofx-base-row" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
                                 <td><?php echo htmlspecialchars(cartao_ofx_format_date_display($baseItem['data_base'])); ?></td>
                                 <td>
-                                    <button type="button" class="ofx-button" style="background:#e2e8f0;color:#0f172a;padding:0.35rem 0.6rem;margin-right:0.4rem;" data-toggle-children="<?php echo htmlspecialchars($baseHash); ?>">▼</button>
+                                    <button type="button" class="toggle-btn" data-toggle-children="<?php echo htmlspecialchars($baseHash); ?>">▼</button>
                                     <input style="width:70%;" type="text" class="base-desc" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>" value="<?php echo htmlspecialchars($primeiraDescricao); ?>">
                                 </td>
                                 <td>R$ <?php echo number_format($baseItem['valor_total'], 2, ',', '.'); ?></td>
