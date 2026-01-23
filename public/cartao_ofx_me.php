@@ -12,7 +12,6 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/magalu_storage_helper.php';
-require_once __DIR__ . '/core/ocr_google_vision.php';
 
 $debugLocal = getenv('APP_DEBUG') === '1';
 if ($debugLocal) {
@@ -23,55 +22,6 @@ if ($debugLocal) {
 }
 
 $pdo = $GLOBALS['pdo'];
-
-function cartao_ofx_normalize_uploads(array $files): array {
-    $normalized = [];
-    if (!isset($files['name']) || !is_array($files['name'])) {
-        return $normalized;
-    }
-
-    $count = count($files['name']);
-    for ($i = 0; $i < $count; $i++) {
-        if (empty($files['tmp_name'][$i])) {
-            continue;
-        }
-        $normalized[] = [
-            'name' => $files['name'][$i],
-            'type' => $files['type'][$i] ?? mime_content_type($files['tmp_name'][$i]),
-            'tmp_name' => $files['tmp_name'][$i],
-            'error' => $files['error'][$i] ?? UPLOAD_ERR_OK,
-            'size' => $files['size'][$i] ?? 0,
-        ];
-    }
-
-    return $normalized;
-}
-
-function cartao_ofx_estimate_pages(array $uploads): int {
-    $pages = 0;
-    foreach ($uploads as $file) {
-        $mimeType = $file['type'] ?? '';
-        $extension = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-        if ($mimeType === 'application/pdf' || $extension === 'pdf') {
-            if (extension_loaded('imagick')) {
-                try {
-                    $imagick = new Imagick();
-                    $imagick->pingImage($file['tmp_name']);
-                    $pages += max(1, $imagick->getNumberImages());
-                    $imagick->clear();
-                    $imagick->destroy();
-                    continue;
-                } catch (Exception $e) {
-                    // fallback below
-                }
-            }
-            $pages += 1;
-            continue;
-        }
-        $pages += 1;
-    }
-    return $pages;
-}
 
 function cartao_ofx_parse_competencia(string $competencia): ?array {
     $competencia = trim($competencia);
@@ -326,6 +276,70 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
     return ['itens' => $itens, 'descartados' => $descartados];
 }
 
+function cartao_ofx_parse_manual_texto(string $texto): array {
+    $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
+    $itens = [];
+    $descartados = [];
+
+    foreach ($linhas as $linha) {
+        $linha = trim($linha);
+        if ($linha === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $linha));
+        if (count($parts) < 2) {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
+            continue;
+        }
+        $descricao = $parts[0];
+        $valorStr = $parts[1];
+        $parcelaStr = $parts[2] ?? '';
+
+        $valor = cartao_ofx_parse_valor($valorStr);
+        if ($valor === null) {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'sem valor detectado'];
+            continue;
+        }
+
+        $parcelaInfo = null;
+        if ($parcelaStr !== '') {
+            if (preg_match('/(\d{1,2})\s*\/\s*(\d{1,2})/', $parcelaStr, $m)) {
+                $atual = (int)$m[1];
+                $total = (int)$m[2];
+                if ($total > 1) {
+                    if ($atual >= $total) {
+                        $parcelaInfo = null; // última parcela vira 1x
+                    } else {
+                        $parcelaInfo = [
+                            'atual' => $atual,
+                            'total' => $total,
+                            'indicador' => $m[0],
+                        ];
+                    }
+                }
+            }
+        }
+
+        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
+        if ($descricaoNormalizada === '') {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
+            continue;
+        }
+
+        $itens[] = [
+            'descricao_original' => $descricao,
+            'descricao_normalizada' => $descricaoNormalizada,
+            'valor_total' => abs($valor),
+            'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
+            'total_parcelas' => $parcelaInfo['total'] ?? 1,
+            'parcela_atual' => $parcelaInfo['atual'] ?? null,
+            'is_credito' => false,
+        ];
+    }
+
+    return ['itens' => $itens, 'descartados' => $descartados];
+}
+
 function cartao_ofx_split_parcelas(float $valorTotal, int $totalParcelas): array {
     if ($totalParcelas <= 1) {
         return [$valorTotal];
@@ -484,6 +498,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_SESSION['cartao_ofx_preview']);
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $competencia = trim($_POST['competencia'] ?? '');
+        $textoCru = trim($_POST['texto_cru'] ?? '');
         $competenciaInfo = cartao_ofx_parse_competencia($competencia);
 
         if (!$cartaoId) {
@@ -492,13 +507,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$competenciaInfo) {
             $erros[] = 'Competencia invalida. Use MM/AAAA.';
         }
-        if (empty($_FILES['faturas'])) {
-            $erros[] = 'Envie ao menos um PDF ou imagem.';
-        }
-
-        $uploads = cartao_ofx_normalize_uploads($_FILES['faturas'] ?? []);
-        if (empty($uploads)) {
-            $erros[] = 'Nao foi possivel ler os arquivos enviados.';
+        if ($textoCru === '') {
+            $erros[] = 'Informe o texto cru com os lancamentos (1 por linha).';
         }
 
         $cartaoSelecionado = null;
@@ -513,144 +523,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (empty($erros)) {
-            $mesReferencia = date('Y-m');
-            $limiteMensal = (int)($_ENV['CARTAO_OFX_OCR_MONTHLY_LIMIT'] ?? getenv('CARTAO_OFX_OCR_MONTHLY_LIMIT') ?: 200);
-            $usoAtual = cartao_ofx_get_ocr_usage($pdo, $mesReferencia);
-            $paginasEstimadas = cartao_ofx_estimate_pages($uploads);
-
-            if ($limiteMensal > 0 && ($usoAtual + $paginasEstimadas) > $limiteMensal) {
-                $erros[] = 'Limite mensal de OCR excedido. Limite atual: ' . $limiteMensal . ' paginas.';
-            }
-
             try {
-                if (empty($erros)) {
-                    $ocrProvider = new GoogleVisionOcrProvider();
-                    $ocrResultado = $ocrProvider->extractText($uploads);
-                    $paginas = (int)$ocrResultado['pages'];
+                $parseResult = cartao_ofx_parse_manual_texto($textoCru);
+                $itensBase = $parseResult['itens'] ?? [];
+                $descartados = $parseResult['descartados'] ?? [];
+                error_log('[CARTAO_OFX] Itens base identificados (manual): ' . count($itensBase));
 
-                    if ($limiteMensal > 0 && ($usoAtual + $paginas) > $limiteMensal) {
-                        $erros[] = 'Limite mensal de OCR excedido. Limite atual: ' . $limiteMensal . ' paginas.';
-                    } else {
-                        cartao_ofx_add_ocr_usage($pdo, $mesReferencia, $paginas);
-                    }
-                }
+                if (empty($itensBase)) {
+                    $erros[] = 'Nenhum lancamento identificado. Verifique o formato Descricao | Valor | Parcela(opcional).';
+                } else {
+                    [$mes, $ano] = $competenciaInfo;
+                    $hashesParcelas = [];
+                    $transacoes = [];
+                    $baseItems = [];
 
-                if (empty($erros)) {
-                    error_log('[CARTAO_OFX] OCR realizado. Paginas: ' . $paginas . ', arquivos: ' . count($uploads));
-                    $rawText = $ocrResultado['text'] ?? '';
-                    $rawLen = strlen($rawText);
-                    $snippet = $rawLen > 600 ? substr($rawText, 0, 600) . '...' : $rawText;
-                    error_log('[CARTAO_OFX] OCR texto len=' . $rawLen . ' snippet="' . str_replace(["\n", "\r"], ['\\n', ''], $snippet) . '"');
+                    foreach ($itensBase as $index => $item) {
+                        $totalParcelas = max(1, (int)$item['total_parcelas']);
+                        if (!empty($item['parcela_atual']) && $totalParcelas > 1 && (int)$item['parcela_atual'] >= $totalParcelas) {
+                            // Última parcela vira 1x
+                            $totalParcelas = 1;
+                            $item['indicador_parcela'] = null;
+                        }
+                        $baseHash = cartao_ofx_hash_base(
+                            $cartaoId,
+                            $item['descricao_normalizada'],
+                            $item['valor_total'],
+                            $item['indicador_parcela'],
+                            $competencia
+                        );
+                        $parcelas = cartao_ofx_split_parcelas($item['valor_total'], $totalParcelas);
+                        $baseDate = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, 0);
+                        $baseDateStr = $baseDate->format('Ymd');
+                        $sign = $item['is_credito'] ? 1 : -1;
+                        $noExplodeValor = $item['valor_total'] * $sign;
+                        $noExplodeHash = cartao_ofx_hash_parcela($baseHash, 1, $baseDateStr, $noExplodeValor);
+                        $hashesParcelas[] = $noExplodeHash;
 
-                    $parseResult = cartao_ofx_parse_fatura_texto($rawText);
-                    $itensBase = $parseResult['itens'] ?? [];
-                    $descartados = $parseResult['descartados'] ?? [];
-                    error_log('[CARTAO_OFX] Itens base identificados: ' . count($itensBase));
+                        $baseItems[] = [
+                            'base_key' => $baseHash,
+                            'descricao_original' => $item['descricao_original'],
+                            'descricao_normalizada' => $item['descricao_normalizada'],
+                            'valor_total' => $item['valor_total'],
+                            'indicador_parcela' => $item['indicador_parcela'],
+                            'total_parcelas' => $totalParcelas,
+                            'data_base' => $baseDateStr,
+                            'is_credito' => $item['is_credito'],
+                            'no_explode_hash' => $noExplodeHash,
+                            'no_explode_valor' => $noExplodeValor,
+                        ];
 
-                    if (empty($itensBase)) {
-                        $erros[] = 'Nenhum lancamento identificado. Ajuste a qualidade do arquivo.';
-                        error_log('[CARTAO_OFX] Nenhum lançamento identificado na fatura.');
-                    } else {
-                        [$mes, $ano] = $competenciaInfo;
-                        $hashesParcelas = [];
-                        $transacoes = [];
-                        $baseItems = [];
-
-                        foreach ($itensBase as $index => $item) {
-                            $totalParcelas = max(1, (int)$item['total_parcelas']);
-                            if (!empty($item['parcela_atual']) && $totalParcelas > 1 && (int)$item['parcela_atual'] >= $totalParcelas) {
-                                // Última parcela vira 1x
-                                $totalParcelas = 1;
-                                $item['indicador_parcela'] = null;
+                        for ($p = 1; $p <= $totalParcelas; $p++) {
+                            $vencimento = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, $p - 1);
+                            $vencimentoStr = $vencimento->format('Ymd');
+                            $valorParcela = $parcelas[$p - 1] * $sign;
+                            $hashParcela = cartao_ofx_hash_parcela($baseHash, $p, $vencimentoStr, $valorParcela);
+                            $descricaoFinal = $item['descricao_original'];
+                            if ($totalParcelas > 1) {
+                                $descricaoFinal .= ' (Parcela ' . $p . '/' . $totalParcelas . ')';
                             }
-                            $baseHash = cartao_ofx_hash_base(
-                                $cartaoId,
-                                $item['descricao_normalizada'],
-                                $item['valor_total'],
-                                $item['indicador_parcela'],
-                                $competencia
-                            );
-                            $parcelas = cartao_ofx_split_parcelas($item['valor_total'], $totalParcelas);
-                            $baseDate = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, 0);
-                            $baseDateStr = $baseDate->format('Ymd');
-                            $sign = $item['is_credito'] ? 1 : -1;
-                            $noExplodeValor = $item['valor_total'] * $sign;
-                            $noExplodeHash = cartao_ofx_hash_parcela($baseHash, 1, $baseDateStr, $noExplodeValor);
-                            $hashesParcelas[] = $noExplodeHash;
 
-                            $baseItems[] = [
-                                'base_key' => $baseHash,
-                                'descricao_original' => $item['descricao_original'],
+                            $hashesParcelas[] = $hashParcela;
+                            $transacoes[] = [
+                                'base_hash' => $baseHash,
+                                'descricao' => $descricaoFinal,
+                                'descricao_base' => $item['descricao_original'],
                                 'descricao_normalizada' => $item['descricao_normalizada'],
                                 'valor_total' => $item['valor_total'],
                                 'indicador_parcela' => $item['indicador_parcela'],
+                                'parcela_numero' => $p,
                                 'total_parcelas' => $totalParcelas,
-                                'data_base' => $baseDateStr,
+                                'data_vencimento' => $vencimentoStr,
+                                'valor' => $valorParcela,
+                                'hash_parcela' => $hashParcela,
                                 'is_credito' => $item['is_credito'],
-                                'no_explode_hash' => $noExplodeHash,
-                                'no_explode_valor' => $noExplodeValor,
                             ];
-
-                            for ($p = 1; $p <= $totalParcelas; $p++) {
-                                $vencimento = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, $p - 1);
-                                $vencimentoStr = $vencimento->format('Ymd');
-                                $valorParcela = $parcelas[$p - 1] * $sign;
-                                $hashParcela = cartao_ofx_hash_parcela($baseHash, $p, $vencimentoStr, $valorParcela);
-                                $descricaoFinal = $item['descricao_original'];
-                                if ($totalParcelas > 1) {
-                                    $descricaoFinal .= ' (Parcela ' . $p . '/' . $totalParcelas . ')';
-                                }
-
-                                $hashesParcelas[] = $hashParcela;
-                                $transacoes[] = [
-                                    'base_hash' => $baseHash,
-                                    'descricao' => $descricaoFinal,
-                                    'descricao_base' => $item['descricao_original'],
-                                    'descricao_normalizada' => $item['descricao_normalizada'],
-                                    'valor_total' => $item['valor_total'],
-                                    'indicador_parcela' => $item['indicador_parcela'],
-                                    'parcela_numero' => $p,
-                                    'total_parcelas' => $totalParcelas,
-                                    'data_vencimento' => $vencimentoStr,
-                                    'valor' => $valorParcela,
-                                    'hash_parcela' => $hashParcela,
-                                    'is_credito' => $item['is_credito'],
-                                ];
-                            }
                         }
-
-                        $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesParcelas);
-                        $duplicados = array_flip($duplicados);
-
-                        $previewTransacoes = [];
-                        foreach ($transacoes as $tx) {
-                            $tx['duplicado'] = isset($duplicados[$tx['hash_parcela']]);
-                            $previewTransacoes[] = $tx;
-                        }
-
-                        foreach ($baseItems as &$baseItem) {
-                            $baseItem['no_explode_duplicado'] = isset($duplicados[$baseItem['no_explode_hash']]);
-                        }
-                        unset($baseItem);
-
-                        $preview = [
-                            'cartao' => $cartaoSelecionado,
-                            'cartao_id' => $cartaoId,
-                            'competencia' => $competencia,
-                            'base_items' => $baseItems,
-                            'transacoes' => $previewTransacoes,
-                            'descartados' => $descartados,
-                        ];
-                        error_log('[CARTAO_OFX] Previa pronta. Transacoes: ' . count($previewTransacoes));
-                        $_SESSION['cartao_ofx_preview'] = $preview;
                     }
+
+                    $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesParcelas);
+                    $duplicados = array_flip($duplicados);
+
+                    $previewTransacoes = [];
+                    foreach ($transacoes as $tx) {
+                        $tx['duplicado'] = isset($duplicados[$tx['hash_parcela']]);
+                        $previewTransacoes[] = $tx;
+                    }
+
+                    foreach ($baseItems as &$baseItem) {
+                        $baseItem['no_explode_duplicado'] = isset($duplicados[$baseItem['no_explode_hash']]);
+                    }
+                    unset($baseItem);
+
+                    $preview = [
+                        'cartao' => $cartaoSelecionado,
+                        'cartao_id' => $cartaoId,
+                        'competencia' => $competencia,
+                        'base_items' => $baseItems,
+                        'transacoes' => $previewTransacoes,
+                        'descartados' => $descartados,
+                    ];
+                    $_SESSION['cartao_ofx_preview'] = $preview;
                 }
-            } catch (OcrException $e) {
-                $erros[] = $e->getMessage();
-                error_log('[CARTAO_OFX] Erro OCR: ' . $e->getMessage());
             } catch (Exception $e) {
-                $erros[] = 'Erro ao processar OCR.';
-                error_log('[CARTAO_OFX] Erro OCR: ' . $e->getMessage());
+                $erros[] = 'Erro ao processar texto.';
+                error_log('[CARTAO_OFX] Erro texto: ' . $e->getMessage());
             }
         }
     }
@@ -1037,11 +1013,11 @@ ob_start();
 <div class="ofx-container">
     <div class="ofx-header">
         <h1>Cartao → OFX (ME Eventos)</h1>
-        <p>Importe faturas em PDF/imagem e gere OFX com vencimentos ajustados.</p>
+        <p>Modo Texto Cru: informe os lançamentos manualmente (1 por linha).</p>
     </div>
 
     <div class="ofx-nav">
-        <a href="index.php?page=cartao_ofx_me">Importar Fatura</a>
+        <a href="index.php?page=cartao_ofx_me">Texto cru</a>
         <a href="index.php?page=cartao_ofx_me_cartoes">Cartoes</a>
         <a href="index.php?page=cartao_ofx_me_historico">Historico</a>
     </div>
@@ -1084,14 +1060,13 @@ ob_start();
                     <label for="competencia">Competencia (MM/AAAA)</label>
                     <input type="text" name="competencia" id="competencia" placeholder="01/2026" value="<?php echo htmlspecialchars($preview['competencia'] ?? ''); ?>" required>
                 </div>
-                <div class="ofx-field">
-                    <label for="faturas">PDF/Imagem</label>
-                    <input type="file" name="faturas[]" id="faturas" accept="application/pdf,image/*" multiple required>
-                    <div class="ofx-muted">Pode enviar mais de um arquivo.</div>
-                </div>
+            </div>
+            <div class="ofx-field" style="margin-top:1rem;">
+                <label for="texto_cru">Lançamentos (1 por linha) — Formato: DESCRICAO | VALOR | PARCELA(opcional)</label>
+                <textarea id="texto_cru" name="texto_cru" rows="8" placeholder="APPLE.COM/BILL | 264,90 | 1/4&#10;UBER VIAGEM | 28,95 |">&#10;<?php echo htmlspecialchars($_POST['texto_cru'] ?? ''); ?></textarea>
             </div>
             <div style="margin-top: 1rem;">
-                <button class="ofx-button" type="submit">Processar (OCR → Previa)</button>
+                <button class="ofx-button" type="submit">Processar (Texto → Previa)</button>
             </div>
         </form>
     </div>
