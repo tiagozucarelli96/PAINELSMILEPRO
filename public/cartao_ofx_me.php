@@ -582,10 +582,6 @@ $preview = $_SESSION['cartao_ofx_preview'] ?? null;
 $ofxGerado = null;
 $flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
 unset($_SESSION['cartao_ofx_flash']);
-if ($flashSuccess) {
-    // Se houve sucesso anterior, não mostramos mais a prévia
-    $preview = null;
-}
 
 $cartoesStmt = $pdo->query('SELECT * FROM cartao_ofx_cartoes WHERE status = TRUE ORDER BY nome_cartao');
 $cartoes = $cartoesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -903,8 +899,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
-                    header('Location: index.php?page=cartao_ofx_me');
-                    exit;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -1124,7 +1118,7 @@ ob_start();
         <div class="ofx-alert error"><?php echo htmlspecialchars($erro); ?></div>
     <?php endforeach; ?>
 
-    <?php if ($preview && empty($erros) && !$flashSuccess): ?>
+    <?php if ($preview && empty($erros)): ?>
         <div class="ofx-alert success">
             Prévia gerada: <?php echo count($preview['transacoes'] ?? []); ?> transações.
         </div>
