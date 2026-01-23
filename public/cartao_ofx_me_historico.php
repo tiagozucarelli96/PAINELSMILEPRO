@@ -202,46 +202,50 @@ ob_start();
 
     <div class="ofx-card">
         <h3>Geracoes</h3>
-        <table class="ofx-table">
-            <thead>
-                <tr>
-                    <th>Data</th>
-                    <th>Competencia</th>
-                    <th>Cartao</th>
-                    <th>Transacoes</th>
-                    <th>Usuario</th>
-                    <th>Status</th>
-                    <th>Acoes</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($geracoes as $geracao): ?>
+        <?php if (empty($geracoes)): ?>
+            <p class="ofx-muted">Nenhuma geração registrada ainda.</p>
+        <?php else: ?>
+            <table class="ofx-table">
+                <thead>
                     <tr>
-                        <td><?php echo htmlspecialchars($geracao['gerado_em']); ?></td>
-                        <td><?php echo htmlspecialchars($geracao['competencia']); ?></td>
-                        <td><?php echo htmlspecialchars($geracao['nome_cartao'] ?? ''); ?></td>
-                        <td><?php echo (int)$geracao['quantidade_transacoes']; ?></td>
-                        <td><?php echo htmlspecialchars($geracao['usuario_nome'] ?? ''); ?></td>
-                        <td>
-                            <span class="ofx-tag <?php echo $geracao['status'] === 'excluido' ? 'excluido' : 'gerado'; ?>">
-                                <?php echo htmlspecialchars($geracao['status']); ?>
-                            </span>
-                        </td>
-                        <td>
-                            <?php if (!empty($geracao['arquivo_url'])): ?>
-                                <a href="<?php echo htmlspecialchars($geracao['arquivo_url']); ?>" target="_blank">Baixar</a>
-                            <?php endif; ?>
-                            <a href="index.php?page=cartao_ofx_me_historico&view=<?php echo (int)$geracao['id']; ?>">Previa</a>
-                            <form method="post" style="display:inline-block;margin-left:0.5rem;">
-                                <input type="hidden" name="action" value="excluir">
-                                <input type="hidden" name="id" value="<?php echo (int)$geracao['id']; ?>">
-                                <button class="ofx-button" type="submit" style="background:#ef4444;">Excluir</button>
-                            </form>
-                        </td>
+                        <th>Data</th>
+                        <th>Competencia</th>
+                        <th>Cartao</th>
+                        <th>Transacoes</th>
+                        <th>Usuario</th>
+                        <th>Status</th>
+                        <th>Acoes</th>
                     </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    <?php foreach ($geracoes as $geracao): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($geracao['gerado_em']); ?></td>
+                            <td><?php echo htmlspecialchars($geracao['competencia']); ?></td>
+                            <td><?php echo htmlspecialchars($geracao['nome_cartao'] ?? ''); ?></td>
+                            <td><?php echo (int)$geracao['quantidade_transacoes']; ?></td>
+                            <td><?php echo htmlspecialchars($geracao['usuario_nome'] ?? ''); ?></td>
+                            <td>
+                                <span class="ofx-tag <?php echo $geracao['status'] === 'excluido' ? 'excluido' : 'gerado'; ?>">
+                                    <?php echo htmlspecialchars($geracao['status']); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if (!empty($geracao['arquivo_url'])): ?>
+                                    <a href="<?php echo htmlspecialchars($geracao['arquivo_url']); ?>" target="_blank">Baixar</a>
+                                <?php endif; ?>
+                                <a href="index.php?page=cartao_ofx_me_historico&view=<?php echo (int)$geracao['id']; ?>">Previa</a>
+                                <form method="post" style="display:inline-block;margin-left:0.5rem;">
+                                    <input type="hidden" name="action" value="excluir">
+                                    <input type="hidden" name="id" value="<?php echo (int)$geracao['id']; ?>">
+                                    <button class="ofx-button" type="submit" style="background:#ef4444;">Excluir</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -1106,7 +1106,10 @@ ob_start();
         <div class="ofx-alert success">
             OFX gerado com sucesso! Transacoes: <?php echo (int)$ofxGerado['quantidade']; ?>
             <?php if (!empty($ofxGerado['url'])): ?>
-                <div><a href="<?php echo htmlspecialchars($ofxGerado['url']); ?>" target="_blank">Baixar OFX</a></div>
+                <div style="margin-top:6px;">
+                    <a class="ofx-button" href="<?php echo htmlspecialchars($ofxGerado['url']); ?>" target="_blank">Baixar OFX</a>
+                    <a class="ofx-button" style="background:#0f172a;margin-left:6px;" href="index.php?page=cartao_ofx_me_historico">Ver histórico</a>
+                </div>
             <?php endif; ?>
         </div>
     <?php endif; ?>
