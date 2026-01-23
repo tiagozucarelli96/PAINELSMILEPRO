@@ -1500,6 +1500,13 @@ if ($current_page === 'dashboard') {
                     Administrativo
                 </a>
                 <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_administrativo'])): ?>
+                <a href="index.php?page=cartao_ofx_me" class="nav-item <?= isActiveUnified('cartao_ofx_me') ?>">
+                    <span class="nav-item-icon">💳</span>
+                    Cartão → OFX (ME Eventos)
+                </a>
+                <?php endif; ?>
                 
                 <?php if (!empty($_SESSION['perm_administrativo'])): ?>
                 <a href="index.php?page=contabilidade" class="nav-item <?= isActiveUnified('contabilidade') ?>">

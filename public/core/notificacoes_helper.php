@@ -1,6 +1,7 @@
 <?php
 // notificacoes_helper.php — Sistema Global de Notificações (ETAPAS 13-17)
 require_once __DIR__ . '/../conexao.php';
+require_once __DIR__ . '/email_global_helper.php';
 
 class NotificacoesHelper {
     private $pdo;
@@ -50,6 +51,21 @@ class NotificacoesHelper {
                 WHERE id = 1
             ");
             $stmt->execute();
+            if ($stmt->rowCount() === 0) {
+                $this->criarUltimaAtividade();
+            }
+        } catch (Exception $e) {
+            // Ignorar erro silenciosamente
+        }
+    }
+
+    private function criarUltimaAtividade() {
+        try {
+            $stmt = $this->pdo->prepare("
+                INSERT INTO sistema_ultima_atividade (id, ultima_atividade, ultimo_envio, bloqueado)
+                VALUES (1, NOW(), NULL, FALSE)
+            ");
+            $stmt->execute();
         } catch (Exception $e) {
             // Ignorar erro silenciosamente
         }
@@ -69,7 +85,12 @@ class NotificacoesHelper {
             $stmt = $this->pdo->query("SELECT ultima_atividade, ultimo_envio, bloqueado FROM sistema_ultima_atividade WHERE id = 1");
             $atividade = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$atividade || $atividade['bloqueado']) {
+            if (!$atividade) {
+                $this->criarUltimaAtividade();
+                return false;
+            }
+
+            if ($atividade['bloqueado']) {
                 return false;
             }
             

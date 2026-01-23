@@ -378,7 +378,12 @@ body {
                 </td>
                 <td>
                     <?php if ($guia['chave_storage'] || $guia['arquivo_url']): ?>
-                        <a href="contabilidade_download.php?tipo=guia&id=<?= $guia['id'] ?>" target="_blank" class="btn-action btn-download">📎 Baixar</a>
+                        <button type="button"
+                                class="btn-action btn-download btn-ver-arquivo"
+                                data-guia-id="<?= $guia['id'] ?>"
+                                data-arquivo-nome="<?= htmlspecialchars($guia['arquivo_nome'] ?? 'arquivo') ?>">
+                            📎 Ver
+                        </button>
                     <?php else: ?>
                         -
                     <?php endif; ?>
@@ -407,6 +412,158 @@ body {
         </tbody>
     </table>
 </div>
+
+<!-- Modal de Preview de Arquivo -->
+<div id="modal-arquivo" class="modal-arquivo" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 10000; overflow: auto;">
+    <div class="modal-arquivo-header" style="position: fixed; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.8); padding: 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 10001;">
+        <h3 id="modal-arquivo-titulo" style="color: white; margin: 0; font-size: 1.1rem;"></h3>
+        <div class="modal-arquivo-toolbar" style="display: flex; gap: 0.5rem;">
+            <button id="btn-zoom-in" class="btn-toolbar" style="display: none; background: #1e40af; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🔍+</button>
+            <button id="btn-zoom-out" class="btn-toolbar" style="display: none; background: #1e40af; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">🔍-</button>
+            <button id="btn-zoom-reset" class="btn-toolbar" style="display: none; background: #1e40af; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">↺</button>
+            <button id="btn-download" class="btn-toolbar" style="background: #10b981; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">⬇️ Download</button>
+            <button id="btn-fechar-modal" class="btn-toolbar" style="background: #ef4444; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">✕ Fechar</button>
+        </div>
+    </div>
+    <div class="modal-arquivo-content" style="margin-top: 80px; padding: 2rem; display: flex; justify-content: center; align-items: center; min-height: calc(100vh - 80px);">
+        <img id="modal-arquivo-img" style="display: none; max-width: 100%; max-height: calc(100vh - 120px); object-fit: contain; transition: transform 0.3s ease; cursor: zoom-in;" />
+        <iframe id="modal-arquivo-pdf" style="display: none; width: 100%; height: calc(100vh - 120px); border: none; background: white;"></iframe>
+        <div id="modal-arquivo-loading" style="color: white; font-size: 1.2rem;">Carregando...</div>
+    </div>
+</div>
+
+<script>
+    // Modal de Preview de Arquivo
+    (function() {
+        const modal = document.getElementById('modal-arquivo');
+        const modalImg = document.getElementById('modal-arquivo-img');
+        const modalPdf = document.getElementById('modal-arquivo-pdf');
+        const modalTitulo = document.getElementById('modal-arquivo-titulo');
+        const modalLoading = document.getElementById('modal-arquivo-loading');
+        const btnFechar = document.getElementById('btn-fechar-modal');
+        const btnDownload = document.getElementById('btn-download');
+        const btnZoomIn = document.getElementById('btn-zoom-in');
+        const btnZoomOut = document.getElementById('btn-zoom-out');
+        const btnZoomReset = document.getElementById('btn-zoom-reset');
+
+        let currentZoom = 1;
+        let currentGuiaId = null;
+        let currentDownloadUrl = null;
+        let isImage = false;
+
+        function abrirModal(guiaId, arquivoNome) {
+            currentGuiaId = guiaId;
+            currentDownloadUrl = `contabilidade_download.php?tipo=guia&id=${guiaId}`;
+            modalTitulo.textContent = arquivoNome || 'Visualizar Arquivo';
+            modal.style.display = 'block';
+            modalLoading.style.display = 'block';
+            modalImg.style.display = 'none';
+            modalPdf.style.display = 'none';
+
+            const extensao = arquivoNome ? arquivoNome.split('.').pop().toLowerCase() : '';
+            isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(extensao);
+            const isPdf = extensao === 'pdf';
+
+            if (isImage) {
+                btnZoomIn.style.display = 'inline-block';
+                btnZoomOut.style.display = 'inline-block';
+                btnZoomReset.style.display = 'inline-block';
+            } else {
+                btnZoomIn.style.display = 'none';
+                btnZoomOut.style.display = 'none';
+                btnZoomReset.style.display = 'none';
+            }
+
+            if (isImage) {
+                modalImg.src = currentDownloadUrl;
+                modalImg.onload = function() {
+                    modalLoading.style.display = 'none';
+                    modalImg.style.display = 'block';
+                    currentZoom = 1;
+                    modalImg.style.transform = `scale(${currentZoom})`;
+                };
+                modalImg.onerror = function() {
+                    modalLoading.textContent = 'Erro ao carregar imagem';
+                };
+            } else if (isPdf) {
+                modalPdf.src = currentDownloadUrl;
+                modalPdf.onload = function() {
+                    modalLoading.style.display = 'none';
+                    modalPdf.style.display = 'block';
+                };
+            } else {
+                modalLoading.textContent = 'Este tipo de arquivo não pode ser visualizado. Use o botão Download.';
+            }
+        }
+
+        function fecharModal() {
+            modal.style.display = 'none';
+            modalImg.src = '';
+            modalPdf.src = '';
+            currentZoom = 1;
+            if (modalImg) {
+                modalImg.style.transform = 'scale(1)';
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('btn-ver-arquivo')) {
+                const guiaId = e.target.getAttribute('data-guia-id');
+                const arquivoNome = e.target.getAttribute('data-arquivo-nome');
+                abrirModal(guiaId, arquivoNome);
+            }
+        });
+
+        btnFechar.addEventListener('click', fecharModal);
+        btnDownload.addEventListener('click', function() {
+            if (currentDownloadUrl) {
+                window.open(currentDownloadUrl, '_blank');
+            }
+        });
+
+        btnZoomIn.addEventListener('click', function() {
+            if (isImage && modalImg) {
+                currentZoom = Math.min(currentZoom + 0.25, 3);
+                modalImg.style.transform = `scale(${currentZoom})`;
+            }
+        });
+
+        btnZoomOut.addEventListener('click', function() {
+            if (isImage && modalImg) {
+                currentZoom = Math.max(currentZoom - 0.25, 0.5);
+                modalImg.style.transform = `scale(${currentZoom})`;
+            }
+        });
+
+        btnZoomReset.addEventListener('click', function() {
+            if (isImage && modalImg) {
+                currentZoom = 1;
+                modalImg.style.transform = `scale(${currentZoom})`;
+            }
+        });
+
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                fecharModal();
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && modal.style.display === 'block') {
+                fecharModal();
+            }
+        });
+
+        modalImg.addEventListener('wheel', function(e) {
+            if (isImage) {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                currentZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
+                modalImg.style.transform = `scale(${currentZoom})`;
+            }
+        }, { passive: false });
+    })();
+</script>
 
 <?php
 $conteudo = ob_get_clean();

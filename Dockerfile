@@ -7,8 +7,13 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
+    imagemagick \
+    libmagickwand-dev \
+    poppler-utils \
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
  && docker-php-ext-install -j$(nproc) gd pdo_pgsql \
+ && pecl install imagick \
+ && docker-php-ext-enable imagick \
  && rm -rf /var/lib/apt/lists/*
 
 # Instalar Composer

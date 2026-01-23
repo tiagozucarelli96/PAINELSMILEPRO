@@ -163,6 +163,16 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <!-- Cartao OFX -->
+        <a href="index.php?page=cartao_ofx_me" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
+                <span class="funcionalidade-card-icon">💳</span>
+                <div class="funcionalidade-card-title">Cartao → OFX (ME Eventos)</div>
+                <div class="funcionalidade-card-subtitle">Geracao de OFX para conciliacao</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
     </div>
 </div>
 

@@ -7,6 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/core/notificacoes_helper.php';
 
 // Verificar se está logado
 if (empty($_SESSION['contabilidade_logado']) || $_SESSION['contabilidade_logado'] !== true) {
@@ -108,6 +109,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $stmt->execute($params);
             
             $mensagem = 'Honorário cadastrado com sucesso!';
+
+            // Registrar notificação (ETAPA 13)
+            try {
+                $honorario_id = $pdo->lastInsertId();
+                $notificacoes = new NotificacoesHelper();
+                $notificacoes->registrarNotificacao(
+                    'contabilidade',
+                    'novo_cadastro',
+                    'honorario',
+                    $honorario_id,
+                    "Novo honorário cadastrado: {$descricao}",
+                    "Data de vencimento: " . date('d/m/Y', strtotime($data_vencimento)),
+                    'ambos'
+                );
+            } catch (Exception $e) {
+                // Ignorar erro de notificação silenciosamente
+                error_log("Erro ao registrar notificação: " . $e->getMessage());
+            }
             
         } catch (Exception $e) {
             throw new Exception('Erro ao fazer upload: ' . $e->getMessage());
