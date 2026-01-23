@@ -360,16 +360,20 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         if ($linha === '') {
             continue;
         }
+
         $parts = array_map('trim', explode('|', $linha));
-        // Aceitar 3 ou 4 partes (data opcional na posição 0)
+        $parts = array_values($parts);
+
+        $dataStr = null;
+        if (!empty($parts[0]) && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $parts[0])) {
+            $dataStr = array_shift($parts);
+        }
+
         if (count($parts) < 2) {
             $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
             continue;
         }
-        if (count($parts) === 4 && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $parts[0])) {
-            // tem data na frente
-            array_shift($parts);
-        }
+
         $descricao = $parts[0];
         $valorStr = $parts[1] ?? '';
         $parcelaStr = $parts[2] ?? '';
@@ -384,25 +388,28 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
             $descartados[] = ['linha' => $linha, 'motivo' => 'sem valor detectado'];
             continue;
         }
-        $isCredito = $valor < 0;
-        $valorAbs = abs($valor);
+
+        $dataYmd = null;
+        if ($dataStr) {
+            $dt = DateTimeImmutable::createFromFormat('d/m/Y', $dataStr, new DateTimeZone('America/Sao_Paulo'));
+            if ($dt instanceof DateTimeImmutable) {
+                $dataYmd = $dt->format('Ymd');
+            } else {
+                $descartados[] = ['linha' => $linha, 'motivo' => 'data inválida'];
+                continue;
+            }
+        }
 
         $parcelaInfo = null;
-        if ($parcelaStr !== '') {
-            if (preg_match('/(\d{1,2})\s*\/\s*(\d{1,2})/', $parcelaStr, $m)) {
-                $atual = (int)$m[1];
-                $total = (int)$m[2];
-                if ($total > 1) {
-                    if ($atual >= $total) {
-                        $parcelaInfo = null; // última parcela vira 1x
-                    } else {
-                        $parcelaInfo = [
-                            'atual' => $atual,
-                            'total' => $total,
-                            'indicador' => $m[0],
-                        ];
-                    }
-                }
+        if ($parcelaStr !== '' && preg_match('/(\d{1,2})\s*\/\s*(\d{1,2})/', $parcelaStr, $m)) {
+            $atual = (int)$m[1];
+            $total = (int)$m[2];
+            if ($total > 1) {
+                $parcelaInfo = [
+                    'atual' => $atual,
+                    'total' => $total,
+                    'indicador' => $m[0],
+                ];
             }
         }
 
@@ -413,13 +420,14 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         }
 
         $itens[] = [
+            'data_linha' => $dataYmd,
             'descricao_original' => $descricao,
             'descricao_normalizada' => $descricaoNormalizada,
-            'valor_total' => $valorAbs,
+            'valor_total' => abs($valor),
             'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
             'total_parcelas' => $parcelaInfo['total'] ?? 1,
-            'parcela_atual' => $parcelaInfo['atual'] ?? null,
-            'is_credito' => $isCredito,
+            'parcela_atual' => $parcelaInfo['atual'] ?? 1,
+            'is_credito' => $valor < 0,
         ];
     }
 
@@ -621,72 +629,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($itensBase)) {
                     $erros[] = 'Nenhum lancamento identificado. Verifique o formato Descricao | Valor | Parcela(opcional).';
                 } else {
-                    $competencia = $dataPagamento->format('m/Y');
                     $hashesParcelas = [];
                     $transacoes = [];
-                    $baseItems = [];
+                    $tz = new DateTimeZone('America/Sao_Paulo');
 
                     foreach ($itensBase as $index => $item) {
-                        $totalParcelas = max(1, (int)$item['total_parcelas']);
-                        if (!empty($item['parcela_atual']) && $totalParcelas > 1 && (int)$item['parcela_atual'] >= $totalParcelas) {
-                            // Última parcela vira 1x
-                            $totalParcelas = 1;
-                            $item['indicador_parcela'] = null;
+                        $dt = null;
+                        if (!empty($item['data_linha'])) {
+                            $dt = DateTimeImmutable::createFromFormat('Ymd', $item['data_linha'], $tz);
                         }
+                        if (!$dt) {
+                            $dt = $dataPagamento ?: new DateTimeImmutable('now', $tz);
+                        }
+                        $dataVencStr = $dt->format('Ymd');
+                        $competenciaItem = $dt->format('m/Y');
+
+                        $parcelaNumero = max(1, (int)($item['parcela_atual'] ?? 1));
+                        $totalParcelas = max(1, (int)($item['total_parcelas'] ?? 1));
+
+                        $descricaoFinal = $item['descricao_original'];
+                        if ($totalParcelas > 1) {
+                            $descricaoFinal .= ' (Parcela ' . $parcelaNumero . '/' . $totalParcelas . ')';
+                        }
+
                         $baseHash = cartao_ofx_hash_base(
                             $cartaoId,
                             $item['descricao_normalizada'],
                             $item['valor_total'],
                             $item['indicador_parcela'],
-                            $competencia
+                            $competenciaItem
                         );
-                        $parcelas = cartao_ofx_split_parcelas($item['valor_total'], $totalParcelas);
-                        $baseDate = cartao_ofx_calc_vencimento_from_date($dataPagamento, 0);
-                        $baseDateStr = $baseDate->format('Ymd');
-                        $sign = $item['is_credito'] ? 1 : -1;
-                        $noExplodeValor = $item['valor_total'] * $sign;
-                        $noExplodeHash = cartao_ofx_hash_parcela($baseHash, 1, $baseDateStr, $noExplodeValor);
-                        $hashesParcelas[] = $noExplodeHash;
+                        $valorAssinado = $item['valor_total'] * ($item['is_credito'] ? 1 : -1);
+                        $hashParcela = cartao_ofx_hash_parcela($baseHash, $parcelaNumero, $dataVencStr, $valorAssinado);
+                        $hashesParcelas[] = $hashParcela;
 
-                        $baseItems[] = [
-                            'base_key' => $baseHash,
-                            'descricao_original' => $item['descricao_original'],
+                        $transacoes[] = [
+                            'idx' => $index,
+                            'base_hash' => $baseHash,
+                            'descricao' => $descricaoFinal,
                             'descricao_normalizada' => $item['descricao_normalizada'],
                             'valor_total' => $item['valor_total'],
                             'indicador_parcela' => $item['indicador_parcela'],
+                            'parcela_numero' => $parcelaNumero,
                             'total_parcelas' => $totalParcelas,
-                            'data_base' => $baseDateStr,
+                            'data_vencimento' => $dataVencStr,
+                            'valor' => $valorAssinado,
+                            'hash_parcela' => $hashParcela,
                             'is_credito' => $item['is_credito'],
-                            'no_explode_hash' => $noExplodeHash,
-                            'no_explode_valor' => $noExplodeValor,
+                            'competencia_base' => $competenciaItem,
                         ];
-
-                        for ($p = 1; $p <= $totalParcelas; $p++) {
-                            $vencimento = cartao_ofx_calc_vencimento_from_date($dataPagamento, $p - 1);
-                            $vencimentoStr = $vencimento->format('Ymd');
-                            $valorParcela = $parcelas[$p - 1] * $sign;
-                            $hashParcela = cartao_ofx_hash_parcela($baseHash, $p, $vencimentoStr, $valorParcela);
-                            $descricaoFinal = $item['descricao_original'];
-                            if ($totalParcelas > 1) {
-                                $descricaoFinal .= ' (Parcela ' . $p . '/' . $totalParcelas . ')';
-                            }
-
-                            $hashesParcelas[] = $hashParcela;
-                            $transacoes[] = [
-                                'base_hash' => $baseHash,
-                                'descricao' => $descricaoFinal,
-                                'descricao_base' => $item['descricao_original'],
-                                'descricao_normalizada' => $item['descricao_normalizada'],
-                                'valor_total' => $item['valor_total'],
-                                'indicador_parcela' => $item['indicador_parcela'],
-                                'parcela_numero' => $p,
-                                'total_parcelas' => $totalParcelas,
-                                'data_vencimento' => $vencimentoStr,
-                                'valor' => $valorParcela,
-                                'hash_parcela' => $hashParcela,
-                                'is_credito' => $item['is_credito'],
-                            ];
-                        }
                     }
 
                     $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesParcelas);
@@ -698,16 +689,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $previewTransacoes[] = $tx;
                     }
 
-                    foreach ($baseItems as &$baseItem) {
-                        $baseItem['no_explode_duplicado'] = isset($duplicados[$baseItem['no_explode_hash']]);
-                    }
-                    unset($baseItem);
+                    $competenciaLote = $dataPagamento ? $dataPagamento->format('m/Y') : ($previewTransacoes[0]['competencia_base'] ?? '');
 
                     $preview = [
                         'cartao' => $cartaoSelecionado,
                         'cartao_id' => $cartaoId,
-                        'competencia' => $competencia,
-                        'base_items' => $baseItems,
+                        'competencia' => $competenciaLote,
                         'transacoes' => $previewTransacoes,
                         'descartados' => $descartados,
                     ];
@@ -750,10 +737,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($descricao === '') {
                 $descricao = 'SEM DESCRICAO';
             }
-            $descricaoNormalizada = $row['descricao_normalizada'] ?? '';
-            if ($descricaoNormalizada === '') {
-                $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
-            }
+            $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
             $selecionadas[] = [
                 'hash_parcela' => $hashParcela,
                 'base_hash' => $row['base_hash'] ?? '',
@@ -766,6 +750,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'data_vencimento' => $row['data_vencimento'] ?? '',
                 'valor' => (float)($row['valor'] ?? 0),
                 'is_credito' => !empty($row['is_credito']),
+                'competencia_base' => $row['competencia_base'] ?? '',
             ];
             $hashesSelecionadas[] = $hashParcela;
         }
@@ -780,6 +765,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $transacoesFinal = [];
             $transacoesJson = [];
+            $competenciaGeracao = $selecionadas[0]['competencia_base'] ?? ($_POST['competencia'] ?? '');
             foreach ($selecionadas as $tx) {
                 if (isset($duplicados[$tx['hash_parcela']])) {
                     continue;
@@ -821,7 +807,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $upload = $magalu->uploadFileFromPath($ofxPath, $pasta, 'application/x-ofx');
 
                     if (empty($upload['success'])) {
-                        throw new RuntimeException('Falha ao enviar OFX para Magalu.');
+                        $detail = $upload['error'] ?? '';
+                        throw new RuntimeException('Falha ao enviar OFX para Magalu.' . ($detail ? ' ' . $detail : ''));
                     }
 
                     $pdo->beginTransaction();
@@ -841,7 +828,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             ');
                             $stmtBase->execute([
                                 $cartaoId,
-                                $competencia,
+                                $tx['competencia_base'],
                                 $tx['descricao_normalizada'],
                                 $tx['valor_total'],
                                 $tx['indicador_parcela'],
@@ -877,7 +864,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ');
                     $stmtGeracao->execute([
                         $cartaoId,
-                        $competencia,
+                        $competenciaGeracao,
                         $_SESSION['id'] ?? null,
                         count($transacoesFinal),
                         $upload['url'] ?? null,
@@ -1150,8 +1137,8 @@ ob_start();
                 </div>
             </div>
             <div class="ofx-field" style="margin-top:1rem;">
-                <label for="texto_cru">Lançamentos (1 por linha) — Formato: DESCRICAO | VALOR | PARCELA(opcional)</label>
-                <textarea id="texto_cru" name="texto_cru" rows="8" placeholder="APPLE.COM/BILL | 264,90 | 1/4&#10;UBER VIAGEM | 28,95 |">&#10;<?php echo htmlspecialchars($_POST['texto_cru'] ?? ''); ?></textarea>
+                <label for="texto_cru">Lançamentos (1 por linha) — Formato: DATA | DESCRICAO | VALOR | PARCELA(opcional)</label>
+                <textarea id="texto_cru" name="texto_cru" rows="8" placeholder="17/01/2026 | APPLE.COM/BILL | 264,90 | 1/4&#10;17/01/2026 | UBER VIAGEM | 28,95 |"><?php echo htmlspecialchars($_POST['texto_cru'] ?? ''); ?></textarea>
             </div>
             <div style="margin-top: 1rem;">
                 <button class="ofx-button" type="submit">Processar (Texto → Previa)</button>
@@ -1169,93 +1156,47 @@ ob_start();
                 <input type="hidden" name="cartao_id" value="<?php echo (int)$preview['cartao_id']; ?>">
                 <input type="hidden" name="competencia" value="<?php echo htmlspecialchars($preview['competencia']); ?>">
 
-                <?php
-                $transacoesPorBase = [];
-                foreach ($preview['transacoes'] as $idx => $tx) {
-                    $tx['idx'] = $idx;
-                    $transacoesPorBase[$tx['base_hash']][] = $tx;
-                }
-                ?>
-
                 <table class="ofx-table">
                     <thead>
                         <tr>
                             <th>Data</th>
                             <th>Descricao (ME)</th>
                             <th>Valor</th>
-                            <th>Parcelado?</th>
                             <th>Status</th>
                             <th>Acao</th>
                         </tr>
                     </thead>
-                    <tbody data-next-index="<?php echo count($preview['transacoes']); ?>">
-                        <?php foreach ($preview['base_items'] as $baseItem): ?>
-                            <?php
-                            $baseHash = $baseItem['base_key'];
-                            $children = $transacoesPorBase[$baseHash] ?? [];
-                            $primeiraDescricao = $children[0]['descricao'] ?? $baseItem['descricao_original'];
-                            $duplicadosFilhos = array_reduce($children, function($carry, $tx) { return $carry + ($tx['duplicado'] ? 1 : 0); }, 0);
-                            $hasChildren = count($children) > 0;
-                        ?>
-                            <tr class="ofx-base-row" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
-                                <td><?php echo htmlspecialchars(cartao_ofx_format_date_display($baseItem['data_base'])); ?></td>
+                    <tbody>
+                        <?php foreach ($preview['transacoes'] as $idx => $tx): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars(cartao_ofx_format_date_display($tx['data_vencimento'])); ?></td>
                                 <td>
-                                    <?php if ($hasChildren): ?>
-                                        <button type="button" class="toggle-btn" data-toggle-children="<?php echo htmlspecialchars($baseHash); ?>">▼</button>
-                                    <?php else: ?>
-                                        <span style="display:inline-block;width:28px;"></span>
-                                    <?php endif; ?>
-                                    <input style="width:70%;" type="text" class="base-desc" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>" value="<?php echo htmlspecialchars($primeiraDescricao); ?>">
+                                    <input style="width:100%;" type="text" name="tx[<?php echo $idx; ?>][descricao]" value="<?php echo htmlspecialchars($tx['descricao']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][descricao_normalizada]" value="<?php echo htmlspecialchars($tx['descricao_normalizada']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][valor_total]" value="<?php echo htmlspecialchars((string)$tx['valor_total']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][indicador_parcela]" value="<?php echo htmlspecialchars($tx['indicador_parcela'] ?? ''); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][base_hash]" value="<?php echo htmlspecialchars($tx['base_hash']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][parcela_numero]" value="<?php echo (int)$tx['parcela_numero']; ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][total_parcelas]" value="<?php echo (int)$tx['total_parcelas']; ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][data_vencimento]" value="<?php echo htmlspecialchars($tx['data_vencimento']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][valor]" value="<?php echo htmlspecialchars((string)$tx['valor']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][hash_parcela]" value="<?php echo htmlspecialchars($tx['hash_parcela']); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][is_credito]" value="<?php echo $tx['is_credito'] ? '1' : ''; ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][competencia_base]" value="<?php echo htmlspecialchars($tx['competencia_base'] ?? ''); ?>">
                                 </td>
-                                <td>R$ <?php echo number_format($baseItem['valor_total'], 2, ',', '.'); ?></td>
-                                <td><?php echo $baseItem['total_parcelas'] > 1 ? $baseItem['total_parcelas'] . 'x' : '1x'; ?></td>
+                                <td>R$ <?php echo number_format($tx['valor'], 2, ',', '.'); ?></td>
                                 <td>
-                                    <?php if ($duplicadosFilhos > 0): ?>
-                                        <span class="ofx-tag duplicado"><?php echo $duplicadosFilhos; ?> duplicado(s)</span>
-                                    <?php else: ?>
-                                        <span class="ofx-tag novo">Novo</span>
-                                    <?php endif; ?>
+                                    <span class="ofx-tag status-tag <?php echo $tx['duplicado'] ? 'duplicado' : 'novo'; ?>">
+                                        <?php echo $tx['duplicado'] ? 'Duplicado' : 'Novo'; ?>
+                                    </span>
                                 </td>
                                 <td>
-                                    <?php if ($hasChildren): ?>
-                                        <label class="ofx-inline">
-                                            <input type="checkbox" class="toggle-no-explode" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
-                                            Nao explodir parcelas
-                                        </label>
-                                    <?php endif; ?>
+                                    <label class="ofx-inline">
+                                        <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]" <?php echo $tx['duplicado'] ? '' : 'checked'; ?>>
+                                        Incluir
+                                    </label>
                                 </td>
                             </tr>
-                            <?php foreach ($children as $tx): ?>
-                                <tr class="child-row" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>" style="display:none;">
-                                    <td style="padding-left:24px;"><?php echo htmlspecialchars(cartao_ofx_format_date_display($tx['data_vencimento'])); ?></td>
-                                    <td>
-                                        <input style="width:100%;" type="text" name="tx[<?php echo $tx['idx']; ?>][descricao]" value="<?php echo htmlspecialchars($tx['descricao']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][descricao_normalizada]" value="<?php echo htmlspecialchars($tx['descricao_normalizada']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][valor_total]" value="<?php echo htmlspecialchars((string)$tx['valor_total']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][indicador_parcela]" value="<?php echo htmlspecialchars($tx['indicador_parcela'] ?? ''); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][base_hash]" value="<?php echo htmlspecialchars($tx['base_hash']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][parcela_numero]" value="<?php echo (int)$tx['parcela_numero']; ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][total_parcelas]" value="<?php echo (int)$tx['total_parcelas']; ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][data_vencimento]" value="<?php echo htmlspecialchars($tx['data_vencimento']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][valor]" value="<?php echo htmlspecialchars((string)$tx['valor']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][hash_parcela]" value="<?php echo htmlspecialchars($tx['hash_parcela']); ?>">
-                                        <input type="hidden" name="tx[<?php echo $tx['idx']; ?>][is_credito]" value="<?php echo $tx['is_credito'] ? '1' : ''; ?>">
-                                    </td>
-                                    <td>R$ <?php echo number_format($tx['valor'], 2, ',', '.'); ?></td>
-                                    <td>Parc <?php echo (int)$tx['parcela_numero']; ?>/<?php echo (int)$tx['total_parcelas']; ?></td>
-                                    <td>
-                                        <span class="ofx-tag status-tag <?php echo $tx['duplicado'] ? 'duplicado' : 'novo'; ?>">
-                                            <?php echo $tx['duplicado'] ? 'Duplicado' : 'Novo'; ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <label class="ofx-inline">
-                                            <input type="checkbox" class="tx-include" name="tx[<?php echo $tx['idx']; ?>][include]" <?php echo $tx['duplicado'] ? '' : 'checked'; ?>>
-                                            Incluir
-                                        </label>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -1300,51 +1241,6 @@ ob_start();
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('[data-toggle-children]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var baseHash = this.getAttribute('data-toggle-children');
-            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
-            var showing = children.length > 0 && children[0].style.display !== 'none';
-            children.forEach(function(row) {
-                row.style.display = showing ? 'none' : '';
-            });
-            this.textContent = showing ? '▼' : '▲';
-        });
-    });
-
-    document.querySelectorAll('.base-desc').forEach(function(input) {
-        input.addEventListener('input', function() {
-            var baseHash = this.getAttribute('data-base-hash');
-            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"] input[type="text"]');
-            children.forEach(function(childInput) {
-                if (!childInput.dataset.userEdited) {
-                    childInput.value = input.value;
-                }
-            });
-        });
-    });
-
-    document.querySelectorAll('.child-row input[type="text"]').forEach(function(input) {
-        input.addEventListener('input', function() {
-            this.dataset.userEdited = '1';
-        });
-    });
-
-    document.querySelectorAll('.toggle-no-explode').forEach(function(toggle) {
-        toggle.addEventListener('change', function() {
-            var baseHash = this.getAttribute('data-base-hash');
-            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
-            children.forEach(function(row) {
-                var checkbox = row.querySelector('input[type="checkbox"][name*="include"]');
-                row.style.display = toggle.checked ? 'none' : '';
-                if (checkbox) {
-                    checkbox.checked = !toggle.checked;
-                    checkbox.dispatchEvent(new Event('change'));
-                }
-            });
-        });
-    });
-
     document.querySelectorAll('.tx-include').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
             var row = this.closest('tr');
