@@ -708,6 +708,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'confirmar') {
+        error_log('[CARTAO_OFX] Confirmar geração iniciado');
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $cartaoSelecionado = null;
         foreach ($cartoes as $cartao) {
@@ -722,6 +723,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $txRows = $_POST['tx'] ?? [];
+        error_log('[CARTAO_OFX] Confirmar: linhas recebidas=' . count($txRows) . ' cartao=' . $cartaoId);
         $selecionadas = [];
         $hashesSelecionadas = [];
 
@@ -757,6 +759,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($selecionadas)) {
             $erros[] = 'Nenhuma transacao selecionada.';
+            error_log('[CARTAO_OFX] Confirmar: nenhuma transacao selecionada');
         }
 
         if (empty($erros)) {
@@ -805,6 +808,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $uploader = new MagaluUpload();
                     $pasta = 'administrativo/cartao_ofx';
                     $upload = $uploader->uploadFromPath($ofxPath, $pasta, 'ofx_' . date('Ymd_His') . '.ofx', 'application/x-ofx');
+                    error_log('[CARTAO_OFX] Upload Magalu resultado: ' . json_encode($upload));
+                    if (empty($upload['success'])) {
+                        $detail = $upload['error'] ?? '';
+                        throw new RuntimeException('Falha ao enviar OFX para Magalu.' . ($detail ? ' ' . $detail : ''));
+                    }
 
                     $pdo->beginTransaction();
                     $baseIds = [];
@@ -869,6 +877,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
 
                     $pdo->commit();
+                    error_log('[CARTAO_OFX] Geracao salva. Tx: ' . count($transacoesFinal));
 
                     $ofxGerado = [
                         'url' => $upload['url'] ?? null,
