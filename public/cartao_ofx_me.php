@@ -24,11 +24,6 @@ if ($debugLocal) {
 
 $pdo = $GLOBALS['pdo'];
 
-// Limpar prévia se entrar na página sem POST (evitar ficar com estado antigo ao voltar)
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    unset($_SESSION['cartao_ofx_preview']);
-}
-
 function cartao_ofx_normalize_uploads(array $files): array {
     $normalized = [];
     if (!isset($files['name']) || !is_array($files['name'])) {
