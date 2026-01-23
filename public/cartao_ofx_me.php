@@ -366,7 +366,7 @@ function cartao_ofx_generate_ofx(array $transacoes): string {
 
 $mensagens = [];
 $erros = [];
-$preview = null;
+$preview = $_SESSION['cartao_ofx_preview'] ?? null;
 $ofxGerado = null;
 
 $cartoesStmt = $pdo->query('SELECT * FROM cartao_ofx_cartoes WHERE status = TRUE ORDER BY nome_cartao');
@@ -376,6 +376,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'processar') {
+        // Nova tentativa de processamento limpa prévia anterior
+        unset($_SESSION['cartao_ofx_preview']);
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
         $competencia = trim($_POST['competencia'] ?? '');
         $competenciaInfo = cartao_ofx_parse_competencia($competencia);
@@ -528,6 +530,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'transacoes' => $previewTransacoes,
                         ];
                         error_log('[CARTAO_OFX] Previa pronta. Transacoes: ' . count($previewTransacoes));
+                        $_SESSION['cartao_ofx_preview'] = $preview;
                     }
                 }
             } catch (OcrException $e) {
@@ -713,6 +716,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'url' => $upload['url'] ?? null,
                         'quantidade' => count($transacoesFinal),
                     ];
+                    // Limpar prévia após confirmar
+                    unset($_SESSION['cartao_ofx_preview']);
+                    $preview = null;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
