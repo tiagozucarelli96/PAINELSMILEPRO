@@ -94,13 +94,14 @@ class GoogleVisionOcrProvider implements OcrProviderInterface {
             throw new OcrException('Falha ao preparar requisição OCR.');
         }
 
-        $ch = curl_init($url . '?key=' . urlencode($this->apiKey));
+        $finalUrl = $url . '?key=' . urlencode($this->apiKey);
+        $ch = curl_init($finalUrl);
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
             CURLOPT_POSTFIELDS => $json,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_TIMEOUT => 30,
         ]);
 
         $response = curl_exec($ch);
@@ -109,11 +110,18 @@ class GoogleVisionOcrProvider implements OcrProviderInterface {
         curl_close($ch);
 
         if ($error) {
+            error_log('[OCR] cURL error: ' . $error);
             throw new OcrException('Erro na requisição OCR: ' . $error);
         }
 
         if ($status < 200 || $status >= 300) {
-            throw new OcrException('OCR retornou HTTP ' . $status);
+            $bodySnippet = is_string($response) ? substr($response, 0, 500) : '';
+            error_log('[OCR] HTTP ' . $status . ' - url: ' . $finalUrl . ' body: ' . $bodySnippet);
+            $msg = 'OCR retornou HTTP ' . $status;
+            if ($bodySnippet) {
+                $msg .= ' - ' . $bodySnippet;
+            }
+            throw new OcrException($msg);
         }
 
         return $response ?: '';
