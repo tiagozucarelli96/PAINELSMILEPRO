@@ -170,32 +170,16 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
     $descartados = [];
-    $buffer = [];
-    $valorBuffer = null;
-    $foundFirstDate = false;
     $dateRegex = '/^(\d{1,2}\/\d{1,2})\b/';
-
     $isNoise = function(string $linha) {
         $up = mb_strtoupper($linha, 'UTF-8');
-        $ruidos = [
-            'LANÇAMENTOS', 'LANCAMENTOS', 'DATA', 'ESTABELECIMENTO',
-            'VALOR EM', 'VALOR EM R$', 'COMPRAS E SAQUES'
-        ];
-        foreach ($ruidos as $r) {
-            if (strpos($up, $r) !== false) {
-                return true;
-            }
-        }
-        if (preg_match('/\bFINAL\s+\d{3,4}\b/i', $linha)) {
-            return true;
-        }
-        return false;
+        $ruidos = ['LANÇAMENTOS','LANCAMENTOS','DATA','ESTABELECIMENTO','VALOR EM','VALOR EM R$','COMPRAS E SAQUES'];
+        foreach ($ruidos as $r) { if (strpos($up, $r) !== false) { return true; } }
+        return (bool)preg_match('/\bFINAL\s+\d{3,4}\b/i', $linha);
     };
-
     $extractValor = function(array $partes) {
         $joined = implode(' ', $partes);
         $valor = null;
-        $matches = [];
         if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b/', $joined, $matches)) {
             $ultimo = end($matches[0]);
             $valor = cartao_ofx_parse_valor($ultimo);
@@ -203,87 +187,38 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         return $valor;
     };
 
-    $flushItem = function() use (&$buffer, &$valorBuffer, &$itens, &$descartados) {
-        if ($valorBuffer === null) {
-            if (!empty($buffer)) {
-                $descartados[] = ['linha' => implode(' ', $buffer), 'motivo' => 'sem valor detectado'];
-            }
-            $buffer = [];
-            return;
-        }
-        $descricaoParte = trim(implode(' ', $buffer));
-        $descricaoParte = preg_replace('/\s+/', ' ', $descricaoParte);
-        if ($descricaoParte === '') {
-            $descartados[] = ['linha' => '(vazio)', 'motivo' => 'sem descricao'];
-            $buffer = [];
-            $valorBuffer = null;
-            return;
-        }
-        $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
-        if ($parcelaInfo) {
-            $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
-            if ($parcelaInfo['total'] > 1 && $parcelaInfo['atual'] >= $parcelaInfo['total']) {
-                // última parcela: tratar como 1x
-                $parcelaInfo = null;
-            }
-        }
-        $descricaoParte = trim($descricaoParte);
-        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
-        if ($descricaoNormalizada === '') {
-            $descartados[] = ['linha' => $descricaoParte, 'motivo' => 'formato inválido'];
-            $buffer = [];
-            $valorBuffer = null;
-            return;
-        }
-        $isCredito = preg_match('/\b(ESTORNO|CREDITO|CR[EÉ]DITO|DEVOLUCAO|REEMBOLSO)\b/i', $descricaoParte) === 1;
-        $itens[] = [
-            'descricao_original' => $descricaoParte,
-            'descricao_normalizada' => $descricaoNormalizada,
-            'valor_total' => abs($valorBuffer),
-            'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
-            'total_parcelas' => $parcelaInfo['total'] ?? 1,
-            'parcela_atual' => $parcelaInfo['atual'] ?? null,
-            'is_credito' => $isCredito,
-            'descartados' => [],
-        ];
-        $buffer = [];
-        $valorBuffer = null;
-    };
+    $blocks = [];
+    $current = null;
 
     foreach ($linhas as $linha) {
         $linha = trim($linha);
-        if ($linha === '') {
-            continue;
-        }
+        if ($linha === '') continue;
         $linha = preg_replace('/\s+/', ' ', $linha);
 
-        if (preg_match($dateRegex, $linha)) {
-            if ($foundFirstDate) {
-                $flushItem();
+        if (preg_match($dateRegex, $linha, $m)) {
+            // flush bloco anterior
+            if ($current !== null) {
+                $blocks[] = $current;
             }
-            $foundFirstDate = true;
-            if ($isNoise($linha)) {
-                $descartados[] = ['linha' => $linha, 'motivo' => 'linha de ruído/cabeçalho'];
-                $buffer = [];
-                $valorBuffer = null;
-                continue;
-            }
+            $current = [
+                'linhas' => [],
+                'valor' => null,
+                'descartado' => false,
+            ];
             $resto = trim(preg_replace($dateRegex, '', $linha, 1));
-            $valorEncontrado = $extractValor([$resto]);
-            if ($resto !== '') {
-                // remove o valor encontrado do texto para não poluir descrição
-                if ($valorEncontrado !== null && preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b)/', $resto, $m)) {
-                    $resto = trim(str_replace($m[0], '', $resto));
-                }
-                if ($resto !== '') {
-                    $buffer[] = $resto;
-                }
+            if ($isNoise($linha)) {
+                $current['descartado'] = true;
+                $current['motivo'] = 'linha de ruído/cabeçalho';
             }
-            $valorBuffer = $valorEncontrado;
+            if ($resto !== '') {
+                $current['linhas'][] = $resto;
+            }
+            $val = $extractValor([$resto]);
+            if ($val !== null) { $current['valor'] = $val; }
             continue;
         }
 
-        if (!$foundFirstDate) {
+        if ($current === null) {
             $descartados[] = ['linha' => $linha, 'motivo' => 'linha de ruído/cabeçalho'];
             continue;
         }
@@ -293,21 +228,61 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
             continue;
         }
 
-        $valorEncontrado = $extractValor([$linha]);
+        // valor ou descrição
+        $valHere = $extractValor([$linha]);
         $linhaSemValor = $linha;
-        if (preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b)/', $linha, $m)) {
-            $linhaSemValor = trim(str_replace($m[0], '', $linha));
+        if ($valHere !== null && preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b)/', $linha, $mval)) {
+            $linhaSemValor = trim(str_replace($mval[0], '', $linha));
         }
         if ($linhaSemValor !== '') {
-            $buffer[] = $linhaSemValor;
+            $current['linhas'][] = $linhaSemValor;
         }
-        if ($valorEncontrado !== null) {
-            $valorBuffer = $valorEncontrado;
+        if ($valHere !== null) {
+            $current['valor'] = $valHere;
         }
     }
+    if ($current !== null) {
+        $blocks[] = $current;
+    }
 
-    if ($foundFirstDate) {
-        $flushItem();
+    foreach ($blocks as $blk) {
+        if ($blk['descartado'] ?? false) {
+            $descartados[] = ['linha' => implode(' ', $blk['linhas']), 'motivo' => $blk['motivo'] ?? 'ruído'];
+            continue;
+        }
+        if (empty($blk['linhas'])) {
+            $descartados[] = ['linha' => '(vazio)', 'motivo' => 'sem descricao'];
+            continue;
+        }
+        if ($blk['valor'] === null) {
+            $descartados[] = ['linha' => implode(' ', $blk['linhas']), 'motivo' => 'sem valor detectado'];
+            continue;
+        }
+        $descricaoParte = trim(implode(' ', $blk['linhas']));
+        $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
+        if ($parcelaInfo) {
+            if ($parcelaInfo['total'] > 1 && $parcelaInfo['atual'] >= $parcelaInfo['total']) {
+                $parcelaInfo = null; // última parcela vira 1x
+            } else {
+                $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
+            }
+        }
+        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
+        if ($descricaoNormalizada === '') {
+            $descartados[] = ['linha' => $descricaoParte, 'motivo' => 'formato inválido'];
+            continue;
+        }
+        $isCredito = preg_match('/\b(ESTORNO|CREDITO|CR[EÉ]DITO|DEVOLUCAO|REEMBOLSO)\b/i', $descricaoParte) === 1;
+        $itens[] = [
+            'descricao_original' => $descricaoParte,
+            'descricao_normalizada' => $descricaoNormalizada,
+            'valor_total' => abs($blk['valor']),
+            'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
+            'total_parcelas' => $parcelaInfo['total'] ?? 1,
+            'parcela_atual' => $parcelaInfo['atual'] ?? null,
+            'is_credito' => $isCredito,
+            'descartados' => [],
+        ];
     }
 
     return ['itens' => $itens, 'descartados' => $descartados];
