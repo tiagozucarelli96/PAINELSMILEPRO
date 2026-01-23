@@ -507,6 +507,21 @@ function cartao_ofx_format_date_display(string $ymd): string {
     return $ymd;
 }
 
+function cartao_ofx_sanitize_text(string $text): string {
+    $text = str_replace(["\r", "\n"], ' ', $text);
+    $text = preg_replace('/\s+/', ' ', $text);
+    $text = str_replace(['|', '<', '>', '&', '"', '\''], ' ', $text);
+    $text = trim($text);
+    if (mb_strlen($text, 'UTF-8') > 120) {
+        $text = mb_substr($text, 0, 120, 'UTF-8');
+    }
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+    if ($ascii !== false) {
+        $text = $ascii;
+    }
+    return $text;
+}
+
 function cartao_ofx_generate_ofx(array $transacoes): string {
     if (empty($transacoes)) {
         throw new RuntimeException('Nenhuma transacao para gerar OFX.');
@@ -522,48 +537,61 @@ function cartao_ofx_generate_ofx(array $transacoes): string {
     $lines[] = 'DATA:OFXSGML';
     $lines[] = 'VERSION:102';
     $lines[] = 'SECURITY:NONE';
-    $lines[] = 'ENCODING:UTF-8';
+    $lines[] = 'ENCODING:USASCII';
     $lines[] = 'CHARSET:1252';
     $lines[] = 'COMPRESSION:NONE';
     $lines[] = 'OLDFILEUID:NONE';
     $lines[] = 'NEWFILEUID:NONE';
-    $lines[] = '';
     $lines[] = '<OFX>';
     $lines[] = '<SIGNONMSGSRSV1>';
     $lines[] = '<SONRS>';
     $lines[] = '<STATUS>';
-    $lines[] = '<CODE>0';
-    $lines[] = '<SEVERITY>INFO';
+    $lines[] = '<CODE>0</CODE>';
+    $lines[] = '<SEVERITY>INFO</SEVERITY>';
     $lines[] = '</STATUS>';
-    $lines[] = '<DTSERVER>' . $dtServer;
-    $lines[] = '<LANGUAGE>POR';
+    $lines[] = '<DTSERVER>' . $dtServer . '</DTSERVER>';
+    $lines[] = '<LANGUAGE>POR</LANGUAGE>';
     $lines[] = '</SONRS>';
     $lines[] = '</SIGNONMSGSRSV1>';
     $lines[] = '<BANKMSGSRSV1>';
     $lines[] = '<STMTTRNRS>';
-    $lines[] = '<TRNUID>1';
+    $lines[] = '<TRNUID>1</TRNUID>';
     $lines[] = '<STATUS>';
-    $lines[] = '<CODE>0';
-    $lines[] = '<SEVERITY>INFO';
+    $lines[] = '<CODE>0</CODE>';
+    $lines[] = '<SEVERITY>INFO</SEVERITY>';
     $lines[] = '</STATUS>';
     $lines[] = '<STMTRS>';
-    $lines[] = '<CURDEF>BRL';
+    $lines[] = '<CURDEF>BRL</CURDEF>';
     $lines[] = '<BANKACCTFROM>';
-    $lines[] = '<BANKID>000';
-    $lines[] = '<ACCTID>CARTAO';
-    $lines[] = '<ACCTTYPE>CHECKING';
+    $lines[] = '<BANKID>000</BANKID>';
+    $lines[] = '<ACCTID>CARTAO</ACCTID>';
+    $lines[] = '<ACCTTYPE>CHECKING</ACCTTYPE>';
     $lines[] = '</BANKACCTFROM>';
     $lines[] = '<BANKTRANLIST>';
-    $lines[] = '<DTSTART>' . $dtStart;
-    $lines[] = '<DTEND>' . $dtEnd;
+    $lines[] = '<DTSTART>' . $dtStart . '</DTSTART>';
+    $lines[] = '<DTEND>' . $dtEnd . '</DTEND>';
 
-    foreach ($transacoes as $transacao) {
+    foreach ($transacoes as $idx => $transacao) {
+        $valor = $transacao['valor'];
+        if ($valor > 0) {
+            $valor = -1 * $valor;
+        }
+        $valorFmt = number_format($valor, 2, '.', '');
+        $dtposted = preg_replace('/[^0-9]/', '', $transacao['data_vencimento']);
+        $descricao = $transacao['nome'];
+        $memo = cartao_ofx_sanitize_text($descricao);
+        $name = $memo;
+        $fitid = $transacao['fitid'];
+        $checknum = substr(preg_replace('/[^0-9]/', '', $dtposted) . sprintf('%03d', $idx + 1), 0, 20);
+
         $lines[] = '<STMTTRN>';
-        $lines[] = '<TRNTYPE>' . $transacao['trntype'];
-        $lines[] = '<DTPOSTED>' . $transacao['data_vencimento'];
-        $lines[] = '<TRNAMT>' . number_format($transacao['valor'], 2, '.', '');
-        $lines[] = '<FITID>' . $transacao['fitid'];
-        $lines[] = '<NAME>' . $transacao['nome'];
+        $lines[] = '<TRNTYPE>' . ($valorFmt < 0 ? 'DEBIT' : 'CREDIT') . '</TRNTYPE>';
+        $lines[] = '<DTPOSTED>' . $dtposted . '</DTPOSTED>';
+        $lines[] = '<TRNAMT>' . $valorFmt . '</TRNAMT>';
+        $lines[] = '<FITID>' . $fitid . '</FITID>';
+        $lines[] = '<CHECKNUM>' . $checknum . '</CHECKNUM>';
+        $lines[] = '<NAME>' . $name . '</NAME>';
+        $lines[] = '<MEMO>' . $memo . '</MEMO>';
         $lines[] = '</STMTTRN>';
     }
 
@@ -779,21 +807,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $transacoesJson = [];
             $competenciaGeracao = $selecionadas[0]['competencia_base'] ?? ($_POST['competencia'] ?? '');
             foreach ($selecionadas as $tx) {
-                if (isset($duplicados[$tx['hash_parcela']])) {
-                    continue;
-                }
-                $trnType = $tx['valor'] >= 0 ? 'CREDIT' : 'DEBIT';
-                $transacoesFinal[] = [
-                    'trntype' => $trnType,
-                    'data_vencimento' => $tx['data_vencimento'],
-                    'valor' => $tx['valor'],
-                    'fitid' => $tx['hash_parcela'],
-                    'nome' => $tx['descricao'],
-                    'hash_parcela' => $tx['hash_parcela'],
-                    'base_hash' => $tx['base_hash'],
-                    'parcela_numero' => $tx['parcela_numero'],
-                    'total_parcelas' => $tx['total_parcelas'],
-                ];
+                        if (isset($duplicados[$tx['hash_parcela']])) {
+                            continue;
+                        }
+                        $descFinal = $tx['descricao'];
+                        if (!empty($tx['total_parcelas']) && (int)$tx['total_parcelas'] > 1) {
+                            $descFinal .= ' (' . (int)$tx['parcela_numero'] . '/' . (int)$tx['total_parcelas'] . ')';
+                        }
+                        $trnType = $tx['valor'] >= 0 ? 'CREDIT' : 'DEBIT';
+                        $transacoesFinal[] = [
+                            'trntype' => $trnType,
+                            'data_vencimento' => $tx['data_vencimento'],
+                            'valor' => $tx['valor'],
+                            'fitid' => $tx['hash_parcela'],
+                            'nome' => $descFinal,
+                            'hash_parcela' => $tx['hash_parcela'],
+                            'base_hash' => $tx['base_hash'],
+                            'parcela_numero' => $tx['parcela_numero'],
+                            'total_parcelas' => $tx['total_parcelas'],
+                        ];
                 $transacoesJson[] = [
                     'data' => $tx['data_vencimento'],
                     'descricao' => $tx['descricao'],
