@@ -354,16 +354,16 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
     $descartados = [];
+    $buffer = '';
 
-    foreach ($linhas as $linha) {
+    $flush = function(string $linha) use (&$itens, &$descartados) {
         $linha = trim($linha);
-        if ($linha === '') {
-            continue;
-        }
         $parts = array_map('trim', explode('|', $linha));
-        if (count($parts) < 2) {
-            $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
-            continue;
+        if (count($parts) < 2 || $parts[0] === '' || $parts[1] === '') {
+            if ($linha !== '') {
+                $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
+            }
+            return;
         }
         $descricao = $parts[0];
         $valorStr = $parts[1];
@@ -372,7 +372,7 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         $valor = cartao_ofx_parse_valor($valorStr);
         if ($valor === null) {
             $descartados[] = ['linha' => $linha, 'motivo' => 'sem valor detectado'];
-            continue;
+            return;
         }
         $isCredito = $valor < 0;
         $valorAbs = abs($valor);
@@ -399,7 +399,7 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
         if ($descricaoNormalizada === '') {
             $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
-            continue;
+            return;
         }
 
         $itens[] = [
@@ -411,6 +411,24 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
             'parcela_atual' => $parcelaInfo['atual'] ?? null,
             'is_credito' => $isCredito,
         ];
+    };
+
+    foreach ($linhas as $linha) {
+        $linha = trim($linha);
+        if ($linha === '') {
+            continue;
+        }
+        $candidate = $buffer === '' ? $linha : $buffer . ' ' . $linha;
+        $parts = array_map('trim', explode('|', $candidate));
+        if (count($parts) >= 2 && $parts[0] !== '' && $parts[1] !== '') {
+            $flush($candidate);
+            $buffer = '';
+        } else {
+            $buffer = $candidate;
+        }
+    }
+    if ($buffer !== '') {
+        $flush($buffer);
     }
 
     return ['itens' => $itens, 'descartados' => $descartados];
@@ -604,6 +622,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $itensBase = cartao_ofx_filtrar_estornos_cobranca($parseResult['itens'] ?? []);
                 $descartados = $parseResult['descartados'] ?? [];
                 error_log('[CARTAO_OFX] Itens base identificados (manual): ' . count($itensBase));
+                if (!empty($descartados)) {
+                    error_log('[CARTAO_OFX] Descartados: ' . json_encode($descartados));
+                }
 
                 if (empty($itensBase)) {
                     $erros[] = 'Nenhum lancamento identificado. Verifique o formato Descricao | Valor | Parcela(opcional).';
