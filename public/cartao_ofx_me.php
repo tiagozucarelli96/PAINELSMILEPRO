@@ -11,7 +11,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
-require_once __DIR__ . '/magalu_storage_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 $debugLocal = getenv('APP_DEBUG') === '1';
 if ($debugLocal) {
@@ -802,14 +802,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ofxPath = $tmpFile . '.ofx';
                     file_put_contents($ofxPath, $ofxContent);
 
-                    $magalu = new MagaluStorageHelper();
-                    $pasta = 'administrativo/cartao_ofx/' . date('Y') . '/' . date('m');
-                    $upload = $magalu->uploadFileFromPath($ofxPath, $pasta, 'application/x-ofx');
-
-                    if (empty($upload['success'])) {
-                        $detail = $upload['error'] ?? '';
-                        throw new RuntimeException('Falha ao enviar OFX para Magalu.' . ($detail ? ' ' . $detail : ''));
-                    }
+                    $uploader = new MagaluUpload();
+                    $pasta = 'administrativo/cartao_ofx';
+                    $upload = $uploader->uploadFromPath($ofxPath, $pasta, 'ofx_' . date('Ymd_His') . '.ofx', 'application/x-ofx');
 
                     $pdo->beginTransaction();
                     $baseIds = [];
@@ -868,7 +863,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['id'] ?? null,
                         count($transacoesFinal),
                         $upload['url'] ?? null,
-                        $upload['key'] ?? null,
+                        $upload['chave_storage'] ?? ($upload['key'] ?? null),
                         'gerado',
                         json_encode($transacoesJson),
                     ]);

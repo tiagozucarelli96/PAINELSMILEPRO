@@ -96,6 +96,7 @@ class MagaluUpload {
             'application/vnd.ms-excel', // .xls
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
             'application/vnd.ms-excel.sheet.macroEnabled.12', // .xlsm
+            'application/x-ofx', 'application/xml', 'text/xml', 'application/octet-stream'
         ];
         
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -123,6 +124,23 @@ class MagaluUpload {
             'mime_type' => $mimeType,
             'tamanho_bytes' => $file['size']
         ];
+    }
+
+    /**
+     * Upload a partir de um caminho já existente (arquivo gerado)
+     */
+    public function uploadFromPath(string $path, string $prefix = 'demandas', ?string $filename = null, ?string $mimeType = null) {
+        if (!file_exists($path)) {
+            throw new Exception("Arquivo não encontrado: {$path}");
+        }
+        $fakeFile = [
+            'tmp_name' => $path,
+            'name' => $filename ?: basename($path),
+            'size' => filesize($path),
+            'type' => $mimeType ?: (mime_content_type($path) ?: 'application/octet-stream'),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        return $this->upload($fakeFile, $prefix);
     }
     
     private function uploadToMagalu($tmpFile, $key, $mimeType) {
