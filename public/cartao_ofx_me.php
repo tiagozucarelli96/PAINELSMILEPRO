@@ -707,6 +707,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'limpar_preview') {
+        unset($_SESSION['cartao_ofx_preview']);
+        $preview = null;
+    }
+
     if ($action === 'confirmar') {
         error_log('[CARTAO_OFX] Confirmar geração iniciado');
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
@@ -1155,6 +1160,15 @@ ob_start();
             </div>
         </form>
     </div>
+
+    <?php if ($preview): ?>
+        <div style="margin-bottom:0.5rem;">
+            <form method="post" style="display:inline;">
+                <input type="hidden" name="action" value="limpar_preview">
+                <button class="ofx-button" type="submit" style="background:#475569;">Limpar prévia</button>
+            </form>
+        </div>
+    <?php endif; ?>
 
     <?php if ($preview): ?>
         <div class="ofx-card">

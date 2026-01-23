@@ -34,6 +34,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $viewId = (int)($_GET['view'] ?? 0);
 $viewTransacoes = [];
+$downloadId = (int)($_GET['download'] ?? 0);
+$downloadError = null;
+
+if ($downloadId > 0) {
+    try {
+        if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+            require_once __DIR__ . '/../vendor/autoload.php';
+        }
+        $stmt = $pdo->prepare('SELECT arquivo_key, arquivo_url FROM cartao_ofx_geracoes WHERE id = ?');
+        $stmt->execute([$downloadId]);
+        $arq = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$arq) {
+            throw new Exception('Registro não encontrado');
+        }
+        $key = $arq['arquivo_key'] ?? null;
+        $url = $arq['arquivo_url'] ?? null;
+        if ($key && class_exists('Aws\\S3\\S3Client')) {
+            $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+            $region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
+            $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+            $accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
+            $secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
+            $s3 = new Aws\S3\S3Client([
+                'region' => $region,
+                'version' => 'latest',
+                'credentials' => [
+                    'key' => $accessKey,
+                    'secret' => $secretKey,
+                ],
+                'endpoint' => $endpoint,
+                'use_path_style_endpoint' => true,
+                'signature_version' => 'v4',
+            ]);
+            $cmd = $s3->getCommand('GetObject', ['Bucket' => strtolower($bucket), 'Key' => $key]);
+            $presigned = $s3->createPresignedRequest($cmd, '+15 minutes')->getUri();
+            header('Location: ' . (string)$presigned);
+            exit;
+        } elseif ($url) {
+            header('Location: ' . $url);
+            exit;
+        } else {
+            throw new Exception('Arquivo não disponível para download');
+        }
+    } catch (Exception $e) {
+        $downloadError = $e->getMessage();
+    }
+}
 if ($viewId > 0) {
     $stmt = $pdo->prepare('SELECT transacoes_json FROM cartao_ofx_geracoes WHERE id = ?');
     $stmt->execute([$viewId]);
@@ -175,6 +222,9 @@ ob_start();
     <?php foreach ($mensagens as $msg): ?>
         <div class="ofx-alert success"><?php echo htmlspecialchars($msg); ?></div>
     <?php endforeach; ?>
+    <?php if ($downloadError): ?>
+        <div class="ofx-alert error"><?php echo htmlspecialchars($downloadError); ?></div>
+    <?php endif; ?>
 
     <?php if (!empty($viewTransacoes)): ?>
         <div class="ofx-card">
@@ -231,9 +281,9 @@ ob_start();
                                 </span>
                             </td>
                             <td>
-                                <?php if (!empty($geracao['arquivo_url'])): ?>
-                                    <a href="<?php echo htmlspecialchars($geracao['arquivo_url']); ?>" target="_blank">Baixar</a>
-                                <?php endif; ?>
+                            <?php if (!empty($geracao['arquivo_key']) || !empty($geracao['arquivo_url'])): ?>
+                                <a href="index.php?page=cartao_ofx_me_historico&download=<?php echo (int)$geracao['id']; ?>">Baixar</a>
+                            <?php endif; ?>
                                 <a href="index.php?page=cartao_ofx_me_historico&view=<?php echo (int)$geracao['id']; ?>">Previa</a>
                                 <form method="post" style="display:inline-block;margin-left:0.5rem;">
                                     <input type="hidden" name="action" value="excluir">
