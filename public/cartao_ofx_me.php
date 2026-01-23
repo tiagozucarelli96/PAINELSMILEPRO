@@ -152,52 +152,74 @@ function cartao_ofx_detect_parcela(string $texto): ?array {
 function cartao_ofx_parse_fatura_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
+    $buffer = [];
+
     foreach ($linhas as $linha) {
         $linha = trim($linha);
         if ($linha === '') {
             continue;
         }
         $linha = preg_replace('/\s+/', ' ', $linha);
-        if (!preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})/', $linha, $match, PREG_OFFSET_CAPTURE)) {
-            continue;
+
+        if (preg_match('/(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})/', $linha, $match, PREG_OFFSET_CAPTURE)) {
+            $valorStr = $match[0][0];
+            $valor = cartao_ofx_parse_valor($valorStr);
+            if ($valor === null) {
+                $buffer = [];
+                continue;
+            }
+
+            $descricaoParte = trim(str_replace($valorStr, '', $linha));
+
+            if ($descricaoParte === '' && !empty($buffer)) {
+                $descricaoParte = trim(implode(' ', $buffer));
+            } elseif ($descricaoParte !== '' && !empty($buffer)) {
+                $descricaoParte = trim(implode(' ', $buffer) . ' ' . $descricaoParte);
+            }
+
+            $buffer = [];
+
+            if ($descricaoParte === '') {
+                continue;
+            }
+
+            $descricaoParte = preg_replace('/^\d{1,2}\/\d{1,2}\s+/', '', $descricaoParte);
+            $descricaoUpper = mb_strtoupper($descricaoParte, 'UTF-8');
+            if (preg_match('/^TOTAL\\b/', $descricaoUpper)) {
+                continue;
+            }
+
+            $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
+            if ($parcelaInfo) {
+                $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
+            }
+            $descricaoParte = trim($descricaoParte);
+            if ($descricaoParte === '') {
+                continue;
+            }
+
+            $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
+            if ($descricaoNormalizada === '') {
+                continue;
+            }
+
+            $isCredito = preg_match('/\b(ESTORNO|CREDITO|CR[EÉ]DITO|DEVOLUCAO|REEMBOLSO)\b/i', $descricaoParte) === 1;
+            $itens[] = [
+                'descricao_original' => $descricaoParte,
+                'descricao_normalizada' => $descricaoNormalizada,
+                'valor_total' => abs($valor),
+                'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
+                'total_parcelas' => $parcelaInfo['total'] ?? 1,
+                'is_credito' => $isCredito,
+            ];
+        } else {
+            $buffer[] = $linha;
+            if (count($buffer) > 5) {
+                array_shift($buffer);
+            }
         }
-        $valorStr = $match[0][0];
-        $valor = cartao_ofx_parse_valor($valorStr);
-        if ($valor === null) {
-            continue;
-        }
-        $posValor = $match[0][1];
-        $descricaoParte = trim(substr($linha, 0, $posValor));
-        if ($descricaoParte === '') {
-            continue;
-        }
-        $descricaoParte = preg_replace('/^\d{1,2}\/\d{1,2}\s+/', '', $descricaoParte);
-        $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
-        if ($parcelaInfo) {
-            $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
-        }
-        $descricaoParte = trim($descricaoParte);
-        if ($descricaoParte === '') {
-            continue;
-        }
-        $descricaoUpper = mb_strtoupper($descricaoParte, 'UTF-8');
-        if (preg_match('/^TOTAL\\b/', $descricaoUpper)) {
-            continue;
-        }
-        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
-        if ($descricaoNormalizada === '') {
-            continue;
-        }
-        $isCredito = preg_match('/\b(ESTORNO|CREDITO|CR[EÉ]DITO|DEVOLUCAO|REEMBOLSO)\b/i', $descricaoParte) === 1;
-        $itens[] = [
-            'descricao_original' => $descricaoParte,
-            'descricao_normalizada' => $descricaoNormalizada,
-            'valor_total' => abs($valor),
-            'indicador_parcela' => $parcelaInfo['indicador'] ?? null,
-            'total_parcelas' => $parcelaInfo['total'] ?? 1,
-            'is_credito' => $isCredito,
-        ];
     }
+
     return $itens;
 }
 
