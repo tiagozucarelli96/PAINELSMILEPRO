@@ -612,23 +612,27 @@ $flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
 unset($_SESSION['cartao_ofx_flash']);
 
 // Se há parâmetro success mas não há flash message, buscar último arquivo gerado
-if (!empty($_GET['success']) && !$flashSuccess && !empty($_SESSION['id'])) {
+if (!empty($_GET['success']) && !$flashSuccess) {
+    error_log('[CARTAO_OFX] Buscando ultima geracao para exibir banner. User ID: ' . ($_SESSION['id'] ?? 'NULL'));
     $stmt = $pdo->prepare('
         SELECT id, quantidade_transacoes, arquivo_key, arquivo_url
         FROM cartao_ofx_geracoes
-        WHERE usuario_id = ? AND status = \'gerado\'
+        WHERE status = \'gerado\'
         ORDER BY gerado_em DESC
         LIMIT 1
     ');
-    $stmt->execute([$_SESSION['id']]);
+    $stmt->execute();
     $ultimaGeracao = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($ultimaGeracao) {
+        error_log('[CARTAO_OFX] Ultima geracao encontrada: ID=' . $ultimaGeracao['id'] . ', Tx=' . $ultimaGeracao['quantidade_transacoes']);
         $flashSuccess = [
             'url' => 'index.php?page=cartao_ofx_me_historico&download=' . (int)$ultimaGeracao['id'],
             'download_url' => 'index.php?page=cartao_ofx_me_historico&download=' . (int)$ultimaGeracao['id'],
             'quantidade' => (int)$ultimaGeracao['quantidade_transacoes'],
             'geracao_id' => (int)$ultimaGeracao['id'],
         ];
+    } else {
+        error_log('[CARTAO_OFX] Nenhuma geracao encontrada no banco');
     }
 }
 
@@ -923,27 +927,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                     }
 
+                    error_log('[CARTAO_OFX] Preparando INSERT em cartao_ofx_geracoes. Cartao: ' . $cartaoId . ', Competencia: ' . $competenciaGeracao . ', Tx: ' . count($transacoesFinal));
                     $stmtGeracao = $pdo->prepare('
                         INSERT INTO cartao_ofx_geracoes
                         (cartao_id, competencia, gerado_em, usuario_id, quantidade_transacoes, arquivo_url, arquivo_key, status, transacoes_json)
                         VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)
                         RETURNING id
                     ');
+                    $arquivoKey = $upload['chave_storage'] ?? ($upload['key'] ?? null);
+                    $arquivoUrl = $upload['url'] ?? null;
+                    error_log('[CARTAO_OFX] Executando INSERT. Key: ' . ($arquivoKey ?? 'NULL') . ', URL: ' . ($arquivoUrl ?? 'NULL'));
                     $stmtGeracao->execute([
                         $cartaoId,
                         $competenciaGeracao,
                         $_SESSION['id'] ?? null,
                         count($transacoesFinal),
-                        $upload['url'] ?? null,
-                        $upload['chave_storage'] ?? ($upload['key'] ?? null),
+                        $arquivoUrl,
+                        $arquivoKey,
                         'gerado',
                         json_encode($transacoesJson),
                     ]);
                     $geracaoRow = $stmtGeracao->fetch(PDO::FETCH_ASSOC);
                     $geracaoId = $geracaoRow ? (int)$geracaoRow['id'] : (int)$pdo->lastInsertId();
+                    error_log('[CARTAO_OFX] INSERT executado. ID obtido: ' . $geracaoId);
 
                     $pdo->commit();
-                    error_log('[CARTAO_OFX] Geracao salva. ID: ' . $geracaoId . ', Tx: ' . count($transacoesFinal) . ', Key: ' . ($upload['chave_storage'] ?? $upload['key'] ?? 'N/A'));
+                    error_log('[CARTAO_OFX] Geracao salva. ID: ' . $geracaoId . ', Tx: ' . count($transacoesFinal) . ', Key: ' . ($arquivoKey ?? 'N/A') . ', Commit realizado com sucesso');
 
                     $ofxGerado = [
                         'url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
@@ -952,16 +961,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'download_url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
                     ];
                     $_SESSION['cartao_ofx_flash'] = $ofxGerado;
+                    error_log('[CARTAO_OFX] Flash message salvo na sessao: ' . json_encode($ofxGerado));
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
+                    // Garantir que a sessão seja salva antes do redirect
+                    session_write_close();
+                    error_log('[CARTAO_OFX] Redirecionando para exibir banner. Geracao ID: ' . $geracaoId);
                     // Redirect para evitar re-submit e exibir banner corretamente
                     header('Location: index.php?page=cartao_ofx_me&success=1');
                     exit;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
+                        error_log('[CARTAO_OFX] ERRO: Rollback realizado. ' . $e->getMessage());
                     }
+                    error_log('[CARTAO_OFX] ERRO ao gerar OFX: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
                     $erros[] = 'Erro ao gerar OFX: ' . $e->getMessage();
                 }
             }

@@ -113,6 +113,10 @@ $stmt = $pdo->query('
     LIMIT 500
 ');
 $geracoes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+error_log('[CARTAO_OFX_HIST] Total de geracoes encontradas: ' . count($geracoes));
+if (!empty($geracoes)) {
+    error_log('[CARTAO_OFX_HIST] Primeira geracao: ID=' . $geracoes[0]['id'] . ', Data=' . $geracoes[0]['gerado_em'] . ', Status=' . $geracoes[0]['status']);
+}
 
 ob_start();
 ?>
