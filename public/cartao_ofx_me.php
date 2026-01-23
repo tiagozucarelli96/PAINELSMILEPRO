@@ -146,7 +146,8 @@ function cartao_ofx_normalize_descricao(string $descricao): string {
 }
 
 function cartao_ofx_detect_parcela(string $texto): ?array {
-    if (!preg_match_all('/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/', $texto, $matches, PREG_OFFSET_CAPTURE)) {
+    // Permitir parcelas mesmo coladas a letras (ex.: KA01/02)
+    if (!preg_match_all('/(\d{1,2})\s*\/\s*(\d{1,2})/', $texto, $matches, PREG_OFFSET_CAPTURE)) {
         return null;
     }
     $count = count($matches[0]);
