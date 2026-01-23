@@ -169,23 +169,6 @@ function cartao_ofx_filtrar_estornos_cobranca(array $itens): array {
     return $keep;
 }
 
-function cartao_ofx_identificar_cobranca(string $descricaoNormalizada): ?string {
-    $kinds = [
-        'iof' => ['IOF'],
-        'juros' => ['JUROS'],
-        'anuidade' => ['ANUID'],
-        'tarifa' => ['TARIFA','TAXA','ENCARGO','SEGURO'],
-    ];
-    foreach ($kinds as $kind => $terms) {
-        foreach ($terms as $t) {
-            if (strpos($descricaoNormalizada, $t) !== false) {
-                return $kind;
-            }
-        }
-    }
-    return null;
-}
-
 function cartao_ofx_detect_parcela(string $texto): ?array {
     // Permitir parcelas mesmo coladas a letras (ex.: KA01/02)
     if (!preg_match_all('/(\d{1,2})\s*\/\s*(\d{1,2})/', $texto, $matches, PREG_OFFSET_CAPTURE)) {
