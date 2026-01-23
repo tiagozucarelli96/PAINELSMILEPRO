@@ -24,6 +24,11 @@ if ($debugLocal) {
 
 $pdo = $GLOBALS['pdo'];
 
+// Limpar prévia se entrar na página sem POST (evitar ficar com estado antigo ao voltar)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    unset($_SESSION['cartao_ofx_preview']);
+}
+
 function cartao_ofx_normalize_uploads(array $files): array {
     $normalized = [];
     if (!isset($files['name']) || !is_array($files['name'])) {
@@ -215,6 +220,32 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
                 'descartado' => false,
             ];
             $resto = trim(preg_replace($dateRegex, '', $linha, 1));
+            // Se a mesma linha tem outro dd/mm, divide a linha (valor primeiro)
+            if (preg_match('/(\d{1,2}\/\d{1,2})/', $resto, $mdate2, PREG_OFFSET_CAPTURE)) {
+                $pos = $mdate2[0][1];
+                $antes = trim(substr($resto, 0, $pos));
+                $depois = trim(substr($resto, $pos));
+                if ($antes !== '') {
+                    $current['linhas'][] = $antes;
+                    $val = $extractValor([$antes]);
+                    if ($val !== null) { $current['valor'] = $val; }
+                }
+                // inicia um novo bloco virtual com a segunda data
+                $blocks[] = $current;
+                $current = [
+                    'linhas' => [],
+                    'valor' => null,
+                    'descartado' => false,
+                ];
+                // remove data do começo do depois
+                $depois = trim(preg_replace($dateRegex, '', $depois, 1));
+                if ($depois !== '') {
+                    $current['linhas'][] = $depois;
+                    $val = $extractValor([$depois]);
+                    if ($val !== null) { $current['valor'] = $val; }
+                }
+                continue;
+            }
             if ($isNoise($linha)) {
                 $current['descartado'] = true;
                 $current['motivo'] = 'linha de ruído/cabeçalho';
@@ -258,6 +289,9 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         if ($blk['descartado'] ?? false) {
             $descartados[] = ['linha' => implode(' ', $blk['linhas']), 'motivo' => $blk['motivo'] ?? 'ruído'];
             continue;
+        }
+        if ($blk['valor'] === null && !empty($blk['linhas'])) {
+            $blk['valor'] = $extractValor($blk['linhas']);
         }
         if (empty($blk['linhas'])) {
             $descartados[] = ['linha' => '(vazio)', 'motivo' => 'sem descricao'];
@@ -1099,15 +1133,20 @@ ob_start();
                     <tbody data-next-index="<?php echo count($preview['transacoes']); ?>">
                         <?php foreach ($preview['base_items'] as $baseItem): ?>
                             <?php
-                                $baseHash = $baseItem['base_key'];
-                                $children = $transacoesPorBase[$baseHash] ?? [];
-                                $primeiraDescricao = $children[0]['descricao'] ?? $baseItem['descricao_original'];
-                                $duplicadosFilhos = array_reduce($children, function($carry, $tx) { return $carry + ($tx['duplicado'] ? 1 : 0); }, 0);
-                            ?>
+                            $baseHash = $baseItem['base_key'];
+                            $children = $transacoesPorBase[$baseHash] ?? [];
+                            $primeiraDescricao = $children[0]['descricao'] ?? $baseItem['descricao_original'];
+                            $duplicadosFilhos = array_reduce($children, function($carry, $tx) { return $carry + ($tx['duplicado'] ? 1 : 0); }, 0);
+                            $hasChildren = count($children) > 0;
+                        ?>
                             <tr class="ofx-base-row" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
                                 <td><?php echo htmlspecialchars(cartao_ofx_format_date_display($baseItem['data_base'])); ?></td>
                                 <td>
-                                    <button type="button" class="toggle-btn" data-toggle-children="<?php echo htmlspecialchars($baseHash); ?>">▼</button>
+                                    <?php if ($hasChildren): ?>
+                                        <button type="button" class="toggle-btn" data-toggle-children="<?php echo htmlspecialchars($baseHash); ?>">▼</button>
+                                    <?php else: ?>
+                                        <span style="display:inline-block;width:28px;"></span>
+                                    <?php endif; ?>
                                     <input style="width:70%;" type="text" class="base-desc" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>" value="<?php echo htmlspecialchars($primeiraDescricao); ?>">
                                 </td>
                                 <td>R$ <?php echo number_format($baseItem['valor_total'], 2, ',', '.'); ?></td>
@@ -1120,10 +1159,12 @@ ob_start();
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <label class="ofx-inline">
-                                        <input type="checkbox" class="toggle-no-explode" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
-                                        Nao explodir parcelas
-                                    </label>
+                                    <?php if ($hasChildren): ?>
+                                        <label class="ofx-inline">
+                                            <input type="checkbox" class="toggle-no-explode" data-base-hash="<?php echo htmlspecialchars($baseHash); ?>">
+                                            Nao explodir parcelas
+                                        </label>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php foreach ($children as $tx): ?>
@@ -1200,68 +1241,70 @@ ob_start();
 </div>
 
 <script>
-document.querySelectorAll('[data-toggle-children]').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var baseHash = this.getAttribute('data-toggle-children');
-        var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
-        var showing = children.length > 0 && children[0].style.display !== 'none';
-        children.forEach(function(row) {
-            row.style.display = showing ? 'none' : '';
-        });
-        this.textContent = showing ? '▼' : '▲';
-    });
-});
-
-document.querySelectorAll('.base-desc').forEach(function(input) {
-    input.addEventListener('input', function() {
-        var baseHash = this.getAttribute('data-base-hash');
-        var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"] input[type="text"]');
-        children.forEach(function(childInput) {
-            if (!childInput.dataset.userEdited) {
-                childInput.value = input.value;
-            }
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-toggle-children]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var baseHash = this.getAttribute('data-toggle-children');
+            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
+            var showing = children.length > 0 && children[0].style.display !== 'none';
+            children.forEach(function(row) {
+                row.style.display = showing ? 'none' : '';
+            });
+            this.textContent = showing ? '▼' : '▲';
         });
     });
-});
 
-document.querySelectorAll('.child-row input[type="text"]').forEach(function(input) {
-    input.addEventListener('input', function() {
-        this.dataset.userEdited = '1';
-    });
-});
-
-document.querySelectorAll('.toggle-no-explode').forEach(function(toggle) {
-    toggle.addEventListener('change', function() {
-        var baseHash = this.getAttribute('data-base-hash');
-        var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
-        children.forEach(function(row) {
-            var checkbox = row.querySelector('input[type="checkbox"][name*="include"]');
-            row.style.display = toggle.checked ? 'none' : '';
-            if (checkbox) {
-                checkbox.checked = !toggle.checked;
-                checkbox.dispatchEvent(new Event('change'));
-            }
+    document.querySelectorAll('.base-desc').forEach(function(input) {
+        input.addEventListener('input', function() {
+            var baseHash = this.getAttribute('data-base-hash');
+            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"] input[type="text"]');
+            children.forEach(function(childInput) {
+                if (!childInput.dataset.userEdited) {
+                    childInput.value = input.value;
+                }
+            });
         });
     });
-});
 
-document.querySelectorAll('.tx-include').forEach(function(checkbox) {
-    checkbox.addEventListener('change', function() {
-        var row = this.closest('tr');
-        if (!row) return;
-        var tag = row.querySelector('.status-tag');
-        if (!tag) return;
-        if (this.checked) {
-            if (tag.classList.contains('duplicado')) {
-                tag.textContent = 'Duplicado';
+    document.querySelectorAll('.child-row input[type="text"]').forEach(function(input) {
+        input.addEventListener('input', function() {
+            this.dataset.userEdited = '1';
+        });
+    });
+
+    document.querySelectorAll('.toggle-no-explode').forEach(function(toggle) {
+        toggle.addEventListener('change', function() {
+            var baseHash = this.getAttribute('data-base-hash');
+            var children = document.querySelectorAll('tr.child-row[data-base-hash="' + baseHash + '"]');
+            children.forEach(function(row) {
+                var checkbox = row.querySelector('input[type="checkbox"][name*="include"]');
+                row.style.display = toggle.checked ? 'none' : '';
+                if (checkbox) {
+                    checkbox.checked = !toggle.checked;
+                    checkbox.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+    });
+
+    document.querySelectorAll('.tx-include').forEach(function(checkbox) {
+        checkbox.addEventListener('change', function() {
+            var row = this.closest('tr');
+            if (!row) return;
+            var tag = row.querySelector('.status-tag');
+            if (!tag) return;
+            if (this.checked) {
+                if (tag.classList.contains('duplicado')) {
+                    tag.textContent = 'Duplicado';
+                } else {
+                    tag.textContent = 'Novo';
+                }
+                tag.classList.remove('ignorado');
             } else {
-                tag.textContent = 'Novo';
+                tag.textContent = 'Ignorado';
+                tag.classList.add('ignorado');
             }
-            tag.classList.remove('ignorado');
-        } else {
-            tag.textContent = 'Ignorado';
-            tag.classList.add('ignorado');
-        }
+        });
     });
 });
 </script>
