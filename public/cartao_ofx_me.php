@@ -611,6 +611,27 @@ $ofxGerado = null;
 $flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
 unset($_SESSION['cartao_ofx_flash']);
 
+// Se há parâmetro success mas não há flash message, buscar último arquivo gerado
+if (!empty($_GET['success']) && !$flashSuccess && !empty($_SESSION['id'])) {
+    $stmt = $pdo->prepare('
+        SELECT id, quantidade_transacoes, arquivo_key, arquivo_url
+        FROM cartao_ofx_geracoes
+        WHERE usuario_id = ? AND status = \'gerado\'
+        ORDER BY gerado_em DESC
+        LIMIT 1
+    ');
+    $stmt->execute([$_SESSION['id']]);
+    $ultimaGeracao = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($ultimaGeracao) {
+        $flashSuccess = [
+            'url' => 'index.php?page=cartao_ofx_me_historico&download=' . (int)$ultimaGeracao['id'],
+            'download_url' => 'index.php?page=cartao_ofx_me_historico&download=' . (int)$ultimaGeracao['id'],
+            'quantidade' => (int)$ultimaGeracao['quantidade_transacoes'],
+            'geracao_id' => (int)$ultimaGeracao['id'],
+        ];
+    }
+}
+
 $cartoesStmt = $pdo->query('SELECT * FROM cartao_ofx_cartoes WHERE status = TRUE ORDER BY nome_cartao');
 $cartoes = $cartoesStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
@@ -906,6 +927,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         INSERT INTO cartao_ofx_geracoes
                         (cartao_id, competencia, gerado_em, usuario_id, quantidade_transacoes, arquivo_url, arquivo_key, status, transacoes_json)
                         VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)
+                        RETURNING id
                     ');
                     $stmtGeracao->execute([
                         $cartaoId,
@@ -917,20 +939,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'gerado',
                         json_encode($transacoesJson),
                     ]);
-                    $geracaoId = (int)$pdo->lastInsertId();
+                    $geracaoRow = $stmtGeracao->fetch(PDO::FETCH_ASSOC);
+                    $geracaoId = $geracaoRow ? (int)$geracaoRow['id'] : (int)$pdo->lastInsertId();
 
                     $pdo->commit();
-                    error_log('[CARTAO_OFX] Geracao salva. Tx: ' . count($transacoesFinal));
+                    error_log('[CARTAO_OFX] Geracao salva. ID: ' . $geracaoId . ', Tx: ' . count($transacoesFinal) . ', Key: ' . ($upload['chave_storage'] ?? $upload['key'] ?? 'N/A'));
 
                     $ofxGerado = [
                         'url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
                         'quantidade' => count($transacoesFinal),
                         'geracao_id' => $geracaoId,
+                        'download_url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
                     ];
                     $_SESSION['cartao_ofx_flash'] = $ofxGerado;
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
+                    // Redirect para evitar re-submit e exibir banner corretamente
+                    header('Location: index.php?page=cartao_ofx_me&success=1');
+                    exit;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -1039,6 +1066,22 @@ ob_start();
     background: #dcfce7;
     color: #166534;
     border: 1px solid #bbf7d0;
+}
+
+.ofx-success-banner {
+    padding: 1.25rem 1.5rem;
+    border-left: 4px solid #16a34a;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.15);
+}
+
+.ofx-download-btn {
+    transition: all 0.2s;
+}
+
+.ofx-download-btn:hover {
+    background: #1d4ed8 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .ofx-table {
@@ -1156,17 +1199,34 @@ ob_start();
         </div>
     <?php endif; ?>
 
-    <?php if ($ofxGerado || $flashSuccess): ?>
-        <div class="ofx-alert success">
-            <?php $successData = $ofxGerado ?: $flashSuccess; ?>
-            OFX gerado com sucesso! Transacoes: <?php echo (int)($successData['quantidade'] ?? 0); ?>
-            <?php if (!empty($successData['url'])): ?>
-                <div style="margin-top:6px;">
-                    <a class="ofx-button" href="<?php echo htmlspecialchars($successData['url']); ?>" target="_blank">Baixar OFX</a>
-                    <a class="ofx-button" style="background:#0f172a;margin-left:6px;" href="index.php?page=cartao_ofx_me_historico">Ver histórico</a>
+    <?php if ($ofxGerado || $flashSuccess || !empty($_GET['success'])): ?>
+        <?php $successData = $ofxGerado ?: $flashSuccess; ?>
+        <?php if ($successData || !empty($_GET['success'])): ?>
+            <div class="ofx-alert success ofx-success-banner">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <strong style="font-size: 1.1rem;">✓ Arquivo gerado com sucesso!</strong>
+                        <div style="margin-top: 0.5rem; color: #166534;">
+                            <?php if ($successData): ?>
+                                <?php echo (int)($successData['quantidade'] ?? 0); ?> transação(ões) processada(s).
+                            <?php else: ?>
+                                Arquivo OFX gerado com sucesso.
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <?php if (!empty($successData['download_url']) || !empty($successData['url'])): ?>
+                            <a class="ofx-button ofx-download-btn" href="<?php echo htmlspecialchars($successData['download_url'] ?? $successData['url'] ?? ''); ?>" style="background: #2563eb; text-decoration: none; display: inline-block;">
+                                📥 Baixar OFX
+                            </a>
+                        <?php endif; ?>
+                        <a class="ofx-button" href="index.php?page=cartao_ofx_me_historico" style="background: #0f172a; text-decoration: none; display: inline-block;">
+                            📋 Ver histórico
+                        </a>
+                    </div>
                 </div>
-            <?php endif; ?>
-        </div>
+            </div>
+        <?php endif; ?>
     <?php endif; ?>
 
     <div class="ofx-card">

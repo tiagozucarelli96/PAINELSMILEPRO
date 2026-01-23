@@ -110,6 +110,7 @@ $stmt = $pdo->query('
     LEFT JOIN cartao_ofx_cartoes c ON c.id = g.cartao_id
     LEFT JOIN usuarios u ON u.id = g.usuario_id
     ORDER BY g.gerado_em DESC
+    LIMIT 500
 ');
 $geracoes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
