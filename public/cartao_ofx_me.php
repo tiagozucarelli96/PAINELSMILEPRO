@@ -23,14 +23,6 @@ if ($debugLocal) {
 
 $pdo = $GLOBALS['pdo'];
 
-function cartao_ofx_parse_competencia(string $competencia): ?array {
-    $competencia = trim($competencia);
-    if (!preg_match('/^(0[1-9]|1[0-2])\/(\d{4})$/', $competencia, $matches)) {
-        return null;
-    }
-    return [(int)$matches[1], (int)$matches[2]];
-}
-
 function cartao_ofx_calc_vencimento(int $dia, int $mes, int $ano, int $addMonths = 0): DateTimeImmutable {
     $timezone = new DateTimeZone('America/Sao_Paulo');
     $base = DateTimeImmutable::createFromFormat('!Y-m-d', sprintf('%04d-%02d-01', $ano, $mes), $timezone);
@@ -43,6 +35,26 @@ function cartao_ofx_calc_vencimento(int $dia, int $mes, int $ano, int $addMonths
     $ultimoDia = (int)$base->format('t');
     $diaFinal = min($dia, $ultimoDia);
     return $base->setDate((int)$base->format('Y'), (int)$base->format('m'), $diaFinal);
+}
+
+function cartao_ofx_calc_vencimento_from_date(DateTimeImmutable $baseDate, int $addMonths = 0): DateTimeImmutable {
+    $tz = $baseDate->getTimezone();
+    $day = (int)$baseDate->format('d');
+    if ($addMonths !== 0) {
+        $baseDate = $baseDate->modify(($addMonths > 0 ? '+' : '') . $addMonths . ' month');
+    }
+    $ultimoDia = (int)$baseDate->format('t');
+    $diaFinal = min($day, $ultimoDia);
+    return $baseDate->setDate((int)$baseDate->format('Y'), (int)$baseDate->format('m'), $diaFinal);
+}
+
+function cartao_ofx_parse_data_pagamento(string $data): ?DateTimeImmutable {
+    $data = trim($data);
+    if (!preg_match('/^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/(\d{4})$/', $data, $m)) {
+        return null;
+    }
+    $dt = DateTimeImmutable::createFromFormat('d/m/Y', $data, new DateTimeZone('America/Sao_Paulo'));
+    return $dt ?: null;
 }
 
 function cartao_ofx_parse_valor(string $valor): ?float {
@@ -497,15 +509,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Nova tentativa de processamento limpa prévia anterior
         unset($_SESSION['cartao_ofx_preview']);
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
-        $competencia = trim($_POST['competencia'] ?? '');
+        $dataPagamentoStr = trim($_POST['data_pagamento'] ?? '');
         $textoCru = trim($_POST['texto_cru'] ?? '');
-        $competenciaInfo = cartao_ofx_parse_competencia($competencia);
+        $dataPagamento = cartao_ofx_parse_data_pagamento($dataPagamentoStr);
 
         if (!$cartaoId) {
             $erros[] = 'Selecione um cartao.';
         }
-        if (!$competenciaInfo) {
-            $erros[] = 'Competencia invalida. Use MM/AAAA.';
+        if (!$dataPagamento) {
+            $erros[] = 'Data de pagamento invalida. Use dd/mm/aaaa.';
         }
         if ($textoCru === '') {
             $erros[] = 'Informe o texto cru com os lancamentos (1 por linha).';
@@ -532,7 +544,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($itensBase)) {
                     $erros[] = 'Nenhum lancamento identificado. Verifique o formato Descricao | Valor | Parcela(opcional).';
                 } else {
-                    [$mes, $ano] = $competenciaInfo;
+                    $competencia = $dataPagamento->format('m/Y');
                     $hashesParcelas = [];
                     $transacoes = [];
                     $baseItems = [];
@@ -552,7 +564,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $competencia
                         );
                         $parcelas = cartao_ofx_split_parcelas($item['valor_total'], $totalParcelas);
-                        $baseDate = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, 0);
+                        $baseDate = cartao_ofx_calc_vencimento_from_date($dataPagamento, 0);
                         $baseDateStr = $baseDate->format('Ymd');
                         $sign = $item['is_credito'] ? 1 : -1;
                         $noExplodeValor = $item['valor_total'] * $sign;
@@ -573,7 +585,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
 
                         for ($p = 1; $p <= $totalParcelas; $p++) {
-                            $vencimento = cartao_ofx_calc_vencimento((int)$cartaoSelecionado['dia_vencimento'], $mes, $ano, $p - 1);
+                            $vencimento = cartao_ofx_calc_vencimento_from_date($dataPagamento, $p - 1);
                             $vencimentoStr = $vencimento->format('Ymd');
                             $valorParcela = $parcelas[$p - 1] * $sign;
                             $hashParcela = cartao_ofx_hash_parcela($baseHash, $p, $vencimentoStr, $valorParcela);
@@ -633,7 +645,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'confirmar') {
         $cartaoId = (int)($_POST['cartao_id'] ?? 0);
-        $competencia = trim($_POST['competencia'] ?? '');
         $cartaoSelecionado = null;
         foreach ($cartoes as $cartao) {
             if ((int)$cartao['id'] === $cartaoId) {
@@ -1057,8 +1068,8 @@ ob_start();
                     </select>
                 </div>
                 <div class="ofx-field">
-                    <label for="competencia">Competencia (MM/AAAA)</label>
-                    <input type="text" name="competencia" id="competencia" placeholder="01/2026" value="<?php echo htmlspecialchars($preview['competencia'] ?? ''); ?>" required>
+                    <label for="data_pagamento">Data de pagamento (dd/mm/aaaa)</label>
+                    <input type="text" name="data_pagamento" id="data_pagamento" placeholder="17/01/2026" value="<?php echo htmlspecialchars($_POST['data_pagamento'] ?? ''); ?>" required>
                 </div>
             </div>
             <div class="ofx-field" style="margin-top:1rem;">
