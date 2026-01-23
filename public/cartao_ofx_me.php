@@ -885,13 +885,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'gerado',
                         json_encode($transacoesJson),
                     ]);
+                    $geracaoId = (int)$pdo->lastInsertId();
 
                     $pdo->commit();
                     error_log('[CARTAO_OFX] Geracao salva. Tx: ' . count($transacoesFinal));
 
                     $ofxGerado = [
-                        'url' => $upload['url'] ?? null,
+                        'url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
                         'quantidade' => count($transacoesFinal),
+                        'geracao_id' => $geracaoId,
                     ];
                     $_SESSION['cartao_ofx_flash'] = $ofxGerado;
                     // Limpar prévia após confirmar
