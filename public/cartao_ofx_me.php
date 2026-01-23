@@ -968,16 +968,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'geracao_id' => $geracaoId,
                         'download_url' => $geracaoId ? 'index.php?page=cartao_ofx_me_historico&download=' . $geracaoId : ($upload['url'] ?? null),
                     ];
-                    $_SESSION['cartao_ofx_flash'] = $ofxGerado;
-                    error_log('[CARTAO_OFX] Flash message salvo na sessao: ' . json_encode($ofxGerado));
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
-                    // NÃO fechar sessão aqui - deixar PHP fechar automaticamente após o redirect
-                    // session_write_close() pode causar problemas com a leitura após redirect
-                    error_log('[CARTAO_OFX] Redirecionando para exibir banner. Geracao ID: ' . $geracaoId);
-                    // Redirect para evitar re-submit e exibir banner corretamente
-                    header('Location: index.php?page=cartao_ofx_me&success=1');
+                    
+                    // Fazer download automático do arquivo gerado
+                    error_log('[CARTAO_OFX] Redirecionando para download automatico. Geracao ID: ' . $geracaoId);
+                    // Redirect direto para download
+                    header('Location: index.php?page=cartao_ofx_me_historico&download=' . $geracaoId);
                     exit;
                 } catch (Exception $e) {
                     if ($pdo->inTransaction()) {
