@@ -354,25 +354,35 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
     $descartados = [];
-    $buffer = '';
 
-    $flush = function(string $linha) use (&$itens, &$descartados) {
+    foreach ($linhas as $linha) {
         $linha = trim($linha);
+        if ($linha === '') {
+            continue;
+        }
         $parts = array_map('trim', explode('|', $linha));
-        if (count($parts) < 2 || $parts[0] === '' || $parts[1] === '') {
-            if ($linha !== '') {
-                $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
-            }
-            return;
+        // Aceitar 3 ou 4 partes (data opcional na posição 0)
+        if (count($parts) < 2) {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
+            continue;
+        }
+        if (count($parts) === 4 && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $parts[0])) {
+            // tem data na frente
+            array_shift($parts);
         }
         $descricao = $parts[0];
-        $valorStr = $parts[1];
+        $valorStr = $parts[1] ?? '';
         $parcelaStr = $parts[2] ?? '';
+
+        if ($descricao === '' || $valorStr === '') {
+            $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
+            continue;
+        }
 
         $valor = cartao_ofx_parse_valor($valorStr);
         if ($valor === null) {
             $descartados[] = ['linha' => $linha, 'motivo' => 'sem valor detectado'];
-            return;
+            continue;
         }
         $isCredito = $valor < 0;
         $valorAbs = abs($valor);
@@ -399,7 +409,7 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
         if ($descricaoNormalizada === '') {
             $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
-            return;
+            continue;
         }
 
         $itens[] = [
@@ -411,24 +421,6 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
             'parcela_atual' => $parcelaInfo['atual'] ?? null,
             'is_credito' => $isCredito,
         ];
-    };
-
-    foreach ($linhas as $linha) {
-        $linha = trim($linha);
-        if ($linha === '') {
-            continue;
-        }
-        $candidate = $buffer === '' ? $linha : $buffer . ' ' . $linha;
-        $parts = array_map('trim', explode('|', $candidate));
-        if (count($parts) >= 2 && $parts[0] !== '' && $parts[1] !== '') {
-            $flush($candidate);
-            $buffer = '';
-        } else {
-            $buffer = $candidate;
-        }
-    }
-    if ($buffer !== '') {
-        $flush($buffer);
     }
 
     return ['itens' => $itens, 'descartados' => $descartados];
