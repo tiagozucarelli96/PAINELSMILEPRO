@@ -626,6 +626,27 @@ includeSidebar('Comercial');
                 </div>
             </div>
         </a>
+        
+        <!-- Vendas -->
+        <div class="funcionalidade-card" style="cursor: default;">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">💰</span>
+                <div class="funcionalidade-card-title">Vendas</div>
+                <div class="funcionalidade-card-subtitle">Pré-contratos e acompanhamento</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <a href="index.php?page=vendas_pre_contratos" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📝</span>
+                    <span class="funcionalidade-item-text">Pré-contratos</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <a href="index.php?page=vendas_kanban" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">📋</span>
+                    <span class="funcionalidade-item-text">Acompanhamento de Contratos</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+            </div>
+        </div>
     </div>
     
 </div>

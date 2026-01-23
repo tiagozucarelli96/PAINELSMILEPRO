@@ -51,6 +51,12 @@ return [
     'comercial_inscritos_cadastrados' => 'perm_comercial',
     'comercial_lista_espera' => 'perm_comercial',
     'comercial_realizar_degustacao' => 'perm_comercial',
+    'vendas_pre_contratos' => 'perm_comercial',
+    'vendas_kanban' => 'perm_comercial',
+    // Formulários públicos não precisam de permissão
+    'vendas_form_casamento' => null,
+    'vendas_form_infantil' => null,
+    'vendas_form_pj' => null,
     
     // Logístico - REMOVIDO: Módulo desativado
     // 'lista_compras' => 'perm_logistico',
