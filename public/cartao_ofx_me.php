@@ -409,7 +409,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if (empty($erros)) {
                     error_log('[CARTAO_OFX] OCR realizado. Paginas: ' . $paginas . ', arquivos: ' . count($uploads));
-                    $itensBase = cartao_ofx_parse_fatura_texto($ocrResultado['text']);
+                    $rawText = $ocrResultado['text'] ?? '';
+                    $rawLen = strlen($rawText);
+                    $snippet = $rawLen > 600 ? substr($rawText, 0, 600) . '...' : $rawText;
+                    error_log('[CARTAO_OFX] OCR texto len=' . $rawLen . ' snippet="' . str_replace(["\n", "\r"], ['\\n', ''], $snippet) . '"');
+
+                    $itensBase = cartao_ofx_parse_fatura_texto($rawText);
                     error_log('[CARTAO_OFX] Itens base identificados: ' . count($itensBase));
 
                     if (empty($itensBase)) {
