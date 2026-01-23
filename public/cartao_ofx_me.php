@@ -609,7 +609,11 @@ $erros = [];
 $preview = $_SESSION['cartao_ofx_preview'] ?? null;
 $ofxGerado = null;
 $flashSuccess = $_SESSION['cartao_ofx_flash'] ?? null;
-unset($_SESSION['cartao_ofx_flash']);
+error_log('[CARTAO_OFX] Flash message lido da sessao: ' . ($flashSuccess ? json_encode($flashSuccess) : 'NULL'));
+if ($flashSuccess) {
+    unset($_SESSION['cartao_ofx_flash']);
+    error_log('[CARTAO_OFX] Flash message removido da sessao');
+}
 
 // Se há parâmetro success mas não há flash message, buscar último arquivo gerado
 if (!empty($_GET['success']) && !$flashSuccess) {
@@ -968,8 +972,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Limpar prévia após confirmar
                     unset($_SESSION['cartao_ofx_preview']);
                     $preview = null;
-                    // Garantir que a sessão seja salva antes do redirect
-                    session_write_close();
+                    // NÃO fechar sessão aqui - deixar PHP fechar automaticamente após o redirect
+                    // session_write_close() pode causar problemas com a leitura após redirect
                     error_log('[CARTAO_OFX] Redirecionando para exibir banner. Geracao ID: ' . $geracaoId);
                     // Redirect para evitar re-submit e exibir banner corretamente
                     header('Location: index.php?page=cartao_ofx_me&success=1');
@@ -1217,9 +1221,15 @@ ob_start();
         </div>
     <?php endif; ?>
 
-    <?php if ($ofxGerado || $flashSuccess || !empty($_GET['success'])): ?>
+    <?php 
+    // Debug: verificar se temos dados para exibir banner
+    $hasBannerData = $ofxGerado || $flashSuccess || !empty($_GET['success']);
+    error_log('[CARTAO_OFX] Verificando banner - ofxGerado: ' . ($ofxGerado ? 'SIM' : 'NAO') . ', flashSuccess: ' . ($flashSuccess ? 'SIM' : 'NAO') . ', success param: ' . (!empty($_GET['success']) ? 'SIM' : 'NAO'));
+    ?>
+    <?php if ($hasBannerData): ?>
         <?php $successData = $ofxGerado ?: $flashSuccess; ?>
         <?php if ($successData || !empty($_GET['success'])): ?>
+            <?php error_log('[CARTAO_OFX] Exibindo banner! successData: ' . ($successData ? json_encode($successData) : 'NULL')); ?>
             <div class="ofx-alert success ofx-success-banner">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <div>
