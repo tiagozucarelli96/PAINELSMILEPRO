@@ -98,19 +98,36 @@ function cartao_ofx_calc_vencimento(int $dia, int $mes, int $ano, int $addMonths
 function cartao_ofx_parse_valor(string $valor): ?float {
     $valor = trim($valor);
     $valor = str_replace(['R$', 'r$'], '', $valor);
-    $valor = preg_replace('/[^0-9,.-]/', '', $valor);
-    if ($valor === '' || $valor === null) {
+    $valor = preg_replace('/\s+/', '', $valor);
+    if ($valor === '') {
         return null;
     }
-    $negativo = false;
-    if (strpos($valor, '-') !== false) {
-        $negativo = true;
-        $valor = str_replace('-', '', $valor);
+
+    // Formato pt-BR com milhar e vírgula decimal
+    if (preg_match('/^-?\d{1,3}(\.\d{3})*,\d{2}$/', $valor)) {
+        $val = str_replace('.', '', $valor);
+        $val = str_replace(',', '.', $val);
+        return (float)$val;
     }
-    $valor = str_replace('.', '', $valor);
-    $valor = str_replace(',', '.', $valor);
-    $numero = (float)$valor;
-    return $negativo ? -1 * $numero : $numero;
+
+    // Formato pt-BR simples com vírgula decimal
+    if (preg_match('/^-?\d+,\d{2}$/', $valor)) {
+        $val = str_replace(',', '.', $valor);
+        return (float)$val;
+    }
+
+    // Decimal com ponto (OCR às vezes troca vírgula por ponto)
+    if (preg_match('/^-?\d+\.\d{2}$/', $valor)) {
+        return (float)$valor;
+    }
+
+    // Somente dígitos (fallback) - interpretar como centavos
+    if (preg_match('/^-?\d{3,6}$/', $valor)) {
+        $intVal = (int)$valor;
+        return $intVal / 100;
+    }
+
+    return null;
 }
 
 function cartao_ofx_normalize_descricao(string $descricao): string {
@@ -179,13 +196,9 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         $joined = implode(' ', $partes);
         $valor = null;
         $matches = [];
-        // padrões válidos
-        if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}/', $joined, $matches)) {
+        if (preg_match_all('/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|-?\d+\.\d{2}|\b\d{3,6}\b/', $joined, $matches)) {
             $ultimo = end($matches[0]);
-            $valor = cartao_ofx_parse_valor(str_replace('.', ',', $ultimo));
-        } elseif (preg_match_all('/\b\d{3,6}\b/', $joined, $matches)) {
-            $ultimo = end($matches[0]);
-            $valor = ((int)$ultimo) / 100;
+            $valor = cartao_ofx_parse_valor($ultimo);
         }
         return $valor;
     };
