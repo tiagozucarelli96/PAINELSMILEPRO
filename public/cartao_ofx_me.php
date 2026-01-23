@@ -906,9 +906,15 @@ ob_start();
         <a href="index.php?page=cartao_ofx_me_historico">Historico</a>
     </div>
 
-    <?php foreach ($erros as $erro): ?>
+<?php foreach ($erros as $erro): ?>
         <div class="ofx-alert error"><?php echo htmlspecialchars($erro); ?></div>
     <?php endforeach; ?>
+
+    <?php if ($preview && empty($erros)): ?>
+        <div class="ofx-alert success">
+            Prévia gerada: <?php echo count($preview['transacoes'] ?? []); ?> transações.
+        </div>
+    <?php endif; ?>
 
     <?php if ($ofxGerado): ?>
         <div class="ofx-alert success">
