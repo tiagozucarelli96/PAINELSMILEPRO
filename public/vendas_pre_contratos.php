@@ -498,6 +498,18 @@ if ($editar_id) {
     $stmt = $pdo->prepare("SELECT * FROM vendas_pre_contratos WHERE id = ?");
     $stmt->execute([$editar_id]);
     $pre_contrato_editar = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Diagnóstico (para entender quando a tela não abre o modal)
+    try {
+        $sp = (string)$pdo->query("SHOW search_path")->fetchColumn();
+    } catch (Throwable $e) {
+        $sp = '';
+    }
+    if (!$pre_contrato_editar) {
+        error_log('[VENDAS] editar=' . $editar_id . ' NÃO encontrado. admin_context=' . ($admin_context ? '1' : '0') . ' search_path=' . $sp);
+    } else {
+        error_log('[VENDAS] editar=' . $editar_id . ' OK. status=' . ($pre_contrato_editar['status'] ?? '') . ' admin_context=' . ($admin_context ? '1' : '0') . ' search_path=' . $sp);
+    }
     
     if ($pre_contrato_editar) {
         $stmt = $pdo->prepare("SELECT * FROM vendas_adicionais WHERE pre_contrato_id = ? ORDER BY id");
@@ -681,6 +693,18 @@ ob_start();
     <?php foreach ($erros as $erro): ?>
         <div class="alert alert-error"><?php echo htmlspecialchars($erro); ?></div>
     <?php endforeach; ?>
+
+    <?php if ($editar_id && !$pre_contrato_editar): ?>
+        <div class="alert alert-error">
+            Não foi possível abrir o Pré-contrato #<?php echo (int)$editar_id; ?> para edição. Recarregue e tente novamente.
+        </div>
+    <?php endif; ?>
+
+    <?php if ($editar_id && $pre_contrato_editar): ?>
+        <div class="alert alert-success">
+            Modo edição ativo: Pré-contrato #<?php echo (int)$editar_id; ?>.
+        </div>
+    <?php endif; ?>
     
     <div class="vendas-filters">
         <select name="filtro_status" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status='+encodeURIComponent(this.value)+'&tipo=<?php echo htmlspecialchars(urlencode((string)$filtro_tipo)); ?>&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
