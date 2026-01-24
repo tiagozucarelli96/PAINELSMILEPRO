@@ -368,6 +368,7 @@ ob_start();
         <div class="form-group">
           <label>CEP <span class="required">*</span></label>
           <input name="cep" required value="<?php echo htmlspecialchars($registro['cep'] ?? ''); ?>">
+          <small class="cep-status" style="color:#64748b;display:block;margin-top:.35rem;"></small>
         </div>
         <div class="form-group">
           <label>Instagram</label>
@@ -600,6 +601,59 @@ document.getElementById('como_conheceu')?.addEventListener('change', function(){
   }
 });
 calcTotal();
+
+// Busca automática de CEP (ViaCEP via endpoint interno)
+let cepTimeout = null;
+let lastCepBuscado = '';
+async function buscarCepPreencher(cepDigits){
+  const status = document.querySelector('.cep-status');
+  const endereco = document.querySelector('input[name="endereco_completo"]');
+  const bairro = document.querySelector('input[name="bairro"]');
+  const cidade = document.querySelector('input[name="cidade"]');
+  const estado = document.querySelector('input[name="estado"]');
+  const complemento = document.querySelector('input[name="complemento"]');
+  const numero = document.querySelector('input[name="numero"]');
+  if (!status) return;
+  status.textContent = 'Buscando CEP...';
+  try {
+    const resp = await fetch(`buscar_cep_endpoint.php?cep=${encodeURIComponent(cepDigits)}`);
+    const data = await resp.json();
+    if (!data?.success || !data?.data){
+      status.textContent = data?.message ? String(data.message) : 'CEP não encontrado.';
+      return;
+    }
+    const d = data.data;
+    if (endereco && !endereco.value) endereco.value = d.logradouro || '';
+    if (bairro && !bairro.value) bairro.value = d.bairro || '';
+    if (cidade && !cidade.value) cidade.value = d.cidade || '';
+    if (estado && !estado.value) estado.value = (d.estado || '').toUpperCase();
+    if (complemento && !complemento.value) complemento.value = d.complemento || '';
+    status.textContent = '';
+    if (numero) numero.focus();
+  } catch(e){
+    status.textContent = 'Erro ao buscar CEP. Tente novamente.';
+  }
+}
+function handleCepAuto(){
+  const cepEl = document.querySelector('input[name="cep"]');
+  if (!cepEl) return;
+  // aplica máscara simples 00000-000
+  let digits = (cepEl.value || '').replace(/\D/g,'').slice(0,8);
+  if (digits.length > 5) {
+    cepEl.value = digits.slice(0,5) + '-' + digits.slice(5);
+  } else {
+    cepEl.value = digits;
+  }
+  if (digits.length !== 8) return;
+  if (digits === lastCepBuscado) return;
+  lastCepBuscado = digits;
+  buscarCepPreencher(digits);
+}
+document.querySelector('input[name="cep"]')?.addEventListener('blur', handleCepAuto);
+document.querySelector('input[name="cep"]')?.addEventListener('input', function(){
+  clearTimeout(cepTimeout);
+  cepTimeout = setTimeout(handleCepAuto, 350);
+});
 </script>
 
 <?php

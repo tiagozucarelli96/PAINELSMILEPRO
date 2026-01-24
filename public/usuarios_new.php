@@ -1227,12 +1227,23 @@ async function buscarCEP() {
 document.addEventListener('DOMContentLoaded', function() {
     const cepInput = document.getElementById('cepInput');
     if (cepInput) {
+        let cepAutoTimeout = null;
+        let lastCepAuto = '';
+
         cepInput.addEventListener('input', function(e) {
             let value = e.target.value.replace(/\D/g, '');
             if (value.length > 5) {
                 value = value.substring(0, 5) + '-' + value.substring(5, 8);
             }
             e.target.value = value;
+
+            // Auto-busca quando completar 8 dígitos (evita depender do botão)
+            const digits = value.replace(/\D/g, '');
+            if (digits.length === 8 && digits !== lastCepAuto) {
+                lastCepAuto = digits;
+                clearTimeout(cepAutoTimeout);
+                cepAutoTimeout = setTimeout(() => buscarCEP(), 350);
+            }
         });
         
         // Buscar CEP ao pressionar Enter

@@ -481,6 +481,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                                placeholder="00000-000"
                                maxlength="9"
                                value="<?php echo htmlspecialchars($_POST['cep'] ?? ''); ?>">
+                        <small id="cep_status" style="color:#64748b;display:block;margin-top:.35rem;"></small>
                     </div>
                     
                     <div class="form-group">
@@ -677,6 +678,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 value = value.replace(/(\d{5})(\d)/, '$1-$2');
                 e.target.value = value;
             }
+        });
+
+        // Busca automática de CEP (ViaCEP via endpoint interno)
+        let cepTimeout = null;
+        let lastCepBuscado = '';
+
+        async function buscarCepPreencher(cepDigits) {
+            const status = document.getElementById('cep_status');
+            const endereco = document.getElementById('endereco_completo');
+            const bairro = document.getElementById('bairro');
+            const cidade = document.getElementById('cidade');
+            const estado = document.getElementById('estado');
+            const complemento = document.getElementById('complemento');
+            const numero = document.getElementById('numero');
+
+            if (!status) return;
+            status.textContent = 'Buscando CEP...';
+
+            try {
+                const resp = await fetch(`buscar_cep_endpoint.php?cep=${encodeURIComponent(cepDigits)}`);
+                const data = await resp.json();
+                if (!data?.success || !data?.data) {
+                    status.textContent = data?.message ? String(data.message) : 'CEP não encontrado.';
+                    return;
+                }
+
+                const d = data.data;
+                // Preenche somente se estiver vazio (não sobrescrever o usuário)
+                if (endereco && !endereco.value) endereco.value = d.logradouro || '';
+                if (bairro && !bairro.value) bairro.value = d.bairro || '';
+                if (cidade && !cidade.value) cidade.value = d.cidade || '';
+                if (estado && !estado.value) estado.value = (d.estado || '').toUpperCase();
+                if (complemento && !complemento.value) complemento.value = d.complemento || '';
+
+                status.textContent = '';
+                if (numero) numero.focus();
+            } catch (err) {
+                status.textContent = 'Erro ao buscar CEP. Tente novamente.';
+            }
+        }
+
+        function handleCepAuto() {
+            const cepEl = document.getElementById('cep');
+            if (!cepEl) return;
+            const digits = (cepEl.value || '').replace(/\D/g, '');
+            if (digits.length !== 8) return;
+            if (digits === lastCepBuscado) return;
+            lastCepBuscado = digits;
+            buscarCepPreencher(digits);
+        }
+
+        document.getElementById('cep')?.addEventListener('blur', handleCepAuto);
+        document.getElementById('cep')?.addEventListener('input', function() {
+            clearTimeout(cepTimeout);
+            cepTimeout = setTimeout(handleCepAuto, 350);
         });
         
         // Mostrar/ocultar campo "como conheceu outro"
