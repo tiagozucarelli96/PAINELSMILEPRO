@@ -61,10 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("
                 UPDATE vendas_pre_contratos 
                 SET pacote_contratado = ?, valor_negociado = ?, desconto = ?, valor_total = ?,
-                    atualizado_em = NOW(), atualizado_por = ?, status = 'pronto_aprovacao'
+                    atualizado_em = NOW(), atualizado_por = ?, status = 'pronto_aprovacao',
+                    responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
                 WHERE id = ?
             ");
-            $stmt->execute([$pacote, $valor_negociado, $desconto, $valor_total, $usuario_id, $pre_contrato_id]);
+            $stmt->execute([$pacote, $valor_negociado, $desconto, $valor_total, $usuario_id, $usuario_id, $pre_contrato_id]);
             
             // Remover adicionais antigos
             $stmt_del = $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?");
@@ -292,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'hora_termino' => $pre_contrato['horario_termino'],
                     'local' => $pre_contrato['unidade'],
                     // campos adicionais (docs ME)
-                    'idvendedor' => (int)(getenv('ME_DEFAULT_SELLER_ID') ?: 0),
+                    'idvendedor' => 0,
                     'nconvidados' => (int)($pre_contrato['num_convidados'] ?? 0),
                     'comoconheceu' => (function() use ($pre_contrato) {
                         $v = (string)($pre_contrato['como_conheceu'] ?? '');
@@ -309,6 +310,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     })(),
                     'observacao' => (string)($pre_contrato['observacoes'] ?? '')
                 ];
+
+                // Resolver idvendedor via mapeamento (ME → usuário interno)
+                $usuario_responsavel = (int)($pre_contrato['responsavel_comercial_id'] ?? 0);
+                if ($usuario_responsavel <= 0) {
+                    $usuario_responsavel = (int)($pre_contrato['atualizado_por'] ?? 0);
+                }
+                if ($usuario_responsavel <= 0) {
+                    $usuario_responsavel = $usuario_id;
+                }
+
+                $me_vendedor_id = vendas_obter_me_vendedor_id($usuario_responsavel);
+                if (!$me_vendedor_id) {
+                    // fallback opcional (se existir), mas preferimos mapeamento
+                    $fallback = (int)(getenv('ME_DEFAULT_SELLER_ID') ?: 0);
+                    if ($fallback > 0) {
+                        $me_vendedor_id = $fallback;
+                    } else {
+                        throw new Exception('Vendedor não mapeado. Ajuste em Logística > Conexão (Mapeamento de Vendedores).');
+                    }
+                }
+                $dados_evento['idvendedor'] = (int)$me_vendedor_id;
                 
                 $evento_me = vendas_me_criar_evento($dados_evento);
                 $me_event_id = $evento_me['id'] ?? null;

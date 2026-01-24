@@ -407,7 +407,7 @@ function vendas_me_criar_evento(array $dados_evento): array {
 
     $idvendedor = (int)($dados_evento['idvendedor'] ?? (getenv('ME_DEFAULT_SELLER_ID') ?: 0));
     if ($idvendedor <= 0) {
-        throw new Exception('idvendedor é obrigatório. Configure ME_DEFAULT_SELLER_ID no ambiente.');
+        throw new Exception('idvendedor é obrigatório. Mapeie vendedores em Logística > Conexão ou configure ME_DEFAULT_SELLER_ID no ambiente.');
     }
 
     $payload = [

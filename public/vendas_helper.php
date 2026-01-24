@@ -167,3 +167,28 @@ function vendas_validar_cpf(string $cpf): bool {
     }
     return true;
 }
+
+/**
+ * Obtém o id do vendedor na ME (idvendedor) a partir do usuário interno.
+ * Fonte: logistica_me_vendedores (Logística > Conexão).
+ */
+function vendas_obter_me_vendedor_id(int $usuario_interno_id): ?int {
+    if ($usuario_interno_id <= 0) return null;
+    $pdo = $GLOBALS['pdo'];
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT me_vendedor_id
+            FROM logistica_me_vendedores
+            WHERE usuario_interno_id = ?
+              AND status_mapeamento = 'MAPEADO'
+            LIMIT 1
+        ");
+        $stmt->execute([$usuario_interno_id]);
+        $id = (int)$stmt->fetchColumn();
+        return $id > 0 ? $id : null;
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao obter idvendedor ME: ' . $e->getMessage());
+        return null;
+    }
+}

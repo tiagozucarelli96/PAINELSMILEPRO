@@ -39,6 +39,27 @@ function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bo
         }
 
         if (!$missing) {
+            // garantir tabelas adicionais (migrations incrementais)
+            $stmt = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'logistica_me_vendedores'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $hasVendedores = (bool)$stmt->fetchColumn();
+            if (!$hasVendedores) {
+                $sql_path = __DIR__ . '/../sql/043_logistica_vendedores.sql';
+                if (is_file($sql_path)) {
+                    $sql = file_get_contents($sql_path);
+                    $pdo->exec($sql);
+                    $messages[] = 'Tabela de vendedores (ME → Usuário) criada automaticamente.';
+                } else {
+                    $errors[] = 'Tabela logistica_me_vendedores ausente. Execute o SQL 043_logistica_vendedores.sql.';
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -47,6 +68,11 @@ function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bo
             $sql = file_get_contents($sql_path);
             $pdo->exec($sql);
             $messages[] = 'Base Logística criada automaticamente (tabelas faltantes).';
+            // criar tabela de vendedores também (se existir o SQL)
+            $sql_path2 = __DIR__ . '/../sql/043_logistica_vendedores.sql';
+            if (is_file($sql_path2)) {
+                $pdo->exec(file_get_contents($sql_path2));
+            }
             return true;
         }
 
@@ -56,6 +82,115 @@ function ensure_logistica_schema(PDO $pdo, array &$errors, array &$messages): bo
         $errors[] = 'Falha ao validar/criar base Logística: ' . $e->getMessage();
         return false;
     }
+}
+
+function fetch_me_vendedores(): array {
+    $resp = me_request('/api/v1/seller');
+    if (!$resp['ok']) {
+        return ['ok' => false, 'error' => $resp['error']];
+    }
+
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? null;
+        }
+    }
+
+    if (!is_array($items)) {
+        $keys = is_array($raw) ? implode(',', array_keys($raw)) : gettype($raw);
+        return ['ok' => false, 'error' => 'Resposta da ME sem lista de vendedores. Estrutura: ' . $keys];
+    }
+
+    $vendedores = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = $item['id'] ?? $item['idvendedor'] ?? null;
+        $nome = $item['nome'] ?? $item['vendedor'] ?? null;
+        if ($id === null || $nome === null) continue;
+        $vendedores[] = [
+            'id' => (int)$id,
+            'nome' => (string)$nome
+        ];
+    }
+
+    return ['ok' => true, 'data' => $vendedores];
+}
+
+function load_vendedores_mapeamentos(PDO $pdo): array {
+    $stmt = $pdo->query("SELECT * FROM logistica_me_vendedores ORDER BY me_vendedor_nome");
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $byId = [];
+    $byName = [];
+    foreach ($rows as $row) {
+        $byId[(int)$row['me_vendedor_id']] = $row;
+        $byName[mb_strtolower(trim((string)$row['me_vendedor_nome']))] = $row;
+    }
+    return ['by_id' => $byId, 'by_name' => $byName, 'all' => $rows];
+}
+
+function get_usuarios_internos(PDO $pdo): array {
+    try {
+        // tenta filtrar por usuários do comercial se a coluna existir
+        if (has_column($pdo, 'usuarios', 'perm_comercial')) {
+            $stmt = $pdo->query("SELECT id, nome FROM usuarios WHERE perm_comercial IS TRUE ORDER BY nome");
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    } catch (Throwable $e) {}
+
+    $stmt = $pdo->query("SELECT id, nome FROM usuarios ORDER BY nome");
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function upsert_vendedor_mapeamento(PDO $pdo, array $payload): void {
+    $now = date('Y-m-d H:i:s');
+    $meId = (int)($payload['me_vendedor_id'] ?? 0);
+    $meNome = (string)($payload['me_vendedor_nome'] ?? '');
+    $usuarioId = $payload['usuario_interno_id'] ?? null;
+    $status = (string)($payload['status_mapeamento'] ?? 'PENDENTE');
+
+    if ($meId <= 0 || $meNome === '') return;
+
+    $stmt = $pdo->prepare("SELECT id FROM logistica_me_vendedores WHERE me_vendedor_id = :id LIMIT 1");
+    $stmt->execute([':id' => $meId]);
+    $existingId = $stmt->fetchColumn();
+
+    if ($existingId) {
+        $stmt = $pdo->prepare("
+            UPDATE logistica_me_vendedores
+            SET me_vendedor_nome = :nome,
+                usuario_interno_id = :usuario,
+                status_mapeamento = :status,
+                updated_at = :updated_at
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':nome' => $meNome,
+            ':usuario' => $usuarioId ? (int)$usuarioId : null,
+            ':status' => $status,
+            ':updated_at' => $now,
+            ':id' => $existingId
+        ]);
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO logistica_me_vendedores
+        (me_vendedor_id, me_vendedor_nome, usuario_interno_id, status_mapeamento, created_at, updated_at)
+        VALUES
+        (:id, :nome, :usuario, :status, :created_at, :updated_at)
+    ");
+    $stmt->execute([
+        ':id' => $meId,
+        ':nome' => $meNome,
+        ':usuario' => $usuarioId ? (int)$usuarioId : null,
+        ':status' => $status,
+        ':created_at' => $now,
+        ':updated_at' => $now
+    ]);
 }
 
 function me_request(string $path, array $params = []): array {
@@ -252,6 +387,15 @@ function load_db_summary(PDO $pdo): array {
         SELECT COUNT(DISTINCT localevento)
         FROM logistica_eventos_espelho
     ")->fetchColumn();
+
+    // vendedores
+    try {
+        $summary['vendedores_total'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_me_vendedores")->fetchColumn();
+        $summary['vendedores_mapeados'] = (int)$pdo->query("SELECT COUNT(*) FROM logistica_me_vendedores WHERE status_mapeamento = 'MAPEADO' AND usuario_interno_id IS NOT NULL")->fetchColumn();
+    } catch (Throwable $e) {
+        $summary['vendedores_total'] = 0;
+        $summary['vendedores_mapeados'] = 0;
+    }
 
     $stmt = $pdo->query("
         SELECT DISTINCT localevento
@@ -581,6 +725,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'save_vendedores') {
+        if (!$schema_ok) {
+            $errors[] = 'Base Logística ausente. Execute o SQL antes de salvar.';
+        } else {
+            $meVid = $_POST['me_vendedor_id'] ?? [];
+            $meVnome = $_POST['me_vendedor_nome'] ?? [];
+            $usuarioMap = $_POST['usuario_interno_id'] ?? [];
+
+            foreach ($meVid as $idx => $vid) {
+                $vid = (int)$vid;
+                $vnome = trim((string)($meVnome[$idx] ?? ''));
+                $uid = isset($usuarioMap[$idx]) && $usuarioMap[$idx] !== '' ? (int)$usuarioMap[$idx] : null;
+                if ($vid <= 0 || $vnome === '') continue;
+
+                $status = ($uid && $uid > 0) ? 'MAPEADO' : 'PENDENTE';
+                upsert_vendedor_mapeamento($pdo, [
+                    'me_vendedor_id' => $vid,
+                    'me_vendedor_nome' => $vnome,
+                    'usuario_interno_id' => $uid,
+                    'status_mapeamento' => $status
+                ]);
+            }
+
+            if (!$errors) {
+                $messages[] = 'Mapeamento de vendedores salvo com sucesso.';
+            }
+        }
+    }
+
     if ($action === 'test_db') {
         try {
             $pdo->query('SELECT 1');
@@ -605,6 +778,25 @@ if ($schema_ok) {
         $mapeamentos = load_mapeamentos($pdo);
     } catch (Throwable $e) {
         $errors[] = 'Erro ao carregar mapeamentos existentes: ' . $e->getMessage();
+    }
+}
+
+$vendedores_resp = ['ok' => false, 'data' => [], 'error' => ''];
+$me_vendedores = [];
+$vendedores_mapeamentos = ['by_id' => [], 'by_name' => [], 'all' => []];
+$usuarios_internos = [];
+if ($schema_ok) {
+    $vendedores_resp = fetch_me_vendedores();
+    if (!$vendedores_resp['ok']) {
+        $errors[] = $vendedores_resp['error'];
+    } else {
+        $me_vendedores = $vendedores_resp['data'];
+    }
+    try {
+        $vendedores_mapeamentos = load_vendedores_mapeamentos($pdo);
+        $usuarios_internos = get_usuarios_internos($pdo);
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao carregar mapeamentos de vendedores: ' . $e->getMessage();
     }
 }
 
@@ -882,6 +1074,66 @@ includeSidebar('Configurações - Logística');
     </div>
 
     <div class="logistica-section">
+        <h2>Mapeamento de Vendedores (ME → Usuário Interno)</h2>
+        <p style="color:#64748b;margin-top:-.5rem;margin-bottom:1rem;">
+            Este mapeamento é usado pelo módulo de Vendas para preencher <strong>idvendedor</strong> ao aprovar e criar evento na ME.
+        </p>
+        <form method="POST">
+            <input type="hidden" name="action" value="save_vendedores">
+            <table class="logistica-table">
+                <thead>
+                    <tr>
+                        <th>ID Vendedor (ME)</th>
+                        <th>Vendedor (ME)</th>
+                        <th>Status</th>
+                        <th>Usuário Interno</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($me_vendedores)): ?>
+                        <tr>
+                            <td colspan="4">Nenhum vendedor encontrado.</td>
+                        </tr>
+                    <?php endif; ?>
+                    <?php foreach ($me_vendedores as $idx => $vend): ?>
+                        <?php
+                            $vid = (int)($vend['id'] ?? 0);
+                            $vnome = (string)($vend['nome'] ?? '');
+                            $map = $vid > 0 && isset($vendedores_mapeamentos['by_id'][$vid]) ? $vendedores_mapeamentos['by_id'][$vid] : null;
+                            $status = ($map && ($map['status_mapeamento'] ?? '') === 'MAPEADO') ? 'MAPEADO' : 'PENDENTE';
+                            $usuarioAtual = $map['usuario_interno_id'] ?? '';
+                        ?>
+                        <tr>
+                            <td><?= h($vid) ?></td>
+                            <td><?= h($vnome) ?></td>
+                            <td>
+                                <span class="status-badge <?= $status === 'MAPEADO' ? 'status-mapeado' : 'status-pendente' ?>">
+                                    <?= h($status) ?>
+                                </span>
+                            </td>
+                            <td>
+                                <input type="hidden" name="me_vendedor_id[<?= $idx ?>]" value="<?= h($vid) ?>">
+                                <input type="hidden" name="me_vendedor_nome[<?= $idx ?>]" value="<?= h($vnome) ?>">
+                                <select name="usuario_interno_id[<?= $idx ?>]" class="form-input">
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($usuarios_internos as $u): ?>
+                                        <option value="<?= (int)$u['id'] ?>" <?= ((string)$usuarioAtual === (string)$u['id']) ? 'selected' : '' ?>>
+                                            <?= h($u['nome'] ?? '') ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <div style="margin-top: 1rem;">
+                <button class="btn-primary" type="submit">Salvar mapeamento de vendedores</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="logistica-section">
         <h2>Sincronização de Eventos (hoje → +30 dias)</h2>
         <form method="POST">
             <input type="hidden" name="action" value="sync">
@@ -903,6 +1155,8 @@ includeSidebar('Configurações - Logística');
                     <tr><td>Eventos ativos (hoje → +30)</td><td><?= (int)$db_summary['eventos_ativos'] ?></td></tr>
                     <tr><td>Pendentes de mapeamento</td><td><?= (int)$db_summary['pendentes_mapeamento'] ?></td></tr>
                     <tr><td>Arquivados (total)</td><td><?= (int)$db_summary['arquivados_total'] ?></td></tr>
+                    <tr><td>Vendedores (total)</td><td><?= (int)($db_summary['vendedores_total'] ?? 0) ?></td></tr>
+                    <tr><td>Vendedores mapeados</td><td><?= (int)($db_summary['vendedores_mapeados'] ?? 0) ?></td></tr>
                 </tbody>
             </table>
 
