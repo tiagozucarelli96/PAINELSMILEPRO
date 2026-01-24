@@ -1099,6 +1099,22 @@ function fecharModalEditar() {
     }
 }
 
+// Garantir que os modais fiquem no topo do DOM (evita conflitos de stacking context do layout)
+(function() {
+    try {
+        const modalEditar = document.getElementById('modalEditar');
+        if (modalEditar && modalEditar.parentElement !== document.body) {
+            document.body.appendChild(modalEditar);
+            modalEditar.classList.add('active');
+            modalEditar.style.display = 'flex';
+        }
+        const modalAprovacao = document.getElementById('modalAprovacao');
+        if (modalAprovacao && modalAprovacao.parentElement !== document.body) {
+            document.body.appendChild(modalAprovacao);
+        }
+    } catch (e) {}
+})();
+
 // No admin, se veio do botão "Editar" em um card pronto, abrir o modal automaticamente
 (function() {
     try {
