@@ -598,7 +598,7 @@ ob_start();
 .btn-danger { background: #ef4444; color: white; }
 .btn-secondary { background: #6b7280; color: white; }
 
-.modal {
+.vendas-modal {
     display: none;
     position: fixed !important;
     top: 0;
@@ -611,11 +611,11 @@ ob_start();
     justify-content: center;
 }
 
-.modal.active {
+.vendas-modal.active {
     display: flex !important;
 }
 
-.modal-content {
+.vendas-modal-content {
     background: white;
     border-radius: 12px;
     padding: 2rem;
@@ -767,8 +767,8 @@ ob_start();
     
     <?php if ($pre_contrato_editar): ?>
         <!-- Modal de Edição -->
-        <div class="modal active" id="modalEditar">
-            <div class="modal-content">
+        <div class="vendas-modal active" id="modalEditar">
+            <div class="vendas-modal-content">
                 <h2>Editar Pré-contrato #<?php echo $pre_contrato_editar['id']; ?></h2>
                 
                 <form method="POST" enctype="multipart/form-data">
@@ -858,7 +858,7 @@ ob_start();
                     
                     <div style="display: flex; gap: 1rem; margin-top: 2rem;">
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
-                        <a href="<?php echo htmlspecialchars($base_query); ?>" class="btn btn-secondary">Cancelar</a>
+                        <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
                         
                         <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
                             <button type="button" class="btn btn-primary" onclick="abrirModalAprovacao()">Aprovar e Criar na ME</button>
@@ -870,8 +870,8 @@ ob_start();
         
         <!-- Modal de Aprovação -->
         <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
-        <div class="modal" id="modalAprovacao">
-            <div class="modal-content">
+        <div class="vendas-modal" id="modalAprovacao">
+            <div class="vendas-modal-content">
                 <h2>Aprovar e Criar na ME</h2>
                 
                 <?php 
@@ -1056,6 +1056,23 @@ function abrirModalAprovacao() {
 
 function fecharModalAprovacao() {
     document.getElementById('modalAprovacao').classList.remove('active');
+}
+
+// Fechar modal de edição
+function fecharModalEditar() {
+    const m = document.getElementById('modalEditar');
+    if (!m) return;
+    m.classList.remove('active');
+    // Voltar para a listagem mantendo filtros/contexto
+    try {
+        const params = new URLSearchParams(window.location.search);
+        params.delete('editar');
+        params.delete('abrir_aprovacao');
+        const next = 'index.php?' + params.toString();
+        window.location.href = next;
+    } catch (e) {
+        window.location.href = '<?php echo htmlspecialchars($base_query); ?>';
+    }
 }
 
 // No admin, se veio do botão "Editar" em um card pronto, abrir o modal automaticamente
