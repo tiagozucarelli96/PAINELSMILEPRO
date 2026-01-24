@@ -186,6 +186,16 @@ ob_start();
     min-height: calc(100vh - 60px);
 }
 
+.kanban-topbar{
+    max-width: 1400px;
+    margin: 0 auto 1rem;
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
 .kanban-header {
     margin-bottom: 1.5rem;
 }
@@ -196,18 +206,36 @@ ob_start();
     margin-bottom: 0.5rem;
 }
 
+.kanban-actions{
+    display:flex;
+    gap:.75rem;
+    align-items:center;
+}
+
+.btn-outline{
+    background:#ffffff;
+    color:#1e3a8a;
+    border:1px solid #93c5fd;
+}
+.btn-outline:hover{
+    background:#eff6ff;
+}
+
 .kanban-board {
     display: flex;
     gap: 1rem;
     overflow-x: auto;
     padding-bottom: 1rem;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
 .kanban-coluna {
     min-width: 300px;
-    background: #f1f2f6;
+    background: #ebecf0;
     border-radius: 8px;
     padding: 1rem;
+    border: 1px solid rgba(0,0,0,0.06);
 }
 
 .coluna-header {
@@ -236,6 +264,7 @@ ob_start();
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     cursor: move;
     transition: box-shadow 0.2s;
+    border-left: 4px solid #3b82f6;
 }
 
 .kanban-card:hover {
@@ -260,6 +289,31 @@ ob_start();
     margin-top: 0.5rem;
 }
 
+.coluna-cards {
+    min-height: 40px;
+}
+
+.coluna-empty {
+    color: #64748b;
+    font-size: 0.9rem;
+    padding: .5rem .25rem;
+}
+
+.admin-panel {
+    max-width: 1400px;
+    margin: 1rem auto 0;
+}
+
+.admin-panel.hidden {
+    display: none;
+}
+
+.drop-highlight {
+    outline: 2px dashed #60a5fa;
+    outline-offset: 2px;
+    background: #e8f1ff !important;
+}
+
 .card-acoes {
     margin-top: 0.75rem;
     padding-top: 0.75rem;
@@ -278,9 +332,16 @@ ob_start();
 </style>
 
 <div class="kanban-container">
-    <div class="kanban-header">
-        <h1>Acompanhamento de Contratos</h1>
-        <p>Gerencie o fluxo de contratos através do Kanban</p>
+    <div class="kanban-topbar">
+        <div class="kanban-header">
+            <h1>Acompanhamento de Contratos</h1>
+            <p>Gerencie o fluxo de contratos através do Kanban</p>
+        </div>
+        <div class="kanban-actions">
+            <?php if ($is_admin): ?>
+                <button type="button" class="btn btn-outline" id="btnToggleAdmin">Gerenciar colunas</button>
+            <?php endif; ?>
+        </div>
     </div>
 
     <?php if (!empty($_SESSION['vendas_kanban_admin_error'])): ?>
@@ -289,86 +350,22 @@ ob_start();
         </div>
         <?php unset($_SESSION['vendas_kanban_admin_error']); ?>
     <?php endif; ?>
-
-    <?php if ($is_admin): ?>
-        <div class="vendas-card" style="max-width: 1400px; margin: 0 auto 1rem;">
-            <h3 style="margin-bottom: .75rem; color:#1e3a8a;">Gerenciar colunas</h3>
-
-            <form method="POST" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:flex-end; margin-bottom: 1rem;">
-                <input type="hidden" name="action" value="add_coluna">
-                <div style="flex:1; min-width: 220px;">
-                    <label style="display:block; font-weight:600; margin-bottom:.35rem;">Nova coluna</label>
-                    <input name="nome" placeholder="Nome da coluna" style="width:100%; padding:.6rem; border:1px solid #d1d5db; border-radius:8px;">
-                </div>
-                <div style="min-width: 140px;">
-                    <label style="display:block; font-weight:600; margin-bottom:.35rem;">Cor</label>
-                    <input name="cor" value="#6b7280" style="width:100%; padding:.6rem; border:1px solid #d1d5db; border-radius:8px;">
-                </div>
-                <button class="btn btn-primary" type="submit">Adicionar</button>
-            </form>
-
-            <form method="POST">
-                <input type="hidden" name="action" value="salvar_colunas">
-                <div style="overflow:auto;">
-                    <table class="vendas-table" style="width:100%; border-collapse:collapse;">
-                        <thead>
-                            <tr>
-                                <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb;">Nome</th>
-                                <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:120px;">Posição</th>
-                                <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:160px;">Cor</th>
-                                <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:140px;">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($colunas as $c): ?>
-                                <tr>
-                                    <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                        <input name="colunas[<?php echo (int)$c['id']; ?>][nome]" value="<?php echo htmlspecialchars((string)$c['nome']); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                    </td>
-                                    <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                        <input type="number" name="colunas[<?php echo (int)$c['id']; ?>][posicao]" value="<?php echo (int)$c['posicao']; ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                    </td>
-                                    <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                        <input name="colunas[<?php echo (int)$c['id']; ?>][cor]" value="<?php echo htmlspecialchars((string)($c['cor'] ?? '#6b7280')); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                    </td>
-                                    <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                        <button type="submit" class="btn btn-danger" style="padding:.4rem .7rem;"
-                                                form="del_col_<?php echo (int)$c['id']; ?>">
-                                            Excluir
-                                        </button>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <?php foreach ($colunas as $c): ?>
-                    <form id="del_col_<?php echo (int)$c['id']; ?>" method="POST" style="display:none;">
-                        <input type="hidden" name="action" value="deletar_coluna">
-                        <input type="hidden" name="coluna_id" value="<?php echo (int)$c['id']; ?>">
-                    </form>
-                <?php endforeach; ?>
-                <div style="margin-top: .75rem; display:flex; gap:.75rem; justify-content:flex-end;">
-                    <button class="btn btn-primary" type="submit">Salvar colunas</button>
-                </div>
-                <small style="display:block; margin-top:.5rem; color:#64748b;">
-                    A coluna <strong>Criado na ME</strong> é obrigatória (não pode ser removida).
-                </small>
-            </form>
-        </div>
-    <?php endif; ?>
     
     <div class="kanban-board" id="kanbanBoard">
         <?php foreach ($colunas as $coluna): ?>
-            <div class="kanban-coluna" data-coluna-id="<?php echo $coluna['id']; ?>">
-                <div class="coluna-header">
+            <div class="kanban-coluna" data-coluna-id="<?php echo $coluna['id']; ?>" style="border-top:4px solid <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#3b82f6')); ?>;">
+                <div class="coluna-header" style="border-bottom-color: <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#ddd')); ?>;">
                     <span><?php echo htmlspecialchars($coluna['nome']); ?></span>
                     <span class="coluna-count"><?php echo count($cards_por_coluna[$coluna['id']] ?? []); ?></span>
                 </div>
                 
                 <div class="coluna-cards" data-coluna-id="<?php echo $coluna['id']; ?>">
-                    <?php foreach ($cards_por_coluna[$coluna['id']] ?? [] as $card): ?>
-                        <div class="kanban-card" draggable="true" data-card-id="<?php echo $card['id']; ?>">
+                    <?php $cardsAtual = $cards_por_coluna[$coluna['id']] ?? []; ?>
+                    <?php if (empty($cardsAtual)): ?>
+                        <div class="coluna-empty">Sem cards nesta etapa.</div>
+                    <?php endif; ?>
+                    <?php foreach ($cardsAtual as $card): ?>
+                        <div class="kanban-card" draggable="true" data-card-id="<?php echo $card['id']; ?>" style="border-left-color: <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#3b82f6')); ?>;">
                             <div class="card-titulo"><?php echo htmlspecialchars($card['titulo'] ?? $card['cliente_nome'] ?? 'Sem título'); ?></div>
                             <?php if ($card['data_evento']): ?>
                                 <div class="card-info">📅 <?php echo date('d/m/Y', strtotime($card['data_evento'])); ?></div>
@@ -381,7 +378,8 @@ ob_start();
                             <?php endif; ?>
                             <div class="card-acoes">
                                 <?php if ($card['pre_contrato_id']): ?>
-                                    <a href="index.php?page=vendas_pre_contratos&editar=<?php echo $card['pre_contrato_id']; ?>">Ver detalhes</a>
+                                    <?php $page_det = $is_admin ? 'vendas_administracao' : 'vendas_pre_contratos'; ?>
+                                    <a href="index.php?page=<?php echo $page_det; ?>&editar=<?php echo $card['pre_contrato_id']; ?>">Ver detalhes</a>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -390,15 +388,87 @@ ob_start();
             </div>
         <?php endforeach; ?>
     </div>
+
+    <?php if ($is_admin): ?>
+        <div class="admin-panel hidden" id="adminPanel">
+            <div class="vendas-card">
+                <h3 style="margin-bottom: .75rem; color:#1e3a8a;">Gerenciar colunas</h3>
+
+                <form method="POST" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:flex-end; margin-bottom: 1rem;">
+                    <input type="hidden" name="action" value="add_coluna">
+                    <div style="flex:1; min-width: 220px;">
+                        <label style="display:block; font-weight:600; margin-bottom:.35rem;">Nova coluna</label>
+                        <input name="nome" placeholder="Nome da coluna" style="width:100%; padding:.6rem; border:1px solid #d1d5db; border-radius:8px;">
+                    </div>
+                    <div style="min-width: 140px;">
+                        <label style="display:block; font-weight:600; margin-bottom:.35rem;">Cor</label>
+                        <input name="cor" value="#6b7280" style="width:100%; padding:.6rem; border:1px solid #d1d5db; border-radius:8px;">
+                    </div>
+                    <button class="btn btn-primary" type="submit">Adicionar</button>
+                </form>
+
+                <form method="POST">
+                    <input type="hidden" name="action" value="salvar_colunas">
+                    <div style="overflow:auto;">
+                        <table class="vendas-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb;">Nome</th>
+                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:120px;">Posição</th>
+                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:160px;">Cor</th>
+                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:140px;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($colunas as $c): ?>
+                                    <tr>
+                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
+                                            <input name="colunas[<?php echo (int)$c['id']; ?>][nome]" value="<?php echo htmlspecialchars((string)$c['nome']); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
+                                        </td>
+                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
+                                            <input type="number" name="colunas[<?php echo (int)$c['id']; ?>][posicao]" value="<?php echo (int)$c['posicao']; ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
+                                        </td>
+                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
+                                            <input name="colunas[<?php echo (int)$c['id']; ?>][cor]" value="<?php echo htmlspecialchars((string)($c['cor'] ?? '#6b7280')); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
+                                        </td>
+                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
+                                            <button type="submit" class="btn btn-danger" style="padding:.4rem .7rem;"
+                                                    form="del_col_<?php echo (int)$c['id']; ?>">
+                                                Excluir
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php foreach ($colunas as $c): ?>
+                        <form id="del_col_<?php echo (int)$c['id']; ?>" method="POST" style="display:none;">
+                            <input type="hidden" name="action" value="deletar_coluna">
+                            <input type="hidden" name="coluna_id" value="<?php echo (int)$c['id']; ?>">
+                        </form>
+                    <?php endforeach; ?>
+                    <div style="margin-top: .75rem; display:flex; gap:.75rem; justify-content:flex-end;">
+                        <button class="btn btn-primary" type="submit">Salvar colunas</button>
+                    </div>
+                    <small style="display:block; margin-top:.5rem; color:#64748b;">
+                        A coluna <strong>Criado na ME</strong> é obrigatória (não pode ser removida).
+                    </small>
+                </form>
+            </div>
+        </div>
+    <?php endif; ?>
 </div>
 
 <script>
 // Drag and Drop básico
 let draggedCard = null;
+let draggedFromColuna = null;
 
 document.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('dragstart', function(e) {
         draggedCard = this;
+        draggedFromColuna = this.closest('.kanban-coluna')?.dataset?.colunaId || null;
         this.style.opacity = '0.5';
     });
     
@@ -410,26 +480,32 @@ document.querySelectorAll('.kanban-card').forEach(card => {
 document.querySelectorAll('.kanban-coluna').forEach(coluna => {
     coluna.addEventListener('dragover', function(e) {
         e.preventDefault();
-        this.style.backgroundColor = '#e1e8ed';
+        this.classList.add('drop-highlight');
     });
     
     coluna.addEventListener('dragleave', function(e) {
-        this.style.backgroundColor = '#f1f2f6';
+        this.classList.remove('drop-highlight');
     });
     
     coluna.addEventListener('drop', function(e) {
         e.preventDefault();
-        this.style.backgroundColor = '#f1f2f6';
+        this.classList.remove('drop-highlight');
         
         if (draggedCard) {
             const colunaId = this.dataset.colunaId;
             const cardId = draggedCard.dataset.cardId;
             const colunaCards = this.querySelector('.coluna-cards');
+            const oldColunaId = draggedFromColuna;
+            const oldColunaEl = oldColunaId ? document.querySelector(`.kanban-coluna[data-coluna-id="${oldColunaId}"]`) : null;
+            const oldParent = draggedCard.parentElement;
             
             // Mover card visualmente
+            // remover placeholder "Sem cards"
+            colunaCards.querySelectorAll('.coluna-empty').forEach(el => el.remove());
             colunaCards.appendChild(draggedCard);
             
             // Salvar no servidor
+            const newPos = colunaCards.querySelectorAll('.kanban-card').length - 1;
             fetch('vendas_kanban_api.php?action=mover_card', {
                 method: 'POST',
                 headers: {
@@ -438,26 +514,59 @@ document.querySelectorAll('.kanban-coluna').forEach(coluna => {
                 body: new URLSearchParams({
                     card_id: cardId,
                     coluna_id: colunaId,
-                    posicao: 0
+                    posicao: newPos
                 })
             }).then(response => response.json())
               .then(data => {
                   if (!data.success) {
                       console.error('Erro ao mover card:', data.error);
-                      // Reverter movimento visual se necessário
+                      // Reverter movimento visual
+                      if (oldParent) oldParent.appendChild(draggedCard);
                   } else {
-                      // Atualizar contador
+                      // Atualizar contadores
                       const countEl = this.querySelector('.coluna-count');
-                      const oldColuna = draggedCard.closest('.kanban-coluna');
-                      const oldCountEl = oldColuna.querySelector('.coluna-count');
-                      
-                      countEl.textContent = parseInt(countEl.textContent) + 1;
-                      oldCountEl.textContent = parseInt(oldCountEl.textContent) - 1;
+                      const oldCountEl = oldColunaEl ? oldColunaEl.querySelector('.coluna-count') : null;
+                      if (oldColunaId && oldColunaId !== colunaId && oldCountEl) {
+                          countEl.textContent = String(parseInt(countEl.textContent || '0', 10) + 1);
+                          oldCountEl.textContent = String(Math.max(0, parseInt(oldCountEl.textContent || '0', 10) - 1));
+
+                          // se coluna antiga ficou vazia, mostrar placeholder
+                          const oldCardsWrap = oldColunaEl.querySelector('.coluna-cards');
+                          if (oldCardsWrap && oldCardsWrap.querySelectorAll('.kanban-card').length === 0) {
+                              const empty = document.createElement('div');
+                              empty.className = 'coluna-empty';
+                              empty.textContent = 'Sem cards nesta etapa.';
+                              oldCardsWrap.appendChild(empty);
+                          }
+                      }
                   }
               });
+
+            draggedCard = null;
+            draggedFromColuna = null;
         }
     });
 });
+
+// Admin: esconder/mostrar gerenciador (Kanban é o padrão)
+(function(){
+    const btn = document.getElementById('btnToggleAdmin');
+    const panel = document.getElementById('adminPanel');
+    if (!btn || !panel) return;
+    const key = 'vendas_kanban_admin_open';
+    const saved = localStorage.getItem(key);
+    if (saved === '1') {
+        panel.classList.remove('hidden');
+    }
+    btn.addEventListener('click', function(){
+        const isHidden = panel.classList.contains('hidden');
+        panel.classList.toggle('hidden');
+        localStorage.setItem(key, isHidden ? '1' : '0');
+        if (isHidden) {
+            panel.scrollIntoView({behavior:'smooth', block:'start'});
+        }
+    });
+})();
 </script>
 
 <?php
