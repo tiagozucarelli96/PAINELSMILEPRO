@@ -139,6 +139,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $override_conflito = isset($_POST['override_conflito']) && $_POST['override_conflito'] === '1';
         $override_motivo = trim($_POST['override_motivo'] ?? '');
         $atualizar_cliente_me = $_POST['atualizar_cliente_me'] ?? 'manter'; // manter, atualizar, apenas_painel
+
+        $redirect_page = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
+        $redirect_url = 'index.php?page=' . $redirect_page . '&editar=' . $pre_contrato_id . '&abrir_aprovacao=1&aprovacao_result=1';
         
         try {
             if ($idvendedor <= 0) {
@@ -180,6 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Se não há conflito ou é override, continuar
             if (empty($erros)) {
                 $pdo->beginTransaction();
+                $kanban_card_created = false;
+                $kanban_card_id = null;
                 
                 // Buscar/verificar cliente na ME
                 $clientes_encontrados = vendas_me_buscar_cliente(
@@ -381,6 +386,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             INSERT INTO vendas_kanban_cards 
                             (board_id, coluna_id, pre_contrato_id, titulo, cliente_nome, data_evento, unidade, valor_total, status, criado_por)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Criado na ME', ?)
+                            RETURNING id
                         ");
                         $titulo_card = $pre_contrato['nome_completo'] . ' - ' . date('d/m/Y', strtotime($pre_contrato['data_evento']));
                         $stmt_card->execute([
@@ -394,6 +400,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $pre_contrato['valor_total'],
                             $usuario_id
                         ]);
+                        $kanban_card_id = (int)$stmt_card->fetchColumn();
+                        $kanban_card_created = $kanban_card_id > 0;
                     }
                 }
                 
@@ -402,11 +410,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt_log->execute([$pre_contrato_id, $usuario_id, json_encode([
                     'me_client_id' => $me_client_id,
                     'me_event_id' => $me_event_id,
-                    'override' => $override_conflito
+                    'override' => $override_conflito,
+                    'kanban_card_id' => $kanban_card_id
                 ])]);
                 
                 $pdo->commit();
-                $mensagens[] = 'Pré-contrato aprovado e criado na ME com sucesso!';
+                $_SESSION['vendas_aprovacao_result'] = [
+                    'ok' => true,
+                    'message' => 'Evento criado na ME com sucesso.',
+                    'me_client_id' => (int)$me_client_id,
+                    'me_event_id' => (int)$me_event_id,
+                    'kanban_card_created' => $kanban_card_created,
+                    'kanban_card_id' => $kanban_card_id,
+                    'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                    'me_event_response' => $evento_me['data'] ?? null,
+                ];
+                header('Location: ' . $redirect_url);
+                exit;
                 
             }
             
@@ -414,8 +434,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            $erros[] = 'Erro ao aprovar: ' . $e->getMessage();
+            $_SESSION['vendas_aprovacao_result'] = [
+                'ok' => false,
+                'message' => 'Erro ao criar na ME.',
+                'error' => $e->getMessage(),
+                'me_last' => $_SESSION['vendas_me_last'] ?? null,
+            ];
             error_log('Erro ao aprovar pré-contrato: ' . $e->getMessage());
+            header('Location: ' . $redirect_url);
+            exit;
         }
         } // Fechar else do if (!vendas_is_admin())
     }
@@ -892,10 +919,43 @@ ob_start();
         </div>
         
         <!-- Modal de Aprovação -->
-        <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
+        <?php
+            $aprovacao_result = $_SESSION['vendas_aprovacao_result'] ?? null;
+            if ($aprovacao_result !== null) { unset($_SESSION['vendas_aprovacao_result']); }
+            $show_aprovacao_modal = ($is_admin && $admin_context && ($pre_contrato_editar['status'] === 'pronto_aprovacao' || is_array($aprovacao_result)));
+        ?>
+        <?php if ($show_aprovacao_modal): ?>
         <div class="vendas-modal" id="modalAprovacao">
             <div class="vendas-modal-content">
                 <h2>Aprovar e Criar na ME</h2>
+
+                <?php if (is_array($aprovacao_result)): ?>
+                    <?php if (!empty($aprovacao_result['ok'])): ?>
+                        <div class="alert alert-success">
+                            <strong>Sucesso:</strong> <?php echo htmlspecialchars((string)($aprovacao_result['message'] ?? '')); ?><br>
+                            Cliente ME: <strong><?php echo (int)($aprovacao_result['me_client_id'] ?? 0); ?></strong> —
+                            Evento ME: <strong><?php echo (int)($aprovacao_result['me_event_id'] ?? 0); ?></strong><br>
+                            Kanban: <?php echo !empty($aprovacao_result['kanban_card_created']) ? 'Card criado' : 'Card não criado'; ?>
+                            <?php if (!empty($aprovacao_result['kanban_card_id'])): ?>
+                                (ID <?php echo (int)$aprovacao_result['kanban_card_id']; ?>)
+                            <?php endif; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="alert alert-error">
+                            <strong>Falhou:</strong> <?php echo htmlspecialchars((string)($aprovacao_result['message'] ?? '')); ?><br>
+                            <?php if (!empty($aprovacao_result['error'])): ?>
+                                <div style="margin-top:.5rem;"><?php echo htmlspecialchars((string)$aprovacao_result['error']); ?></div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($aprovacao_result['me_last']) && is_array($aprovacao_result['me_last'])): ?>
+                        <details style="margin: .75rem 0;">
+                            <summary style="cursor:pointer; color:#1e3a8a; font-weight:600;">Resposta da ME (detalhes)</summary>
+                            <pre style="white-space:pre-wrap; background:#0b1220; color:#e5e7eb; padding: .75rem; border-radius: 10px; margin-top:.5rem; max-height: 320px; overflow:auto;"><?php echo htmlspecialchars(json_encode($aprovacao_result['me_last'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)); ?></pre>
+                        </details>
+                    <?php endif; ?>
+                <?php endif; ?>
                 
                 <?php 
                 // Verificar conflito antes de mostrar modal
@@ -1021,19 +1081,26 @@ ob_start();
                     </div>
                 <?php endif; ?>
                 
-                <form method="POST" id="formAprovacao">
-                    <input type="hidden" name="action" value="aprovar_criar_me">
-                    <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
-                    <input type="hidden" name="admin_context" value="1">
-                    <input type="hidden" name="override_conflito" id="input_override_conflito" value="0">
-                    <input type="hidden" name="override_motivo" id="input_override_motivo" value="">
-                    <input type="hidden" name="atualizar_cliente_me" id="input_atualizar_cliente_me" value="manter">
-                    
-                    <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                        <button type="submit" class="btn btn-success">Confirmar Aprovação</button>
-                        <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Cancelar</button>
+                <?php if ($pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
+                    <form method="POST" id="formAprovacao">
+                        <input type="hidden" name="action" value="aprovar_criar_me">
+                        <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
+                        <input type="hidden" name="admin_context" value="1">
+                        <input type="hidden" name="override_conflito" id="input_override_conflito" value="0">
+                        <input type="hidden" name="override_motivo" id="input_override_motivo" value="">
+                        <input type="hidden" name="atualizar_cliente_me" id="input_atualizar_cliente_me" value="manter">
+                        
+                        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                            <button type="submit" class="btn btn-success">Confirmar Aprovação</button>
+                            <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Fechar</button>
+                        </div>
+                    </form>
+                <?php else: ?>
+                    <div style="display:flex; gap:1rem; margin-top:1.25rem; justify-content:flex-end;">
+                        <a class="btn btn-primary" href="index.php?page=vendas_kanban">Ir para o Kanban</a>
+                        <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Fechar</button>
                     </div>
-                </form>
+                <?php endif; ?>
             </div>
         </div>
         <?php endif; ?>

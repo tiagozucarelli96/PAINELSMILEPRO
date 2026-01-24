@@ -52,6 +52,21 @@ function vendas_me_request(string $method, string $path, array $query = [], $bod
     $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
+    // Guardar último retorno para diagnóstico/UI (sem tokens)
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $raw_str = is_string($resp) ? $resp : '';
+        if (strlen($raw_str) > 4000) {
+            $raw_str = substr($raw_str, 0, 4000) . '...';
+        }
+        $_SESSION['vendas_me_last'] = [
+            'method' => strtoupper($method),
+            'path' => $path,
+            'code' => $code,
+            'ok' => ($err === '' && $code >= 200 && $code < 300),
+            'raw' => $raw_str,
+        ];
+    }
+
     if ($err) {
         return ['ok' => false, 'code' => $code, 'error' => 'Erro cURL: ' . $err];
     }
