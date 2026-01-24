@@ -480,6 +480,14 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Base de URL para manter o contexto correto (listagem vs administração)
+$page_param = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
+$base_url = 'index.php?page=' . $page_param;
+$base_query = $base_url
+    . '&status=' . urlencode((string)$filtro_status)
+    . '&tipo=' . urlencode((string)$filtro_tipo)
+    . '&busca=' . urlencode((string)$busca);
+
 // Buscar pré-contrato específico para edição
 $editar_id = (int)($_GET['editar'] ?? 0);
 $pre_contrato_editar = null;
@@ -673,7 +681,7 @@ ob_start();
     <?php endforeach; ?>
     
     <div class="vendas-filters">
-        <select name="filtro_status" onchange="window.location.href='?status='+this.value+'&tipo=<?php echo htmlspecialchars($filtro_tipo); ?>&busca=<?php echo htmlspecialchars($busca); ?>'">
+        <select name="filtro_status" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status='+encodeURIComponent(this.value)+'&tipo=<?php echo htmlspecialchars(urlencode((string)$filtro_tipo)); ?>&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
             <option value="">Todos os status</option>
             <option value="aguardando_conferencia" <?php echo $filtro_status === 'aguardando_conferencia' ? 'selected' : ''; ?>>Aguardando conferência</option>
             <option value="pronto_aprovacao" <?php echo $filtro_status === 'pronto_aprovacao' ? 'selected' : ''; ?>>Pronto para aprovação</option>
@@ -681,7 +689,7 @@ ob_start();
             <option value="cancelado_nao_fechou" <?php echo $filtro_status === 'cancelado_nao_fechou' ? 'selected' : ''; ?>>Cancelado / Não fechou</option>
         </select>
         
-        <select name="filtro_tipo" onchange="window.location.href='?status=<?php echo htmlspecialchars($filtro_status); ?>&tipo='+this.value+'&busca=<?php echo htmlspecialchars($busca); ?>'">
+        <select name="filtro_tipo" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status=<?php echo htmlspecialchars(urlencode((string)$filtro_status)); ?>&tipo='+encodeURIComponent(this.value)+'&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
             <option value="">Todos os tipos</option>
             <option value="casamento" <?php echo $filtro_tipo === 'casamento' ? 'selected' : ''; ?>>Casamento</option>
             <option value="infantil" <?php echo $filtro_tipo === 'infantil' ? 'selected' : ''; ?>>Infantil</option>
@@ -691,6 +699,7 @@ ob_start();
         <form method="GET" style="display: flex; gap: 0.5rem; flex: 1;">
             <input type="text" name="busca" placeholder="Buscar por nome, email ou CPF..." 
                    value="<?php echo htmlspecialchars($busca); ?>" style="flex: 1;">
+            <input type="hidden" name="page" value="<?php echo htmlspecialchars($page_param); ?>">
             <input type="hidden" name="status" value="<?php echo htmlspecialchars($filtro_status); ?>">
             <input type="hidden" name="tipo" value="<?php echo htmlspecialchars($filtro_tipo); ?>">
             <button type="submit" class="btn btn-primary">Buscar</button>
@@ -741,7 +750,12 @@ ob_start();
                             <span class="status-badge <?php echo $status_class; ?>"><?php echo $status_text; ?></span>
                         </td>
                         <td>
-                            <a href="?editar=<?php echo $pc['id']; ?>" class="btn btn-primary" style="font-size: 0.875rem;">Editar</a>
+                            <?php
+                                $abrir_aprovacao = ($admin_context && $is_admin && ($pc['status'] ?? '') === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
+                            ?>
+                            <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
+                                Editar
+                            </a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -842,7 +856,7 @@ ob_start();
                     
                     <div style="display: flex; gap: 1rem; margin-top: 2rem;">
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
-                        <a href="?" class="btn btn-secondary">Cancelar</a>
+                        <a href="<?php echo htmlspecialchars($base_query); ?>" class="btn btn-secondary">Cancelar</a>
                         
                         <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
                             <button type="button" class="btn btn-primary" onclick="abrirModalAprovacao()">Aprovar e Criar na ME</button>
@@ -1041,6 +1055,16 @@ function abrirModalAprovacao() {
 function fecharModalAprovacao() {
     document.getElementById('modalAprovacao').classList.remove('active');
 }
+
+// No admin, se veio do botão "Editar" em um card pronto, abrir o modal automaticamente
+(function() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('abrir_aprovacao') === '1' && document.getElementById('modalAprovacao')) {
+            abrirModalAprovacao();
+        }
+    } catch (e) {}
+})();
 
 document.getElementById('override_conflito')?.addEventListener('change', function() {
     const divMotivo = document.getElementById('div_motivo_override');
