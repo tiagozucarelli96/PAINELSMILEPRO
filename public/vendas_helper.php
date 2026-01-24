@@ -169,26 +169,122 @@ function vendas_validar_cpf(string $cpf): bool {
 }
 
 /**
- * Obtém o id do vendedor na ME (idvendedor) a partir do usuário interno.
- * Fonte: logistica_me_vendedores (Logística > Conexão).
+ * Helpers de schema (evitar fatals quando o SQL não foi aplicado).
  */
-function vendas_obter_me_vendedor_id(int $usuario_interno_id): ?int {
-    if ($usuario_interno_id <= 0) return null;
-    $pdo = $GLOBALS['pdo'];
-
+function vendas_has_table(PDO $pdo, string $table): bool {
     try {
         $stmt = $pdo->prepare("
-            SELECT me_vendedor_id
-            FROM logistica_me_vendedores
-            WHERE usuario_interno_id = ?
-              AND status_mapeamento = 'MAPEADO'
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = :t
             LIMIT 1
         ");
-        $stmt->execute([$usuario_interno_id]);
-        $id = (int)$stmt->fetchColumn();
-        return $id > 0 ? $id : null;
+        $stmt->execute([':t' => $table]);
+        return (bool)$stmt->fetchColumn();
     } catch (Throwable $e) {
-        error_log('[VENDAS] Erro ao obter idvendedor ME: ' . $e->getMessage());
-        return null;
+        return false;
     }
+}
+
+function vendas_has_column(PDO $pdo, string $table, string $column): bool {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :t
+              AND column_name = :c
+            LIMIT 1
+        ");
+        $stmt->execute([':t' => $table, ':c' => $column]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * Garante que o schema do módulo Vendas exista (executa SQL 041/042 se necessário).
+ * Retorna false se não conseguir garantir.
+ */
+function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool {
+    $requiredTables = [
+        'vendas_pre_contratos',
+        'vendas_adicionais',
+        'vendas_anexos',
+        'vendas_kanban_boards',
+        'vendas_kanban_colunas',
+        'vendas_kanban_cards',
+        'vendas_kanban_historico',
+        'vendas_logs',
+    ];
+
+    $missing = [];
+    foreach ($requiredTables as $t) {
+        if (!vendas_has_table($pdo, $t)) $missing[] = $t;
+    }
+
+    // Se faltam tabelas, tentar aplicar o SQL base 041 + ajustes 042
+    if (!empty($missing)) {
+        $sql041 = __DIR__ . '/../sql/041_modulo_vendas.sql';
+        $sql042 = __DIR__ . '/../sql/042_vendas_ajustes.sql';
+
+        try {
+            if (!is_file($sql041)) {
+                $errors[] = 'Base de Vendas ausente. Arquivo não encontrado: sql/041_modulo_vendas.sql';
+                return false;
+            }
+            $pdo->exec(file_get_contents($sql041));
+            $messages[] = 'Base do módulo Vendas criada automaticamente (SQL 041).';
+
+            if (is_file($sql042)) {
+                $pdo->exec(file_get_contents($sql042));
+                $messages[] = 'Ajustes do módulo Vendas aplicados automaticamente (SQL 042).';
+            } else {
+                $errors[] = 'Ajustes de Vendas ausentes. Execute o SQL sql/042_vendas_ajustes.sql.';
+                return false;
+            }
+        } catch (Throwable $e) {
+            $errors[] = 'Não foi possível criar/atualizar a base de Vendas automaticamente: ' . $e->getMessage();
+            return false;
+        }
+
+        // Revalidar
+        $missing2 = [];
+        foreach ($requiredTables as $t) {
+            if (!vendas_has_table($pdo, $t)) $missing2[] = $t;
+        }
+        if (!empty($missing2)) {
+            $errors[] = 'Base de Vendas ainda está incompleta. Tabelas ausentes: ' . implode(', ', $missing2);
+            return false;
+        }
+    }
+
+    // Se tabelas existem mas faltam colunas do 042, tentar aplicar 042
+    $cols042 = ['origem', 'rg', 'cep', 'endereco_completo', 'nome_noivos', 'num_convidados', 'como_conheceu', 'forma_pagamento', 'observacoes_internas', 'responsavel_comercial_id'];
+    $needs042 = false;
+    foreach ($cols042 as $c) {
+        if (!vendas_has_column($pdo, 'vendas_pre_contratos', $c)) {
+            $needs042 = true;
+            break;
+        }
+    }
+
+    if ($needs042) {
+        $sql042 = __DIR__ . '/../sql/042_vendas_ajustes.sql';
+        try {
+            if (!is_file($sql042)) {
+                $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
+                return false;
+            }
+            $pdo->exec(file_get_contents($sql042));
+            $messages[] = 'Ajustes do módulo Vendas aplicados automaticamente (SQL 042).';
+        } catch (Throwable $e) {
+            $errors[] = 'Não foi possível aplicar o SQL 042 automaticamente: ' . $e->getMessage();
+            return false;
+        }
+    }
+
+    return true;
 }

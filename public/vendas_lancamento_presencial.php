@@ -26,13 +26,14 @@ $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 $mensagens = [];
 $erros = [];
 
-// Checagem de schema mínimo (evita tela quebrada se SQL 042 não foi aplicado)
-try {
-    $pdo->query("SELECT origem, rg, cep, endereco_completo, nome_noivos, num_convidados, como_conheceu FROM vendas_pre_contratos LIMIT 1");
-} catch (Throwable $e) {
+// Garantir schema do módulo (evita fatal quando SQL ainda não foi aplicado no ambiente)
+if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
     includeSidebar('Comercial');
-    echo '<div style="padding:2rem;max-width:1000px;margin:0 auto;">';
-    echo '<div class="alert alert-error">Base de Vendas desatualizada. Execute o SQL <code>sql/042_vendas_ajustes.sql</code> antes de usar o Lançamento Presencial.</div>';
+    echo '<div style="padding:2rem;max-width:1100px;margin:0 auto;">';
+    foreach ($erros as $e) {
+        echo '<div class="alert alert-error">' . htmlspecialchars((string)$e) . '</div>';
+    }
+    echo '<div class="alert alert-error">Base de Vendas ausente/desatualizada. Execute os SQLs <code>sql/041_modulo_vendas.sql</code> e <code>sql/042_vendas_ajustes.sql</code>.</div>';
     echo '</div>';
     endSidebar();
     exit;

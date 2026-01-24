@@ -27,6 +27,19 @@ $admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $
 $mensagens = [];
 $erros = [];
 
+// Garantir schema do módulo (evita fatal quando SQL ainda não foi aplicado no ambiente)
+if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
+    includeSidebar('Comercial');
+    echo '<div style="padding:2rem;max-width:1100px;margin:0 auto;">';
+    foreach ($erros as $e) {
+        echo '<div class="alert alert-error">' . htmlspecialchars((string)$e) . '</div>';
+    }
+    echo '<div class="alert alert-error">Base de Vendas ausente/desatualizada. Execute os SQLs <code>sql/041_modulo_vendas.sql</code> e <code>sql/042_vendas_ajustes.sql</code>.</div>';
+    echo '</div>';
+    endSidebar();
+    exit;
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -122,11 +135,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erros[] = 'Aprovação disponível apenas em Vendas > Administração.';
         } else {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
+        $idvendedor = (int)($_POST['idvendedor'] ?? 0);
         $override_conflito = isset($_POST['override_conflito']) && $_POST['override_conflito'] === '1';
         $override_motivo = trim($_POST['override_motivo'] ?? '');
         $atualizar_cliente_me = $_POST['atualizar_cliente_me'] ?? 'manter'; // manter, atualizar, apenas_painel
         
         try {
+            if ($idvendedor <= 0) {
+                throw new Exception('Selecione o vendedor (ME) para criar o evento.');
+            }
+
             // Buscar pré-contrato
             $stmt = $pdo->prepare("SELECT * FROM vendas_pre_contratos WHERE id = ?");
             $stmt->execute([$pre_contrato_id]);
@@ -293,7 +311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'hora_termino' => $pre_contrato['horario_termino'],
                     'local' => $pre_contrato['unidade'],
                     // campos adicionais (docs ME)
-                    'idvendedor' => 0,
+                    'idvendedor' => $idvendedor,
                     'nconvidados' => (int)($pre_contrato['num_convidados'] ?? 0),
                     'comoconheceu' => (function() use ($pre_contrato) {
                         $v = (string)($pre_contrato['como_conheceu'] ?? '');
@@ -310,27 +328,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     })(),
                     'observacao' => (string)($pre_contrato['observacoes'] ?? '')
                 ];
-
-                // Resolver idvendedor via mapeamento (ME → usuário interno)
-                $usuario_responsavel = (int)($pre_contrato['responsavel_comercial_id'] ?? 0);
-                if ($usuario_responsavel <= 0) {
-                    $usuario_responsavel = (int)($pre_contrato['atualizado_por'] ?? 0);
-                }
-                if ($usuario_responsavel <= 0) {
-                    $usuario_responsavel = $usuario_id;
-                }
-
-                $me_vendedor_id = vendas_obter_me_vendedor_id($usuario_responsavel);
-                if (!$me_vendedor_id) {
-                    // fallback opcional (se existir), mas preferimos mapeamento
-                    $fallback = (int)(getenv('ME_DEFAULT_SELLER_ID') ?: 0);
-                    if ($fallback > 0) {
-                        $me_vendedor_id = $fallback;
-                    } else {
-                        throw new Exception('Vendedor não mapeado. Ajuste em Logística > Conexão (Mapeamento de Vendedores).');
-                    }
-                }
-                $dados_evento['idvendedor'] = (int)$me_vendedor_id;
                 
                 $evento_me = vendas_me_criar_evento($dados_evento);
                 $me_event_id = $evento_me['id'] ?? null;
@@ -346,6 +343,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'atualizar_cliente_me' => $atualizar_cliente_me
                     ],
                     'evento' => [
+                        'idvendedor' => (int)$idvendedor,
                         'payload' => $evento_me['payload'] ?? null,
                         'response' => $evento_me['data'] ?? null
                     ]
@@ -909,6 +907,33 @@ ob_start();
                         <small style="color: #6b7280;">É obrigatório informar o motivo para forçar a criação com conflito de agenda.</small>
                     </div>
                 <?php endif; ?>
+
+                <?php
+                    // Vendedores (ME) - dropdown obrigatório na aprovação
+                    $vendedores_me = [];
+                    try {
+                        $vendedores_me = vendas_me_listar_vendedores();
+                    } catch (Throwable $e) {
+                        $vendedores_me = [];
+                    }
+                ?>
+                <div class="form-group">
+                    <label for="idvendedor_select">Vendedor (ME) <span style="color: #ef4444;">*</span>:</label>
+                    <?php if (!empty($vendedores_me)): ?>
+                        <select id="idvendedor_select" name="idvendedor" form="formAprovacao" required>
+                            <option value="">Selecione...</option>
+                            <?php foreach ($vendedores_me as $v): ?>
+                                <option value="<?= (int)($v['id'] ?? 0) ?>">
+                                    <?= htmlspecialchars((string)($v['nome'] ?? '')) ?> (<?= (int)($v['id'] ?? 0) ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small style="color:#6b7280;">Este vendedor será enviado como <code>idvendedor</code> na criação do evento na ME.</small>
+                    <?php else: ?>
+                        <input type="number" id="idvendedor_select" name="idvendedor" form="formAprovacao" min="1" step="1" placeholder="ID do vendedor na ME" required>
+                        <small style="color:#6b7280;">Não foi possível listar vendedores da ME agora. Informe o ID manualmente.</small>
+                    <?php endif; ?>
+                </div>
                 
                 <?php
                 // Verificar duplicidade de cliente

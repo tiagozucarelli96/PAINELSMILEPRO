@@ -487,3 +487,57 @@ function vendas_me_listar_tipos_evento(): array {
     
     return $tipos;
 }
+
+/**
+ * Listar vendedores na ME (sellers) com cache em sessão.
+ * Endpoint: GET /api/v1/seller
+ */
+function vendas_me_listar_vendedores(): array {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    $cache_key = 'vendas_me_vendedores';
+    $cache_time_key = 'vendas_me_vendedores_time';
+
+    if (isset($_SESSION[$cache_key], $_SESSION[$cache_time_key])) {
+        if (time() - (int)$_SESSION[$cache_time_key] < 300) { // 5 min
+            return is_array($_SESSION[$cache_key]) ? $_SESSION[$cache_key] : [];
+        }
+    }
+
+    $resp = vendas_me_request('GET', '/api/v1/seller');
+    if (!$resp['ok']) {
+        return [];
+    }
+
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? null;
+        }
+    }
+    if (!is_array($items)) $items = [];
+
+    $vendedores = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = $item['id'] ?? $item['idvendedor'] ?? null;
+        $nome = $item['nome'] ?? $item['vendedor'] ?? null;
+        if ($id === null || $nome === null) continue;
+        $vendedores[] = [
+            'id' => (int)$id,
+            'nome' => (string)$nome,
+        ];
+    }
+
+    usort($vendedores, fn($a, $b) => strcmp(mb_strtolower($a['nome']), mb_strtolower($b['nome'])));
+
+    $_SESSION[$cache_key] = $vendedores;
+    $_SESSION[$cache_time_key] = time();
+
+    return $vendedores;
+}

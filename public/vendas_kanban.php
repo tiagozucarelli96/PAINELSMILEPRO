@@ -19,6 +19,20 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 $pdo = $GLOBALS['pdo'];
 $is_admin = vendas_is_admin();
 
+$messages = [];
+$errors = [];
+if (!vendas_ensure_schema($pdo, $errors, $messages)) {
+    includeSidebar('Comercial');
+    echo '<div style="padding:2rem;max-width:1100px;margin:0 auto;">';
+    foreach ($errors as $e) {
+        echo '<div class="alert alert-error">' . htmlspecialchars((string)$e) . '</div>';
+    }
+    echo '<div class="alert alert-error">Base de Vendas ausente/desatualizada. Execute os SQLs <code>sql/041_modulo_vendas.sql</code> e <code>sql/042_vendas_ajustes.sql</code>.</div>';
+    echo '</div>';
+    endSidebar();
+    exit;
+}
+
 // Buscar board padrão
 $stmt = $pdo->prepare("SELECT * FROM vendas_kanban_boards WHERE ativo = TRUE LIMIT 1");
 $stmt->execute();
@@ -28,7 +42,12 @@ if (!$board) {
     // Criar board padrão se não existir
     $stmt = $pdo->prepare("INSERT INTO vendas_kanban_boards (nome, descricao, ativo) VALUES ('Acompanhamento de Contratos', 'Kanban para acompanhamento de contratos', TRUE) RETURNING id");
     $stmt->execute();
-    $board_id = $pdo->lastInsertId();
+    $board_id = (int)$stmt->fetchColumn();
+    if ($board_id <= 0) {
+        $stmt = $pdo->prepare("SELECT id FROM vendas_kanban_boards WHERE ativo = TRUE ORDER BY id ASC LIMIT 1");
+        $stmt->execute();
+        $board_id = (int)$stmt->fetchColumn();
+    }
 } else {
     $board_id = $board['id'];
 }
