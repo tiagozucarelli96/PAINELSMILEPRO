@@ -193,8 +193,21 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
  * Nota: Se o endpoint /api/v1/clients não existir, retorna dados simulados
  * O cliente será criado automaticamente quando o evento for criado
  */
+function vendas_me_formatar_telefone(?string $raw): ?string {
+    $digits = preg_replace('/\D/', '', (string)$raw);
+    if ($digits === '') return null;
+    // Formato aceito e exibido na doc/respostas: "31 999999999" ou "31 33333333"
+    if (strlen($digits) === 10 || strlen($digits) === 11) {
+        $ddd = substr($digits, 0, 2);
+        $num = substr($digits, 2);
+        return trim($ddd . ' ' . $num);
+    }
+    return null;
+}
+
 function vendas_me_criar_cliente(array $dados_cliente): array {
     // Conforme docs: POST /api/v1/clients recebe um ARRAY de clientes
+    $telefone_fmt = vendas_me_formatar_telefone($dados_cliente['telefone'] ?? ($dados_cliente['celular'] ?? null));
     $cliente = [
         'nome' => (string)($dados_cliente['nome'] ?? ''),
         'email' => (string)($dados_cliente['email'] ?? ''),
@@ -208,10 +221,15 @@ function vendas_me_criar_cliente(array $dados_cliente): array {
         'cidade' => (string)($dados_cliente['cidade'] ?? ''),
         'estado' => (string)($dados_cliente['estado'] ?? ''),
         'pais' => (string)($dados_cliente['pais'] ?? ''),
-        'celular' => preg_replace('/\D/', '', (string)($dados_cliente['telefone'] ?? $dados_cliente['celular'] ?? '')),
-        'telefone' => preg_replace('/\D/', '', (string)($dados_cliente['telefone'] ?? '')),
+        // IMPORTANTE: ME valida formato de telefone. Enviar no padrão "DD NUMERO".
+        // Evitar enviar 'telefone' com máscara ou vazio.
+        'telefone' => $telefone_fmt ?: '',
         'redesocial' => (string)($dados_cliente['redesocial'] ?? '')
     ];
+    // remover telefone vazio (evita erro de validação)
+    if ($cliente['telefone'] === '') {
+        unset($cliente['telefone']);
+    }
 
     $payload = [$cliente];
     $resp = vendas_me_request('POST', '/api/v1/clients', [], $payload);
@@ -262,6 +280,17 @@ function vendas_me_atualizar_cliente(int $client_id, array $dados_cliente): arra
         $sv = is_string($v) ? trim($v) : $v;
         if ($sv === '') continue;
         $payload[$k] = $sv;
+    }
+
+    // Normalizar telefones para o formato esperado pela ME (evita "parâmetro telefone deve ser enviado corretamente")
+    foreach (['telefone', 'telefone2', 'celular'] as $k) {
+        if (!isset($payload[$k])) continue;
+        $fmt = vendas_me_formatar_telefone((string)$payload[$k]);
+        if ($fmt === null) {
+            unset($payload[$k]);
+        } else {
+            $payload[$k] = $fmt;
+        }
     }
 
     if (empty($payload)) {

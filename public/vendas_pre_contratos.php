@@ -217,8 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $payload_update = [
                         'nome' => $pre_contrato['nome_completo'] ?? null,
                         'email' => $pre_contrato['email'] ?? null,
-                        // docs ME: telefone/celular
-                        'celular' => $pre_contrato['telefone'] ?? null,
+                        // docs ME: telefone/celular (normalizado no helper antes de enviar)
                         'telefone' => $pre_contrato['telefone'] ?? null,
                         'rg' => $pre_contrato['rg'] ?? null,
                         'cep' => $pre_contrato['cep'] ?? null,
