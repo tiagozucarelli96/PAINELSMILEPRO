@@ -173,15 +173,12 @@ function vendas_validar_cpf(string $cpf): bool {
  */
 function vendas_has_table(PDO $pdo, string $table): bool {
     try {
-        $stmt = $pdo->prepare("
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = 'public'
-              AND table_name = :t
-            LIMIT 1
-        ");
+        // Importante: em produção o projeto usa search_path (ex.: smilee12_painel_smile, public).
+        // Então a checagem precisa respeitar o search_path, e não só "public".
+        $stmt = $pdo->prepare("SELECT to_regclass(:t)");
         $stmt->execute([':t' => $table]);
-        return (bool)$stmt->fetchColumn();
+        $reg = $stmt->fetchColumn();
+        return is_string($reg) && trim($reg) !== '';
     } catch (Throwable $e) {
         return false;
     }
@@ -189,12 +186,13 @@ function vendas_has_table(PDO $pdo, string $table): bool {
 
 function vendas_has_column(PDO $pdo, string $table, string $column): bool {
     try {
+        // Checar coluna via pg_attribute usando to_regclass (respeita search_path)
         $stmt = $pdo->prepare("
             SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = :t
-              AND column_name = :c
+            FROM pg_attribute
+            WHERE attrelid = to_regclass(:t)
+              AND attname = :c
+              AND NOT attisdropped
             LIMIT 1
         ");
         $stmt->execute([':t' => $table, ':c' => $column]);
@@ -225,40 +223,17 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
         if (!vendas_has_table($pdo, $t)) $missing[] = $t;
     }
 
-    // Se faltam tabelas, tentar aplicar o SQL base 041 + ajustes 042
+    // Se faltam tabelas, NÃO executar SQL via web.
+    // O provisionamento deve ser feito por migration/psql.
     if (!empty($missing)) {
-        $sql041 = __DIR__ . '/../sql/041_modulo_vendas.sql';
-        $sql042 = __DIR__ . '/../sql/042_vendas_ajustes.sql';
-
-        try {
-            if (!is_file($sql041)) {
-                $errors[] = 'Base de Vendas ausente. Arquivo não encontrado: sql/041_modulo_vendas.sql';
-                return false;
-            }
-            $pdo->exec(file_get_contents($sql041));
-            $messages[] = 'Base do módulo Vendas criada automaticamente (SQL 041).';
-
-            if (is_file($sql042)) {
-                $pdo->exec(file_get_contents($sql042));
-                $messages[] = 'Ajustes do módulo Vendas aplicados automaticamente (SQL 042).';
-            } else {
-                $errors[] = 'Ajustes de Vendas ausentes. Execute o SQL sql/042_vendas_ajustes.sql.';
-                return false;
-            }
-        } catch (Throwable $e) {
-            $errors[] = 'Não foi possível criar/atualizar a base de Vendas automaticamente: ' . $e->getMessage();
-            return false;
+        $sp = '';
+        try { $sp = (string)$pdo->query("SHOW search_path")->fetchColumn(); } catch (Throwable $e) {}
+        $errors[] = 'Base de Vendas ausente. Tabelas faltando: ' . implode(', ', $missing);
+        if ($sp !== '') {
+            $errors[] = 'search_path atual: ' . $sp;
         }
-
-        // Revalidar
-        $missing2 = [];
-        foreach ($requiredTables as $t) {
-            if (!vendas_has_table($pdo, $t)) $missing2[] = $t;
-        }
-        if (!empty($missing2)) {
-            $errors[] = 'Base de Vendas ainda está incompleta. Tabelas ausentes: ' . implode(', ', $missing2);
-            return false;
-        }
+        $errors[] = 'Aplique as migrations: sql/041_modulo_vendas.sql e sql/042_vendas_ajustes.sql.';
+        return false;
     }
 
     // Se tabelas existem mas faltam colunas do 042, tentar aplicar 042
@@ -278,10 +253,10 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
                 $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
                 return false;
             }
-            $pdo->exec(file_get_contents($sql042));
-            $messages[] = 'Ajustes do módulo Vendas aplicados automaticamente (SQL 042).';
+            $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
+            return false;
         } catch (Throwable $e) {
-            $errors[] = 'Não foi possível aplicar o SQL 042 automaticamente: ' . $e->getMessage();
+            $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
             return false;
         }
     }
