@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/vendas_me_helper.php';
+require_once __DIR__ . '/vendas_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 // Verificar permissões
@@ -20,7 +21,8 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)($_SESSION['id'] ?? 0);
-$is_admin = !empty($_SESSION['perm_administrativo']);
+$is_admin = vendas_is_admin(); // Usar função centralizada
+$admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $_POST['admin_context'] === '1');
 
 $mensagens = [];
 $erros = [];
@@ -111,7 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
-    if ($action === 'aprovar_criar_me' && $is_admin) {
+    if ($action === 'aprovar_criar_me') {
+        // Verificar se é admin usando função centralizada
+        if (!vendas_is_admin()) {
+            $erros[] = 'Apenas administradores podem aprovar e criar na ME';
+        } elseif (!$admin_context) {
+            $erros[] = 'Aprovação disponível apenas em Vendas > Administração.';
+        } else {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
         $override_conflito = isset($_POST['override_conflito']) && $_POST['override_conflito'] === '1';
         $override_motivo = trim($_POST['override_motivo'] ?? '');
@@ -187,11 +195,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Se encontrou cliente existente e há divergências, processar atualização
                 if ($cliente_existente && $atualizar_cliente_me === 'atualizar') {
-                    vendas_me_atualizar_cliente($me_client_id, [
-                        'nome' => $pre_contrato['nome_completo'],
-                        'email' => $pre_contrato['email'],
-                        'telefone' => $pre_contrato['telefone']
-                    ]);
+                    $payload_update = [
+                        'nome' => $pre_contrato['nome_completo'] ?? null,
+                        'email' => $pre_contrato['email'] ?? null,
+                        // docs ME: telefone/celular
+                        'celular' => $pre_contrato['telefone'] ?? null,
+                        'telefone' => $pre_contrato['telefone'] ?? null,
+                        'rg' => $pre_contrato['rg'] ?? null,
+                        'cep' => $pre_contrato['cep'] ?? null,
+                        'endereco' => $pre_contrato['endereco_completo'] ?? null,
+                        'numero' => $pre_contrato['numero'] ?? null,
+                        'complemento' => $pre_contrato['complemento'] ?? null,
+                        'bairro' => $pre_contrato['bairro'] ?? null,
+                        'cidade' => $pre_contrato['cidade'] ?? null,
+                        'estado' => $pre_contrato['estado'] ?? null,
+                        'pais' => $pre_contrato['pais'] ?? null,
+                        'redesocial' => $pre_contrato['instagram'] ?? null,
+                    ];
+                    // remover nulos
+                    $payload_update = array_filter($payload_update, fn($v) => $v !== null && $v !== '');
+
+                    vendas_me_atualizar_cliente((int)$me_client_id, $payload_update);
                 }
                 
                 // Se não encontrou cliente, criar novo
@@ -199,8 +223,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $novo_cliente = vendas_me_criar_cliente([
                         'nome' => $pre_contrato['nome_completo'],
                         'cpf' => $pre_contrato['cpf'],
+                        'rg' => $pre_contrato['rg'] ?? null,
                         'email' => $pre_contrato['email'],
-                        'telefone' => $pre_contrato['telefone']
+                        'telefone' => $pre_contrato['telefone'],
+                        'cep' => $pre_contrato['cep'] ?? null,
+                        'endereco' => $pre_contrato['endereco_completo'] ?? null,
+                        'numero' => $pre_contrato['numero'] ?? null,
+                        'complemento' => $pre_contrato['complemento'] ?? null,
+                        'bairro' => $pre_contrato['bairro'] ?? null,
+                        'cidade' => $pre_contrato['cidade'] ?? null,
+                        'estado' => $pre_contrato['estado'] ?? null,
+                        'pais' => $pre_contrato['pais'] ?? null,
+                        'redesocial' => $pre_contrato['instagram'] ?? null
                     ]);
                     $me_client_id = $novo_cliente['id'] ?? null;
                 }
@@ -211,47 +245,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Buscar tipo de evento na ME
                 $tipos_evento = vendas_me_listar_tipos_evento();
-                $tipo_evento_id = null;
-                foreach ($tipos_evento as $tipo) {
-                    if (stripos($tipo['nome'] ?? '', $pre_contrato['tipo_evento']) !== false) {
-                        $tipo_evento_id = $tipo['id'] ?? null;
-                        break;
+                $tipo_evento_id = (int)(getenv('ME_TIPO_EVENTO_ID_' . strtoupper((string)$pre_contrato['tipo_evento'])) ?: 0);
+                if ($tipo_evento_id <= 0) {
+                    $needles = [];
+                    $tipoInterno = (string)($pre_contrato['tipo_evento'] ?? '');
+                    if ($tipoInterno === 'casamento') $needles = ['casament'];
+                    elseif ($tipoInterno === 'infantil') $needles = ['infantil', 'anivers'];
+                    elseif ($tipoInterno === 'pj') $needles = ['corpor', 'empres', 'pj'];
+                    else $needles = [$tipoInterno];
+
+                    foreach ($tipos_evento as $tipo) {
+                        if (!is_array($tipo)) continue;
+                        $nomeTipo = mb_strtolower((string)($tipo['nome'] ?? ''));
+                        foreach ($needles as $n) {
+                            $n = mb_strtolower((string)$n);
+                            if ($n !== '' && strpos($nomeTipo, $n) !== false) {
+                                $tipo_evento_id = (int)($tipo['id'] ?? 0);
+                                break 2;
+                            }
+                        }
                     }
+                }
+                if ($tipo_evento_id <= 0) {
+                    throw new Exception('Não foi possível identificar o tipo de evento na ME. Configure ME_TIPO_EVENTO_ID_CASAMENTO/INFANTIL/PJ no ambiente.');
+                }
+                
+                // Validar que local está mapeado antes de criar evento
+                $me_local_id_validacao = vendas_obter_me_local_id($pre_contrato['unidade']);
+                if (!$me_local_id_validacao) {
+                    throw new Exception('Local não mapeado. Ajuste em Logística > Conexão antes de aprovar.');
                 }
                 
                 // Criar evento na ME
+                // Para casamento, usar nome_noivos como nome_evento
+                $nome_evento = $pre_contrato['nome_noivos'] ?? $pre_contrato['nome_completo'];
+                if ($pre_contrato['tipo_evento'] !== 'casamento') {
+                    $nome_evento = $pre_contrato['nome_completo'] . ' - ' . ucfirst($pre_contrato['tipo_evento']);
+                }
+                
                 $dados_evento = [
                     'client_id' => $me_client_id,
                     'tipo_evento_id' => $tipo_evento_id,
-                    'nome_evento' => $pre_contrato['nome_completo'] . ' - ' . ucfirst($pre_contrato['tipo_evento']),
+                    'nome_evento' => $nome_evento,
                     'data_evento' => $pre_contrato['data_evento'],
                     'hora_inicio' => $pre_contrato['horario_inicio'],
                     'hora_termino' => $pre_contrato['horario_termino'],
                     'local' => $pre_contrato['unidade'],
-                    'observacoes' => $pre_contrato['observacoes'] ?? ''
+                    // campos adicionais (docs ME)
+                    'idvendedor' => (int)(getenv('ME_DEFAULT_SELLER_ID') ?: 0),
+                    'nconvidados' => (int)($pre_contrato['num_convidados'] ?? 0),
+                    'comoconheceu' => (function() use ($pre_contrato) {
+                        $v = (string)($pre_contrato['como_conheceu'] ?? '');
+                        if ($v === '') return '';
+                        if ($v === 'instagram') return 'Instagram';
+                        if ($v === 'facebook') return 'Facebook';
+                        if ($v === 'google') return 'Google';
+                        if ($v === 'indicacao') return 'Indicação';
+                        if ($v === 'outro') {
+                            $o = trim((string)($pre_contrato['como_conheceu_outro'] ?? ''));
+                            return $o !== '' ? ('Outro: ' . $o) : 'Outro';
+                        }
+                        return $v;
+                    })(),
+                    'observacao' => (string)($pre_contrato['observacoes'] ?? '')
                 ];
-                
-                // Se não tem client_id (endpoint não existe), incluir dados do cliente inline
-                if (!$me_client_id) {
-                    $dados_evento['cliente_nome'] = $pre_contrato['nome_completo'];
-                    $dados_evento['cliente_cpf'] = $pre_contrato['cpf'];
-                    $dados_evento['cliente_email'] = $pre_contrato['email'];
-                    $dados_evento['cliente_telefone'] = $pre_contrato['telefone'];
-                }
                 
                 $evento_me = vendas_me_criar_evento($dados_evento);
                 $me_event_id = $evento_me['id'] ?? null;
-                
-                // Se cliente não foi criado antes, pegar da resposta do evento
-                if (!$me_client_id) {
-                    $me_client_id = $evento_me['client_id'] ?? null;
-                }
                 
                 if (!$me_event_id) {
                     throw new Exception('Não foi possível criar evento na ME');
                 }
                 
                 // Atualizar pré-contrato
+                $me_payload = [
+                    'cliente' => [
+                        'id' => (int)$me_client_id,
+                        'atualizar_cliente_me' => $atualizar_cliente_me
+                    ],
+                    'evento' => [
+                        'payload' => $evento_me['payload'] ?? null,
+                        'response' => $evento_me['data'] ?? null
+                    ]
+                ];
                 $stmt = $pdo->prepare("
                     UPDATE vendas_pre_contratos 
                     SET me_client_id = ?, me_event_id = ?, me_payload = ?, me_criado_em = NOW(),
@@ -262,7 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([
                     $me_client_id,
                     $me_event_id,
-                    json_encode($dados_evento),
+                    json_encode($me_payload, JSON_UNESCAPED_UNICODE),
                     $usuario_id,
                     $override_conflito ? true : false,
                     $override_motivo,
@@ -322,6 +398,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $erros[] = 'Erro ao aprovar: ' . $e->getMessage();
             error_log('Erro ao aprovar pré-contrato: ' . $e->getMessage());
         }
+        } // Fechar else do if (!vendas_is_admin())
     }
     
     if ($action === 'atualizar_status') {
@@ -563,7 +640,7 @@ ob_start();
 
 <div class="vendas-container">
     <div class="vendas-header">
-        <h1>Pré-contratos</h1>
+        <h1><?php echo $admin_context ? 'Administração de Vendas' : 'Pré-contratos'; ?></h1>
         <p>Gerencie os pré-contratos recebidos dos formulários públicos</p>
     </div>
     
@@ -747,7 +824,7 @@ ob_start();
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
                         <a href="?" class="btn btn-secondary">Cancelar</a>
                         
-                        <?php if ($is_admin && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
+                        <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
                             <button type="button" class="btn btn-primary" onclick="abrirModalAprovacao()">Aprovar e Criar na ME</button>
                         <?php endif; ?>
                     </div>
@@ -756,6 +833,7 @@ ob_start();
         </div>
         
         <!-- Modal de Aprovação -->
+        <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
         <div class="modal" id="modalAprovacao">
             <div class="modal-content">
                 <h2>Aprovar e Criar na ME</h2>
@@ -780,17 +858,17 @@ ob_start();
                 unset($_SESSION['vendas_conflito_detalhes']);
                 ?>
                 
-                <?php if (!empty($conflito_detalhes) && $conflito_detalhes['tem_conflito']): ?>
+                <?php if (!empty($conflito_detalhes) && !empty($conflito_detalhes['tem_conflito'])): ?>
                     <div class="alert alert-warning">
                         <strong>Conflito de agenda detectado!</strong><br>
                         Existem eventos na mesma unidade e data que não respeitam a distância mínima de 
-                        <?php echo $_SESSION['vendas_conflito_detalhes']['distancia_minima_horas']; ?> horas.
+                        <?php echo htmlspecialchars((string)($conflito_detalhes['distancia_minima_horas'] ?? '')); ?> horas.
                         <ul style="margin-top: 0.5rem;">
-                            <?php foreach ($_SESSION['vendas_conflito_detalhes']['conflitos'] as $conflito): ?>
+                            <?php foreach (($conflito_detalhes['conflitos'] ?? []) as $conflito): ?>
                                 <li>
-                                    Evento: <?php echo htmlspecialchars($conflito['evento']['nome_evento'] ?? 'N/A'); ?> - 
-                                    <?php echo htmlspecialchars($conflito['evento']['hora_inicio'] ?? ''); ?> às 
-                                    <?php echo htmlspecialchars($conflito['evento']['hora_termino'] ?? ''); ?>
+                                    Evento: <?php echo htmlspecialchars((string)($conflito['evento']['nomeevento'] ?? $conflito['evento']['nome_evento'] ?? 'N/A')); ?> - 
+                                    <?php echo htmlspecialchars((string)($conflito['evento']['horaevento'] ?? $conflito['evento']['hora_inicio'] ?? '')); ?> às 
+                                    <?php echo htmlspecialchars((string)($conflito['evento']['horaeventofim'] ?? $conflito['evento']['hora_termino'] ?? '')); ?>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -835,7 +913,7 @@ ob_start();
                     if (strtolower(trim($cliente_duplicado['email'] ?? '')) !== strtolower(trim($pre_contrato_editar['email']))) {
                         $divergencias[] = 'E-mail';
                     }
-                    if (preg_replace('/\D/', '', $cliente_duplicado['telefone'] ?? '')) !== preg_replace('/\D/', '', $pre_contrato_editar['telefone'] ?? '')) {
+                    if (preg_replace('/\D/', '', $cliente_duplicado['telefone'] ?? '') !== preg_replace('/\D/', '', $pre_contrato_editar['telefone'] ?? '')) {
                         $divergencias[] = 'Telefone';
                     }
                 ?>
@@ -860,6 +938,7 @@ ob_start();
                 <form method="POST" id="formAprovacao">
                     <input type="hidden" name="action" value="aprovar_criar_me">
                     <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
+                    <input type="hidden" name="admin_context" value="1">
                     <input type="hidden" name="override_conflito" id="input_override_conflito" value="0">
                     <input type="hidden" name="override_motivo" id="input_override_motivo" value="">
                     <input type="hidden" name="atualizar_cliente_me" id="input_atualizar_cliente_me" value="manter">
@@ -871,6 +950,7 @@ ob_start();
                 </form>
             </div>
         </div>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 

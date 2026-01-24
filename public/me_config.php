@@ -1,14 +1,16 @@
 <?php
 // me_config.php - Configurações da API da ME Eventos
 
-// Configuração da API da ME Eventos
-// Chave configurada: 1csye-q6ha3-84sym-z7d22-btcga
-define('ME_BASE_URL', 'https://app2.meeventos.com.br/lisbonbuffet');
-define('ME_API_KEY', '1csye-q6ha3-84sym-z7d22-btcga'); // Chave real gerada
+/**
+ * IMPORTANTE (SEGURANÇA):
+ * - NÃO manter token/chaves hardcoded no repositório.
+ * - Configure via variáveis de ambiente no Railway/servidor.
+ *
+ * Variáveis suportadas (ordem de prioridade):
+ * - ME_BASE_URL
+ * - ME_API_TOKEN (preferencial) ou ME_API_KEY
+ */
 
-// Instruções para obter sua chave:
-// 1. Acesse: https://app2.meeventos.com.br/lisbonbuffet/meus-dados
-// 2. Faça login na sua conta
-// 3. Copie a chave da API
-// 4. Substitua o valor acima pela sua chave real
-?>
+define('ME_BASE_URL', getenv('ME_BASE_URL') ?: 'https://app2.meeventos.com.br/lisbonbuffet');
+define('ME_API_KEY', getenv('ME_API_TOKEN') ?: (getenv('ME_API_KEY') ?: ''));
+

@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/vendas_helper.php';
 
 // Verificar permissões
 if (!lc_can_access_comercial()) {
@@ -640,6 +641,18 @@ includeSidebar('Comercial');
                     <span class="funcionalidade-item-text">Pré-contratos</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
+                <a href="index.php?page=vendas_lancamento_presencial" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🧾</span>
+                    <span class="funcionalidade-item-text">Lançamento (Presencial)</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
+                <?php if (vendas_is_admin()): ?>
+                    <a href="index.php?page=vendas_administracao" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                        <span class="funcionalidade-item-icon">🛡️</span>
+                        <span class="funcionalidade-item-text">Administração (Tiago)</span>
+                        <span class="funcionalidade-item-arrow">→</span>
+                    </a>
+                <?php endif; ?>
                 <a href="index.php?page=vendas_kanban" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">📋</span>
                     <span class="funcionalidade-item-text">Acompanhamento de Contratos</span>

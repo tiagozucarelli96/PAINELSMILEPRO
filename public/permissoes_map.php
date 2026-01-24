@@ -52,6 +52,8 @@ return [
     'comercial_lista_espera' => 'perm_comercial',
     'comercial_realizar_degustacao' => 'perm_comercial',
     'vendas_pre_contratos' => 'perm_comercial',
+    'vendas_lancamento_presencial' => 'perm_comercial',
+    'vendas_administracao' => 'perm_comercial',
     'vendas_kanban' => 'perm_comercial',
     // Formulários públicos não precisam de permissão
     'vendas_form_casamento' => null,

@@ -1,0 +1,609 @@
+<?php
+/**
+ * vendas_lancamento_presencial.php
+ * Vendas > Lançamento (Presencial)
+ *
+ * - Somente logado + perm_comercial
+ * - Cria/edita pré-contrato com origem = presencial
+ * - Não aprova / não cria evento na ME
+ */
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/vendas_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
+
+if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
+    header('Location: index.php?page=login');
+    exit;
+}
+
+$pdo = $GLOBALS['pdo'];
+$usuario_id = (int)($_SESSION['id'] ?? 0);
+$ip = $_SERVER['REMOTE_ADDR'] ?? null;
+
+$mensagens = [];
+$erros = [];
+
+// Checagem de schema mínimo (evita tela quebrada se SQL 042 não foi aplicado)
+try {
+    $pdo->query("SELECT origem, rg, cep, endereco_completo, nome_noivos, num_convidados, como_conheceu FROM vendas_pre_contratos LIMIT 1");
+} catch (Throwable $e) {
+    includeSidebar('Comercial');
+    echo '<div style="padding:2rem;max-width:1000px;margin:0 auto;">';
+    echo '<div class="alert alert-error">Base de Vendas desatualizada. Execute o SQL <code>sql/042_vendas_ajustes.sql</code> antes de usar o Lançamento Presencial.</div>';
+    echo '</div>';
+    endSidebar();
+    exit;
+}
+
+$locais_mapeados = vendas_buscar_locais_mapeados();
+
+// Edição
+$editar_id = (int)($_GET['editar'] ?? 0);
+$registro = null;
+$adicionais_editar = [];
+$anexos_editar = [];
+
+if ($editar_id) {
+    $st = $pdo->prepare("SELECT * FROM vendas_pre_contratos WHERE id = ? LIMIT 1");
+    $st->execute([$editar_id]);
+    $registro = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if ($registro) {
+        $st = $pdo->prepare("SELECT * FROM vendas_adicionais WHERE pre_contrato_id = ? ORDER BY id");
+        $st->execute([$editar_id]);
+        $adicionais_editar = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        $st = $pdo->prepare("SELECT * FROM vendas_anexos WHERE pre_contrato_id = ? ORDER BY criado_em DESC");
+        $st->execute([$editar_id]);
+        $anexos_editar = $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+
+function vendas_money($v): float {
+    if ($v === null) return 0.0;
+    if (is_string($v)) {
+        $v = str_replace(['.', ','], ['', '.'], $v);
+    }
+    return (float)$v;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'salvar_presencial') {
+        $id_edit = (int)($_POST['pre_contrato_id'] ?? 0);
+
+        // Cliente (iguais ao público)
+        $nome_completo = trim((string)($_POST['nome_completo'] ?? ''));
+        $email = trim((string)($_POST['email'] ?? ''));
+        $telefone = preg_replace('/\D/', '', (string)($_POST['telefone'] ?? ''));
+        $cpf = preg_replace('/\D/', '', (string)($_POST['cpf'] ?? ''));
+        $rg = trim((string)($_POST['rg'] ?? ''));
+        $cep = preg_replace('/\D/', '', (string)($_POST['cep'] ?? ''));
+        $endereco = trim((string)($_POST['endereco_completo'] ?? ''));
+        $numero = trim((string)($_POST['numero'] ?? ''));
+        $complemento = trim((string)($_POST['complemento'] ?? ''));
+        $bairro = trim((string)($_POST['bairro'] ?? ''));
+        $cidade = trim((string)($_POST['cidade'] ?? ''));
+        $estado = strtoupper(trim((string)($_POST['estado'] ?? '')));
+        $pais = trim((string)($_POST['pais'] ?? 'Brasil'));
+        $instagram = trim((string)($_POST['instagram'] ?? ''));
+
+        // Evento
+        $data_evento = (string)($_POST['data_evento'] ?? '');
+        $hora_inicio = (string)($_POST['horario_inicio'] ?? '');
+        $hora_termino = (string)($_POST['horario_termino'] ?? '');
+        $unidade = (string)($_POST['unidade'] ?? '');
+        $nome_noivos = trim((string)($_POST['nome_noivos'] ?? ''));
+        $num_convidados = (int)($_POST['num_convidados'] ?? 0);
+        $como_conheceu = (string)($_POST['como_conheceu'] ?? '');
+        $como_conheceu_outro = trim((string)($_POST['como_conheceu_outro'] ?? ''));
+
+        // Texto livre (interno)
+        $pacote_plano = trim((string)($_POST['pacote_plano'] ?? ''));
+
+        // Campos internos
+        $forma_pagamento = trim((string)($_POST['forma_pagamento'] ?? ''));
+        $valor_negociado = vendas_money($_POST['valor_negociado'] ?? 0);
+        $desconto = vendas_money($_POST['desconto'] ?? 0);
+        $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
+        $status = (string)($_POST['status'] ?? 'aguardando_conferencia');
+        if (!in_array($status, ['aguardando_conferencia', 'pronto_aprovacao'], true)) {
+            $status = 'aguardando_conferencia';
+        }
+
+        // Adicionais
+        $adicionais = [];
+        if (!empty($_POST['adicionais']) && is_array($_POST['adicionais'])) {
+            foreach ($_POST['adicionais'] as $a) {
+                if (!is_array($a)) continue;
+                $item = trim((string)($a['item'] ?? ''));
+                $valor = vendas_money($a['valor'] ?? 0);
+                if ($item !== '' && $valor >= 0) {
+                    $adicionais[] = ['item' => $item, 'valor' => $valor];
+                }
+            }
+        }
+
+        // Validações (mesmas do público + internas)
+        try {
+            if ($nome_completo === '' || mb_strlen($nome_completo) < 3) throw new Exception('Nome completo é obrigatório.');
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Exception('E-mail válido é obrigatório.');
+            if ($telefone === '' || strlen($telefone) < 10) throw new Exception('Telefone/WhatsApp é obrigatório.');
+            if ($cpf === '' || strlen($cpf) !== 11 || !vendas_validar_cpf($cpf)) throw new Exception('CPF inválido.');
+            if ($rg === '') throw new Exception('RG é obrigatório.');
+
+            if ($cep === '' || strlen($cep) !== 8) throw new Exception('CEP inválido.');
+            if ($endereco === '') throw new Exception('Endereço é obrigatório.');
+            if ($numero === '') throw new Exception('Número é obrigatório.');
+            if ($bairro === '') throw new Exception('Bairro é obrigatório.');
+            if ($cidade === '') throw new Exception('Cidade é obrigatória.');
+            if ($estado === '' || strlen($estado) !== 2) throw new Exception('Estado (UF) inválido.');
+
+            if ($data_evento === '') throw new Exception('Data do evento é obrigatória.');
+            $dt = new DateTime($data_evento);
+            $hoje = new DateTime('today');
+            if ($dt < $hoje) throw new Exception('Data do evento não pode ser passada.');
+
+            if ($hora_inicio === '' || $hora_termino === '') throw new Exception('Horários são obrigatórios.');
+            if (strtotime($hora_termino) <= strtotime($hora_inicio)) throw new Exception('Hora término deve ser maior que hora início.');
+
+            $me_local_id = vendas_validar_local_mapeado($unidade);
+            if (!$me_local_id) throw new Exception('Local não mapeado. Ajuste em Logística > Conexão.');
+
+            if ($nome_noivos === '') throw new Exception('Nome dos noivos é obrigatório.');
+            if ($num_convidados <= 0) throw new Exception('Nº de convidados deve ser maior que zero.');
+
+            if ($como_conheceu === '') throw new Exception('Como conheceu é obrigatório.');
+            if ($como_conheceu === 'outro' && $como_conheceu_outro === '') throw new Exception('Informe como conheceu quando selecionar "Outro".');
+
+            if ($pacote_plano === '') throw new Exception('Pacote/Plano escolhido é obrigatório.');
+
+            if ($valor_negociado < 0) throw new Exception('Valor negociado deve ser >= 0.');
+
+            $total_adicionais = array_sum(array_column($adicionais, 'valor'));
+            $valor_total = $valor_negociado + $total_adicionais - $desconto;
+            if ($desconto < 0) throw new Exception('Desconto deve ser >= 0.');
+            if ($valor_total < 0) throw new Exception('Desconto não pode exceder o total.');
+
+            // Se marcar pronto_aprovacao: exigir anexo (novo) ou já existente (edição)
+            $tem_anexo_existente = false;
+            if ($id_edit > 0) {
+                $st = $pdo->prepare("SELECT COUNT(*) FROM vendas_anexos WHERE pre_contrato_id = ?");
+                $st->execute([$id_edit]);
+                $tem_anexo_existente = ((int)$st->fetchColumn() > 0);
+            }
+            $tem_upload = !empty($_FILES['anexo_orcamento']['tmp_name']);
+            if ($status === 'pronto_aprovacao' && !$tem_upload && !$tem_anexo_existente) {
+                throw new Exception('Para marcar como "Pronto para aprovação", é obrigatório anexar o orçamento/proposta.');
+            }
+
+            $pdo->beginTransaction();
+
+            if ($id_edit > 0) {
+                $st = $pdo->prepare("
+                    UPDATE vendas_pre_contratos
+                    SET tipo_evento = 'casamento',
+                        origem = 'presencial',
+                        nome_completo = ?, cpf = ?, rg = ?, telefone = ?, email = ?,
+                        cep = ?, endereco_completo = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, estado = ?, pais = ?, instagram = ?,
+                        data_evento = ?, unidade = ?, horario_inicio = ?, horario_termino = ?,
+                        nome_noivos = ?, num_convidados = ?, como_conheceu = ?, como_conheceu_outro = ?,
+                        pacote_contratado = ?, forma_pagamento = ?, valor_negociado = ?, desconto = ?, valor_total = ?,
+                        observacoes_internas = ?, responsavel_comercial_id = ?,
+                        status = ?, atualizado_em = NOW(), atualizado_por = ?
+                    WHERE id = ?
+                ");
+                $st->execute([
+                    $nome_completo, $cpf, $rg, $telefone, $email,
+                    $cep, $endereco, $numero, $complemento, $bairro, $cidade, $estado, $pais, $instagram,
+                    $data_evento, $unidade, $hora_inicio, $hora_termino,
+                    $nome_noivos, $num_convidados, $como_conheceu, ($como_conheceu === 'outro' ? $como_conheceu_outro : null),
+                    $pacote_plano, $forma_pagamento, $valor_negociado, $desconto, $valor_total,
+                    $observacoes_internas, $usuario_id,
+                    $status, $usuario_id,
+                    $id_edit
+                ]);
+
+                // atualizar adicionais (substitui)
+                $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?")->execute([$id_edit]);
+                $stAdd = $pdo->prepare("INSERT INTO vendas_adicionais (pre_contrato_id, item, valor) VALUES (?, ?, ?)");
+                foreach ($adicionais as $a) {
+                    $stAdd->execute([$id_edit, $a['item'], $a['valor']]);
+                }
+
+                $pre_id = $id_edit;
+            } else {
+                $st = $pdo->prepare("
+                    INSERT INTO vendas_pre_contratos
+                    (tipo_evento, origem, status,
+                     nome_completo, cpf, rg, telefone, email,
+                     cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
+                     data_evento, unidade, horario_inicio, horario_termino,
+                     nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
+                     pacote_contratado, forma_pagamento, valor_negociado, desconto, valor_total,
+                     observacoes_internas, responsavel_comercial_id, criado_por_ip)
+                    VALUES
+                    ('casamento', 'presencial', ?,
+                     ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                     ?, ?, ?, ?,
+                     ?, ?, ?, ?,
+                     ?, ?, ?, ?, ?,
+                     ?, ?, ?)
+                    RETURNING id
+                ");
+                $st->execute([
+                    $status,
+                    $nome_completo, $cpf, $rg, $telefone, $email,
+                    $cep, $endereco, $numero, $complemento, $bairro, $cidade, $estado, $pais, $instagram,
+                    $data_evento, $unidade, $hora_inicio, $hora_termino,
+                    $nome_noivos, $num_convidados, $como_conheceu, ($como_conheceu === 'outro' ? $como_conheceu_outro : null),
+                    $pacote_plano, $forma_pagamento, $valor_negociado, $desconto, $valor_total,
+                    $observacoes_internas, $usuario_id, $ip
+                ]);
+                $pre_id = (int)$st->fetchColumn();
+
+                $stAdd = $pdo->prepare("INSERT INTO vendas_adicionais (pre_contrato_id, item, valor) VALUES (?, ?, ?)");
+                foreach ($adicionais as $a) {
+                    $stAdd->execute([$pre_id, $a['item'], $a['valor']]);
+                }
+            }
+
+            // Upload (opcional)
+            if (!empty($_FILES['anexo_orcamento']['tmp_name'])) {
+                $uploader = new MagaluUpload();
+                $result = $uploader->upload($_FILES['anexo_orcamento'], 'vendas/orcamentos');
+
+                if (!empty($result['chave_storage']) || !empty($result['url'])) {
+                    $st = $pdo->prepare("
+                        INSERT INTO vendas_anexos
+                        (pre_contrato_id, nome_original, nome_arquivo, chave_storage, url, mime_type, tamanho_bytes, upload_por)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $st->execute([
+                        $pre_id,
+                        $_FILES['anexo_orcamento']['name'],
+                        $result['nome_original'] ?? $_FILES['anexo_orcamento']['name'],
+                        $result['chave_storage'] ?? null,
+                        $result['url'] ?? null,
+                        $_FILES['anexo_orcamento']['type'] ?? null,
+                        $_FILES['anexo_orcamento']['size'] ?? null,
+                        $usuario_id
+                    ]);
+                }
+            }
+
+            $st = $pdo->prepare("INSERT INTO vendas_logs (pre_contrato_id, acao, usuario_id, detalhes) VALUES (?, 'lancamento_presencial_salvo', ?, ?)");
+            $st->execute([$pre_id, $usuario_id, json_encode(['status' => $status], JSON_UNESCAPED_UNICODE)]);
+
+            $pdo->commit();
+            header('Location: index.php?page=vendas_lancamento_presencial&editar=' . $pre_id . '&ok=1');
+            exit;
+
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            $erros[] = $e->getMessage();
+        }
+    }
+}
+
+if (!empty($_GET['ok'])) {
+    $mensagens[] = 'Lançamento salvo com sucesso!';
+}
+
+ob_start();
+?>
+
+<style>
+.vendas-container{max-width:1400px;margin:0 auto;padding:1.5rem}
+.vendas-header{margin-bottom:1.5rem}
+.vendas-header h1{font-size:1.75rem;color:#1e3a8a;margin-bottom:.25rem}
+.vendas-card{background:#fff;border-radius:12px;padding:1.5rem;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:1rem}
+.form-section-title{font-size:1.1rem;font-weight:700;color:#1e3a8a;margin:1.25rem 0 .75rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width:768px){.form-row{grid-template-columns:1fr}}
+.form-group{margin-bottom:1rem}
+.form-group label{display:block;margin-bottom:.35rem;font-weight:600;color:#374151}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:.75rem;border:1px solid #d1d5db;border-radius:8px}
+.btn{padding:.6rem 1rem;border-radius:8px;border:none;cursor:pointer;font-weight:700}
+.btn-primary{background:#2563eb;color:#fff}
+.btn-secondary{background:#6b7280;color:#fff}
+.btn-danger{background:#ef4444;color:#fff}
+.required{color:#ef4444}
+.alert{padding:1rem;border-radius:8px;margin-bottom:1rem}
+.alert-success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+.alert-error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+.adicionais-table{width:100%;border-collapse:collapse;margin-top:.5rem}
+.adicionais-table th,.adicionais-table td{border-bottom:1px solid #e5e7eb;padding:.5rem;text-align:left}
+</style>
+
+<div class="vendas-container">
+  <div class="vendas-header">
+    <h1>Lançamento (Presencial)</h1>
+    <p>Lance um pré-contrato rapidamente. Esta tela <strong>não</strong> aprova e <strong>não</strong> cria evento na ME.</p>
+  </div>
+
+  <?php foreach ($mensagens as $m): ?>
+    <div class="alert alert-success"><?php echo htmlspecialchars($m); ?></div>
+  <?php endforeach; ?>
+  <?php foreach ($erros as $e): ?>
+    <div class="alert alert-error"><?php echo htmlspecialchars($e); ?></div>
+  <?php endforeach; ?>
+
+  <div class="vendas-card">
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="salvar_presencial">
+      <input type="hidden" name="pre_contrato_id" value="<?php echo (int)($registro['id'] ?? 0); ?>">
+
+      <div class="form-section-title">Cliente</div>
+      <div class="form-group">
+        <label>Nome <span class="required">*</span></label>
+        <input name="nome_completo" required value="<?php echo htmlspecialchars($registro['nome_completo'] ?? ''); ?>">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>E-mail <span class="required">*</span></label>
+          <input type="email" name="email" required value="<?php echo htmlspecialchars($registro['email'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Telefone/WhatsApp <span class="required">*</span></label>
+          <input name="telefone" required value="<?php echo htmlspecialchars($registro['telefone'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CPF <span class="required">*</span></label>
+          <input name="cpf" required value="<?php echo htmlspecialchars($registro['cpf'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>RG <span class="required">*</span></label>
+          <input name="rg" required value="<?php echo htmlspecialchars($registro['rg'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CEP <span class="required">*</span></label>
+          <input name="cep" required value="<?php echo htmlspecialchars($registro['cep'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Instagram</label>
+          <input name="instagram" value="<?php echo htmlspecialchars($registro['instagram'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Endereço <span class="required">*</span></label>
+        <input name="endereco_completo" required value="<?php echo htmlspecialchars($registro['endereco_completo'] ?? ''); ?>">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Número <span class="required">*</span></label>
+          <input name="numero" required value="<?php echo htmlspecialchars($registro['numero'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Complemento</label>
+          <input name="complemento" value="<?php echo htmlspecialchars($registro['complemento'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Bairro <span class="required">*</span></label>
+          <input name="bairro" required value="<?php echo htmlspecialchars($registro['bairro'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Cidade <span class="required">*</span></label>
+          <input name="cidade" required value="<?php echo htmlspecialchars($registro['cidade'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Estado (UF) <span class="required">*</span></label>
+          <input name="estado" maxlength="2" required value="<?php echo htmlspecialchars($registro['estado'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>País</label>
+          <input name="pais" value="<?php echo htmlspecialchars($registro['pais'] ?? 'Brasil'); ?>">
+        </div>
+      </div>
+
+      <div class="form-section-title">Evento (Casamento)</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data <span class="required">*</span></label>
+          <input type="date" name="data_evento" required value="<?php echo htmlspecialchars($registro['data_evento'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Local do evento (Unidade) <span class="required">*</span></label>
+          <select name="unidade" required>
+            <option value="">Selecione...</option>
+            <?php foreach ($locais_mapeados as $l): ?>
+              <option value="<?php echo htmlspecialchars($l['me_local_nome']); ?>" <?php echo (($registro['unidade'] ?? '') === $l['me_local_nome']) ? 'selected' : ''; ?>>
+                <?php echo htmlspecialchars($l['me_local_nome']); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <?php if (empty($locais_mapeados)): ?>
+            <small class="required">Nenhum local mapeado. Ajuste em Logística &gt; Conexão.</small>
+          <?php endif; ?>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hora início <span class="required">*</span></label>
+          <input type="time" name="horario_inicio" required value="<?php echo htmlspecialchars($registro['horario_inicio'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Hora término <span class="required">*</span></label>
+          <input type="time" name="horario_termino" required value="<?php echo htmlspecialchars($registro['horario_termino'] ?? ''); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nome dos noivos <span class="required">*</span></label>
+          <input name="nome_noivos" required value="<?php echo htmlspecialchars($registro['nome_noivos'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Nº convidados <span class="required">*</span></label>
+          <input type="number" min="1" name="num_convidados" required value="<?php echo htmlspecialchars((string)($registro['num_convidados'] ?? '')); ?>">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Como conheceu <span class="required">*</span></label>
+          <select name="como_conheceu" id="como_conheceu">
+            <option value="">Selecione...</option>
+            <?php
+              $cc = (string)($registro['como_conheceu'] ?? '');
+              $opts = ['instagram'=>'Instagram','facebook'=>'Facebook','google'=>'Google','indicacao'=>'Indicação','outro'=>'Outro'];
+              foreach ($opts as $k=>$label):
+            ?>
+              <option value="<?php echo $k; ?>" <?php echo $cc === $k ? 'selected' : ''; ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-group" id="cc_outro_wrap" style="<?php echo ($cc === 'outro') ? '' : 'display:none;'; ?>">
+          <label>Outro (qual?) <span class="required">*</span></label>
+          <input name="como_conheceu_outro" id="como_conheceu_outro" value="<?php echo htmlspecialchars($registro['como_conheceu_outro'] ?? ''); ?>">
+        </div>
+      </div>
+
+      <div class="form-section-title">Pacote/Plano (interno)</div>
+      <div class="form-group">
+        <label>Pacote/Plano escolhido <span class="required">*</span></label>
+        <textarea name="pacote_plano" rows="3" required><?php echo htmlspecialchars($registro['pacote_contratado'] ?? ''); ?></textarea>
+        <small style="color:#64748b">Não é enviado para a ME.</small>
+      </div>
+
+      <div class="form-section-title">Comercial</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Forma de pagamento</label>
+          <input name="forma_pagamento" value="<?php echo htmlspecialchars($registro['forma_pagamento'] ?? ''); ?>">
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <?php $st = (string)($registro['status'] ?? 'aguardando_conferencia'); ?>
+            <option value="aguardando_conferencia" <?php echo $st==='aguardando_conferencia'?'selected':''; ?>>Aguardando conferência</option>
+            <option value="pronto_aprovacao" <?php echo $st==='pronto_aprovacao'?'selected':''; ?>>Pronto para aprovação</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Valor negociado (R$) <span class="required">*</span></label>
+          <input type="number" step="0.01" min="0" name="valor_negociado" id="valor_negociado" value="<?php echo htmlspecialchars((string)($registro['valor_negociado'] ?? 0)); ?>" onchange="calcTotal()">
+        </div>
+        <div class="form-group">
+          <label>Desconto (R$)</label>
+          <input type="number" step="0.01" min="0" name="desconto" id="desconto" value="<?php echo htmlspecialchars((string)($registro['desconto'] ?? 0)); ?>" onchange="calcTotal()">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Adicionais</label>
+        <button type="button" class="btn btn-secondary" onclick="addAdicional()">+ Adicionar adicional</button>
+        <table class="adicionais-table" id="tAdicionais">
+          <thead><tr><th>Item</th><th>Valor</th><th></th></tr></thead>
+          <tbody>
+            <?php foreach ($adicionais_editar as $i=>$a): ?>
+              <tr>
+                <td><input name="adicionais[<?php echo $i; ?>][item]" value="<?php echo htmlspecialchars($a['item']); ?>"></td>
+                <td><input type="number" step="0.01" min="0" name="adicionais[<?php echo $i; ?>][valor]" value="<?php echo htmlspecialchars((string)$a['valor']); ?>" onchange="calcTotal()"></td>
+                <td><button type="button" class="btn btn-danger" onclick="rmRow(this)">Remover</button></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="form-group">
+        <label>Total</label>
+        <input id="valor_total_display" disabled value="R$ 0,00" style="font-weight:700">
+      </div>
+
+      <div class="form-section-title">Anexos (Magalu)</div>
+      <div class="form-group">
+        <label>Upload orçamento/proposta</label>
+        <input type="file" name="anexo_orcamento" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+        <small style="color:#64748b">Se marcar como <strong>Pronto para aprovação</strong>, é obrigatório ter ao menos um anexo.</small>
+      </div>
+      <?php if (!empty($anexos_editar)): ?>
+        <div class="form-group">
+          <label>Anexos existentes</label>
+          <ul>
+            <?php foreach ($anexos_editar as $ax): ?>
+              <li>
+                <a target="_blank" href="<?php echo htmlspecialchars($ax['url'] ?? '#'); ?>">
+                  <?php echo htmlspecialchars($ax['nome_original'] ?? 'arquivo'); ?>
+                </a>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
+      <?php endif; ?>
+
+      <div class="form-group">
+        <label>Observações internas</label>
+        <textarea name="observacoes_internas" rows="3"><?php echo htmlspecialchars($registro['observacoes_internas'] ?? ''); ?></textarea>
+      </div>
+
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <button type="submit" class="btn btn-primary">Salvar</button>
+        <a class="btn btn-secondary" href="index.php?page=vendas_lancamento_presencial">Novo lançamento</a>
+        <?php if (!empty($registro['id'])): ?>
+          <a class="btn btn-secondary" href="index.php?page=vendas_pre_contratos&editar=<?php echo (int)$registro['id']; ?>">Abrir na listagem</a>
+        <?php endif; ?>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let idxAd = <?php echo (int)count($adicionais_editar); ?>;
+function addAdicional(){
+  const tb = document.querySelector('#tAdicionais tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input name="adicionais[${idxAd}][item]"></td>
+    <td><input type="number" step="0.01" min="0" name="adicionais[${idxAd}][valor]" onchange="calcTotal()"></td>
+    <td><button type="button" class="btn btn-danger" onclick="rmRow(this)">Remover</button></td>
+  `;
+  tb.appendChild(tr);
+  idxAd++;
+}
+function rmRow(btn){
+  btn.closest('tr').remove();
+  calcTotal();
+}
+function calcTotal(){
+  const v = parseFloat(document.getElementById('valor_negociado')?.value || 0);
+  const d = parseFloat(document.getElementById('desconto')?.value || 0);
+  let add = 0;
+  document.querySelectorAll('#tAdicionais input[name*="[valor]"]').forEach(i => add += parseFloat(i.value || 0));
+  const total = v + add - d;
+  document.getElementById('valor_total_display').value = 'R$ ' + total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+document.getElementById('como_conheceu')?.addEventListener('change', function(){
+  const wrap = document.getElementById('cc_outro_wrap');
+  const input = document.getElementById('como_conheceu_outro');
+  if (this.value === 'outro'){
+    wrap.style.display = '';
+    input.required = true;
+  } else {
+    wrap.style.display = 'none';
+    input.required = false;
+    input.value = '';
+  }
+});
+calcTotal();
+</script>
+
+<?php
+$conteudo = ob_get_clean();
+includeSidebar('Comercial');
+echo $conteudo;
+endSidebar();
+

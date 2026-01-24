@@ -10,12 +10,16 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/vendas_helper.php';
 
 // Tipo de evento (casamento, infantil, pj)
 $tipo_evento = $_GET['tipo'] ?? 'casamento';
 if (!in_array($tipo_evento, ['casamento', 'infantil', 'pj'])) {
     $tipo_evento = 'casamento';
 }
+
+// Buscar locais mapeados para dropdown
+$locais_mapeados = vendas_buscar_locais_mapeados();
 
 // Títulos por tipo
 $titulos = [
@@ -88,8 +92,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             throw new Exception('Data do evento não pode ser no passado');
         }
         
-        if (empty($unidade) || !in_array($unidade, ['Lisbon', 'Diverkids', 'Garden', 'Cristal'])) {
-            throw new Exception('Unidade inválida');
+        // Validar que unidade está mapeada
+        $me_local_id = vendas_validar_local_mapeado($unidade);
+        if (!$me_local_id) {
+            throw new Exception('Local não mapeado. Ajuste em Logística > Conexão.');
         }
         
         if (empty($horario_inicio) || empty($horario_termino)) {
@@ -344,14 +350,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 </div>
                 
                 <div class="form-group">
-                    <label for="unidade">Unidade/Local <span class="required">*</span></label>
+                    <label for="unidade">Local do Evento (Unidade) <span class="required">*</span></label>
                     <select id="unidade" name="unidade" required>
                         <option value="">Selecione...</option>
-                        <option value="Lisbon" <?php echo (($_POST['unidade'] ?? '') === 'Lisbon') ? 'selected' : ''; ?>>Lisbon</option>
-                        <option value="Diverkids" <?php echo (($_POST['unidade'] ?? '') === 'Diverkids') ? 'selected' : ''; ?>>Diverkids</option>
-                        <option value="Garden" <?php echo (($_POST['unidade'] ?? '') === 'Garden') ? 'selected' : ''; ?>>Garden</option>
-                        <option value="Cristal" <?php echo (($_POST['unidade'] ?? '') === 'Cristal') ? 'selected' : ''; ?>>Cristal</option>
+                        <?php if (empty($locais_mapeados)): ?>
+                            <option value="" disabled>Nenhum local mapeado. Ajuste em Logística > Conexão.</option>
+                        <?php else: ?>
+                            <?php foreach ($locais_mapeados as $local): ?>
+                                <option value="<?php echo htmlspecialchars($local['me_local_nome']); ?>" 
+                                        <?php echo (($_POST['unidade'] ?? '') === $local['me_local_nome']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($local['me_local_nome']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </select>
+                    <?php if (empty($locais_mapeados)): ?>
+                        <small style="color: #ef4444; display: block; margin-top: 0.5rem;">
+                            ⚠️ Nenhum local mapeado. Ajuste em Logística > Conexão.
+                        </small>
+                    <?php endif; ?>
                 </div>
                 
                 <div class="form-group">
