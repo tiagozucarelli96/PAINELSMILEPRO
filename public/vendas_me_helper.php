@@ -58,11 +58,24 @@ function vendas_me_request(string $method, string $path, array $query = [], $bod
         if (strlen($raw_str) > 4000) {
             $raw_str = substr($raw_str, 0, 4000) . '...';
         }
+        $body_safe = null;
+        if ($body !== null) {
+            $body_json = json_encode($body, JSON_UNESCAPED_UNICODE);
+            if (!is_string($body_json)) {
+                $body_json = '';
+            }
+            if (strlen($body_json) > 4000) {
+                $body_json = substr($body_json, 0, 4000) . '...';
+            }
+            // Guardar como string para não quebrar JSON ao truncar
+            $body_safe = $body_json;
+        }
         $_SESSION['vendas_me_last'] = [
             'method' => strtoupper($method),
             'path' => $path,
             'code' => $code,
             'ok' => ($err === '' && $code >= 200 && $code < 300),
+            'body' => $body_safe,
             'raw' => $raw_str,
         ];
     }
@@ -100,6 +113,10 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
 
     $cpf_limpo = $cpf !== '' ? preg_replace('/\D/', '', $cpf) : '';
     $tel_limpo = $telefone !== '' ? preg_replace('/\D/', '', $telefone) : '';
+    // Se veio com DDI 55 (ex.: 55DDDNÚMERO), remover para padronizar busca (ME retorna "31 999999999")
+    if (strlen($tel_limpo) >= 12 && substr($tel_limpo, 0, 2) === '55') {
+        $tel_limpo = substr($tel_limpo, 2);
+    }
     $email_norm = strtolower(trim($email));
     $nome_norm = trim($nome);
 
@@ -208,21 +225,42 @@ function vendas_me_buscar_cliente(string $cpf = '', string $email = '', string $
  * Nota: Se o endpoint /api/v1/clients não existir, retorna dados simulados
  * O cliente será criado automaticamente quando o evento for criado
  */
-function vendas_me_formatar_telefone(?string $raw): ?string {
+function vendas_me_parse_telefone_br(?string $raw): ?array {
     $digits = preg_replace('/\D/', '', (string)$raw);
     if ($digits === '') return null;
-    // Formato aceito e exibido na doc/respostas: "31 999999999" ou "31 33333333"
+
+    // Se vier com DDI 55, remover para obter DDD + número
+    if (strlen($digits) >= 12 && substr($digits, 0, 2) === '55') {
+        $digits = substr($digits, 2);
+    }
+
+    // Esperado: DDD(2) + número(8 ou 9)
     if (strlen($digits) === 10 || strlen($digits) === 11) {
         $ddd = substr($digits, 0, 2);
         $num = substr($digits, 2);
-        return trim($ddd . ' ' . $num);
+        return [
+            'pais' => '+55',
+            'ddd' => $ddd,
+            'numero' => $num,
+            // Formato exibido nas respostas da doc: "31 999999999"
+            'formatado' => trim($ddd . ' ' . $num),
+        ];
     }
+
     return null;
+}
+
+function vendas_me_formatar_telefone(?string $raw): ?string {
+    $p = vendas_me_parse_telefone_br($raw);
+    return $p ? $p['formatado'] : null;
 }
 
 function vendas_me_criar_cliente(array $dados_cliente): array {
     // Conforme docs: POST /api/v1/clients recebe um ARRAY de clientes
-    $telefone_fmt = vendas_me_formatar_telefone($dados_cliente['telefone'] ?? ($dados_cliente['celular'] ?? null));
+    // No Painel pedimos celular; na ME podemos enviar em 'celular' e também em 'telefone' (mesmo valor)
+    // Aceitar input com/sem DDI 55 e normalizar para o formato esperado pela ME.
+    $tel = vendas_me_parse_telefone_br($dados_cliente['celular'] ?? ($dados_cliente['telefone'] ?? null));
+    $telefone_fmt = $tel['formatado'] ?? null;
     $cliente = [
         'nome' => (string)($dados_cliente['nome'] ?? ''),
         'email' => (string)($dados_cliente['email'] ?? ''),
@@ -235,16 +273,17 @@ function vendas_me_criar_cliente(array $dados_cliente): array {
         'bairro' => (string)($dados_cliente['bairro'] ?? ''),
         'cidade' => (string)($dados_cliente['cidade'] ?? ''),
         'estado' => (string)($dados_cliente['estado'] ?? ''),
-        'pais' => (string)($dados_cliente['pais'] ?? ''),
-        // IMPORTANTE: ME valida formato de telefone. Enviar no padrão "DD NUMERO".
-        // Evitar enviar 'telefone' com máscara ou vazio.
+        // DDI do Brasil fixo (conforme regra do fluxo)
+        'pais' => '+55',
+        // IMPORTANTE: ME valida formato de telefone/celular. Enviar no padrão "DD NUMERO".
+        // Preferimos 'celular' e também preenchermos 'telefone' com o mesmo valor para compatibilidade.
+        'celular' => $telefone_fmt ?: '',
         'telefone' => $telefone_fmt ?: '',
         'redesocial' => (string)($dados_cliente['redesocial'] ?? '')
     ];
-    // remover telefone vazio (evita erro de validação)
-    if ($cliente['telefone'] === '') {
-        unset($cliente['telefone']);
-    }
+    // remover campos vazios (evita erro de validação)
+    if ($cliente['celular'] === '') unset($cliente['celular']);
+    if ($cliente['telefone'] === '') unset($cliente['telefone']);
 
     $payload = [$cliente];
     $resp = vendas_me_request('POST', '/api/v1/clients', [], $payload);
@@ -306,6 +345,11 @@ function vendas_me_atualizar_cliente(int $client_id, array $dados_cliente): arra
         } else {
             $payload[$k] = $fmt;
         }
+    }
+
+    // DDI fixo Brasil (se estiver atualizando algum telefone/celular)
+    if (!empty($payload['telefone']) || !empty($payload['telefone2']) || !empty($payload['celular'])) {
+        $payload['pais'] = '+55';
     }
 
     if (empty($payload)) {
