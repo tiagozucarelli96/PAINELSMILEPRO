@@ -23,4 +23,11 @@ echo "   Para parar: Ctrl+C"
 echo ""
 
 # Iniciar servidor PHP
-php -S localhost:8000 -t public
+php \
+  -d upload_max_filesize=25M \
+  -d post_max_size=60M \
+  -d memory_limit=256M \
+  -d max_execution_time=300 \
+  -d max_input_time=300 \
+  -d log_errors=1 \
+  -S localhost:8000 -t public

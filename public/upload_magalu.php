@@ -31,7 +31,8 @@ class MagaluUpload {
         $this->endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
         $this->accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
         $this->secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
-        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 10);
+        // Default mais realista para propostas/PDFs (pode ser sobrescrito por UPLOAD_MAX_MB)
+        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 20);
         
         // Normalizar bucket name (minúsculas)
         $this->bucket = strtolower($this->bucket);
