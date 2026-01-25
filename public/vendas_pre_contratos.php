@@ -142,6 +142,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $redirect_page = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
         $redirect_url = 'index.php?page=' . $redirect_page . '&editar=' . $pre_contrato_id . '&abrir_aprovacao=1&aprovacao_result=1';
+
+        // Para melhorar o diagnóstico em caso de falha após a ME responder OK
+        $me_client_id = null;
+        $me_event_id = null;
+        $evento_me = null;
+        $already_exists = false;
         
         try {
             if ($idvendedor <= 0) {
@@ -160,32 +166,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($pre_contrato['status'] === 'aprovado_criado_me') {
                 throw new Exception('Este pré-contrato já foi aprovado e criado na ME');
             }
-            
-            // Verificar conflito de agenda (sempre verificar, mas só bloquear se não for override)
-            $conflito = vendas_me_verificar_conflito_agenda(
-                $pre_contrato['data_evento'],
-                $pre_contrato['unidade'],
-                $pre_contrato['horario_inicio'],
-                $pre_contrato['horario_termino']
-            );
-            
-            if ($conflito['tem_conflito'] && !$override_conflito) {
-                // Retornar erro com detalhes do conflito
-                $erros[] = 'Conflito de agenda detectado! Existem eventos na mesma unidade e data que não respeitam a distância mínima.';
-                $_SESSION['vendas_conflito_detalhes'] = $conflito;
-                $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
-                // Não continuar se houver conflito sem override
-            } elseif ($conflito['tem_conflito'] && $override_conflito) {
-                // Log do override
-                error_log('[VENDAS] Override de conflito aplicado. Motivo: ' . $override_motivo);
-            }
-            
+
             // Se não há conflito ou é override, continuar
             if (empty($erros)) {
-                $pdo->beginTransaction();
                 $kanban_card_created = false;
                 $kanban_card_id = null;
-                
+
                 // Buscar/verificar cliente na ME
                 $clientes_encontrados = vendas_me_buscar_cliente(
                     $pre_contrato['cpf'] ?? '',
@@ -193,10 +179,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pre_contrato['telefone'] ?? '',
                     $pre_contrato['nome_completo'] ?? ''
                 );
-                
-                $me_client_id = null;
+
                 $cliente_existente = null;
-                
+
                 // Verificar se encontrou cliente por CPF (match forte)
                 foreach ($clientes_encontrados as $match) {
                     if ($match['match_type'] === 'cpf' && $match['match_strength'] === 'forte') {
@@ -205,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         break;
                     }
                 }
-                
+
                 // Se não encontrou por CPF, verificar email/telefone
                 if (!$me_client_id) {
                     foreach ($clientes_encontrados as $match) {
@@ -216,7 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                 }
-                
+
                 // Se encontrou cliente existente e há divergências, processar atualização
                 if ($cliente_existente && $atualizar_cliente_me === 'atualizar') {
                     $payload_update = [
@@ -240,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     vendas_me_atualizar_cliente((int)$me_client_id, $payload_update);
                 }
-                
+
                 // Se não encontrou cliente, criar novo
                 if (!$me_client_id) {
                     $novo_cliente = vendas_me_criar_cliente([
@@ -261,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     $me_client_id = $novo_cliente['id'] ?? null;
                 }
-                
+
                 if (!$me_client_id) {
                     throw new Exception('Não foi possível obter/criar cliente na ME');
                 }
@@ -298,47 +283,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$me_local_id_validacao) {
                     throw new Exception('Local não mapeado. Ajuste em Logística > Conexão antes de aprovar.');
                 }
-                
-                // Criar evento na ME
+
                 // Para casamento, usar nome_noivos como nome_evento
                 $nome_evento = $pre_contrato['nome_noivos'] ?? $pre_contrato['nome_completo'];
                 if ($pre_contrato['tipo_evento'] !== 'casamento') {
                     $nome_evento = $pre_contrato['nome_completo'] . ' - ' . ucfirst($pre_contrato['tipo_evento']);
                 }
-                
-                $dados_evento = [
-                    'client_id' => $me_client_id,
-                    'tipo_evento_id' => $tipo_evento_id,
-                    'nome_evento' => $nome_evento,
-                    'data_evento' => $pre_contrato['data_evento'],
-                    'hora_inicio' => $pre_contrato['horario_inicio'],
-                    'hora_termino' => $pre_contrato['horario_termino'],
-                    'local' => $pre_contrato['unidade'],
-                    // campos adicionais (docs ME)
-                    'idvendedor' => $idvendedor,
-                    'nconvidados' => (int)($pre_contrato['num_convidados'] ?? 0),
-                    'comoconheceu' => (function() use ($pre_contrato) {
-                        $v = (string)($pre_contrato['como_conheceu'] ?? '');
-                        if ($v === '') return '';
-                        if ($v === 'instagram') return 'Instagram';
-                        if ($v === 'facebook') return 'Facebook';
-                        if ($v === 'google') return 'Google';
-                        if ($v === 'indicacao') return 'Indicação';
-                        if ($v === 'outro') {
-                            $o = trim((string)($pre_contrato['como_conheceu_outro'] ?? ''));
-                            return $o !== '' ? ('Outro: ' . $o) : 'Outro';
-                        }
-                        return $v;
-                    })(),
-                    'observacao' => (string)($pre_contrato['observacoes'] ?? '')
-                ];
-                
-                $evento_me = vendas_me_criar_evento($dados_evento);
-                $me_event_id = $evento_me['id'] ?? null;
-                
-                if (!$me_event_id) {
-                    throw new Exception('Não foi possível criar evento na ME');
+
+                // Idempotência: se um evento já existe na ME para esse cliente/data/local/horários,
+                // não criar novamente; apenas vincular no Painel.
+                $norm_time = function ($t): string {
+                    $t = trim((string)$t);
+                    if ($t === '') return '';
+                    if (preg_match('/^\d{2}:\d{2}$/', $t)) return $t . ':00';
+                    if (preg_match('/^\d{2}:\d{2}:\d{2}$/', $t)) return $t;
+                    $ts = strtotime($t);
+                    return $ts ? date('H:i:s', $ts) : $t;
+                };
+                $inicio_norm = $norm_time($pre_contrato['horario_inicio'] ?? '');
+                $fim_norm = $norm_time($pre_contrato['horario_termino'] ?? '');
+
+                $evento_existente = null;
+                try {
+                    $eventos_dia = vendas_me_buscar_eventos($pre_contrato['data_evento'], $pre_contrato['unidade']);
+                } catch (Throwable $e) {
+                    $eventos_dia = [];
                 }
+                foreach ($eventos_dia as $ev) {
+                    if (!is_array($ev)) continue;
+                    $idcli = (int)($ev['idcliente'] ?? 0);
+                    if ($idcli <= 0 || $idcli !== (int)$me_client_id) continue;
+                    $ev_inicio = $norm_time($ev['horaevento'] ?? $ev['hora_inicio'] ?? $ev['inicio'] ?? '');
+                    $ev_fim = $norm_time($ev['horaeventofim'] ?? $ev['hora_termino'] ?? $ev['fim'] ?? '');
+                    if ($ev_inicio === $inicio_norm && $ev_fim === $fim_norm) {
+                        $evento_existente = $ev;
+                        break;
+                    }
+                }
+
+                if ($evento_existente) {
+                    $already_exists = true;
+                    $me_event_id = (int)($evento_existente['id'] ?? $evento_existente['idevento'] ?? 0);
+                    if ($me_event_id <= 0) {
+                        throw new Exception('Evento já existe na ME, mas não foi possível obter o ID para vincular no Painel.');
+                    }
+                    $evento_me = [
+                        'id' => $me_event_id,
+                        'data' => $evento_existente,
+                        'payload' => null,
+                        'already_exists' => true,
+                    ];
+                } else {
+                    // Verificar conflito de agenda (antes de criar o evento)
+                    $conflito = vendas_me_verificar_conflito_agenda(
+                        $pre_contrato['data_evento'],
+                        $pre_contrato['unidade'],
+                        $pre_contrato['horario_inicio'],
+                        $pre_contrato['horario_termino']
+                    );
+
+                    if ($conflito['tem_conflito'] && !$override_conflito) {
+                        // Retornar erro com detalhes do conflito
+                        $erros[] = 'Conflito de agenda detectado! Existem eventos na mesma unidade e data que não respeitam a distância mínima.';
+                        $_SESSION['vendas_conflito_detalhes'] = $conflito;
+                        $_SESSION['vendas_pre_contrato_id'] = $pre_contrato_id;
+                    } elseif ($conflito['tem_conflito'] && $override_conflito) {
+                        // Log do override
+                        error_log('[VENDAS] Override de conflito aplicado. Motivo: ' . $override_motivo);
+                    }
+
+                    if (empty($erros)) {
+                        // Criar evento na ME
+                        $dados_evento = [
+                            'client_id' => $me_client_id,
+                            'tipo_evento_id' => $tipo_evento_id,
+                            'nome_evento' => $nome_evento,
+                            'data_evento' => $pre_contrato['data_evento'],
+                            'hora_inicio' => $pre_contrato['horario_inicio'],
+                            'hora_termino' => $pre_contrato['horario_termino'],
+                            'local' => $pre_contrato['unidade'],
+                            // campos adicionais (docs ME)
+                            'idvendedor' => $idvendedor,
+                            'nconvidados' => (int)($pre_contrato['num_convidados'] ?? 0),
+                            'comoconheceu' => (function() use ($pre_contrato) {
+                                $v = (string)($pre_contrato['como_conheceu'] ?? '');
+                                if ($v === '') return '';
+                                if ($v === 'instagram') return 'Instagram';
+                                if ($v === 'facebook') return 'Facebook';
+                                if ($v === 'google') return 'Google';
+                                if ($v === 'indicacao') return 'Indicação';
+                                if ($v === 'outro') {
+                                    $o = trim((string)($pre_contrato['como_conheceu_outro'] ?? ''));
+                                    return $o !== '' ? ('Outro: ' . $o) : 'Outro';
+                                }
+                                return $v;
+                            })(),
+                            'observacao' => (string)($pre_contrato['observacoes'] ?? '')
+                        ];
+
+                        $evento_me = vendas_me_criar_evento($dados_evento);
+                        $me_event_id = $evento_me['id'] ?? null;
+
+                        if (!$me_event_id) {
+                            throw new Exception('Não foi possível criar evento na ME');
+                        }
+                    }
+                }
+
+                if (!empty($erros)) {
+                    // conflito sem override: apenas renderizar a página com os erros/alertas
+                } else {
+                    $pdo->beginTransaction();
                 
                 // Atualizar pré-contrato
                 $me_payload = [
@@ -359,12 +414,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         override_conflito = ?, override_motivo = ?, override_por = ?, override_em = ?
                     WHERE id = ?
                 ");
+                // Importante: PDO (pgsql) pode converter boolean false em string vazia (''),
+                // o que quebra em coluna boolean. Enviar 't'/'f' explicitamente.
+                $override_conflito_db = $override_conflito ? 't' : 'f';
                 $stmt->execute([
                     $me_client_id,
                     $me_event_id,
                     json_encode($me_payload, JSON_UNESCAPED_UNICODE),
                     $usuario_id,
-                    $override_conflito ? true : false,
+                    $override_conflito_db,
                     $override_motivo,
                     $override_conflito ? $usuario_id : null,
                     $override_conflito ? date('Y-m-d H:i:s') : null,
@@ -417,16 +475,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 $_SESSION['vendas_aprovacao_result'] = [
                     'ok' => true,
-                    'message' => 'Evento criado na ME com sucesso.',
+                    'message' => $already_exists ? 'Evento já existia na ME e foi vinculado no Painel com sucesso.' : 'Evento criado na ME com sucesso.',
                     'me_client_id' => (int)$me_client_id,
                     'me_event_id' => (int)$me_event_id,
                     'kanban_card_created' => $kanban_card_created,
                     'kanban_card_id' => $kanban_card_id,
                     'me_last' => $_SESSION['vendas_me_last'] ?? null,
                     'me_event_response' => $evento_me['data'] ?? null,
+                    'already_exists' => $already_exists,
                 ];
                 header('Location: ' . $redirect_url);
                 exit;
+                } // else empty($erros)
                 
             }
             
@@ -436,9 +496,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $_SESSION['vendas_aprovacao_result'] = [
                 'ok' => false,
-                'message' => 'Erro ao criar na ME.',
+                'message' => ($me_event_id ? 'Evento criado/válido na ME, mas houve erro ao salvar no Painel.' : 'Erro ao criar na ME.'),
                 'error' => $e->getMessage(),
                 'me_last' => $_SESSION['vendas_me_last'] ?? null,
+                'me_client_id' => $me_client_id ? (int)$me_client_id : null,
+                'me_event_id' => $me_event_id ? (int)$me_event_id : null,
             ];
             error_log('Erro ao aprovar pré-contrato: ' . $e->getMessage());
             header('Location: ' . $redirect_url);
