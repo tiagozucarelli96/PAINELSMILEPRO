@@ -32,7 +32,8 @@ class MagaluUpload {
         $this->accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
         $this->secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
         // Default mais realista para propostas/PDFs (pode ser sobrescrito por UPLOAD_MAX_MB)
-        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 20);
+        // Suporta arquivos maiores (ex.: 50MB) quando o PHP também permitir (post_max_size/upload_max_filesize)
+        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 60);
         
         // Normalizar bucket name (minúsculas)
         $this->bucket = strtolower($this->bucket);
@@ -191,13 +192,10 @@ class MagaluUpload {
         // URL completa: endpoint/bucket/key
         $url = "{$this->endpoint}/{$this->bucket}/{$key}";
         
-        // Ler conteúdo do arquivo
-        $fileContent = file_get_contents($tmpFile);
-        if ($fileContent === false) {
-            throw new Exception('Erro ao ler arquivo temporário');
-        }
-        
         $fileSize = filesize($tmpFile);
+        if ($fileSize === false || $fileSize <= 0) {
+            throw new Exception('Erro ao obter tamanho do arquivo temporário');
+        }
         
         // Preparar requisição PUT - AWS S3 Signature Version 2
         // Formato: METHOD\n\nContent-Type\nDate\nCanonicalizedResource
@@ -231,23 +229,31 @@ class MagaluUpload {
             'Authorization: AWS ' . $this->accessKey . ':' . $signature
         ];
         
-        // Fazer upload via cURL
+        $fh = fopen($tmpFile, 'rb');
+        if ($fh === false) {
+            throw new Exception('Erro ao abrir arquivo temporário para upload');
+        }
+
+        // Fazer upload via cURL (streaming: não carrega o arquivo inteiro em memória)
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_POSTFIELDS => $fileContent,
+            CURLOPT_UPLOAD => true,
+            CURLOPT_INFILE => $fh,
+            CURLOPT_INFILESIZE => $fileSize,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_TIMEOUT => 60,
+            CURLOPT_TIMEOUT => 180,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
-        
+
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlError = curl_error($ch);
         $curlInfo = curl_getinfo($ch);
         curl_close($ch);
+        fclose($fh);
         
         // Log detalhado da resposta
         error_log("HTTP Code: {$httpCode}");

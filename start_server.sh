@@ -24,8 +24,8 @@ echo ""
 
 # Iniciar servidor PHP
 php \
-  -d upload_max_filesize=25M \
-  -d post_max_size=60M \
+  -d upload_max_filesize=80M \
+  -d post_max_size=90M \
   -d memory_limit=256M \
   -d max_execution_time=300 \
   -d max_input_time=300 \

@@ -101,6 +101,22 @@ function vendas_me_request(string $method, string $path, array $query = [], $bod
 }
 
 /**
+ * Normaliza strings para comparação (lowercase, sem acentos, só [a-z0-9])
+ */
+function vendas_me_norm_str(string $s): string {
+    $s = trim($s);
+    if ($s === '') return '';
+    $s = mb_strtolower($s);
+    // Remover acentos quando possível
+    $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+    if (is_string($t) && $t !== '') {
+        $s = $t;
+    }
+    $s = preg_replace('/[^a-z0-9]+/', '', $s);
+    return (string)$s;
+}
+
+/**
  * Buscar cliente na ME por CPF, email ou telefone
  * Alinhado com a documentação: GET /api/v1/clients?search=...&type=...
  * type:
@@ -365,6 +381,110 @@ function vendas_me_atualizar_cliente(int $client_id, array $dados_cliente): arra
 }
 
 /**
+ * Listar "Como conheceu" na ME (howmet) com cache em sessão.
+ * Endpoint: GET /api/v1/howmet
+ */
+function vendas_me_listar_como_conheceu(): array {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    $cache_key = 'vendas_me_howmet';
+    $cache_time_key = 'vendas_me_howmet_time';
+
+    if (isset($_SESSION[$cache_key], $_SESSION[$cache_time_key])) {
+        if (time() - (int)$_SESSION[$cache_time_key] < 300) { // 5 min
+            return is_array($_SESSION[$cache_key]) ? $_SESSION[$cache_key] : [];
+        }
+    }
+
+    $resp = vendas_me_request('GET', '/api/v1/howmet');
+    if (!$resp['ok']) {
+        return [];
+    }
+
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? null;
+        }
+    }
+    if (!is_array($items)) $items = [];
+
+    $out = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = $item['id'] ?? null;
+        $nome = $item['nome'] ?? null;
+        if ($id === null || $nome === null) continue;
+        $out[] = ['id' => (int)$id, 'nome' => (string)$nome];
+    }
+
+    $_SESSION[$cache_key] = $out;
+    $_SESSION[$cache_time_key] = time();
+
+    return $out;
+}
+
+/**
+ * Resolve o ID numérico do "Como conheceu" (ME howmet) a partir de um valor textual do Painel.
+ * A ME valida que o parâmetro `comoconheceu` seja numérico.
+ */
+function vendas_me_resolver_como_conheceu_id($valor): ?int {
+    if ($valor === null) return null;
+    $v = trim((string)$valor);
+    if ($v === '') return null;
+
+    // Se já vier numérico, ok
+    $digits = preg_replace('/\D/', '', $v);
+    if ($digits !== '' && $digits === $v) {
+        $id = (int)$digits;
+        return $id > 0 ? $id : null;
+    }
+
+    $vn = vendas_me_norm_str($v);
+    if ($vn === '') return null;
+
+    // Heurística para mapear rótulos do Painel para itens do howmet da ME
+    $want = null;
+    if (str_contains($vn, 'instagram')) $want = 'instagram';
+    elseif (str_contains($vn, 'facebook') || str_contains($vn, 'face')) $want = 'facebook';
+    elseif (str_contains($vn, 'google')) $want = 'google';
+    elseif (str_contains($vn, 'indicacao') || str_contains($vn, 'indic')) $want = 'indicacao';
+    elseif (str_contains($vn, 'outro') || str_contains($vn, 'outros')) $want = 'outro';
+
+    $items = vendas_me_listar_como_conheceu();
+    if (empty($items)) return null;
+
+    // 1) Tentar match direto por substring (preferência)
+    if ($want !== null) {
+        foreach ($items as $it) {
+            $nn = vendas_me_norm_str((string)($it['nome'] ?? ''));
+            if ($nn === '') continue;
+            if (str_contains($nn, $want)) {
+                $id = (int)($it['id'] ?? 0);
+                return $id > 0 ? $id : null;
+            }
+        }
+    }
+
+    // 2) Match aproximado: se o texto do Painel estiver contido no nome do howmet
+    foreach ($items as $it) {
+        $nn = vendas_me_norm_str((string)($it['nome'] ?? ''));
+        if ($nn === '') continue;
+        if (str_contains($nn, $vn) || str_contains($vn, $nn)) {
+            $id = (int)($it['id'] ?? 0);
+            return $id > 0 ? $id : null;
+        }
+    }
+
+    return null;
+}
+
+/**
  * Buscar eventos na ME por data e unidade/local
  */
 function vendas_me_buscar_eventos(string $data, string $unidade): array {
@@ -514,10 +634,24 @@ function vendas_me_criar_evento(array $dados_evento): array {
         $payload['nconvidados'] = (int)$dados_evento['nconvidados'];
     }
     if (!empty($dados_evento['comoconheceu'])) {
-        $payload['comoconheceu'] = (string)$dados_evento['comoconheceu'];
+        $cc_id = vendas_me_resolver_como_conheceu_id($dados_evento['comoconheceu']);
+        if ($cc_id !== null) {
+            // ME exige ID numérico
+            $payload['comoconheceu'] = (int)$cc_id;
+        } else {
+            // Não bloquear criação do evento (campo é opcional na doc), mas registrar no texto.
+            $cc_txt = trim((string)$dados_evento['comoconheceu']);
+            if ($cc_txt !== '') {
+                $payload['observacao'] = trim(((string)($payload['observacao'] ?? '')) . "\nComo conheceu (Painel): " . $cc_txt);
+            }
+        }
     }
     if (!empty($dados_evento['observacao'])) {
-        $payload['observacao'] = (string)$dados_evento['observacao'];
+        $obs_in = trim((string)$dados_evento['observacao']);
+        if ($obs_in !== '') {
+            $obs_cur = trim((string)($payload['observacao'] ?? ''));
+            $payload['observacao'] = $obs_cur !== '' ? ($obs_cur . "\n" . $obs_in) : $obs_in;
+        }
     }
 
     $resp = vendas_me_request('POST', '/api/v1/events', [], $payload);

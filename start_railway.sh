@@ -14,8 +14,8 @@ echo "🚀 Iniciando servidor PHP na porta $PORT"
 # - Aumentar limites de upload/POST (evita warning de Content-Length e quebra de session/header)
 # - Manter erros em log (stderr), sem exibir warning no browser por padrão
 exec php \
-  -d upload_max_filesize=25M \
-  -d post_max_size=60M \
+  -d upload_max_filesize=80M \
+  -d post_max_size=90M \
   -d memory_limit=256M \
   -d max_execution_time=300 \
   -d max_input_time=300 \
