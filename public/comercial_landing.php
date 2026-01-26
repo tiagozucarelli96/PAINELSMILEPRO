@@ -646,13 +646,11 @@ includeSidebar('Comercial');
                     <span class="funcionalidade-item-text">Lançamento (Presencial)</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
-                <?php if (vendas_is_admin()): ?>
-                    <a href="index.php?page=vendas_administracao" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
-                        <span class="funcionalidade-item-icon">🛡️</span>
-                        <span class="funcionalidade-item-text">Administração (Tiago)</span>
-                        <span class="funcionalidade-item-arrow">→</span>
-                    </a>
-                <?php endif; ?>
+                <a href="index.php?page=vendas_links_publicos" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🔗</span>
+                    <span class="funcionalidade-item-text">Links públicos (copiar)</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
                 <a href="index.php?page=vendas_kanban" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">📋</span>
                     <span class="funcionalidade-item-text">Acompanhamento de Contratos</span>

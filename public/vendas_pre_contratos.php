@@ -27,6 +27,14 @@ $admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $
 $mensagens = [];
 $erros = [];
 
+// Flash message (ex.: aprovado/criado na ME) - exibido uma única vez
+$vendas_flash = $_SESSION['vendas_flash'] ?? null;
+if (is_array($vendas_flash)) {
+    unset($_SESSION['vendas_flash']);
+} else {
+    $vendas_flash = null;
+}
+
 // Garantir schema do módulo (evita fatal quando SQL ainda não foi aplicado no ambiente)
 if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
     includeSidebar('Comercial');
@@ -140,8 +148,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $override_motivo = trim($_POST['override_motivo'] ?? '');
         $atualizar_cliente_me = $_POST['atualizar_cliente_me'] ?? 'manter'; // manter, atualizar, apenas_painel
 
-        $redirect_page = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
-        $redirect_url = 'index.php?page=' . $redirect_page . '&editar=' . $pre_contrato_id . '&abrir_aprovacao=1&aprovacao_result=1';
+        // A aprovação só existe no contexto admin. Em caso de erro, reabrimos o modal para mostrar detalhes.
+        // Em caso de sucesso, voltamos para a listagem da Administração com banner (flash).
+        $redirect_page = 'vendas_administracao';
+        $redirect_url_error = 'index.php?page=' . $redirect_page . '&editar=' . $pre_contrato_id . '&abrir_aprovacao=1&aprovacao_result=1';
+        $redirect_url_success = 'index.php?page=' . $redirect_page;
 
         // Para melhorar o diagnóstico em caso de falha após a ME responder OK
         $me_client_id = null;
@@ -473,18 +484,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ])]);
                 
                 $pdo->commit();
-                $_SESSION['vendas_aprovacao_result'] = [
-                    'ok' => true,
-                    'message' => $already_exists ? 'Evento já existia na ME e foi vinculado no Painel com sucesso.' : 'Evento criado na ME com sucesso.',
+                $msg_ok = $already_exists
+                    ? 'Evento já existia na ME e foi vinculado no Painel com sucesso.'
+                    : 'Evento criado na ME com sucesso.';
+
+                // Banner na listagem (Administração)
+                $_SESSION['vendas_flash'] = [
+                    'type' => 'success',
+                    'message' => 'Pré-contrato #' . (int)$pre_contrato_id . ' aprovado. ' . $msg_ok
+                        . ' Cliente ME: ' . (int)$me_client_id . ' — Evento ME: ' . (int)$me_event_id . '.',
+                    'pre_contrato_id' => (int)$pre_contrato_id,
                     'me_client_id' => (int)$me_client_id,
                     'me_event_id' => (int)$me_event_id,
-                    'kanban_card_created' => $kanban_card_created,
-                    'kanban_card_id' => $kanban_card_id,
-                    'me_last' => $_SESSION['vendas_me_last'] ?? null,
-                    'me_event_response' => $evento_me['data'] ?? null,
-                    'already_exists' => $already_exists,
+                    'kanban_card_created' => (bool)$kanban_card_created,
+                    'kanban_card_id' => (int)($kanban_card_id ?? 0),
                 ];
-                header('Location: ' . $redirect_url);
+
+                header('Location: ' . $redirect_url_success);
                 exit;
                 } // else empty($erros)
                 
@@ -503,7 +519,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'me_event_id' => $me_event_id ? (int)$me_event_id : null,
             ];
             error_log('Erro ao aprovar pré-contrato: ' . $e->getMessage());
-            header('Location: ' . $redirect_url);
+            header('Location: ' . $redirect_url_error);
             exit;
         }
         } // Fechar else do if (!vendas_is_admin())
@@ -773,6 +789,24 @@ ob_start();
         <h1><?php echo $admin_context ? 'Administração de Vendas' : 'Pré-contratos'; ?></h1>
         <p>Gerencie os pré-contratos recebidos dos formulários públicos</p>
     </div>
+
+    <?php if (is_array($vendas_flash)): ?>
+        <?php
+            $flash_type = (string)($vendas_flash['type'] ?? 'success');
+            $flash_class = 'alert-success';
+            if ($flash_type === 'error') $flash_class = 'alert-error';
+            elseif ($flash_type === 'warning') $flash_class = 'alert-warning';
+        ?>
+        <div class="alert <?php echo $flash_class; ?>">
+            <?php echo htmlspecialchars((string)($vendas_flash['message'] ?? '')); ?>
+            <div style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+                <?php if (!empty($vendas_flash['pre_contrato_id'])): ?>
+                    <a class="btn btn-primary" href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$vendas_flash['pre_contrato_id']); ?>">Abrir Pré-contrato</a>
+                <?php endif; ?>
+                <a class="btn btn-primary" href="index.php?page=vendas_kanban">Ir para o Kanban</a>
+            </div>
+        </div>
+    <?php endif; ?>
     
     <?php foreach ($mensagens as $msg): ?>
         <div class="alert alert-success"><?php echo htmlspecialchars($msg); ?></div>
@@ -849,16 +883,21 @@ ob_start();
                         <td>
                             <?php
                             $status_class = 'status-aguardando';
-                            $status_text = 'Aguardando';
-                            if ($pc['status'] === 'pronto_aprovacao') {
+                            $status_text = 'Aguardando conferência';
+                            $st = (string)($pc['status'] ?? '');
+                            // Robustez: se já tem ME IDs, considerar aprovado mesmo que status tenha ficado divergente
+                            if (($st === '' || $st === 'aguardando_conferencia' || $st === 'pronto_aprovacao') && !empty($pc['me_event_id'])) {
+                                $st = 'aprovado_criado_me';
+                            }
+                            if ($st === 'pronto_aprovacao') {
                                 $status_class = 'status-pronto';
-                                $status_text = 'Pronto';
-                            } elseif ($pc['status'] === 'aprovado_criado_me') {
+                                $status_text = 'Pronto para aprovação';
+                            } elseif ($st === 'aprovado_criado_me') {
                                 $status_class = 'status-aprovado';
-                                $status_text = 'Aprovado';
-                            } elseif ($pc['status'] === 'cancelado_nao_fechou') {
+                                $status_text = 'Aprovado / Criado na ME';
+                            } elseif ($st === 'cancelado_nao_fechou') {
                                 $status_class = 'status-cancelado';
-                                $status_text = 'Cancelado';
+                                $status_text = 'Cancelado / Não fechou';
                             }
                             ?>
                             <span class="status-badge <?php echo $status_class; ?>"><?php echo $status_text; ?></span>

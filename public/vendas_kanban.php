@@ -180,6 +180,43 @@ ob_start();
 ?>
 
 <style>
+.btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:.4rem;
+    padding:.55rem .9rem;
+    border-radius:8px;
+    border:1px solid transparent;
+    cursor:pointer;
+    font-weight:600;
+    font-size:.9rem;
+    text-decoration:none;
+    user-select:none;
+    transition: all .15s ease;
+}
+.btn:disabled{ opacity:.55; cursor:not-allowed; }
+.btn-primary{ background:#2563eb; color:#fff; border-color:#2563eb; }
+.btn-primary:hover{ background:#1d4ed8; border-color:#1d4ed8; }
+.btn-danger{ background:#ef4444; color:#fff; border-color:#ef4444; }
+.btn-danger:hover{ background:#dc2626; border-color:#dc2626; }
+.btn-secondary{ background:#6b7280; color:#fff; border-color:#6b7280; }
+.btn-secondary:hover{ background:#4b5563; border-color:#4b5563; }
+.btn-outline{
+    background:#ffffff;
+    color:#1e3a8a;
+    border:1px solid #93c5fd;
+}
+.btn-outline:hover{ background:#eff6ff; }
+
+.vendas-card{
+    background:#ffffff;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    padding: 1.25rem;
+}
+
 .kanban-container {
     padding: 1.5rem;
     background: #f4f5f7;
@@ -212,13 +249,10 @@ ob_start();
     align-items:center;
 }
 
-.btn-outline{
-    background:#ffffff;
-    color:#1e3a8a;
-    border:1px solid #93c5fd;
-}
-.btn-outline:hover{
-    background:#eff6ff;
+.kanban-hint{
+    color:#64748b;
+    font-size:.9rem;
+    margin-top:.25rem;
 }
 
 .kanban-board {
@@ -267,6 +301,22 @@ ob_start();
     border-left: 4px solid #3b82f6;
 }
 
+.kanban-card.dragging{
+    opacity: .5;
+    transform: rotate(1deg);
+}
+
+.kanban-coluna .coluna-cards{
+    border-radius: 8px;
+    padding: .15rem;
+}
+
+.coluna-cards.drop-target{
+    outline: 2px dashed #60a5fa;
+    outline-offset: 2px;
+    background: #e8f1ff !important;
+}
+
 .kanban-card:hover {
     box-shadow: 0 4px 6px rgba(0,0,0,0.15);
 }
@@ -308,7 +358,7 @@ ob_start();
     display: none;
 }
 
-.drop-highlight {
+.drop-highlight { /* mantido por compatibilidade */
     outline: 2px dashed #60a5fa;
     outline-offset: 2px;
     background: #e8f1ff !important;
@@ -329,6 +379,72 @@ ob_start();
 .card-acoes a:hover {
     text-decoration: underline;
 }
+
+/* Admin: editor de colunas (menos engessado) */
+.colunas-editor{
+    display:flex;
+    flex-direction:column;
+    gap:.6rem;
+    margin-top:.75rem;
+}
+.coluna-editor-item{
+    display:flex;
+    align-items:center;
+    gap:.6rem;
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:.6rem;
+}
+.coluna-editor-item.dragging{ opacity:.6; }
+.coluna-editor-handle{
+    width:34px;
+    height:34px;
+    border-radius:10px;
+    background:#e5e7eb;
+    color:#334155;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    cursor:grab;
+    user-select:none;
+}
+.coluna-editor-fields{
+    flex:1;
+    display:grid;
+    grid-template-columns: 1fr 120px;
+    gap:.6rem;
+    align-items:center;
+}
+.coluna-editor-fields input[type="text"]{
+    width:100%;
+    padding:.55rem .6rem;
+    border:1px solid #d1d5db;
+    border-radius:10px;
+    background:#fff;
+}
+.coluna-editor-fields input[type="color"]{
+    width:100%;
+    height:40px;
+    border:1px solid #d1d5db;
+    border-radius:10px;
+    background:#fff;
+    padding:.2rem;
+}
+.coluna-editor-meta{
+    font-size:.8rem;
+    color:#64748b;
+    margin-left:.15rem;
+}
+.coluna-editor-item.is-required{
+    background:#eef2ff;
+    border-color:#c7d2fe;
+}
+.coluna-editor-item.is-required .coluna-editor-handle{
+    background:#c7d2fe;
+    color:#1e3a8a;
+}
 </style>
 
 <div class="kanban-container">
@@ -336,6 +452,7 @@ ob_start();
         <div class="kanban-header">
             <h1>Acompanhamento de Contratos</h1>
             <p>Gerencie o fluxo de contratos através do Kanban</p>
+            <div class="kanban-hint">Dica: arraste os cards entre colunas para mover.</div>
         </div>
         <div class="kanban-actions">
             <?php if ($is_admin): ?>
@@ -393,6 +510,9 @@ ob_start();
         <div class="admin-panel hidden" id="adminPanel">
             <div class="vendas-card">
                 <h3 style="margin-bottom: .75rem; color:#1e3a8a;">Gerenciar colunas</h3>
+                <div style="color:#64748b; font-size:.9rem; margin-bottom: .75rem;">
+                    Arraste as colunas abaixo para reordenar. Você também pode renomear, trocar a cor e excluir (exceto <strong>Criado na ME</strong>).
+                </div>
 
                 <form method="POST" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:flex-end; margin-bottom: 1rem;">
                     <input type="hidden" name="action" value="add_coluna">
@@ -402,52 +522,56 @@ ob_start();
                     </div>
                     <div style="min-width: 140px;">
                         <label style="display:block; font-weight:600; margin-bottom:.35rem;">Cor</label>
-                        <input name="cor" value="#6b7280" style="width:100%; padding:.6rem; border:1px solid #d1d5db; border-radius:8px;">
+                        <input name="cor" type="color" value="#6b7280" style="width:100%; height:42px; padding:.2rem; border:1px solid #d1d5db; border-radius:8px;">
                     </div>
                     <button class="btn btn-primary" type="submit">Adicionar</button>
                 </form>
 
                 <form method="POST">
                     <input type="hidden" name="action" value="salvar_colunas">
-                    <div style="overflow:auto;">
-                        <table class="vendas-table" style="width:100%; border-collapse:collapse;">
-                            <thead>
-                                <tr>
-                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb;">Nome</th>
-                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:120px;">Posição</th>
-                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:160px;">Cor</th>
-                                    <th style="text-align:left; padding:.6rem; border-bottom:1px solid #e5e7eb; width:140px;">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($colunas as $c): ?>
-                                    <tr>
-                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                            <input name="colunas[<?php echo (int)$c['id']; ?>][nome]" value="<?php echo htmlspecialchars((string)$c['nome']); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                        </td>
-                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                            <input type="number" name="colunas[<?php echo (int)$c['id']; ?>][posicao]" value="<?php echo (int)$c['posicao']; ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                        </td>
-                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                            <input name="colunas[<?php echo (int)$c['id']; ?>][cor]" value="<?php echo htmlspecialchars((string)($c['cor'] ?? '#6b7280')); ?>" style="width:100%; padding:.5rem; border:1px solid #d1d5db; border-radius:8px;">
-                                        </td>
-                                        <td style="padding:.6rem; border-bottom:1px solid #e5e7eb;">
-                                            <button type="submit" class="btn btn-danger" style="padding:.4rem .7rem;"
-                                                    form="del_col_<?php echo (int)$c['id']; ?>">
-                                                Excluir
-                                            </button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                    <div class="colunas-editor" id="colunasEditor">
+                        <?php foreach ($colunas as $c): ?>
+                            <?php
+                                $nomeCol = (string)($c['nome'] ?? '');
+                                $isRequired = (mb_strtolower(trim($nomeCol)) === 'criado na me');
+                                $corCol = (string)($c['cor'] ?? '#3b82f6');
+                                if ($corCol === '') $corCol = '#3b82f6';
+                            ?>
+                            <div class="coluna-editor-item <?php echo $isRequired ? 'is-required' : ''; ?>" draggable="true" data-coluna-id="<?php echo (int)$c['id']; ?>">
+                                <div class="coluna-editor-handle" title="Arrastar para reordenar">⋮⋮</div>
+                                <div class="coluna-editor-fields">
+                                    <div>
+                                        <input
+                                            type="text"
+                                            name="colunas[<?php echo (int)$c['id']; ?>][nome]"
+                                            value="<?php echo htmlspecialchars((string)$nomeCol); ?>"
+                                            <?php echo $isRequired ? 'readonly' : ''; ?>
+                                        >
+                                        <div class="coluna-editor-meta">
+                                            <?php if ($isRequired): ?>
+                                                Obrigatória
+                                            <?php else: ?>
+                                                Coluna editável
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <input type="color" name="colunas[<?php echo (int)$c['id']; ?>][cor]" value="<?php echo htmlspecialchars($corCol); ?>">
+                                        <input type="hidden" class="coluna-posicao-input" name="colunas[<?php echo (int)$c['id']; ?>][posicao]" value="<?php echo (int)$c['posicao']; ?>">
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    class="btn btn-danger"
+                                    style="padding:.5rem .75rem;"
+                                    <?php echo $isRequired ? 'disabled' : ''; ?>
+                                    data-delete-coluna-id="<?php echo (int)$c['id']; ?>"
+                                >
+                                    Excluir
+                                </button>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-                    <?php foreach ($colunas as $c): ?>
-                        <form id="del_col_<?php echo (int)$c['id']; ?>" method="POST" style="display:none;">
-                            <input type="hidden" name="action" value="deletar_coluna">
-                            <input type="hidden" name="coluna_id" value="<?php echo (int)$c['id']; ?>">
-                        </form>
-                    <?php endforeach; ?>
                     <div style="margin-top: .75rem; display:flex; gap:.75rem; justify-content:flex-end;">
                         <button class="btn btn-primary" type="submit">Salvar colunas</button>
                     </div>
@@ -455,96 +579,133 @@ ob_start();
                         A coluna <strong>Criado na ME</strong> é obrigatória (não pode ser removida).
                     </small>
                 </form>
+
+                <!-- Form único (fora do form de salvar) para exclusão de coluna -->
+                <form id="formDeleteColuna" method="POST" style="display:none;">
+                    <input type="hidden" name="action" value="deletar_coluna">
+                    <input type="hidden" name="coluna_id" id="deleteColunaId" value="">
+                </form>
             </div>
         </div>
     <?php endif; ?>
 </div>
 
 <script>
-// Drag and Drop básico
+// Drag and Drop (cards) — corrigido para Safari/Chrome: precisa usar dataTransfer e drop no container correto
 let draggedCard = null;
-let draggedFromColuna = null;
+let draggedFromColunaId = null;
+
+function getColunaIdFromEl(el) {
+    const col = el?.closest?.('.kanban-coluna');
+    return col?.dataset?.colunaId || null;
+}
+
+function ensureEmptyPlaceholder(colunaEl) {
+    if (!colunaEl) return;
+    const wrap = colunaEl.querySelector('.coluna-cards');
+    if (!wrap) return;
+    const hasCards = wrap.querySelectorAll('.kanban-card').length > 0;
+    const empty = wrap.querySelector('.coluna-empty');
+    if (!hasCards && !empty) {
+        const e = document.createElement('div');
+        e.className = 'coluna-empty';
+        e.textContent = 'Sem cards nesta etapa.';
+        wrap.appendChild(e);
+    }
+    if (hasCards && empty) empty.remove();
+}
+
+function updateCountsByDom() {
+    document.querySelectorAll('.kanban-coluna').forEach(col => {
+        const count = col.querySelectorAll('.kanban-card').length;
+        const countEl = col.querySelector('.coluna-count');
+        if (countEl) countEl.textContent = String(count);
+        ensureEmptyPlaceholder(col);
+    });
+}
 
 document.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('dragstart', function(e) {
         draggedCard = this;
-        draggedFromColuna = this.closest('.kanban-coluna')?.dataset?.colunaId || null;
-        this.style.opacity = '0.5';
+        draggedFromColunaId = getColunaIdFromEl(this);
+        this.classList.add('dragging');
+        try {
+            e.dataTransfer.effectAllowed = 'move';
+            // Necessário para Safari/Chrome dispararem corretamente o drop
+            e.dataTransfer.setData('text/plain', this.dataset.cardId || '');
+        } catch (err) {}
     });
-    
-    card.addEventListener('dragend', function(e) {
-        this.style.opacity = '1';
+
+    card.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        draggedCard = null;
+        draggedFromColunaId = null;
+        document.querySelectorAll('.coluna-cards').forEach(w => w.classList.remove('drop-target'));
     });
 });
 
-document.querySelectorAll('.kanban-coluna').forEach(coluna => {
-    coluna.addEventListener('dragover', function(e) {
+document.querySelectorAll('.coluna-cards').forEach(wrap => {
+    wrap.addEventListener('dragover', function(e) {
         e.preventDefault();
-        this.classList.add('drop-highlight');
+        this.classList.add('drop-target');
     });
-    
-    coluna.addEventListener('dragleave', function(e) {
-        this.classList.remove('drop-highlight');
+    wrap.addEventListener('dragleave', function() {
+        this.classList.remove('drop-target');
     });
-    
-    coluna.addEventListener('drop', function(e) {
+    wrap.addEventListener('drop', function(e) {
         e.preventDefault();
-        this.classList.remove('drop-highlight');
-        
-        if (draggedCard) {
-            const colunaId = this.dataset.colunaId;
-            const cardId = draggedCard.dataset.cardId;
-            const colunaCards = this.querySelector('.coluna-cards');
-            const oldColunaId = draggedFromColuna;
-            const oldColunaEl = oldColunaId ? document.querySelector(`.kanban-coluna[data-coluna-id="${oldColunaId}"]`) : null;
-            const oldParent = draggedCard.parentElement;
-            
-            // Mover card visualmente
-            // remover placeholder "Sem cards"
-            colunaCards.querySelectorAll('.coluna-empty').forEach(el => el.remove());
-            colunaCards.appendChild(draggedCard);
-            
-            // Salvar no servidor
-            const newPos = colunaCards.querySelectorAll('.kanban-card').length - 1;
-            fetch('vendas_kanban_api.php?action=mover_card', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: new URLSearchParams({
-                    card_id: cardId,
-                    coluna_id: colunaId,
-                    posicao: newPos
-                })
-            }).then(response => response.json())
-              .then(data => {
-                  if (!data.success) {
-                      console.error('Erro ao mover card:', data.error);
-                      // Reverter movimento visual
-                      if (oldParent) oldParent.appendChild(draggedCard);
-                  } else {
-                      // Atualizar contadores
-                      const countEl = this.querySelector('.coluna-count');
-                      const oldCountEl = oldColunaEl ? oldColunaEl.querySelector('.coluna-count') : null;
-                      if (oldColunaId && oldColunaId !== colunaId && oldCountEl) {
-                          countEl.textContent = String(parseInt(countEl.textContent || '0', 10) + 1);
-                          oldCountEl.textContent = String(Math.max(0, parseInt(oldCountEl.textContent || '0', 10) - 1));
+        this.classList.remove('drop-target');
 
-                          // se coluna antiga ficou vazia, mostrar placeholder
-                          const oldCardsWrap = oldColunaEl.querySelector('.coluna-cards');
-                          if (oldCardsWrap && oldCardsWrap.querySelectorAll('.kanban-card').length === 0) {
-                              const empty = document.createElement('div');
-                              empty.className = 'coluna-empty';
-                              empty.textContent = 'Sem cards nesta etapa.';
-                              oldCardsWrap.appendChild(empty);
-                          }
-                      }
-                  }
-              });
-
-            draggedCard = null;
-            draggedFromColuna = null;
+        // Recuperar card (fallback via dataTransfer)
+        let cardEl = draggedCard;
+        if (!cardEl) {
+            const id = (function() {
+                try { return e.dataTransfer.getData('text/plain'); } catch (err) { return ''; }
+            })();
+            if (id) cardEl = document.querySelector(`.kanban-card[data-card-id="${CSS.escape(id)}"]`);
         }
+        if (!cardEl) return;
+
+        const colunaCards = this;
+        const colunaId = this.dataset.colunaId || getColunaIdFromEl(this);
+        const cardId = cardEl.dataset.cardId;
+        const oldParent = cardEl.parentElement;
+        const oldColunaId = draggedFromColunaId || getColunaIdFromEl(cardEl);
+
+        // Mover visualmente (por enquanto: para o fim da coluna)
+        colunaCards.querySelectorAll('.coluna-empty').forEach(el => el.remove());
+        colunaCards.appendChild(cardEl);
+        updateCountsByDom();
+
+        const newPos = colunaCards.querySelectorAll('.kanban-card').length - 1;
+
+        fetch('vendas_kanban_api.php?action=mover_card', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                card_id: cardId,
+                coluna_id: colunaId,
+                posicao: String(newPos)
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data || !data.success) {
+                console.error('Erro ao mover card:', data?.error);
+                // Reverter movimento visual
+                if (oldParent) oldParent.appendChild(cardEl);
+                updateCountsByDom();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao mover card (network):', err);
+            if (oldParent) oldParent.appendChild(cardEl);
+            updateCountsByDom();
+        });
     });
 });
 
@@ -565,6 +726,64 @@ document.querySelectorAll('.kanban-coluna').forEach(coluna => {
         if (isHidden) {
             panel.scrollIntoView({behavior:'smooth', block:'start'});
         }
+    });
+})();
+
+// Admin: reordenar colunas (drag) + deletar com confirmação
+(function(){
+    const editor = document.getElementById('colunasEditor');
+    if (!editor) return;
+
+    let draggingItem = null;
+
+    function syncPositions() {
+        const items = Array.from(editor.querySelectorAll('.coluna-editor-item'));
+        items.forEach((it, idx) => {
+            const posInput = it.querySelector('.coluna-posicao-input');
+            if (posInput) posInput.value = String(idx);
+        });
+    }
+
+    syncPositions();
+
+    editor.querySelectorAll('.coluna-editor-item').forEach(item => {
+        item.addEventListener('dragstart', function(e){
+            draggingItem = this;
+            this.classList.add('dragging');
+            try {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', this.dataset.colunaId || '');
+            } catch (err) {}
+        });
+        item.addEventListener('dragend', function(){
+            this.classList.remove('dragging');
+            draggingItem = null;
+            syncPositions();
+        });
+        item.addEventListener('dragover', function(e){
+            e.preventDefault();
+            if (!draggingItem || draggingItem === this) return;
+            const rect = this.getBoundingClientRect();
+            const before = (e.clientY - rect.top) < rect.height / 2;
+            if (before) {
+                this.parentElement.insertBefore(draggingItem, this);
+            } else {
+                this.parentElement.insertBefore(draggingItem, this.nextSibling);
+            }
+        });
+    });
+
+    editor.querySelectorAll('[data-delete-coluna-id]').forEach(btn => {
+        btn.addEventListener('click', function(){
+            const id = this.getAttribute('data-delete-coluna-id');
+            if (!id) return;
+            if (!confirm('Tem certeza que deseja excluir esta coluna? (só é permitido se estiver vazia)')) return;
+            const form = document.getElementById('formDeleteColuna');
+            const input = document.getElementById('deleteColunaId');
+            if (!form || !input) return;
+            input.value = String(id);
+            form.submit();
+        });
     });
 })();
 </script>

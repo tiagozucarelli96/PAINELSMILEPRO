@@ -245,6 +245,7 @@ $routes = [
   'vendas_lancamento_presencial' => 'vendas_lancamento_presencial.php',
   'vendas_administracao' => 'vendas_administracao.php',
   'vendas_kanban' => 'vendas_kanban.php',
+  'vendas_links_publicos' => 'vendas_links_publicos.php',
   'vendas_form_casamento' => 'vendas_form_casamento.php',
   'vendas_form_infantil' => 'vendas_form_infantil.php',
   'vendas_form_pj' => 'vendas_form_pj.php',

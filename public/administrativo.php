@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/vendas_helper.php';
 
 // Suprimir warnings durante renderização
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
@@ -173,6 +174,18 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <?php if (function_exists('vendas_is_admin') && vendas_is_admin()): ?>
+            <!-- Vendas (Administração) -->
+            <a href="index.php?page=vendas_administracao" class="funcionalidade-card">
+                <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #1e3a8a, #2563eb);">
+                    <span class="funcionalidade-card-icon">🛡️</span>
+                    <div class="funcionalidade-card-title">Vendas (Administração)</div>
+                    <div class="funcionalidade-card-subtitle">Aprovar e criar eventos na ME</div>
+                </div>
+                <div class="funcionalidade-card-content"></div>
+            </a>
+        <?php endif; ?>
     </div>
 </div>
 

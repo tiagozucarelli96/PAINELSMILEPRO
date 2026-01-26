@@ -1640,8 +1640,11 @@ if ($current_page === 'dashboard') {
             const pagesWithOwnRender = [
                 'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
                 'agenda', 'demandas', 'demandas_quadro',
-                'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
-                'comercial_degust_public', 'comercial_pagamento'
+                'comercial', 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
+                'comercial_degust_public', 'comercial_pagamento',
+                // Vendas (páginas com JS próprio — não carregar via AJAX)
+                'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
+                'vendas_kanban', 'vendas_links_publicos'
             ];
 
             const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');

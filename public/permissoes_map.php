@@ -55,6 +55,7 @@ return [
     'vendas_lancamento_presencial' => 'perm_comercial',
     'vendas_administracao' => 'perm_comercial',
     'vendas_kanban' => 'perm_comercial',
+    'vendas_links_publicos' => 'perm_comercial',
     // Formulários públicos não precisam de permissão
     'vendas_form_casamento' => null,
     'vendas_form_infantil' => null,
