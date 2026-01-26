@@ -99,13 +99,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         
                         // Verificar se é usuário interno e precisa de push
                         require_once __DIR__ . '/permissoes_boot.php';
-                        $is_admin = !empty($_SESSION['perm_administrativo']);
-                        $is_internal = $is_admin || !empty($_SESSION['perm_agenda']) || !empty($_SESSION['perm_demandas']) || 
-                                       !empty($_SESSION['perm_financeiro']); // REMOVIDO: perm_logistico
+                        $is_superadmin = !empty($_SESSION['perm_superadmin']);
+                        $is_internal = $is_superadmin
+                            || !empty($_SESSION['perm_administrativo'])
+                            || !empty($_SESSION['perm_agenda'])
+                            || !empty($_SESSION['perm_demandas'])
+                            || !empty($_SESSION['perm_comercial'])
+                            || !empty($_SESSION['perm_logistico'])
+                            || !empty($_SESSION['perm_configuracoes'])
+                            || !empty($_SESSION['perm_cadastros'])
+                            || !empty($_SESSION['perm_financeiro'])
+                            || !empty($_SESSION['perm_banco_smile']);
                         
                         if ($is_internal) {
                             // Verificar consentimento de push
                             try {
+                                require_once __DIR__ . '/core/push_schema.php';
+                                push_ensure_schema($pdo);
                                 $stmt = $pdo->prepare("
                                     SELECT COUNT(*) 
                                     FROM sistema_notificacoes_navegador 

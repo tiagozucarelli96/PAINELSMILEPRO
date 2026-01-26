@@ -9,10 +9,12 @@ if (empty($_SESSION['logado']) || empty($_SESSION['id'])) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/push_schema.php';
 $data = json_decode(file_get_contents('php://input'), true);
 $usuario_id = (int)$_SESSION['id'];
 
 try {
+    push_ensure_schema($pdo);
     $stmt = $pdo->prepare("UPDATE sistema_notificacoes_navegador SET ativo = FALSE WHERE usuario_id = :usuario_id");
     $stmt->execute([':usuario_id' => $usuario_id]);
     echo json_encode(['success' => true]);

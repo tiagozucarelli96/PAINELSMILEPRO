@@ -82,6 +82,37 @@ if ($tipo === 'google_calendar_daily') {
     exit;
 }
 
+if ($tipo === 'google_calendar_sync') {
+    // Processar sincronizações pendentes (precisa_sincronizar = TRUE)
+    // Recomendado rodar a cada 5-10 minutos para aplicar eventos marcados pelo webhook.
+    try {
+        require_once __DIR__ . '/conexao.php';
+        require_once __DIR__ . '/core/helpers.php';
+
+        $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
+        if (!file_exists($processor_script)) {
+            throw new Exception('Processador não encontrado: google_calendar_sync_processor.php');
+        }
+
+        ob_start();
+        include $processor_script;
+        $out = trim((string)ob_get_clean());
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Processador executado',
+            'output' => $out
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
 if ($tipo === 'google_calendar_renewal') {
     // Renovação de webhooks do Google Calendar
     try {
@@ -182,6 +213,29 @@ if ($tipo === 'google_calendar_renewal') {
         
     } catch (Exception $e) {
         error_log("[GOOGLE_WATCH_RENEWAL] ❌ Erro fatal: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+if ($tipo === 'notificacoes') {
+    // Envio consolidado de notificações (e-mail + push)
+    try {
+        require_once __DIR__ . '/conexao.php';
+        require_once __DIR__ . '/core/notificacoes_helper.php';
+
+        $notificacoes = new NotificacoesHelper();
+        $enviado = $notificacoes->enviarNotificacoesConsolidadas();
+
+        echo json_encode([
+            'success' => (bool)$enviado,
+            'message' => $enviado ? 'Notificações enviadas' : 'Nenhuma notificação pendente'
+        ]);
+    } catch (Exception $e) {
         http_response_code(500);
         echo json_encode([
             'success' => false,
@@ -323,7 +377,9 @@ if ($tipo === 'demandas_fixas') {
         'error' => 'Tipo de cron não especificado ou inválido.',
         'tipos_disponiveis' => [
             'demandas_fixas',
+            'notificacoes',
             'google_calendar_daily',
+            'google_calendar_sync',
             'google_calendar_renewal'
         ]
     ]);

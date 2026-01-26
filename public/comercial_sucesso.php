@@ -11,14 +11,26 @@ if (!$inscricao_id) {
     die('Parâmetros inválidos');
 }
 
+// Determinar qual coluna relaciona inscrição -> degustação (compatibilidade)
+$fk_col = 'degustacao_id';
+try {
+    $cols = $pdo->query("
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'comercial_inscricoes'
+          AND column_name IN ('degustacao_id','event_id')
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    if (is_array($cols) && in_array('degustacao_id', $cols, true)) {
+        $fk_col = 'degustacao_id';
+    } elseif (is_array($cols) && in_array('event_id', $cols, true)) {
+        $fk_col = 'event_id';
+    }
+} catch (Exception $e) {
+    // fallback: manter degustacao_id
+}
+
 // Buscar dados da inscrição
-$stmt = $pdo->prepare("
-    SELECT i.*, d.nome as degustacao_nome, d.data as degustacao_data, d.local as degustacao_local,
-           d.hora_inicio, d.hora_fim, d.instrutivo_html, d.email_confirmacao_html
-    FROM comercial_inscricoes i
-    LEFT JOIN comercial_degustacoes d ON d.id = i.event_id
-    WHERE i.id = :inscricao_id
-");
+$stmt = $pdo->prepare("SELECT * FROM comercial_inscricoes WHERE id = :inscricao_id");
 $stmt->execute([':inscricao_id' => $inscricao_id]);
 $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -26,11 +38,42 @@ if (!$inscricao) {
     die('Inscrição não encontrada');
 }
 
+// Buscar dados da degustação (para e-mail + tela)
+$degustacao = null;
+$degustacao_id = (int)($inscricao[$fk_col] ?? 0);
+if ($degustacao_id > 0) {
+    try {
+        $stD = $pdo->prepare("
+            SELECT id, nome, data, local, hora_inicio, hora_fim, instrutivo_html, email_confirmacao_html
+            FROM comercial_degustacoes
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stD->execute([':id' => $degustacao_id]);
+        $degustacao = $stD->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $degustacao = null;
+    }
+}
+
+// Manter compatibilidade com HTML existente (usa chaves degustacao_*)
+if (is_array($degustacao)) {
+    $inscricao['degustacao_nome'] = $degustacao['nome'] ?? '';
+    $inscricao['degustacao_data'] = $degustacao['data'] ?? '';
+    $inscricao['degustacao_local'] = $degustacao['local'] ?? '';
+    $inscricao['hora_inicio'] = $degustacao['hora_inicio'] ?? '';
+    $inscricao['hora_fim'] = $degustacao['hora_fim'] ?? '';
+    $inscricao['instrutivo_html'] = $degustacao['instrutivo_html'] ?? '';
+    $inscricao['email_confirmacao_html'] = $degustacao['email_confirmacao_html'] ?? '';
+}
+
 // Enviar e-mail de confirmação se ainda não foi enviado
 if ($inscricao['pagamento_status'] === 'pago') {
     try {
-        $emailHelper = new ComercialEmailHelper();
-        $emailHelper->sendInscricaoConfirmation($inscricao, $inscricao);
+        if ($degustacao) {
+            $emailHelper = new ComercialEmailHelper();
+            $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
+        }
     } catch (Exception $e) {
         // Log do erro, mas não interromper a página
         error_log("Erro ao enviar e-mail de confirmação: " . $e->getMessage());

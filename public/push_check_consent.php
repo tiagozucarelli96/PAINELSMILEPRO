@@ -12,10 +12,12 @@ if (empty($_SESSION['logado']) || empty($_SESSION['id'])) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/push_schema.php';
 
 $usuario_id = (int)$_SESSION['id'];
 
 try {
+    push_ensure_schema($pdo);
     $stmt = $pdo->prepare("
         SELECT COUNT(*) 
         FROM sistema_notificacoes_navegador 

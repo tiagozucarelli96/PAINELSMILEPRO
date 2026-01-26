@@ -990,7 +990,10 @@ ob_start();
             
             <div class="form-group">
                 <label class="form-label">Nome do Campo (ID)</label>
-                <input type="text" id="fieldName" class="form-input" placeholder="Ex: nome_completo">
+                <input type="text" id="fieldName" class="form-input" placeholder="Gerado automaticamente" readonly>
+                <small style="color:#6b7280; display:block; margin-top:6px;">
+                    O ID é gerado automaticamente a partir do label (ex.: <code>Nome completo</code> → <code>nome_completo</code>).
+                </small>
             </div>
             
             <div class="form-group">
@@ -1182,6 +1185,19 @@ ob_start();
             if (modal) {
                 modal.classList.remove('active');
             }
+
+            // ID do campo deve ser automático (baseado no label)
+            const labelEl = document.getElementById('fieldLabel');
+            const nameEl = document.getElementById('fieldName');
+            if (nameEl) {
+                nameEl.readOnly = true;
+            }
+            if (labelEl && !labelEl.dataset.autoIdListener) {
+                labelEl.dataset.autoIdListener = '1';
+                labelEl.addEventListener('input', function() {
+                    atualizarFieldNameAutomatico();
+                });
+            }
             
             // Adicionar listener adicional no formulário para garantir que submit funciona
             const form = document.getElementById('degustacaoForm');
@@ -1239,6 +1255,49 @@ ob_start();
         
         // Variável global para armazenar os campos do formulário
         let fields = [];
+
+        // Lista de nomes reservados (evita conflito com campos fixos da inscrição)
+        const RESERVED_FIELD_NAMES = new Set([
+            'nome','email','celular','telefone','tipo_festa','qtd_pessoas','valor_total','extras','fechou_contrato',
+            'nome_titular_contrato','cpf_3_digitos','cpf','me_event_id','me_cliente_cpf','inscricao_id','degustacao_id',
+            'pagamento_status','asaas_checkout_id','asaas_payment_id'
+        ]);
+
+        function slugifyFieldName(input) {
+            const s = String(input || '').trim();
+            if (!s) return '';
+            // remover acentos
+            const noAccents = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            // manter apenas letras/números/underscore, converter espaços/separadores para _
+            let slug = noAccents
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .replace(/_+/g, '_');
+            if (!slug) return '';
+            if (RESERVED_FIELD_NAMES.has(slug)) {
+                slug = 'campo_' + slug;
+            }
+            return slug;
+        }
+
+        function getUniqueFieldName(base) {
+            const b = String(base || '');
+            if (!b) return '';
+            const existing = new Set((fields || []).map(f => String(f?.name || '').toLowerCase()).filter(Boolean));
+            if (!existing.has(b)) return b;
+            let i = 2;
+            while (existing.has(`${b}_${i}`)) i++;
+            return `${b}_${i}`;
+        }
+
+        function atualizarFieldNameAutomatico() {
+            const labelEl = document.getElementById('fieldLabel');
+            const nameEl = document.getElementById('fieldName');
+            if (!labelEl || !nameEl) return;
+            const base = slugifyFieldName(labelEl.value);
+            nameEl.value = base ? getUniqueFieldName(base) : '';
+        }
         
         // Carregar campos iniciais se estiver editando
         <?php if ($is_edit && isset($degustacao) && isset($degustacao['campos_json'])): ?>
@@ -1319,13 +1378,29 @@ ob_start();
         
         function addField() {
             const type = document.getElementById('fieldType').value;
-            const label = document.getElementById('fieldLabel').value;
-            const name = document.getElementById('fieldName').value;
+            const label = (document.getElementById('fieldLabel').value || '').trim();
+            // Nome (ID) sempre automático a partir do label
+            const baseName = slugifyFieldName(label);
+            const name = getUniqueFieldName(baseName);
             const required = document.getElementById('fieldRequired').checked;
             const options = document.getElementById('fieldOptionsText').value.split('\n').filter(o => o.trim());
             
-            if (!label || !name) {
-                customAlert('Preencha o label e nome do campo', '⚠️ Validação');
+            // Atualiza o campo visual de ID
+            const nameEl = document.getElementById('fieldName');
+            if (nameEl) nameEl.value = name;
+
+            if (!label) {
+                customAlert('Preencha o label do campo', '⚠️ Validação');
+                return;
+            }
+
+            if (!name) {
+                customAlert('Não foi possível gerar um ID válido para este campo. Tente alterar o label.', '⚠️ Validação');
+                return;
+            }
+
+            if (['select', 'radio', 'checkbox'].includes(type) && (!options || options.length === 0)) {
+                customAlert('Informe pelo menos 1 opção (uma por linha).', '⚠️ Validação');
                 return;
             }
             
