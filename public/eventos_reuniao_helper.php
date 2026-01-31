@@ -7,6 +7,11 @@
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_me_helper.php';
 
+// Carregar notificações (se existir)
+if (file_exists(__DIR__ . '/eventos_notificacoes.php')) {
+    require_once __DIR__ . '/eventos_notificacoes.php';
+}
+
 /**
  * Buscar ou criar reunião para um evento ME
  */
