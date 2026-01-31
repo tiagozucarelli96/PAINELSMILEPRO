@@ -89,26 +89,389 @@ $stats = [
     'pagamentos_pagos' => count(array_filter($inscricoes, fn($i) => $i['pagamento_status'] === 'pago'))
 ];
 
-
-
+// Iniciar sidebar
+includeSidebar('Todas as Inscrições - Comercial');
 ?>
 
-<div class="page-container">
+<style>
+/* Container principal */
+.inscricoes-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+/* Header */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.page-header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1e3a5f;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.back-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+/* Estatísticas */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+/* Filtros */
+.filters {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.filters-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.form-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.form-select,
+.form-input {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: #fff;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.form-select:focus,
+.form-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.filters-actions {
+    display: flex;
+    gap: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #f1f5f9;
+}
+
+/* Botões */
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    box-shadow: 0 4px 12px rgba(37,99,235,0.3);
+}
+
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    background: #f1f5f9;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #e2e8f0;
+}
+
+/* Tabela */
+.inscricoes-table {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.table-header {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 1fr 0.8fr 1fr 0.8fr;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    background: #f8fafc;
+    border-bottom: 2px solid #e2e8f0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.table-row {
+    display: grid;
+    grid-template-columns: 2fr 1.5fr 1fr 1fr 0.8fr 1fr 0.8fr;
+    gap: 1rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    align-items: center;
+    font-size: 0.9rem;
+}
+
+.table-row:last-child {
+    border-bottom: none;
+}
+
+.table-row:hover {
+    background: #f8fafc;
+}
+
+.participant-name {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.participant-email {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.degustacao-name {
+    font-weight: 500;
+    color: #334155;
+}
+
+.degustacao-date {
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.badge-warning {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.badge-danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.badge-info {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: #6b7280;
+}
+
+.empty-state h3 {
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+/* Responsivo */
+@media (max-width: 1024px) {
+    .stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .filters-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .inscricoes-container {
+        padding: 1rem;
+    }
+    
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .header-actions {
+        width: 100%;
+    }
+    
+    .header-actions .btn-primary,
+    .header-actions .btn-secondary {
+        flex: 1;
+        justify-content: center;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .filters-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .filters-actions {
+        flex-direction: column;
+    }
+    
+    .filters-actions .btn-primary,
+    .filters-actions .btn-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Tabela responsiva */
+    .table-header {
+        display: none;
+    }
+    
+    .table-row {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        padding: 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    
+    .table-row > div::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        margin-bottom: 0.15rem;
+    }
+}
+</style>
+
+<div class="inscricoes-container">
     
     
     <div class="main-content">
-        <div class="inscricoes-container">
             <!-- Header -->
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <div>
-                    <a href="index.php?page=comercial" style="color: #3b82f6; text-decoration: none; font-size: 0.875rem; margin-bottom: 0.5rem; display: inline-block;">← Voltar para Comercial</a>
-                    <h1 class="page-title" style="margin: 0;">📋 Todas as Inscrições</h1>
-                </div>
-                <div style="display: flex; gap: 0.75rem;">
-                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151; border-radius: 8px; text-decoration: none; font-weight: 500;">🍽️ Degustações</a>
-                    <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">📊 Exportar CSV</button>
-                </div>
-            </div>
+    <div class="page-header">
+        <div>
+            <a href="index.php?page=comercial" class="back-link">← Voltar para Comercial</a>
+            <h1>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;color:#3b82f6;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                </svg>
+                Todas as Inscrições
+            </h1>
+        </div>
+        <div class="header-actions">
+            <a href="index.php?page=comercial_degustacoes" class="btn-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                Degustações
+            </a>
+            <button class="btn-primary" onclick="exportCSV()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Exportar CSV
+            </button>
+        </div>
+    </div>
             
             <!-- Estatísticas -->
             <div class="stats-grid">
@@ -234,16 +597,14 @@ $stats = [
                 <?php endforeach; ?>
             </div>
             
-            <?php if (empty($inscricoes)): ?>
-                <div style="text-align: center; padding: 40px; color: #6b7280;">
-                    <h3>Nenhuma inscrição encontrada</h3>
-                    <p>Experimente ajustar os filtros de pesquisa</p>
-                </div>
-            <?php endif; ?>
+    <?php if (empty($inscricoes)): ?>
+        <div class="empty-state">
+            <h3>Nenhuma inscrição encontrada</h3>
+            <p>Experimente ajustar os filtros de pesquisa</p>
         </div>
-    </div>
+    <?php endif; ?>
     
-    <script>
+<script>
         function exportCSV() {
             // Coletar dados da tabela
             const rows = document.querySelectorAll('.table-row');
@@ -276,12 +637,12 @@ $stats = [
             link.setAttribute('download', `todas_inscricoes_${new Date().toISOString().split('T')[0]}.csv`);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-    </script>
-</div>
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
 
+</div>
 
 <?php
 // Finalizar sidebar

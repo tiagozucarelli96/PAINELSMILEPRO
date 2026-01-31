@@ -88,8 +88,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                 if (!$ok) {
                     $erro = 'Senha inválida.';
                 } else {
-                    // ativo? (se houver coluna)
-                    if (array_key_exists('ativo', $u) && (int)$u['ativo'] !== 1) {
+                    // ativo? (se houver coluna) - compatível com boolean e int
+                    $is_ativo = true;
+                    if (array_key_exists('ativo', $u)) {
+                        $ativo_val = $u['ativo'];
+                        // Verifica se está INATIVO (false, 0, 'f', 'false', null)
+                        if ($ativo_val === false || $ativo_val === 0 || $ativo_val === '0' || 
+                            $ativo_val === 'f' || $ativo_val === 'false' || $ativo_val === null) {
+                            $is_ativo = false;
+                        }
+                    }
+                    
+                    if (!$is_ativo) {
                         $erro = 'Usuário desativado.';
                     } else {
                         $_SESSION['logado'] = 1;

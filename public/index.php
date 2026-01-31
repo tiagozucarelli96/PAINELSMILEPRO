@@ -257,6 +257,7 @@ $routes = [
   'vendas_kanban' => 'vendas_kanban.php',
   'vendas_links_publicos' => 'vendas_links_publicos.php',
   'vendas_form_casamento' => 'vendas_form_casamento.php',
+  'vendas_form_15anos' => 'vendas_form_15anos.php',
   'vendas_form_infantil' => 'vendas_form_infantil.php',
   'vendas_form_pj' => 'vendas_form_pj.php',
   'comercial_pagamento' => 'comercial_pagamento.php',
@@ -295,6 +296,7 @@ $routes = [
   // 'config_itens' => 'config_itens.php',
   // 'config_itens_fixos' => 'config_itens_fixos.php',
   'config_sistema' => 'configuracoes.php',
+  'cron_diagnostico' => 'cron_diagnostico.php',
 
   // Financeiro
   // Módulo de pagamentos removido
@@ -340,6 +342,7 @@ $routes = [
   'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
   'test_magalu_contabilidade' => 'test_magalu_contabilidade.php', // Teste de configuração Magalu para Contabilidade
   'executar_add_chave_storage' => 'executar_add_chave_storage.php', // Adicionar coluna chave_storage na contabilidade
+  'exec_migration_044' => 'exec_migration_044.php', // Adicionar tipo 15anos em vendas
   
   // Testes e Diagnósticos (úteis mantidos)
   // Rotas de teste removidas - manter apenas diagnósticos essenciais
@@ -351,6 +354,11 @@ $public_pages = [
   'asaas_webhook', 
   'webhook_me_eventos', 
   'login',
+  // Vendas (links públicos)
+  'vendas_form_casamento',
+  'vendas_form_15anos',
+  'vendas_form_infantil',
+  'vendas_form_pj',
   // Versões de teste que bypassam router
   'comercial_realizar_degustacao_direto',
   'comercial_realizar_degustacao_ultra_simples',

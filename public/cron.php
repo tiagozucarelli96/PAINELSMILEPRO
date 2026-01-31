@@ -2,6 +2,9 @@
 /**
  * cron.php - Endpoint único para todos os crons
  * Acesse: /cron.php?tipo=demandas_fixas&token=SEU_TOKEN
+ * 
+ * Todas as execuções são registradas na tabela sistema_cron_execucoes
+ * para diagnóstico e monitoramento.
  */
 
 // Garantir que não há output buffer interferindo
@@ -30,14 +33,24 @@ header('Content-Type: application/json; charset=utf-8');
 // Determinar qual cron executar
 $tipo = $_GET['tipo'] ?? '';
 
+// Carregar logger de cron
+require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/cron_logger.php';
+
+$pdo = $GLOBALS['pdo'];
+$inicio_ms = (int)(microtime(true) * 1000);
+$execucao_id = 0;
+
+// Registrar início da execução (se tipo válido)
+if (!empty($tipo)) {
+    $execucao_id = cron_logger_start($pdo, $tipo);
+}
+
 if ($tipo === 'google_calendar_daily') {
     // Sincronização diária do Google Calendar
     try {
-        require_once __DIR__ . '/conexao.php';
         require_once __DIR__ . '/core/helpers.php';
         require_once __DIR__ . '/google_calendar_sync_processor.php';
-        
-        $pdo = $GLOBALS['pdo'];
         
         error_log("[GOOGLE_CRON_DAILY] 🔄 Iniciando sincronização diária");
         
@@ -65,19 +78,21 @@ if ($tipo === 'google_calendar_daily') {
         
         error_log("[GOOGLE_CRON_DAILY] ✅ Sincronização diária concluída");
         
-        echo json_encode([
+        $resultado = [
             'success' => true, 
             'message' => 'Sincronização diária do Google Calendar iniciada',
             'calendarios_marcados' => $rows_updated
-        ]);
+        ];
+        
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado);
         
     } catch (Exception $e) {
         error_log("[GOOGLE_CRON_DAILY] ❌ Erro: " . $e->getMessage());
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
         http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
+        echo json_encode($resultado);
     }
     exit;
 }
@@ -116,11 +131,9 @@ if ($tipo === 'google_calendar_sync') {
 if ($tipo === 'google_calendar_renewal') {
     // Renovação de webhooks do Google Calendar
     try {
-        require_once __DIR__ . '/conexao.php';
         require_once __DIR__ . '/core/helpers.php';
         require_once __DIR__ . '/core/google_calendar_helper.php';
         
-        $pdo = $GLOBALS['pdo'];
         $helper = new GoogleCalendarHelper();
         
         // Calcular timestamp atual em milissegundos
@@ -132,7 +145,6 @@ if ($tipo === 'google_calendar_renewal') {
         error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar");
         
         // Buscar webhooks que expiram em menos de 6 horas
-        // webhook_expiration é TIMESTAMP no banco, então convertemos milissegundos para TIMESTAMP
         $now_timestamp = date('Y-m-d H:i:s', $now_ms / 1000);
         $threshold_timestamp = date('Y-m-d H:i:s', $threshold_ms / 1000);
         
@@ -154,11 +166,13 @@ if ($tipo === 'google_calendar_renewal') {
         
         if (empty($webhooks)) {
             error_log("[GOOGLE_WATCH_RENEWAL] ✅ Nenhum webhook precisa ser renovado");
-            echo json_encode([
+            $resultado = [
                 'success' => true,
                 'message' => 'Nenhum webhook precisa ser renovado',
                 'webhooks_renovados' => 0
-            ]);
+            ];
+            cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+            echo json_encode($resultado);
             exit;
         }
         
@@ -170,13 +184,11 @@ if ($tipo === 'google_calendar_renewal') {
         
         foreach ($webhooks as $webhook) {
             $calendar_id = $webhook['google_calendar_id'];
-            // webhook_expiration é TIMESTAMP no banco
             $expiration_date = $webhook['webhook_expiration'] ?? 'N/A';
             
             error_log("[GOOGLE_WATCH_RENEWAL] 🔄 Renovando webhook para: $calendar_id (expira em: $expiration_date)");
             
             try {
-                // Parar webhook antigo (opcional, mas recomendado)
                 if ($webhook['webhook_resource_id']) {
                     try {
                         $helper->stopWebhook($webhook['webhook_resource_id']);
@@ -186,38 +198,35 @@ if ($tipo === 'google_calendar_renewal') {
                     }
                 }
                 
-                // Registrar novo webhook
-                $resultado = $helper->registerWebhook($calendar_id, $webhook_url);
-                
+                $res = $helper->registerWebhook($calendar_id, $webhook_url);
                 error_log("[GOOGLE_WATCH_RENEWAL] ✅ Webhook renovado para: $calendar_id");
                 $renovados++;
                 
             } catch (Exception $e) {
                 error_log("[GOOGLE_WATCH_RENEWAL] ❌ Erro ao renovar webhook para $calendar_id: " . $e->getMessage());
-                $erros[] = [
-                    'calendar_id' => $calendar_id,
-                    'erro' => $e->getMessage()
-                ];
+                $erros[] = ['calendar_id' => $calendar_id, 'erro' => $e->getMessage()];
             }
         }
         
         error_log("[GOOGLE_WATCH_RENEWAL] ✅ Processamento de renovação concluído");
         
-        echo json_encode([
+        $resultado = [
             'success' => true,
             'message' => 'Renovação de webhooks do Google Calendar concluída',
             'webhooks_renovados' => $renovados,
             'total_encontrados' => count($webhooks),
             'erros' => $erros
-        ]);
+        ];
+        
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado);
         
     } catch (Exception $e) {
         error_log("[GOOGLE_WATCH_RENEWAL] ❌ Erro fatal: " . $e->getMessage());
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
         http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
+        echo json_encode($resultado);
     }
     exit;
 }
@@ -246,11 +255,7 @@ if ($tipo === 'notificacoes') {
 }
 
 if ($tipo === 'demandas_fixas') {
-    // Incluir apenas o que é necessário para este cron específico
-    require_once __DIR__ . '/conexao.php';
-    
     try {
-        $pdo = $GLOBALS['pdo'];
         $hoje = new DateTime();
         $dia_semana = (int)$hoje->format('w'); // 0=domingo, 6=sábado
         $dia_mes = (int)$hoje->format('j');
@@ -355,19 +360,41 @@ if ($tipo === 'demandas_fixas') {
             }
         }
         
-        echo json_encode([
+        $resultado = [
             'success' => true,
             'gerados' => $gerados,
             'total_fixas' => count($fixas),
             'erros' => $erros
-        ]);
+        ];
+        
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado);
         
     } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
         http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
+        echo json_encode($resultado);
+    }
+    
+} elseif ($tipo === 'notificacoes') {
+    // Cron de notificações
+    try {
+        require_once __DIR__ . '/cron_notificacoes.php';
+        
+        $resultado = [
+            'success' => true,
+            'message' => 'Processamento de notificações executado'
+        ];
+        
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado);
+        
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
     }
     
 } else {

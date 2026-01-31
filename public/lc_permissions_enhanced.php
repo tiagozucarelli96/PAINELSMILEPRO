@@ -1,6 +1,22 @@
 <?php
 // lc_permissions_enhanced.php
-// Sistema de permissões melhorado que funciona com o sistema atual
+// Sistema de permissões simplificado - apenas 10 permissões da sidebar + superadmin
+
+/**
+ * Lista das permissões válidas do sistema (10 da sidebar + superadmin)
+ */
+define('VALID_PERMISSIONS', [
+    'perm_agenda',
+    'perm_demandas',
+    'perm_comercial',
+    'perm_logistico',
+    'perm_configuracoes',
+    'perm_cadastros',
+    'perm_financeiro',
+    'perm_administrativo',
+    'perm_banco_smile',
+    'perm_superadmin'
+]);
 
 /**
  * Obtém o perfil do usuário baseado nas permissões existentes
@@ -12,15 +28,22 @@ function lc_get_user_profile(): string {
         return $_SESSION['perfil'];
     }
     
-    // Determina perfil baseado nas permissões existentes
-    if (isset($_SESSION['perm_usuarios']) && $_SESSION['perm_usuarios'] == 1) {
+    // Superadmin tem acesso total
+    if (!empty($_SESSION['perm_superadmin'])) {
         return 'ADM';
-    } elseif (isset($_SESSION['perm_pagamentos']) && $_SESSION['perm_pagamentos'] == 1) {
+    }
+    
+    // Determina perfil baseado nas permissões da sidebar
+    if (!empty($_SESSION['perm_configuracoes'])) {
+        return 'ADM';
+    } elseif (!empty($_SESSION['perm_financeiro'])) {
         return 'FINANCEIRO';
-    } elseif (isset($_SESSION['perm_tarefas']) && $_SESSION['perm_tarefas'] == 1) {
+    } elseif (!empty($_SESSION['perm_administrativo'])) {
         return 'GERENTE';
-    } elseif (isset($_SESSION['perm_estoque_logistico']) && $_SESSION['perm_estoque_logistico'] == 1) {
+    } elseif (!empty($_SESSION['perm_logistico'])) {
         return 'OPER';
+    } elseif (!empty($_SESSION['perm_comercial'])) {
+        return 'COMERCIAL';
     }
     
     return 'CONSULTA';
@@ -32,18 +55,35 @@ function lc_get_user_profile(): string {
  * @return bool
  */
 function lc_can_access_module(string $module): bool {
-    $profile = lc_get_user_profile();
+    // Superadmin tem acesso total
+    if (!empty($_SESSION['perm_superadmin'])) {
+        return true;
+    }
     
-    // Mapeamento de módulos por perfil
-    $module_permissions = [
-        'ADM' => ['usuarios', 'pagamentos', 'tarefas', 'demandas', 'portao', 'banco_smile', 'banco_smile_admin', 'notas_fiscais', 'estoque_logistico', 'dados_contrato', 'uso_fiorino', 'rh', 'contabilidade', 'estoque', 'configuracoes', 'comercial'],
-        'FINANCEIRO' => ['pagamentos', 'rh', 'contabilidade', 'banco_smile', 'notas_fiscais', 'comercial'],
-        'GERENTE' => ['tarefas', 'demandas', 'pagamentos', 'rh', 'comercial'],
-        'OPER' => ['tarefas', 'demandas', 'estoque', 'comercial'],
-        'CONSULTA' => ['comercial']
+    // Mapear módulos para permissões da sidebar
+    $module_to_perm = [
+        'agenda' => 'perm_agenda',
+        'demandas' => 'perm_demandas',
+        'comercial' => 'perm_comercial',
+        'logistico' => 'perm_logistico',
+        'logistica' => 'perm_logistico',
+        'configuracoes' => 'perm_configuracoes',
+        'usuarios' => 'perm_configuracoes', // Usuários está em Configurações
+        'cadastros' => 'perm_cadastros',
+        'financeiro' => 'perm_financeiro',
+        'administrativo' => 'perm_administrativo',
+        'contabilidade' => 'perm_administrativo', // Contabilidade usa perm_administrativo
+        'banco_smile' => 'perm_banco_smile',
+        'rh' => 'perm_administrativo', // RH usa perm_administrativo
     ];
     
-    return in_array($module, $module_permissions[$profile] ?? []);
+    $perm_key = $module_to_perm[$module] ?? null;
+    
+    if ($perm_key && !empty($_SESSION[$perm_key])) {
+        return true;
+    }
+    
+    return false;
 }
 
 /**
@@ -51,16 +91,18 @@ function lc_can_access_module(string $module): bool {
  * @return bool
  */
 function lc_can_edit(): bool {
-    $profile = lc_get_user_profile();
-    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE', 'OPER']);
+    // Superadmin ou qualquer permissão administrativa
+    return !empty($_SESSION['perm_superadmin']) || 
+           !empty($_SESSION['perm_configuracoes']) ||
+           !empty($_SESSION['perm_administrativo']);
 }
 
 /**
- * Verifica se o usuário é administrador
+ * Verifica se o usuário é administrador (superadmin ou configurações)
  * @return bool
  */
 function lc_is_admin(): bool {
-    return lc_get_user_profile() === 'ADM';
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_configuracoes']);
 }
 
 /**
@@ -68,32 +110,31 @@ function lc_is_admin(): bool {
  * @return bool
  */
 function lc_is_financeiro(): bool {
-    $profile = lc_get_user_profile();
-    return in_array($profile, ['ADM', 'FINANCEIRO']);
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_financeiro']);
 }
 
 /**
- * Verifica se o usuário pode acessar RH
+ * Verifica se o usuário pode acessar RH (administrativo)
  * @return bool
  */
 function lc_can_access_rh(): bool {
-    return lc_can_access_module('rh');
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_administrativo']);
 }
 
 /**
- * Verifica se o usuário pode acessar Contabilidade
+ * Verifica se o usuário pode acessar Contabilidade (administrativo)
  * @return bool
  */
 function lc_can_access_contabilidade(): bool {
-    return lc_can_access_module('contabilidade');
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_administrativo']);
 }
 
 /**
- * Verifica se o usuário pode acessar Estoque
+ * Verifica se o usuário pode acessar Logística
  * @return bool
  */
 function lc_can_access_estoque(): bool {
-    return lc_can_access_module('estoque');
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 }
 
 /**
@@ -101,7 +142,7 @@ function lc_can_access_estoque(): bool {
  * @return bool
  */
 function lc_can_access_comercial(): bool {
-    return lc_can_access_module('comercial');
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_comercial']);
 }
 
 /**
@@ -109,8 +150,9 @@ function lc_can_access_comercial(): bool {
  * @return bool
  */
 function lc_can_edit_degustacoes(): bool {
-    $profile = lc_get_user_profile();
-    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE']);
+    return !empty($_SESSION['perm_superadmin']) || 
+           !empty($_SESSION['perm_comercial']) ||
+           !empty($_SESSION['perm_configuracoes']);
 }
 
 /**
@@ -118,8 +160,7 @@ function lc_can_edit_degustacoes(): bool {
  * @return bool
  */
 function lc_can_manage_inscritos(): bool {
-    $profile = lc_get_user_profile();
-    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE', 'OPER']);
+    return !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_comercial']);
 }
 
 /**
@@ -127,38 +168,43 @@ function lc_can_manage_inscritos(): bool {
  * @return bool
  */
 function lc_can_view_conversao(): bool {
-    $profile = lc_get_user_profile();
-    return in_array($profile, ['ADM', 'FINANCEIRO', 'GERENTE']);
+    return !empty($_SESSION['perm_superadmin']) || 
+           !empty($_SESSION['perm_comercial']) ||
+           !empty($_SESSION['perm_financeiro']);
 }
 
 /**
- * Obtém mensagem de erro baseada no perfil
+ * Obtém mensagem de erro baseada na ação
  * @param string $action Ação que foi negada
  * @return string Mensagem de erro
  */
 function lc_get_permission_message(string $action): string {
-    $profile = lc_get_user_profile();
+    $messages = [
+        'usuarios' => 'Você precisa da permissão "Configurações" para gerenciar usuários.',
+        'rh' => 'Você precisa da permissão "Administrativo" para acessar RH.',
+        'contabilidade' => 'Você precisa da permissão "Administrativo" para acessar Contabilidade.',
+        'logistica' => 'Você precisa da permissão "Logística" para acessar este módulo.',
+        'logistico' => 'Você precisa da permissão "Logística" para acessar este módulo.',
+        'configuracoes' => 'Você precisa da permissão "Configurações" para acessar este módulo.',
+        'comercial' => 'Você precisa da permissão "Comercial" para acessar este módulo.',
+        'financeiro' => 'Você precisa da permissão "Financeiro" para acessar este módulo.',
+        'administrativo' => 'Você precisa da permissão "Administrativo" para acessar este módulo.',
+        'agenda' => 'Você precisa da permissão "Agenda" para acessar este módulo.',
+        'demandas' => 'Você precisa da permissão "Demandas" para acessar este módulo.',
+        'banco_smile' => 'Você precisa da permissão "Banco Smile" para acessar este módulo.',
+        'degustacoes_editar' => 'Você precisa da permissão "Comercial" para editar degustações.',
+        'inscritos_manage' => 'Você precisa da permissão "Comercial" para gerenciar inscritos.',
+        'conversao_view' => 'Você precisa da permissão "Comercial" ou "Financeiro" para ver conversão.',
+    ];
     
-    switch ($action) {
-        case 'usuarios':
-            return "Apenas administradores podem gerenciar usuários. Seu perfil: $profile";
-        case 'rh':
-            return "Apenas administradores e financeiro podem acessar RH. Seu perfil: $profile";
-        case 'contabilidade':
-            return "Apenas administradores e financeiro podem acessar Contabilidade. Seu perfil: $profile";
-        case 'estoque':
-            return "Apenas administradores e operadores podem acessar Estoque. Seu perfil: $profile";
-        case 'configuracoes':
-            return "Apenas administradores podem acessar Configurações. Seu perfil: $profile";
-        case 'comercial':
-            return "Acesso ao módulo Comercial negado. Seu perfil: $profile";
-        case 'degustacoes_editar':
-            return "Apenas administradores, financeiro e gerentes podem editar degustações. Seu perfil: $profile";
-        case 'inscritos_manage':
-            return "Apenas administradores, financeiro, gerentes e operadores podem gerenciar inscritos. Seu perfil: $profile";
-        case 'conversao_view':
-            return "Apenas administradores, financeiro e gerentes podem ver conversão. Seu perfil: $profile";
-        default:
-            return "Acesso negado. Seu perfil: $profile";
-    }
+    return $messages[$action] ?? 'Acesso negado. Você não tem permissão para esta ação.';
+}
+
+/**
+ * Verifica se uma permissão é válida (está na lista oficial)
+ * @param string $perm Nome da permissão
+ * @return bool
+ */
+function lc_is_valid_permission(string $perm): bool {
+    return in_array($perm, VALID_PERMISSIONS);
 }

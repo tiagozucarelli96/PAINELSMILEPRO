@@ -295,10 +295,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Local não mapeado. Ajuste em Logística > Conexão antes de aprovar.');
                 }
 
-                // Para casamento, usar nome_noivos como nome_evento
-                $nome_evento = $pre_contrato['nome_noivos'] ?? $pre_contrato['nome_completo'];
-                if ($pre_contrato['tipo_evento'] !== 'casamento') {
-                    $nome_evento = $pre_contrato['nome_completo'] . ' - ' . ucfirst($pre_contrato['tipo_evento']);
+                // Nome do evento: para casamento usar "nome_noivos".
+                // Para outros tipos, se o cliente informou um nome do evento, usar; senão, fallback padrão.
+                $nome_noivos_ou_evento = trim((string)($pre_contrato['nome_noivos'] ?? ''));
+                if ((string)($pre_contrato['tipo_evento'] ?? '') === 'casamento') {
+                    $nome_evento = $nome_noivos_ou_evento !== '' ? $nome_noivos_ou_evento : (string)($pre_contrato['nome_completo'] ?? '');
+                } else {
+                    if ($nome_noivos_ou_evento !== '') {
+                        $nome_evento = $nome_noivos_ou_evento;
+                    } else {
+                        $nome_evento = (string)($pre_contrato['nome_completo'] ?? '') . ' - ' . ucfirst((string)($pre_contrato['tipo_evento'] ?? ''));
+                    }
                 }
 
                 // Idempotência: se um evento já existe na ME para esse cliente/data/local/horários,
@@ -699,7 +706,8 @@ ob_start();
 .status-aprovado { background: #dcfce7; color: #166534; }
 .status-cancelado { background: #fee2e2; color: #991b1b; }
 
-.btn {
+.vendas-container .btn,
+.vendas-toast .btn {
     padding: 0.5rem 1rem;
     border-radius: 6px;
     border: none;
@@ -709,10 +717,89 @@ ob_start();
     display: inline-block;
 }
 
-.btn-primary { background: #2563eb; color: white; }
-.btn-success { background: #16a34a; color: white; }
-.btn-danger { background: #ef4444; color: white; }
-.btn-secondary { background: #6b7280; color: white; }
+.vendas-container .btn-primary,
+.vendas-toast .btn-primary { background: #2563eb; color: white; }
+.vendas-container .btn-success,
+.vendas-toast .btn-success { background: #16a34a; color: white; }
+.vendas-container .btn-danger,
+.vendas-toast .btn-danger { background: #ef4444; color: white; }
+.vendas-container .btn-secondary,
+.vendas-toast .btn-secondary { background: #6b7280; color: white; }
+
+/* Alerts (inline) */
+.vendas-container .alert {
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin: 0 0 1rem 0;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    color: #0f172a;
+}
+.vendas-container .alert-success { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.vendas-container .alert-error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.vendas-container .alert-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+
+/* Toast / Balão (fixo) para flash */
+.vendas-toast {
+    position: fixed;
+    top: 88px;
+    right: 24px;
+    width: min(560px, calc(100vw - 48px));
+    border-radius: 14px;
+    border: 1px solid transparent;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    padding: 1rem 1rem 0.9rem 1rem;
+    z-index: 5200;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity .18s ease, transform .18s ease;
+}
+.vendas-toast.hide {
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+}
+.vendas-toast.alert-success { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.vendas-toast.alert-error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.vendas-toast.alert-warning { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.vendas-toast-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .75rem;
+}
+.vendas-toast-message {
+    font-weight: 600;
+    line-height: 1.35;
+}
+.vendas-toast-close {
+    background: rgba(0,0,0,0.08);
+    border: none;
+    color: inherit;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    line-height: 1;
+}
+.vendas-toast-actions {
+    margin-top: .75rem;
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+@media (max-width: 768px) {
+    .vendas-toast {
+        top: 74px;
+        right: 12px;
+        width: calc(100vw - 24px);
+    }
+}
 
 .vendas-modal {
     display: none;
@@ -743,20 +830,20 @@ ob_start();
     z-index: 5001;
 }
 
-.form-group {
+.vendas-container .form-group {
     margin-bottom: 1.5rem;
 }
 
-.form-group label {
+.vendas-container .form-group label {
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 500;
     color: #374151;
 }
 
-.form-group input,
-.form-group select,
-.form-group textarea {
+.vendas-container .form-group input,
+.vendas-container .form-group select,
+.vendas-container .form-group textarea {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #d1d5db;
@@ -797,9 +884,14 @@ ob_start();
             if ($flash_type === 'error') $flash_class = 'alert-error';
             elseif ($flash_type === 'warning') $flash_class = 'alert-warning';
         ?>
-        <div class="alert <?php echo $flash_class; ?>">
-            <?php echo htmlspecialchars((string)($vendas_flash['message'] ?? '')); ?>
-            <div style="margin-top:.75rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <div id="vendasToast" class="vendas-toast <?php echo $flash_class; ?>" role="status" aria-live="polite">
+            <div class="vendas-toast-header">
+                <div class="vendas-toast-message">
+                    <?php echo htmlspecialchars((string)($vendas_flash['message'] ?? '')); ?>
+                </div>
+                <button type="button" class="vendas-toast-close" data-toast-close aria-label="Fechar">×</button>
+            </div>
+            <div class="vendas-toast-actions">
                 <?php if (!empty($vendas_flash['pre_contrato_id'])): ?>
                     <a class="btn btn-primary" href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$vendas_flash['pre_contrato_id']); ?>">Abrir Pré-contrato</a>
                 <?php endif; ?>
@@ -1289,6 +1381,28 @@ function fecharModalEditar() {
         if (params.get('abrir_aprovacao') === '1' && document.getElementById('modalAprovacao')) {
             abrirModalAprovacao();
         }
+    } catch (e) {}
+})();
+
+// Toast/Balão do flash (sucesso/erro) - não quebra layout
+(function() {
+    try {
+        const toast = document.getElementById('vendasToast');
+        if (!toast) return;
+
+        // Garantir que não será "cortado" por containers
+        if (toast.parentElement !== document.body) {
+            document.body.appendChild(toast);
+        }
+
+        const closeBtn = toast.querySelector('[data-toast-close]');
+        const hide = () => {
+            toast.classList.add('hide');
+            window.setTimeout(() => toast.remove(), 250);
+        };
+
+        closeBtn?.addEventListener('click', hide);
+        window.setTimeout(hide, 8000);
     } catch (e) {}
 })();
 

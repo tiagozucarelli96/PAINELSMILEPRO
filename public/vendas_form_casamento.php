@@ -1,7 +1,7 @@
 <?php
 /**
  * vendas_form_casamento.php
- * Formulário público para solicitação de orçamento - Casamento
+ * Formulário público para cadastro de contrato - Casamento
  * Campos conforme especificação do Ajuste 8
  */
 if (session_status() === PHP_SESSION_NONE) {
@@ -11,8 +11,14 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/vendas_helper.php';
 
-$tipo_evento = 'casamento';
-$titulo = 'Solicite seu Orçamento - Casamento';
+// Permite reaproveitar este template para formulários com mesmo layout/campos
+// (ex.: 15 anos), sobrescrevendo as variáveis antes do require.
+$tipo_evento = $tipo_evento ?? 'casamento';
+$titulo = $titulo ?? 'Cadastro do Contrato - Casamento';
+$label_nome_noivos = $label_nome_noivos ?? 'Nome dos Noivos';
+$placeholder_nome_noivos = $placeholder_nome_noivos ?? 'Ex: João e Maria';
+$erro_nome_noivos = $erro_nome_noivos ?? 'Nome dos noivos é obrigatório';
+$log_prefix = $log_prefix ?? $tipo_evento;
 
 // Buscar locais mapeados para dropdown
 $locais_mapeados = vendas_buscar_locais_mapeados();
@@ -146,11 +152,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         // Validar que unidade está mapeada
         $me_local_id = vendas_validar_local_mapeado($unidade);
         if (!$me_local_id) {
-            throw new Exception('Local não mapeado. Ajuste em Logística > Conexão.');
+            // Mensagem amigável para cliente (o detalhe interno fica nos logs)
+            error_log('[VENDAS] Form público ' . $log_prefix . ': local não mapeado/unidade inválida: ' . $unidade);
+            throw new Exception('Local indisponível no momento. Por favor, tente novamente mais tarde.');
         }
         
         if (empty($nome_noivos)) {
-            throw new Exception('Nome dos noivos é obrigatório');
+            throw new Exception((string)$erro_nome_noivos);
         }
         
         if (empty($num_convidados) || $num_convidados <= 0) {
@@ -168,11 +176,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         if (empty($pacote_plano)) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
         }
-        
-        // Montar endereço completo
-        $endereco_formatado = trim($endereco_completo . ', ' . $numero . 
-            (!empty($complemento) ? ' - ' . $complemento : '') . 
-            ' - ' . $bairro . ' - ' . $cidade . '/' . $estado . ' - CEP: ' . $cep);
         
         // Inserir pré-contrato
         $stmt = $pdo->prepare("
@@ -193,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             $telefone,
             $email,
             $cep,
-            $endereco_formatado,
+            $endereco_completo,
             $numero,
             $complemento,
             $bairro,
@@ -236,6 +239,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($titulo); ?></title>
     <style>
+        :root {
+            --primary-color: #1e3a8a;
+            --primary-light: #3b82f6;
+            --primary-dark: #1e40af;
+            --accent-color: #2563eb;
+            --success-color: #16a34a;
+            --error-color: #dc2626;
+            --warning-color: #f59e0b;
+            --text-dark: #1e293b;
+            --text-medium: #475569;
+            --text-light: #64748b;
+            --bg-gradient-start: #0b1b3a;
+            --bg-gradient-mid: #081126;
+            --bg-gradient-end: #060c1c;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -243,8 +262,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: "Manrope", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background:
+              radial-gradient(700px 420px at 15% 20%, rgba(39,79,170,0.25), transparent 60%),
+              radial-gradient(700px 420px at 85% 80%, rgba(24,119,242,0.18), transparent 60%),
+              linear-gradient(135deg, var(--bg-gradient-start), var(--bg-gradient-mid) 55%, var(--bg-gradient-end));
             min-height: 100vh;
             padding: 2rem 1rem;
         }
@@ -252,20 +274,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         .container {
             max-width: 700px;
             margin: 0 auto;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 2.5rem;
+            background: rgba(255,255,255,0.98);
+            border-radius: 20px;
+            box-shadow: 0 25px 80px rgba(4, 9, 20, 0.6);
+            padding: 0;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        /* Header da marca */
+        .brand-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            padding: 2rem 2.5rem;
+            text-align: center;
+            position: relative;
+        }
+        
+        .brand-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-light), var(--accent-color), var(--primary-light));
+        }
+
+        .brand-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+        
+        .brand-row img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+            transition: transform 0.3s ease;
+        }
+        
+        .brand-row img:hover {
+            transform: scale(1.05);
+        }
+        
+        .brand-header h1 {
+            color: #ffffff;
+            margin-bottom: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .brand-header .subtitle {
+            color: rgba(255,255,255,0.85);
+            margin-bottom: 0;
+            font-size: 0.95rem;
+        }
+        
+        /* Conteúdo do formulário */
+        .form-content {
+            padding: 2rem 2.5rem 2.5rem;
+        }
+        
+        @media (max-width: 600px) {
+            .brand-header {
+                padding: 1.5rem 1.25rem;
+            }
+            .form-content {
+                padding: 1.5rem 1.25rem 2rem;
+            }
         }
         
         h1 {
-            color: #1e3a8a;
+            color: var(--primary-color);
             margin-bottom: 0.5rem;
             font-size: 1.75rem;
         }
         
         .subtitle {
-            color: #64748b;
+            color: var(--text-light);
             margin-bottom: 2rem;
             font-size: 1rem;
         }
@@ -368,51 +457,138 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         
         .btn {
             width: 100%;
-            padding: 1rem;
-            background: #2563eb;
+            padding: 1rem 1.5rem;
+            background: linear-gradient(135deg, var(--accent-color) 0%, var(--primary-dark) 100%);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-size: 1.1rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .btn:hover:not(:disabled) {
-            background: #1d4ed8;
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+            transform: translateY(-2px);
         }
         
         .btn:disabled {
             background: #9ca3af;
             cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
         
         .success-message {
             text-align: center;
-            padding: 2rem;
+            padding: 3rem 2rem;
+        }
+        
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 2.5rem;
+            color: white;
+            box-shadow: 0 8px 25px rgba(22, 163, 74, 0.3);
         }
         
         .success-message h2 {
-            color: #16a34a;
+            color: var(--success-color);
             margin-bottom: 1rem;
+            font-size: 1.5rem;
         }
         
         .success-message p {
-            color: #64748b;
+            color: var(--text-light);
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+        
+        /* Seções do formulário */
+        .form-section {
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        
+        .form-section:last-of-type {
+            border-bottom: none;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-section-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .form-section-title::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: linear-gradient(180deg, var(--primary-light), var(--accent-color));
+            border-radius: 2px;
+        }
+        
+        /* Rodapé */
+        .form-footer {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+        }
+        
+        .form-footer p {
+            color: var(--text-light);
+            font-size: 0.85rem;
+        }
+        
+        .form-footer a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        
+        .form-footer a:hover {
+            text-decoration: underline;
         }
     </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
+        <div class="brand-header">
+            <div class="brand-row">
+                <img src="logo.png" alt="Logo do Grupo Smile">
+            </div>
+            <h1><?php echo htmlspecialchars($titulo); ?></h1>
+            <p class="subtitle">Preencha o formulário abaixo para darmos andamento ao seu contrato</p>
+        </div>
+        
+        <div class="form-content">
         <?php if ($success): ?>
             <div class="success-message">
-                <h2>✓ Solicitação enviada com sucesso!</h2>
-                <p>Recebemos sua solicitação de orçamento. Nossa equipe entrará em contato em breve.</p>
+                <div class="success-icon">✓</div>
+                <h2>Enviado com sucesso!</h2>
+                <p>Recebemos seus dados. Nossa equipe entrará em contato em breve para dar andamento ao contrato.</p>
             </div>
         <?php else: ?>
-            <h1><?php echo htmlspecialchars($titulo); ?></h1>
-            <p class="subtitle">Preencha o formulário abaixo e nossa equipe entrará em contato</p>
             
             <?php if ($rate_limit_excedido): ?>
                 <div class="alert alert-warning">
@@ -554,7 +730,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                             <select id="unidade" name="unidade" required>
                                 <option value="">Selecione...</option>
                                 <?php if (empty($locais_mapeados)): ?>
-                                    <option value="" disabled>Nenhum local mapeado. Ajuste em Logística > Conexão.</option>
+                                    <option value="" disabled>Nenhum local disponível no momento.</option>
                                 <?php else: ?>
                                     <?php foreach ($locais_mapeados as $local): ?>
                                         <option value="<?php echo htmlspecialchars($local['me_local_nome']); ?>" 
@@ -566,7 +742,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                             </select>
                             <?php if (empty($locais_mapeados)): ?>
                                 <small style="color: #ef4444; display: block; margin-top: 0.5rem;">
-                                    ⚠️ Nenhum local mapeado. Ajuste em Logística > Conexão.
+                                    ⚠️ Nenhum local disponível no momento. Por favor, tente novamente mais tarde.
                                 </small>
                             <?php endif; ?>
                         </div>
@@ -587,13 +763,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     </div>
                     
                     <div class="form-group">
-                        <label for="nome_noivos">Nome dos Noivos <span class="required">*</span></label>
+                        <label for="nome_noivos"><?php echo htmlspecialchars((string)$label_nome_noivos); ?> <span class="required">*</span></label>
                         <input type="text" id="nome_noivos" name="nome_noivos" required 
-                               placeholder="Ex: João e Maria"
+                               placeholder="<?php echo htmlspecialchars((string)$placeholder_nome_noivos); ?>"
                                value="<?php echo htmlspecialchars($_POST['nome_noivos'] ?? ''); ?>">
-                        <small style="color: #64748b; display: block; margin-top: 0.25rem;">
-                            Este nome será usado como nome do evento na ME
-                        </small>
                     </div>
                     
                     <div class="form-group">
@@ -631,17 +804,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                         <textarea id="pacote_plano" name="pacote_plano" required 
                                   placeholder="Descreva o pacote ou plano escolhido..."
                                   rows="3"><?php echo htmlspecialchars($_POST['pacote_plano'] ?? ''); ?></textarea>
-                        <small style="color: #64748b; display: block; margin-top: 0.25rem;">
-                            ⚠️ Este campo é interno e não será enviado para a ME
-                        </small>
                     </div>
                 </div>
                 
                 <button type="submit" class="btn" <?php echo $rate_limit_excedido ? 'disabled' : ''; ?>>
-                    Enviar Solicitação
+                    Enviar
                 </button>
             </form>
         <?php endif; ?>
+        </div>
     </div>
     
     <script>

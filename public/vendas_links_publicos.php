@@ -33,18 +33,27 @@ $baseUrl = $proto . '://' . $host . $prefix;
 $links = [
     [
         'label' => 'Casamento',
-        'desc' => 'Formulário público (cliente preenche).',
+        'desc' => 'Formulário público para casamentos.',
         'url' => $baseUrl . '/index.php?page=vendas_form_casamento',
+        'icon' => '💍',
+    ],
+    [
+        'label' => '15 Anos / Debutante',
+        'desc' => 'Formulário público para festas de 15 anos.',
+        'url' => $baseUrl . '/index.php?page=vendas_form_15anos',
+        'icon' => '👑',
     ],
     [
         'label' => 'Infantil',
-        'desc' => 'Formulário público (cliente preenche).',
+        'desc' => 'Formulário público para festas infantis.',
         'url' => $baseUrl . '/index.php?page=vendas_form_infantil',
+        'icon' => '🎈',
     ],
     [
         'label' => 'Pessoa Jurídica (PJ)',
-        'desc' => 'Formulário público (cliente preenche).',
+        'desc' => 'Formulário público para eventos corporativos.',
         'url' => $baseUrl . '/index.php?page=vendas_form_pj',
+        'icon' => '🏢',
     ],
 ];
 
@@ -145,12 +154,15 @@ ob_start();
 
     <?php foreach ($links as $l): ?>
         <div class="vendas-links-card">
-            <div class="vendas-links-title"><?php echo htmlspecialchars((string)$l['label']); ?></div>
+            <div class="vendas-links-title">
+                <span style="font-size: 1.25rem; margin-right: 0.5rem;"><?php echo $l['icon'] ?? '📄'; ?></span>
+                <?php echo htmlspecialchars((string)$l['label']); ?>
+            </div>
             <div class="vendas-links-desc"><?php echo htmlspecialchars((string)$l['desc']); ?></div>
             <div class="vendas-links-row" style="margin-top:.75rem;">
                 <input class="vendas-links-input" type="text" readonly value="<?php echo htmlspecialchars((string)$l['url']); ?>">
-                <button type="button" class="btn btn-primary" data-copy-btn>Copiar</button>
-                <a class="btn btn-outline" href="<?php echo htmlspecialchars((string)$l['url']); ?>" target="_blank" rel="noopener">Abrir</a>
+                <button type="button" class="btn btn-primary" data-copy-btn>📋 Copiar</button>
+                <a class="btn btn-outline" href="<?php echo htmlspecialchars((string)$l['url']); ?>" target="_blank" rel="noopener">🔗 Abrir</a>
             </div>
         </div>
     <?php endforeach; ?>

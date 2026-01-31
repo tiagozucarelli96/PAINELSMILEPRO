@@ -269,16 +269,51 @@ if ($current_page === 'dashboard') {
         }
     }
     
+    $notificacoes_html = function_exists('build_logistica_notifications_bar') ? build_logistica_notifications_bar($pdo) : '';
+    
     $dashboard_content = '
+    <style>
+    .dashboard-header-container {
+        margin-bottom: 1.5rem;
+    }
+    .dashboard-header-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .dashboard-header-info h1 {
+        font-size: 1.75rem;
+        color: #1e293b;
+        margin-bottom: 0.25rem;
+    }
+    .dashboard-header-info p {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+    .dashboard-notifications-wrapper {
+        flex: 1;
+        max-width: 100%;
+    }
+    @media (max-width: 1024px) {
+        .dashboard-header-top {
+            flex-direction: column;
+        }
+        .dashboard-notifications-wrapper {
+            width: 100%;
+        }
+    }
+    </style>
     <div class="page-container">
-        <div class="page-header">
-            <div style="flex: 1;">
-                <h1 class="page-title">🏠 Dashboard</h1>
-                <p class="page-subtitle">Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
+        <div class="dashboard-header-container">
+            <div class="dashboard-header-top">
+                <div class="dashboard-header-info">
+                    <h1>🏠 Dashboard</h1>
+                    <p>Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
+                </div>
             </div>
-            <div class="dashboard-notificacoes-bar" style="min-width: 320px; display: flex; justify-content: flex-end;">
-                ' . (function_exists('build_logistica_notifications_bar') ? build_logistica_notifications_bar($pdo) : '') . '
-            </div>
+            ' . (!empty($notificacoes_html) ? '<div class="dashboard-notifications-wrapper">' . $notificacoes_html . '</div>' : '') . '
         </div>
         
         <!-- Métricas Principais -->
@@ -485,29 +520,15 @@ if ($current_page === 'dashboard') {
     <div class="page-container">
         <div class="page-header">
             <h1 class="page-title">📝 Cadastros</h1>
-            <p class="page-subtitle">Gestão de usuários</p>
+            <p class="page-subtitle">Cadastros gerais do sistema</p>
         </div>
         
         <div class="dashboard-grid">
             <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>👥 Usuários</h3>
-                    <span class="card-icon">👥</span>
-                </div>
-                <div class="card-content">
-                    <p>Gerenciar usuários e permissões</p>
-                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>➕ Novo Usuário</h3>
-                    <span class="card-icon">➕</span>
-                </div>
-                <div class="card-content">
-                    <p>Criar novo usuário</p>
-                    <a href="index.php?page=usuarios" class="btn-primary">Acessar</a>
+                <div class="card-content" style="text-align: center; padding: 2rem;">
+                    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">📝</div>
+                    <p style="color: #64748b;">Módulo de cadastros em desenvolvimento.</p>
+                    <p style="color: #94a3b8; font-size: 0.875rem; margin-top: 0.5rem;">Para gerenciar usuários, acesse Configurações.</p>
                 </div>
             </div>
         </div>

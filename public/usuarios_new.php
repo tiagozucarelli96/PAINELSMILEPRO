@@ -813,9 +813,16 @@ ob_start();
     </form>
     
     <div class="users-grid">
-        <?php foreach ($usuarios as $user): 
+        <?php 
+        // Definir permissões válidas da sidebar + superadmin
+        $valid_perms_for_count = [
+            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_logistico',
+            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile'
+        ];
+        
+        foreach ($usuarios as $user): 
             $permissoes_ativas = [];
-            foreach ($existing_perms as $perm => $val) {
+            foreach ($valid_perms_for_count as $perm) {
                 if (!empty($user[$perm])) {
                     $permissoes_ativas[] = $perm;
                 }
@@ -995,9 +1002,11 @@ ob_start();
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
                     // Módulos principais da sidebar (conforme solicitado)
+                    // 10 permissões da sidebar (exceto dashboard que todos têm)
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
-                    // 'perm_logistico' => '📦 Logístico', // REMOVIDO: Módulo desativado
+                    'perm_comercial' => '📋 Comercial',
+                    'perm_logistico' => '📦 Logística',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
                     'perm_financeiro' => '💰 Financeiro',
@@ -1005,12 +1014,12 @@ ob_start();
                     'perm_banco_smile' => '🏦 Banco Smile',
                 ];
                 
-                // Filtrar APENAS permissões da sidebar (resumido)
-                // Definir lista fixa de permissões da sidebar
+                // Lista fixa das 10 permissões da sidebar
                 $sidebar_perms = [
                     'perm_agenda',
                     'perm_demandas',
-                    // 'perm_logistico', // REMOVIDO: Módulo desativado
+                    'perm_comercial',
+                    'perm_logistico',
                     'perm_configuracoes',
                     'perm_cadastros',
                     'perm_financeiro',

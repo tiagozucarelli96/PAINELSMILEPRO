@@ -181,71 +181,190 @@ if (!function_exists('build_logistica_notifications_bar')) {
             return $pa <=> $pb;
         });
 
+        // Separar alertas por tipo para exibição organizada
+        $danger_alerts = array_filter($alerts, fn($a) => $a['level'] === 'danger');
+        $warning_alerts = array_filter($alerts, fn($a) => $a['level'] === 'warning');
+        $info_alerts = array_filter($alerts, fn($a) => $a['level'] === 'info');
+        
         ob_start();
         ?>
         <style>
-        .logistica-notifications-bar {
+        .notifications-container {
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 1rem 1.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        
+        .notifications-header {
             display: flex;
-            gap: .5rem;
-            flex-wrap: wrap;
             align-items: center;
-            background: #f8fafc;
-            border: 1px solid #e5e7eb;
-            border-radius: 12px;
-            padding: .6rem .8rem;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
         }
-        .logistica-notifications-bar a {
+        
+        .notifications-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .notifications-title svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .notifications-count {
+            background: #ef4444;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.15rem 0.5rem;
+            border-radius: 999px;
+            min-width: 20px;
+            text-align: center;
+        }
+        
+        .notifications-link {
+            font-size: 0.8rem;
+            color: #3b82f6;
+            font-weight: 600;
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            transition: color 0.2s;
         }
-        .logistica-notification-pill {
+        
+        .notifications-link:hover {
+            color: #1d4ed8;
+        }
+        
+        .notifications-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        
+        .notification-chip {
             display: inline-flex;
             align-items: center;
-            gap: .35rem;
-            padding: .35rem .7rem;
-            border-radius: 999px;
+            gap: 0.4rem;
+            padding: 0.4rem 0.75rem;
+            border-radius: 8px;
             font-weight: 600;
-            font-size: .9rem;
-            color: #0f172a;
-            background: #e2e8f0;
+            font-size: 0.8rem;
+            text-decoration: none;
+            transition: all 0.2s ease;
             border: 1px solid transparent;
         }
-        .logistica-notification-pill.danger {
-            background: #fee2e2;
-            color: #991b1b;
+        
+        .notification-chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .notification-chip svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+        
+        .notification-chip.danger {
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+            color: #b91c1c;
             border-color: #fecaca;
         }
-        .logistica-notification-pill.warning {
-            background: #ffedd5;
-            color: #9a3412;
-            border-color: #fed7aa;
+        
+        .notification-chip.danger:hover {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
         }
-        .logistica-notification-pill.info {
-            background: #e0f2fe;
-            color: #075985;
-            border-color: #bae6fd;
+        
+        .notification-chip.warning {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            color: #b45309;
+            border-color: #fde68a;
         }
-        .logistica-notification-link {
-            margin-left: auto;
-            font-size: .9rem;
-            color: #2563eb;
-            font-weight: 600;
+        
+        .notification-chip.warning:hover {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        }
+        
+        .notification-chip.info {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+        
+        .notification-chip.info:hover {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        }
+        
+        .notification-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+        
+        @media (max-width: 768px) {
+            .notifications-grid {
+                flex-direction: column;
+            }
+            
+            .notification-chip {
+                width: 100%;
+            }
+            
+            .notification-text {
+                max-width: none;
+            }
         }
         </style>
-        <div class="logistica-notifications-bar" role="status" aria-live="polite">
-            <?php foreach ($alerts as $alert): ?>
-                <?php if (!empty($alert['link'])): ?>
-                    <a href="<?= htmlspecialchars($alert['link']) ?>">
-                        <span class="logistica-notification-pill <?= htmlspecialchars($alert['level']) ?>">
-                            <?= htmlspecialchars($alert['text']) ?>
+        <div class="notifications-container" role="status" aria-live="polite">
+            <div class="notifications-header">
+                <div class="notifications-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                    Alertas
+                    <span class="notifications-count"><?= count($alerts) ?></span>
+                </div>
+                <a class="notifications-link" href="<?= htmlspecialchars($target_url) ?>">
+                    Ver tudo
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </a>
+            </div>
+            
+            <div class="notifications-grid">
+                <?php foreach ($alerts as $alert): 
+                    $icon = match($alert['level']) {
+                        'danger' => '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>',
+                        'warning' => '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+                        default => '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+                    };
+                ?>
+                    <?php if (!empty($alert['link'])): ?>
+                        <a href="<?= htmlspecialchars($alert['link']) ?>" class="notification-chip <?= htmlspecialchars($alert['level']) ?>">
+                            <?= $icon ?>
+                            <span class="notification-text"><?= htmlspecialchars($alert['text']) ?></span>
+                        </a>
+                    <?php else: ?>
+                        <span class="notification-chip <?= htmlspecialchars($alert['level']) ?>">
+                            <?= $icon ?>
+                            <span class="notification-text"><?= htmlspecialchars($alert['text']) ?></span>
                         </span>
-                    </a>
-                <?php else: ?>
-                    <span class="logistica-notification-pill <?= htmlspecialchars($alert['level']) ?>">
-                        <?= htmlspecialchars($alert['text']) ?>
-                    </span>
-                <?php endif; ?>
-            <?php endforeach; ?>
-            <a class="logistica-notification-link" href="<?= htmlspecialchars($target_url) ?>">Ver tudo →</a>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
         </div>
         <?php
         return ob_get_clean();
