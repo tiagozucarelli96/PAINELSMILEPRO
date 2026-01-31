@@ -138,4 +138,20 @@ return [
     'portao' => 'perm_portao',
     'dados_contrato' => 'perm_dados_contrato',
     'uso_fiorino' => 'perm_uso_fiorino',
+    
+    // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
+    'eventos' => 'perm_eventos',
+    'eventos_reuniao_final' => 'perm_eventos',
+    'eventos_reunioes' => 'perm_eventos',
+    'eventos_calendario' => 'perm_eventos',
+    'eventos_galeria' => 'perm_eventos',
+    'eventos_fornecedores' => 'perm_eventos',
+    'eventos_pdf' => 'perm_eventos',
+    // Portais públicos de fornecedores não precisam de permissão interna
+    'portal_dj_login' => null,
+    'portal_dj' => null,
+    'portal_decoracao_login' => null,
+    'portal_decoracao' => null,
+    // Link público do cliente para DJ
+    'eventos_cliente_dj' => null,
 ];

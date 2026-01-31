@@ -1482,6 +1482,13 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
+                <?php if (!empty($_SESSION['perm_eventos'])): ?>
+                <a href="index.php?page=eventos" class="nav-item <?= isActiveUnified('eventos') ?>">
+                    <span class="nav-item-icon">🎉</span>
+                    Eventos
+                </a>
+                <?php endif; ?>
+                
                 <?php
                 $scope_none = (($_SESSION['unidade_scope'] ?? 'todas') === 'nenhuma') && empty($_SESSION['perm_superadmin']);
                 ?>

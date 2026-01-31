@@ -313,6 +313,24 @@ $routes = [
   'agenda_config' => 'agenda_config.php',
   'agenda_relatorios' => 'agenda_relatorios.php',
 
+  // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
+  'eventos' => 'eventos_landing.php',
+  'eventos_reuniao_final' => 'eventos_reuniao_final.php',
+  'eventos_reunioes' => 'eventos_reunioes.php',
+  'eventos_calendario' => 'eventos_calendario.php',
+  'eventos_galeria' => 'eventos_galeria.php',
+  'eventos_fornecedores' => 'eventos_fornecedores.php',
+  'eventos_pdf' => 'eventos_pdf.php',
+  'eventos_me_proxy' => 'eventos_me_proxy.php',
+  'eventos_upload' => 'eventos_upload.php',
+  // Portais externos de fornecedores
+  'portal_dj_login' => 'portal_dj_login.php',
+  'portal_dj' => 'portal_dj.php',
+  'portal_decoracao_login' => 'portal_decoracao_login.php',
+  'portal_decoracao' => 'portal_decoracao.php',
+  // Link público do cliente para DJ
+  'eventos_cliente_dj' => 'eventos_cliente_dj.php',
+
   // Outros
   'ver' => 'ver.php',
   'portao' => 'portao.php',
@@ -362,6 +380,13 @@ $public_pages = [
   // Versões de teste que bypassam router
   'comercial_realizar_degustacao_direto',
   'comercial_realizar_degustacao_ultra_simples',
+  // Portais externos de fornecedores (DJ/Decoração)
+  'portal_dj_login',
+  'portal_dj',
+  'portal_decoracao_login',
+  'portal_decoracao',
+  // Link público do cliente para DJ
+  'eventos_cliente_dj',
 ];
 $is_public_page = in_array($page, $public_pages);
 

@@ -816,7 +816,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_logistico',
+            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile'
         ];
         
@@ -1002,10 +1002,11 @@ ob_start();
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
                     // Módulos principais da sidebar (conforme solicitado)
-                    // 10 permissões da sidebar (exceto dashboard que todos têm)
+                    // 11 permissões da sidebar (exceto dashboard que todos têm)
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
+                    'perm_eventos' => '🎉 Eventos',
                     'perm_logistico' => '📦 Logística',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
@@ -1014,11 +1015,12 @@ ob_start();
                     'perm_banco_smile' => '🏦 Banco Smile',
                 ];
                 
-                // Lista fixa das 10 permissões da sidebar
+                // Lista fixa das 11 permissões da sidebar
                 $sidebar_perms = [
                     'perm_agenda',
                     'perm_demandas',
                     'perm_comercial',
+                    'perm_eventos',
                     'perm_logistico',
                     'perm_configuracoes',
                     'perm_cadastros',
