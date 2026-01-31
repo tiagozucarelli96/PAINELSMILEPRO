@@ -397,6 +397,32 @@ if ($tipo === 'demandas_fixas') {
         echo json_encode($resultado);
     }
     
+} elseif ($tipo === 'eventos_limpeza_anexos') {
+    // Cron de limpeza de anexos pesados (áudio/vídeo) após 10 dias do evento
+    try {
+        require_once __DIR__ . '/eventos_limpeza_anexos.php';
+        
+        $resultado_limpeza = eventos_limpar_anexos_expirados($pdo);
+        $stats = eventos_stats_armazenamento($pdo);
+        
+        $resultado = [
+            'success' => true,
+            'message' => 'Limpeza de anexos executada',
+            'anexos_deletados' => $resultado_limpeza['total_deletados'],
+            'erros' => $resultado_limpeza['total_erros'],
+            'stats' => $stats
+        ];
+        
+        cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
+        echo json_encode($resultado);
+        
+    } catch (Exception $e) {
+        $resultado = ['success' => false, 'error' => $e->getMessage()];
+        cron_logger_finish($pdo, $execucao_id, false, $resultado, $inicio_ms);
+        http_response_code(500);
+        echo json_encode($resultado);
+    }
+    
 } else {
     http_response_code(400);
     echo json_encode([
@@ -407,7 +433,8 @@ if ($tipo === 'demandas_fixas') {
             'notificacoes',
             'google_calendar_daily',
             'google_calendar_sync',
-            'google_calendar_renewal'
+            'google_calendar_renewal',
+            'eventos_limpeza_anexos'
         ]
     ]);
 }
