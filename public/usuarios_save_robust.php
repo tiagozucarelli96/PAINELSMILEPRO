@@ -144,6 +144,11 @@ class UsuarioSaveManager {
             if (empty($email)) {
                 throw new Exception("Email é obrigatório");
             }
+            
+            // Unificar nomes: nome_completo sempre igual a nome (evita divergência)
+            if ($this->columnExists('nome_completo')) {
+                $data['nome_completo'] = $nome;
+            }
 
             // Normalizar escopo de unidade
             if (array_key_exists('unidade_scope', $data)) {

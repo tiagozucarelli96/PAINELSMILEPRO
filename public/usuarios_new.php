@@ -1306,6 +1306,27 @@ document.addEventListener('DOMContentLoaded', function() {
             e.target.value = value;
         });
     });
+    
+    // Unificar Nome e Nome Completo: ao alterar um, atualizar o outro automaticamente
+    (function() {
+        var syncingNome = false;
+        var nomeInput = document.querySelector('#userForm [name="nome"]');
+        var nomeCompletoInput = document.querySelector('#userForm [name="nome_completo"]');
+        if (nomeInput && nomeCompletoInput) {
+            nomeInput.addEventListener('input', function() {
+                if (syncingNome) return;
+                syncingNome = true;
+                nomeCompletoInput.value = nomeInput.value;
+                syncingNome = false;
+            });
+            nomeCompletoInput.addEventListener('input', function() {
+                if (syncingNome) return;
+                syncingNome = true;
+                nomeInput.value = nomeCompletoInput.value;
+                syncingNome = false;
+            });
+        }
+    })();
 });
 
 function openModal(userId = 0) {
@@ -1602,7 +1623,10 @@ function loadUserData(userId) {
             const cargoInput = form.querySelector('[name="cargo"]');
             const fotoAtualInput = document.getElementById('fotoAtual');
             
-            if (nomeInput) nomeInput.value = user.nome || '';
+            // Unificar nomes: mesmo valor em "Nome" e "Nome Completo"
+            const nomeUnificado = (user.nome || user.nome_completo || '').trim();
+            if (nomeInput) nomeInput.value = nomeUnificado;
+            
             if (loginInput) loginInput.value = user.login || user.email || '';
             if (emailInput) emailInput.value = user.email || '';
             if (cargoInput) cargoInput.value = user.cargo || '';
@@ -1622,7 +1646,7 @@ function loadUserData(userId) {
             const cidadeInput = form.querySelector('[name="endereco_cidade"]');
             const estadoInput = form.querySelector('[name="endereco_estado"]');
             
-            if (nomeCompletoInput) nomeCompletoInput.value = user.nome_completo || '';
+            if (nomeCompletoInput) nomeCompletoInput.value = nomeUnificado;
             if (cpfInput) cpfInput.value = user.cpf || '';
             if (rgInput) rgInput.value = user.rg || '';
             if (telefoneInput) telefoneInput.value = user.telefone || '';

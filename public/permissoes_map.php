@@ -5,7 +5,8 @@
 return [
     // Dashboard - sempre permitido (todos logados podem acessar)
     'dashboard' => null,
-    
+    'minha_conta' => null, // Qualquer usuário logado (acesso ao clicar no nome na sidebar)
+
     // Scripts de setup - sempre permitido para usuários logados
     'apply_permissoes_sidebar_columns' => null,
     'habilitar_todas_permissoes' => null,
@@ -29,6 +30,7 @@ return [
     'cartao_ofx_me_cartoes' => 'perm_administrativo',
     'cartao_ofx_me_historico' => 'perm_administrativo',
     'contabilidade' => 'perm_administrativo',
+    'contabilidade_holerite_individual' => 'perm_administrativo',
     'rh' => 'perm_administrativo',
     'banco_smile' => 'perm_banco_smile',
     'banco_smile_main' => 'perm_banco_smile',

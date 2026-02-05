@@ -1418,7 +1418,7 @@ if ($current_page === 'dashboard') {
     <!-- Sidebar fixa -->
     <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1000 !important;">
             <div class="sidebar-header">
-                <div class="user-info">
+                <a href="index.php?page=minha_conta" class="user-info" style="text-decoration: none; color: inherit; display: block;">
                     <?php
                     // Buscar foto do usuário se disponível
                     $foto_usuario = null;
@@ -1448,7 +1448,7 @@ if ($current_page === 'dashboard') {
                     </div>
                     <div class="user-name"><?= htmlspecialchars($nomeUser) ?></div>
                     <div class="user-plan"><?= strtoupper($perfil) ?></div>
-                </div>
+                </a>
             </div>
             
             <div class="sidebar-controls">
@@ -1674,7 +1674,9 @@ if ($current_page === 'dashboard') {
                 'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
                 'vendas_kanban', 'vendas_links_publicos',
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
-                'eventos', 'eventos_reuniao_final', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores'
+                'eventos', 'eventos_reuniao_final', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
+                // Minha conta e Holerite individual (includeSidebar)
+                'minha_conta', 'contabilidade_holerite_individual'
             ];
 
             const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');

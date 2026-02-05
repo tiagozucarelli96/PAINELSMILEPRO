@@ -43,19 +43,17 @@ function contabilidadeDownloadErro(string $mensagem, ?string $detalhe = null): v
     exit;
 }
 
-// Verificar permissão (admin ou contabilidade logada)
+// Verificar permissão (admin ou contabilidade logada; ou dono do holerite individual)
 $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo']);
 $is_contabilidade = !empty($_SESSION['contabilidade_logado']) && $_SESSION['contabilidade_logado'] === true;
+$tipo = $_GET['tipo'] ?? '';
+$permite_holerite_individual = ($tipo === 'holerite_individual' && !empty($_SESSION['logado']));
 
-// Log para debug
-error_log("[CONTABILIDADE_DOWNLOAD] Verificando permissão - Admin: " . ($is_admin ? 'sim' : 'não') . ", Contabilidade: " . ($is_contabilidade ? 'sim' : 'não'));
-
-if (!$is_admin && !$is_contabilidade) {
+if (!$is_admin && !$is_contabilidade && !$permite_holerite_individual) {
     http_response_code(403);
     contabilidadeDownloadErro('Acesso negado. Você precisa estar logado como administrador ou contador.');
 }
 
-$tipo = $_GET['tipo'] ?? '';
 $id = (int)($_GET['id'] ?? 0);
 $debug = !empty($_GET['debug']) && $is_admin;
 
@@ -132,6 +130,22 @@ try {
             $stmt->execute([':id' => $id]);
             $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($arquivo) {
+                $chave_storage = $arquivo['chave_storage'] ?? null;
+                $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
+            }
+            break;
+
+        case 'holerite_individual':
+            $stmt = $pdo->prepare("SELECT usuario_id, chave_storage, arquivo_nome, arquivo_url FROM contabilidade_holerites_individual WHERE id = :id");
+            $stmt->execute([':id' => $id]);
+            $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($arquivo) {
+                $session_uid = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+                if (!$is_admin && $arquivo['usuario_id'] != $session_uid) {
+                    http_response_code(403);
+                    contabilidadeDownloadErro('Acesso negado. Este holerite não pertence ao seu usuário.');
+                }
                 $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
                 $arquivo_url = $arquivo['arquivo_url'] ?? null;
