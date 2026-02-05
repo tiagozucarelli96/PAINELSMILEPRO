@@ -22,10 +22,17 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)($_SESSION['id'] ?? 0);
 $is_admin = vendas_is_admin(); // Usar função centralizada
+$perm_comercial = !empty($_SESSION['perm_comercial']);
 $admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $_POST['admin_context'] === '1');
 
 $mensagens = [];
 $erros = [];
+if (!empty($_GET['success'])) {
+    $mensagens[] = $_GET['success'];
+}
+if (!empty($_GET['mensagem'])) {
+    $mensagens[] = $_GET['mensagem'];
+}
 
 // Flash message (ex.: aprovado/criado na ME) - exibido uma única vez
 $vendas_flash = $_SESSION['vendas_flash'] ?? null;
@@ -132,6 +139,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Exception $e) {
             $pdo->rollBack();
             $erros[] = 'Erro ao salvar: ' . $e->getMessage();
+        }
+    }
+    
+    if ($action === 'apagar') {
+        $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
+        if ($pre_contrato_id <= 0) {
+            $erros[] = 'Pré-contrato inválido.';
+        } elseif (!($perm_comercial || $is_admin)) {
+            $erros[] = 'Sem permissão para apagar pré-contratos.';
+        } else {
+            try {
+                $pdo->beginTransaction();
+                // Remover registros relacionados (ordem por causa de possíveis FKs)
+                $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
+                $pdo->prepare("DELETE FROM vendas_anexos WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
+                $pdo->prepare("DELETE FROM vendas_logs WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
+                $stmt = $pdo->prepare("DELETE FROM vendas_pre_contratos WHERE id = ?");
+                $stmt->execute([$pre_contrato_id]);
+                $pdo->commit();
+                if ($stmt->rowCount() > 0) {
+                    $page_param = (isset($_GET['page']) && $_GET['page'] === 'vendas_administracao') ? 'vendas_administracao' : 'vendas_pre_contratos';
+                    $redirect = 'index.php?page=' . $page_param
+                        . '&status=' . urlencode((string)($_GET['status'] ?? ''))
+                        . '&tipo=' . urlencode((string)($_GET['tipo'] ?? ''))
+                        . '&busca=' . urlencode((string)($_GET['busca'] ?? ''));
+                    if (function_exists('customAlert')) {
+                        header('Location: ' . $redirect . '&success=' . urlencode('Pré-contrato apagado com sucesso.'));
+                    } else {
+                        header('Location: ' . $redirect . '&mensagem=' . urlencode('Pré-contrato apagado com sucesso.'));
+                    }
+                    exit;
+                }
+                $erros[] = 'Pré-contrato não encontrado.';
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                $erros[] = 'Erro ao apagar: ' . $e->getMessage();
+            }
         }
     }
     
@@ -1001,6 +1045,13 @@ ob_start();
                             <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
                                 Editar
                             </a>
+                            <?php if ($perm_comercial || $is_admin): ?>
+                            <form id="formApagar<?php echo (int)$pc['id']; ?>" method="POST" style="display:inline-block; margin-left:6px;">
+                                <input type="hidden" name="action" value="apagar">
+                                <input type="hidden" name="pre_contrato_id" value="<?php echo (int)$pc['id']; ?>">
+                                <button type="button" class="btn btn-secondary btn-apagar-pc" style="font-size: 0.875rem; background:#dc2626; color:#fff; border-color:#dc2626;" data-id="<?php echo (int)$pc['id']; ?>" data-nome="<?php echo htmlspecialchars($pc['nome_completo'] ?? ''); ?>">Apagar</button>
+                            </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -1441,6 +1492,20 @@ document.getElementById('formAprovacao')?.addEventListener('submit', function(e)
 
 document.getElementById('atualizar_cliente_me')?.addEventListener('change', function() {
     document.getElementById('input_atualizar_cliente_me').value = this.value;
+});
+
+function confirmarApagar(id, nome) {
+    var msg = 'Tem certeza que deseja apagar o pré-contrato de "' + (nome || '') + '"? Esta ação não pode ser desfeita.';
+    if (typeof customConfirm === 'function') {
+        customConfirm(msg).then(function(ok) { if (ok) document.getElementById('formApagar' + id).submit(); });
+    } else if (confirm(msg)) {
+        document.getElementById('formApagar' + id).submit();
+    }
+}
+document.querySelectorAll('.btn-apagar-pc').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        confirmarApagar(parseInt(this.getAttribute('data-id'), 10), this.getAttribute('data-nome') || '');
+    });
 });
 
 // Calcular total inicial
