@@ -142,11 +142,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             throw new Exception('Horário de início e término são obrigatórios');
         }
         
-        // Validar que término é depois do início
+        // Validar horários (evento pode passar da meia-noite: ex. 20:00 às 01:00 = válido)
         $inicio_ts = strtotime($horario_inicio);
         $termino_ts = strtotime($horario_termino);
-        if ($termino_ts <= $inicio_ts) {
-            throw new Exception('Horário de término deve ser após o horário de início');
+        if ($inicio_ts === false || $termino_ts === false) {
+            throw new Exception('Horário de início ou término inválido');
+        }
+        // Só rejeitar se forem iguais; se término < início = evento após meia-noite (aceitar)
+        if ($termino_ts === $inicio_ts) {
+            throw new Exception('Horário de término deve ser diferente do horário de início');
         }
         
         // Validar que unidade está mapeada
