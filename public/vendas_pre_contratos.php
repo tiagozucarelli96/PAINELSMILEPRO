@@ -306,10 +306,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Não foi possível obter/criar cliente na ME');
                 }
                 
-                // Tipo de evento na ME: selecionado no modal de aprovação (mapeamento em Logística > Conexão)
-                $tipo_evento_id = (int)($_POST['me_tipo_evento_id'] ?? 0);
-                if ($tipo_evento_id <= 0) {
-                    throw new Exception('Selecione o tipo de evento (ME) no formulário de aprovação. Configure os tipos em Logística > Conexão se necessário.');
+                // Tipo de evento na ME: definido pelo local (mapeamento em Logística > Conexão: ID tipo evento por local)
+                $tipo_evento_id = vendas_obter_me_tipo_evento_id_por_local((string)($pre_contrato['unidade'] ?? ''));
+                if ($tipo_evento_id === null || $tipo_evento_id <= 0) {
+                    throw new Exception('Tipo de evento (ME) não mapeado para o local "' . ($pre_contrato['unidade'] ?? '') . '". Em Logística > Conexão, preencha a coluna "ID tipo evento (ME)" para este local (ex.: Cristal=15, Garden=10, DiverKids=13, Lisbon 1=4).');
                 }
                 
                 // Validar que local está mapeado antes de criar evento
@@ -1229,36 +1229,6 @@ ob_start();
                         <small style="color: #6b7280;">É obrigatório informar o motivo para forçar a criação com conflito de agenda.</small>
                     </div>
                 <?php endif; ?>
-
-                <?php
-                    // Tipos de evento (ME) — lista da API; sugestão do mapeamento (Logística > Conexão)
-                    $tipos_me = vendas_me_listar_tipos_evento();
-                    $tipos_me_lista = [];
-                    foreach ($tipos_me as $t) {
-                        if (!is_array($t)) continue;
-                        $id = (int)($t['id'] ?? 0);
-                        $nome = (string)($t['nome'] ?? '');
-                        if ($id > 0) $tipos_me_lista[] = ['id' => $id, 'nome' => $nome];
-                    }
-                    $tipo_evento_sugerido = vendas_me_obter_tipo_evento_id_mapeado((string)($pre_contrato_editar['tipo_evento'] ?? ''));
-                ?>
-                <div class="form-group">
-                    <label for="me_tipo_evento_id_select">Tipo de evento (ME) <span style="color: #ef4444;">*</span>:</label>
-                    <?php if (!empty($tipos_me_lista)): ?>
-                        <select id="me_tipo_evento_id_select" name="me_tipo_evento_id" form="formAprovacao" required>
-                            <option value="">Selecione...</option>
-                            <?php foreach ($tipos_me_lista as $t): ?>
-                                <option value="<?= (int)$t['id'] ?>" <?= $tipo_evento_sugerido === (int)$t['id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($t['nome']) ?> (ID <?= (int)$t['id'] ?>)
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <small style="color:#6b7280;">Sugestão conforme mapeamento em Logística &gt; Conexão. Pode alterar aqui.</small>
-                    <?php else: ?>
-                        <input type="number" id="me_tipo_evento_id_select" name="me_tipo_evento_id" form="formAprovacao" min="1" value="<?= $tipo_evento_sugerido ?: '' ?>" placeholder="ID do tipo na ME" required>
-                        <small style="color:#6b7280;">Lista não carregada. Informe o ID do tipo (eventtype) na ME ou configure em Logística &gt; Conexão.</small>
-                    <?php endif; ?>
-                </div>
 
                 <?php
                     // Vendedores (ME) - dropdown obrigatório na aprovação

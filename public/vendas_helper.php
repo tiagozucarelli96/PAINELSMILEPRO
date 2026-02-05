@@ -105,6 +105,35 @@ function vendas_obter_me_local_id(string $unidade_nome): ?int {
 }
 
 /**
+ * Obtém o ID do tipo de evento na ME para o local (Logística > Conexão).
+ * Cada local pode ter um me_tipo_evento_id (ex.: Cristal=15, Lisbon Garden=10, DiverKids=13, Lisbon 1=4).
+ * Retorna null se não houver mapeamento.
+ */
+function vendas_obter_me_tipo_evento_id_por_local(string $unidade_nome): ?int {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo) return null;
+    $nome = trim($unidade_nome);
+    if ($nome === '') return null;
+    try {
+        $stmt = $pdo->prepare("
+            SELECT me_tipo_evento_id
+            FROM logistica_me_locais
+            WHERE status_mapeamento = 'MAPEADO'
+            AND me_tipo_evento_id IS NOT NULL
+            AND me_tipo_evento_id > 0
+            AND (LOWER(me_local_nome) = LOWER(?) OR LOWER(TRIM(COALESCE(space_visivel, ''))) = LOWER(?))
+            LIMIT 1
+        ");
+        $stmt->execute([$nome, $nome]);
+        $id = $stmt->fetchColumn();
+        return $id !== false ? (int)$id : null;
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao obter me_tipo_evento_id por local: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
  * Obtém o space_visivel do local (Logística > Conexão).
  * Ex.: "Lisbon 1", "DiverKids", "Lisbon Garden", "Cristal"
  */

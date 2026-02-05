@@ -319,6 +319,11 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
     }
     $existingId = $stmt->fetchColumn();
 
+    $meTipoEventoId = isset($payload['me_tipo_evento_id']) ? (int)$payload['me_tipo_evento_id'] : null;
+    if ($meTipoEventoId !== null && $meTipoEventoId <= 0) {
+        $meTipoEventoId = null;
+    }
+
     if ($existingId) {
         $stmt = $pdo->prepare("
             UPDATE logistica_me_locais
@@ -327,6 +332,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
                 space_visivel = :space_visivel,
                 unidade_interna_id = :unidade_interna_id,
                 status_mapeamento = :status_mapeamento,
+                me_tipo_evento_id = :me_tipo_evento_id,
                 updated_at = :updated_at
             WHERE id = :id
         ");
@@ -336,6 +342,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
             ':space_visivel' => $payload['space_visivel'],
             ':unidade_interna_id' => $payload['unidade_interna_id'],
             ':status_mapeamento' => $payload['status_mapeamento'],
+            ':me_tipo_evento_id' => $meTipoEventoId,
             ':updated_at' => $now,
             ':id' => $existingId
         ]);
@@ -344,9 +351,9 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
 
     $stmt = $pdo->prepare("
         INSERT INTO logistica_me_locais
-        (me_local_id, me_local_nome, space_visivel, unidade_interna_id, status_mapeamento, created_at, updated_at)
+        (me_local_id, me_local_nome, space_visivel, unidade_interna_id, status_mapeamento, me_tipo_evento_id, created_at, updated_at)
         VALUES
-        (:me_local_id, :me_local_nome, :space_visivel, :unidade_interna_id, :status_mapeamento, :created_at, :updated_at)
+        (:me_local_id, :me_local_nome, :space_visivel, :unidade_interna_id, :status_mapeamento, :me_tipo_evento_id, :created_at, :updated_at)
     ");
     $stmt->execute([
         ':me_local_id' => $meLocalId > 0 ? $meLocalId : null,
@@ -354,6 +361,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
         ':space_visivel' => $payload['space_visivel'],
         ':unidade_interna_id' => $payload['unidade_interna_id'],
         ':status_mapeamento' => $payload['status_mapeamento'],
+        ':me_tipo_evento_id' => $meTipoEventoId,
         ':created_at' => $now,
         ':updated_at' => $now
     ]);
@@ -536,6 +544,13 @@ if (defined('LOGISTICA_SYNC_ONLY')) {
 
 $schema_ok = ensure_logistica_schema($pdo, $errors, $messages);
 $has_nome_evento = $schema_ok && has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
+if ($schema_ok && !has_column($pdo, 'logistica_me_locais', 'me_tipo_evento_id')) {
+    try {
+        $pdo->exec('ALTER TABLE logistica_me_locais ADD COLUMN me_tipo_evento_id INTEGER');
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao adicionar coluna me_tipo_evento_id: ' . $e->getMessage();
+    }
+}
 if (!$has_nome_evento) {
     $errors[] = 'Coluna nome_evento ainda não existe. Rode o SQL 030 (logistica_eventos_nome) e sincronize novamente.';
 }
@@ -590,11 +605,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $spaceVisivel = $_POST['space_visivel'] ?? [];
         $meLocalId = $_POST['me_local_id'] ?? [];
         $meLocalNome = $_POST['me_local_nome'] ?? [];
+        $meTipoEventoId = $_POST['me_tipo_evento_id'] ?? [];
 
         foreach ($spaceVisivel as $idx => $space) {
             $space = trim((string)$space);
             $localId = isset($meLocalId[$idx]) ? (int)$meLocalId[$idx] : 0;
             $localNome = trim((string)($meLocalNome[$idx] ?? ''));
+            $tipoEventoId = isset($meTipoEventoId[$idx]) ? (int)$meTipoEventoId[$idx] : 0;
+            if ($tipoEventoId <= 0) {
+                $tipoEventoId = null;
+            }
 
             if ($localNome === '') {
                 continue;
@@ -613,7 +633,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'me_local_nome' => $localNome,
                 'space_visivel' => $space !== '' ? $space : null,
                 'unidade_interna_id' => $unidadeId,
-                'status_mapeamento' => $status
+                'status_mapeamento' => $status,
+                'me_tipo_evento_id' => $tipoEventoId
             ]);
         }
 
@@ -916,12 +937,13 @@ includeSidebar('Configurações - Logística');
                         <th>Local (ME)</th>
                         <th>Status</th>
                         <th>Space visível</th>
+                        <th>ID tipo evento (ME)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($me_locais)): ?>
                         <tr>
-                            <td colspan="4">Nenhum local encontrado.</td>
+                            <td colspan="5">Nenhum local encontrado.</td>
                         </tr>
                     <?php endif; ?>
                     <?php foreach ($me_locais as $idx => $local): ?>
@@ -939,6 +961,7 @@ includeSidebar('Configurações - Logística');
                         }
                         $status = $mapping ? 'MAPEADO' : 'PENDENTE';
                         $spaceAtual = $mapping['space_visivel'] ?? '';
+                        $tipoEventoAtual = isset($mapping['me_tipo_evento_id']) && (int)$mapping['me_tipo_evento_id'] > 0 ? (int)$mapping['me_tipo_evento_id'] : '';
                         ?>
                         <tr>
                             <td><?= h($localId) ?></td>
@@ -959,6 +982,10 @@ includeSidebar('Configurações - Logística');
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                            </td>
+                            <td>
+                                <input type="number" name="me_tipo_evento_id[<?= $idx ?>]" class="form-input" style="width: 80px;" min="0" placeholder="ex: 15" value="<?= $tipoEventoAtual !== '' ? (int)$tipoEventoAtual : '' ?>">
+                                <small style="color:#64748b;">Cristal=15, Garden=10, DiverKids=13, Lisbon 1=4</small>
                             </td>
                         </tr>
                     <?php endforeach; ?>
