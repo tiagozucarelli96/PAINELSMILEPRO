@@ -601,7 +601,7 @@ try {
                     if (empty($telefone_encontrado)) $motivo_rejeicao[] = "Telefone não encontrado";
                     
                     error_log("ME Buscar Cliente - ❌ Validação alternativa REJEITADA. Motivos: " . implode(', ', $motivo_rejeicao));
-                    throw new Exception('Não foi possível validar sua identidade completamente. A API não retornou o CPF cadastrado. Por favor, entre em contato conosco para verificar seu cadastro ou inscreva-se sem buscar evento.');
+                    throw new Exception('Não foi possível validar sua identidade completamente. Não localizamos o CPF no seu cadastro. Por favor, entre em contato conosco para verificar seu cadastro ou inscreva-se sem buscar evento.');
                 }
             }
         }

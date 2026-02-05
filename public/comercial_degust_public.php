@@ -385,7 +385,7 @@ if ($_POST && !$inscricoes_encerradas) {
                     'description' => $descricao_item,
                     'value' => (float)$valor_total, // Valor total: base + adicional
                     'expirationDate' => $expiration_date, // Data/hora de expiração (1 hora a partir de agora)
-                    'format' => 'IMAGE', // Solicitar formato de imagem (Base64)
+                    'format' => 'ALL', // ALL = imagem + payload PIX (copia e cola) para celular
                     'allowsMultiplePayments' => true // Permite múltiplos pagamentos (conforme modelo)
                     // NÃO enviar expirationSeconds quando usar expirationDate (API aceita apenas um)
                 ];
@@ -398,16 +398,21 @@ if ($_POST && !$inscricoes_encerradas) {
                 if ($qr_code_response && isset($qr_code_response['id'])) {
                     $qr_code_id = $qr_code_response['id'];
                     
-                    // O Asaas pode retornar a imagem em diferentes campos
-                    // Tentar: encodedImage, payload, ou image
-                    $qr_code_payload = $qr_code_response['encodedImage'] 
-                        ?? $qr_code_response['payload'] 
-                        ?? $qr_code_response['image']
-                        ?? '';
+                    // Imagem do QR Code: encodedImage ou image (formato ALL pode retornar os dois)
+                    $qr_code_image = $qr_code_response['encodedImage'] ?? $qr_code_response['image'] ?? '';
+                    $pix_copia_cola = '';
+                    $payload_raw = $qr_code_response['payload'] ?? '';
+                    // PIX copia e cola (EMV) no Brasil começa com 00020
+                    if (is_string($payload_raw) && strpos($payload_raw, '00020') === 0) {
+                        $pix_copia_cola = $payload_raw;
+                    }
+                    // Se imagem não veio em encodedImage/image, payload pode ser a imagem em base64 (formato IMAGE)
+                    if (empty($qr_code_image) && is_string($payload_raw) && (strpos($payload_raw, 'data:image') === 0 || (strlen($payload_raw) > 100 && preg_match('/^[A-Za-z0-9+\/=]+$/', $payload_raw)))) {
+                        $qr_code_image = $payload_raw;
+                    }
                     
                     error_log("✅ QR Code estático criado: $qr_code_id");
-                    error_log("📷 Imagem encontrada: " . (!empty($qr_code_payload) ? 'SIM (' . strlen($qr_code_payload) . ' chars)' : 'NÃO'));
-                    error_log("📋 Campos disponíveis: " . implode(', ', array_keys($qr_code_response)));
+                    error_log("📷 Imagem: " . (!empty($qr_code_image) ? 'SIM' : 'NÃO') . " | PIX copia e cola: " . (!empty($pix_copia_cola) ? 'SIM (' . strlen($pix_copia_cola) . ' chars)' : 'NÃO'));
                     
                     // Verificar/criar colunas necessárias
                     try {
@@ -415,7 +420,7 @@ if ($_POST && !$inscricoes_encerradas) {
                             SELECT column_name 
                             FROM information_schema.columns 
                             WHERE table_name = 'comercial_inscricoes' 
-                            AND column_name IN ('asaas_qr_code_id', 'qr_code_image')
+                            AND column_name IN ('asaas_qr_code_id', 'qr_code_image', 'pix_copia_cola')
                         ");
                         $existing_columns = $check_columns->fetchAll(PDO::FETCH_COLUMN);
                         
@@ -425,20 +430,25 @@ if ($_POST && !$inscricoes_encerradas) {
                         if (!in_array('qr_code_image', $existing_columns)) {
                             $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN qr_code_image TEXT NULL");
                         }
+                        if (!in_array('pix_copia_cola', $existing_columns)) {
+                            $pdo->exec("ALTER TABLE comercial_inscricoes ADD COLUMN pix_copia_cola TEXT NULL");
+                        }
                     } catch (Exception $e) {
                         error_log("Erro ao verificar/criar colunas: " . $e->getMessage());
                     }
                     
-                    // Salvar QR Code na inscrição
+                    // Salvar QR Code e PIX copia e cola na inscrição
                     $update_fields = [
                         "pagamento_status = 'aguardando'",
                         "asaas_qr_code_id = :qr_code_id",
-                        "qr_code_image = :qr_code_image"
+                        "qr_code_image = :qr_code_image",
+                        "pix_copia_cola = :pix_copia_cola"
                     ];
                     $update_params = [
                         ':id' => $inscricao_id,
                         ':qr_code_id' => $qr_code_id,
-                        ':qr_code_image' => $qr_code_payload
+                        ':qr_code_image' => $qr_code_image,
+                        ':pix_copia_cola' => $pix_copia_cola ?: null
                     ];
                     
                     $update_sql = "UPDATE comercial_inscricoes SET " . implode(', ', $update_fields) . " WHERE id = :id";
@@ -450,8 +460,9 @@ if ($_POST && !$inscricoes_encerradas) {
                     // Armazenar dados do QR Code em variáveis para exibir na página
                     $_SESSION['qr_code_inscricao_id'] = $inscricao_id;
                     $_SESSION['qr_code_id'] = $qr_code_id;
-                    $_SESSION['qr_code_image'] = $qr_code_payload;
+                    $_SESSION['qr_code_image'] = $qr_code_image;
                     $_SESSION['qr_code_value'] = $valor_total;
+                    $_SESSION['pix_copia_cola'] = $pix_copia_cola;
                     
                     // Redirecionar para mesma página com flag de QR Code
                     header("Location: " . $current_url . "&qr_code=1&inscricao_id=" . $inscricao_id);
@@ -537,7 +548,8 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
     <link rel="stylesheet" href="assets/css/custom_modals.css">
     <script src="assets/js/custom_modals.js"></script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#1e3a8a">
     <title><?= h($degustacao['nome']) ?> - GRUPO Smile EVENTOS</title>
     <link rel="stylesheet" href="estilo.css">
     <style>
@@ -599,7 +611,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             padding: 12px;
             border: 1px solid #d1d5db;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 16px; /* Evita zoom no iOS ao focar */
+            -webkit-appearance: none;
+            appearance: none;
+            box-sizing: border-box;
         }
         
         .form-input:focus {
@@ -630,10 +645,14 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         }
         
         .form-radio input[type="radio"] {
-            width: 18px;
-            height: 18px;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
             accent-color: #3b82f6;
+            cursor: pointer;
         }
+        .form-radio label { cursor: pointer; }
         
         .form-checkbox {
             display: flex;
@@ -643,22 +662,29 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         }
         
         .form-checkbox input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            min-height: 22px;
             accent-color: #3b82f6;
+            cursor: pointer;
         }
+        .form-checkbox label { cursor: pointer; }
         
         .btn-submit {
             width: 100%;
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             color: white;
             border: none;
-            padding: 15px;
+            padding: 16px 20px;
+            min-height: 48px; /* Área de toque mínima (acessibilidade) */
             border-radius: 8px;
             font-size: 18px;
             font-weight: 600;
             cursor: pointer;
             margin-top: 20px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
         
         .btn-submit:hover {
@@ -709,7 +735,10 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             display: flex;
             justify-content: space-between;
             margin-bottom: 5px;
+            flex-wrap: wrap;
+            gap: 4px;
         }
+        .price-item span { word-break: break-word; }
         
         .price-total {
             font-weight: 700;
@@ -758,6 +787,89 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         }
         .confirmacao-mensagem :first-child { margin-top: 0; }
         .confirmacao-mensagem :last-child { margin-bottom: 0; }
+        
+        /* ========== Mobile e tablet (70% dos acessos) ========== */
+        @media (max-width: 768px) {
+            .public-container {
+                padding: 12px 16px;
+                max-width: 100%;
+            }
+            .event-header {
+                padding: 20px 16px;
+                margin-bottom: 24px;
+            }
+            .event-title {
+                font-size: 1.5rem;
+                line-height: 1.3;
+            }
+            .event-details {
+                font-size: 0.95rem;
+            }
+            .instructions {
+                padding: 16px;
+                margin-bottom: 20px;
+            }
+            .form-container {
+                padding: 20px 16px;
+            }
+            .form-radio-group {
+                flex-direction: column;
+                gap: 12px;
+            }
+            .form-radio {
+                padding: 12px;
+                background: #f8fafc;
+                border-radius: 8px;
+                border: 1px solid #e5e7eb;
+            }
+            .price-info { padding: 12px; }
+            .btn-submit { padding: 16px; font-size: 1.05rem; }
+            .confirmacao-tela { padding: 1.5rem 1rem; min-height: 70vh; }
+            .confirmacao-logo-img { max-width: 180px; }
+            .confirmacao-logo-texto { font-size: 1.4rem; }
+            .confirmacao-mensagem {
+                padding: 1.25rem;
+                max-width: 100%;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .public-container { padding: 10px 12px; }
+            .event-title { font-size: 1.35rem; }
+            .form-container { padding: 16px 12px; }
+            .form-input, .form-select { padding: 14px; }
+            .confirmacao-logo-texto { font-size: 1.25rem; }
+        }
+        
+        /* Modal e QR Code: mobile */
+        @media (max-width: 768px) {
+            .qr-code-container img,
+            #qr-code-pix-container img {
+                max-width: 100% !important;
+                height: auto !important;
+            }
+            .modal-inner-mobile { width: calc(100vw - 24px) !important; max-width: none !important; max-height: 85vh !important; margin: 12px auto !important; }
+            .busca-me-row { flex-direction: column; }
+            .busca-me-row .btn-primary { width: 100%; }
+            .pix-copia-cola-row { flex-direction: column; }
+            .pix-copia-cola-row input { font-size: 14px !important; }
+            .btn-copiar-pix { width: 100%; }
+        }
+        
+        /* Área de toque adequada para botões e links (mín. 44px) */
+        button, .btn-primary, .btn-secondary, .btn-submit, .cliente-item-me,
+        input[type="submit"], input[type="button"],
+        a[href].btn-primary, a[href].btn-secondary {
+            min-height: 44px;
+            min-width: 44px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        
+        /* Evitar overflow horizontal em qualquer dispositivo */
+        body { overflow-x: hidden; }
+        .public-container { overflow-x: hidden; }
+        img { max-width: 100%; height: auto; }
     </style>
 </head>
 <body>
@@ -767,9 +879,13 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         <div class="confirmacao-tela">
             <div class="confirmacao-logo">
                 <?php
-                $logo_url = 'assets/logo_smile.png';
-                $logo_path = __DIR__ . '/' . $logo_url;
-                if (file_exists($logo_path)): ?>
+                $logo_url = null;
+                if (file_exists(__DIR__ . '/logo-smile.png')) {
+                    $logo_url = 'logo-smile.png';
+                } elseif (file_exists(__DIR__ . '/logo.png')) {
+                    $logo_url = 'logo.png';
+                }
+                if ($logo_url): ?>
                     <img src="<?= h($logo_url) ?>" alt="GRUPO Smile EVENTOS" class="confirmacao-logo-img">
                 <?php else: ?>
                     <p class="confirmacao-logo-texto">GRUPO Smile EVENTOS</p>
@@ -817,22 +933,22 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             $qr_code_image = $_SESSION['qr_code_image'] ?? '';
             $qr_code_id = $_SESSION['qr_code_id'] ?? '';
             $qr_code_value = $_SESSION['qr_code_value'] ?? 0;
+            $pix_copia_cola = $_SESSION['pix_copia_cola'] ?? '';
             
             // Se não estiver na sessão, buscar do banco
             if (empty($qr_code_image)) {
                 try {
-                    // Verificar quais colunas de valor existem
-                    $check_valor_cols = $pdo->query("
-                        SELECT column_name 
-                        FROM information_schema.columns 
+                    // Verificar quais colunas existem
+                    $check_cols = $pdo->query("
+                        SELECT column_name FROM information_schema.columns 
                         WHERE table_name = 'comercial_inscricoes' 
-                        AND column_name IN ('valor_total', 'valor_pago')
+                        AND column_name IN ('valor_total', 'valor_pago', 'pix_copia_cola')
                     ");
-                    $valor_columns = $check_valor_cols->fetchAll(PDO::FETCH_COLUMN);
-                    $has_valor_total = in_array('valor_total', $valor_columns);
-                    $has_valor_pago = in_array('valor_pago', $valor_columns);
+                    $all_cols = $check_cols->fetchAll(PDO::FETCH_COLUMN);
+                    $has_valor_total = in_array('valor_total', $all_cols);
+                    $has_valor_pago = in_array('valor_pago', $all_cols);
+                    $has_pix_copia_cola = in_array('pix_copia_cola', $all_cols);
                     
-                    // Montar expressão de valor dinamicamente
                     if ($has_valor_total && $has_valor_pago) {
                         $valor_expr = "COALESCE(valor_total, valor_pago, 0) as valor_total";
                     } elseif ($has_valor_total) {
@@ -842,14 +958,15 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     } else {
                         $valor_expr = "0 as valor_total";
                     }
+                    $pix_col = $has_pix_copia_cola ? ", COALESCE(pix_copia_cola, '') as pix_copia_cola" : "";
                     
-                    // Buscar também pagamento_status para verificar se já foi pago
                     $stmt = $pdo->prepare("
                         SELECT 
                             qr_code_image, 
                             asaas_qr_code_id, 
                             $valor_expr,
                             pagamento_status
+                            $pix_col
                         FROM comercial_inscricoes 
                         WHERE id = :id
                     ");
@@ -861,6 +978,9 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         $qr_code_id = $qr_data['asaas_qr_code_id'] ?? '';
                         $qr_code_value = $qr_data['valor_total'] ?? 0;
                         $pagamento_status = $qr_data['pagamento_status'] ?? 'aguardando';
+                        if ($has_pix_copia_cola) {
+                            $pix_copia_cola = $qr_data['pix_copia_cola'] ?? '';
+                        }
                     } else {
                         $pagamento_status = 'aguardando';
                     }
@@ -953,7 +1073,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     </p>
                 </div>
                 <?php elseif (!empty($qr_code_image)): ?>
-                <div class="qr-code-container" style="background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                <div id="qr-code-pix-container" class="qr-code-container" style="background: white; border: 2px solid #3b82f6; border-radius: 12px; padding: 30px; margin: 30px 0; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
                     <h2 style="color: #1e40af; margin-bottom: 20px;">💰 Pague com PIX</h2>
                     <p style="color: #6b7280; margin-bottom: 15px; font-size: 16px;">
                         Escaneie o QR Code abaixo com o app do seu banco para finalizar o pagamento
@@ -991,6 +1111,21 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         </p>
                     </div>
                     
+                    <?php if (!empty($pix_copia_cola)): ?>
+                    <div class="pix-copia-cola-box" style="margin-top: 24px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; text-align: left;">
+                        <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1e40af;">📱 Pagando no celular? Copie o código PIX:</p>
+                        <div class="pix-copia-cola-row" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="pixCopiaCola" readonly value="<?= h($pix_copia_cola) ?>" 
+                                style="flex: 1; min-width: 0; padding: 12px; font-size: 16px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff;">
+                            <button type="button" onclick="copiarPixCopiaCola()" class="btn-copiar-pix"
+                                style="background: #1e40af; color: white; border: none; padding: 12px 20px; min-height: 44px; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                                📋 Copiar PIX
+                            </button>
+                        </div>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #6b7280;">Cole no app do seu banco na opção PIX Copia e Cola.</p>
+                    </div>
+                    <?php endif; ?>
+                    
                     <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
                         ⏱️ Este QR Code expira em 1 hora<br>
                         💡 Após o pagamento, sua inscrição será confirmada automaticamente
@@ -1002,14 +1137,52 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                         </p>
                     </div>
                     
-                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                        <button id="btnVerificarPagamento" onclick="verificarPagamento()" style="background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
+                    <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <button id="btnVerificarPagamento" onclick="verificarPagamento()" style="background: #3b82f6; color: white; border: none; padding: 14px 24px; min-height: 48px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.2s;">
                             🔄 Verificar Pagamento
                         </button>
                     </div>
                 </div>
                 
                 <script>
+                // Rolagem automática até o QR Code ao carregar a página (evita cliente ficar no topo)
+                (function() {
+                    var el = document.getElementById('qr-code-pix-container') || document.querySelector('.qr-code-container');
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                })();
+                
+                function copiarPixCopiaCola() {
+                    var input = document.getElementById('pixCopiaCola');
+                    if (!input || !input.value) return;
+                    input.select();
+                    input.setSelectionRange(0, 99999);
+                    try {
+                        navigator.clipboard.writeText(input.value).then(function() {
+                            if (typeof customAlert === 'function') {
+                                customAlert('Código PIX copiado! Cole no app do seu banco.', 'Sucesso');
+                            } else {
+                                alert('Código PIX copiado! Cole no app do seu banco.');
+                            }
+                        }).catch(function() {
+                            document.execCommand('copy');
+                            if (typeof customAlert === 'function') {
+                                customAlert('Código PIX copiado! Cole no app do seu banco.', 'Sucesso');
+                            } else {
+                                alert('Código PIX copiado! Cole no app do seu banco.');
+                            }
+                        });
+                    } catch (e) {
+                        document.execCommand('copy');
+                        if (typeof customAlert === 'function') {
+                            customAlert('Código PIX copiado! Cole no app do seu banco.', 'Sucesso');
+                        } else {
+                            alert('Código PIX copiado! Cole no app do seu banco.');
+                        }
+                    }
+                }
+                
                 let intervaloVerificacao = null;
                 
                 // Verificação SILENCIOSA em background (sem mostrar erros ou tocar no botão)
@@ -1345,8 +1518,8 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
     </div>
     
     <!-- Modal de Busca ME Eventos - RECRIADO PARA CENTRALIZAÇÃO -->
-    <div id="modalBuscaME" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 99999; margin: 0; padding: 0; overflow: hidden;" onclick="if(event.target === this) fecharModalBuscaME()">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-width: 600px; width: calc(100% - 40px); max-width: calc(100vw - 40px); max-height: 90vh; overflow-y: auto; margin: 0; padding: 0;" onclick="event.stopPropagation()">
+    <div id="modalBuscaME" class="modal-overlay-degust" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; min-height: 100vh; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); z-index: 99999; margin: 0; padding: 0; overflow: auto; -webkit-overflow-scrolling: touch;" onclick="if(event.target === this) fecharModalBuscaME()">
+        <div class="modal-inner-mobile" style="position: relative; margin: 20px auto; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-width: 600px; width: calc(100% - 40px); max-height: 90vh; overflow-y: auto; padding: 0; -webkit-overflow-scrolling: touch;" onclick="event.stopPropagation()">
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 24px; border-bottom: 1px solid #e5e7eb; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 16px 16px 0 0;">
                 <h3 style="font-size: 20px; font-weight: 700; color: white; margin: 0; display: flex; align-items: center; gap: 8px;">🔍 Buscar Evento</h3>
                 <button onclick="fecharModalBuscaME()" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; font-size: 28px; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; line-height: 1;">&times;</button>
@@ -1357,9 +1530,9 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 <div id="buscaMEPorNome">
                     <div class="form-group">
                         <label class="form-label">Digite o nome do titular do contrato</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="buscaMENome" class="form-input" placeholder="Ex: João Silva" style="flex: 1;">
-                            <button type="button" onclick="buscarClienteME()" class="btn-primary" style="padding: 12px 24px;">
+                        <div class="busca-me-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <input type="text" id="buscaMENome" class="form-input" placeholder="Ex: João Silva" style="flex: 1; min-width: 0;">
+                            <button type="button" onclick="buscarClienteME()" class="btn-primary" style="padding: 12px 24px; min-height: 44px;">
                                 🔍 Buscar
                             </button>
                         </div>
@@ -1756,11 +1929,11 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                             • Verifique se todos os dígitos estão corretos<br>
                             • O CPF deve ter 11 dígitos válidos<br>
                         `;
-                    } else if (errorMsg.includes('não retornou o CPF')) {
-                        tipoErro = 'sem_cpf_api';
+                    } else if (errorMsg.includes('não retornou o CPF') || errorMsg.includes('Não localizamos o CPF')) {
+                        tipoErro = 'sem_cpf_cadastro';
                         instrucoes = `
                             <strong style="color: #991b1b;">Não foi possível validar sua identidade automaticamente.</strong><br>
-                            • Nossa API não retornou o CPF cadastrado<br>
+                            • Não localizamos o CPF no seu cadastro<br>
                             • Você pode se inscrever normalmente selecionando "Não, ainda não fechei"<br>
                             • Ou entre em contato conosco para verificar seu cadastro<br>
                         `;
