@@ -27,6 +27,38 @@ if (!empty($db_error ?? '')) {
     $erro = $db_error;
 }
 
+// Listar usuários para o dropdown (apenas ativos)
+$usuarios_login = [];
+if (empty($erro) && isset($pdo) && $pdo) {
+    try {
+        $cols = $pdo->query("
+            select column_name from information_schema.columns
+            where table_schema = current_schema() and table_name = 'usuarios'
+        ")->fetchAll(PDO::FETCH_COLUMN);
+        $has = function(string $c) use ($cols) { return in_array($c, $cols, true); };
+        $loginCol = null;
+        foreach (['loguin','login','usuario','username','user','email'] as $c) {
+            if ($has($c)) { $loginCol = $c; break; }
+        }
+        if ($loginCol) {
+            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios";
+            if ($has('ativo')) {
+                $sql .= " WHERE (ativo = TRUE OR ativo = 1 OR ativo = 't')";
+            }
+            $sql .= " ORDER BY nome";
+            $stmt = $pdo->query($sql);
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $usuarios_login[] = [
+                    'valor' => (string)$row['login_val'],
+                    'nome'  => $row['nome'] ?? $row['login_val'],
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        // em falha, dropdown fica vazio; não quebra a tela
+    }
+}
+
 // ==== LÓGICA DE LOGIN (compatível com seu banco) ==== //
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
     // aceita "loguin" (legado), "login" ou "email"
@@ -234,6 +266,11 @@ h2{text-align:center;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
   font-size:1rem;
 }
 .login-field::placeholder{color:var(--muted)}
+select.login-field{
+  cursor:pointer;
+  appearance:auto;
+  -webkit-appearance:menulist;
+}
 .login-field:focus{
   border-color:rgba(43,108,255,0.65);
   box-shadow:0 0 0 3px rgba(43,108,255,0.2);
@@ -274,8 +311,16 @@ h2{text-align:center;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
       <?php endif; ?>
 
       <form method="post" autocomplete="off">
-        <!-- Mantemos o nome "login" e também aceitamos "loguin" no PHP -->
+        <?php if (!empty($usuarios_login)): ?>
+        <select class="login-field" name="login" required>
+          <option value="">Selecione o usuário</option>
+          <?php foreach ($usuarios_login as $u): ?>
+          <option value="<?php echo h($u['valor']); ?>"><?php echo h($u['nome']); ?></option>
+          <?php endforeach; ?>
+        </select>
+        <?php else: ?>
         <input class="login-field" type="text" name="login" placeholder="Login (usuário ou e-mail)" required>
+        <?php endif; ?>
         <input class="login-field" type="password" name="senha" placeholder="Senha" required>
         <button class="login-submit" type="submit">Entrar</button>
       </form>
