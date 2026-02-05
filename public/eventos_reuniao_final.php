@@ -754,7 +754,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js" referrerpolicy="origin"></script>
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
@@ -775,7 +775,15 @@ let selectedEventId = null;
 // Inicializar TinyMCE nos editores da reunião (toolbar completa + imagens)
 function initEditoresReuniao() {
     if (!meetingId) return;
+    if (typeof tinymce === 'undefined') {
+        console.error('TinyMCE não carregou. Verifique bloqueio de script ou rede.');
+        document.querySelectorAll('[id^="editor-"]').forEach(function(ta) {
+            ta.placeholder = 'Editor rich text não disponível. Recarregue a página ou verifique sua conexão.';
+        });
+        return;
+    }
     const sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+    const uploadUrl = window.location.pathname + '?page=eventos_reuniao_final&id=' + meetingId;
     sections.forEach(function(section) {
         const textarea = document.getElementById('editor-' + section);
         if (!textarea) return;
@@ -790,9 +798,33 @@ function initEditoresReuniao() {
             height: 420,
             content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
             readonly: isReadonly,
-            images_upload_url: window.location.href,
+            images_upload_url: uploadUrl,
             images_upload_credentials: true,
-            images_upload_data: { action: 'upload_imagem', meeting_id: meetingId },
+            images_upload_handler: function (blobInfo, progress) {
+                return new Promise(function (resolve, reject) {
+                    var xhr = new XMLHttpRequest();
+                    var formData = new FormData();
+                    formData.append('action', 'upload_imagem');
+                    formData.append('meeting_id', String(meetingId));
+                    formData.append('file', blobInfo.blob(), blobInfo.filename());
+                    xhr.open('POST', window.location.href);
+                    xhr.onload = function () {
+                        if (xhr.status < 200 || xhr.status >= 300) {
+                            reject('Upload falhou: ' + xhr.status);
+                            return;
+                        }
+                        try {
+                            var j = JSON.parse(xhr.responseText);
+                            if (j.location) resolve(j.location);
+                            else reject(j.error || 'Resposta inválida');
+                        } catch (e) {
+                            reject('Resposta inválida');
+                        }
+                    };
+                    xhr.onerror = function () { reject('Erro de rede'); };
+                    xhr.send(formData);
+                });
+            },
             paste_data_images: true,
             automatic_uploads: true
         });
@@ -1101,12 +1133,24 @@ document.getElementById('eventSearch')?.addEventListener('keypress', function(e)
     if (e.key === 'Enter') searchEvents();
 });
 
-// Inicializar editores ricos quando existir reunião
+// Inicializar editores ricos quando existir reunião (aguardar DOM + TinyMCE)
 if (meetingId) {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initEditoresReuniao);
-    } else {
+    function runInit() {
+        if (typeof tinymce === 'undefined') {
+            setTimeout(runInit, 150);
+            return;
+        }
+        var ta = document.getElementById('editor-decoracao');
+        if (!ta) {
+            setTimeout(runInit, 100);
+            return;
+        }
         initEditoresReuniao();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
     }
 }
 </script>
