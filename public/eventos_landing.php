@@ -216,10 +216,12 @@ includeSidebar('Eventos');
     
     <!-- Estatísticas -->
     <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value"><?= $stats['reunioes_rascunho'] ?></div>
-            <div class="stat-label">Reuniões em Rascunho</div>
-        </div>
+        <a href="index.php?page=eventos_rascunhos" style="text-decoration: none; color: inherit;">
+            <div class="stat-card" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#1e3a8a'; this.style.boxShadow='0 4px 12px rgba(30,58,138,0.15)'" onmouseout="this.style.borderColor='#e0e7ff'; this.style.boxShadow='0 2px 8px rgba(30, 58, 138, 0.08)'">
+                <div class="stat-value"><?= $stats['reunioes_rascunho'] ?></div>
+                <div class="stat-label">Reuniões em Rascunho</div>
+            </div>
+        </a>
         <div class="stat-card">
             <div class="stat-value"><?= $stats['reunioes_concluidas'] ?></div>
             <div class="stat-label">Reuniões Concluídas</div>
@@ -243,6 +245,15 @@ includeSidebar('Eventos');
             <div class="module-desc">
                 Crie e edite reuniões finais vinculadas aos eventos da ME. 
                 Inclui seções de Decoração, Observações e DJ/Protocolos.
+            </div>
+            <span class="module-badge internal">Interno</span>
+        </a>
+        
+        <a href="index.php?page=eventos_rascunhos" class="module-card">
+            <div class="module-icon blue">📋</div>
+            <div class="module-title">Rascunhos da Reunião</div>
+            <div class="module-desc">
+                Veja e exclua reuniões em rascunho. Abra para continuar editando ou remova as que não forem mais necessárias.
             </div>
             <span class="module-badge internal">Interno</span>
         </a>

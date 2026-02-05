@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_me_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 // Verificar permissão
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
@@ -108,6 +109,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $ok = eventos_reuniao_atualizar_status($pdo, $meeting_id, $status, $user_id);
             echo json_encode(['ok' => $ok]);
+            exit;
+            
+        case 'upload_imagem':
+            $mid = (int)($_POST['meeting_id'] ?? 0);
+            $file = null;
+            foreach (['file', 'blobid0', 'imagetools0'] as $key) {
+                if (!empty($_FILES[$key]) && $_FILES[$key]['error'] === UPLOAD_ERR_OK) {
+                    $file = $_FILES[$key];
+                    break;
+                }
+            }
+            if ($mid <= 0 || !$file) {
+                echo json_encode(['location' => '', 'error' => 'Dados ou arquivo inválido']);
+                exit;
+            }
+            try {
+                $uploader = new MagaluUpload();
+                $prefix = 'eventos/reunioes/' . $mid;
+                $result = $uploader->upload($file, $prefix);
+                $url = $result['url'] ?? '';
+                if ($url) {
+                    echo json_encode(['location' => $url]);
+                } else {
+                    echo json_encode(['location' => '', 'error' => 'Falha no upload']);
+                }
+            } catch (Exception $e) {
+                echo json_encode(['location' => '', 'error' => $e->getMessage()]);
+            }
             exit;
     }
 }
@@ -703,20 +732,14 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             </div>
             <?php endif; ?>
             
-            <div class="editor-toolbar">
-                <button type="button" class="btn btn-secondary" onclick="execCmd('bold')"><b>B</b></button>
-                <button type="button" class="btn btn-secondary" onclick="execCmd('italic')"><i>I</i></button>
-                <button type="button" class="btn btn-secondary" onclick="execCmd('underline')"><u>U</u></button>
-                <button type="button" class="btn btn-secondary" onclick="execCmd('insertUnorderedList')">• Lista</button>
-                <button type="button" class="btn btn-secondary" onclick="execCmd('insertOrderedList')">1. Lista</button>
-                <button type="button" class="btn btn-secondary" onclick="inserirLink()">🔗 Link</button>
-            </div>
-            
             <div class="editor-wrapper">
-                <div class="editor-content" 
-                     id="editor-<?= $key ?>" 
-                     contenteditable="<?= $is_locked ? 'false' : 'true' ?>"
-                     data-section="<?= $key ?>"><?= $content ?></div>
+                <?php 
+                $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
+                ?>
+                <textarea id="editor-<?= $key ?>" 
+                          data-section="<?= $key ?>"
+                          <?= $is_locked ? 'readonly' : '' ?>
+                          style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
             
             <div class="section-actions">
@@ -731,6 +754,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <?php endif; ?>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js"></script>
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
@@ -747,6 +771,33 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 let selectedEventId = null;
+
+// Inicializar TinyMCE nos editores da reunião (toolbar completa + imagens)
+function initEditoresReuniao() {
+    if (!meetingId) return;
+    const sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+    sections.forEach(function(section) {
+        const textarea = document.getElementById('editor-' + section);
+        if (!textarea) return;
+        const isReadonly = textarea.readOnly;
+        tinymce.init({
+            selector: '#editor-' + section,
+            base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce',
+            suffix: '.min',
+            plugins: 'lists link image table code',
+            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
+            menubar: false,
+            height: 420,
+            content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+            readonly: isReadonly,
+            images_upload_url: window.location.href,
+            images_upload_credentials: true,
+            images_upload_data: { action: 'upload_imagem', meeting_id: meetingId },
+            paste_data_images: true,
+            automatic_uploads: true
+        });
+    });
+}
 
 // Buscar eventos da ME
 async function searchEvents() {
@@ -842,22 +893,15 @@ function switchTab(section) {
     document.getElementById(`tab-${section}`).classList.add('active');
 }
 
-// Comandos do editor
-function execCmd(cmd) {
-    document.execCommand(cmd, false, null);
-}
-
-function inserirLink() {
-    const url = prompt('Digite a URL:');
-    if (url) {
-        document.execCommand('createLink', false, url);
-    }
-}
-
-// Salvar seção
+// Salvar seção (conteúdo vem do TinyMCE)
 async function salvarSecao(section) {
-    const editor = document.getElementById(`editor-${section}`);
-    const content = editor.innerHTML;
+    let content = '';
+    if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
+        content = tinymce.get('editor-' + section).getContent();
+    } else {
+        const el = document.getElementById('editor-' + section);
+        content = el ? el.value : '';
+    }
     
     try {
         const formData = new FormData();
@@ -1056,6 +1100,15 @@ function formatDate(dateStr) {
 document.getElementById('eventSearch')?.addEventListener('keypress', function(e) {
     if (e.key === 'Enter') searchEvents();
 });
+
+// Inicializar editores ricos quando existir reunião
+if (meetingId) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEditoresReuniao);
+    } else {
+        initEditoresReuniao();
+    }
+}
 </script>
 
 <?php endSidebar(); ?>

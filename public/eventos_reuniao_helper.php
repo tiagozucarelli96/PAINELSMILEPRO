@@ -300,6 +300,30 @@ function eventos_reuniao_destravar_secao(PDO $pdo, int $meeting_id, string $sect
 }
 
 /**
+ * Excluir reunião (e dados relacionados: seções, versões, anexos, links)
+ */
+function eventos_reuniao_excluir(PDO $pdo, int $meeting_id): bool {
+    try {
+        $pdo->beginTransaction();
+        // Ordem: links, anexos, versões, seções, reunião
+        foreach (['eventos_links_publicos', 'eventos_reunioes_anexos', 'eventos_reunioes_versoes', 'eventos_reunioes_secoes'] as $tabela) {
+            $stmt = $pdo->prepare("DELETE FROM {$tabela} WHERE meeting_id = :id");
+            $stmt->execute([':id' => $meeting_id]);
+        }
+        $stmt = $pdo->prepare("DELETE FROM eventos_reunioes WHERE id = :id");
+        $stmt->execute([':id' => $meeting_id]);
+        $pdo->commit();
+        return true;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("eventos_reuniao_excluir: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Atualizar status da reunião
  */
 function eventos_reuniao_atualizar_status(PDO $pdo, int $meeting_id, string $status, int $user_id): bool {
