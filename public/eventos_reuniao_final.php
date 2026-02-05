@@ -739,6 +739,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 <textarea id="editor-<?= $key ?>" 
                           data-section="<?= $key ?>"
                           <?= $is_locked ? 'readonly' : '' ?>
+                          placeholder="<?= $key === 'decoracao' ? 'Carregando editor de texto e imagens...' : '' ?>"
                           style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
             
@@ -754,7 +755,8 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js" referrerpolicy="origin"></script>
+<!-- TinyMCE 5 - CDN estável (Cloudflare) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/5.10.9/tinymce.min.js" integrity="sha512-O0Y6G1Jv6kE+2S0Yf3yMEgG0bA1R+1bO+02nA0Zb6F0d0wMx4Jj7NsFE/YbEvRg5A59tGPYdLD1Y0bN0HLgqVw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
@@ -772,63 +774,62 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 let selectedEventId = null;
 
-// Inicializar TinyMCE nos editores da reunião (toolbar completa + imagens)
+var editoresIniciados = { decoracao: false, observacoes_gerais: false, dj_protocolo: false };
+
+function getTinyMCEConfig(section, isReadonly) {
+    return {
+        selector: '#editor-' + section,
+        height: 420,
+        menubar: false,
+        plugins: 'lists link image table code',
+        toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+        readonly: isReadonly,
+        paste_data_images: true,
+        automatic_uploads: true,
+        images_upload_handler: function (blobInfo, progress) {
+            return new Promise(function (resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                var formData = new FormData();
+                formData.append('action', 'upload_imagem');
+                formData.append('meeting_id', String(meetingId));
+                formData.append('file', blobInfo.blob(), blobInfo.filename());
+                xhr.open('POST', window.location.href);
+                xhr.onload = function () {
+                    if (xhr.status < 200 || xhr.status >= 300) { reject('Upload falhou: ' + xhr.status); return; }
+                    try {
+                        var j = JSON.parse(xhr.responseText);
+                        if (j.location) resolve(j.location); else reject(j.error || 'Resposta inválida');
+                    } catch (e) { reject('Resposta inválida'); }
+                };
+                xhr.onerror = function () { reject('Erro de rede'); };
+                xhr.send(formData);
+            });
+        }
+    };
+}
+
+function initEditorSecao(section) {
+    if (!meetingId || editoresIniciados[section]) return;
+    var ta = document.getElementById('editor-' + section);
+    if (!ta) return;
+    if (typeof tinymce === 'undefined') return;
+    editoresIniciados[section] = true;
+    var isReadonly = ta.readOnly;
+    tinymce.init(getTinyMCEConfig(section, isReadonly));
+}
+
 function initEditoresReuniao() {
     if (!meetingId) return;
+    var ta = document.getElementById('editor-decoracao');
+    if (!ta) return;
     if (typeof tinymce === 'undefined') {
-        console.error('TinyMCE não carregou. Verifique bloqueio de script ou rede.');
-        document.querySelectorAll('[id^="editor-"]').forEach(function(ta) {
-            ta.placeholder = 'Editor rich text não disponível. Recarregue a página ou verifique sua conexão.';
-        });
+        ta.placeholder = 'Carregando editor... (se demorar, verifique bloqueador de anúncios ou rede)';
+        setTimeout(initEditoresReuniao, 300);
         return;
     }
-    const sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
-    const uploadUrl = window.location.pathname + '?page=eventos_reuniao_final&id=' + meetingId;
-    sections.forEach(function(section) {
-        const textarea = document.getElementById('editor-' + section);
-        if (!textarea) return;
-        const isReadonly = textarea.readOnly;
-        tinymce.init({
-            selector: '#editor-' + section,
-            base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce',
-            suffix: '.min',
-            plugins: 'lists link image table code',
-            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
-            menubar: false,
-            height: 420,
-            content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
-            readonly: isReadonly,
-            images_upload_url: uploadUrl,
-            images_upload_credentials: true,
-            images_upload_handler: function (blobInfo, progress) {
-                return new Promise(function (resolve, reject) {
-                    var xhr = new XMLHttpRequest();
-                    var formData = new FormData();
-                    formData.append('action', 'upload_imagem');
-                    formData.append('meeting_id', String(meetingId));
-                    formData.append('file', blobInfo.blob(), blobInfo.filename());
-                    xhr.open('POST', window.location.href);
-                    xhr.onload = function () {
-                        if (xhr.status < 200 || xhr.status >= 300) {
-                            reject('Upload falhou: ' + xhr.status);
-                            return;
-                        }
-                        try {
-                            var j = JSON.parse(xhr.responseText);
-                            if (j.location) resolve(j.location);
-                            else reject(j.error || 'Resposta inválida');
-                        } catch (e) {
-                            reject('Resposta inválida');
-                        }
-                    };
-                    xhr.onerror = function () { reject('Erro de rede'); };
-                    xhr.send(formData);
-                });
-            },
-            paste_data_images: true,
-            automatic_uploads: true
-        });
-    });
+    document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
+    initEditorSecao('decoracao');
 }
 
 // Buscar eventos da ME
@@ -916,13 +917,15 @@ async function criarReuniao() {
     }
 }
 
-// Trocar aba
+// Trocar aba e iniciar editor da aba se ainda não foi iniciado
 function switchTab(section) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     
     document.querySelector(`.tab-btn[onclick="switchTab('${section}')"]`).classList.add('active');
     document.getElementById(`tab-${section}`).classList.add('active');
+    
+    initEditorSecao(section);
 }
 
 // Salvar seção (conteúdo vem do TinyMCE)
@@ -1133,15 +1136,12 @@ document.getElementById('eventSearch')?.addEventListener('keypress', function(e)
     if (e.key === 'Enter') searchEvents();
 });
 
-// Inicializar editores ricos quando existir reunião (aguardar DOM + TinyMCE)
+// Inicializar editor da aba Decoração quando existir reunião
 if (meetingId) {
     function runInit() {
-        if (typeof tinymce === 'undefined') {
-            setTimeout(runInit, 150);
-            return;
-        }
         var ta = document.getElementById('editor-decoracao');
         if (!ta) {
+            if (document.readyState === 'loading') return;
             setTimeout(runInit, 100);
             return;
         }
