@@ -251,6 +251,62 @@ includeSidebar('Todas as Inscrições - Comercial');
     border-top: 1px solid #f1f5f9;
 }
 
+.page-subtitle {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin: 0.5rem 0 0 0;
+    max-width: 520px;
+}
+
+.stats-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
+    padding: 0.75rem 1rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.stats-inline span { white-space: nowrap; }
+.stats-inline strong { color: #1e3a5f; }
+
+.acoes-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.btn-ver-inscritos {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    background: #2563eb;
+    color: #fff;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.btn-ver-inscritos:hover {
+    background: #1d4ed8;
+    color: #fff;
+}
+.btn-excluir-row {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    background: #dc2626;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+.btn-excluir-row:hover { background: #b91c1c; }
+
 /* Botões */
 .btn-primary {
     display: inline-flex;
@@ -482,51 +538,24 @@ includeSidebar('Todas as Inscrições - Comercial');
                 </svg>
                 Todas as Inscrições
             </h1>
+                <p class="page-subtitle">Para <strong>gerar cobrança</strong> ou <strong>adicionar pessoas</strong>, use <strong>Ver inscritos</strong> na coluna Ações.</p>
                 </div>
         <div class="header-actions">
-            <a href="index.php?page=comercial_degustacoes" class="btn-secondary">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-                Degustações
-            </a>
-            <button class="btn-primary" onclick="exportCSV()">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Exportar CSV
-            </button>
+            <a href="index.php?page=comercial_degustacoes" class="btn-secondary">📅 Degustações</a>
+            <button class="btn-primary" onclick="exportCSV()">📊 Exportar CSV</button>
                 </div>
             </div>
-            
-            <!-- Estatísticas -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['total'] ?></div>
-                    <div class="stat-label">Total de Inscrições</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['confirmados'] ?></div>
-                    <div class="stat-label">Confirmados</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['lista_espera'] ?></div>
-                    <div class="stat-label">Lista de Espera</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['fechou_contrato'] ?></div>
-                    <div class="stat-label">Fecharam Contrato</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['nao_fechou_contrato'] ?></div>
-                    <div class="stat-label">Não Fecharam</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value"><?= $stats['pagamentos_pagos'] ?></div>
-                    <div class="stat-label">Pagamentos Pagos</div>
-                </div>
+
+            <!-- Resumo -->
+            <div class="stats-inline">
+                <span><strong><?= $stats['total'] ?></strong> total</span>
+                <span><strong><?= $stats['confirmados'] ?></strong> confirmados</span>
+                <span><strong><?= $stats['lista_espera'] ?></strong> lista de espera</span>
+                <span><strong><?= $stats['fechou_contrato'] ?></strong> fecharam contrato</span>
+                <span><strong><?= $stats['nao_fechou_contrato'] ?></strong> não fecharam</span>
+                <span><strong><?= $stats['pagamentos_pagos'] ?></strong> pagos</span>
             </div>
-            
+
             <!-- Filtros -->
             <div class="filters">
                 <form method="GET" id="filtersForm">
@@ -581,25 +610,24 @@ includeSidebar('Todas as Inscrições - Comercial');
                     
                     <div class="filters-actions">
                         <button type="submit" class="btn-primary">🔍 Filtrar</button>
-                        <a href="comercial_degust_inscricoes.php" class="btn-secondary">Limpar</a>
+                        <a href="index.php?page=comercial_degust_inscricoes" class="btn-secondary">Limpar</a>
+                        <?php
+                        $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
+                        $tem_algum_teste = count(array_intersect($emails_teste, array_column($inscricoes, 'email'))) > 0;
+                        if ($tem_algum_teste): ?>
+                        <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir todos os cadastros de teste?');">
+                            <input type="hidden" name="action" value="excluir_teste">
+                            <button type="submit" class="btn-secondary" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-left:0.5rem;">Excluir testes</button>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 </form>
             </div>
-            
+
             <?php if (!empty($_GET['excluido']) || !empty($_GET['msg'])): ?>
             <div class="alert alert-success" style="margin-bottom:1rem;padding:0.75rem;border-radius:8px;background:#d1fae5;color:#065f46;">
                 <?= h($_GET['msg'] ?? 'Inscrição excluída com sucesso.') ?>
             </div>
-            <?php endif; ?>
-            
-            <?php
-            $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
-            $tem_algum_teste = count(array_intersect($emails_teste, array_column($inscricoes, 'email'))) > 0;
-            if ($tem_algum_teste): ?>
-            <form method="POST" style="margin-bottom:1rem;" onsubmit="return confirm('Excluir todos os cadastros de teste (titnfn, João Silva, Maria Santos, Pedro Costa)?');">
-                <input type="hidden" name="action" value="excluir_teste">
-                <button type="submit" class="btn-secondary" style="background:#dc2626;color:#fff;border-color:#dc2626;">Excluir cadastros de teste</button>
-            </form>
             <?php endif; ?>
             
             <!-- Tabela de Inscrições -->
@@ -637,11 +665,14 @@ includeSidebar('Todas as Inscrições - Comercial');
                         
                         <div><?= $inscricao['pagamento_text'] ?></div>
                         
-                        <div>
+                        <div class="acoes-cell">
+                            <?php $event_id_degust = (int)($inscricao['degustacao_id'] ?? $inscricao['event_id'] ?? 0); if ($event_id_degust > 0): ?>
+                            <a href="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id_degust ?>" class="btn-ver-inscritos" title="Abrir degustação para gerar cobrança e adicionar pessoas">Ver inscritos</a>
+                            <?php endif; ?>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir inscrição de <?= h(addslashes($inscricao['nome'])) ?>?');">
                                 <input type="hidden" name="action" value="excluir_inscricao">
                                 <input type="hidden" name="id" value="<?= (int)$inscricao['id'] ?>">
-                                <button type="submit" class="btn-secondary" style="font-size:0.8rem;padding:4px 8px;background:#dc2626;color:#fff;border-color:#dc2626;">Excluir</button>
+                                <button type="submit" class="btn-excluir-row">Excluir</button>
                             </form>
                         </div>
                     </div>
