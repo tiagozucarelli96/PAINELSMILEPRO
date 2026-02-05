@@ -1672,12 +1672,15 @@ if ($current_page === 'dashboard') {
                 'comercial_degust_public', 'comercial_pagamento',
                 // Vendas (páginas com JS próprio — não carregar via AJAX)
                 'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
-                'vendas_kanban', 'vendas_links_publicos'
+                'vendas_kanban', 'vendas_links_publicos',
+                // Eventos (módulo com includeSidebar — não carregar via AJAX)
+                'eventos', 'eventos_reuniao_final', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores'
             ];
 
             const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');
+            const isEventos = currentPage === 'eventos' || currentPage.startsWith('eventos_');
 
-            if (!pagesWithOwnRender.includes(currentPage) && !isLogistica) {
+            if (!pagesWithOwnRender.includes(currentPage) && !isLogistica && !isEventos) {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }

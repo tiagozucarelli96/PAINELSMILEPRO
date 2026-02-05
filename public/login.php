@@ -208,6 +208,7 @@ body.login-bg{
   justify-content:center;
   margin-bottom:22px;
 }
+/* Logo sem efeitos: sem filter, sem brightness, cores originais */
 .login-logo{
   width:120px;height:120px;border-radius:0;
   display:block;
@@ -215,6 +216,9 @@ body.login-bg{
   background:transparent;
   padding:0;
   box-shadow:none;
+  filter:none;
+  -webkit-filter:none;
+  opacity:1;
 }
 h2{text-align:center;margin:8px 0 22px;font-weight:800;font-size:1.8rem}
 .login-erro{background:#ffeded;color:#8a0c0c;border:1px solid #ffb3b3;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:14px}

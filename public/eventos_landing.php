@@ -45,6 +45,8 @@ try {
 } catch (Exception $e) {
     error_log("Erro ao buscar stats eventos: " . $e->getMessage());
 }
+
+includeSidebar('Eventos');
 ?>
 
 <style>
@@ -52,6 +54,7 @@ try {
         padding: 2rem;
         max-width: 1400px;
         margin: 0 auto;
+        background: #f8fafc;
     }
     
     .page-header {
@@ -61,7 +64,7 @@ try {
     .page-title {
         font-size: 1.75rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin: 0;
         display: flex;
         align-items: center;
@@ -86,8 +89,8 @@ try {
         background: white;
         border-radius: 12px;
         padding: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e5e7eb;
+        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.08);
+        border: 1px solid #e0e7ff;
     }
     
     .stat-value {
@@ -113,8 +116,8 @@ try {
         background: white;
         border-radius: 16px;
         padding: 2rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e5e7eb;
+        box-shadow: 0 2px 8px rgba(30, 58, 138, 0.08);
+        border: 1px solid #e0e7ff;
         transition: all 0.3s ease;
         text-decoration: none;
         display: block;
@@ -122,7 +125,7 @@ try {
     
     .module-card:hover {
         transform: translateY(-4px);
-        box-shadow: 0 12px 24px -8px rgba(30, 58, 138, 0.2);
+        box-shadow: 0 12px 24px rgba(30, 58, 138, 0.2);
         border-color: #1e3a8a;
     }
     
@@ -145,7 +148,7 @@ try {
     .module-title {
         font-size: 1.25rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin-bottom: 0.5rem;
     }
     
@@ -166,7 +169,7 @@ try {
     
     .module-badge.internal {
         background: #dbeafe;
-        color: #1e40af;
+        color: #1e3a8a;
     }
     
     .module-badge.external {
@@ -178,10 +181,10 @@ try {
     .section-title {
         font-size: 1.125rem;
         font-weight: 600;
-        color: #374151;
+        color: #1e3a8a;
         margin: 2rem 0 1rem 0;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid #e5e7eb;
+        border-bottom: 2px solid #1e3a8a;
     }
     
     /* Responsivo */
@@ -299,3 +302,5 @@ try {
         </div>
     </div>
 </div>
+
+<?php endSidebar(); ?>

@@ -164,6 +164,8 @@ $categorias = [
     '15_anos' => ['icon' => '👑', 'label' => '15 Anos'],
     'geral' => ['icon' => '🎉', 'label' => 'Geral']
 ];
+
+includeSidebar('Galeria de Imagens - Eventos');
 ?>
 
 <style>
@@ -171,6 +173,7 @@ $categorias = [
         padding: 2rem;
         max-width: 1400px;
         margin: 0 auto;
+        background: #f8fafc;
     }
     
     .page-header {
@@ -185,7 +188,7 @@ $categorias = [
     .page-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin: 0;
     }
     
@@ -507,9 +510,11 @@ $categorias = [
         <?php foreach ($imagens as $img): ?>
         <div class="image-card">
             <div class="image-wrapper">
-                <img src="<?= htmlspecialchars($img['public_url']) ?>" 
+<img src="eventos_galeria_imagem.php?id=<?= (int)$img['id'] ?>"
                      alt="<?= htmlspecialchars($img['nome']) ?>"
-                     style="<?= $img['transform_css'] ? "transform: {$img['transform_css']}" : '' ?>">
+                     loading="lazy"
+                     style="<?= !empty($img['transform_css']) ? "transform: " . htmlspecialchars($img['transform_css']) : '' ?>"
+                     onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect fill=%22%23f1f5f9%22 width=%22100%22 height=%22100%22/%3E%3Ctext x=%2250%22 y=%2255%22 fill=%22%2364748b%22 text-anchor=%22middle%22 font-size=%2212%22%3E?%3C/text%3E%3C/svg%3E';">
                 <div class="image-actions">
                     <button type="button" onclick="rotacionar(<?= $img['id'] ?>)" title="Girar">↻</button>
                     <form method="POST" style="display: inline;" onsubmit="return confirm('Remover esta imagem?')">
@@ -618,3 +623,5 @@ async function rotacionar(id) {
     }
 }
 </script>
+
+<?php endSidebar(); ?>

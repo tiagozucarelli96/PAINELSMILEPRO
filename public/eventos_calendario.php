@@ -68,6 +68,8 @@ $month_names = [
     5 => 'Maio', 6 => 'Junho', 7 => 'Julho', 8 => 'Agosto',
     9 => 'Setembro', 10 => 'Outubro', 11 => 'Novembro', 12 => 'Dezembro'
 ];
+
+includeSidebar('Calendário de Reuniões');
 ?>
 
 <style>
@@ -75,6 +77,7 @@ $month_names = [
         padding: 2rem;
         max-width: 1400px;
         margin: 0 auto;
+        background: #f8fafc;
     }
     
     .page-header {
@@ -89,7 +92,7 @@ $month_names = [
     .page-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin: 0;
     }
     
@@ -447,3 +450,5 @@ $month_names = [
         <?php endif; ?>
     </div>
 </div>
+
+<?php endSidebar(); ?>

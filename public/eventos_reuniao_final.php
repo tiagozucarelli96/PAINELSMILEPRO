@@ -129,6 +129,8 @@ $section_labels = [
     'observacoes_gerais' => ['icon' => '📝', 'label' => 'Observações Gerais'],
     'dj_protocolo' => ['icon' => '🎧', 'label' => 'DJ / Protocolos']
 ];
+
+includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 ?>
 
 <style>
@@ -136,6 +138,7 @@ $section_labels = [
         padding: 2rem;
         max-width: 1400px;
         margin: 0 auto;
+        background: #f8fafc;
     }
     
     .page-header {
@@ -150,7 +153,7 @@ $section_labels = [
     .page-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin: 0;
     }
     
@@ -1054,3 +1057,5 @@ document.getElementById('eventSearch')?.addEventListener('keypress', function(e)
     if (e.key === 'Enter') searchEvents();
 });
 </script>
+
+<?php endSidebar(); ?>

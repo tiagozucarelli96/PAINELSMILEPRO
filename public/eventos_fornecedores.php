@@ -116,6 +116,8 @@ $fornecedores = $pdo->query("
 // Agrupar por tipo
 $djs = array_filter($fornecedores, fn($f) => $f['tipo'] === 'dj');
 $decoradores = array_filter($fornecedores, fn($f) => $f['tipo'] === 'decoracao');
+
+includeSidebar('Fornecedores - Eventos');
 ?>
 
 <style>
@@ -123,6 +125,7 @@ $decoradores = array_filter($fornecedores, fn($f) => $f['tipo'] === 'decoracao')
         padding: 2rem;
         max-width: 1200px;
         margin: 0 auto;
+        background: #f8fafc;
     }
     
     .page-header {
@@ -137,7 +140,7 @@ $decoradores = array_filter($fornecedores, fn($f) => $f['tipo'] === 'decoracao')
     .page-title {
         font-size: 1.5rem;
         font-weight: 700;
-        color: #1e293b;
+        color: #1e3a8a;
         margin: 0;
     }
     
@@ -189,7 +192,7 @@ $decoradores = array_filter($fornecedores, fn($f) => $f['tipo'] === 'decoracao')
     .section-title {
         font-size: 1.125rem;
         font-weight: 600;
-        color: #374151;
+        color: #1e3a8a;
         margin: 0;
         display: flex;
         align-items: center;
@@ -532,3 +535,5 @@ function fecharModal() {
     document.getElementById('modalFornecedor').classList.remove('show');
 }
 </script>
+
+<?php endSidebar(); ?>
