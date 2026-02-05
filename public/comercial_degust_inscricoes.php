@@ -12,6 +12,32 @@ if (!lc_can_manage_inscritos()) {
     exit;
 }
 
+$pdo = $GLOBALS['pdo'] ?? null;
+$inscricao_excluida_msg = '';
+
+// Excluir inscrições de teste (one-off pelos e-mails da imagem) ou excluir uma por ID
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pdo) {
+    $action = $_POST['action'] ?? '';
+    if ($action === 'excluir_teste') {
+        $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
+        $placeholders = implode(',', array_fill(0, count($emails_teste), '?'));
+        $stmt = $pdo->prepare("DELETE FROM comercial_inscricoes WHERE email IN ($placeholders)");
+        $stmt->execute($emails_teste);
+        $inscricao_excluida_msg = 'Cadastros de teste excluídos com sucesso.';
+        header('Location: index.php?page=comercial_degust_inscricoes&excluido=1&msg=' . urlencode($inscricao_excluida_msg));
+        exit;
+    }
+    if ($action === 'excluir_inscricao') {
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $pdo->prepare('DELETE FROM comercial_inscricoes WHERE id = ?');
+            $stmt->execute([$id]);
+            header('Location: index.php?page=comercial_degust_inscricoes&excluido=1');
+            exit;
+        }
+    }
+}
+
 // Filtros
 $event_filter = (int)($_GET['event_id'] ?? 0);
 $status_filter = $_GET['status'] ?? '';
@@ -560,6 +586,22 @@ includeSidebar('Todas as Inscrições - Comercial');
                 </form>
             </div>
             
+            <?php if (!empty($_GET['excluido']) || !empty($_GET['msg'])): ?>
+            <div class="alert alert-success" style="margin-bottom:1rem;padding:0.75rem;border-radius:8px;background:#d1fae5;color:#065f46;">
+                <?= h($_GET['msg'] ?? 'Inscrição excluída com sucesso.') ?>
+            </div>
+            <?php endif; ?>
+            
+            <?php
+            $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
+            $tem_algum_teste = count(array_intersect($emails_teste, array_column($inscricoes, 'email'))) > 0;
+            if ($tem_algum_teste): ?>
+            <form method="POST" style="margin-bottom:1rem;" onsubmit="return confirm('Excluir todos os cadastros de teste (titnfn, João Silva, Maria Santos, Pedro Costa)?');">
+                <input type="hidden" name="action" value="excluir_teste">
+                <button type="submit" class="btn-secondary" style="background:#dc2626;color:#fff;border-color:#dc2626;">Excluir cadastros de teste</button>
+            </form>
+            <?php endif; ?>
+            
             <!-- Tabela de Inscrições -->
             <div class="inscricoes-table">
                 <div class="table-header">
@@ -570,6 +612,7 @@ includeSidebar('Todas as Inscrições - Comercial');
                     <div>Pessoas</div>
                     <div>Fechou Contrato</div>
                     <div>Pagamento</div>
+                    <div>Ações</div>
                 </div>
                 
                 <?php foreach ($inscricoes as $inscricao): ?>
@@ -581,18 +624,26 @@ includeSidebar('Todas as Inscrições - Comercial');
                         
                         <div class="degustacao-info">
                             <div class="degustacao-name"><?= h($inscricao['degustacao_nome']) ?></div>
-                            <div class="degustacao-date"><?= date('d/m/Y', strtotime($inscricao['degustacao_data'])) ?></div>
+                            <div class="degustacao-date"><?php $d = $inscricao['degustacao_data'] ?? ''; echo $d !== '' && $d !== null ? date('d/m/Y', strtotime($d)) : '—'; ?></div>
                         </div>
                         
                         <div><?= getStatusBadge($inscricao['status']) ?></div>
                         
-                        <div><?= ucfirst($inscricao['tipo_festa']) ?></div>
+                        <div><?= ucfirst((string)($inscricao['tipo_festa'] ?? '')) ?></div>
                         
                         <div><?= $inscricao['qtd_pessoas'] ?> pessoas</div>
                         
                         <div><?= $inscricao['fechou_contrato_text'] ?></div>
                         
                         <div><?= $inscricao['pagamento_text'] ?></div>
+                        
+                        <div>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir inscrição de <?= h(addslashes($inscricao['nome'])) ?>?');">
+                                <input type="hidden" name="action" value="excluir_inscricao">
+                                <input type="hidden" name="id" value="<?= (int)$inscricao['id'] ?>">
+                                <button type="submit" class="btn-secondary" style="font-size:0.8rem;padding:4px 8px;background:#dc2626;color:#fff;border-color:#dc2626;">Excluir</button>
+                            </form>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -612,7 +663,7 @@ includeSidebar('Todas as Inscrições - Comercial');
             
             rows.forEach(row => {
                 const cells = row.querySelectorAll('div');
-                if (cells.length >= 6) {
+                if (cells.length >= 7) {
                     const nome = cells[0].querySelector('.participant-name')?.textContent?.trim() || '';
                     const email = cells[0].querySelector('.participant-email')?.textContent?.trim() || '';
                     const degustacao = cells[1].querySelector('.degustacao-name')?.textContent?.trim() || '';
@@ -622,7 +673,7 @@ includeSidebar('Todas as Inscrições - Comercial');
                     const tipoFesta = cells[3].textContent?.trim() || '';
                     const pessoas = cells[4].textContent?.trim() || '';
                     const fechou = cells[5].textContent?.trim() || '';
-                    const pagamento = ''; // Não disponível nesta view
+                    const pagamento = cells[6].textContent?.trim() || '';
                     const criadoEm = ''; // Não disponível nesta view
                     
                     csv += `"${nome}","${email}","${degustacao}","${data}","${local}","${status}","${tipoFesta}","${pessoas}","${fechou}","${pagamento}","${criadoEm}"\n`;

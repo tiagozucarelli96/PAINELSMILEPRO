@@ -27,25 +27,30 @@ if (!empty($db_error ?? '')) {
     $erro = $db_error;
 }
 
-// Listar usuários para o dropdown (apenas ativos)
+// Listar usuários para o dropdown (todos os cadastrados; inativos continuam bloqueados no login)
 $usuarios_login = [];
 if (empty($erro) && isset($pdo) && $pdo) {
     try {
-        $cols = $pdo->query("
-            select column_name from information_schema.columns
-            where table_schema = current_schema() and table_name = 'usuarios'
-        ")->fetchAll(PDO::FETCH_COLUMN);
+        // Descobrir schema (PostgreSQL: public ou current_schema)
+        $cols = [];
+        foreach (["table_schema = current_schema()", "table_schema = 'public'"] as $schemaCond) {
+            $res = $pdo->query("
+                SELECT column_name FROM information_schema.columns
+                WHERE {$schemaCond} AND table_name = 'usuarios'
+            ");
+            $cols = $res->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($cols)) {
+                break;
+            }
+        }
         $has = function(string $c) use ($cols) { return in_array($c, $cols, true); };
         $loginCol = null;
         foreach (['loguin','login','usuario','username','user','email'] as $c) {
             if ($has($c)) { $loginCol = $c; break; }
         }
         if ($loginCol) {
-            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios";
-            if ($has('ativo')) {
-                $sql .= " WHERE (ativo = TRUE OR ativo = 1 OR ativo = 't')";
-            }
-            $sql .= " ORDER BY nome";
+            // Sem filtro ativo: listar todos; login ainda bloqueia inativos
+            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios ORDER BY nome";
             $stmt = $pdo->query($sql);
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $usuarios_login[] = [

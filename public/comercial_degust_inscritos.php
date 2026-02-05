@@ -170,14 +170,7 @@ if ($action === 'adicionar_pessoa' && $inscricao_id > 0) {
             throw new Exception("Inscrição não encontrada");
         }
         
-        // Verificar se fechou contrato (não precisa pagar adicional)
-        if ($inscricao['fechou_contrato'] === 'sim') {
-            returnJson([
-                'success' => false,
-                'error' => 'Cliente já fechou contrato',
-                'message' => 'Cliente já fechou contrato, não é necessário pagamento adicional.'
-            ], 400);
-        }
+        // Permitir adicionar pessoa mesmo com contrato fechado (cobrança adicional)
         
         // Buscar dados da degustação para pegar o preço extra
         $check_col = $pdo->query("
@@ -1605,15 +1598,13 @@ ob_start();
                             </button>
                                     <?php endif; ?>
                                     
-                                    <?php if ($inscricao['fechou_contrato'] !== 'sim'): ?>
-                                        <button type="button" class="btn-sm" 
-                                                style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                                                onclick="adicionarPessoa(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
-                                                id="btnAdicionarPessoa_<?= $inscricao['id'] ?>"
-                                                title="Adicionar uma pessoa e gerar QR Code de R$ 50,00">
-                                            ➕ Adicionar Pessoa
-                                        </button>
-                                    <?php endif; ?>
+                                    <button type="button" class="btn-sm" 
+                                            style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                            onclick="adicionarPessoa(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>')"
+                                            id="btnAdicionarPessoa_<?= $inscricao['id'] ?>"
+                                            title="Adicionar pessoa(s) e gerar cobrança PIX adicional">
+                                        ➕ Adicionar Pessoa
+                                    </button>
                                     
                                     <button type="button" class="btn-sm btn-danger" 
                                             onclick="excluirInscrito(<?= $inscricao['id'] ?>, '<?= h(addslashes($inscricao['nome'])) ?>').catch(err => console.error('Erro ao excluir:', err));"
