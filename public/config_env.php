@@ -15,11 +15,13 @@ define('APP_URL', $_ENV['APP_URL'] ?? 'https://seudominio.railway.app');
 define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? '0');
 
 // Configurações ASAAS
-define('ASAAS_API_KEY', $_ENV['ASAAS_API_KEY'] ?? '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjA2OTVjYTRhLTgzNTctNDkzNC1hMmQyLTEyOTNmMWFjY2NjYjo6JGFhY2hfMmRlNDE2ZTktMzk2OS00YTYzLTkyYmYtNzg2NzUzNmY5NTVl');
+// API Key: defina ASAAS_API_KEY nas variáveis de ambiente (Railway → Variables) com a chave do painel Asaas.
+// Se o Asaas excluiu a chave antiga, gere uma nova em: Asaas → Integrações → Chaves de API.
+define('ASAAS_API_KEY', $_ENV['ASAAS_API_KEY'] ?? getenv('ASAAS_API_KEY') ?: '');
 define('ASAAS_BASE_URL', $_ENV['ASAAS_BASE_URL'] ?? 'https://api.asaas.com/v3');
 define('WEBHOOK_URL', $_ENV['WEBHOOK_URL'] ?? 'https://seudominio.railway.app/public/asaas_webhook.php');
-// Chave PIX para QR Codes estáticos (chave aleatória do Asaas)
-define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? '3e2aab51-53bb-4a0e-ace1-f12e2c2ad9e5');
+// Chave PIX para QR Codes estáticos (chave aleatória do Asaas - não é a API Key). Sobrescreva via ENV se precisar trocar.
+define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? getenv('ASAAS_PIX_ADDRESS_KEY') ?: '3e2aab51-53bb-4a0e-ace1-f12e2c2ad9e5');
 
 // Configurações ME Eventos (se necessário)
 define('ME_BASE_URL', $_ENV['ME_BASE_URL'] ?? '');

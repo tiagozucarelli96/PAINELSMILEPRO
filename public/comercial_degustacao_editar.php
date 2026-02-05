@@ -1019,76 +1019,7 @@ ob_start();
     </div>
     
     <script>
-        // Função auxiliar para escape HTML
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        // Modal customizado de alerta
-        function customAlert(mensagem, titulo = 'Aviso') {
-            return new Promise((resolve) => {
-                const overlay = document.createElement('div');
-                overlay.className = 'custom-alert-overlay';
-                overlay.innerHTML = `
-                    <div class="custom-alert">
-                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
-                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
-                        <div class="custom-alert-actions">
-                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); resolveCustomAlert()">OK</button>
-                        </div>
-                    </div>
-                `;
-                
-                document.body.appendChild(overlay);
-                
-                overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) {
-                        overlay.remove();
-                        resolveCustomAlert();
-                    }
-                });
-                
-                window.resolveCustomAlert = () => {
-                    overlay.remove();
-                    resolve();
-                };
-            });
-        }
-        
-        // Modal customizado de confirmação
-        async function customConfirm(mensagem, titulo = 'Confirmar') {
-            return new Promise((resolve) => {
-                const overlay = document.createElement('div');
-                overlay.className = 'custom-alert-overlay';
-                overlay.innerHTML = `
-                    <div class="custom-alert">
-                        <div class="custom-alert-header">${escapeHtml(titulo)}</div>
-                        <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
-                        <div class="custom-alert-actions">
-                            <button class="custom-alert-btn custom-alert-btn-secondary" onclick="resolveCustomConfirm(false)">Cancelar</button>
-                            <button class="custom-alert-btn custom-alert-btn-primary" onclick="resolveCustomConfirm(true)">Confirmar</button>
-                        </div>
-                    </div>
-                `;
-                
-                document.body.appendChild(overlay);
-                
-                overlay.addEventListener('click', (e) => {
-                    if (e.target === overlay) {
-                        overlay.remove();
-                        resolve(false);
-                    }
-                });
-                
-                window.resolveCustomConfirm = (resultado) => {
-                    overlay.remove();
-                    resolve(resultado);
-                };
-            });
-        }
-        
+        // customAlert/customConfirm vêm do layout global (assets/js/custom_modals.js)
         // Função SIMPLES para preparar local antes do submit
         // IMPORTANTE: Esta função NÃO bloqueia o submit - apenas prepara os campos
         window.prepararLocalAntesDoSubmit = function(e) {

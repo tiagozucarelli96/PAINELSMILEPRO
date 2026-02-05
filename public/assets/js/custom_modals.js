@@ -13,6 +13,14 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Ícone do título (Sucesso = check verde, Erro = X vermelho, demais = Aviso)
+function getAlertHeaderIcon(titulo) {
+    const t = (titulo || '').toLowerCase();
+    if (t === 'sucesso') return '<span class="custom-alert-header-icon custom-alert-icon-success">✓</span>';
+    if (t === 'erro') return '<span class="custom-alert-header-icon custom-alert-icon-error">✕</span>';
+    return '<span class="custom-alert-header-icon custom-alert-icon-warning">!</span>';
+}
+
 // Modal customizado de alerta
 function customAlert(mensagem, titulo = 'Aviso') {
     return new Promise((resolve) => {
@@ -21,12 +29,12 @@ function customAlert(mensagem, titulo = 'Aviso') {
         if (existing) {
             existing.remove();
         }
-        
+        const icon = getAlertHeaderIcon(titulo);
         const overlay = document.createElement('div');
         overlay.className = 'custom-alert-overlay';
         overlay.innerHTML = `
             <div class="custom-alert">
-                <div class="custom-alert-header">${escapeHtml(titulo)}</div>
+                <div class="custom-alert-header">${icon} ${escapeHtml(titulo)}</div>
                 <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
                 <div class="custom-alert-actions">
                     <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); if (window.resolveCustomAlert) { window.resolveCustomAlert(); }">OK</button>

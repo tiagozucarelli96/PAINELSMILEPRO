@@ -313,6 +313,26 @@ if ($_POST && !$inscricoes_encerradas) {
         $stmt->execute($params);
         $inscricao_id = $pdo->lastInsertId();
         
+        // Enviar e-mail de confirmação via sistema global (Resend + sistema_email_config)
+        try {
+            require_once __DIR__ . '/comercial_email_helper.php';
+            $emailHelper = new ComercialEmailHelper();
+            $inscricao = [
+                'nome' => $nome,
+                'email' => $email,
+                'celular' => $telefone,
+                'qtd_pessoas' => $qtd_pessoas,
+                'tipo_festa' => $tipo_festa,
+            ];
+            if ($status === 'lista_espera') {
+                $emailHelper->sendListaEsperaNotification($inscricao, $degustacao);
+            } else {
+                $emailHelper->sendInscricaoConfirmation($inscricao, $degustacao);
+            }
+        } catch (Exception $e) {
+            error_log("Degustação: falha ao enviar e-mail de confirmação (inscrição #{$inscricao_id}): " . $e->getMessage());
+        }
+        
         // Se não fechou contrato, processar pagamento via Asaas Checkout
         if ($fechou_contrato === 'nao' && $valor_total > 0) {
             try {
@@ -492,8 +512,6 @@ if ($_POST && !$inscricoes_encerradas) {
             }
         }
         
-        // TODO: Enviar e-mail de confirmação
-        
         // Usar mensagem personalizada se configurada, senão usar mensagem padrão
         if (!empty($degustacao['msg_sucesso_html'])) {
             $success_message = $degustacao['msg_sucesso_html'];
@@ -506,6 +524,10 @@ if ($_POST && !$inscricoes_encerradas) {
     }
 }
 
+// Definir antes do HTML para decidir entre tela de confirmação ou formulário/QR
+$show_qr_code = isset($_GET['qr_code']) && $_GET['qr_code'] == '1';
+$qr_inscricao_id = (int)($_GET['inscricao_id'] ?? 0);
+$mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_inscricao_id > 0);
 
 ?>
 
@@ -700,10 +722,68 @@ if ($_POST && !$inscricoes_encerradas) {
         .hidden {
             display: none;
         }
+        
+        /* Tela dedicada de confirmação (logo + mensagem configurada) */
+        .confirmacao-tela {
+            min-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem 1.5rem;
+        }
+        .confirmacao-logo {
+            margin-bottom: 2.5rem;
+        }
+        .confirmacao-logo-img {
+            max-width: 220px;
+            height: auto;
+        }
+        .confirmacao-logo-texto {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1e3a8a;
+            letter-spacing: -0.02em;
+            margin: 0;
+        }
+        .confirmacao-mensagem {
+            max-width: 560px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        .confirmacao-mensagem :first-child { margin-top: 0; }
+        .confirmacao-mensagem :last-child { margin-bottom: 0; }
     </style>
 </head>
 <body>
     <div class="public-container">
+        <?php if ($mostrar_tela_confirmacao): ?>
+        <!-- Tela dedicada: sair da degustação e mostrar apenas logo + mensagem configurada -->
+        <div class="confirmacao-tela">
+            <div class="confirmacao-logo">
+                <?php
+                $logo_url = 'assets/logo_smile.png';
+                $logo_path = __DIR__ . '/' . $logo_url;
+                if (file_exists($logo_path)): ?>
+                    <img src="<?= h($logo_url) ?>" alt="GRUPO Smile EVENTOS" class="confirmacao-logo-img">
+                <?php else: ?>
+                    <p class="confirmacao-logo-texto">GRUPO Smile EVENTOS</p>
+                <?php endif; ?>
+            </div>
+            <div class="confirmacao-mensagem">
+                <?php if (!empty($degustacao['msg_sucesso_html'])): ?>
+                    <?= $degustacao['msg_sucesso_html'] ?>
+                <?php else: ?>
+                    <p style="margin: 0; font-size: 1.125rem; color: #374151; line-height: 1.6;">✅ <?= h($success_message) ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php else: ?>
         <!-- Header do Evento -->
         <div class="event-header">
             <h1 class="event-title"><?= h($degustacao['nome']) ?></h1>
@@ -719,19 +799,6 @@ if ($_POST && !$inscricoes_encerradas) {
         <div class="instructions">
             <?= $degustacao['instrutivo_html'] ?>
         </div>
-        <?php endif; ?>
-        
-        <!-- Mensagens -->
-        <?php if ($success_message): ?>
-            <div class="alert alert-success">
-                <?php if (!empty($degustacao['msg_sucesso_html']) && $success_message === $degustacao['msg_sucesso_html']): ?>
-                    <!-- Mensagem personalizada com HTML -->
-                    <?= $success_message ?>
-                <?php else: ?>
-                    <!-- Mensagem padrão (sem HTML) -->
-                ✅ <?= h($success_message) ?>
-                <?php endif; ?>
-            </div>
         <?php endif; ?>
         
         <?php if ($error_message): ?>
@@ -1273,6 +1340,7 @@ if ($_POST && !$inscricoes_encerradas) {
             </form>
         </div>
         
+        <?php endif; ?>
         <?php endif; ?>
     </div>
     

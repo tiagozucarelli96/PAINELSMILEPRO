@@ -51,10 +51,39 @@
     border-bottom: 1px solid #e5e7eb;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1f2937;
-    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
     color: white;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
     border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.custom-alert-header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.custom-alert-icon-success {
+    background: #10b981;
+    color: white;
+}
+
+.custom-alert-icon-error {
+    background: #dc2626;
+    color: white;
+}
+
+.custom-alert-icon-warning {
+    background: #f59e0b;
+    color: white;
 }
 
 .custom-alert-body {

@@ -13,34 +13,26 @@ class AsaasHelper {
         
         require_once __DIR__ . '/config_env.php';
         
-        // Usar variável de ambiente se disponível, senão usar constante
-        $chave_a_usar = $env_key ?? ASAAS_API_KEY;
+        // Usar variável de ambiente se disponível, senão usar constante de config_env.php
+        // IMPORTANTE: Para trocar a chave (ex.: Asaas excluiu a antiga), defina ASAAS_API_KEY
+        // nas variáveis de ambiente do Railway (Variables) com a nova chave e faça redeploy.
+        $chave_a_usar = $env_key ?? (defined('ASAAS_API_KEY') ? ASAAS_API_KEY : '');
+        $chave_a_usar = trim((string) $chave_a_usar);
         
-        // CORREÇÃO: Se a chave for muito curta (< 180 chars), usar a nova chave diretamente
-        // Isso força o uso da nova chave mesmo se Railway não atualizou
-        if (strlen($chave_a_usar) < 180) {
-            $chave_corrigida = '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjA2OTVjYTRhLTgzNTctNDkzNC1hMmQyLTEyOTNmMWFjY2NjYjo6JGFhY2hfMmRlNDE2ZTktMzk2OS00YTYzLTkyYmYtNzg2NzUzNmY5NTVl';
-            error_log("⚠️ AsaasHelper - Chave detectada como antiga (" . strlen($chave_a_usar) . " chars). Forçando uso da nova chave.");
-            $chave_a_usar = $chave_corrigida;
+        if ($chave_a_usar === '') {
+            error_log("AsaasHelper: ASAAS_API_KEY não configurada. Defina a variável ASAAS_API_KEY no Railway (ou em config_env.php) com a chave de API do Asaas.");
         }
         
         $this->api_key = $chave_a_usar;
         $this->base_url = $env_base ?? ASAAS_BASE_URL;
         $this->webhook_url = $env_webhook ?? WEBHOOK_URL;
         
-        // Log para debug (primeiros e últimos caracteres apenas)
-        $key_preview = substr($this->api_key, 0, 30) . '...' . substr($this->api_key, -10);
-        $fonte = $env_key ? 'ENV_VAR' : 'CONSTANTE';
+        // Log para debug (nunca logar a chave completa por segurança)
         $tamanho = strlen($this->api_key);
-        error_log("AsaasHelper inicializado - API Key preview: $key_preview");
-        error_log("AsaasHelper - Fonte da chave: $fonte");
-        error_log("AsaasHelper - Tamanho da chave: $tamanho caracteres");
-        error_log("AsaasHelper - Chave completa (para debug): " . $this->api_key);
-        
-        // ALERTA se a chave parece ser a antiga (167 chars) ou está muito curta
-        if ($tamanho < 180) {
-            error_log("⚠️ ALERTA: Chave parece estar desatualizada! Tamanho: $tamanho chars (esperado: ~200 chars)");
-            error_log("⚠️ VERIFIQUE: Railway ENV pode não ter sido atualizado ou redeploy não foi feito!");
+        $fonte = $env_key ? 'ENV (Railway)' : 'CONSTANTE (config_env)';
+        if ($tamanho > 0) {
+            $key_preview = substr($this->api_key, 0, 15) . '...' . substr($this->api_key, -6);
+            error_log("AsaasHelper inicializado - Fonte: $fonte | Tamanho: $tamanho chars | Preview: $key_preview");
         }
     }
     
@@ -130,6 +122,10 @@ class AsaasHelper {
      * Fazer requisição para API ASAAS
      */
     private function makeRequest($method, $endpoint, $data = null) {
+        if (trim((string) $this->api_key) === '') {
+            throw new Exception('ASAAS_API_KEY não configurada. Defina a variável ASAAS_API_KEY no Railway (Variables) com a nova chave de API do Asaas e faça redeploy.');
+        }
+        
         $ch = curl_init();
         
         // Asaas API v3 - Testar diferentes formatos de autenticação

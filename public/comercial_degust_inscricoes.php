@@ -448,7 +448,7 @@ includeSidebar('Todas as Inscrições - Comercial');
     <div class="main-content">
             <!-- Header -->
     <div class="page-header">
-        <div>
+                <div>
             <a href="index.php?page=comercial" class="back-link">← Voltar para Comercial</a>
             <h1>
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;color:#3b82f6;">
@@ -456,7 +456,7 @@ includeSidebar('Todas as Inscrições - Comercial');
                 </svg>
                 Todas as Inscrições
             </h1>
-        </div>
+                </div>
         <div class="header-actions">
             <a href="index.php?page=comercial_degustacoes" class="btn-secondary">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
@@ -470,8 +470,8 @@ includeSidebar('Todas as Inscrições - Comercial');
                 </svg>
                 Exportar CSV
             </button>
-        </div>
-    </div>
+                </div>
+            </div>
             
             <!-- Estatísticas -->
             <div class="stats-grid">
@@ -597,14 +597,14 @@ includeSidebar('Todas as Inscrições - Comercial');
                 <?php endforeach; ?>
             </div>
             
-    <?php if (empty($inscricoes)): ?>
+            <?php if (empty($inscricoes)): ?>
         <div class="empty-state">
-            <h3>Nenhuma inscrição encontrada</h3>
-            <p>Experimente ajustar os filtros de pesquisa</p>
-        </div>
-    <?php endif; ?>
+                    <h3>Nenhuma inscrição encontrada</h3>
+                    <p>Experimente ajustar os filtros de pesquisa</p>
+                </div>
+            <?php endif; ?>
     
-<script>
+    <script>
         function exportCSV() {
             // Coletar dados da tabela
             const rows = document.querySelectorAll('.table-row');
@@ -637,10 +637,10 @@ includeSidebar('Todas as Inscrições - Comercial');
             link.setAttribute('download', `todas_inscricoes_${new Date().toISOString().split('T')[0]}.csv`);
             link.style.visibility = 'hidden';
             document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-</script>
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
 
 </div>
 

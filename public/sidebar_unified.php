@@ -627,6 +627,9 @@ if ($current_page === 'dashboard') {
         <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/locales/pt-br.global.min.js"></script>
     <?php endif; ?>
+    <!-- Modais customizados (sucesso/erro/confirmação) em todo o sistema -->
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         * {
             margin: 0;
@@ -1615,8 +1618,19 @@ if ($current_page === 'dashboard') {
                     echo '</div>'; // fecha .main-content
                 }
                 ?>
-                
+    
     <script>
+        // Exibir avisos de sucesso/erro vindos da URL (ex.: redirect com ?success= ou ?error=)
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var success = params.get('success');
+            var error = params.get('error');
+            if (typeof customAlert === 'function') {
+                if (success) customAlert(decodeURIComponent(success), 'Sucesso');
+                if (error) customAlert(decodeURIComponent(error), 'Erro');
+            }
+        })();
+        
         // Função para alternar sidebar
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
