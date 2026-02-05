@@ -755,8 +755,8 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <?php endif; ?>
 </div>
 
-<!-- TinyMCE 5 - CDN estável (Cloudflare) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/5.10.9/tinymce.min.js" integrity="sha512-O0Y6G1Jv6kE+2S0Yf3yMEgG0bA1R+1bO+02nA0Zb6F0d0wMx4Jj7NsFE/YbEvRg5A59tGPYdLD1Y0bN0HLgqVw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- TinyMCE 5 - editor de texto rico com imagens (sem SRI para evitar bloqueio por hash do CDN) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/5.10.9/tinymce.min.js" crossorigin="anonymous"></script>
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
