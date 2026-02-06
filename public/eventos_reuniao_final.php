@@ -754,7 +754,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js"></script>
+<!-- TinyMCE carregado via script dinâmico (evita ficar travado em "Carregando editor...") -->
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
@@ -772,21 +772,81 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 let selectedEventId = null;
 
+var tinymceLoadTimeout = null;
+var tinymceRetryCount = 0;
+var TINYMCE_CDNS = [
+    'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js',
+    'https://unpkg.com/tinymce@6/tinymce/tinymce.min.js'
+];
+
+function showEditorLoadError(msg) {
+    var firstWrap = document.querySelector('.editor-wrapper');
+    document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
+    if (firstWrap && !firstWrap.querySelector('.editor-load-error')) {
+        var div = document.createElement('div');
+        div.className = 'editor-load-error';
+        div.style.cssText = 'padding:1rem;background:#fef2f2;color:#b91c1c;border-radius:8px;margin-bottom:8px;';
+        div.innerHTML = '<p style="margin:0 0 8px 0;">' + msg + '</p><button type="button" class="btn btn-primary" onclick="retryLoadTinyMCE()">Tentar novamente</button>';
+        firstWrap.insertBefore(div, firstWrap.firstChild);
+    }
+}
+
+function retryLoadTinyMCE() {
+    document.querySelectorAll('.editor-load-error').forEach(function(el) { el.remove(); });
+    tinymceRetryCount = 0;
+    loadTinyMCEAndInit();
+}
+
+function loadTinyMCEAndInit() {
+    if (!meetingId) return;
+    var ta = document.getElementById('editor-decoracao');
+    if (ta) ta.placeholder = 'Carregando editor...';
+
+    if (typeof tinymce !== 'undefined') {
+        initEditoresReuniao();
+        return;
+    }
+
+    if (tinymceLoadTimeout) clearTimeout(tinymceLoadTimeout);
+    var cdnIndex = Math.min(tinymceRetryCount, TINYMCE_CDNS.length - 1);
+    var scriptUrl = TINYMCE_CDNS[cdnIndex];
+    var script = document.createElement('script');
+    script.src = scriptUrl;
+    script.async = false;
+    script.onload = function() {
+        if (tinymceLoadTimeout) clearTimeout(tinymceLoadTimeout);
+        tinymceRetryCount = 0;
+        initEditoresReuniao();
+    };
+    script.onerror = function() {
+        if (tinymceLoadTimeout) clearTimeout(tinymceLoadTimeout);
+        tinymceRetryCount++;
+        if (tinymceRetryCount < TINYMCE_CDNS.length) {
+            loadTinyMCEAndInit();
+        } else {
+            showEditorLoadError('Editor não carregou (rede ou bloqueador). Tente desativar bloqueador de anúncios ou use outro navegador.');
+        }
+    };
+    document.head.appendChild(script);
+    tinymceLoadTimeout = setTimeout(function() {
+        tinymceLoadTimeout = null;
+        if (typeof tinymce === 'undefined') {
+            showEditorLoadError('Editor demorou para carregar. Verifique sua conexão e tente novamente.');
+        }
+    }, 15000);
+}
+
 // Inicializar TinyMCE nos editores da reunião (toolbar completa + imagens)
 function initEditoresReuniao() {
     if (!meetingId) return;
-    const ta = document.getElementById('editor-decoracao');
-    if (ta && typeof tinymce === 'undefined') {
-        ta.placeholder = 'Carregando editor... (se demorar, verifique bloqueador de anúncios ou rede)';
-        setTimeout(initEditoresReuniao, 300);
-        return;
-    }
+    if (typeof tinymce === 'undefined') return;
+    document.querySelectorAll('.editor-load-error').forEach(function(el) { el.remove(); });
     document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
-    const sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+    var sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
     sections.forEach(function(section) {
-        const textarea = document.getElementById('editor-' + section);
+        var textarea = document.getElementById('editor-' + section);
         if (!textarea) return;
-        const isReadonly = textarea.readOnly;
+        var isReadonly = textarea.readOnly;
         tinymce.init({
             selector: '#editor-' + section,
             base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce',
@@ -1130,12 +1190,12 @@ document.getElementById('eventSearch')?.addEventListener('keypress', function(e)
     if (e.key === 'Enter') searchEvents();
 });
 
-// Inicializar editores ricos quando existir reunião
+// Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)
 if (meetingId) {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initEditoresReuniao);
+        document.addEventListener('DOMContentLoaded', loadTinyMCEAndInit);
     } else {
-        initEditoresReuniao();
+        loadTinyMCEAndInit();
     }
 }
 </script>
