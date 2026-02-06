@@ -112,6 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
             
         case 'upload_imagem':
+            while (ob_get_level()) { ob_end_clean(); }
+            header('Content-Type: application/json; charset=utf-8');
             $mid = (int)($_POST['meeting_id'] ?? 0);
             $file = null;
             foreach (['file', 'blobid0', 'imagetools0'] as $key) {
@@ -128,8 +130,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $uploader = new MagaluUpload();
                 $prefix = 'eventos/reunioes/' . $mid;
                 $result = $uploader->upload($file, $prefix);
-                $url = $result['url'] ?? '';
-                if ($url) {
+                $chave = $result['chave_storage'] ?? '';
+                if ($chave !== '') {
+                    // URL via proxy do painel (imagem carrega mesmo com bucket Magalu privado)
+                    $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
+                    $script = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
+                    if ($script === '' || $script === '\\') $script = '';
+                    $keyB64 = strtr(base64_encode($chave), '+/', '-_');
+                    $url = $base . $script . '/index.php?page=eventos_ver_imagem&key=' . rawurlencode($keyB64);
                     echo json_encode(['location' => $url]);
                 } else {
                     echo json_encode(['location' => '', 'error' => 'Falha no upload']);

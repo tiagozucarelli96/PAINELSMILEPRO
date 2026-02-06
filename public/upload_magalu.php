@@ -156,11 +156,12 @@ class MagaluUpload {
                     'Key' => $key,
                     'SourceFile' => $tmpFile,
                     'ContentType' => $mimeType,
+                    'ACL' => 'public-read', // necessário para a imagem ser exibida no navegador (URL pública)
                 ]);
                 
                 error_log("AWS SDK Upload Success - Key: {$key}");
                 
-                // Retornar URL pública do arquivo
+                // Retornar URL pública do arquivo (objeto com ACL public-read)
                 return "{$this->endpoint}/{$this->bucket}/{$key}";
                 
             } catch (\Aws\Exception\AwsException $e) {
@@ -301,6 +302,27 @@ class MagaluUpload {
         return "{$this->endpoint}/{$this->bucket}/{$key}";
     }
     
+    /**
+     * Retorna o objeto (conteúdo e Content-Type) para exibição em proxy.
+     * @return array{body: string, content_type: string}|null
+     */
+    public function getObject(string $key): ?array {
+        if (trim($key) === '') return null;
+        if ($this->s3Client === null) return null;
+        try {
+            $result = $this->s3Client->getObject([
+                'Bucket' => $this->bucket,
+                'Key' => $key,
+            ]);
+            $body = (string) $result['Body'];
+            $contentType = $result['ContentType'] ?? 'application/octet-stream';
+            return ['body' => $body, 'content_type' => $contentType];
+        } catch (\Exception $e) {
+            error_log("Magalu getObject error: " . $e->getMessage());
+            return null;
+        }
+    }
+
     public function delete($key) {
         if (empty($key)) {
             return false;
