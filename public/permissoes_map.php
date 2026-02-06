@@ -150,6 +150,7 @@ return [
     'eventos_galeria' => 'perm_eventos',
     'eventos_fornecedores' => 'perm_eventos',
     'eventos_pdf' => 'perm_eventos',
+    'eventos_ver_imagem' => 'perm_eventos',
     // Portais públicos de fornecedores não precisam de permissão interna
     'portal_dj_login' => null,
     'portal_dj' => null,

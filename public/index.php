@@ -99,6 +99,15 @@ if (isset($_GET['page']) && $_GET['page'] === 'upload_foto_usuario_endpoint') {
     }
 }
 
+// Upload de imagem da Reunião Final (TinyMCE): resposta APENAS JSON, sem layout
+if (isset($_GET['page']) && $_GET['page'] === 'eventos_upload_imagem' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $upload_file = __DIR__ . '/eventos_upload_imagem.php';
+    if (file_exists($upload_file)) {
+        require $upload_file;
+        exit;
+    }
+}
+
 // IMPORTANTE: Processar requisições AJAX ANTES de qualquer verificação de login/redirecionamento
 // Isso permite que endpoints AJAX retornem JSON mesmo quando há problemas de sessão
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
@@ -326,6 +335,7 @@ $routes = [
   'eventos_pdf' => 'eventos_pdf.php',
   'eventos_me_proxy' => 'eventos_me_proxy.php',
   'eventos_upload' => 'eventos_upload.php',
+  'eventos_ver_imagem' => 'eventos_ver_imagem.php',
   // Portais externos de fornecedores
   'portal_dj_login' => 'portal_dj_login.php',
   'portal_dj' => 'portal_dj.php',

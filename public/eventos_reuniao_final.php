@@ -790,11 +790,33 @@ function initEditoresReuniao() {
             height: 420,
             content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
             readonly: isReadonly,
-            images_upload_url: window.location.href,
-            images_upload_credentials: true,
-            images_upload_data: { action: 'upload_imagem', meeting_id: meetingId },
             paste_data_images: true,
-            automatic_uploads: true
+            automatic_uploads: true,
+            images_upload_handler: function (blobInfo, progress) {
+                return new Promise(function (resolve, reject) {
+                    var xhr = new XMLHttpRequest();
+                    var formData = new FormData();
+                    formData.append('meeting_id', String(meetingId));
+                    formData.append('file', blobInfo.blob(), blobInfo.filename());
+                    var uploadUrl = (window.location.origin || '') + (window.location.pathname || '/') + '?page=eventos_upload_imagem';
+                    xhr.open('POST', uploadUrl);
+                    xhr.onload = function () {
+                        if (xhr.status < 200 || xhr.status >= 300) {
+                            reject('Upload falhou: ' + xhr.status);
+                            return;
+                        }
+                        try {
+                            var j = JSON.parse(xhr.responseText);
+                            if (j.location) resolve(j.location);
+                            else reject(j.error || 'Resposta inválida');
+                        } catch (e) {
+                            reject('Resposta inválida');
+                        }
+                    };
+                    xhr.onerror = function () { reject('Erro de rede'); };
+                    xhr.send(formData);
+                });
+            }
         });
     });
 }
