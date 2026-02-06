@@ -775,18 +775,19 @@ let selectedEventId = null;
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
 var TINYMCE_CDNS = [
-    'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce/tinymce.min.js',
-    'https://unpkg.com/tinymce@6/tinymce/tinymce.min.js'
+    'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js',
+    'https://unpkg.com/tinymce@6/tinymce.min.js'
 ];
 
-function showEditorLoadError(msg) {
+function showEditorLoadError(msg, src) {
     var firstWrap = document.querySelector('.editor-wrapper');
     document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
     if (firstWrap && !firstWrap.querySelector('.editor-load-error')) {
         var div = document.createElement('div');
         div.className = 'editor-load-error';
         div.style.cssText = 'padding:1rem;background:#fef2f2;color:#b91c1c;border-radius:8px;margin-bottom:8px;';
-        div.innerHTML = '<p style="margin:0 0 8px 0;">' + msg + '</p><button type="button" class="btn btn-primary" onclick="retryLoadTinyMCE()">Tentar novamente</button>';
+        var sourceInfo = src ? '<br><small>URL: ' + src + '</small>' : '';
+        div.innerHTML = '<p style="margin:0 0 8px 0;">' + msg + sourceInfo + '</p><button type="button" class="btn btn-primary" onclick="retryLoadTinyMCE()">Tentar novamente</button>';
         firstWrap.insertBefore(div, firstWrap.firstChild);
     }
 }
@@ -824,14 +825,14 @@ function loadTinyMCEAndInit() {
         if (tinymceRetryCount < TINYMCE_CDNS.length) {
             loadTinyMCEAndInit();
         } else {
-            showEditorLoadError('Editor não carregou (rede ou bloqueador). Tente desativar bloqueador de anúncios ou use outro navegador.');
+            showEditorLoadError('Editor não carregou (rede ou bloqueador). Tente desativar bloqueador de anúncios ou use outro navegador.', scriptUrl);
         }
     };
     document.head.appendChild(script);
     tinymceLoadTimeout = setTimeout(function() {
         tinymceLoadTimeout = null;
         if (typeof tinymce === 'undefined') {
-            showEditorLoadError('Editor demorou para carregar. Verifique sua conexão e tente novamente.');
+            showEditorLoadError('Editor demorou para carregar. Verifique sua conexão e tente novamente.', scriptUrl);
         }
     }, 15000);
 }
@@ -849,7 +850,7 @@ function initEditoresReuniao() {
         var isReadonly = textarea.readOnly;
         tinymce.init({
             selector: '#editor-' + section,
-            base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce',
+            base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
             suffix: '.min',
             plugins: 'lists link image table code',
             toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
