@@ -1,8 +1,6 @@
 <?php
 /**
- * eventos_ver_imagem.php
- * Proxy para exibir imagens do Magalu (Reunião Final etc.) sem expor bucket público.
- * Uso: index.php?page=eventos_ver_imagem&key=<base64(key)>
+ * Proxy: exibir imagem do Magalu (Reunião Final). Uso: ?page=eventos_ver_imagem&key=<base64(key)>
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -32,7 +30,6 @@ if ($key === false || $key === '' || strpos($key, '..') !== false) {
     exit;
 }
 
-// Apenas chaves de eventos/reunioes (segurança)
 if (strpos($key, 'eventos/reunioes/') !== 0) {
     http_response_code(403);
     echo 'Key não permitida';
@@ -44,7 +41,6 @@ try {
     $obj = $uploader->getObject($key);
 } catch (Throwable $e) {
     http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
     echo 'Erro ao obter imagem';
     exit;
 }

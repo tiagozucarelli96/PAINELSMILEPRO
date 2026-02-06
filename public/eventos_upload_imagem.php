@@ -1,16 +1,16 @@
 <?php
 /**
- * eventos_upload_imagem.php
- * Endpoint dedicado para upload de imagem do TinyMCE (Reunião Final).
- * Incluído por index.php quando page=eventos_upload_imagem e POST.
- * Resposta APENAS JSON (sem HTML/layout) para o TinyMCE parar de carregar.
+ * Endpoint dedicado: upload de imagem para Reunião Final (TinyMCE).
+ * Resposta APENAS JSON — chamado por index.php antes do layout.
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 header('Content-Type: application/json; charset=utf-8');
-if (ob_get_level()) { while (ob_get_level()) ob_end_clean(); }
+if (ob_get_level()) {
+    while (ob_get_level()) ob_end_clean();
+}
 
 if (empty($_SESSION['logado']) || (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin']))) {
     echo json_encode(['location' => '', 'error' => 'Acesso negado']);
@@ -19,9 +19,9 @@ if (empty($_SESSION['logado']) || (empty($_SESSION['perm_eventos']) && empty($_S
 
 $mid = (int)($_POST['meeting_id'] ?? 0);
 $file = null;
-foreach (['file', 'blobid0', 'imagetools0'] as $key) {
-    if (!empty($_FILES[$key]) && $_FILES[$key]['error'] === UPLOAD_ERR_OK) {
-        $file = $_FILES[$key];
+foreach (['file', 'blobid0', 'imagetools0'] as $k) {
+    if (!empty($_FILES[$k]) && $_FILES[$k]['error'] === UPLOAD_ERR_OK) {
+        $file = $_FILES[$k];
         break;
     }
 }
@@ -36,14 +36,12 @@ require_once __DIR__ . '/upload_magalu.php';
 
 try {
     $uploader = new MagaluUpload();
-    $prefix = 'eventos/reunioes/' . $mid;
-    $result = $uploader->upload($file, $prefix);
+    $result = $uploader->upload($file, 'eventos/reunioes/' . $mid);
     $chave = $result['chave_storage'] ?? '';
     if ($chave === '') {
         echo json_encode(['location' => '', 'error' => 'Falha no upload']);
         exit;
     }
-    // URL via proxy (imagem carrega mesmo com bucket privado)
     $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
     $script = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     if ($script === '' || $script === '\\') $script = '';

@@ -336,6 +336,7 @@ $routes = [
   'eventos_me_proxy' => 'eventos_me_proxy.php',
   'eventos_upload' => 'eventos_upload.php',
   'eventos_ver_imagem' => 'eventos_ver_imagem.php',
+  'eventos_ver_imagem' => 'eventos_ver_imagem.php',
   // Portais externos de fornecedores
   'portal_dj_login' => 'portal_dj_login.php',
   'portal_dj' => 'portal_dj.php',

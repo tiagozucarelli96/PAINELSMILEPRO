@@ -323,6 +323,18 @@ class MagaluUpload {
         }
     }
 
+    /** Retorna objeto (body + content_type) para exibir em proxy */
+    public function getObject(string $key): ?array {
+        if (trim($key) === '' || $this->s3Client === null) return null;
+        try {
+            $result = $this->s3Client->getObject(['Bucket' => $this->bucket, 'Key' => $key]);
+            return ['body' => (string)$result['Body'], 'content_type' => $result['ContentType'] ?? 'application/octet-stream'];
+        } catch (\Exception $e) {
+            error_log("Magalu getObject: " . $e->getMessage());
+            return null;
+        }
+    }
+
     public function delete($key) {
         if (empty($key)) {
             return false;
