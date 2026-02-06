@@ -306,31 +306,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Não foi possível obter/criar cliente na ME');
                 }
                 
-                // Buscar tipo de evento na ME
-                $tipos_evento = vendas_me_listar_tipos_evento();
-                $tipo_evento_id = (int)(getenv('ME_TIPO_EVENTO_ID_' . strtoupper((string)$pre_contrato['tipo_evento'])) ?: 0);
-                if ($tipo_evento_id <= 0) {
-                    $needles = [];
-                    $tipoInterno = (string)($pre_contrato['tipo_evento'] ?? '');
-                    if ($tipoInterno === 'casamento') $needles = ['casament'];
-                    elseif ($tipoInterno === 'infantil') $needles = ['infantil', 'anivers'];
-                    elseif ($tipoInterno === 'pj') $needles = ['corpor', 'empres', 'pj'];
-                    else $needles = [$tipoInterno];
-
-                    foreach ($tipos_evento as $tipo) {
-                        if (!is_array($tipo)) continue;
-                        $nomeTipo = mb_strtolower((string)($tipo['nome'] ?? ''));
-                        foreach ($needles as $n) {
-                            $n = mb_strtolower((string)$n);
-                            if ($n !== '' && strpos($nomeTipo, $n) !== false) {
-                                $tipo_evento_id = (int)($tipo['id'] ?? 0);
-                                break 2;
-                            }
-                        }
-                    }
-                }
-                if ($tipo_evento_id <= 0) {
-                    throw new Exception('Não foi possível identificar o tipo de evento na ME. Configure ME_TIPO_EVENTO_ID_CASAMENTO/INFANTIL/PJ no ambiente.');
+                // Tipo de evento na ME: definido pelo local (mapeamento em Logística > Conexão: ID tipo evento por local)
+                $tipo_evento_id = vendas_obter_me_tipo_evento_id_por_local((string)($pre_contrato['unidade'] ?? ''));
+                if ($tipo_evento_id === null || $tipo_evento_id <= 0) {
+                    throw new Exception('Tipo de evento (ME) não mapeado para o local "' . ($pre_contrato['unidade'] ?? '') . '". Em Logística > Conexão, preencha a coluna "ID tipo evento (ME)" para este local (ex.: Cristal=15, Garden=10, DiverKids=13, Lisbon 1=4).');
                 }
                 
                 // Validar que local está mapeado antes de criar evento

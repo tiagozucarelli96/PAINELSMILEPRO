@@ -775,6 +775,13 @@ let selectedEventId = null;
 // Inicializar TinyMCE nos editores da reunião (toolbar completa + imagens)
 function initEditoresReuniao() {
     if (!meetingId) return;
+    const ta = document.getElementById('editor-decoracao');
+    if (ta && typeof tinymce === 'undefined') {
+        ta.placeholder = 'Carregando editor... (se demorar, verifique bloqueador de anúncios ou rede)';
+        setTimeout(initEditoresReuniao, 300);
+        return;
+    }
+    document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
     const sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
     sections.forEach(function(section) {
         const textarea = document.getElementById('editor-' + section);

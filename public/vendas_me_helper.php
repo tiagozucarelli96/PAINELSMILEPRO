@@ -670,6 +670,59 @@ function vendas_me_criar_evento(array $dados_evento): array {
 }
 
 /**
+ * Garantir que a tabela de mapeamento de tipos existe
+ */
+function vendas_me_ensure_tipo_map_table(): void {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo) return;
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS vendas_me_tipo_evento_map (
+            tipo_painel VARCHAR(32) PRIMARY KEY,
+            me_tipo_evento_id INT NOT NULL,
+            me_tipo_nome VARCHAR(120),
+            atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    ");
+}
+
+/**
+ * Obter ID do tipo de evento na ME a partir do mapeamento (tabela vendas_me_tipo_evento_map)
+ * Retorna 0 se não estiver mapeado
+ */
+function vendas_me_obter_tipo_evento_id_mapeado(string $tipo_painel): int {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo) return 0;
+    try {
+        vendas_me_ensure_tipo_map_table();
+        $stmt = $pdo->prepare("SELECT me_tipo_evento_id FROM vendas_me_tipo_evento_map WHERE tipo_painel = ?");
+        $stmt->execute([$tipo_painel]);
+        $id = $stmt->fetchColumn();
+        return $id !== false ? (int)$id : 0;
+    } catch (Throwable $e) {
+        error_log('[VENDAS_ME] Erro ao obter tipo mapeado: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Salvar mapeamento tipo_painel -> me_tipo_evento_id
+ */
+function vendas_me_salvar_mapeamento_tipo(string $tipo_painel, int $me_tipo_evento_id, string $me_tipo_nome = ''): void {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo) throw new RuntimeException('Conexão não disponível');
+    vendas_me_ensure_tipo_map_table();
+    $stmt = $pdo->prepare("
+        INSERT INTO vendas_me_tipo_evento_map (tipo_painel, me_tipo_evento_id, me_tipo_nome, atualizado_em)
+        VALUES (?, ?, ?, NOW())
+        ON CONFLICT (tipo_painel) DO UPDATE SET
+            me_tipo_evento_id = EXCLUDED.me_tipo_evento_id,
+            me_tipo_nome = EXCLUDED.me_tipo_nome,
+            atualizado_em = NOW()
+    ");
+    $stmt->execute([$tipo_painel, $me_tipo_evento_id, $me_tipo_nome]);
+}
+
+/**
  * Listar tipos de evento na ME (com cache em sessão)
  */
 function vendas_me_listar_tipos_evento(): array {

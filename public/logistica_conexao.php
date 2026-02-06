@@ -104,6 +104,35 @@ function me_request(string $path, array $params = []): array {
     return ['ok' => true, 'data' => $data];
 }
 
+function fetch_me_tipos_evento(): array {
+    $resp = me_request('/api/v1/eventtype');
+    if (!$resp['ok']) {
+        return ['ok' => false, 'error' => $resp['error']];
+    }
+    $raw = $resp['data'];
+    $items = null;
+    if (is_array($raw)) {
+        if (array_keys($raw) === range(0, count($raw) - 1)) {
+            $items = $raw;
+        } else {
+            $items = $raw['data'] ?? null;
+        }
+    }
+    if (!is_array($items)) {
+        return ['ok' => true, 'data' => []];
+    }
+    $tipos = [];
+    foreach ($items as $item) {
+        if (!is_array($item)) continue;
+        $id = $item['id'] ?? $item['idtipoevento'] ?? null;
+        $nome = $item['nome'] ?? $item['tipoevento'] ?? null;
+        if ($id !== null && $nome !== null) {
+            $tipos[] = ['id' => (int)$id, 'nome' => (string)$nome];
+        }
+    }
+    return ['ok' => true, 'data' => $tipos];
+}
+
 function fetch_me_locais(): array {
     $resp = me_request('/api/v1/eventlocation');
     if (!$resp['ok']) {
@@ -290,6 +319,11 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
     }
     $existingId = $stmt->fetchColumn();
 
+    $meTipoEventoId = isset($payload['me_tipo_evento_id']) ? (int)$payload['me_tipo_evento_id'] : null;
+    if ($meTipoEventoId !== null && $meTipoEventoId <= 0) {
+        $meTipoEventoId = null;
+    }
+
     if ($existingId) {
         $stmt = $pdo->prepare("
             UPDATE logistica_me_locais
@@ -298,6 +332,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
                 space_visivel = :space_visivel,
                 unidade_interna_id = :unidade_interna_id,
                 status_mapeamento = :status_mapeamento,
+                me_tipo_evento_id = :me_tipo_evento_id,
                 updated_at = :updated_at
             WHERE id = :id
         ");
@@ -307,6 +342,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
             ':space_visivel' => $payload['space_visivel'],
             ':unidade_interna_id' => $payload['unidade_interna_id'],
             ':status_mapeamento' => $payload['status_mapeamento'],
+            ':me_tipo_evento_id' => $meTipoEventoId,
             ':updated_at' => $now,
             ':id' => $existingId
         ]);
@@ -315,9 +351,9 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
 
     $stmt = $pdo->prepare("
         INSERT INTO logistica_me_locais
-        (me_local_id, me_local_nome, space_visivel, unidade_interna_id, status_mapeamento, created_at, updated_at)
+        (me_local_id, me_local_nome, space_visivel, unidade_interna_id, status_mapeamento, me_tipo_evento_id, created_at, updated_at)
         VALUES
-        (:me_local_id, :me_local_nome, :space_visivel, :unidade_interna_id, :status_mapeamento, :created_at, :updated_at)
+        (:me_local_id, :me_local_nome, :space_visivel, :unidade_interna_id, :status_mapeamento, :me_tipo_evento_id, :created_at, :updated_at)
     ");
     $stmt->execute([
         ':me_local_id' => $meLocalId > 0 ? $meLocalId : null,
@@ -325,6 +361,7 @@ function upsert_mapeamento(PDO $pdo, array $payload): void {
         ':space_visivel' => $payload['space_visivel'],
         ':unidade_interna_id' => $payload['unidade_interna_id'],
         ':status_mapeamento' => $payload['status_mapeamento'],
+        ':me_tipo_evento_id' => $meTipoEventoId,
         ':created_at' => $now,
         ':updated_at' => $now
     ]);
@@ -507,6 +544,13 @@ if (defined('LOGISTICA_SYNC_ONLY')) {
 
 $schema_ok = ensure_logistica_schema($pdo, $errors, $messages);
 $has_nome_evento = $schema_ok && has_column($pdo, 'logistica_eventos_espelho', 'nome_evento');
+if ($schema_ok && !has_column($pdo, 'logistica_me_locais', 'me_tipo_evento_id')) {
+    try {
+        $pdo->exec('ALTER TABLE logistica_me_locais ADD COLUMN me_tipo_evento_id INTEGER');
+    } catch (Throwable $e) {
+        $errors[] = 'Erro ao adicionar coluna me_tipo_evento_id: ' . $e->getMessage();
+    }
+}
 if (!$has_nome_evento) {
     $errors[] = 'Coluna nome_evento ainda não existe. Rode o SQL 030 (logistica_eventos_nome) e sincronize novamente.';
 }
@@ -526,15 +570,51 @@ if ($schema_ok) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
+    if ($action === 'save_tipos_me') {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS vendas_me_tipo_evento_map (
+                    tipo_painel VARCHAR(32) PRIMARY KEY,
+                    me_tipo_evento_id INT NOT NULL,
+                    me_tipo_nome VARCHAR(120),
+                    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            ");
+            $tipos_painel = ['casamento' => 'Casamento', '15anos' => '15 anos', 'infantil' => 'Infantil', 'pj' => 'PJ'];
+            foreach ($tipos_painel as $key => $label) {
+                $me_id = (int)($_POST['me_tipo_' . $key] ?? 0);
+                if ($me_id <= 0) continue;
+                $me_nome = trim((string)($_POST['me_tipo_nome_' . $key] ?? ''));
+                $stmt = $pdo->prepare("
+                    INSERT INTO vendas_me_tipo_evento_map (tipo_painel, me_tipo_evento_id, me_tipo_nome, atualizado_em)
+                    VALUES (?, ?, ?, NOW())
+                    ON CONFLICT (tipo_painel) DO UPDATE SET
+                        me_tipo_evento_id = EXCLUDED.me_tipo_evento_id,
+                        me_tipo_nome = EXCLUDED.me_tipo_nome,
+                        atualizado_em = NOW()
+                ");
+                $stmt->execute([$key, $me_id, $me_nome]);
+            }
+            $messages[] = 'Mapeamento de tipos de evento (Vendas → ME) salvo.';
+        } catch (Throwable $e) {
+            $errors[] = 'Erro ao salvar tipos ME: ' . $e->getMessage();
+        }
+    }
+
     if ($action === 'save_mapeamento') {
         $spaceVisivel = $_POST['space_visivel'] ?? [];
         $meLocalId = $_POST['me_local_id'] ?? [];
         $meLocalNome = $_POST['me_local_nome'] ?? [];
+        $meTipoEventoId = $_POST['me_tipo_evento_id'] ?? [];
 
         foreach ($spaceVisivel as $idx => $space) {
             $space = trim((string)$space);
             $localId = isset($meLocalId[$idx]) ? (int)$meLocalId[$idx] : 0;
             $localNome = trim((string)($meLocalNome[$idx] ?? ''));
+            $tipoEventoId = isset($meTipoEventoId[$idx]) ? (int)$meTipoEventoId[$idx] : 0;
+            if ($tipoEventoId <= 0) {
+                $tipoEventoId = null;
+            }
 
             if ($localNome === '') {
                 continue;
@@ -553,7 +633,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'me_local_nome' => $localNome,
                 'space_visivel' => $space !== '' ? $space : null,
                 'unidade_interna_id' => $unidadeId,
-                'status_mapeamento' => $status
+                'status_mapeamento' => $status,
+                'me_tipo_evento_id' => $tipoEventoId
             ]);
         }
 
@@ -598,6 +679,35 @@ if (!$locais_resp['ok']) {
 } else {
     $me_locais = $locais_resp['data'];
 }
+
+$tipos_me_resp = fetch_me_tipos_evento();
+$me_tipos_evento = [];
+if ($tipos_me_resp['ok']) {
+    $me_tipos_evento = $tipos_me_resp['data'];
+}
+$map_tipos_me = [];
+if ($schema_ok) {
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS vendas_me_tipo_evento_map (
+                tipo_painel VARCHAR(32) PRIMARY KEY,
+                me_tipo_evento_id INT NOT NULL,
+                me_tipo_nome VARCHAR(120),
+                atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $stmt = $pdo->query("SELECT tipo_painel, me_tipo_evento_id, me_tipo_nome FROM vendas_me_tipo_evento_map");
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $map_tipos_me[$row['tipo_painel']] = [
+                'me_tipo_evento_id' => (int)$row['me_tipo_evento_id'],
+                'me_tipo_nome' => (string)($row['me_tipo_nome'] ?? ''),
+            ];
+        }
+    } catch (Throwable $e) {
+        // ignora se tabela não existir ainda
+    }
+}
+$tipos_painel_labels = ['casamento' => 'Casamento', '15anos' => '15 anos / Debutante', 'infantil' => 'Infantil', 'pj' => 'PJ'];
 
 $mapeamentos = ['by_id' => [], 'by_name' => [], 'all' => []];
 if ($schema_ok) {
@@ -827,12 +937,13 @@ includeSidebar('Configurações - Logística');
                         <th>Local (ME)</th>
                         <th>Status</th>
                         <th>Space visível</th>
+                        <th>ID tipo evento (ME)</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($me_locais)): ?>
                         <tr>
-                            <td colspan="4">Nenhum local encontrado.</td>
+                            <td colspan="5">Nenhum local encontrado.</td>
                         </tr>
                     <?php endif; ?>
                     <?php foreach ($me_locais as $idx => $local): ?>
@@ -850,6 +961,7 @@ includeSidebar('Configurações - Logística');
                         }
                         $status = $mapping ? 'MAPEADO' : 'PENDENTE';
                         $spaceAtual = $mapping['space_visivel'] ?? '';
+                        $tipoEventoAtual = isset($mapping['me_tipo_evento_id']) && (int)$mapping['me_tipo_evento_id'] > 0 ? (int)$mapping['me_tipo_evento_id'] : '';
                         ?>
                         <tr>
                             <td><?= h($localId) ?></td>
@@ -871,6 +983,10 @@ includeSidebar('Configurações - Logística');
                                     <?php endforeach; ?>
                                 </select>
                             </td>
+                            <td>
+                                <input type="number" name="me_tipo_evento_id[<?= $idx ?>]" class="form-input" style="width: 80px;" min="0" placeholder="ex: 15" value="<?= $tipoEventoAtual !== '' ? (int)$tipoEventoAtual : '' ?>">
+                                <small style="color:#64748b;">Cristal=15, Garden=10, DiverKids=13, Lisbon 1=4</small>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -879,6 +995,63 @@ includeSidebar('Configurações - Logística');
                 <button class="btn-primary" type="submit">Salvar mapeamentos</button>
             </div>
         </form>
+    </div>
+
+    <div class="logistica-section">
+        <h2>Tipos de evento (ME) — Vendas</h2>
+        <p style="color:#64748b; margin-bottom: 1rem;">Mapeie cada tipo do Painel ao tipo na ME. Na hora de aprovar um pré-contrato, o tipo sugerido será este; o usuário pode alterar no modal de aprovação.</p>
+        <form method="POST">
+            <input type="hidden" name="action" value="save_tipos_me">
+            <table class="logistica-table">
+                <thead>
+                    <tr>
+                        <th>Tipo no Painel</th>
+                        <th>Tipo na ME (eventtype)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($tipos_painel_labels as $key => $label): ?>
+                        <?php $atual = $map_tipos_me[$key] ?? null; $id_atual = $atual ? (int)$atual['me_tipo_evento_id'] : 0; ?>
+                        <tr>
+                            <td><?= h($label) ?></td>
+                            <td>
+                                <select name="me_tipo_<?= h($key) ?>" class="form-input" style="min-width: 220px;">
+                                    <option value="">— Não mapeado —</option>
+                                    <?php foreach ($me_tipos_evento as $t): ?>
+                                        <option value="<?= (int)$t['id'] ?>" data-nome="<?= h($t['nome']) ?>" <?= $id_atual === (int)$t['id'] ? 'selected' : '' ?>>
+                                            <?= h($t['nome']) ?> (ID <?= (int)$t['id'] ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="hidden" name="me_tipo_nome_<?= h($key) ?>" value="<?= h($atual['me_tipo_nome'] ?? '') ?>" data-nome-for="<?= h($key) ?>">
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php if (empty($me_tipos_evento)): ?>
+                <p class="alert alert-error">Não foi possível carregar os tipos da ME. Verifique ME_BASE_URL e ME_API_TOKEN.</p>
+            <?php else: ?>
+                <div style="margin-top: 1rem;">
+                    <button class="btn-primary" type="submit">Salvar tipos (Vendas → ME)</button>
+                </div>
+            <?php endif; ?>
+        </form>
+        <script>
+        (function(){
+            document.querySelectorAll('select[name^="me_tipo_"]').forEach(function(sel){
+                if (sel.getAttribute('name') && sel.getAttribute('name').indexOf('me_tipo_') === 0) {
+                    var key = sel.getAttribute('name').replace('me_tipo_', '');
+                    sel.addEventListener('change', function(){
+                        var opt = this.options[this.selectedIndex];
+                        var nome = (opt && opt.getAttribute('data-nome')) ? opt.getAttribute('data-nome') : '';
+                        var inp = document.querySelector('input[name="me_tipo_nome_' + key + '"]');
+                        if (inp) inp.value = nome;
+                    });
+                }
+            });
+        })();
+        </script>
     </div>
 
     <div class="logistica-section">
