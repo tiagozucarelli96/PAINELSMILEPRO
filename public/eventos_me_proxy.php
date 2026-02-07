@@ -51,7 +51,8 @@ try {
             
             // Formatar eventos para o dropdown
             $events = array_map(function($ev) {
-                $data = $ev['dataevento'] ?? $ev['data'] ?? '';
+                $nome = eventos_me_pick_text($ev, ['nomeevento', 'nome'], 'Sem nome');
+                $data = eventos_me_pick_text($ev, ['dataevento', 'data']);
                 $data_fmt = '';
                 if ($data) {
                     $ts = strtotime($data);
@@ -59,23 +60,29 @@ try {
                         $data_fmt = date('d/m/Y', $ts);
                     }
                 }
+
+                $hora = eventos_me_pick_text($ev, ['horainicio', 'hora_inicio', 'horaevento']);
+                $local = eventos_me_pick_text($ev, ['local', 'nomelocal', 'localevento', 'localEvento', 'endereco']);
+                $cliente = eventos_me_pick_text($ev, ['nomecliente', 'nomeCliente', 'cliente.nome']);
+                $convidados = eventos_me_pick_int($ev, ['nconvidados', 'convidados']);
+                $tipo = eventos_me_pick_text($ev, ['tipoevento', 'tipoEvento', 'tipo']);
                 
                 return [
-                    'id' => (int)($ev['id'] ?? 0),
-                    'nome' => $ev['nomeevento'] ?? $ev['nome'] ?? 'Sem nome',
+                    'id' => eventos_me_pick_int($ev, ['id']),
+                    'nome' => $nome,
                     'data' => $data,
                     'data_formatada' => $data_fmt,
-                    'hora' => $ev['horainicio'] ?? $ev['hora_inicio'] ?? '',
-                    'local' => $ev['local'] ?? $ev['nomelocal'] ?? '',
-                    'convidados' => (int)($ev['nconvidados'] ?? $ev['convidados'] ?? 0),
-                    'cliente' => $ev['nomecliente'] ?? $ev['cliente']['nome'] ?? '',
-                    'tipo' => $ev['tipoevento'] ?? $ev['tipo'] ?? '',
+                    'hora' => $hora,
+                    'local' => $local,
+                    'convidados' => $convidados,
+                    'cliente' => $cliente,
+                    'tipo' => $tipo,
                     // Label para dropdown
                     'label' => sprintf(
                         '%s - %s (%s)',
-                        $ev['nomeevento'] ?? $ev['nome'] ?? 'Evento',
+                        $nome,
                         $data_fmt,
-                        $ev['local'] ?? $ev['nomelocal'] ?? 'Local'
+                        $local !== '' ? $local : 'Local'
                     )
                 ];
             }, $result['events']);

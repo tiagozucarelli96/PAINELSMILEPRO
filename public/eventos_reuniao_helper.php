@@ -75,6 +75,77 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
 }
 
 /**
+ * Categorias válidas para modelos de formulário.
+ */
+function eventos_form_template_allowed_categories(): array {
+    return ['15anos', 'casamento', 'infantil', 'geral'];
+}
+
+/**
+ * Normaliza schema de formulário para persistência.
+ */
+function eventos_form_template_normalizar_schema(array $schema): array {
+    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    $normalized = [];
+    foreach ($schema as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($item['type'] ?? 'text')));
+        if (!in_array($type, $allowed_types, true)) {
+            $type = 'text';
+        }
+        $label = trim((string)($item['label'] ?? ''));
+        $required = !empty($item['required']) && !in_array($type, ['section', 'divider'], true);
+        $options = [];
+        if ($type === 'select' && !empty($item['options']) && is_array($item['options'])) {
+            foreach ($item['options'] as $opt) {
+                $text = trim((string)$opt);
+                if ($text !== '') {
+                    $options[] = $text;
+                }
+            }
+        }
+
+        if ($type !== 'divider' && $label === '') {
+            continue;
+        }
+
+        $id = trim((string)($item['id'] ?? ''));
+        if ($id === '') {
+            $id = 'f_' . bin2hex(random_bytes(4));
+        }
+
+        $normalized[] = [
+            'id' => $id,
+            'type' => $type,
+            'label' => $label,
+            'required' => $required,
+            'options' => $options,
+        ];
+    }
+    return $normalized;
+}
+
+/**
+ * Verifica se schema possui ao menos um campo útil para preenchimento.
+ */
+function eventos_form_template_tem_campo_util(array $schema): bool {
+    $fillable = ['text', 'textarea', 'yesno', 'select', 'file'];
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? '')));
+        $label = trim((string)($field['label'] ?? ''));
+        if (in_array($type, $fillable, true) && $label !== '') {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Lista modelos salvos de formulário.
  */
 function eventos_form_templates_listar(PDO $pdo): array {
@@ -98,36 +169,70 @@ function eventos_form_templates_listar(PDO $pdo): array {
 /**
  * Salva um modelo de formulário reutilizável.
  */
-function eventos_form_template_salvar(PDO $pdo, string $nome, string $categoria, array $schema, int $user_id): array {
+function eventos_form_template_salvar(
+    PDO $pdo,
+    string $nome,
+    string $categoria,
+    array $schema,
+    int $user_id,
+    ?int $template_id = null
+): array {
     eventos_reuniao_ensure_schema($pdo);
 
     $nome = trim($nome);
     $categoria = trim($categoria) !== '' ? trim($categoria) : 'geral';
-    if ($nome === '') {
-        return ['ok' => false, 'error' => 'Nome do modelo é obrigatório'];
+    if (mb_strlen($nome) < 3) {
+        return ['ok' => false, 'error' => 'Nome do modelo deve ter ao menos 3 caracteres'];
     }
-    if (empty($schema)) {
-        return ['ok' => false, 'error' => 'Adicione pelo menos um campo no formulário antes de salvar o modelo'];
+    if (!in_array($categoria, eventos_form_template_allowed_categories(), true)) {
+        return ['ok' => false, 'error' => 'Categoria do modelo inválida'];
     }
 
-    $schemaJson = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $schema_normalized = eventos_form_template_normalizar_schema($schema);
+    if (empty($schema_normalized) || !eventos_form_template_tem_campo_util($schema_normalized)) {
+        return ['ok' => false, 'error' => 'Adicione ao menos um campo preenchível antes de salvar o modelo'];
+    }
+
+    $schemaJson = json_encode($schema_normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($schemaJson === false) {
         return ['ok' => false, 'error' => 'Não foi possível serializar o modelo'];
     }
 
-    $stmt = $pdo->prepare("
-        INSERT INTO eventos_form_templates
-        (nome, categoria, schema_json, ativo, created_by_user_id, created_at, updated_at)
-        VALUES
-        (:nome, :categoria, CAST(:schema_json AS jsonb), TRUE, :user_id, NOW(), NOW())
-        RETURNING id, nome, categoria, schema_json, created_by_user_id, created_at, updated_at
-    ");
-    $stmt->execute([
-        ':nome' => $nome,
-        ':categoria' => $categoria,
-        ':schema_json' => $schemaJson,
-        ':user_id' => $user_id > 0 ? $user_id : null,
-    ]);
+    if ($template_id !== null && $template_id > 0) {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_form_templates
+            SET nome = :nome,
+                categoria = :categoria,
+                schema_json = CAST(:schema_json AS jsonb),
+                ativo = TRUE,
+                updated_at = NOW()
+            WHERE id = :id
+            RETURNING id, nome, categoria, schema_json, created_by_user_id, created_at, updated_at
+        ");
+        $stmt->execute([
+            ':id' => $template_id,
+            ':nome' => $nome,
+            ':categoria' => $categoria,
+            ':schema_json' => $schemaJson,
+        ]);
+        $mode = 'updated';
+    } else {
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_form_templates
+            (nome, categoria, schema_json, ativo, created_by_user_id, created_at, updated_at)
+            VALUES
+            (:nome, :categoria, CAST(:schema_json AS jsonb), TRUE, :user_id, NOW(), NOW())
+            RETURNING id, nome, categoria, schema_json, created_by_user_id, created_at, updated_at
+        ");
+        $stmt->execute([
+            ':nome' => $nome,
+            ':categoria' => $categoria,
+            ':schema_json' => $schemaJson,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+        ]);
+        $mode = 'created';
+    }
+
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     if (!$row) {
         return ['ok' => false, 'error' => 'Falha ao salvar modelo'];
@@ -135,7 +240,28 @@ function eventos_form_template_salvar(PDO $pdo, string $nome, string $categoria,
 
     $decoded = json_decode((string)($row['schema_json'] ?? '[]'), true);
     $row['schema'] = is_array($decoded) ? $decoded : [];
-    return ['ok' => true, 'template' => $row];
+    return ['ok' => true, 'mode' => $mode, 'template' => $row];
+}
+
+/**
+ * Arquiva modelo de formulário (soft delete).
+ */
+function eventos_form_template_arquivar(PDO $pdo, int $template_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($template_id <= 0) {
+        return ['ok' => false, 'error' => 'Modelo inválido'];
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_form_templates
+        SET ativo = FALSE, updated_at = NOW()
+        WHERE id = :id
+    ");
+    $stmt->execute([':id' => $template_id]);
+    if ($stmt->rowCount() <= 0) {
+        return ['ok' => false, 'error' => 'Modelo não encontrado'];
+    }
+    return ['ok' => true];
 }
 
 eventos_reuniao_ensure_schema($pdo);
@@ -152,6 +278,81 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id)
     $reuniao = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($reuniao) {
+        $snapshot_raw = (string)($reuniao['me_event_snapshot'] ?? '');
+        $snapshot = json_decode($snapshot_raw, true);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+
+        $faltando_local = trim((string)($snapshot['local'] ?? '')) === '';
+        $faltando_cliente = trim((string)($snapshot['cliente']['nome'] ?? '')) === '';
+        $faltando_hora = trim((string)($snapshot['hora_inicio'] ?? '')) === '';
+
+        if ($faltando_local || $faltando_cliente || $faltando_hora) {
+            $event_result = eventos_me_buscar_por_id($pdo, $me_event_id);
+            if (!empty($event_result['ok']) && !empty($event_result['event']) && is_array($event_result['event'])) {
+                $snapshot_novo = eventos_me_criar_snapshot($event_result['event']);
+                $snapshot_ajustado = $snapshot;
+                $atualizado = false;
+
+                foreach (['id', 'nome', 'data', 'hora_inicio', 'hora_fim', 'local', 'unidade', 'tipo_evento'] as $campo) {
+                    $atual = trim((string)($snapshot_ajustado[$campo] ?? ''));
+                    $novo = trim((string)($snapshot_novo[$campo] ?? ''));
+                    if ($atual === '' && $novo !== '') {
+                        $snapshot_ajustado[$campo] = $snapshot_novo[$campo];
+                        $atualizado = true;
+                    }
+                }
+
+                $convidados_atual = (int)($snapshot_ajustado['convidados'] ?? 0);
+                $convidados_novo = (int)($snapshot_novo['convidados'] ?? 0);
+                if ($convidados_atual <= 0 && $convidados_novo > 0) {
+                    $snapshot_ajustado['convidados'] = $convidados_novo;
+                    $atualizado = true;
+                }
+
+                if (!isset($snapshot_ajustado['cliente']) || !is_array($snapshot_ajustado['cliente'])) {
+                    $snapshot_ajustado['cliente'] = [];
+                    $atualizado = true;
+                }
+
+                foreach (['id', 'nome', 'email', 'telefone'] as $campo_cliente) {
+                    if ($campo_cliente === 'id') {
+                        $id_atual = (int)($snapshot_ajustado['cliente']['id'] ?? 0);
+                        $id_novo = (int)($snapshot_novo['cliente']['id'] ?? 0);
+                        if ($id_atual <= 0 && $id_novo > 0) {
+                            $snapshot_ajustado['cliente']['id'] = $id_novo;
+                            $atualizado = true;
+                        }
+                        continue;
+                    }
+
+                    $atual = trim((string)($snapshot_ajustado['cliente'][$campo_cliente] ?? ''));
+                    $novo = trim((string)($snapshot_novo['cliente'][$campo_cliente] ?? ''));
+                    if ($atual === '' && $novo !== '') {
+                        $snapshot_ajustado['cliente'][$campo_cliente] = $snapshot_novo['cliente'][$campo_cliente];
+                        $atualizado = true;
+                    }
+                }
+
+                if ($atualizado) {
+                    $snapshot_ajustado['snapshot_at'] = date('Y-m-d H:i:s');
+
+                    $stmt_update = $pdo->prepare("
+                        UPDATE eventos_reunioes
+                        SET me_event_snapshot = :snapshot, updated_at = NOW()
+                        WHERE id = :id
+                    ");
+                    $stmt_update->execute([
+                        ':snapshot' => json_encode($snapshot_ajustado, JSON_UNESCAPED_UNICODE),
+                        ':id' => (int)$reuniao['id'],
+                    ]);
+
+                    $stmt_refresh = $pdo->prepare("SELECT * FROM eventos_reunioes WHERE id = :id");
+                    $stmt_refresh->execute([':id' => (int)$reuniao['id']]);
+                    $reuniao = $stmt_refresh->fetch(PDO::FETCH_ASSOC) ?: $reuniao;
+                }
+            }
+        }
+
         return ['ok' => true, 'reuniao' => $reuniao, 'created' => false];
     }
     
@@ -572,6 +773,24 @@ function eventos_reuniao_gerar_link_cliente(PDO $pdo, int $meeting_id, int $user
     
     if ($link) {
         return ['ok' => true, 'link' => $link, 'created' => false];
+    }
+
+    // Só permite criar link novo se houver formulário salvo (schema útil) ou conteúdo HTML no modo avançado.
+    $secao = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+    if (!$secao) {
+        return ['ok' => false, 'error' => 'Seção DJ/Protocolos não encontrada'];
+    }
+    $has_schema = false;
+    if (!empty($secao['form_schema_json'])) {
+        $decoded = json_decode((string)$secao['form_schema_json'], true);
+        if (is_array($decoded)) {
+            $has_schema = eventos_form_template_tem_campo_util($decoded);
+        }
+    }
+    $content_html = trim((string)($secao['content_html'] ?? ''));
+    $has_content = strip_tags($content_html) !== '';
+    if (!$has_schema && !$has_content) {
+        return ['ok' => false, 'error' => 'Salve o formulário da seção DJ antes de gerar o link para o cliente'];
     }
     
     // Gerar token seguro

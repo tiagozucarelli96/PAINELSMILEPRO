@@ -9,6 +9,90 @@ require_once __DIR__ . '/me_config.php';
 require_once __DIR__ . '/conexao.php';
 
 /**
+ * Lê um caminho dentro de array com fallback case-insensitive por nível.
+ */
+function eventos_me_get_path_value(array $source, string $path) {
+    $parts = explode('.', $path);
+    $value = $source;
+
+    foreach ($parts as $part) {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        if (array_key_exists($part, $value)) {
+            $value = $value[$part];
+            continue;
+        }
+
+        $matched = null;
+        $found = false;
+        foreach ($value as $key => $candidate) {
+            if (is_string($key) && strcasecmp($key, $part) === 0) {
+                $matched = $candidate;
+                $found = true;
+                break;
+            }
+        }
+
+        if (!$found) {
+            return null;
+        }
+
+        $value = $matched;
+    }
+
+    return $value;
+}
+
+/**
+ * Retorna o primeiro texto não vazio encontrado nos caminhos informados.
+ */
+function eventos_me_pick_text(array $source, array $paths, string $default = ''): string {
+    foreach ($paths as $path) {
+        if (!is_string($path) || $path === '') {
+            continue;
+        }
+
+        $value = eventos_me_get_path_value($source, $path);
+        if (is_string($value)) {
+            $text = trim($value);
+            if ($text !== '') {
+                return $text;
+            }
+            continue;
+        }
+
+        if (is_numeric($value)) {
+            $text = trim((string)$value);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+    }
+
+    return $default;
+}
+
+/**
+ * Retorna o primeiro inteiro válido encontrado nos caminhos informados.
+ */
+function eventos_me_pick_int(array $source, array $paths, int $default = 0): int {
+    foreach ($paths as $path) {
+        if (!is_string($path) || $path === '') {
+            continue;
+        }
+
+        $value = eventos_me_get_path_value($source, $path);
+        if (is_numeric($value)) {
+            return (int)$value;
+        }
+    }
+
+    return $default;
+}
+
+/**
  * Configuração da ME
  */
 function eventos_me_get_config(): array {
@@ -235,19 +319,42 @@ function eventos_me_filtrar_local(array $events, string $search): array {
     
     return array_values(array_filter($events, function($ev) use ($search_lower) {
         // Buscar no nome do evento
-        $nome = mb_strtolower($ev['nomeevento'] ?? $ev['nome'] ?? '');
+        $nome = mb_strtolower(eventos_me_pick_text($ev, [
+            'nomeevento',
+            'nome'
+        ]));
         if (strpos($nome, $search_lower) !== false) {
             return true;
         }
         
         // Buscar no nome do cliente
-        $cliente = mb_strtolower($ev['nomecliente'] ?? $ev['cliente']['nome'] ?? '');
+        $cliente = mb_strtolower(eventos_me_pick_text($ev, [
+            'nomecliente',
+            'nomeCliente',
+            'cliente.nome'
+        ]));
         if (strpos($cliente, $search_lower) !== false) {
+            return true;
+        }
+
+        // Buscar no local
+        $local = mb_strtolower(eventos_me_pick_text($ev, [
+            'local',
+            'nomelocal',
+            'localevento',
+            'localEvento',
+            'unidade',
+            'endereco'
+        ]));
+        if (strpos($local, $search_lower) !== false) {
             return true;
         }
         
         // Buscar na data
-        $data = $ev['dataevento'] ?? $ev['data'] ?? '';
+        $data = mb_strtolower(eventos_me_pick_text($ev, [
+            'dataevento',
+            'data'
+        ]));
         if (strpos($data, $search_lower) !== false) {
             return true;
         }
@@ -292,21 +399,21 @@ function eventos_me_buscar_por_id(PDO $pdo, int $event_id): array {
  */
 function eventos_me_criar_snapshot(array $event): array {
     return [
-        'id' => (int)($event['id'] ?? 0),
-        'nome' => $event['nomeevento'] ?? $event['nome'] ?? '',
-        'data' => $event['dataevento'] ?? $event['data'] ?? '',
-        'hora_inicio' => $event['horainicio'] ?? $event['hora_inicio'] ?? '',
-        'hora_fim' => $event['horatermino'] ?? $event['hora_fim'] ?? '',
-        'local' => $event['local'] ?? $event['nomelocal'] ?? '',
-        'unidade' => $event['unidade'] ?? '',
-        'convidados' => (int)($event['nconvidados'] ?? $event['convidados'] ?? 0),
+        'id' => eventos_me_pick_int($event, ['id']),
+        'nome' => eventos_me_pick_text($event, ['nomeevento', 'nome']),
+        'data' => eventos_me_pick_text($event, ['dataevento', 'data']),
+        'hora_inicio' => eventos_me_pick_text($event, ['horainicio', 'hora_inicio', 'horaevento']),
+        'hora_fim' => eventos_me_pick_text($event, ['horatermino', 'hora_fim', 'horafim']),
+        'local' => eventos_me_pick_text($event, ['local', 'nomelocal', 'localevento', 'localEvento', 'endereco']),
+        'unidade' => eventos_me_pick_text($event, ['unidade', 'tipoEvento', 'tipoevento']),
+        'convidados' => eventos_me_pick_int($event, ['nconvidados', 'convidados']),
         'cliente' => [
-            'id' => (int)($event['idcliente'] ?? $event['cliente']['id'] ?? 0),
-            'nome' => $event['nomecliente'] ?? $event['cliente']['nome'] ?? '',
-            'email' => $event['emailcliente'] ?? $event['cliente']['email'] ?? '',
-            'telefone' => $event['telefonecliente'] ?? $event['cliente']['telefone'] ?? '',
+            'id' => eventos_me_pick_int($event, ['idcliente', 'cliente.id']),
+            'nome' => eventos_me_pick_text($event, ['nomecliente', 'nomeCliente', 'cliente.nome']),
+            'email' => eventos_me_pick_text($event, ['emailcliente', 'cliente.email']),
+            'telefone' => eventos_me_pick_text($event, ['telefonecliente', 'celular', 'cliente.telefone']),
         ],
-        'tipo_evento' => $event['tipoevento'] ?? $event['tipo'] ?? '',
+        'tipo_evento' => eventos_me_pick_text($event, ['tipoevento', 'tipoEvento', 'tipo']),
         'snapshot_at' => date('Y-m-d H:i:s')
     ];
 }

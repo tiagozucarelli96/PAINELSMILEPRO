@@ -60,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
 
         case 'salvar_template_form':
+            $template_id = (int)($_POST['template_id'] ?? 0);
             $template_name = trim((string)($_POST['template_name'] ?? ''));
             $template_category = trim((string)($_POST['template_category'] ?? 'geral'));
             $schema_json = (string)($_POST['schema_json'] ?? '[]');
@@ -68,8 +69,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'Schema inválido']);
                 exit;
             }
-            $save_template = eventos_form_template_salvar($pdo, $template_name, $template_category, $schema, (int)$user_id);
+            $save_template = eventos_form_template_salvar(
+                $pdo,
+                $template_name,
+                $template_category,
+                $schema,
+                (int)$user_id,
+                $template_id > 0 ? $template_id : null
+            );
             echo json_encode($save_template);
+            exit;
+
+        case 'listar_templates_form':
+            echo json_encode(['ok' => true, 'templates' => eventos_form_templates_listar($pdo)]);
+            exit;
+
+        case 'arquivar_template_form':
+            $template_id = (int)($_POST['template_id'] ?? 0);
+            $archive = eventos_form_template_arquivar($pdo, $template_id);
+            echo json_encode($archive);
             exit;
             
         case 'gerar_link_cliente':
