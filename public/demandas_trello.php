@@ -37,7 +37,7 @@ includeSidebar('Demandas');
    ============================================ */
 .page-demandas {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f4f5f7;
+    background: #f6f8fc;
     color: #172b4d;
     height: calc(100vh - 60px);
     display: flex;
@@ -45,7 +45,7 @@ includeSidebar('Demandas');
     overflow: hidden;
     --page-header-height: 72px;
     --board-header-height: 56px;
-    --list-width: 360px;
+    --list-width: 340px;
     --list-gap: 1.25rem;
     --card-gap: 0.75rem;
     --card-padding: 0.9rem;
@@ -57,9 +57,9 @@ includeSidebar('Demandas');
    HEADER LIMPO
    ============================================ */
 .page-demandas-header {
-    background: white;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
+    background: #ffffff;
+    padding: 0.9rem 1.25rem;
+    border-bottom: 1px solid #dbe3ef;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -167,8 +167,8 @@ includeSidebar('Demandas');
    ============================================ */
 .page-demandas-sidebar {
     width: 260px;
-    background: white;
-    border-right: 1px solid #e5e7eb;
+    background: #fcfdff;
+    border-right: 1px solid #dbe3ef;
     display: flex;
     flex-direction: column;
     overflow: hidden;

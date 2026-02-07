@@ -340,6 +340,7 @@ $routes = [
   'eventos_reunioes' => 'eventos_reunioes.php',
   'eventos_calendario' => 'eventos_calendario.php',
   'eventos_galeria' => 'eventos_galeria.php',
+  'eventos_galeria_public' => 'eventos_galeria_public.php',
   'eventos_fornecedores' => 'eventos_fornecedores.php',
   'eventos_pdf' => 'eventos_pdf.php',
   'eventos_me_proxy' => 'eventos_me_proxy.php',
@@ -410,6 +411,8 @@ $public_pages = [
   'portal_decoracao',
   // Link público do cliente para DJ
   'eventos_cliente_dj',
+  // Galeria pública para clientes
+  'eventos_galeria_public',
 ];
 $is_public_page = in_array($page, $public_pages);
 

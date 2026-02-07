@@ -25,14 +25,20 @@ $current_page = $_GET['page'] ?? 'dashboard';
 
 // Buscar cargo do usuário logado do banco de dados
 $perfil = 'CONSULTA'; // Valor padrão
+$foto_usuario = null;
 $usuario_id_sidebar = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
 if ($usuario_id_sidebar && isset($pdo)) {
     try {
-        $stmt_cargo = $pdo->prepare("SELECT cargo FROM usuarios WHERE id = :id");
+        $stmt_cargo = $pdo->prepare("SELECT cargo, foto FROM usuarios WHERE id = :id");
         $stmt_cargo->execute([':id' => $usuario_id_sidebar]);
         $cargo_result = $stmt_cargo->fetch(PDO::FETCH_ASSOC);
-        if ($cargo_result && !empty($cargo_result['cargo'])) {
-            $perfil = $cargo_result['cargo'];
+        if ($cargo_result) {
+            if (!empty($cargo_result['cargo'])) {
+                $perfil = $cargo_result['cargo'];
+            }
+            if (!empty($cargo_result['foto'])) {
+                $foto_usuario = trim((string)$cargo_result['foto']);
+            }
         }
     } catch (Exception $e) {
         error_log("Erro ao buscar cargo do usuário: " . $e->getMessage());
@@ -801,6 +807,55 @@ if ($current_page === 'dashboard') {
             flex: 0 0 auto !important;
             min-width: auto !important;
         }
+
+        .top-account-access {
+            position: absolute;
+            top: 16px;
+            right: 24px;
+            z-index: 1100;
+        }
+
+        .top-account-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            background: #ffffff;
+            border: 1px solid #dbe3f0;
+            color: #1e293b;
+            border-radius: 999px;
+            padding: 6px 12px 6px 6px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+            transition: all 0.2s ease;
+        }
+
+        .top-account-link:hover {
+            transform: translateY(-1px);
+            border-color: #bfdbfe;
+            box-shadow: 0 10px 24px rgba(30, 58, 138, 0.16);
+        }
+
+        .top-account-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background-size: cover;
+            background-position: center;
+            flex-shrink: 0;
+        }
+
+        .top-account-text {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
         
         .main-content.expanded {
             margin-left: 0 !important;
@@ -1412,6 +1467,15 @@ if ($current_page === 'dashboard') {
             .sidebar-toggle {
                 display: block;
             }
+
+            .top-account-access {
+                top: 14px;
+                right: 14px;
+            }
+
+            .top-account-text {
+                display: none;
+            }
         }
     </style>
 </head>
@@ -1421,29 +1485,7 @@ if ($current_page === 'dashboard') {
     <!-- Sidebar fixa -->
     <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1000 !important;">
             <div class="sidebar-header">
-                <a href="index.php?page=minha_conta" class="user-info" style="text-decoration: none; color: inherit; display: block;">
-                    <?php
-                    // Buscar foto do usuário se disponível
-                    $foto_usuario = null;
-                    $usuario_id_sidebar = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
-                    if ($usuario_id_sidebar) {
-                        try {
-                            $stmt_foto = $pdo->prepare("SELECT foto FROM usuarios WHERE id = :id LIMIT 1");
-                            $stmt_foto->execute([':id' => $usuario_id_sidebar]);
-                            $foto_result = $stmt_foto->fetch(PDO::FETCH_ASSOC);
-                            if ($foto_result && !empty($foto_result['foto'])) {
-                                $foto_usuario = $foto_result['foto'];
-                                // Garantir que o caminho seja acessível (se começar com uploads/, já está correto)
-                                // Se não começar com /, adicionar / para garantir caminho absoluto relativo
-                                if (!empty($foto_usuario) && strpos($foto_usuario, '/') !== 0 && strpos($foto_usuario, 'http') !== 0) {
-                                    // Caminho relativo já está correto
-                                }
-                            }
-                        } catch (Exception $e) {
-                            error_log("Erro ao buscar foto do usuário na sidebar: " . $e->getMessage());
-                        }
-                    }
-                    ?>
+                <div class="user-info">
                     <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center; color: transparent;" : '' ?>">
                         <?php if (!$foto_usuario): ?>
                             <?= strtoupper(substr($nomeUser, 0, 2)) ?>
@@ -1451,7 +1493,7 @@ if ($current_page === 'dashboard') {
                     </div>
                     <div class="user-name"><?= htmlspecialchars($nomeUser) ?></div>
                     <div class="user-plan"><?= strtoupper($perfil) ?></div>
-                </a>
+                </div>
             </div>
             
             <div class="sidebar-controls">
@@ -1560,6 +1602,16 @@ if ($current_page === 'dashboard') {
     
     <!-- Conteúdo principal -->
     <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
+            <div class="top-account-access">
+                <a class="top-account-link" href="index.php?page=minha_conta" title="Minha Conta">
+                    <span class="top-account-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); color: transparent;" : '' ?>">
+                        <?php if (!$foto_usuario): ?>
+                            <?= strtoupper(substr($nomeUser, 0, 2)) ?>
+                        <?php endif; ?>
+                    </span>
+                    <span class="top-account-text">Minha Conta</span>
+                </a>
+            </div>
             <div id="pageContent">
                 <?php
                 $logistica_breadcrumbs = [

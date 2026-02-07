@@ -107,10 +107,12 @@ if ($action === 'save') {
         
         $result = $manager->save($data, $user_id);
         
-        if ($result['success']) {
-            header('Location: index.php?page=usuarios&error=' . urlencode($result['message'] ?? 'Erro ao salvar'));
+        if (!empty($result['success'])) {
+            header('Location: index.php?page=usuarios&success=' . urlencode($result['message'] ?? 'Usuário salvo com sucesso!'));
             exit;
         }
+
+        throw new Exception($result['message'] ?? 'Erro ao salvar usuário');
     } catch (Exception $e) {
         error_log("Erro ao salvar usuário: " . $e->getMessage());
         header('Location: index.php?page=usuarios&error=' . urlencode('Erro: ' . $e->getMessage()));
@@ -158,7 +160,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
 // ============================================
 
 $search = trim($_GET['search'] ?? '');
-$sql = "SELECT id, nome, login, email, cargo, ativo, created_at";
+$sql = "SELECT id, nome, login, email, cargo, ativo, foto, created_at";
 $params = [];
 
 // Buscar todas as colunas de permissões que existem no banco
@@ -470,6 +472,13 @@ ob_start();
         font-size: 1.5rem;
         font-weight: 700;
         flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    .user-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     
     .user-info h3 {
@@ -778,6 +787,149 @@ ob_start();
         background: #94a3b8;
         cursor: not-allowed;
     }
+
+    .foto-upload-section {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 0.875rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #f8fafc;
+    }
+
+    .foto-preview {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        border: 2px solid #cbd5e1;
+        background: #e2e8f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        color: #64748b;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .foto-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+    }
+
+    .foto-edit-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.6);
+        color: #fff;
+        font-size: 0.72rem;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 6px;
+    }
+
+    .foto-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        flex: 1;
+    }
+
+    .btn-foto {
+        background: #1e3a8a;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 0.55rem 0.75rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        width: fit-content;
+    }
+
+    .foto-status {
+        display: none;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .foto-uploading {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        color: #1e3a8a;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .foto-editor-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.76);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+    }
+
+    .foto-editor-content {
+        width: min(760px, 100%);
+        max-height: calc(100vh - 2rem);
+        background: #fff;
+        border-radius: 12px;
+        overflow: auto;
+    }
+
+    .foto-editor-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.9rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .foto-editor-body {
+        padding: 1rem;
+    }
+
+    .foto-editor-body img {
+        max-width: 100%;
+    }
+
+    .foto-editor-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.9rem 1rem 1rem;
+        border-top: 1px solid #e2e8f0;
+        justify-content: flex-end;
+    }
+
+    .btn-editor {
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        background: #e2e8f0;
+        color: #1e293b;
+    }
+
+    .btn-editor-primary {
+        background: #1e3a8a;
+        color: #fff;
+    }
 </style>
 
 <div class="usuarios-page">
@@ -831,7 +983,11 @@ ob_start();
         <div class="user-card">
             <div class="user-header">
                 <div class="user-avatar">
-                    <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                    <?php if (!empty($user['foto'])): ?>
+                        <img src="<?= h($user['foto']) ?>" alt="Foto de <?= h($user['nome'] ?? 'Usuário') ?>">
+                    <?php else: ?>
+                        <?= strtoupper(substr($user['nome'] ?? 'U', 0, 1)) ?>
+                    <?php endif; ?>
                 </div>
                 <div class="user-info">
                     <h3><?= h($user['nome'] ?? 'Sem nome') ?></h3>
@@ -915,6 +1071,23 @@ ob_start();
                 
                 <!-- Aba Usuário -->
                 <div id="tab-usuario" class="modal-tab-content active">
+                    <div class="foto-upload-section">
+                        <div class="foto-preview" id="fotoPreview" title="Clique para escolher ou editar foto">
+                            <img id="fotoPreviewImg" src="" alt="Pré-visualização da foto">
+                            <span id="fotoPreviewText">Sem foto</span>
+                            <div class="foto-edit-overlay" id="fotoEditOverlay">Editar foto</div>
+                        </div>
+                        <div class="foto-actions">
+                            <button type="button" class="btn-foto" id="btnSelecionarFoto">Selecionar foto</button>
+                            <input type="file" id="fotoInput" accept="image/*" style="display:none;">
+                            <input type="hidden" name="foto" id="fotoUrl" value="">
+                            <input type="hidden" id="fotoAtual" value="">
+                            <input type="hidden" id="fotoEditada" value="">
+                            <div class="foto-uploading" id="fotoUploading">⏳ Enviando foto...</div>
+                            <div class="foto-status" id="fotoStatus"></div>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label class="form-label">Nome *</label>
                         <input type="text" name="nome" class="form-input" required>
@@ -1168,6 +1341,27 @@ ob_start();
     </div>
 </div>
 
+<!-- Modal editor/crop de foto -->
+<div id="fotoEditorModal" class="foto-editor-modal">
+    <div class="foto-editor-content">
+        <div class="foto-editor-header">
+            <h3 style="margin:0;font-size:1rem;color:#1e293b;">Editar foto</h3>
+            <button type="button" class="modal-close" onclick="fecharEditorFoto()">&times;</button>
+        </div>
+        <div class="foto-editor-body">
+            <img id="fotoEditorImg" src="" alt="Editor de foto">
+        </div>
+        <div class="foto-editor-actions">
+            <button type="button" class="btn-editor" onclick="fotoEditorZoomOut()">- Zoom</button>
+            <button type="button" class="btn-editor" onclick="fotoEditorZoomIn()">+ Zoom</button>
+            <button type="button" class="btn-editor" onclick="fotoEditorRotate()">↻ Girar</button>
+            <button type="button" class="btn-editor" onclick="fotoEditorReset()">Resetar</button>
+            <button type="button" class="btn-editor" onclick="fecharEditorFoto()">Cancelar</button>
+            <button type="button" class="btn-editor btn-editor-primary" onclick="aplicarEdicaoFoto()">Aplicar</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // Função para trocar entre abas
 function switchTab(tabName) {
@@ -1391,6 +1585,10 @@ function openModal(userId = 0) {
         // Limpar foto atual
         const fotoAtualInput = document.getElementById('fotoAtual');
         if (fotoAtualInput) fotoAtualInput.value = '';
+        const fotoUrlInput = document.getElementById('fotoUrl');
+        if (fotoUrlInput) fotoUrlInput.value = '';
+        const fotoEditadaInput = document.getElementById('fotoEditada');
+        if (fotoEditadaInput) fotoEditadaInput.value = '';
         
         // Mostrar modal PRIMEIRO
         modal.classList.add('active');
@@ -1631,6 +1829,8 @@ function loadUserData(userId) {
             if (emailInput) emailInput.value = user.email || '';
             if (cargoInput) cargoInput.value = user.cargo || '';
             if (fotoAtualInput) fotoAtualInput.value = user.foto || '';
+            const fotoUrlInput = document.getElementById('fotoUrl');
+            if (fotoUrlInput) fotoUrlInput.value = user.foto || '';
             
             // Preencher campos de dados pessoais (aba Dados)
             const nomeCompletoInput = form.querySelector('[name="nome_completo"]');

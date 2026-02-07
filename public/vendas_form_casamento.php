@@ -315,7 +315,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             width: 100px;
             height: 100px;
             object-fit: contain;
-            filter: brightness(0) invert(1);
             transition: transform 0.3s ease;
         }
         

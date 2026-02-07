@@ -141,17 +141,18 @@ includeSidebar('Agenda');
 <style>
         .agenda-page-content {
             font-family: 'Inter', sans-serif;
-            padding: 20px;
+            padding: 24px;
         }
 
         .agenda-container {
-            max-width: 100%;
+            max-width: 1480px;
             width: 100%;
             margin: 0 auto;
             background-color: #fff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.05);
         }
 
         h1 {
@@ -214,7 +215,7 @@ includeSidebar('Agenda');
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
             gap: 15px;
         }
@@ -237,6 +238,10 @@ includeSidebar('Agenda');
             align-items: center;
             margin-bottom: 20px;
             flex-wrap: wrap;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            border-radius: 12px;
         }
 
         .filter-group {
@@ -260,9 +265,10 @@ includeSidebar('Agenda');
 
         .calendar-container {
             background: #fff;
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+            border: 1px solid #e2e8f0;
             margin: 0;
             margin-top: 0 !important;
         }

@@ -662,9 +662,9 @@ ob_start();
 
 <style>
 .vendas-container {
-    max-width: 1400px;
+    max-width: 1480px;
     margin: 0 auto;
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
 }
 
 .vendas-header {
@@ -682,6 +682,10 @@ ob_start();
     gap: 1rem;
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
+    padding: 0.875rem;
+    border: 1px solid #dbe3ef;
+    border-radius: 12px;
+    background: #f8fafc;
 }
 
 .vendas-filters select,
@@ -693,9 +697,10 @@ ob_start();
 
 .vendas-card {
     background: white;
-    border-radius: 12px;
+    border-radius: 14px;
+    border: 1px solid #dbe3ef;
     padding: 1.5rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
     margin-bottom: 1rem;
 }
 

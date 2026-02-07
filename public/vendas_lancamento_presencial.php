@@ -306,10 +306,10 @@ ob_start();
 ?>
 
 <style>
-.vendas-container{max-width:1400px;margin:0 auto;padding:1.5rem}
-.vendas-header{margin-bottom:1.5rem}
+.vendas-container{max-width:1480px;margin:0 auto;padding:1.25rem 1.5rem}
+.vendas-header{margin-bottom:1rem;background:#f8fafc;border:1px solid #dbe3ef;border-radius:12px;padding:1rem 1.25rem}
 .vendas-header h1{font-size:1.75rem;color:#1e3a8a;margin-bottom:.25rem}
-.vendas-card{background:#fff;border-radius:12px;padding:1.5rem;box-shadow:0 2px 10px rgba(0,0,0,.08);margin-bottom:1rem}
+.vendas-card{background:#fff;border-radius:14px;border:1px solid #dbe3ef;padding:1.5rem;box-shadow:0 14px 32px rgba(15,23,42,.06);margin-bottom:1rem}
 .form-section-title{font-size:1.1rem;font-weight:700;color:#1e3a8a;margin:1.25rem 0 .75rem}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
 @media (max-width:768px){.form-row{grid-template-columns:1fr}}
