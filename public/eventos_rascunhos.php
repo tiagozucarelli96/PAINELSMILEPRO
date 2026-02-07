@@ -124,7 +124,7 @@ includeSidebar('Rascunhos - Reuniões');
             </div>
             <div class="rascunho-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$r['id'] ?>" class="btn btn-primary">Abrir</a>
-                <form method="POST" style="display: inline;" onsubmit="return confirm('Excluir este rascunho? Não é possível desfazer.');">
+                <form method="POST" style="display: inline;" onsubmit="return confirmarExclusaoRascunho(event, this);">
                     <input type="hidden" name="action" value="excluir">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                     <button type="submit" class="btn btn-danger">Excluir</button>
@@ -137,5 +137,24 @@ includeSidebar('Rascunhos - Reuniões');
 
     <p style="margin-top: 1.5rem;"><a href="index.php?page=eventos" style="color: #1e40af;">← Voltar para Eventos</a></p>
 </div>
+
+<script>
+function confirmarExclusaoRascunho(e, formEl) {
+    if (!formEl) return false;
+
+    if (typeof customConfirm === 'function') {
+        e.preventDefault();
+        customConfirm('Excluir este rascunho? Não é possível desfazer.', 'Confirmar exclusão')
+            .then(function(confirmado) {
+                if (confirmado) {
+                    formEl.submit();
+                }
+            });
+        return false;
+    }
+
+    return window.confirm('Excluir este rascunho? Não é possível desfazer.');
+}
+</script>
 
 <?php endSidebar(); ?>

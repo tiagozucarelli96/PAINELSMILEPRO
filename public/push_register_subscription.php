@@ -28,18 +28,22 @@ try {
     push_ensure_schema($pdo);
     $pdo->beginTransaction();
     
-    // Verificar se já existe subscription para este endpoint
+    // Vincular endpoint a apenas um usuário por vez (evita mistura de notificações entre logins no mesmo navegador).
     $stmt = $pdo->prepare("
-        SELECT id FROM sistema_notificacoes_navegador 
-        WHERE usuario_id = :usuario_id AND endpoint = :endpoint
+        SELECT id, usuario_id
+        FROM sistema_notificacoes_navegador
+        WHERE endpoint = :endpoint
+        ORDER BY atualizado_em DESC NULLS LAST, id DESC
     ");
-    $stmt->execute([':usuario_id' => $usuario_id, ':endpoint' => $endpoint]);
-    $existing = $stmt->fetch();
+    $stmt->execute([':endpoint' => $endpoint]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if ($existing) {
-        // Atualizar existente
+    if (!empty($rows)) {
+        $primary = $rows[0];
+        // Reatribuir endpoint para o usuário atual.
         $stmt = $pdo->prepare("
             UPDATE sistema_notificacoes_navegador SET
+                usuario_id = :usuario_id,
                 chave_publica = :p256dh,
                 chave_autenticacao = :auth,
                 consentimento_permitido = TRUE,
@@ -49,10 +53,22 @@ try {
             WHERE id = :id
         ");
         $stmt->execute([
+            ':usuario_id' => $usuario_id,
             ':p256dh' => $keys['p256dh'],
             ':auth' => $keys['auth'],
-            ':id' => $existing['id']
+            ':id' => $primary['id']
         ]);
+
+        // Desativar registros duplicados do mesmo endpoint (se existirem).
+        if (count($rows) > 1) {
+            $idsToDisable = array_map(fn($r) => (int)$r['id'], array_slice($rows, 1));
+            $placeholders = implode(',', array_fill(0, count($idsToDisable), '?'));
+            $sql = "UPDATE sistema_notificacoes_navegador
+                    SET ativo = FALSE, consentimento_permitido = FALSE, atualizado_em = NOW()
+                    WHERE id IN ($placeholders)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($idsToDisable);
+        }
     } else {
         // Criar novo
         $stmt = $pdo->prepare("

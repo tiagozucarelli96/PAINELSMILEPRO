@@ -148,44 +148,6 @@ if (!empty($_SESSION['logado']) && empty($action) && !$is_ajax_request) {
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
-    // Verificar push para usuários internos (antes de carregar qualquer página)
-    require_once __DIR__ . '/permissoes_boot.php';
-    $is_superadmin = !empty($_SESSION['perm_superadmin']);
-    $is_internal = $is_superadmin
-        || !empty($_SESSION['perm_administrativo'])
-        || !empty($_SESSION['perm_agenda'])
-        || !empty($_SESSION['perm_demandas'])
-        || !empty($_SESSION['perm_comercial'])
-        || !empty($_SESSION['perm_logistico'])
-        || !empty($_SESSION['perm_configuracoes'])
-        || !empty($_SESSION['perm_cadastros'])
-        || !empty($_SESSION['perm_financeiro'])
-        || !empty($_SESSION['perm_banco_smile']);
-    
-    if ($is_internal && $page !== 'push_block_screen') {
-      try {
-        require_once __DIR__ . '/conexao.php';
-        require_once __DIR__ . '/core/push_schema.php';
-        push_ensure_schema($GLOBALS['pdo']);
-        $stmt = $GLOBALS['pdo']->prepare("
-          SELECT COUNT(*) 
-          FROM sistema_notificacoes_navegador 
-          WHERE usuario_id = :usuario_id 
-          AND consentimento_permitido = TRUE 
-          AND ativo = TRUE
-        ");
-        $stmt->execute([':usuario_id' => $_SESSION['id']]);
-        $hasConsent = $stmt->fetchColumn() > 0;
-        
-        if (!$hasConsent) {
-          header('Location: push_block_screen.php');
-          exit;
-        }
-      } catch (Exception $e) {
-        error_log("Erro ao verificar push: " . $e->getMessage());
-      }
-    }
-    
     header('Location: index.php?page=dashboard');
   } else {
     header('Location: index.php?page=login');
@@ -345,7 +307,6 @@ $routes = [
   'eventos_pdf' => 'eventos_pdf.php',
   'eventos_me_proxy' => 'eventos_me_proxy.php',
   'eventos_upload' => 'eventos_upload.php',
-  'eventos_ver_imagem' => 'eventos_ver_imagem.php',
   'eventos_ver_imagem' => 'eventos_ver_imagem.php',
   // Portais externos de fornecedores
   'portal_dj_login' => 'portal_dj_login.php',

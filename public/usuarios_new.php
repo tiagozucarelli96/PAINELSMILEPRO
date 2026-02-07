@@ -453,7 +453,7 @@ ob_start();
     
     .user-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 1rem;
         margin-bottom: 1rem;
         padding-bottom: 1rem;
@@ -473,12 +473,17 @@ ob_start();
         font-weight: 700;
         flex-shrink: 0;
         overflow: hidden;
+        margin-top: 2px;
     }
 
     .user-avatar img {
         width: 100%;
         height: 100%;
         object-fit: cover;
+    }
+
+    .user-info {
+        min-width: 0;
     }
     
     .user-info h3 {
@@ -2155,6 +2160,11 @@ function initFotoListeners(force = false) {
         // FAZER UPLOAD VIA AJAX IMEDIATAMENTE (como Trello)
         const formData = new FormData();
         formData.append('foto', file);
+        const userIdInput = document.getElementById('userId');
+        const editingUserId = userIdInput ? parseInt(userIdInput.value || '0', 10) : 0;
+        if (editingUserId > 0) {
+            formData.append('user_id', String(editingUserId));
+        }
         
         console.log('📤 Iniciando upload AJAX para endpoint dedicado...');
         

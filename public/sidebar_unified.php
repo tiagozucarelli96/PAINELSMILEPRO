@@ -22,6 +22,8 @@ require_once __DIR__ . '/notifications_bar.php';
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';
+$show_top_account_access = ($current_page === 'dashboard');
+$push_user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 
 // Buscar cargo do usuário logado do banco de dados
 $perfil = 'CONSULTA'; // Valor padrão
@@ -1602,6 +1604,7 @@ if ($current_page === 'dashboard') {
     
     <!-- Conteúdo principal -->
     <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
+            <?php if ($show_top_account_access): ?>
             <div class="top-account-access">
                 <a class="top-account-link" href="index.php?page=minha_conta" title="Minha Conta">
                     <span class="top-account-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); color: transparent;" : '' ?>">
@@ -1612,6 +1615,7 @@ if ($current_page === 'dashboard') {
                     <span class="top-account-text">Minha Conta</span>
                 </a>
             </div>
+            <?php endif; ?>
             <div id="pageContent">
                 <?php
                 $logistica_breadcrumbs = [
@@ -1671,6 +1675,7 @@ if ($current_page === 'dashboard') {
                 }
                 ?>
     
+    <script src="/js/push-notifications.js"></script>
     <script>
         // Exibir avisos de sucesso/erro vindos da URL (ex.: redirect com ?success= ou ?error=)
         (function() {
@@ -1685,6 +1690,50 @@ if ($current_page === 'dashboard') {
                     var looksSuccess = /sucesso|sucess|atualizado|salvo/i.test(decodedError);
                     customAlert(decodedError, looksSuccess ? 'Sucesso' : 'Erro');
                 }
+            }
+        })();
+
+        // Push notifications para qualquer usuário logado (por usuário, sem bloqueio de navegação)
+        (function () {
+            var userId = <?= $push_user_id ?>;
+            if (!userId || !window.pushNotificationsManager) return;
+
+            async function initPushForUser() {
+                try {
+                    var manager = window.pushNotificationsManager;
+                    var state = await manager.init(userId, true);
+                    if (state && state.subscribed) {
+                        return;
+                    }
+
+                    if (!('Notification' in window)) {
+                        return;
+                    }
+
+                    if (Notification.permission === 'granted') {
+                        await manager.registerServiceWorker();
+                        await manager.subscribe();
+                        return;
+                    }
+
+                    // Solicita permissão uma vez por usuário/navegador para não incomodar a cada página.
+                    var promptKey = 'push_prompted_user_' + String(userId);
+                    var prompted = localStorage.getItem(promptKey) === '1';
+                    if (Notification.permission === 'default' && !prompted) {
+                        localStorage.setItem(promptKey, '1');
+                        await manager.requestPermission();
+                        await manager.registerServiceWorker();
+                        await manager.subscribe();
+                    }
+                } catch (err) {
+                    console.warn('Push init falhou:', err && err.message ? err.message : err);
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initPushForUser);
+            } else {
+                initPushForUser();
             }
         })();
         

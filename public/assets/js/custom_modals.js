@@ -239,17 +239,15 @@ if (typeof window.originalAlert === 'undefined') {
 if (typeof window.originalConfirm === 'undefined') {
     window.originalConfirm = window.confirm;
     window.confirm = function(mensagem) {
-        // Não podemos substituir completamente confirm() porque ele é síncrono
-        // Mas podemos fazer um log para informar o desenvolvedor
-        console.warn('Use customConfirm() em vez de confirm() para melhor UX');
-        return customConfirm(mensagem, 'Confirmar');
+        // confirm() precisa permanecer síncrono para não quebrar formulários antigos.
+        return window.originalConfirm(mensagem);
     };
 }
 
 if (typeof window.originalPrompt === 'undefined') {
     window.originalPrompt = window.prompt;
     window.prompt = function(mensagem, valorPadrao) {
-        console.warn('Use customPrompt() em vez de prompt() para melhor UX');
-        return customPrompt(mensagem, valorPadrao || '', 'Informação');
+        // prompt() também precisa permanecer síncrono para compatibilidade.
+        return window.originalPrompt(mensagem, valorPadrao || '');
     };
 }
