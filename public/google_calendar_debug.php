@@ -74,9 +74,12 @@ try {
         }
     }
 
-    if ($config && isset($_GET['test_webhook'])) {
+    if (isset($_GET['test_webhook'])) {
         $debug_info['testando_webhook'] = true;
         $debug_info['hide_calendars'] = true;
+    }
+
+    if ($config && isset($_GET['test_webhook'])) {
         try {
             $resultado = $helper->registerWebhook($config['google_calendar_id'], $debug_info['webhook_url']);
             $debug_info['test_webhook_result'] = $resultado;
@@ -151,6 +154,12 @@ pre {
         <a href="index.php?page=google_calendar_debug&test_sync=1" class="btn" style="background: #10b981;">🧪 Testar Sincronização</a>
         <a href="index.php?page=google_calendar_debug&test_webhook=1" class="btn" style="background: #2563eb;">🔔 Testar Webhook</a>
         
+        <?php if (!empty($debug_info['testando_webhook'])): ?>
+        <div class="alert <?= !empty($debug_info['test_webhook_result']) ? 'alert-success' : 'alert-error' ?>">
+            <?= !empty($debug_info['test_webhook_result']) ? '✅ Teste de webhook executado' : '❌ Falha ao executar teste de webhook' ?>
+        </div>
+        <?php endif; ?>
+
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Status da Conexão</h3>
         <pre><?= $debug_info['conectado'] ? '✅ Conectado' : '❌ Não Conectado' ?></pre>
         
