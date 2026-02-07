@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Permissões insuficientes para ativar sincronização automática. Reconecte o Google Calendar.');
                 }
 
-                $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
+                $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
                 $helper->registerWebhook($calendar_id, $webhook_url);
                 $mensagem = 'Calendário configurado e sincronização automática ativada com sucesso!';
             } catch (Exception $e) {
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Para ativar webhooks, você precisa reconectar o Google Calendar com permissões completas. Clique em "Conectar Google" novamente.');
             }
             
-            $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
+            $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
             
             error_log("[GOOGLE_CALENDAR_CONFIG] Ativando webhook para: {$config['google_calendar_id']}");
             error_log("[GOOGLE_CALENDAR_CONFIG] Webhook URL: $webhook_url");
@@ -445,7 +445,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 8px;">
             <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">🔍 Diagnóstico do Webhook</h3>
             <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
-                URL do Webhook: <code><?= htmlspecialchars($webhook_url ?? 'https://painelsmilepro-production.up.railway.app/google/webhook') ?></code>
+                URL do Webhook: <code><?= htmlspecialchars($webhook_url ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php') ?></code>
             </p>
             <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
                 Status: <?= !empty($config['webhook_resource_id']) ? '✅ Registrado' : '❌ Não registrado' ?>

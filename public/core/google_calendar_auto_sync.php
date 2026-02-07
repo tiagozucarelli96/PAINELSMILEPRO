@@ -53,7 +53,7 @@ function google_calendar_auto_sync($pdo, string $source = ''): void {
             try {
                 $helper = new GoogleCalendarHelper();
                 if ($helper->isConnected()) {
-                    $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
+                    $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
                     $helper->registerWebhook($config['google_calendar_id'], $webhook_url);
                 }
             } catch (Exception $e) {
