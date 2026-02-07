@@ -387,6 +387,7 @@ class GoogleCalendarHelper {
         // Usar timezone UTC para garantir compatibilidade
         $time_min = gmdate('Y-m-d\TH:i:s\Z', strtotime('today midnight'));
         $time_max = gmdate('Y-m-d\TH:i:s\Z', strtotime("+$dias_futuro days 23:59:59"));
+        $sync_started_at = date('Y-m-d H:i:s');
         
         error_log("[GOOGLE_CALENDAR_SYNC] Iniciando sincronização do calendário: $calendar_id");
         error_log("[GOOGLE_CALENDAR_SYNC] Período: $time_min até $time_max");
@@ -403,18 +404,13 @@ class GoogleCalendarHelper {
             
             error_log("[GOOGLE_CALENDAR_SYNC] Resposta recebida. Total de itens: " . (isset($response['items']) ? count($response['items']) : 0));
             
-            if (!isset($response['items'])) {
+            if (!isset($response['items']) || !is_array($response['items'])) {
                 error_log("[GOOGLE_CALENDAR_SYNC] Nenhum evento encontrado na resposta");
-                // Mesmo sem eventos, atualizar última sincronização
-                $this->updateLastSync($calendar_id);
-                return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
+                $response['items'] = [];
             }
             
             if (empty($response['items'])) {
                 error_log("[GOOGLE_CALENDAR_SYNC] Array de eventos vazio - nenhum evento no período especificado");
-                // Mesmo sem eventos, atualizar última sincronização
-                $this->updateLastSync($calendar_id);
-                return ['importados' => 0, 'atualizados' => 0, 'total_encontrado' => 0];
             }
         } catch (Exception $e) {
             error_log("[GOOGLE_CALENDAR_SYNC] Erro ao buscar eventos: " . $e->getMessage());
@@ -424,6 +420,7 @@ class GoogleCalendarHelper {
         $importados = 0;
         $atualizados = 0;
         $pulados = 0;
+        $removidos = 0;
         $total_processados = 0;
         
         error_log("[GOOGLE_CALENDAR_SYNC] Processando " . count($response['items']) . " eventos");
@@ -539,6 +536,31 @@ class GoogleCalendarHelper {
                 $importados++;
             }
         }
+
+        // Limpar eventos obsoletos no período sincronizado:
+        // se um evento deixou de existir no Google, removemos do cache local.
+        $period_start = date('Y-m-d', strtotime($time_min));
+        $period_end = date('Y-m-d', strtotime($time_max));
+        $stmtCleanup = $this->pdo->prepare("
+            DELETE FROM google_calendar_eventos
+            WHERE google_calendar_id = :calendar_id
+              AND (
+                  DATE(inicio) BETWEEN DATE(:start_date) AND DATE(:end_date)
+                  OR DATE(fim) BETWEEN DATE(:start_date) AND DATE(:end_date)
+                  OR (DATE(inicio) <= DATE(:start_date) AND DATE(fim) >= DATE(:end_date))
+              )
+              AND atualizado_em < :sync_started_at
+        ");
+        $stmtCleanup->execute([
+            ':calendar_id' => $calendar_id,
+            ':start_date' => $period_start,
+            ':end_date' => $period_end,
+            ':sync_started_at' => $sync_started_at
+        ]);
+        $removidos = (int)$stmtCleanup->rowCount();
+        if ($removidos > 0) {
+            error_log("[GOOGLE_CALENDAR_SYNC] Eventos obsoletos removidos: $removidos");
+        }
         
         // Registrar log de sincronização (sempre, mesmo se não houver eventos)
         $stmt = $this->pdo->prepare("
@@ -551,6 +573,7 @@ class GoogleCalendarHelper {
                 'importados' => $importados,
                 'atualizados' => $atualizados,
                 'pulados' => $pulados,
+                'removidos' => $removidos,
                 'total_processado' => $total_processados,
                 'calendar_id' => $calendar_id,
                 'time_min' => $time_min,
@@ -567,7 +590,7 @@ class GoogleCalendarHelper {
         $stmt->execute([':calendar_id' => $calendar_id]);
         
         $rows_updated = $stmt->rowCount();
-        error_log("[GOOGLE_CALENDAR_SYNC] Sincronização concluída. Importados: $importados, Atualizados: $atualizados, Pulados: $pulados, Total processado: $total_processados");
+        error_log("[GOOGLE_CALENDAR_SYNC] Sincronização concluída. Importados: $importados, Atualizados: $atualizados, Pulados: $pulados, Removidos: $removidos, Total processado: $total_processados");
         error_log("[GOOGLE_CALENDAR_SYNC] Config atualizada: $rows_updated linha(s)");
         
         return [
@@ -575,6 +598,7 @@ class GoogleCalendarHelper {
             'atualizados' => $atualizados,
             'total' => $importados + $atualizados,
             'pulados' => $pulados,
+            'removidos' => $removidos,
             'total_encontrado' => count($response['items']),
             'total_processado' => $total_processados
         ];
@@ -626,7 +650,8 @@ class GoogleCalendarHelper {
         // Primeiro, criar um canal (watch) no Google Calendar
         $url = "https://www.googleapis.com/calendar/v3/calendars/" . urlencode($calendar_id) . "/events/watch";
         
-        $channel_id = uniqid('channel_', true);
+        // Google exige id com caracteres [A-Za-z0-9\\-_\\+/=] (sem ponto).
+        $channel_id = 'channel_' . bin2hex(random_bytes(16));
         // O token deve ser o calendar_id para identificar qual calendário está sendo notificado
         $token = $calendar_id;
         $data = [

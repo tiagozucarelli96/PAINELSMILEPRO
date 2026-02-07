@@ -72,7 +72,8 @@ try {
                         COALESCE(eh_visita_agendada, false) as eh_visita_agendada,
                         COALESCE(contrato_fechado, false) as contrato_fechado
                     FROM google_calendar_eventos
-                    WHERE status = 'confirmed'
+                    WHERE google_calendar_id = :calendar_id
+                      AND status = 'confirmed'
                       AND (
                           DATE(inicio) BETWEEN DATE(:start) AND DATE(:end)
                           OR DATE(fim) BETWEEN DATE(:start) AND DATE(:end)
@@ -87,6 +88,7 @@ try {
                 error_log("[AGENDA_API] Buscando eventos Google de $start_date até $end_date");
                 
                 $stmt->execute([
+                    ':calendar_id' => (string)$config['google_calendar_id'],
                     ':start' => $start_date,
                     ':end' => $end_date
                 ]);
