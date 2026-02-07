@@ -197,7 +197,8 @@ $webhook_check = null;
 try {
     $stmt = $pdo->query("
         SELECT * FROM google_calendar_sync_logs 
-        WHERE tipo = 'erro' AND detalhes ? 'webhook_check'
+        WHERE tipo = 'erro'
+        AND jsonb_exists(COALESCE(detalhes, '{}'::jsonb), 'webhook_check')
         ORDER BY criado_em DESC 
         LIMIT 1
     ");
