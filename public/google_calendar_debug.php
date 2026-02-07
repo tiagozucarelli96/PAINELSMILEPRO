@@ -16,6 +16,13 @@ require_once __DIR__ . '/sidebar_integration.php';
 $helper = new GoogleCalendarHelper();
 $debug_info = [];
 
+function google_calendar_debug_normalize_webhook_url(string $url): string {
+    if (strpos($url, '/google/webhook') !== false) {
+        return str_replace('/google/webhook', '/google_calendar_webhook.php', $url);
+    }
+    return $url;
+}
+
 try {
     // Verificar conexão
     $debug_info['conectado'] = $helper->isConnected();
@@ -23,6 +30,9 @@ try {
     // Obter configuração
     $config = $helper->getConfig();
     $debug_info['config'] = $config;
+    $debug_info['webhook_url'] = google_calendar_debug_normalize_webhook_url(
+        getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php')
+    );
     
     if ($config && isset($_GET['test_sync'])) {
         // Testar sincronização
@@ -61,6 +71,16 @@ try {
         if ($http_code === 200 && isset($debug_info['test_response']['items'])) {
             $debug_info['test_total_eventos'] = count($debug_info['test_response']['items']);
             $debug_info['test_primeiros_eventos'] = array_slice($debug_info['test_response']['items'], 0, 3);
+        }
+    }
+
+    if ($config && isset($_GET['test_webhook'])) {
+        $debug_info['testando_webhook'] = true;
+        try {
+            $resultado = $helper->registerWebhook($config['google_calendar_id'], $debug_info['webhook_url']);
+            $debug_info['test_webhook_result'] = $resultado;
+        } catch (Exception $e) {
+            $debug_info['test_webhook_error'] = $e->getMessage();
         }
     }
     
@@ -128,6 +148,7 @@ pre {
         
         <a href="index.php?page=google_calendar_config" class="btn">← Voltar para Configuração</a>
         <a href="?test_sync=1" class="btn" style="background: #10b981;">🧪 Testar Sincronização</a>
+        <a href="?test_webhook=1" class="btn" style="background: #2563eb;">🔔 Testar Webhook</a>
         
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Status da Conexão</h3>
         <pre><?= $debug_info['conectado'] ? '✅ Conectado' : '❌ Não Conectado' ?></pre>
@@ -136,6 +157,9 @@ pre {
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Configuração Atual</h3>
         <pre><?= htmlspecialchars(json_encode($debug_info['config'], JSON_PRETTY_PRINT)) ?></pre>
         <?php endif; ?>
+        
+        <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Webhook URL</h3>
+        <pre><?= htmlspecialchars($debug_info['webhook_url'] ?? 'N/A') ?></pre>
         
         <?php if (isset($debug_info['testando_calendario'])): ?>
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Teste de Sincronização</h3>
@@ -166,6 +190,17 @@ pre {
         
         <h4 style="margin-top: 1rem;">URL da Requisição:</h4>
         <pre><?= htmlspecialchars($debug_info['test_url'] ?? 'N/A') ?></pre>
+        <?php endif; ?>
+
+        <?php if (!empty($debug_info['testando_webhook'])): ?>
+        <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Teste de Webhook</h3>
+        <?php if (!empty($debug_info['test_webhook_result'])): ?>
+        <div class="alert alert-success">✅ Webhook registrado</div>
+        <pre><?= htmlspecialchars(json_encode($debug_info['test_webhook_result'], JSON_PRETTY_PRINT)) ?></pre>
+        <?php else: ?>
+        <div class="alert alert-error">❌ Falha ao registrar webhook</div>
+        <pre><?= htmlspecialchars($debug_info['test_webhook_error'] ?? 'Sem detalhes') ?></pre>
+        <?php endif; ?>
         <?php endif; ?>
         
         <?php if (isset($debug_info['calendarios'])): ?>
