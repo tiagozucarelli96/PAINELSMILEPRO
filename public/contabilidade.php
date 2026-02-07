@@ -444,17 +444,6 @@ ob_start();
                 </div>
             </a>
             
-            <!-- Card Holerite individual (por funcionário → aparece em Minha conta) -->
-            <a href="index.php?page=contabilidade_holerite_individual" style="text-decoration: none; color: inherit;">
-                <div style="background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; transition: all 0.2s; cursor: pointer;"
-                     onmouseover="this.style.borderColor='#1e40af'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'"
-                     onmouseout="this.style.borderColor='#e5e7eb'; this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                    <div style="font-size: 2.5rem; margin-bottom: 0.75rem;">👤</div>
-                    <div style="font-weight: 600; color: #1e40af; margin-bottom: 0.25rem;">Holerite individual</div>
-                    <div style="font-size: 0.875rem; color: #64748b;">Por funcionário (Minha conta)</div>
-                </div>
-            </a>
-            
             <!-- Card Honorários -->
             <a href="index.php?page=contabilidade_admin_honorarios" style="text-decoration: none; color: inherit;">
                 <div style="background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.5rem; transition: all 0.2s; cursor: pointer;"

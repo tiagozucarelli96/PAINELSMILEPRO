@@ -1795,8 +1795,8 @@ if ($current_page === 'dashboard') {
                 'vendas_kanban', 'vendas_links_publicos',
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
-                // Minha conta e Holerite individual (includeSidebar)
-                'minha_conta', 'contabilidade_holerite_individual'
+                // Minha conta e gestão de documentos (includeSidebar)
+                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos'
             ];
 
             const isLogistica = currentPage === 'logistica' || currentPage.startsWith('logistica_');

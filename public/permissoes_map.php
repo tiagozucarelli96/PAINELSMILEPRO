@@ -26,6 +26,7 @@ return [
     'cadastros' => 'perm_cadastros',
     'financeiro' => 'perm_financeiro',
     'administrativo' => 'perm_administrativo',
+    'administrativo_gestao_documentos' => 'perm_administrativo',
     'cartao_ofx_me' => 'perm_administrativo',
     'cartao_ofx_me_cartoes' => 'perm_administrativo',
     'cartao_ofx_me_historico' => 'perm_administrativo',

@@ -165,6 +165,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Gestão de Documentos -->
+        <a href="index.php?page=administrativo_gestao_documentos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #0ea5e9);">
+                <span class="funcionalidade-card-icon">🗂️</span>
+                <div class="funcionalidade-card-title">Gestão de Documentos</div>
+                <div class="funcionalidade-card-subtitle">Holerite, folha de ponto e assinatura</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Cartao OFX -->
         <a href="index.php?page=cartao_ofx_me" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">

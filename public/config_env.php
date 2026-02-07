@@ -27,6 +27,11 @@ define('ASAAS_PIX_ADDRESS_KEY', $_ENV['ASAAS_PIX_ADDRESS_KEY'] ?? getenv('ASAAS_
 define('ME_BASE_URL', $_ENV['ME_BASE_URL'] ?? '');
 define('ME_API_KEY', $_ENV['ME_API_KEY'] ?? '');
 
+// Configurações Clicksign
+define('CLICKSIGN_API_TOKEN', $_ENV['CLICKSIGN_API_TOKEN'] ?? getenv('CLICKSIGN_API_TOKEN') ?: '');
+define('CLICKSIGN_BASE_URL', $_ENV['CLICKSIGN_BASE_URL'] ?? getenv('CLICKSIGN_BASE_URL') ?: 'https://sandbox.clicksign.com/api/v3');
+define('CLICKSIGN_TIMEOUT', $_ENV['CLICKSIGN_TIMEOUT'] ?? getenv('CLICKSIGN_TIMEOUT') ?: '30');
+
 // Configurações de Segurança
 define('JWT_SECRET', $_ENV['JWT_SECRET'] ?? 'sua_chave_secreta_aqui');
 define('ENCRYPTION_KEY', $_ENV['ENCRYPTION_KEY'] ?? 'sua_chave_de_criptografia_aqui');

@@ -48,8 +48,9 @@ $is_admin = !empty($_SESSION['logado']) && !empty($_SESSION['perm_administrativo
 $is_contabilidade = !empty($_SESSION['contabilidade_logado']) && $_SESSION['contabilidade_logado'] === true;
 $tipo = $_GET['tipo'] ?? '';
 $permite_holerite_individual = ($tipo === 'holerite_individual' && !empty($_SESSION['logado']));
+$permite_gestao_documento = ($tipo === 'gestao_documento' && !empty($_SESSION['logado']));
 
-if (!$is_admin && !$is_contabilidade && !$permite_holerite_individual) {
+if (!$is_admin && !$is_contabilidade && !$permite_holerite_individual && !$permite_gestao_documento) {
     http_response_code(403);
     contabilidadeDownloadErro('Acesso negado. Você precisa estar logado como administrador ou contador.');
 }
@@ -148,6 +149,34 @@ try {
                 }
                 $chave_storage = $arquivo['chave_storage'] ?? null;
                 $nome_arquivo = $arquivo['arquivo_nome'];
+                $arquivo_url = $arquivo['arquivo_url'] ?? null;
+            }
+            break;
+
+        case 'gestao_documento':
+            $stmt = $pdo->prepare("
+                SELECT usuario_id, exibir_minha_conta, chave_storage, arquivo_nome, arquivo_url
+                FROM administrativo_documentos_colaboradores
+                WHERE id = :id
+            ");
+            $stmt->execute([':id' => $id]);
+            $arquivo = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($arquivo) {
+                $session_uid = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+                $pertenceAoUsuario = ((int)$arquivo['usuario_id'] === $session_uid);
+                $podeVerMinhaConta = !empty($arquivo['exibir_minha_conta']);
+
+                if (!$is_admin && !$pertenceAoUsuario) {
+                    http_response_code(403);
+                    contabilidadeDownloadErro('Acesso negado. Este documento não pertence ao seu usuário.');
+                }
+                if (!$is_admin && $pertenceAoUsuario && !$podeVerMinhaConta) {
+                    http_response_code(403);
+                    contabilidadeDownloadErro('Este documento não está disponível na sua área Minha conta.');
+                }
+
+                $chave_storage = $arquivo['chave_storage'] ?? null;
+                $nome_arquivo = $arquivo['arquivo_nome'] ?? 'documento';
                 $arquivo_url = $arquivo['arquivo_url'] ?? null;
             }
             break;
