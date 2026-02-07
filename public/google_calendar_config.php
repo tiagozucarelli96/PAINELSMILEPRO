@@ -18,10 +18,11 @@ $erro = '';
 $helper = new GoogleCalendarHelper();
 
 function google_calendar_normalize_webhook_url(string $url): string {
-    if (strpos($url, '/google/webhook') !== false) {
-        return str_replace('/google/webhook', '/google_calendar_webhook.php', $url);
-    }
-    return $url;
+    return GoogleCalendarHelper::normalizeWebhookUrl($url);
+}
+
+function google_calendar_has_webhook_scope(?string $scope): bool {
+    return GoogleCalendarHelper::hasCalendarWriteScope($scope);
 }
 
 // Processar ações
@@ -69,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
                 $scope = $token_info['scope'] ?? '';
-                if (strpos($scope, 'calendar.readonly') !== false && strpos($scope, 'calendar') === false) {
+                if (!google_calendar_has_webhook_scope($scope)) {
                     throw new Exception('Permissões insuficientes para ativar sincronização automática. Reconecte o Google Calendar.');
                 }
 
@@ -99,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
             $scope = $token_info['scope'] ?? '';
             
-            if (strpos($scope, 'calendar.readonly') !== false && strpos($scope, 'calendar') === false) {
+            if (!google_calendar_has_webhook_scope($scope)) {
                 throw new Exception('Para ativar webhooks, você precisa reconectar o Google Calendar com permissões completas. Clique em "Conectar Google" novamente.');
             }
             
@@ -440,14 +441,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         // Verificar scope do token
         $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
         $scope = $token_info['scope'] ?? '';
-        $tem_scope_completo = strpos($scope, 'calendar') !== false && strpos($scope, 'calendar.readonly') === false;
+        $tem_scope_completo = google_calendar_has_webhook_scope($scope);
         ?>
         
         <?php if (!empty($config['webhook_resource_id'])): ?>
         <span style="margin-left: 10px; color: #10b981; font-weight: 500;">
             ✅ Webhook Ativo
-            <?php if ($config['webhook_expiration']): ?>
-            <br><small style="color: #64748b; font-weight: normal;">Expira em: <?= date('d/m/Y H:i', strtotime($config['webhook_expiration'])) ?></small>
+            <?php
+            $webhook_expiration_unix = GoogleCalendarHelper::parseExpirationToUnix($config['webhook_expiration'] ?? null);
+            if ($webhook_expiration_unix > 0):
+            ?>
+            <br><small style="color: #64748b; font-weight: normal;">Expira em: <?= date('d/m/Y H:i', $webhook_expiration_unix) ?></small>
             <?php endif; ?>
         </span>
         <?php else: ?>

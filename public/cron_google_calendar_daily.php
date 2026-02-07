@@ -10,7 +10,6 @@ ini_set('log_errors', 1);
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/google_calendar_sync_processor.php';
 
 // O processador já tem lock e trata tudo
 // Apenas marcar todos os calendários ativos como "precisa sincronizar"
@@ -33,14 +32,9 @@ try {
     error_log("[GOOGLE_CRON_DAILY] 📋 Marcados $rows_updated calendário(s) para sincronização");
     
     // Executar o processador (que já tem lock)
-    // O processador vai verificar o flag e sincronizar
-    $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
-    if (file_exists($processor_script)) {
-        // Executar via include para manter contexto
-        include $processor_script;
-    } else {
-        error_log("[GOOGLE_CRON_DAILY] ⚠️ Processador não encontrado: $processor_script");
-    }
+    require_once __DIR__ . '/google_calendar_sync_processor.php';
+    $processor_result = google_calendar_sync_processor_run($pdo);
+    error_log("[GOOGLE_CRON_DAILY] Resultado do processador: " . json_encode($processor_result));
     
     error_log("[GOOGLE_CRON_DAILY] ✅ Sincronização diária concluída");
     

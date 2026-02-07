@@ -50,7 +50,6 @@ if ($tipo === 'google_calendar_daily') {
     // Sincronização diária do Google Calendar
     try {
         require_once __DIR__ . '/core/helpers.php';
-        require_once __DIR__ . '/google_calendar_sync_processor.php';
         
         error_log("[GOOGLE_CRON_DAILY] 🔄 Iniciando sincronização diária");
         
@@ -66,22 +65,16 @@ if ($tipo === 'google_calendar_daily') {
         error_log("[GOOGLE_CRON_DAILY] 📋 Marcados $rows_updated calendário(s) para sincronização");
         
         // Executar o processador (que já tem lock)
-        $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
-        if (file_exists($processor_script)) {
-            // Capturar output do processador
-            ob_start();
-            include $processor_script;
-            $processor_output = ob_get_clean();
-        } else {
-            error_log("[GOOGLE_CRON_DAILY] ⚠️ Processador não encontrado: $processor_script");
-        }
+        require_once __DIR__ . '/google_calendar_sync_processor.php';
+        $processor_result = google_calendar_sync_processor_run($pdo);
         
         error_log("[GOOGLE_CRON_DAILY] ✅ Sincronização diária concluída");
         
         $resultado = [
-            'success' => true, 
+            'success' => !empty($processor_result['success']),
             'message' => 'Sincronização diária do Google Calendar iniciada',
-            'calendarios_marcados' => $rows_updated
+            'calendarios_marcados' => $rows_updated,
+            'processor' => $processor_result
         ];
         
         cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);
@@ -103,20 +96,13 @@ if ($tipo === 'google_calendar_sync') {
     try {
         require_once __DIR__ . '/conexao.php';
         require_once __DIR__ . '/core/helpers.php';
-
-        $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
-        if (!file_exists($processor_script)) {
-            throw new Exception('Processador não encontrado: google_calendar_sync_processor.php');
-        }
-
-        ob_start();
-        include $processor_script;
-        $out = trim((string)ob_get_clean());
+        require_once __DIR__ . '/google_calendar_sync_processor.php';
+        $processor_result = google_calendar_sync_processor_run($pdo);
 
         echo json_encode([
-            'success' => true,
+            'success' => !empty($processor_result['success']),
             'message' => 'Processador executado',
-            'output' => $out
+            'processor' => $processor_result
         ]);
     } catch (Exception $e) {
         http_response_code(500);
@@ -136,33 +122,34 @@ if ($tipo === 'google_calendar_renewal') {
         
         $helper = new GoogleCalendarHelper();
         
-        // Calcular timestamp atual em milissegundos
-        $now_ms = round(microtime(true) * 1000);
-        
-        // Calcular timestamp de 6 horas no futuro (threshold para renovação)
-        $threshold_ms = $now_ms + (6 * 60 * 60 * 1000); // 6 horas em ms
+        // Janela de renovação: webhooks que expiram nas próximas 6 horas
+        $now_unix = time();
+        $threshold_unix = $now_unix + (6 * 60 * 60);
         
         error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar");
         
-        // Buscar webhooks que expiram em menos de 6 horas
-        $now_timestamp = date('Y-m-d H:i:s', $now_ms / 1000);
-        $threshold_timestamp = date('Y-m-d H:i:s', $threshold_ms / 1000);
-        
-        $stmt = $pdo->prepare("
+        // Buscar candidatos ativos e filtrar em PHP para suportar coluna
+        // webhook_expiration em timestamp ou em milissegundos.
+        $stmt = $pdo->query("
             SELECT id, google_calendar_id, google_calendar_name, webhook_channel_id, webhook_resource_id, webhook_expiration
             FROM google_calendar_config
             WHERE ativo = TRUE 
             AND webhook_resource_id IS NOT NULL
             AND webhook_expiration IS NOT NULL
-            AND webhook_expiration > :now_ts
-            AND webhook_expiration <= :threshold_ts
-            ORDER BY webhook_expiration ASC
+            ORDER BY atualizado_em ASC
         ");
-        $stmt->execute([
-            ':now_ts' => $now_timestamp,
-            ':threshold_ts' => $threshold_timestamp
-        ]);
-        $webhooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $candidatos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $webhooks = [];
+        foreach ($candidatos as $webhook) {
+            $expira_unix = GoogleCalendarHelper::parseExpirationToUnix($webhook['webhook_expiration'] ?? null);
+            if ($expira_unix <= 0) {
+                continue;
+            }
+            if ($expira_unix > $now_unix && $expira_unix <= $threshold_unix) {
+                $webhook['_expiration_unix'] = $expira_unix;
+                $webhooks[] = $webhook;
+            }
+        }
         
         if (empty($webhooks)) {
             error_log("[GOOGLE_WATCH_RENEWAL] ✅ Nenhum webhook precisa ser renovado");
@@ -179,22 +166,20 @@ if ($tipo === 'google_calendar_renewal') {
         error_log("[GOOGLE_WATCH_RENEWAL] 📋 Encontrados " . count($webhooks) . " webhook(s) para renovar");
         
         $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
-        if (strpos($webhook_url, '/google/webhook') !== false) {
-            $webhook_url = str_replace('/google/webhook', '/google_calendar_webhook.php', $webhook_url);
-        }
+        $webhook_url = GoogleCalendarHelper::normalizeWebhookUrl($webhook_url);
         $renovados = 0;
         $erros = [];
         
         foreach ($webhooks as $webhook) {
             $calendar_id = $webhook['google_calendar_id'];
-            $expiration_date = $webhook['webhook_expiration'] ?? 'N/A';
+            $expiration_date = date('Y-m-d H:i:s', (int)($webhook['_expiration_unix'] ?? 0));
             
             error_log("[GOOGLE_WATCH_RENEWAL] 🔄 Renovando webhook para: $calendar_id (expira em: $expiration_date)");
             
             try {
                 if ($webhook['webhook_resource_id']) {
                     try {
-                        $helper->stopWebhook($webhook['webhook_resource_id']);
+                        $helper->stopWebhook($webhook['webhook_resource_id'], $webhook['webhook_channel_id'] ?? null);
                         error_log("[GOOGLE_WATCH_RENEWAL] ✅ Webhook antigo parado");
                     } catch (Exception $e) {
                         error_log("[GOOGLE_WATCH_RENEWAL] ⚠️ Erro ao parar webhook antigo (continuando): " . $e->getMessage());
@@ -441,4 +426,3 @@ if ($tipo === 'demandas_fixas') {
         ]
     ]);
 }
-

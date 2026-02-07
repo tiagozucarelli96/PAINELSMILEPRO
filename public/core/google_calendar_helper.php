@@ -8,12 +8,129 @@ class GoogleCalendarHelper {
     private $client_id;
     private $client_secret;
     private $redirect_uri;
+    private $webhook_expiration_is_timestamp = null;
+    private static $schema_checked = false;
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
         $this->client_id = getenv('GOOGLE_CLIENT_ID') ?: ($_ENV['GOOGLE_CLIENT_ID'] ?? null);
         $this->client_secret = getenv('GOOGLE_CLIENT_SECRET') ?: ($_ENV['GOOGLE_CLIENT_SECRET'] ?? null);
         $this->redirect_uri = getenv('GOOGLE_REDIRECT_URL') ?: ($_ENV['GOOGLE_REDIRECT_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/callback');
+        $this->ensureSchema();
+    }
+
+    /**
+     * Garante colunas mínimas para sincronização automática.
+     */
+    private function ensureSchema(): void {
+        if (self::$schema_checked) {
+            return;
+        }
+
+        self::$schema_checked = true;
+
+        if (!$this->pdo instanceof PDO) {
+            return;
+        }
+
+        try {
+            $this->pdo->exec("ALTER TABLE google_calendar_config ADD COLUMN IF NOT EXISTS webhook_channel_id VARCHAR(255)");
+            $this->pdo->exec("ALTER TABLE google_calendar_config ADD COLUMN IF NOT EXISTS webhook_resource_id VARCHAR(255)");
+            $this->pdo->exec("ALTER TABLE google_calendar_config ADD COLUMN IF NOT EXISTS webhook_expiration TIMESTAMP");
+            $this->pdo->exec("ALTER TABLE google_calendar_config ADD COLUMN IF NOT EXISTS precisa_sincronizar BOOLEAN DEFAULT FALSE");
+            $this->pdo->exec("UPDATE google_calendar_config SET precisa_sincronizar = FALSE WHERE precisa_sincronizar IS NULL");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_google_calendar_config_webhook ON google_calendar_config(webhook_resource_id)");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_google_calendar_config_sync ON google_calendar_config(ativo, precisa_sincronizar)");
+        } catch (Exception $e) {
+            error_log('[GOOGLE_CALENDAR_SCHEMA] Falha ao validar schema: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Normaliza URL de webhook para o endpoint real do projeto.
+     */
+    public static function normalizeWebhookUrl(string $url): string {
+        if (strpos($url, '/google/webhook') !== false) {
+            return str_replace('/google/webhook', '/google_calendar_webhook.php', $url);
+        }
+        return $url;
+    }
+
+    /**
+     * Verifica se o token possui escopo suficiente para registrar webhooks.
+     */
+    public static function hasCalendarWriteScope(?string $scope): bool {
+        $scope = trim((string)$scope);
+        if ($scope === '') {
+            return false;
+        }
+
+        $tokens = preg_split('/[\s,]+/', $scope) ?: [];
+        $allowed = [
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/calendar.events'
+        ];
+
+        foreach ($tokens as $token) {
+            if (in_array($token, $allowed, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Converte valores de expiração (timestamp ou ms) para epoch em segundos.
+     */
+    public static function parseExpirationToUnix($value): int {
+        if ($value === null || $value === '') {
+            return 0;
+        }
+
+        if (is_numeric($value)) {
+            $number = (int)$value;
+            if ($number <= 0) {
+                return 0;
+            }
+            if ($number > 9999999999) {
+                return (int)floor($number / 1000);
+            }
+            return $number;
+        }
+
+        $timestamp = strtotime((string)$value);
+        return $timestamp !== false ? $timestamp : 0;
+    }
+
+    /**
+     * Detecta tipo da coluna webhook_expiration (timestamp vs numérico).
+     */
+    private function isWebhookExpirationTimestampColumn(): bool {
+        if ($this->webhook_expiration_is_timestamp !== null) {
+            return (bool)$this->webhook_expiration_is_timestamp;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'google_calendar_config'
+                  AND column_name = 'webhook_expiration'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $data_type = strtolower((string)$stmt->fetchColumn());
+            $this->webhook_expiration_is_timestamp = (
+                strpos($data_type, 'timestamp') !== false ||
+                strpos($data_type, 'date') !== false
+            );
+        } catch (Exception $e) {
+            $this->webhook_expiration_is_timestamp = true;
+        }
+
+        return (bool)$this->webhook_expiration_is_timestamp;
     }
     
     /**
@@ -501,6 +618,7 @@ class GoogleCalendarHelper {
      */
     public function registerWebhook($calendar_id, $webhook_url) {
         $access_token = $this->getValidAccessToken();
+        $webhook_url = self::normalizeWebhookUrl((string)$webhook_url);
         
         error_log("[GOOGLE_CALENDAR_WEBHOOK] Tentando registrar webhook para: $calendar_id");
         error_log("[GOOGLE_CALENDAR_WEBHOOK] URL do webhook: $webhook_url");
@@ -560,8 +678,16 @@ class GoogleCalendarHelper {
         
         error_log("[GOOGLE_CALENDAR_WEBHOOK] Webhook registrado com sucesso. Resource ID: " . $result['resourceId']);
         
-        // Converter expiration de milissegundos para timestamp
-        $expiration_ms = isset($result['expiration']) ? (int)$result['expiration'] : null;
+        // Converter expiração para o tipo suportado pela coluna (timestamp ou numérico)
+        $expiration_ms = (isset($result['expiration']) && is_numeric($result['expiration']))
+            ? (int)$result['expiration']
+            : null;
+        $expiration_value = null;
+        if (!empty($expiration_ms)) {
+            $expiration_value = $this->isWebhookExpirationTimestampColumn()
+                ? date('Y-m-d H:i:s', (int)floor($expiration_ms / 1000))
+                : $expiration_ms;
+        }
         
         // Salvar informações do webhook no banco
         $stmt = $this->pdo->prepare("
@@ -575,7 +701,7 @@ class GoogleCalendarHelper {
         $stmt->execute([
             ':channel_id' => $channel_id,
             ':resource_id' => $result['resourceId'] ?? null,
-            ':expiration' => $expiration_ms,
+            ':expiration' => $expiration_value,
             ':calendar_id' => $calendar_id
         ]);
         
@@ -588,13 +714,14 @@ class GoogleCalendarHelper {
     /**
      * Parar webhook (stop watch)
      */
-    public function stopWebhook($resource_id) {
+    public function stopWebhook($resource_id, $channel_id = null) {
         $access_token = $this->getValidAccessToken();
         
         $url = "https://www.googleapis.com/calendar/v3/channels/stop";
         
+        $channel_id = $channel_id ?: $resource_id;
         $data = [
-            'id' => $resource_id,
+            'id' => $channel_id,
             'resourceId' => $resource_id
         ];
         

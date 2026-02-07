@@ -15,26 +15,34 @@ try {
     $pdo = $GLOBALS['pdo'];
     $helper = new GoogleCalendarHelper();
     
-    // Calcular timestamp atual em milissegundos
-    $now_ms = round(microtime(true) * 1000);
+    // Janela de renovação: próximas 6 horas
+    $now_unix = time();
+    $threshold_unix = $now_unix + (6 * 60 * 60);
     
-    // Calcular timestamp de 6 horas no futuro (threshold para renovação)
-    $threshold_ms = $now_ms + (6 * 60 * 60 * 1000); // 6 horas em ms
+    error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar (threshold: " . date('Y-m-d H:i:s', $threshold_unix) . ")");
     
-    error_log("[GOOGLE_WATCH_RENEWAL] Verificando webhooks próximos de expirar (threshold: " . date('Y-m-d H:i:s', $threshold_ms / 1000) . ")");
-    
-    // Buscar webhooks que expiram em menos de 6 horas
+    // Buscar candidatos ativos e filtrar em PHP para suportar coluna
+    // webhook_expiration em timestamp ou em milissegundos.
     $stmt = $pdo->query("
         SELECT id, google_calendar_id, google_calendar_name, webhook_channel_id, webhook_resource_id, webhook_expiration
         FROM google_calendar_config
         WHERE ativo = TRUE 
         AND webhook_resource_id IS NOT NULL
         AND webhook_expiration IS NOT NULL
-        AND webhook_expiration > $now_ms
-        AND webhook_expiration <= $threshold_ms
-        ORDER BY webhook_expiration ASC
+        ORDER BY atualizado_em ASC
     ");
-    $webhooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $candidatos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $webhooks = [];
+    foreach ($candidatos as $webhook) {
+        $expira_unix = GoogleCalendarHelper::parseExpirationToUnix($webhook['webhook_expiration'] ?? null);
+        if ($expira_unix <= 0) {
+            continue;
+        }
+        if ($expira_unix > $now_unix && $expira_unix <= $threshold_unix) {
+            $webhook['_expiration_unix'] = $expira_unix;
+            $webhooks[] = $webhook;
+        }
+    }
     
     if (empty($webhooks)) {
         error_log("[GOOGLE_WATCH_RENEWAL] ✅ Nenhum webhook precisa ser renovado");
@@ -44,13 +52,11 @@ try {
     error_log("[GOOGLE_WATCH_RENEWAL] 📋 Encontrados " . count($webhooks) . " webhook(s) para renovar");
     
     $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
-    if (strpos($webhook_url, '/google/webhook') !== false) {
-        $webhook_url = str_replace('/google/webhook', '/google_calendar_webhook.php', $webhook_url);
-    }
+    $webhook_url = GoogleCalendarHelper::normalizeWebhookUrl($webhook_url);
     
     foreach ($webhooks as $webhook) {
         $calendar_id = $webhook['google_calendar_id'];
-        $expiration_date = date('Y-m-d H:i:s', $webhook['webhook_expiration'] / 1000);
+        $expiration_date = date('Y-m-d H:i:s', (int)($webhook['_expiration_unix'] ?? 0));
         
         error_log("[GOOGLE_WATCH_RENEWAL] 🔄 Renovando webhook para: $calendar_id (expira em: $expiration_date)");
         
@@ -58,7 +64,7 @@ try {
             // Parar webhook antigo (opcional, mas recomendado)
             if ($webhook['webhook_resource_id']) {
                 try {
-                    $helper->stopWebhook($webhook['webhook_resource_id']);
+                    $helper->stopWebhook($webhook['webhook_resource_id'], $webhook['webhook_channel_id'] ?? null);
                     error_log("[GOOGLE_WATCH_RENEWAL] ✅ Webhook antigo parado");
                 } catch (Exception $e) {
                     error_log("[GOOGLE_WATCH_RENEWAL] ⚠️ Erro ao parar webhook antigo (continuando): " . $e->getMessage());

@@ -1701,7 +1701,7 @@ if ($current_page === 'dashboard') {
                 loadPageContent(currentPage);
             }
 
-            // Auto-sync Google Calendar em background (sem webhook)
+            // Auto-sync Google Calendar em background (com webhook + fallback)
             startGoogleCalendarAutoSync();
         });
 

@@ -68,16 +68,14 @@ function google_calendar_auto_sync($pdo, string $source = ''): void {
         }
 
         // Se webhook está ausente ou prestes a expirar, tentar re-registrar
-        $expiration_ms = isset($config['webhook_expiration']) ? (int)$config['webhook_expiration'] : 0;
-        $threshold_ms = (int)round((microtime(true) + 3600) * 1000); // 1h
-        if ($expiration_ms === 0 || $expiration_ms <= $threshold_ms) {
+        $expiration_unix = GoogleCalendarHelper::parseExpirationToUnix($config['webhook_expiration'] ?? null);
+        $threshold_unix = time() + 3600; // 1h
+        if ($expiration_unix === 0 || $expiration_unix <= $threshold_unix) {
             try {
                 $helper = new GoogleCalendarHelper();
                 if ($helper->isConnected()) {
                     $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
-                    if (strpos($webhook_url, '/google/webhook') !== false) {
-                        $webhook_url = str_replace('/google/webhook', '/google_calendar_webhook.php', $webhook_url);
-                    }
+                    $webhook_url = GoogleCalendarHelper::normalizeWebhookUrl($webhook_url);
                     $helper->registerWebhook($config['google_calendar_id'], $webhook_url);
                     $logWebhookCheck('ok', ['webhook_url' => $webhook_url, 'source' => $source ?: 'auto']);
                 }

@@ -1,7 +1,7 @@
--- 021_google_calendar_webhook.sql
--- Adicionar campos para webhook do Google Calendar
+-- 051_google_calendar_sync_hardening.sql
+-- Correções de schema para sincronização automática do Google Calendar.
 
-ALTER TABLE google_calendar_config 
+ALTER TABLE google_calendar_config
 ADD COLUMN IF NOT EXISTS webhook_channel_id VARCHAR(255),
 ADD COLUMN IF NOT EXISTS webhook_resource_id VARCHAR(255),
 ADD COLUMN IF NOT EXISTS webhook_expiration TIMESTAMP,

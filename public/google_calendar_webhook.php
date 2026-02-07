@@ -120,9 +120,11 @@ try {
         // Processar sincronização imediatamente (evita depender de cron)
         $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
         if (file_exists($processor_script)) {
-            ob_start();
-            include $processor_script;
-            ob_end_clean();
+            require_once $processor_script;
+            if (function_exists('google_calendar_sync_processor_run')) {
+                $processor_result = google_calendar_sync_processor_run($pdo);
+                error_log("[GOOGLE_WEBHOOK] Resultado do processador: " . json_encode($processor_result));
+            }
         } else {
             error_log("[GOOGLE_WEBHOOK] ⚠️ Processador não encontrado: $processor_script");
         }
