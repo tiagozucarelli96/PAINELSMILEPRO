@@ -191,6 +191,20 @@ try {
     // Tabela pode não existir ainda
 }
 
+// Último check de webhook
+$webhook_check = null;
+try {
+    $stmt = $pdo->query("
+        SELECT * FROM google_calendar_sync_logs 
+        WHERE tipo = 'webhook_check'
+        ORDER BY criado_em DESC 
+        LIMIT 1
+    ");
+    $webhook_check = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Exception $e) {
+    $webhook_check = null;
+}
+
 ob_start();
 ?>
 <style>
@@ -467,6 +481,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
                 Resource ID: <code><?= htmlspecialchars(substr($config['webhook_resource_id'], 0, 50)) ?>...</code>
             </p>
+            <?php endif; ?>
+            <?php if (!empty($webhook_check)): ?>
+            <?php
+                $detalhes_webhook = [];
+                if (!empty($webhook_check['detalhes'])) {
+                    $detalhes_webhook = json_decode($webhook_check['detalhes'], true) ?: [];
+                }
+                $status_webhook = $detalhes_webhook['status'] ?? 'N/A';
+                $details_msg = $detalhes_webhook['details']['mensagem'] ?? '';
+            ?>
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
+                Último check: <strong><?= htmlspecialchars($status_webhook) ?></strong>
+                em <?= htmlspecialchars(date('d/m/Y H:i', strtotime($webhook_check['criado_em'] ?? 'now'))) ?>
+            </p>
+            <?php if (!empty($details_msg)): ?>
+            <p style="margin: 0; font-size: 0.875rem; color: #b91c1c;">
+                Erro: <?= htmlspecialchars($details_msg) ?>
+            </p>
+            <?php endif; ?>
             <?php endif; ?>
             <p style="margin: 0; font-size: 0.75rem; color: #9ca3af;">
                 <strong>Nota:</strong> O webhook expira após alguns dias. Se não receber notificações, reative o webhook.

@@ -20,6 +20,38 @@ function google_calendar_auto_sync($pdo, string $source = ''): void {
             return;
         }
 
+        $logWebhookCheck = function (string $status, array $details) use ($pdo) {
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT criado_em 
+                    FROM google_calendar_sync_logs 
+                    WHERE tipo = 'webhook_check'
+                    ORDER BY criado_em DESC
+                    LIMIT 1
+                ");
+                $stmt->execute();
+                $last = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($last && !empty($last['criado_em'])) {
+                    $last_ts = strtotime((string)$last['criado_em']);
+                    if ($last_ts && (time() - $last_ts) < 1800) {
+                        return;
+                    }
+                }
+
+                $stmt = $pdo->prepare("
+                    INSERT INTO google_calendar_sync_logs (tipo, total_eventos, detalhes)
+                    VALUES ('webhook_check', 0, :detalhes)
+                ");
+                $payload = [
+                    'status' => $status,
+                    'details' => $details,
+                ];
+                $stmt->execute([':detalhes' => json_encode($payload)]);
+            } catch (Exception $e) {
+                // Ignorar falha de log para não interromper fluxo
+            }
+        };
+
         $now = time();
         $last = (int)($_SESSION['google_sync_last_trigger'] ?? 0);
         // Evita execuções repetidas na mesma sessão (5 minutos)
@@ -58,9 +90,15 @@ function google_calendar_auto_sync($pdo, string $source = ''): void {
                         $webhook_url = str_replace('/google/webhook', '/google_calendar_webhook.php', $webhook_url);
                     }
                     $helper->registerWebhook($config['google_calendar_id'], $webhook_url);
+                    $logWebhookCheck('ok', ['webhook_url' => $webhook_url, 'source' => $source ?: 'auto']);
                 }
             } catch (Exception $e) {
                 error_log("[GOOGLE_AUTO_SYNC] Falha ao renovar webhook ({$source}): " . $e->getMessage());
+                $logWebhookCheck('erro', [
+                    'mensagem' => $e->getMessage(),
+                    'webhook_url' => $webhook_url ?? null,
+                    'source' => $source ?: 'auto'
+                ]);
             }
         }
 
