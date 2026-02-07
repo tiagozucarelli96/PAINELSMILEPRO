@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'espaco_id' => $_POST['espaco_id'] ?: null,
                 'lembrete_minutos' => $_POST['lembrete_minutos'],
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
-                'forcar_conflito' => isset($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
+                'forcar_conflito' => !empty($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
             ];
             
             $response = $agenda->criarEvento($dados);
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
                 'fechou_contrato' => $fechou_contrato,
                 'fechou_ref' => $_POST['fechou_ref'] ?? null,
                 'participantes' => json_decode($_POST['participantes'] ?? '[]', true),
-                'forcar_conflito' => isset($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
+                'forcar_conflito' => !empty($_POST['forcar_conflito']) && $agenda->canForceConflict($usuario_id)
             ];
             
             $response = $agenda->atualizarEvento($evento_id, $dados);
@@ -102,11 +102,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {
             $responsavel_id = $_POST['responsavel_id'];
             $espaco_id = $_POST['espaco_id'] ?: null;
             $duracao = $_POST['duracao'] ?? 60;
-            
-            $response = [
-                'success' => true,
-                'sugestao' => $agenda->sugerirProximoHorario($responsavel_id, $espaco_id, $duracao)
-            ];
+            $inicio_base = $_POST['inicio_base'] ?? null;
+
+            $sugestao = $agenda->sugerirProximoHorario($responsavel_id, $espaco_id, $duracao, $inicio_base);
+            if ($sugestao) {
+                $response = [
+                    'success' => true,
+                    'sugestao' => $sugestao
+                ];
+            } else {
+                $response = [
+                    'success' => false,
+                    'error' => 'Nenhum horário livre encontrado para os próximos dias.'
+                ];
+            }
             break;
     }
     } catch (Exception $e) {
@@ -437,38 +446,6 @@ includeSidebar('Agenda');
             font-size: 0.9rem;
         }
 
-        .suggestion-box {
-            background: #f0f9ff;
-            border: 1px solid #bae6fd;
-            color: #0369a1;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .suggestion-box h4 {
-            margin: 0 0 10px 0;
-            font-size: 1.1rem;
-        }
-
-        .suggestion-details {
-            font-size: 0.9rem;
-        }
-
-        .btn-suggestion {
-            background: #0ea5e9;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-
-        .btn-suggestion:hover {
-            background: #0284c7;
-        }
-
         @media (max-width: 768px) {
             .main-content {
                 margin-left: 0;
@@ -603,6 +580,7 @@ includeSidebar('Agenda');
             <form id="eventForm">
                 <input type="hidden" id="eventId" name="evento_id">
                 <input type="hidden" id="eventTipo" name="tipo">
+                <input type="hidden" id="forcarConflitoInput" name="forcar_conflito" value="0">
                 
                 <div class="form-row">
                     <div class="form-group">
@@ -723,14 +701,6 @@ includeSidebar('Agenda');
                 <div id="conflictWarning" class="conflict-warning" style="display: none;">
                     <h4>⚠️ Conflito Detectado</h4>
                     <div class="conflict-details" id="conflictDetails"></div>
-                </div>
-                
-                <div id="suggestionBox" class="suggestion-box" style="display: none;">
-                    <h4>💡 Sugestão de Horário</h4>
-                    <div class="suggestion-details" id="suggestionDetails"></div>
-                    <button type="button" class="btn-suggestion" onclick="applySuggestion()">
-                        Usar Sugestão
-                    </button>
                 </div>
                 
                 <div class="form-actions">
@@ -921,6 +891,7 @@ includeSidebar('Agenda');
             const form = document.getElementById('eventForm');
             const title = document.getElementById('modalTitle');
             const tipoInput = document.getElementById('eventTipo');
+            const espacoInput = document.getElementById('espaco');
             const espacoGroup = document.getElementById('espacoGroup');
             const statusGroup = document.getElementById('statusGroup');
             const conversionGroup = document.getElementById('conversionGroup');
@@ -929,6 +900,9 @@ includeSidebar('Agenda');
             
             // Limpar formulário
             form.reset();
+            document.getElementById('forcarConflitoInput').value = '0';
+            document.getElementById('conflictWarning').style.display = 'none';
+            document.getElementById('conflictDetails').innerHTML = '';
             
             if (event) {
                 // Editar evento existente
@@ -938,6 +912,7 @@ includeSidebar('Agenda');
                 // Configurar título e campos baseado no tipo
                 if (isGoogleEvent) {
                     title.textContent = 'Evento do Google Calendar';
+                    espacoInput.required = false;
                     
                     // Ocultar campos de edição para eventos do Google
                     document.getElementById('responsavel').closest('.form-group').style.display = 'none';
@@ -1081,13 +1056,11 @@ includeSidebar('Agenda');
                 });
                 // Mostrar/ocultar campos baseado no tipo
                 espacoGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
+                espacoInput.required = eventTipo === 'visita';
                 statusGroup.style.display = 'block';
                 conversionGroup.style.display = eventTipo === 'visita' ? 'block' : 'none';
                 deleteBtn.style.display = 'block';
-                
-                if (canForceConflict()) {
-                    forceBtn.style.display = 'block';
-                }
+                forceBtn.style.display = 'none';
             } else {
                 // Novo evento
                 title.textContent = tipo === 'visita' ? 'Nova Visita' : 'Novo Bloqueio';
@@ -1101,6 +1074,7 @@ includeSidebar('Agenda');
                 }
                 
                 espacoGroup.style.display = tipo === 'visita' ? 'block' : 'none';
+                espacoInput.required = tipo === 'visita';
                 statusGroup.style.display = 'none';
                 conversionGroup.style.display = 'none';
                 deleteBtn.style.display = 'none';
@@ -1114,6 +1088,11 @@ includeSidebar('Agenda');
         function closeEventModal() {
             const modal = document.getElementById('eventModal');
             modal.classList.remove('active');
+            document.getElementById('forcarConflitoInput').value = '0';
+            document.getElementById('conflictWarning').style.display = 'none';
+            document.getElementById('conflictDetails').innerHTML = '';
+            document.getElementById('forceBtn').style.display = 'none';
+            document.getElementById('forceBtn').textContent = '⚡ Forçar Conflito';
             
             // Resetar campos do Google
             document.getElementById('googleEventGroup').style.display = 'none';
@@ -1201,7 +1180,10 @@ includeSidebar('Agenda');
             }
             
             // Calcular duração em minutos
-            const duracao = Math.round((new Date(fim) - new Date(inicio)) / (1000 * 60));
+            let duracao = Math.round((new Date(fim) - new Date(inicio)) / (1000 * 60));
+            if (!Number.isFinite(duracao) || duracao <= 0) {
+                duracao = 60;
+            }
             
             // Mostrar loading
             const suggestBtn = document.querySelector('button[onclick="suggestTime()"]');
@@ -1216,7 +1198,7 @@ includeSidebar('Agenda');
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `acao=sugerir_horario&responsavel_id=${responsavel}&espaco_id=${espaco}&duracao=${duracao}`
+                body: `acao=sugerir_horario&responsavel_id=${encodeURIComponent(responsavel)}&espaco_id=${encodeURIComponent(espaco)}&duracao=${encodeURIComponent(duracao)}&inicio_base=${encodeURIComponent(inicio || '')}`
             })
             .then(response => {
                 if (!response.ok) {
@@ -1235,7 +1217,7 @@ includeSidebar('Agenda');
                     // Mostrar feedback
                     showSuggestionFeedback('Horário sugerido aplicado com sucesso!');
                 } else {
-                    showSuggestionFeedback('Nenhum horário livre encontrado para os próximos 7 dias.');
+                    showSuggestionFeedback(data.error || 'Nenhum horário livre encontrado para os próximos dias.');
                 }
             })
             .catch(error => {
@@ -1364,30 +1346,12 @@ includeSidebar('Agenda');
             }, 3000);
         }
         
-        // Aplicar sugestão
-        function applySuggestion() {
-            fetch('agenda.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `acao=sugerir_horario&responsavel_id=${document.getElementById('responsavel').value}&espaco_id=${document.getElementById('espaco').value}&duracao=60`
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const sugestao = data.sugestao;
-                    document.getElementById('inicio').value = formatDateTimeLocal(new Date(sugestao.inicio));
-                    document.getElementById('fim').value = formatDateTimeLocal(new Date(sugestao.fim));
-                    document.getElementById('suggestionBox').style.display = 'none';
-                }
-            });
-        }
-        
         // Forçar conflito
         function forceConflict() {
-            document.getElementById('forceBtn').style.display = 'none';
-            document.getElementById('conflictWarning').style.display = 'none';
+            if (!canForceConflict()) return;
+            document.getElementById('forcarConflitoInput').value = '1';
+            document.getElementById('forceBtn').textContent = '⏳ Salvando com conflito...';
+            document.getElementById('eventForm').requestSubmit();
         }
         
         // Atualizar evento do Google Calendar
@@ -1548,6 +1512,7 @@ includeSidebar('Agenda');
                 
                 if (data.success) {
                     // Sucesso
+                    document.getElementById('forcarConflitoInput').value = '0';
                     submitBtn.innerHTML = '✅ Salvo!';
                     
                     // Mostrar mensagem suspensa
@@ -1570,28 +1535,32 @@ includeSidebar('Agenda');
                     }, 1000);
                 } else {
                     // Erro
-                    console.error('Erro ao salvar:', data.message || 'Erro desconhecido');
+                    console.error('Erro ao salvar:', data.error || data.message || 'Erro desconhecido');
                     submitBtn.innerHTML = '❌ Erro';
-                    showToast('❌ Erro ao salvar: ' + (data.message || 'Erro desconhecido'), 'error');
+                    showToast('❌ Erro ao salvar: ' + (data.error || data.message || 'Erro desconhecido'), 'error');
                     setTimeout(() => {
                         submitBtn.innerHTML = originalText;
                         submitBtn.disabled = false;
                     }, 2000);
                     
                     if (data.conflito) {
+                        document.getElementById('forcarConflitoInput').value = '0';
+                        const conflitoTitulo = data.conflito.evento_conflito_titulo ? `<br>Evento em conflito: <strong>${escapeHtml(data.conflito.evento_conflito_titulo)}</strong>` : '';
                         // Mostrar conflito
                         document.getElementById('conflictDetails').innerHTML = `
                             <strong>Conflito detectado:</strong><br>
                             ${data.conflito.conflito_responsavel ? 'Responsável já tem evento neste horário' : ''}
                             ${data.conflito.conflito_espaco ? 'Espaço já está ocupado' : ''}
+                            ${conflitoTitulo}
                         `;
                         document.getElementById('conflictWarning').style.display = 'block';
                         
                         if (canForceConflict()) {
                             document.getElementById('forceBtn').style.display = 'block';
+                            document.getElementById('forceBtn').textContent = '⚡ Salvar Mesmo Assim';
                         }
                     } else {
-                        customAlert('Erro: ' + data.error, '❌ Erro');
+                        customAlert('Erro: ' + (data.error || data.message || 'Erro desconhecido'), '❌ Erro');
                     }
                 }
             })

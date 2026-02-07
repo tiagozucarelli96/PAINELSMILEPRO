@@ -84,6 +84,21 @@ class AgendaHelper {
      */
     public function criarEvento($dados) {
         try {
+            $inicio_ts = strtotime((string)($dados['inicio'] ?? ''));
+            $fim_ts = strtotime((string)($dados['fim'] ?? ''));
+            if ($inicio_ts === false || $fim_ts === false || $fim_ts <= $inicio_ts) {
+                return [
+                    'success' => false,
+                    'error' => 'Período inválido. Ajuste data/hora de início e fim.'
+                ];
+            }
+            if (($dados['tipo'] ?? '') === 'visita' && empty($dados['espaco_id'])) {
+                return [
+                    'success' => false,
+                    'error' => 'Selecione um espaço para agendar uma visita.'
+                ];
+            }
+
             // Verificar conflitos se não forçar
             if (!$dados['forcar_conflito']) {
                 $conflito = $this->verificarConflitos(
@@ -153,6 +168,21 @@ class AgendaHelper {
      */
     public function atualizarEvento($evento_id, $dados) {
         try {
+            $inicio_ts = strtotime((string)($dados['inicio'] ?? ''));
+            $fim_ts = strtotime((string)($dados['fim'] ?? ''));
+            if ($inicio_ts === false || $fim_ts === false || $fim_ts <= $inicio_ts) {
+                return [
+                    'success' => false,
+                    'error' => 'Período inválido. Ajuste data/hora de início e fim.'
+                ];
+            }
+            if (($dados['tipo'] ?? '') === 'visita' && empty($dados['espaco_id'])) {
+                return [
+                    'success' => false,
+                    'error' => 'Selecione um espaço para agendar uma visita.'
+                ];
+            }
+
             // Verificar conflitos se não forçar
             if (!$dados['forcar_conflito']) {
                 $conflito = $this->verificarConflitos(
@@ -464,22 +494,84 @@ class AgendaHelper {
     /**
      * Sugerir próximo horário livre
      */
-    public function sugerirProximoHorario($responsavel_id, $espaco_id, $duracao_minutos = 60) {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                COALESCE(MAX(fim), NOW()) + INTERVAL '1 hour' as proximo_horario
-            FROM agenda_eventos 
-            WHERE responsavel_usuario_id = ?
-            AND status != 'cancelado'
-            AND fim >= NOW()
-        ");
-        $stmt->execute([$responsavel_id]);
-        $proximo = $stmt->fetchColumn();
-        
-        return [
-            'inicio' => $proximo,
-            'fim' => date('Y-m-d H:i:s', strtotime($proximo . " + {$duracao_minutos} minutes"))
-        ];
+    public function sugerirProximoHorario($responsavel_id, $espaco_id, $duracao_minutos = 60, $inicio_base = null) {
+        $responsavel_id = (int)$responsavel_id;
+        $espaco_id = $espaco_id ? (int)$espaco_id : null;
+        $duracao_minutos = max(15, (int)$duracao_minutos);
+
+        $agora = time();
+        $base_ts = $inicio_base ? strtotime((string)$inicio_base) : $agora;
+        if ($base_ts === false) {
+            $base_ts = $agora;
+        }
+        if ($base_ts < $agora) {
+            $base_ts = $agora;
+        }
+
+        $inicio_ts = $this->roundUpToStep($base_ts, 30 * 60);
+        $limite_busca = $inicio_ts + (14 * 24 * 60 * 60);
+
+        while ($inicio_ts < $limite_busca) {
+            $fim_ts = $inicio_ts + ($duracao_minutos * 60);
+
+            $where_espaco = '';
+            $params = [
+                ':responsavel_id' => $responsavel_id,
+                ':inicio' => date('Y-m-d H:i:s', $inicio_ts),
+                ':fim' => date('Y-m-d H:i:s', $fim_ts)
+            ];
+            if ($espaco_id !== null) {
+                $where_espaco = "
+                        OR (
+                            ae.espaco_id = :espaco_id
+                            AND ae.tipo = 'visita'
+                        )
+                ";
+                $params[':espaco_id'] = $espaco_id;
+            }
+
+            $sql = "
+                SELECT ae.id, ae.fim
+                FROM agenda_eventos ae
+                WHERE ae.status != 'cancelado'
+                  AND (
+                        ae.responsavel_usuario_id = :responsavel_id
+                        {$where_espaco}
+                  )
+                  AND ae.inicio < :fim
+                  AND ae.fim > :inicio
+                ORDER BY ae.fim ASC
+                LIMIT 1
+            ";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $conflito = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$conflito) {
+                return [
+                    'inicio' => date('Y-m-d H:i:s', $inicio_ts),
+                    'fim' => date('Y-m-d H:i:s', $fim_ts)
+                ];
+            }
+
+            $fim_conflito_ts = strtotime((string)$conflito['fim']);
+            if ($fim_conflito_ts === false || $fim_conflito_ts <= $inicio_ts) {
+                $inicio_ts += 30 * 60;
+            } else {
+                $inicio_ts = $this->roundUpToStep($fim_conflito_ts, 30 * 60);
+            }
+        }
+
+        return null;
+    }
+
+    private function roundUpToStep(int $timestamp, int $step_seconds): int {
+        $resto = $timestamp % $step_seconds;
+        if ($resto === 0) {
+            return $timestamp;
+        }
+        return $timestamp + ($step_seconds - $resto);
     }
 }
 ?>
