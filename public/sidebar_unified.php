@@ -1700,7 +1700,22 @@ if ($current_page === 'dashboard') {
                 // Para outras páginas, carregar via AJAX
                 loadPageContent(currentPage);
             }
+
+            // Auto-sync Google Calendar em background (sem webhook)
+            startGoogleCalendarAutoSync();
         });
+
+        function startGoogleCalendarAutoSync() {
+            const syncUrl = 'google_calendar_auto_sync_ping.php';
+            const run = () => {
+                fetch(syncUrl, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                }).catch(() => {});
+            };
+            run();
+            setInterval(run, 300000);
+        }
         
         // Funções do modal de pagamento
         function openPaymentModal() {
