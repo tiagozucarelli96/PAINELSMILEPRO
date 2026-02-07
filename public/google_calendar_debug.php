@@ -86,7 +86,7 @@ try {
     }
     
     // Listar calendários
-    if ($helper->isConnected()) {
+    if ($helper->isConnected() && empty($debug_info['hide_calendars'])) {
         $calendars = $helper->listCalendars();
         $debug_info['calendarios'] = $calendars['items'] ?? [];
     }
