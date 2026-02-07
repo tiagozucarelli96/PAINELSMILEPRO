@@ -10,10 +10,14 @@ require_once __DIR__ . '/google_calendar_helper.php';
 /**
  * Executa auto-sync de forma segura e com throttling por sessão.
  */
-function google_calendar_auto_sync(PDO $pdo, string $source = ''): void {
+function google_calendar_auto_sync($pdo, string $source = ''): void {
     try {
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
+        }
+
+        if (!$pdo instanceof PDO) {
+            return;
         }
 
         $now = time();
@@ -58,22 +62,32 @@ function google_calendar_auto_sync(PDO $pdo, string $source = ''): void {
         }
 
         if ($needsSync) {
+            $helper = new GoogleCalendarHelper();
+            if (!$helper->isConnected()) {
+                return;
+            }
+
+            $calendar_id = (string)$config['google_calendar_id'];
+            $sync_dias = (int)($config['sync_dias_futuro'] ?? 180);
+
+            $resultado = $helper->syncCalendarEvents($calendar_id, $sync_dias);
+
+            // Limpar flag após sincronização
             $stmt = $pdo->prepare("
                 UPDATE google_calendar_config
-                SET precisa_sincronizar = TRUE,
+                SET precisa_sincronizar = FALSE,
                     atualizado_em = NOW()
                 WHERE id = :id
             ");
             $stmt->execute([':id' => $config['id']]);
 
-            $processor_script = __DIR__ . '/../google_calendar_sync_processor.php';
-            if (file_exists($processor_script)) {
-                ob_start();
-                include $processor_script;
-                ob_end_clean();
-            } else {
-                error_log("[GOOGLE_AUTO_SYNC] Processador não encontrado: $processor_script");
-            }
+            error_log(sprintf(
+                "[GOOGLE_AUTO_SYNC] %s | Importados: %d, Atualizados: %d, Pulados: %d",
+                $source ?: 'auto',
+                $resultado['importados'] ?? 0,
+                $resultado['atualizados'] ?? 0,
+                $resultado['pulados'] ?? 0
+            ));
         }
     } catch (Exception $e) {
         error_log("[GOOGLE_AUTO_SYNC] Erro: " . $e->getMessage());

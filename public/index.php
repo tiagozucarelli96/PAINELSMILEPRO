@@ -136,6 +136,12 @@ if ((!empty($action) || $is_ajax_request) && !empty($_GET['page'])) {
     }
 }
 
+// Auto-sync Google Calendar em qualquer página autenticada (com throttling)
+if (!empty($_SESSION['logado']) && empty($action) && !$is_ajax_request) {
+    require_once __DIR__ . '/core/google_calendar_auto_sync.php';
+    google_calendar_auto_sync($GLOBALS['pdo'] ?? $pdo ?? null, 'index');
+}
+
 $page = $_GET['page'] ?? '';
 if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
