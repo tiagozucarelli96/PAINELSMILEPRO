@@ -6,3 +6,10 @@ php_value memory_limit 256M
 php_value max_execution_time 300
 php_value max_input_time 300
 
+# Rotas públicas do Google Calendar (Apache)
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^google/webhook/?$ google_calendar_webhook.php [L,QSA]
+RewriteRule ^google/callback/?$ google_callback.php [L,QSA]
+</IfModule>
+
