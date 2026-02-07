@@ -31,6 +31,11 @@ $categorias = [
     '15_anos' => ['icon' => '👑', 'label' => '15 Anos'],
     'geral' => ['icon' => '🎉', 'label' => 'Geral']
 ];
+$categorias_filtro = [
+    'infantil' => $categorias['infantil'],
+    'casamento' => $categorias['casamento'],
+    '15_anos' => $categorias['15_anos']
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
     $categoria = $_POST['categoria'] ?? '';
@@ -40,26 +45,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
 
     if (!isset($categorias[$categoria])) {
         $error = 'Categoria inválida.';
-    } elseif ($nome === '') {
-        $error = 'Nome é obrigatório.';
-    } elseif (empty($_FILES['imagem']) || $_FILES['imagem']['error'] !== UPLOAD_ERR_OK) {
-        $error = 'Selecione uma imagem válida.';
     } else {
-        $file = $_FILES['imagem'];
-        $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $uploaded_files = [];
+        if (!empty($_FILES['imagens'])) {
+            $files = $_FILES['imagens'];
+            $total = is_array($files['name']) ? count($files['name']) : 0;
+            for ($i = 0; $i < $total; $i++) {
+                $uploaded_files[] = [
+                    'name' => $files['name'][$i] ?? '',
+                    'type' => $files['type'][$i] ?? '',
+                    'tmp_name' => $files['tmp_name'][$i] ?? '',
+                    'error' => $files['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+                    'size' => $files['size'][$i] ?? 0
+                ];
+            }
+        } elseif (!empty($_FILES['imagem'])) {
+            $uploaded_files[] = $_FILES['imagem'];
+        }
 
-        if (!in_array((string)$file['type'], $allowed, true)) {
-            $error = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WEBP.';
-        } elseif ((int)$file['size'] > 10 * 1024 * 1024) {
-            $error = 'Arquivo muito grande. Máximo 10MB.';
+        if (empty($uploaded_files)) {
+            $error = 'Selecione pelo menos uma imagem.';
         } else {
-            try {
-                $uploader = new MagaluUpload();
-                $result = $uploader->upload($file, 'galeria_eventos');
+            $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            $success_count = 0;
+            $fail_messages = [];
 
-                if (empty($result['chave_storage'])) {
-                    $error = 'Erro ao fazer upload para o storage.';
-                } else {
+            foreach ($uploaded_files as $file) {
+                if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    $fail_messages[] = 'Falha ao ler uma das imagens selecionadas.';
+                    continue;
+                }
+
+                if (!in_array((string)$file['type'], $allowed, true)) {
+                    $fail_messages[] = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WEBP.';
+                    continue;
+                }
+
+                if ((int)$file['size'] > 10 * 1024 * 1024) {
+                    $fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
+                    continue;
+                }
+
+                $file_base = trim((string)pathinfo((string)($file['name'] ?? ''), PATHINFO_FILENAME));
+                $file_base = preg_replace('/[_-]+/', ' ', $file_base);
+                $file_base = preg_replace('/\s+/', ' ', (string)$file_base);
+                $nome_final = $nome !== '' ? $nome : $file_base;
+                if (count($uploaded_files) > 1 && $nome !== '' && $file_base !== '') {
+                    $nome_final = $nome . ' - ' . $file_base;
+                }
+
+                if ($nome_final === '') {
+                    $fail_messages[] = 'Não foi possível identificar o nome de uma imagem.';
+                    continue;
+                }
+
+                try {
+                    $uploader = new MagaluUpload();
+                    $result = $uploader->upload($file, 'galeria_eventos');
+
+                    if (empty($result['chave_storage'])) {
+                        $fail_messages[] = 'Erro ao fazer upload para o storage.';
+                        continue;
+                    }
+
                     $stmt = $pdo->prepare("
                         INSERT INTO eventos_galeria
                             (categoria, nome, descricao, tags, storage_key, public_url, mime_type, size_bytes, uploaded_by, uploaded_at)
@@ -68,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                     ");
                     $stmt->execute([
                         ':categoria' => $categoria,
-                        ':nome' => $nome,
+                        ':nome' => $nome_final,
                         ':descricao' => $descricao !== '' ? $descricao : null,
                         ':tags' => $tags !== '' ? $tags : null,
                         ':storage_key' => $result['chave_storage'],
@@ -77,11 +125,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         ':size_bytes' => $result['tamanho_bytes'] ?? ($file['size'] ?? null),
                         ':uploaded_by' => $user_id > 0 ? $user_id : null
                     ]);
-                    $success = 'Imagem adicionada com sucesso.';
+                    $success_count++;
+                } catch (Throwable $e) {
+                    $fail_messages[] = 'Erro ao fazer upload: ' . $e->getMessage();
                 }
-            } catch (Throwable $e) {
-                $error = 'Erro ao fazer upload: ' . $e->getMessage();
             }
+
+            if ($success_count > 0) {
+                $success = $success_count === 1
+                    ? 'Imagem adicionada com sucesso.'
+                    : $success_count . ' imagens adicionadas com sucesso.';
+            }
+
+            if (!empty($fail_messages)) {
+                $fail_messages = array_slice($fail_messages, 0, 3);
+                $error = implode(' ', $fail_messages);
+            }
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'update_meta') {
+    $id = (int)($_POST['id'] ?? 0);
+    $nome = trim((string)($_POST['nome'] ?? ''));
+    $descricao = trim((string)($_POST['descricao'] ?? ''));
+    $tags = trim((string)($_POST['tags'] ?? ''));
+
+    if ($id <= 0) {
+        $error = 'Imagem inválida.';
+    } elseif ($nome === '') {
+        $error = 'Nome é obrigatório.';
+    } else {
+        try {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_galeria
+                SET nome = :nome,
+                    descricao = :descricao,
+                    tags = :tags
+                WHERE id = :id AND deleted_at IS NULL
+            ");
+            $stmt->execute([
+                ':nome' => $nome,
+                ':descricao' => $descricao !== '' ? $descricao : null,
+                ':tags' => $tags !== '' ? $tags : null,
+                ':id' => $id
+            ]);
+            $success = 'Informações atualizadas com sucesso.';
+        } catch (Throwable $e) {
+            $error = 'Erro ao atualizar imagem: ' . $e->getMessage();
         }
     }
 }
@@ -557,7 +648,7 @@ includeSidebar('Galeria de Imagens - Eventos');
             <a href="?page=eventos_galeria" class="categoria-btn <?= $categoria_filter === '' ? 'active' : '' ?>">
                 📷 Todas (<?= array_sum($contadores) ?>)
             </a>
-            <?php foreach ($categorias as $key => $cat): ?>
+            <?php foreach ($categorias_filtro as $key => $cat): ?>
                 <a href="?page=eventos_galeria&categoria=<?= urlencode($key) ?>" class="categoria-btn <?= $categoria_filter === $key ? 'active' : '' ?>">
                     <?= $cat['icon'] ?> <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
                 </a>
@@ -586,6 +677,7 @@ includeSidebar('Galeria de Imagens - Eventos');
                     $img_id = (int)$img['id'];
                     $img_name = (string)($img['nome'] ?? '');
                     $img_desc = (string)($img['descricao'] ?? '');
+                    $img_tags = (string)($img['tags'] ?? '');
                     $img_transform = (string)($img['transform_css'] ?? '');
                     $img_src = 'eventos_galeria_imagem.php?id=' . $img_id;
                     ?>
@@ -593,7 +685,8 @@ includeSidebar('Galeria de Imagens - Eventos');
                          data-image-id="<?= $img_id ?>"
                          data-preview-src="<?= htmlspecialchars($img_src) ?>"
                          data-preview-name="<?= htmlspecialchars($img_name) ?>"
-                         data-preview-desc="<?= htmlspecialchars($img_desc) ?>">
+                         data-preview-desc="<?= htmlspecialchars($img_desc) ?>"
+                         data-preview-tags="<?= htmlspecialchars($img_tags) ?>">
                         <div class="image-wrapper">
                             <img src="<?= htmlspecialchars($img_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
@@ -646,15 +739,15 @@ includeSidebar('Galeria de Imagens - Eventos');
                     <label class="form-label">Categoria *</label>
                     <select name="categoria" class="form-select" required>
                         <option value="">Selecione...</option>
-                        <?php foreach ($categorias as $key => $cat): ?>
+                        <?php foreach ($categorias_filtro as $key => $cat): ?>
                             <option value="<?= htmlspecialchars($key) ?>"><?= htmlspecialchars($cat['icon']) ?> <?= htmlspecialchars($cat['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Nome *</label>
-                    <input type="text" name="nome" class="form-input" required>
+                    <label class="form-label">Nome (opcional para envio em massa)</label>
+                    <input type="text" name="nome" class="form-input" placeholder="Se vazio, usa o nome do arquivo">
                 </div>
 
                 <div class="form-group">
@@ -668,8 +761,8 @@ includeSidebar('Galeria de Imagens - Eventos');
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">Imagem (máx. 10MB) *</label>
-                    <input type="file" name="imagem" class="form-input" accept="image/*" required>
+                    <label class="form-label">Imagens (máx. 10MB cada) *</label>
+                    <input type="file" name="imagens[]" class="form-input" accept="image/*" multiple required>
                 </div>
 
                 <div style="display:flex;justify-content:flex-end;gap:8px;">
@@ -692,6 +785,26 @@ includeSidebar('Galeria de Imagens - Eventos');
                 <img id="previewImage" src="" alt="Preview">
             </div>
             <div class="preview-description" id="previewDescription"></div>
+            <form method="POST" id="previewForm" style="margin-top:16px;">
+                <input type="hidden" name="action" value="update_meta">
+                <input type="hidden" name="id" id="previewId" value="">
+                <div class="form-group">
+                    <label class="form-label">Nome *</label>
+                    <input type="text" name="nome" id="previewNome" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição</label>
+                    <textarea name="descricao" id="previewDescricao" class="form-textarea"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tags (separadas por vírgula)</label>
+                    <input type="text" name="tags" id="previewTags" class="form-input">
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                    <button type="button" class="btn btn-secondary" onclick="fecharModalPreview()">Fechar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -723,16 +836,24 @@ includeSidebar('Galeria de Imagens - Eventos');
         document.getElementById('modalUpload').classList.remove('show');
     }
 
-    function abrirModalPreview(src, nome, descricao) {
+    function abrirModalPreview(src, nome, descricao, tags, id) {
         const modal = document.getElementById('modalPreview');
         const title = document.getElementById('previewTitle');
         const image = document.getElementById('previewImage');
         const description = document.getElementById('previewDescription');
+        const inputId = document.getElementById('previewId');
+        const inputNome = document.getElementById('previewNome');
+        const inputDescricao = document.getElementById('previewDescricao');
+        const inputTags = document.getElementById('previewTags');
 
         title.textContent = nome || 'Imagem';
         image.src = src;
         image.alt = nome || 'Imagem';
         description.textContent = descricao || '';
+        inputId.value = id ? String(id) : '';
+        inputNome.value = nome || '';
+        inputDescricao.value = descricao || '';
+        inputTags.value = tags || '';
         modal.classList.add('show');
     }
 
@@ -811,8 +932,10 @@ includeSidebar('Galeria de Imagens - Eventos');
             const src = card.getAttribute('data-preview-src') || '';
             const nome = card.getAttribute('data-preview-name') || '';
             const descricao = card.getAttribute('data-preview-desc') || '';
+            const tags = card.getAttribute('data-preview-tags') || '';
+            const id = card.getAttribute('data-image-id') || '';
             if (src) {
-                abrirModalPreview(src, nome, descricao);
+                abrirModalPreview(src, nome, descricao, tags, id);
             }
         });
     });

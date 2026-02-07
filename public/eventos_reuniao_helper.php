@@ -181,7 +181,8 @@ function eventos_form_template_salvar(
 
     $nome = trim($nome);
     $categoria = trim($categoria) !== '' ? trim($categoria) : 'geral';
-    if (mb_strlen($nome) < 3) {
+    $nome_length = function_exists('mb_strlen') ? mb_strlen($nome) : strlen($nome);
+    if ($nome_length < 3) {
         return ['ok' => false, 'error' => 'Nome do modelo deve ter ao menos 3 caracteres'];
     }
     if (!in_array($categoria, eventos_form_template_allowed_categories(), true)) {
@@ -788,7 +789,7 @@ function eventos_reuniao_gerar_link_cliente(PDO $pdo, int $meeting_id, int $user
         }
     }
     $content_html = trim((string)($secao['content_html'] ?? ''));
-    $has_content = strip_tags($content_html) !== '';
+    $has_content = trim(strip_tags($content_html)) !== '';
     if (!$has_schema && !$has_content) {
         return ['ok' => false, 'error' => 'Salve o formulário da seção DJ antes de gerar o link para o cliente'];
     }

@@ -511,53 +511,113 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     }
     
     /* DJ Section Specific */
-    .dj-link-section {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-    
-    .dj-link-section h4 {
-        margin: 0 0 0.75rem 0;
-        font-size: 0.95rem;
-        color: #374151;
-    }
-
-    .prefill-builder {
+    .dj-builder-shell {
         background: #f8fafc;
         border: 1px solid #dbe3ef;
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 1rem;
         margin-bottom: 1rem;
     }
 
-    .prefill-builder h4 {
-        margin: 0 0 0.75rem 0;
-        font-size: 0.95rem;
+    .dj-builder-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.9rem;
+    }
+
+    .dj-builder-title {
+        margin: 0;
+        font-size: 1rem;
         color: #0f172a;
     }
 
-    .prefill-block {
+    .dj-builder-subtitle {
+        margin-top: 0.2rem;
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+
+    .dj-head-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .dj-dirty-badge {
+        display: none;
+        padding: 0.35rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: #fff7ed;
+        color: #9a3412;
+        border: 1px solid #fed7aa;
+    }
+
+    .dj-dirty-badge.show {
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .dj-step-nav {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .dj-step-btn {
+        border: 1px solid #dbe3ef;
+        background: #fff;
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .dj-step-btn:hover {
+        border-color: #93c5fd;
+    }
+
+    .dj-step-btn.active {
+        border-color: #1d4ed8;
+        background: #eff6ff;
+    }
+
+    .dj-step-btn strong {
+        display: block;
+        font-size: 0.84rem;
+        color: #0f172a;
+    }
+
+    .dj-step-btn span {
+        display: block;
+        margin-top: 0.2rem;
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .dj-step-panel {
+        display: none;
         background: #ffffff;
         border: 1px solid #dbe3ef;
         border-radius: 10px;
-        padding: 0.85rem;
-        margin-bottom: 0.85rem;
+        padding: 0.95rem;
     }
 
-    .prefill-block h5 {
+    .dj-step-panel.active {
+        display: block;
+    }
+
+    .dj-step-panel h5 {
         margin: 0 0 0.65rem 0;
-        font-size: 0.84rem;
+        font-size: 0.9rem;
         color: #1e3a8a;
         font-weight: 700;
-    }
-
-    .prefill-divider {
-        border: 0;
-        border-top: 1px dashed #cbd5e1;
-        margin: 0.7rem 0 0.95rem 0;
     }
 
     .prefill-grid {
@@ -647,7 +707,6 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     }
 
     .builder-preview-box {
-        margin-top: 0.9rem;
         background: #fff;
         border: 1px solid #dbe3ef;
         border-radius: 8px;
@@ -686,25 +745,88 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 
     .legacy-editor-toggle {
         margin: 0.75rem 0;
+        padding: 0.8rem;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid #dbe3ef;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
     }
 
     .legacy-editor-wrap {
         margin-top: 0.75rem;
     }
-    
+
     .link-display {
         display: flex;
         gap: 0.5rem;
         align-items: center;
+        flex-wrap: wrap;
     }
-    
+
     .link-input {
         flex: 1;
+        min-width: 250px;
         padding: 0.5rem;
         border: 1px solid #d1d5db;
         border-radius: 6px;
         font-size: 0.8rem;
         background: white;
+    }
+
+    .share-hint {
+        margin: 0 0 0.85rem 0;
+        color: #64748b;
+        font-size: 0.8rem;
+    }
+
+    .template-list {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+        margin-top: 0.75rem;
+    }
+
+    .template-item {
+        padding: 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
+        cursor: pointer;
+        background: #fff;
+    }
+
+    .template-item:last-child {
+        border-bottom: none;
+    }
+
+    .template-item:hover {
+        background: #f8fafc;
+    }
+
+    .template-item.selected {
+        background: #eff6ff;
+        border-left: 3px solid #1d4ed8;
+    }
+
+    .template-item strong {
+        display: block;
+        color: #0f172a;
+        font-size: 0.84rem;
+    }
+
+    .template-item span {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .template-save-grid {
+        margin-top: 0.85rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.7rem;
     }
     
     .locked-notice {
@@ -836,6 +958,14 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         }
 
         .prefill-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .template-save-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .dj-step-nav {
             grid-template-columns: 1fr;
         }
     }
@@ -998,41 +1128,35 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         <div class="tab-content <?= $key === 'decoracao' ? 'active' : '' ?>" id="tab-<?= $key ?>">
             
             <?php if ($key === 'dj_protocolo'): ?>
-            <!-- Seção DJ - Link para cliente -->
-            <div class="dj-link-section">
-                <h4>🔗 Link para Cliente Preencher</h4>
-                <div class="link-display">
-                    <input type="text" id="clienteLinkInput" class="link-input" readonly placeholder="Clique em 'Gerar Link' para criar">
-                    <button type="button" class="btn btn-primary" onclick="gerarLinkCliente()">Gerar Link</button>
-                    <button type="button" class="btn btn-secondary" onclick="copiarLink()" id="btnCopiar" style="display: none;">📋 Copiar</button>
-                </div>
-            </div>
-
-            <div class="prefill-builder">
-                <h4>🧩 Construtor de Formulário</h4>
-
-                <div class="prefill-block">
-                    <h5>Modelos salvos</h5>
-                    <div class="prefill-grid">
-                        <div class="prefill-field" style="grid-column: 1 / -1;">
-                            <label for="savedTemplateSelect">Escolher modelo</label>
-                            <select id="savedTemplateSelect" <?= $is_locked ? 'disabled' : '' ?>>
-                                <option value="">Selecionar modelo salvo...</option>
-                                <?php foreach ($form_templates as $template): ?>
-                                    <option value="<?= (int)$template['id'] ?>"><?= htmlspecialchars((string)$template['nome']) ?><?= !empty($template['categoria']) ? ' - ' . htmlspecialchars((string)$template['categoria']) : '' ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+            <div class="dj-builder-shell">
+                <div class="dj-builder-head">
+                    <div>
+                        <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos</h4>
+                        <div class="dj-builder-subtitle">Fluxo em etapas para montar, revisar e compartilhar com o cliente.</div>
                     </div>
-                    <div class="prefill-actions">
-                        <button type="button" class="btn btn-secondary" onclick="carregarModeloSalvo()" <?= $is_locked ? 'disabled' : '' ?>>📥 Carregar modelo salvo</button>
+                    <div class="dj-head-actions">
+                        <span id="djDirtyBadge" class="dj-dirty-badge">Alterações não salvas</span>
+                        <button type="button" class="btn btn-secondary" onclick="openTemplatesModal()" <?= $is_locked ? 'disabled' : '' ?>>🗂️ Modelos</button>
                     </div>
                 </div>
 
-                <hr class="prefill-divider">
+                <div class="dj-step-nav">
+                    <button type="button" class="dj-step-btn active" id="djStepBtn1" onclick="switchDjStep(1)">
+                        <strong>Etapa 1: Construir</strong>
+                        <span>Adicionar e organizar campos</span>
+                    </button>
+                    <button type="button" class="dj-step-btn" id="djStepBtn2" onclick="switchDjStep(2)">
+                        <strong>Etapa 2: Pré-visualizar</strong>
+                        <span>Ver o formulário como cliente</span>
+                    </button>
+                    <button type="button" class="dj-step-btn" id="djStepBtn3" onclick="switchDjStep(3)">
+                        <strong>Etapa 3: Compartilhar</strong>
+                        <span>Gerar link público para envio</span>
+                    </button>
+                </div>
 
-                <div class="prefill-block">
-                    <h5>Criação e preenchimento</h5>
+                <div id="djStepPanel1" class="dj-step-panel active">
+                    <h5>Montagem do formulário</h5>
                     <div class="prefill-grid">
                         <div class="prefill-field">
                             <label for="fieldType">Tipo de campo</label>
@@ -1064,38 +1188,32 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     <div class="prefill-actions">
                         <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
                         <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
+                        <button type="button" class="btn btn-secondary" onclick="switchDjStep(2)">➡️ Ir para prévia</button>
                     </div>
+                    <p class="prefill-note">Monte o formulário por campos. Clique em salvar abaixo para liberar o compartilhamento.</p>
+                    <div id="builderFieldsList" class="builder-fields-list"></div>
                 </div>
 
-                <hr class="prefill-divider">
-
-                <div class="prefill-block">
-                    <h5>Salvar modelo atual</h5>
-                    <div class="prefill-grid">
-                        <div class="prefill-field">
-                            <label for="templateCategory">Categoria do modelo</label>
-                            <select id="templateCategory" <?= $is_locked ? 'disabled' : '' ?>>
-                                <option value="15anos">15 anos</option>
-                                <option value="casamento">Casamento</option>
-                                <option value="infantil">Infantil</option>
-                                <option value="geral">Geral</option>
-                            </select>
-                        </div>
-                        <div class="prefill-field" style="grid-column: 1 / -1;">
-                            <label for="templateSaveName">Nome para salvar modelo</label>
-                            <input id="templateSaveName" type="text" placeholder="Ex.: 15 anos completo padrão Smile" <?= $is_locked ? 'disabled' : '' ?>>
-                        </div>
+                <div id="djStepPanel2" class="dj-step-panel">
+                    <h5>Pré-visualização do formulário do cliente</h5>
+                    <div class="builder-preview-box">
+                        <div class="builder-preview-title">Visualização simulada</div>
+                        <div id="builderPreview"></div>
                     </div>
                     <div class="prefill-actions">
-                        <button type="button" class="btn btn-secondary" onclick="salvarModeloAtual()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar como modelo</button>
+                        <button type="button" class="btn btn-secondary" onclick="switchDjStep(1)">⬅️ Voltar para construção</button>
+                        <button type="button" class="btn btn-secondary" onclick="switchDjStep(3)">➡️ Ir para compartilhamento</button>
                     </div>
                 </div>
 
-                <p class="prefill-note">Monte o formulário por campos (estilo Google Forms). Você pode salvar modelos e reutilizar nos próximos eventos.</p>
-                <div id="builderFieldsList" class="builder-fields-list"></div>
-                <div class="builder-preview-box">
-                    <div class="builder-preview-title">Pré-visualização do formulário do cliente</div>
-                    <div id="builderPreview"></div>
+                <div id="djStepPanel3" class="dj-step-panel">
+                    <h5>Compartilhar com cliente</h5>
+                    <p class="share-hint" id="shareHint">Salve a seção para gerar ou atualizar o link público.</p>
+                    <div class="link-display">
+                        <input type="text" id="clienteLinkInput" class="link-input" readonly placeholder="Clique em 'Gerar Link' para criar">
+                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente()" id="btnGerarLink" <?= $is_locked ? 'disabled' : '' ?>>Gerar Link</button>
+                        <button type="button" class="btn btn-secondary" onclick="copiarLink()" id="btnCopiar" style="display: none;">📋 Copiar</button>
+                    </div>
                 </div>
             </div>
             <?php endif; ?>
@@ -1115,7 +1233,11 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             
             <?php if ($key === 'dj_protocolo'): ?>
             <div class="legacy-editor-toggle">
-                <button type="button" class="btn btn-secondary" onclick="toggleLegacyEditor()">📝 Mostrar/ocultar editor avançado</button>
+                <div>
+                    <strong style="font-size: 0.85rem; color: #0f172a;">Modo avançado (fallback)</strong>
+                    <div style="font-size: 0.76rem; color: #64748b; margin-top: 0.1rem;">Use apenas quando precisar editar HTML livre em vez do construtor por campos.</div>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="toggleLegacyEditor()" id="btnToggleLegacyEditor">📝 Abrir modo avançado</button>
             </div>
             <?php endif; ?>
             <?php $legacy_wrap_attrs = ($key === 'dj_protocolo') ? ' id="legacyEditorWrapDj" style="display:none;"' : ''; ?>
@@ -1131,7 +1253,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             
             <div class="section-actions">
                 <?php if (!$is_locked): ?>
-                <button type="button" class="btn btn-primary" onclick="salvarSecao('<?= $key ?>')">💾 Salvar</button>
+                <button type="button" class="btn btn-primary" onclick="salvarSecao('<?= $key ?>')" <?= $key === 'dj_protocolo' ? 'id="btnSalvarSecaoDj"' : '' ?>>💾 Salvar</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary" onclick="verVersoes('<?= $key ?>')">📋 Histórico de Versões</button>
             </div>
@@ -1155,8 +1277,43 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     </div>
 </div>
 
+<div class="modal-overlay" id="modalTemplates">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>🗂️ Modelos de Formulário</h3>
+            <button type="button" class="modal-close" onclick="closeTemplatesModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-top: 0; color: #64748b; font-size: 0.85rem;">Carregue um modelo salvo, salve o atual como novo ou sobrescreva um modelo existente.</p>
+            <div class="template-list" id="templatesList"></div>
+            <div class="template-save-grid">
+                <div class="prefill-field">
+                    <label for="templateCategory">Categoria do modelo</label>
+                    <select id="templateCategory">
+                        <option value="15anos">15 anos</option>
+                        <option value="casamento">Casamento</option>
+                        <option value="infantil">Infantil</option>
+                        <option value="geral">Geral</option>
+                    </select>
+                </div>
+                <div class="prefill-field">
+                    <label for="templateSaveName">Nome para salvar modelo</label>
+                    <input id="templateSaveName" type="text" placeholder="Ex.: 15 anos completo padrão Smile">
+                </div>
+            </div>
+            <div class="prefill-actions">
+                <button type="button" class="btn btn-secondary" onclick="applySelectedTemplate()">📥 Carregar selecionado</button>
+                <button type="button" class="btn btn-secondary" onclick="saveTemplate(false)">💾 Salvar novo</button>
+                <button type="button" class="btn btn-secondary" onclick="saveTemplate(true)">♻️ Sobrescrever selecionado</button>
+                <button type="button" class="btn btn-secondary" onclick="archiveSelectedTemplate()">🗑️ Arquivar selecionado</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
+const djSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -1164,16 +1321,22 @@ let searchAbortController = null;
 let eventsCacheLoaded = false;
 let eventsMasterCache = [];
 const eventsQueryCache = new Map();
-const savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
+let savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
     return [
         'id' => (int)($template['id'] ?? 0),
         'nome' => (string)($template['nome'] ?? ''),
         'categoria' => (string)($template['categoria'] ?? 'geral'),
+        'updated_at' => (string)($template['updated_at'] ?? ''),
+        'created_by_user_id' => (int)($template['created_by_user_id'] ?? 0),
         'schema' => is_array($template['schema'] ?? null) ? $template['schema'] : [],
     ];
 }, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjFormSchema = <?= json_encode($dj_form_schema_initial, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let formBuilderFields = Array.isArray(initialDjFormSchema) ? initialDjFormSchema.slice() : [];
+let selectedTemplateId = null;
+let currentDjStep = 1;
+let formBuilderDirty = false;
+let lastSavedFormSignature = '';
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -1263,6 +1426,15 @@ function initEditoresReuniao() {
             readonly: isReadonly,
             paste_data_images: true,
             automatic_uploads: true,
+            setup: function (editor) {
+                if (section !== 'dj_protocolo') return;
+                editor.on('input change keyup', function () {
+                    const wrap = document.getElementById('legacyEditorWrapDj');
+                    if (wrap && wrap.style.display !== 'none') {
+                        setDjDirtyState(true);
+                    }
+                });
+            },
             images_upload_handler: function (blobInfo, progress) {
                 return new Promise(function (resolve, reject) {
                     var xhr = new XMLHttpRequest();
@@ -1524,8 +1696,10 @@ function onChangeFieldType() {
 
 function normalizeFormSchema(schema) {
     if (!Array.isArray(schema)) return [];
+    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
     return schema.map((field) => {
-        const type = String(field.type || 'text');
+        let type = String(field.type || 'text').trim().toLowerCase();
+        if (!allowedTypes.includes(type)) type = 'text';
         const options = Array.isArray(field.options) ? field.options.map((v) => String(v).trim()).filter(Boolean) : [];
         return {
             id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
@@ -1553,6 +1727,77 @@ function getFieldTypeLabel(type) {
     return map[type] || type;
 }
 
+function stripHtmlToText(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html || '';
+    return (div.textContent || div.innerText || '').trim();
+}
+
+function hasUsefulSchemaFields(schema) {
+    if (!Array.isArray(schema)) return false;
+    return schema.some((field) => {
+        const type = String(field && field.type ? field.type : '').toLowerCase();
+        const label = String(field && field.label ? field.label : '').trim();
+        return ['text', 'textarea', 'yesno', 'select', 'file'].includes(type) && label !== '';
+    });
+}
+
+function getSchemaSignature(schema) {
+    return JSON.stringify(normalizeFormSchema(schema || []));
+}
+
+function setDjDirtyState(isDirty) {
+    formBuilderDirty = !!isDirty;
+    const badge = document.getElementById('djDirtyBadge');
+    if (badge) {
+        badge.classList.toggle('show', formBuilderDirty);
+    }
+    updateShareAvailability();
+}
+
+function refreshDirtyStateFromSchema() {
+    const currentSignature = getSchemaSignature(formBuilderFields);
+    setDjDirtyState(currentSignature !== lastSavedFormSignature);
+}
+
+function updateShareAvailability() {
+    const shareBtn = document.getElementById('btnGerarLink');
+    const hint = document.getElementById('shareHint');
+    if (!shareBtn) return;
+
+    const hasSchema = hasUsefulSchemaFields(formBuilderFields);
+    const hasLegacyContent = stripHtmlToText(getEditorContent('dj_protocolo')) !== '';
+    const hasAnySavedCandidate = hasSchema || hasLegacyContent;
+
+    let disabled = false;
+    let hintText = 'Salve a seção para gerar ou atualizar o link público.';
+
+    if (djSectionLocked) {
+        disabled = true;
+        hintText = 'A seção está travada. Destrave para editar ou gerar novo link.';
+    } else if (formBuilderDirty) {
+        disabled = true;
+        hintText = 'Existem alterações não salvas. Clique em Salvar para habilitar o compartilhamento.';
+    } else if (!hasAnySavedCandidate) {
+        disabled = true;
+        hintText = 'Monte o formulário (ou use modo avançado) e salve para liberar o compartilhamento.';
+    }
+
+    shareBtn.disabled = disabled;
+    if (hint) hint.textContent = hintText;
+}
+
+function switchDjStep(step) {
+    const normalized = [1, 2, 3].includes(Number(step)) ? Number(step) : 1;
+    currentDjStep = normalized;
+    [1, 2, 3].forEach((idx) => {
+        const btn = document.getElementById('djStepBtn' + idx);
+        const panel = document.getElementById('djStepPanel' + idx);
+        if (btn) btn.classList.toggle('active', idx === normalized);
+        if (panel) panel.classList.toggle('active', idx === normalized);
+    });
+}
+
 function renderFormBuilderUI() {
     const list = document.getElementById('builderFieldsList');
     const preview = document.getElementById('builderPreview');
@@ -1572,10 +1817,10 @@ function renderFormBuilderUI() {
                         </div>
                     </div>
                     <div class="builder-field-actions">
-                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, -1)">↑</button>
-                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, 1)">↓</button>
-                        <button type="button" class="btn btn-secondary" onclick="alternarObrigatorioCampo(${idx})">Obrig.</button>
-                        <button type="button" class="btn btn-danger" onclick="removerCampoBuilder(${idx})">Excluir</button>
+                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, -1)" ${djSectionLocked ? 'disabled' : ''}>↑</button>
+                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, 1)" ${djSectionLocked ? 'disabled' : ''}>↓</button>
+                        <button type="button" class="btn btn-secondary" onclick="alternarObrigatorioCampo(${idx})" ${djSectionLocked ? 'disabled' : ''}>Obrig.</button>
+                        <button type="button" class="btn btn-danger" onclick="removerCampoBuilder(${idx})" ${djSectionLocked ? 'disabled' : ''}>Excluir</button>
                     </div>
                 </div>
             `).join('');
@@ -1617,6 +1862,7 @@ function renderFormBuilderUI() {
     if (editorHtml) {
         setEditorContent(editorHtml, 'dj_protocolo');
     }
+    updateShareAvailability();
 }
 
 function buildSchemaHtmlForStorage(schema) {
@@ -1653,6 +1899,7 @@ function buildSchemaHtmlForStorage(schema) {
 }
 
 function adicionarCampoFormulario() {
+    if (djSectionLocked) return;
     const fieldTypeEl = document.getElementById('fieldType');
     const fieldQuestionEl = document.getElementById('fieldQuestion');
     const fieldOptionsEl = document.getElementById('fieldOptions');
@@ -1686,11 +1933,13 @@ function adicionarCampoFormulario() {
     formBuilderFields.push(field);
     renderFormBuilderUI();
     hideLegacyEditorIfSchemaExists();
+    setDjDirtyState(true);
     if (fieldQuestionEl) fieldQuestionEl.value = '';
     if (fieldOptionsEl) fieldOptionsEl.value = '';
 }
 
 function inserirSeparadorFormulario() {
+    if (djSectionLocked) return;
     formBuilderFields.push({
         id: 'f_' + Math.random().toString(36).slice(2, 10),
         type: 'divider',
@@ -1700,15 +1949,19 @@ function inserirSeparadorFormulario() {
     });
     renderFormBuilderUI();
     hideLegacyEditorIfSchemaExists();
+    setDjDirtyState(true);
 }
 
 function removerCampoBuilder(index) {
+    if (djSectionLocked) return;
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
     formBuilderFields.splice(index, 1);
     renderFormBuilderUI();
+    setDjDirtyState(true);
 }
 
 function moverCampoBuilder(index, direction) {
+    if (djSectionLocked) return;
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
     const target = index + direction;
     if (target < 0 || target >= formBuilderFields.length) return;
@@ -1716,68 +1969,142 @@ function moverCampoBuilder(index, direction) {
     formBuilderFields[index] = formBuilderFields[target];
     formBuilderFields[target] = item;
     renderFormBuilderUI();
+    setDjDirtyState(true);
 }
 
 function alternarObrigatorioCampo(index) {
+    if (djSectionLocked) return;
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
     const field = formBuilderFields[index];
     if (!field || field.type === 'section' || field.type === 'divider') return;
     field.required = !field.required;
     renderFormBuilderUI();
+    setDjDirtyState(true);
 }
 
-function refreshSavedTemplateSelect(selectedId = null) {
-    const select = document.getElementById('savedTemplateSelect');
-    if (!select) return;
-
-    const current = selectedId !== null ? String(selectedId) : String(select.value || '');
-    const options = ['<option value="">Selecionar modelo salvo...</option>'];
-    savedFormTemplates.forEach((template) => {
-        const selected = String(template.id) === current ? ' selected' : '';
-        const label = `${template.nome}${template.categoria ? ' - ' + template.categoria : ''}`;
-        options.push(`<option value="${template.id}"${selected}>${escapeHtmlForField(label)}</option>`);
-    });
-    select.innerHTML = options.join('');
-}
-
-function carregarModeloSalvo() {
-    const select = document.getElementById('savedTemplateSelect');
-    if (!select || !select.value) {
-        alert('Selecione um modelo salvo.');
+function renderTemplatesList() {
+    const list = document.getElementById('templatesList');
+    if (!list) return;
+    if (!Array.isArray(savedFormTemplates) || savedFormTemplates.length === 0) {
+        list.innerHTML = '<div style="padding: 0.75rem; color: #64748b; font-size: 0.85rem;">Nenhum modelo salvo.</div>';
         return;
     }
-    const template = savedFormTemplates.find((item) => String(item.id) === String(select.value));
+    list.innerHTML = savedFormTemplates.map((template) => {
+        const isSelected = Number(selectedTemplateId || 0) === Number(template.id);
+        const stamp = template.updated_at ? formatDate(template.updated_at) : 'Sem data';
+        return `
+            <div class="template-item ${isSelected ? 'selected' : ''}" onclick="selectTemplate(${Number(template.id)})">
+                <strong>${escapeHtmlForField(String(template.nome || 'Modelo sem nome'))}</strong>
+                <span>${escapeHtmlForField(String(template.categoria || 'geral'))} • Atualizado em ${escapeHtmlForField(stamp)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function selectTemplate(templateId) {
+    selectedTemplateId = Number(templateId || 0) || null;
+    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
+    const nameInput = document.getElementById('templateSaveName');
+    const categoryInput = document.getElementById('templateCategory');
+    if (template) {
+        if (nameInput) nameInput.value = String(template.nome || '');
+        if (categoryInput) categoryInput.value = String(template.categoria || 'geral');
+    }
+    renderTemplatesList();
+}
+
+async function fetchTemplates() {
+    const formData = new FormData();
+    formData.append('action', 'listar_templates_form');
+    const resp = await fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+        throw new Error(data.error || 'Erro ao listar modelos');
+    }
+    const templates = Array.isArray(data.templates) ? data.templates : [];
+    savedFormTemplates = templates.map((template) => ({
+        id: Number(template.id || 0),
+        nome: String(template.nome || ''),
+        categoria: String(template.categoria || 'geral'),
+        updated_at: String(template.updated_at || ''),
+        created_by_user_id: Number(template.created_by_user_id || 0),
+        schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
+    }));
+    if (selectedTemplateId) {
+        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(selectedTemplateId));
+        if (!exists) selectedTemplateId = null;
+    }
+    renderTemplatesList();
+}
+
+async function openTemplatesModal() {
+    if (djSectionLocked) return;
+    try {
+        await fetchTemplates();
+        document.getElementById('modalTemplates').classList.add('show');
+    } catch (err) {
+        alert(err.message || 'Erro ao abrir modelos');
+    }
+}
+
+function closeTemplatesModal() {
+    const modal = document.getElementById('modalTemplates');
+    if (modal) modal.classList.remove('show');
+}
+
+function applySelectedTemplate() {
+    if (djSectionLocked) return;
+    if (!selectedTemplateId) {
+        alert('Selecione um modelo para carregar.');
+        return;
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
     if (!template) {
         alert('Modelo não encontrado.');
         return;
     }
-    const replace = formBuilderFields.length === 0 || confirm('Substituir o formulário atual pelo modelo salvo?');
-    if (!replace) return;
+    if (formBuilderDirty && !confirm('Existem alterações não salvas. Deseja substituir pelo modelo selecionado?')) {
+        return;
+    }
     formBuilderFields = normalizeFormSchema(template.schema || []);
     renderFormBuilderUI();
     hideLegacyEditorIfSchemaExists();
+    setDjDirtyState(true);
+    closeTemplatesModal();
+    switchDjStep(1);
 }
 
-async function salvarModeloAtual() {
-    if (!Array.isArray(formBuilderFields) || formBuilderFields.length === 0) {
-        alert('Adicione campos no formulário antes de salvar como modelo.');
+async function saveTemplate(overwriteSelected) {
+    if (djSectionLocked) return;
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields.length || !hasUsefulSchemaFields(formBuilderFields)) {
+        alert('Adicione ao menos um campo preenchível antes de salvar o modelo.');
         return;
     }
     const nameInput = document.getElementById('templateSaveName');
     const categoryInput = document.getElementById('templateCategory');
     const templateName = (nameInput ? nameInput.value : '').trim();
-    if (!templateName) {
-        alert('Informe um nome para salvar o modelo.');
+    const templateCategory = (categoryInput ? categoryInput.value : 'geral') || 'geral';
+    if (!templateName || templateName.length < 3) {
+        alert('Informe um nome com no mínimo 3 caracteres.');
         return;
     }
-    const templateCategory = (categoryInput ? categoryInput.value : 'geral') || 'geral';
+    if (overwriteSelected && !selectedTemplateId) {
+        alert('Selecione um modelo para sobrescrever.');
+        return;
+    }
 
     try {
         const formData = new FormData();
         formData.append('action', 'salvar_template_form');
         formData.append('template_name', templateName);
         formData.append('template_category', templateCategory);
-        formData.append('schema_json', JSON.stringify(formBuilderFields));
+        formData.append('schema_json', JSON.stringify(normalizeFormSchema(formBuilderFields)));
+        if (overwriteSelected && selectedTemplateId) {
+            formData.append('template_id', String(selectedTemplateId));
+        }
 
         const resp = await fetch(window.location.href, {
             method: 'POST',
@@ -1789,36 +2116,75 @@ async function salvarModeloAtual() {
             return;
         }
 
-        const existing = savedFormTemplates.findIndex((item) => String(item.id) === String(data.template.id));
-        const payload = {
-            id: Number(data.template.id),
-            nome: String(data.template.nome || templateName),
-            categoria: String(data.template.categoria || templateCategory),
-            schema: Array.isArray(data.template.schema) ? data.template.schema : formBuilderFields.slice()
-        };
-        if (existing >= 0) {
-            savedFormTemplates[existing] = payload;
-        } else {
-            savedFormTemplates.unshift(payload);
+        selectedTemplateId = Number(data.template.id || 0) || null;
+        await fetchTemplates();
+        if (selectedTemplateId) {
+            selectTemplate(selectedTemplateId);
         }
-        refreshSavedTemplateSelect(payload.id);
-        alert('Modelo salvo com sucesso!');
+        alert(overwriteSelected ? 'Modelo atualizado com sucesso!' : 'Modelo salvo com sucesso!');
     } catch (err) {
         alert('Erro ao salvar modelo: ' + err.message);
     }
 }
 
+async function archiveSelectedTemplate() {
+    if (djSectionLocked) return;
+    if (!selectedTemplateId) {
+        alert('Selecione um modelo para arquivar.');
+        return;
+    }
+    if (!confirm('Arquivar este modelo?')) {
+        return;
+    }
+    try {
+        const formData = new FormData();
+        formData.append('action', 'arquivar_template_form');
+        formData.append('template_id', String(selectedTemplateId));
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert(data.error || 'Erro ao arquivar modelo');
+            return;
+        }
+        selectedTemplateId = null;
+        await fetchTemplates();
+        alert('Modelo arquivado.');
+    } catch (err) {
+        alert('Erro ao arquivar modelo: ' + err.message);
+    }
+}
+
 function toggleLegacyEditor() {
     const wrap = document.getElementById('legacyEditorWrapDj');
+    const btn = document.getElementById('btnToggleLegacyEditor');
     if (!wrap) return;
-    wrap.style.display = (wrap.style.display === 'none') ? 'block' : 'none';
+    const willOpen = wrap.style.display === 'none';
+    if (willOpen && Array.isArray(formBuilderFields) && formBuilderFields.length > 0) {
+        const confirmSwitch = confirm('Ao abrir o modo avançado, os campos do construtor serão limpos para evitar conflito. Deseja continuar?');
+        if (!confirmSwitch) {
+            return;
+        }
+        formBuilderFields = [];
+        renderFormBuilderUI();
+        setDjDirtyState(true);
+    }
+    wrap.style.display = willOpen ? 'block' : 'none';
+    if (btn) {
+        btn.textContent = willOpen ? '📝 Fechar modo avançado' : '📝 Abrir modo avançado';
+    }
+    updateShareAvailability();
 }
 
 function hideLegacyEditorIfSchemaExists() {
     const wrap = document.getElementById('legacyEditorWrapDj');
+    const btn = document.getElementById('btnToggleLegacyEditor');
     if (!wrap) return;
     if (Array.isArray(formBuilderFields) && formBuilderFields.length > 0) {
         wrap.style.display = 'none';
+        if (btn) btn.textContent = '📝 Abrir modo avançado';
     }
 }
 
@@ -1865,6 +2231,11 @@ async function salvarSecao(section) {
         
         if (data.ok) {
             alert('Salvo com sucesso! Versão #' + data.version);
+            if (section === 'dj_protocolo') {
+                lastSavedFormSignature = getSchemaSignature(formBuilderFields);
+                setDjDirtyState(false);
+                updateShareAvailability();
+            }
         } else {
             alert(data.error || 'Erro ao salvar');
         }
@@ -1875,6 +2246,14 @@ async function salvarSecao(section) {
 
 // Gerar link para cliente
 async function gerarLinkCliente() {
+    updateShareAvailability();
+    const btn = document.getElementById('btnGerarLink');
+    if (btn && btn.disabled) {
+        const hint = document.getElementById('shareHint');
+        alert(hint ? hint.textContent : 'Salve a seção antes de compartilhar com o cliente.');
+        return;
+    }
+
     try {
         const formData = new FormData();
         formData.append('action', 'gerar_link_cliente');
@@ -1903,6 +2282,20 @@ async function gerarLinkCliente() {
 
 function copiarLink() {
     const input = document.getElementById('clienteLinkInput');
+    if (!input || !input.value) {
+        alert('Nenhum link para copiar.');
+        return;
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            alert('Link copiado!');
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            alert('Link copiado!');
+        });
+        return;
+    }
     input.select();
     document.execCommand('copy');
     alert('Link copiado!');
@@ -2040,8 +2433,26 @@ async function atualizarStatus(status) {
 
 function formatDate(dateStr) {
     const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) {
+        return '-';
+    }
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
+
+window.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'modalVersoes') {
+        fecharModal();
+    }
+    if (e.target && e.target.id === 'modalTemplates') {
+        closeTemplatesModal();
+    }
+});
+
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    fecharModal();
+    closeTemplatesModal();
+});
 
 function bindSearchEvents() {
     const searchInput = document.getElementById('eventSearch');
@@ -2068,10 +2479,23 @@ function initDjBuilderIfExists() {
     const hasBuilder = document.getElementById('builderFieldsList') !== null;
     if (!hasBuilder) return;
     formBuilderFields = normalizeFormSchema(formBuilderFields);
-    refreshSavedTemplateSelect();
+    lastSavedFormSignature = getSchemaSignature(formBuilderFields);
     renderFormBuilderUI();
     hideLegacyEditorIfSchemaExists();
+    setDjDirtyState(false);
+    switchDjStep(currentDjStep);
     onChangeFieldType();
+
+    const legacyTextarea = document.getElementById('editor-dj_protocolo');
+    if (legacyTextarea && legacyTextarea.dataset.dirtyBound !== '1') {
+        legacyTextarea.addEventListener('input', function () {
+            const wrap = document.getElementById('legacyEditorWrapDj');
+            if (wrap && wrap.style.display !== 'none') {
+                setDjDirtyState(true);
+            }
+        });
+        legacyTextarea.dataset.dirtyBound = '1';
+    }
 }
 
 // Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)

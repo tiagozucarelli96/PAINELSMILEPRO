@@ -16,6 +16,11 @@ $categorias = [
     '15_anos' => ['icon' => '👑', 'label' => '15 Anos'],
     'geral' => ['icon' => '🎉', 'label' => 'Geral']
 ];
+$categorias_filtro = [
+    'infantil' => $categorias['infantil'],
+    'casamento' => $categorias['casamento'],
+    '15_anos' => $categorias['15_anos']
+];
 
 $categoria_filter = $_GET['categoria'] ?? '';
 $search = trim((string)($_GET['search'] ?? ''));
@@ -380,7 +385,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 <a href="?page=eventos_galeria_public" class="cat <?= $categoria_filter === '' ? 'active' : '' ?>">
                     📷 Todas (<?= array_sum($contadores) ?>)
                 </a>
-                <?php foreach ($categorias as $key => $cat): ?>
+                <?php foreach ($categorias_filtro as $key => $cat): ?>
                     <a href="?page=eventos_galeria_public&categoria=<?= urlencode($key) ?>" class="cat <?= $categoria_filter === $key ? 'active' : '' ?>">
                         <?= htmlspecialchars($cat['icon']) ?> <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
                     </a>
