@@ -1146,7 +1146,8 @@ includeSidebar('Agenda');
         // Toggle filtros
         function toggleFilters() {
             const filters = document.getElementById('filters');
-            filters.style.display = filters.style.display === 'none' ? 'block' : 'none';
+            const isHidden = filters.style.display === 'none' || filters.style.display === '';
+            filters.style.display = isHidden ? 'flex' : 'none';
         }
         
         // Aplicar filtros

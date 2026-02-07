@@ -20,7 +20,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 }
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)($_SESSION['id'] ?? 0);
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
 $is_admin = vendas_is_admin(); // Usar função centralizada
 $perm_comercial = !empty($_SESSION['perm_comercial']);
 $admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $_POST['admin_context'] === '1');
@@ -155,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
                 $pdo->prepare("DELETE FROM vendas_anexos WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
                 $pdo->prepare("DELETE FROM vendas_logs WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
+                $pdo->prepare("DELETE FROM vendas_kanban_cards WHERE pre_contrato_id = ?")->execute([$pre_contrato_id]);
                 $stmt = $pdo->prepare("DELETE FROM vendas_pre_contratos WHERE id = ?");
                 $stmt->execute([$pre_contrato_id]);
                 $pdo->commit();
@@ -702,6 +703,10 @@ ob_start();
     width: 100%;
     border-collapse: collapse;
 }
+.vendas-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
 
 .vendas-table th,
 .vendas-table td {
@@ -955,6 +960,7 @@ ob_start();
         <select name="filtro_tipo" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status=<?php echo htmlspecialchars(urlencode((string)$filtro_status)); ?>&tipo='+encodeURIComponent(this.value)+'&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
             <option value="">Todos os tipos</option>
             <option value="casamento" <?php echo $filtro_tipo === 'casamento' ? 'selected' : ''; ?>>Casamento</option>
+            <option value="15anos" <?php echo $filtro_tipo === '15anos' ? 'selected' : ''; ?>>15 Anos</option>
             <option value="infantil" <?php echo $filtro_tipo === 'infantil' ? 'selected' : ''; ?>>Infantil</option>
             <option value="pj" <?php echo $filtro_tipo === 'pj' ? 'selected' : ''; ?>>PJ</option>
         </select>
@@ -970,6 +976,7 @@ ob_start();
     </div>
     
     <div class="vendas-card">
+        <div class="vendas-table-wrap">
         <table class="vendas-table">
             <thead>
                 <tr>
@@ -991,7 +998,18 @@ ob_start();
                             <strong><?php echo htmlspecialchars($pc['nome_completo']); ?></strong><br>
                             <small style="color: #6b7280;"><?php echo htmlspecialchars($pc['email']); ?></small>
                         </td>
-                        <td><?php echo ucfirst($pc['tipo_evento']); ?></td>
+                        <td>
+                            <?php
+                                $tipo = (string)($pc['tipo_evento'] ?? '');
+                                if ($tipo === '15anos') {
+                                    echo '15 Anos';
+                                } elseif ($tipo === 'pj') {
+                                    echo 'PJ';
+                                } else {
+                                    echo htmlspecialchars(ucfirst($tipo));
+                                }
+                            ?>
+                        </td>
                         <td><?php echo date('d/m/Y', strtotime($pc['data_evento'])); ?></td>
                         <td><?php echo htmlspecialchars($pc['unidade']); ?></td>
                         <td>R$ <?php echo number_format($pc['valor_total'] ?? 0, 2, ',', '.'); ?></td>
@@ -1036,6 +1054,7 @@ ob_start();
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
     </div>
     
     <?php if ($pre_contrato_editar): ?>

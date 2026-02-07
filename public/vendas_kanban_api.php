@@ -18,7 +18,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 require_once __DIR__ . '/conexao.php';
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)($_SESSION['id'] ?? 0);
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -74,9 +74,16 @@ try {
         }
         
         $stmt = $pdo->prepare("
-            SELECT vc.*, COUNT(vk.id) as total_cards
+            SELECT vc.*,
+                   COUNT(
+                       CASE
+                           WHEN vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL THEN 1
+                           ELSE NULL
+                       END
+                   ) as total_cards
             FROM vendas_kanban_colunas vc
             LEFT JOIN vendas_kanban_cards vk ON vk.coluna_id = vc.id
+            LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id
             WHERE vc.board_id = ?
             GROUP BY vc.id
             ORDER BY vc.posicao ASC
@@ -90,10 +97,18 @@ try {
         $coluna_id = (int)($_GET['coluna_id'] ?? 0);
         
         $stmt = $pdo->prepare("
-            SELECT vk.*, vp.nome_completo, vp.data_evento, vp.unidade, vp.valor_total
+            SELECT vk.*,
+                   vp.nome_completo,
+                   vp.nome_noivos,
+                   vp.telefone,
+                   vp.data_evento,
+                   vp.horario_inicio,
+                   vp.unidade,
+                   vp.valor_total
             FROM vendas_kanban_cards vk
             LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id
             WHERE vk.coluna_id = ?
+              AND (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)
             ORDER BY vk.posicao ASC, vk.id ASC
         ");
         $stmt->execute([$coluna_id]);

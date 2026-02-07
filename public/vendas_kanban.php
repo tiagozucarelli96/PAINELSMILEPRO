@@ -150,11 +150,29 @@ if (!$coluna_criado_me) {
     $stmt->execute([$board_id]);
 }
 
+// Limpeza defensiva: remove cards órfãos de pré-contratos apagados
+$pdo->exec("
+    DELETE FROM vendas_kanban_cards vk
+    WHERE vk.pre_contrato_id IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1
+          FROM vendas_pre_contratos vp
+          WHERE vp.id = vk.pre_contrato_id
+      )
+");
+
 // Buscar colunas
 $stmt = $pdo->prepare("
-    SELECT vc.*, COUNT(vk.id) as total_cards
+    SELECT vc.*,
+           COUNT(
+               CASE
+                   WHEN vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL THEN 1
+                   ELSE NULL
+               END
+           ) as total_cards
     FROM vendas_kanban_colunas vc
     LEFT JOIN vendas_kanban_cards vk ON vk.coluna_id = vc.id
+    LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id
     WHERE vc.board_id = ?
     GROUP BY vc.id
     ORDER BY vc.posicao ASC
@@ -166,10 +184,19 @@ $colunas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $cards_por_coluna = [];
 foreach ($colunas as $coluna) {
     $stmt = $pdo->prepare("
-        SELECT vk.*, vp.nome_completo, vp.data_evento, vp.unidade, vp.valor_total, vp.status as pre_contrato_status
+        SELECT vk.*,
+               vp.nome_completo,
+               vp.nome_noivos,
+               vp.telefone,
+               vp.data_evento,
+               vp.horario_inicio,
+               vp.unidade,
+               vp.valor_total,
+               vp.status as pre_contrato_status
         FROM vendas_kanban_cards vk
         LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id
         WHERE vk.coluna_id = ?
+          AND (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)
         ORDER BY vk.posicao ASC, vk.id ASC
     ");
     $stmt->execute([$coluna['id']]);
@@ -445,6 +472,78 @@ ob_start();
     background:#c7d2fe;
     color:#1e3a8a;
 }
+
+.kanban-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 6000;
+}
+
+.kanban-modal-overlay.open {
+    display: flex;
+}
+
+.kanban-modal {
+    width: min(640px, calc(100vw - 32px));
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 16px 40px rgba(0,0,0,.2);
+    overflow: hidden;
+}
+
+.kanban-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: .75rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.kanban-modal-header h3 {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 1.1rem;
+}
+
+.kanban-modal-close {
+    border: none;
+    background: transparent;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.kanban-modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+.kanban-modal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .85rem 1rem;
+}
+
+.kanban-modal-field-label {
+    font-size: .78rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: .2rem;
+}
+
+.kanban-modal-field-value {
+    color: #0f172a;
+    font-size: .98rem;
+    word-break: break-word;
+}
 </style>
 
 <div class="kanban-container">
@@ -482,7 +581,28 @@ ob_start();
                         <div class="coluna-empty">Sem cards nesta etapa.</div>
                     <?php endif; ?>
                     <?php foreach ($cardsAtual as $card): ?>
-                        <div class="kanban-card" draggable="true" data-card-id="<?php echo $card['id']; ?>" style="border-left-color: <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#3b82f6')); ?>;">
+                        <?php
+                            $cliente_nome = (string)($card['nome_completo'] ?? $card['cliente_nome'] ?? '');
+                            $nome_evento = trim((string)($card['nome_noivos'] ?? ''));
+                            if ($nome_evento === '') {
+                                $nome_evento = (string)($card['titulo'] ?? $cliente_nome ?? '');
+                            }
+                            $telefone = (string)($card['telefone'] ?? '');
+                            $local_evento = (string)($card['unidade'] ?? '');
+                            $horario_inicio = (string)($card['horario_inicio'] ?? '');
+                            $data_evento = (string)($card['data_evento'] ?? '');
+                        ?>
+                        <div class="kanban-card"
+                             draggable="true"
+                             data-card-id="<?php echo (int)$card['id']; ?>"
+                             data-pre-contrato-id="<?php echo (int)($card['pre_contrato_id'] ?? 0); ?>"
+                             data-cliente="<?php echo htmlspecialchars($cliente_nome, ENT_QUOTES); ?>"
+                             data-evento="<?php echo htmlspecialchars($nome_evento, ENT_QUOTES); ?>"
+                             data-telefone="<?php echo htmlspecialchars($telefone, ENT_QUOTES); ?>"
+                             data-local="<?php echo htmlspecialchars($local_evento, ENT_QUOTES); ?>"
+                             data-horario-inicio="<?php echo htmlspecialchars($horario_inicio, ENT_QUOTES); ?>"
+                             data-data-evento="<?php echo htmlspecialchars($data_evento, ENT_QUOTES); ?>"
+                             style="border-left-color: <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#3b82f6')); ?>;">
                             <div class="card-titulo"><?php echo htmlspecialchars($card['titulo'] ?? $card['cliente_nome'] ?? 'Sem título'); ?></div>
                             <?php if ($card['data_evento']): ?>
                                 <div class="card-info">📅 <?php echo date('d/m/Y', strtotime($card['data_evento'])); ?></div>
@@ -590,10 +710,48 @@ ob_start();
     <?php endif; ?>
 </div>
 
+<div class="kanban-modal-overlay" id="kanbanCardModalOverlay" aria-hidden="true">
+    <div class="kanban-modal" role="dialog" aria-modal="true" aria-labelledby="kanbanCardModalTitle">
+        <div class="kanban-modal-header">
+            <h3 id="kanbanCardModalTitle">Detalhes do Card</h3>
+            <button type="button" class="kanban-modal-close" id="kanbanCardModalClose" aria-label="Fechar">×</button>
+        </div>
+        <div class="kanban-modal-body">
+            <div class="kanban-modal-grid">
+                <div>
+                    <div class="kanban-modal-field-label">Cliente</div>
+                    <div class="kanban-modal-field-value" id="modalClienteNome">-</div>
+                </div>
+                <div>
+                    <div class="kanban-modal-field-label">Nome do Evento</div>
+                    <div class="kanban-modal-field-value" id="modalNomeEvento">-</div>
+                </div>
+                <div>
+                    <div class="kanban-modal-field-label">Telefone</div>
+                    <div class="kanban-modal-field-value" id="modalTelefone">-</div>
+                </div>
+                <div>
+                    <div class="kanban-modal-field-label">Local do Evento</div>
+                    <div class="kanban-modal-field-value" id="modalLocalEvento">-</div>
+                </div>
+                <div>
+                    <div class="kanban-modal-field-label">Data do Evento</div>
+                    <div class="kanban-modal-field-value" id="modalDataEvento">-</div>
+                </div>
+                <div>
+                    <div class="kanban-modal-field-label">Horário de Início</div>
+                    <div class="kanban-modal-field-value" id="modalHorarioInicio">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // Drag and Drop (cards) — corrigido para Safari/Chrome: precisa usar dataTransfer e drop no container correto
 let draggedCard = null;
 let draggedFromColunaId = null;
+let isDraggingCard = false;
 
 function getColunaIdFromEl(el) {
     const col = el?.closest?.('.kanban-coluna');
@@ -626,6 +784,7 @@ function updateCountsByDom() {
 
 document.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('dragstart', function(e) {
+        isDraggingCard = true;
         draggedCard = this;
         draggedFromColunaId = getColunaIdFromEl(this);
         this.classList.add('dragging');
@@ -640,8 +799,60 @@ document.querySelectorAll('.kanban-card').forEach(card => {
         this.classList.remove('dragging');
         draggedCard = null;
         draggedFromColunaId = null;
+        window.setTimeout(() => { isDraggingCard = false; }, 60);
         document.querySelectorAll('.coluna-cards').forEach(w => w.classList.remove('drop-target'));
     });
+
+    card.addEventListener('click', function(e) {
+        if (isDraggingCard) return;
+        if (e.target.closest('.card-acoes')) return;
+        abrirModalDetalhesCard(this);
+    });
+});
+
+document.querySelectorAll('.card-acoes a').forEach(link => {
+    link.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+});
+
+function formatarDataBr(dataIso) {
+    if (!dataIso) return '-';
+    const normalized = (dataIso.includes('T') || dataIso.includes(' '))
+        ? dataIso.replace(' ', 'T')
+        : (dataIso + 'T00:00:00');
+    const d = new Date(normalized);
+    if (Number.isNaN(d.getTime())) return dataIso;
+    return d.toLocaleDateString('pt-BR');
+}
+
+function abrirModalDetalhesCard(cardEl) {
+    const overlay = document.getElementById('kanbanCardModalOverlay');
+    if (!overlay || !cardEl) return;
+
+    document.getElementById('modalClienteNome').textContent = cardEl.dataset.cliente || '-';
+    document.getElementById('modalNomeEvento').textContent = cardEl.dataset.evento || '-';
+    document.getElementById('modalTelefone').textContent = cardEl.dataset.telefone || '-';
+    document.getElementById('modalLocalEvento').textContent = cardEl.dataset.local || '-';
+    document.getElementById('modalDataEvento').textContent = formatarDataBr(cardEl.dataset.dataEvento || '');
+    document.getElementById('modalHorarioInicio').textContent = cardEl.dataset.horarioInicio || '-';
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+}
+
+function fecharModalDetalhesCard() {
+    const overlay = document.getElementById('kanbanCardModalOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('kanbanCardModalClose')?.addEventListener('click', fecharModalDetalhesCard);
+document.getElementById('kanbanCardModalOverlay')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        fecharModalDetalhesCard();
+    }
 });
 
 document.querySelectorAll('.coluna-cards').forEach(wrap => {

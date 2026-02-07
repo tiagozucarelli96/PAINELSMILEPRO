@@ -1712,8 +1712,32 @@ function toggleFavorito(boardId) {
 }
 
 function selecionarQuadro(boardId) {
+    if (!Number.isFinite(boardId) || boardId <= 0) {
+        return;
+    }
+
+    const boardExiste = boards.find(b => b.id === boardId);
+    if (!boardExiste) {
+        if (boards.length > 0) {
+            const fallbackId = Number(boards[0].id);
+            currentBoardId = fallbackId;
+            currentBoard = boards[0];
+            renderizarSidebarQuadros();
+            atualizarHeaderQuadro();
+            carregarListas(fallbackId);
+            window.history.replaceState({}, '', `?page=demandas&board_id=${fallbackId}`);
+        } else {
+            currentBoardId = null;
+            currentBoard = null;
+            renderizarSidebarQuadros();
+            atualizarHeaderQuadro();
+            document.getElementById('trello-board').innerHTML = '<div class="page-demandas-list-empty">Nenhum quadro disponível.</div>';
+        }
+        return;
+    }
+
     currentBoardId = boardId;
-    currentBoard = boards.find(b => b.id === boardId);
+    currentBoard = boardExiste;
     
     // Fechar sidebar mobile após seleção
     if (window.innerWidth < 1280) {

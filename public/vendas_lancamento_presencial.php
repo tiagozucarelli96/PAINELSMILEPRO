@@ -20,7 +20,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 }
 
 $pdo = $GLOBALS['pdo'];
-$usuario_id = (int)($_SESSION['id'] ?? 0);
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
 $ip = $_SERVER['REMOTE_ADDR'] ?? null;
 
 $mensagens = [];
@@ -149,7 +149,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($dt < $hoje) throw new Exception('Data do evento não pode ser passada.');
 
             if ($hora_inicio === '' || $hora_termino === '') throw new Exception('Horários são obrigatórios.');
-            if (strtotime($hora_termino) <= strtotime($hora_inicio)) throw new Exception('Hora término deve ser maior que hora início.');
+            $inicio_ts = strtotime($hora_inicio);
+            $termino_ts = strtotime($hora_termino);
+            if ($inicio_ts === false || $termino_ts === false) {
+                throw new Exception('Horário de início ou término inválido.');
+            }
+            if ($termino_ts === $inicio_ts) {
+                throw new Exception('Hora término deve ser diferente da hora início.');
+            }
 
             $me_local_id = vendas_validar_local_mapeado($unidade);
             if (!$me_local_id) throw new Exception('Local não mapeado. Ajuste em Logística > Conexão.');
@@ -661,4 +668,3 @@ $conteudo = ob_get_clean();
 includeSidebar('Comercial');
 echo $conteudo;
 endSidebar();
-
