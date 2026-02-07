@@ -13,6 +13,134 @@ if (file_exists(__DIR__ . '/eventos_notificacoes.php')) {
 }
 
 /**
+ * Cache simples de existência de colunas.
+ */
+function eventos_reuniao_has_column(PDO $pdo, string $table, string $column): bool {
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = :table
+          AND column_name = :column
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':table' => $table,
+        ':column' => $column,
+    ]);
+
+    $cache[$key] = (bool)$stmt->fetchColumn();
+    return $cache[$key];
+}
+
+/**
+ * Garante estrutura necessária para formulário dinâmico da Reunião Final.
+ */
+function eventos_reuniao_ensure_schema(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao criar coluna form_schema_json: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_form_templates (
+                id BIGSERIAL PRIMARY KEY,
+                nome VARCHAR(120) NOT NULL,
+                categoria VARCHAR(40) NOT NULL DEFAULT 'geral',
+                schema_json JSONB NOT NULL,
+                ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                created_by_user_id INTEGER NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_form_templates_ativo ON eventos_form_templates (ativo, updated_at DESC)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao criar tabela eventos_form_templates: ' . $e->getMessage());
+    }
+
+    $done = true;
+}
+
+/**
+ * Lista modelos salvos de formulário.
+ */
+function eventos_form_templates_listar(PDO $pdo): array {
+    eventos_reuniao_ensure_schema($pdo);
+    $stmt = $pdo->query("
+        SELECT id, nome, categoria, schema_json, created_by_user_id, created_at, updated_at
+        FROM eventos_form_templates
+        WHERE ativo = TRUE
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 200
+    ");
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    foreach ($rows as &$row) {
+        $decoded = json_decode((string)($row['schema_json'] ?? '[]'), true);
+        $row['schema'] = is_array($decoded) ? $decoded : [];
+    }
+    unset($row);
+    return $rows;
+}
+
+/**
+ * Salva um modelo de formulário reutilizável.
+ */
+function eventos_form_template_salvar(PDO $pdo, string $nome, string $categoria, array $schema, int $user_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+
+    $nome = trim($nome);
+    $categoria = trim($categoria) !== '' ? trim($categoria) : 'geral';
+    if ($nome === '') {
+        return ['ok' => false, 'error' => 'Nome do modelo é obrigatório'];
+    }
+    if (empty($schema)) {
+        return ['ok' => false, 'error' => 'Adicione pelo menos um campo no formulário antes de salvar o modelo'];
+    }
+
+    $schemaJson = json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($schemaJson === false) {
+        return ['ok' => false, 'error' => 'Não foi possível serializar o modelo'];
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_form_templates
+        (nome, categoria, schema_json, ativo, created_by_user_id, created_at, updated_at)
+        VALUES
+        (:nome, :categoria, CAST(:schema_json AS jsonb), TRUE, :user_id, NOW(), NOW())
+        RETURNING id, nome, categoria, schema_json, created_by_user_id, created_at, updated_at
+    ");
+    $stmt->execute([
+        ':nome' => $nome,
+        ':categoria' => $categoria,
+        ':schema_json' => $schemaJson,
+        ':user_id' => $user_id > 0 ? $user_id : null,
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Falha ao salvar modelo'];
+    }
+
+    $decoded = json_decode((string)($row['schema_json'] ?? '[]'), true);
+    $row['schema'] = is_array($decoded) ? $decoded : [];
+    return ['ok' => true, 'template' => $row];
+}
+
+eventos_reuniao_ensure_schema($pdo);
+
+/**
  * Buscar ou criar reunião para um evento ME
  */
 function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id): array {
@@ -122,7 +250,8 @@ function eventos_reuniao_salvar_secao(
     string $content_html, 
     int $user_id,
     string $note = '',
-    string $author_type = 'interno'
+    string $author_type = 'interno',
+    ?string $form_schema_json = null
 ): array {
     try {
         $pdo->beginTransaction();
@@ -132,32 +261,50 @@ function eventos_reuniao_salvar_secao(
         
         if (!$secao) {
             // Criar seção se não existir
-            $stmt = $pdo->prepare("
-                INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at, updated_by)
-                VALUES (:meeting_id, :section, :html, :text, NOW(), NOW(), :user_id)
-                RETURNING *
-            ");
-            $stmt->execute([
+            $params = [
                 ':meeting_id' => $meeting_id,
                 ':section' => $section,
                 ':html' => $content_html,
                 ':text' => strip_tags($content_html),
-                ':user_id' => $user_id
-            ]);
+                ':user_id' => $user_id,
+            ];
+            if ($form_schema_json !== null && eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'form_schema_json')) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO eventos_reunioes_secoes
+                    (meeting_id, section, content_html, content_text, form_schema_json, created_at, updated_at, updated_by)
+                    VALUES (:meeting_id, :section, :html, :text, CAST(:form_schema_json AS jsonb), NOW(), NOW(), :user_id)
+                    RETURNING *
+                ");
+                $params[':form_schema_json'] = $form_schema_json;
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO eventos_reunioes_secoes
+                    (meeting_id, section, content_html, content_text, created_at, updated_at, updated_by)
+                    VALUES (:meeting_id, :section, :html, :text, NOW(), NOW(), :user_id)
+                    RETURNING *
+                ");
+            }
+            $stmt->execute($params);
             $secao = $stmt->fetch(PDO::FETCH_ASSOC);
         } else {
             // Atualizar seção
-            $stmt = $pdo->prepare("
-                UPDATE eventos_reunioes_secoes 
+            $sql = "
+                UPDATE eventos_reunioes_secoes
                 SET content_html = :html, content_text = :text, updated_at = NOW(), updated_by = :user_id
-                WHERE id = :id
-            ");
-            $stmt->execute([
+            ";
+            $params = [
                 ':id' => $secao['id'],
                 ':html' => $content_html,
                 ':text' => strip_tags($content_html),
-                ':user_id' => $user_id
-            ]);
+                ':user_id' => $user_id,
+            ];
+            if ($form_schema_json !== null && eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'form_schema_json')) {
+                $sql .= ", form_schema_json = CAST(:form_schema_json AS jsonb)";
+                $params[':form_schema_json'] = $form_schema_json;
+            }
+            $sql .= " WHERE id = :id";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
         }
         
         // Buscar próximo número de versão

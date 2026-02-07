@@ -48,14 +48,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $section = $_POST['section'] ?? '';
             $content = $_POST['content_html'] ?? '';
             $note = $_POST['note'] ?? '';
+            $form_schema_json = $_POST['form_schema_json'] ?? null;
             
             if ($meeting_id <= 0 || !$section) {
                 echo json_encode(['ok' => false, 'error' => 'Dados inválidos']);
                 exit;
             }
             
-            $result = eventos_reuniao_salvar_secao($pdo, $meeting_id, $section, $content, $user_id, $note);
+            $result = eventos_reuniao_salvar_secao($pdo, $meeting_id, $section, $content, $user_id, $note, 'interno', $form_schema_json);
             echo json_encode($result);
+            exit;
+
+        case 'salvar_template_form':
+            $template_name = trim((string)($_POST['template_name'] ?? ''));
+            $template_category = trim((string)($_POST['template_category'] ?? 'geral'));
+            $schema_json = (string)($_POST['schema_json'] ?? '[]');
+            $schema = json_decode($schema_json, true);
+            if (!is_array($schema)) {
+                echo json_encode(['ok' => false, 'error' => 'Schema inválido']);
+                exit;
+            }
+            $save_template = eventos_form_template_salvar($pdo, $template_name, $template_category, $schema, (int)$user_id);
+            echo json_encode($save_template);
             exit;
             
         case 'gerar_link_cliente':
@@ -149,6 +163,15 @@ if ($meeting_id > 0) {
         foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $sec) {
             $secoes[$sec] = eventos_reuniao_get_secao($pdo, $meeting_id, $sec);
         }
+    }
+}
+
+$form_templates = eventos_form_templates_listar($pdo);
+$dj_form_schema_initial = [];
+if (!empty($secoes['dj_protocolo']['form_schema_json'])) {
+    $decoded_schema = json_decode((string)$secoes['dj_protocolo']['form_schema_json'], true);
+    if (is_array($decoded_schema)) {
+        $dj_form_schema_initial = $decoded_schema;
     }
 }
 
@@ -536,6 +559,99 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         padding: 0.5rem 0.75rem;
         font-size: 0.8rem;
     }
+
+    .prefill-note {
+        margin-top: 0.5rem;
+        font-size: 0.76rem;
+        color: #64748b;
+    }
+
+    .builder-fields-list {
+        margin-top: 0.9rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+    }
+
+    .builder-field-card {
+        background: #ffffff;
+        border: 1px solid #dbe3ef;
+        border-radius: 8px;
+        padding: 0.7rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: flex-start;
+    }
+
+    .builder-field-title {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.2rem;
+    }
+
+    .builder-field-meta {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .builder-field-actions {
+        display: flex;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+    }
+
+    .builder-field-actions .btn {
+        padding: 0.32rem 0.5rem;
+        font-size: 0.74rem;
+    }
+
+    .builder-preview-box {
+        margin-top: 0.9rem;
+        background: #fff;
+        border: 1px solid #dbe3ef;
+        border-radius: 8px;
+        padding: 0.85rem;
+    }
+
+    .builder-preview-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 0.65rem;
+    }
+
+    .builder-preview-item {
+        margin-bottom: 0.75rem;
+    }
+
+    .builder-preview-item label {
+        display: block;
+        margin-bottom: 0.35rem;
+        color: #334155;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .builder-preview-item input,
+    .builder-preview-item textarea,
+    .builder-preview-item select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 0.45rem 0.55rem;
+        font-size: 0.8rem;
+        background: #f8fafc;
+    }
+
+    .legacy-editor-toggle {
+        margin: 0.75rem 0;
+    }
+
+    .legacy-editor-wrap {
+        margin-top: 0.75rem;
+    }
     
     .link-display {
         display: flex;
@@ -865,10 +981,19 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         </select>
                     </div>
                     <div class="prefill-field">
+                        <label for="savedTemplateSelect">Modelos salvos</label>
+                        <select id="savedTemplateSelect" <?= $is_locked ? 'disabled' : '' ?>>
+                            <option value="">Selecionar modelo salvo...</option>
+                            <?php foreach ($form_templates as $template): ?>
+                                <option value="<?= (int)$template['id'] ?>"><?= htmlspecialchars((string)$template['nome']) ?><?= !empty($template['categoria']) ? ' - ' . htmlspecialchars((string)$template['categoria']) : '' ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="prefill-field">
                         <label for="fieldType">Tipo de campo</label>
                         <select id="fieldType" onchange="onChangeFieldType()" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="textarea">Texto longo</option>
                             <option value="text">Texto curto</option>
+                            <option value="textarea">Texto longo</option>
                             <option value="yesno">Opção Sim/Não</option>
                             <option value="select">Múltipla escolha</option>
                             <option value="file">Upload de arquivo</option>
@@ -879,6 +1004,26 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         <label for="fieldQuestion">Pergunta / título</label>
                         <input id="fieldQuestion" type="text" placeholder="Digite a pergunta..." <?= $is_locked ? 'disabled' : '' ?>>
                     </div>
+                    <div class="prefill-field">
+                        <label for="fieldRequired">Obrigatório</label>
+                        <select id="fieldRequired" <?= $is_locked ? 'disabled' : '' ?>>
+                            <option value="1">Sim</option>
+                            <option value="0">Não</option>
+                        </select>
+                    </div>
+                    <div class="prefill-field">
+                        <label for="templateCategory">Categoria do modelo</label>
+                        <select id="templateCategory" <?= $is_locked ? 'disabled' : '' ?>>
+                            <option value="15anos">15 anos</option>
+                            <option value="casamento">Casamento</option>
+                            <option value="infantil">Infantil</option>
+                            <option value="geral">Geral</option>
+                        </select>
+                    </div>
+                    <div class="prefill-field" style="grid-column: 1 / -1;">
+                        <label for="templateSaveName">Nome para salvar modelo (opcional)</label>
+                        <input id="templateSaveName" type="text" placeholder="Ex.: 15 anos completo padrão Smile" <?= $is_locked ? 'disabled' : '' ?>>
+                    </div>
                     <div class="prefill-field" id="fieldOptionsWrap" style="grid-column: 1 / -1; display: none;">
                         <label for="fieldOptions">Opções (uma por linha)</label>
                         <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3" <?= $is_locked ? 'disabled' : '' ?>></textarea>
@@ -886,8 +1031,16 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 </div>
                 <div class="prefill-actions">
                     <button type="button" class="btn btn-primary" onclick="aplicarTemplateModelo()" <?= $is_locked ? 'disabled' : '' ?>>📄 Aplicar modelo</button>
+                    <button type="button" class="btn btn-secondary" onclick="carregarModeloSalvo()" <?= $is_locked ? 'disabled' : '' ?>>📥 Carregar salvo</button>
+                    <button type="button" class="btn btn-secondary" onclick="salvarModeloAtual()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar como modelo</button>
                     <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
                     <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
+                </div>
+                <p class="prefill-note">Monte o formulário por campos (estilo Google Forms). Você pode salvar modelos e reutilizar nos próximos eventos.</p>
+                <div id="builderFieldsList" class="builder-fields-list"></div>
+                <div class="builder-preview-box">
+                    <div class="builder-preview-title">Pré-visualização do formulário do cliente</div>
+                    <div id="builderPreview"></div>
                 </div>
             </div>
             <?php endif; ?>
@@ -905,7 +1058,13 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             </div>
             <?php endif; ?>
             
-            <div class="editor-wrapper">
+            <?php if ($key === 'dj_protocolo'): ?>
+            <div class="legacy-editor-toggle">
+                <button type="button" class="btn btn-secondary" onclick="toggleLegacyEditor()">📝 Mostrar/ocultar editor avançado</button>
+            </div>
+            <?php endif; ?>
+            <?php $legacy_wrap_id = ($key === 'dj_protocolo') ? ' id="legacyEditorWrapDj"' : ''; ?>
+            <div class="editor-wrapper legacy-editor-wrap"<?= $legacy_wrap_id ?>>
                 <?php 
                 $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
                 ?>
@@ -951,6 +1110,16 @@ let eventsCacheLoaded = false;
 let eventsMasterCache = [];
 const eventsQueryCache = new Map();
 const snapshotData = <?= json_encode($snapshot ?? [], JSON_UNESCAPED_UNICODE) ?>;
+const savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
+    return [
+        'id' => (int)($template['id'] ?? 0),
+        'nome' => (string)($template['nome'] ?? ''),
+        'categoria' => (string)($template['categoria'] ?? 'geral'),
+        'schema' => is_array($template['schema'] ?? null) ? $template['schema'] : [],
+    ];
+}, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialDjFormSchema = <?= json_encode($dj_form_schema_initial, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+let formBuilderFields = Array.isArray(initialDjFormSchema) ? initialDjFormSchema.slice() : [];
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -1292,146 +1461,411 @@ function appendEditorContent(content, section = 'dj_protocolo') {
 }
 
 function buildTemplateModelo(modelo) {
-    const nomeEvento = (snapshotData && snapshotData.nome) ? snapshotData.nome : '#NOMEDOEVENTO#';
-    const horario = (snapshotData && snapshotData.hora_inicio) ? snapshotData.hora_inicio : '#HORAEVENTO#';
-    const dataEvento = (snapshotData && snapshotData.data) ? new Date(snapshotData.data).toLocaleDateString('pt-BR') : '#DATAEVENTO#';
+    const mk = (type, label, required = true, options = []) => ({
+        id: 'f_' + Math.random().toString(36).slice(2, 10),
+        type,
+        label,
+        required: !!required,
+        options: Array.isArray(options) ? options : []
+    });
 
     if (modelo === 'casamento') {
-        return `
-<h2>Organização do Evento - Casamento</h2>
-<p><strong>Evento:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Data:</strong> ${escapeHtmlForField(dataEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
-<p>Responda com o máximo de detalhes para alinharmos todos os momentos especiais.</p>
-<hr>
-<h3>Cerimonial</h3>
-<p><strong>Entrada dos noivos / padrinhos:</strong></p>
-<p>________________________________________</p>
-<p><strong>Música para entrada:</strong></p>
-<p>________________________________________</p>
-<h3>Repertório</h3>
-<p><strong>Ritmos que devem tocar:</strong></p>
-<p>________________________________________</p>
-<p><strong>Ritmos que não devem tocar:</strong></p>
-<p>________________________________________</p>
-<p><strong>Anexos necessários (opcional):</strong> Envie playlist, roteiro ou arquivos de referência no campo de anexos abaixo.</p>`;
+        return [
+            mk('section', 'Cerimonial'),
+            mk('textarea', 'Entrada dos noivos / padrinhos'),
+            mk('textarea', 'Música para entrada'),
+            mk('textarea', 'Momentos especiais (alianças, homenagens, etc)'),
+            mk('section', 'Repertório'),
+            mk('textarea', 'Ritmos que devem tocar'),
+            mk('textarea', 'Ritmos que não devem tocar', false),
+            mk('textarea', 'Músicas que não podem faltar'),
+            mk('text', 'Link da playlist (Spotify/YouTube)', false),
+            mk('file', 'Anexe roteiro, playlist e referências', false)
+        ];
     }
 
     if (modelo === 'infantil') {
-        return `
-<h2>Organização do Evento - Infantil</h2>
-<p><strong>Evento:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Data:</strong> ${escapeHtmlForField(dataEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
-<p>Preencha as informações para organização musical e momentos especiais.</p>
-<hr>
-<h3>Momentos principais</h3>
-<p><strong>Entrada / recepção:</strong></p>
-<p>________________________________________</p>
-<p><strong>Parabéns:</strong></p>
-<p>________________________________________</p>
-<h3>Gosto musical</h3>
-<p><strong>Músicas favoritas:</strong></p>
-<p>________________________________________</p>
-<p><strong>Músicas que não tocar:</strong></p>
-<p>________________________________________</p>
-<p><strong>Anexos necessários (opcional):</strong> Envie playlist, roteiro ou arquivos de referência no campo de anexos abaixo.</p>`;
+        return [
+            mk('section', 'Momentos principais'),
+            mk('textarea', 'Entrada / recepção'),
+            mk('textarea', 'Parabéns'),
+            mk('textarea', 'Momento especial adicional', false),
+            mk('section', 'Gosto musical'),
+            mk('textarea', 'Músicas favoritas'),
+            mk('textarea', 'Músicas que não tocar', false),
+            mk('yesno', 'Vai ter personagem/atração especial?', false),
+            mk('file', 'Anexe referências visuais / roteiro', false)
+        ];
     }
 
-    return `
-<h2>Organização 15 anos</h2>
-<p><strong>Debutante:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
-<p>Este formulário é essencial para alinharmos música, cerimonial e cronograma do evento.</p>
-<hr>
-<h3>Músicas do cerimonial</h3>
-<p><strong>Música da entrada da debutante:</strong></p>
-<p>________________________________________</p>
-<p><strong>Músicas para momentos especiais (anel, sapato, homenagens):</strong></p>
-<p>________________________________________</p>
-<p><strong>Valsas (quem dança + música + tempo):</strong></p>
-<p>________________________________________</p>
-<h3>Gosto musical / repertório</h3>
-<p><strong>Ritmos que tocar:</strong></p>
-<p>________________________________________</p>
-<p><strong>Ritmos que não tocar:</strong></p>
-<p>________________________________________</p>
-<p><strong>Playlist (Spotify/YouTube):</strong></p>
-<p>________________________________________</p>
-<h3>Cronograma</h3>
-<p><strong>Vai cantar parabéns após cerimonial?</strong> ( ) SIM  ( ) NÃO</p>
-<p><strong>Vai levar item para o salão? Se sim, qual?</strong></p>
-<p>________________________________________</p>
-<p><strong>Anexos necessários (opcional):</strong> envie convites, artes, listas ou referências no campo de anexos.</p>`;
+    return [
+        mk('section', 'Identificação'),
+        mk('text', 'Nome da debutante'),
+        mk('text', 'Data da festa'),
+        mk('section', 'Músicas do cerimonial'),
+        mk('textarea', 'Música da entrada da debutante (com link e tempo de início)'),
+        mk('textarea', 'Músicas para anel, sapato e momentos especiais', false),
+        mk('textarea', 'Valsa(s): quem dança + música + tempo'),
+        mk('textarea', 'Outro momento especial no cerimonial?', false),
+        mk('section', 'Gosto musical / repertório'),
+        mk('textarea', 'Quais ritmos tocar?'),
+        mk('textarea', 'Quais ritmos não tocar?', false),
+        mk('textarea', 'Alguma música que não pode faltar?', false),
+        mk('text', 'Link da playlist (Spotify/YouTube)', false),
+        mk('section', 'Cronograma'),
+        mk('yesno', 'Vai cantar parabéns após o cerimonial?'),
+        mk('textarea', 'Vai levar itens para o salão? Quais?', false),
+        mk('file', 'Anexe arquivos importantes (convite, arte, lista etc.)', false)
+    ];
 }
 
 function aplicarTemplateModelo() {
     const select = document.getElementById('templateModelo');
     if (!select) return;
     const modelo = select.value || '15anos';
-    const template = buildTemplateModelo(modelo);
-    const current = getEditorContent('dj_protocolo').trim();
-    const replace = !current || confirm('Substituir o conteúdo atual pelo modelo selecionado?');
-    if (replace) {
-        setEditorContent(template, 'dj_protocolo');
-    } else {
-        appendEditorContent(template, 'dj_protocolo');
+    const template = buildTemplateModelo(modelo) || [];
+    if (!Array.isArray(template) || template.length === 0) {
+        alert('Modelo inválido.');
+        return;
     }
+    const replace = formBuilderFields.length === 0 || confirm('Substituir o formulário atual pelo modelo selecionado?');
+    if (!replace) return;
+    formBuilderFields = normalizeFormSchema(template);
+    renderFormBuilderUI();
+    hideLegacyEditorIfSchemaExists();
 }
 
 function onChangeFieldType() {
     const fieldTypeEl = document.getElementById('fieldType');
-    const type = fieldTypeEl ? (fieldTypeEl.value || 'textarea') : 'textarea';
+    const type = fieldTypeEl ? (fieldTypeEl.value || 'text') : 'text';
     const optionsWrap = document.getElementById('fieldOptionsWrap');
     if (!optionsWrap) return;
     optionsWrap.style.display = type === 'select' ? 'block' : 'none';
+}
+
+function normalizeFormSchema(schema) {
+    if (!Array.isArray(schema)) return [];
+    return schema.map((field) => {
+        const type = String(field.type || 'text');
+        const options = Array.isArray(field.options) ? field.options.map((v) => String(v).trim()).filter(Boolean) : [];
+        return {
+            id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
+            type: type,
+            label: String(field.label || '').trim(),
+            required: !!field.required,
+            options: options
+        };
+    }).filter((field) => {
+        if (field.type === 'divider') return true;
+        return field.label !== '';
+    });
+}
+
+function getFieldTypeLabel(type) {
+    const map = {
+        text: 'Texto curto',
+        textarea: 'Texto longo',
+        yesno: 'Sim/Não',
+        select: 'Múltipla escolha',
+        file: 'Upload',
+        section: 'Título de seção',
+        divider: 'Separador'
+    };
+    return map[type] || type;
+}
+
+function renderFormBuilderUI() {
+    const list = document.getElementById('builderFieldsList');
+    const preview = document.getElementById('builderPreview');
+
+    if (list) {
+        if (!Array.isArray(formBuilderFields) || formBuilderFields.length === 0) {
+            list.innerHTML = '<div class="builder-field-meta">Nenhum campo criado ainda. Monte seu formulário aqui.</div>';
+        } else {
+            list.innerHTML = formBuilderFields.map((field, idx) => `
+                <div class="builder-field-card">
+                    <div>
+                        <div class="builder-field-title">${idx + 1}. ${escapeHtmlForField(field.label || '(sem título)')}</div>
+                        <div class="builder-field-meta">
+                            ${escapeHtmlForField(getFieldTypeLabel(field.type))}
+                            ${field.required ? ' • Obrigatório' : ' • Opcional'}
+                            ${field.options && field.options.length ? ' • ' + field.options.length + ' opção(ões)' : ''}
+                        </div>
+                    </div>
+                    <div class="builder-field-actions">
+                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, -1)">↑</button>
+                        <button type="button" class="btn btn-secondary" onclick="moverCampoBuilder(${idx}, 1)">↓</button>
+                        <button type="button" class="btn btn-secondary" onclick="alternarObrigatorioCampo(${idx})">Obrig.</button>
+                        <button type="button" class="btn btn-danger" onclick="removerCampoBuilder(${idx})">Excluir</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+
+    if (preview) {
+        if (!Array.isArray(formBuilderFields) || formBuilderFields.length === 0) {
+            preview.innerHTML = '<div class="builder-field-meta">Pré-visualização vazia.</div>';
+        } else {
+            preview.innerHTML = formBuilderFields.map((field) => {
+                if (field.type === 'divider') {
+                    return '<hr>';
+                }
+                if (field.type === 'section') {
+                    return `<div class="builder-preview-item"><h4>${escapeHtmlForField(field.label)}</h4></div>`;
+                }
+
+                const req = field.required ? ' *' : '';
+                if (field.type === 'textarea') {
+                    return `<div class="builder-preview-item"><label>${escapeHtmlForField(field.label)}${req}</label><textarea rows="3" disabled></textarea></div>`;
+                }
+                if (field.type === 'yesno') {
+                    return `<div class="builder-preview-item"><label>${escapeHtmlForField(field.label)}${req}</label><select disabled><option>Selecione...</option><option>Sim</option><option>Não</option></select></div>`;
+                }
+                if (field.type === 'select') {
+                    const opts = (field.options || []).map((opt) => `<option>${escapeHtmlForField(opt)}</option>`).join('');
+                    return `<div class="builder-preview-item"><label>${escapeHtmlForField(field.label)}${req}</label><select disabled><option>Selecione...</option>${opts}</select></div>`;
+                }
+                if (field.type === 'file') {
+                    return `<div class="builder-preview-item"><label>${escapeHtmlForField(field.label)}${req}</label><input type="text" value="Campo de upload" disabled></div>`;
+                }
+                return `<div class="builder-preview-item"><label>${escapeHtmlForField(field.label)}${req}</label><input type="text" disabled></div>`;
+            }).join('');
+        }
+    }
+
+    const editorHtml = buildSchemaHtmlForStorage(formBuilderFields);
+    if (editorHtml) {
+        setEditorContent(editorHtml, 'dj_protocolo');
+    }
+}
+
+function buildSchemaHtmlForStorage(schema) {
+    if (!Array.isArray(schema) || schema.length === 0) return '';
+    let html = '<h2>Formulário DJ / Protocolos</h2>';
+    html += '<p><em>Estrutura gerada por campos dinâmicos (estilo formulário).</em></p>';
+    schema.forEach((field) => {
+        const label = escapeHtmlForField(field.label || '');
+        const req = field.required ? ' <span style="color:#b91c1c">*</span>' : '';
+        if (field.type === 'divider') {
+            html += '<hr>';
+            return;
+        }
+        if (field.type === 'section') {
+            html += `<h3>${label}</h3>`;
+            return;
+        }
+        if (field.type === 'yesno') {
+            html += `<p><strong>${label}${req}</strong><br>( ) Sim &nbsp;&nbsp; ( ) Não</p>`;
+            return;
+        }
+        if (field.type === 'select') {
+            const options = Array.isArray(field.options) ? field.options : [];
+            html += `<p><strong>${label}${req}</strong></p><ul>${options.map((opt) => `<li>${escapeHtmlForField(opt)}</li>`).join('')}</ul>`;
+            return;
+        }
+        if (field.type === 'file') {
+            html += `<p><strong>${label}${req}</strong><br><em>Campo de upload de arquivo</em></p>`;
+            return;
+        }
+        html += `<p><strong>${label}${req}</strong><br>________________________________________</p>`;
+    });
+    return html;
 }
 
 function adicionarCampoFormulario() {
     const fieldTypeEl = document.getElementById('fieldType');
     const fieldQuestionEl = document.getElementById('fieldQuestion');
     const fieldOptionsEl = document.getElementById('fieldOptions');
-    const type = fieldTypeEl ? (fieldTypeEl.value || 'textarea') : 'textarea';
+    const fieldRequiredEl = document.getElementById('fieldRequired');
+    const type = fieldTypeEl ? (fieldTypeEl.value || 'text') : 'text';
     const question = ((fieldQuestionEl ? fieldQuestionEl.value : '') || '').trim();
     const options = ((fieldOptionsEl ? fieldOptionsEl.value : '') || '').trim();
+    const required = (fieldRequiredEl ? fieldRequiredEl.value : '1') === '1';
 
-    if (!question) {
+    if (type !== 'divider' && !question) {
         alert('Digite a pergunta/título para adicionar o campo.');
         return;
     }
 
-    let html = '';
-    if (type === 'section') {
-        html = `<h3>${escapeHtmlForField(question)}</h3>`;
-    } else if (type === 'text') {
-        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>________________________________________</p>`;
-    } else if (type === 'yesno') {
-        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>( ) SIM &nbsp;&nbsp; ( ) NÃO</p>`;
-    } else if (type === 'select') {
-        const list = options.split('\n').map(v => v.trim()).filter(Boolean);
-        if (!list.length) {
+    const field = {
+        id: 'f_' + Math.random().toString(36).slice(2, 10),
+        type: type,
+        label: question,
+        required: type === 'section' || type === 'divider' ? false : required,
+        options: []
+    };
+
+    if (type === 'select') {
+        field.options = options.split('\n').map((v) => v.trim()).filter(Boolean);
+        if (!field.options.length) {
             alert('Para múltipla escolha, informe pelo menos uma opção.');
             return;
         }
-        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><ul>${list.map(v => `<li>( ) ${escapeHtmlForField(v)}</li>`).join('')}</ul>`;
-    } else if (type === 'file') {
-        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p><em>Cliente deverá anexar arquivo no campo de anexos do formulário.</em></p>`;
-    } else {
-        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>________________________________________</p>`;
     }
 
-    appendEditorContent(html, 'dj_protocolo');
+    formBuilderFields.push(field);
+    renderFormBuilderUI();
+    hideLegacyEditorIfSchemaExists();
     if (fieldQuestionEl) fieldQuestionEl.value = '';
     if (fieldOptionsEl) fieldOptionsEl.value = '';
 }
 
 function inserirSeparadorFormulario() {
-    appendEditorContent('<hr>', 'dj_protocolo');
+    formBuilderFields.push({
+        id: 'f_' + Math.random().toString(36).slice(2, 10),
+        type: 'divider',
+        label: '---',
+        required: false,
+        options: []
+    });
+    renderFormBuilderUI();
+    hideLegacyEditorIfSchemaExists();
+}
+
+function removerCampoBuilder(index) {
+    if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
+    formBuilderFields.splice(index, 1);
+    renderFormBuilderUI();
+}
+
+function moverCampoBuilder(index, direction) {
+    if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
+    const target = index + direction;
+    if (target < 0 || target >= formBuilderFields.length) return;
+    const item = formBuilderFields[index];
+    formBuilderFields[index] = formBuilderFields[target];
+    formBuilderFields[target] = item;
+    renderFormBuilderUI();
+}
+
+function alternarObrigatorioCampo(index) {
+    if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
+    const field = formBuilderFields[index];
+    if (!field || field.type === 'section' || field.type === 'divider') return;
+    field.required = !field.required;
+    renderFormBuilderUI();
+}
+
+function refreshSavedTemplateSelect(selectedId = null) {
+    const select = document.getElementById('savedTemplateSelect');
+    if (!select) return;
+
+    const current = selectedId !== null ? String(selectedId) : String(select.value || '');
+    const options = ['<option value="">Selecionar modelo salvo...</option>'];
+    savedFormTemplates.forEach((template) => {
+        const selected = String(template.id) === current ? ' selected' : '';
+        const label = `${template.nome}${template.categoria ? ' - ' + template.categoria : ''}`;
+        options.push(`<option value="${template.id}"${selected}>${escapeHtmlForField(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+}
+
+function carregarModeloSalvo() {
+    const select = document.getElementById('savedTemplateSelect');
+    if (!select || !select.value) {
+        alert('Selecione um modelo salvo.');
+        return;
+    }
+    const template = savedFormTemplates.find((item) => String(item.id) === String(select.value));
+    if (!template) {
+        alert('Modelo não encontrado.');
+        return;
+    }
+    const replace = formBuilderFields.length === 0 || confirm('Substituir o formulário atual pelo modelo salvo?');
+    if (!replace) return;
+    formBuilderFields = normalizeFormSchema(template.schema || []);
+    renderFormBuilderUI();
+    hideLegacyEditorIfSchemaExists();
+}
+
+async function salvarModeloAtual() {
+    if (!Array.isArray(formBuilderFields) || formBuilderFields.length === 0) {
+        alert('Adicione campos no formulário antes de salvar como modelo.');
+        return;
+    }
+    const nameInput = document.getElementById('templateSaveName');
+    const categoryInput = document.getElementById('templateCategory');
+    const templateName = (nameInput ? nameInput.value : '').trim();
+    if (!templateName) {
+        alert('Informe um nome para salvar o modelo.');
+        return;
+    }
+    const templateCategory = (categoryInput ? categoryInput.value : 'geral') || 'geral';
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'salvar_template_form');
+        formData.append('template_name', templateName);
+        formData.append('template_category', templateCategory);
+        formData.append('schema_json', JSON.stringify(formBuilderFields));
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (!data.ok || !data.template) {
+            alert(data.error || 'Erro ao salvar modelo');
+            return;
+        }
+
+        const existing = savedFormTemplates.findIndex((item) => String(item.id) === String(data.template.id));
+        const payload = {
+            id: Number(data.template.id),
+            nome: String(data.template.nome || templateName),
+            categoria: String(data.template.categoria || templateCategory),
+            schema: Array.isArray(data.template.schema) ? data.template.schema : formBuilderFields.slice()
+        };
+        if (existing >= 0) {
+            savedFormTemplates[existing] = payload;
+        } else {
+            savedFormTemplates.unshift(payload);
+        }
+        refreshSavedTemplateSelect(payload.id);
+        alert('Modelo salvo com sucesso!');
+    } catch (err) {
+        alert('Erro ao salvar modelo: ' + err.message);
+    }
+}
+
+function toggleLegacyEditor() {
+    const wrap = document.getElementById('legacyEditorWrapDj');
+    if (!wrap) return;
+    wrap.style.display = (wrap.style.display === 'none') ? 'block' : 'none';
+}
+
+function hideLegacyEditorIfSchemaExists() {
+    const wrap = document.getElementById('legacyEditorWrapDj');
+    if (!wrap) return;
+    if (Array.isArray(formBuilderFields) && formBuilderFields.length > 0) {
+        wrap.style.display = 'none';
+    }
 }
 
 // Salvar seção (conteúdo vem do TinyMCE)
 async function salvarSecao(section) {
     let content = '';
-    if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
-        content = tinymce.get('editor-' + section).getContent();
-    } else {
-        const el = document.getElementById('editor-' + section);
-        content = el ? el.value : '';
+    let formSchemaJson = null;
+
+    if (section === 'dj_protocolo') {
+        const normalized = normalizeFormSchema(formBuilderFields);
+        if (normalized.length > 0) {
+            formBuilderFields = normalized;
+            content = buildSchemaHtmlForStorage(formBuilderFields);
+            formSchemaJson = JSON.stringify(formBuilderFields);
+        } else {
+            formSchemaJson = JSON.stringify([]);
+        }
+    }
+
+    if (!content) {
+        if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
+            content = tinymce.get('editor-' + section).getContent();
+        } else {
+            const el = document.getElementById('editor-' + section);
+            content = el ? el.value : '';
+        }
     }
     
     try {
@@ -1440,6 +1874,9 @@ async function salvarSecao(section) {
         formData.append('meeting_id', meetingId);
         formData.append('section', section);
         formData.append('content_html', content);
+        if (section === 'dj_protocolo' && formSchemaJson !== null) {
+            formData.append('form_schema_json', formSchemaJson);
+        }
         
         const resp = await fetch(window.location.href, {
             method: 'POST',
@@ -1648,12 +2085,26 @@ function bindSearchEvents() {
     searchEvents('', false);
 }
 
+function initDjBuilderIfExists() {
+    const hasBuilder = document.getElementById('builderFieldsList') !== null;
+    if (!hasBuilder) return;
+    formBuilderFields = normalizeFormSchema(formBuilderFields);
+    refreshSavedTemplateSelect();
+    renderFormBuilderUI();
+    hideLegacyEditorIfSchemaExists();
+    onChangeFieldType();
+}
+
 // Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)
 if (meetingId) {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadTinyMCEAndInit);
+        document.addEventListener('DOMContentLoaded', function () {
+            loadTinyMCEAndInit();
+            initDjBuilderIfExists();
+        });
     } else {
         loadTinyMCEAndInit();
+        initDjBuilderIfExists();
     }
 } else {
     if (document.readyState === 'loading') {

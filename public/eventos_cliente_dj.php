@@ -59,6 +59,119 @@ function eventos_cliente_normalizar_uploads(array $files, string $field): array 
     return $normalized;
 }
 
+/**
+ * Escapa HTML com segurança.
+ */
+function eventos_cliente_e(string $value): string {
+    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Normaliza schema dinâmico recebido da seção DJ.
+ */
+function eventos_cliente_normalizar_schema($raw): array {
+    if (!is_array($raw)) {
+        return [];
+    }
+    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    $schema = [];
+    foreach ($raw as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($item['type'] ?? 'text')));
+        if (!in_array($type, $allowed_types, true)) {
+            $type = 'text';
+        }
+        $label = trim((string)($item['label'] ?? ''));
+        if ($label === '' && $type !== 'divider') {
+            continue;
+        }
+        $options = [];
+        if ($type === 'select' && !empty($item['options']) && is_array($item['options'])) {
+            foreach ($item['options'] as $opt) {
+                $opt_text = trim((string)$opt);
+                if ($opt_text !== '') {
+                    $options[] = $opt_text;
+                }
+            }
+        }
+        $id = trim((string)($item['id'] ?? ''));
+        if ($id === '') {
+            $id = 'f_' . bin2hex(random_bytes(4));
+        }
+        $schema[] = [
+            'id' => $id,
+            'type' => $type,
+            'label' => $label,
+            'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider',
+            'options' => $options,
+        ];
+    }
+    return $schema;
+}
+
+/**
+ * Monta HTML de resposta do cliente a partir do schema.
+ */
+function eventos_cliente_montar_resposta_schema(array $schema, array $post): array {
+    $errors = [];
+    $parts = [];
+
+    foreach ($schema as $field) {
+        $field_id = trim((string)($field['id'] ?? ''));
+        $field_type = (string)($field['type'] ?? 'text');
+        $label = trim((string)($field['label'] ?? 'Campo'));
+        $required = !empty($field['required']);
+        $input_name = 'field_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $field_id);
+
+        if ($field_type === 'divider') {
+            $parts[] = '<hr>';
+            continue;
+        }
+        if ($field_type === 'section') {
+            $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
+            continue;
+        }
+        if ($field_type === 'file') {
+            // Upload de arquivo é processado separadamente.
+            $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br><em>Arquivo anexado separadamente.</em></p>';
+            continue;
+        }
+
+        $value = isset($post[$input_name]) ? trim((string)$post[$input_name]) : '';
+        if ($required && $value === '') {
+            $errors[] = 'Preencha o campo obrigatório: ' . $label;
+            continue;
+        }
+
+        if ($field_type === 'select') {
+            $allowed = array_map('strval', (array)($field['options'] ?? []));
+            if ($value !== '' && !in_array($value, $allowed, true)) {
+                $errors[] = 'Opção inválida em: ' . $label;
+                continue;
+            }
+        }
+
+        if ($field_type === 'yesno') {
+            if ($value !== '' && !in_array($value, ['sim', 'nao'], true)) {
+                $errors[] = 'Valor inválido em: ' . $label;
+                continue;
+            }
+            $value = $value === 'sim' ? 'Sim' : ($value === 'nao' ? 'Não' : '');
+        }
+
+        $answer = $value !== '' ? nl2br(eventos_cliente_e($value)) : '<em>Não informado</em>';
+        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $answer . '</p>';
+    }
+
+    return [
+        'ok' => empty($errors),
+        'errors' => $errors,
+        'content_html' => implode("\n", $parts),
+    ];
+}
+
 // Validar token
 if (empty($token)) {
     $error = 'Link inválido';
@@ -91,63 +204,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
         if ($secao && $secao['is_locked']) {
             $error = 'Este formulário já foi enviado e não pode ser alterado.';
         } else {
-            $content = $_POST['content_html'] ?? '';
             $uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
-            
-            // Salvar conteúdo (como cliente)
-            $result = eventos_reuniao_salvar_secao(
-                $pdo,
-                $link['meeting_id'],
-                'dj_protocolo',
-                $content,
-                0, // user_id = 0 para cliente
-                'Envio do cliente',
-                'cliente'
-            );
-            
-            if ($result['ok']) {
-                $upload_errors = [];
-                if (!empty($uploads)) {
-                    $uploader = new MagaluUpload();
-                    foreach ($uploads as $file) {
-                        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                            $upload_errors[] = 'Falha no arquivo: ' . ($file['name'] ?? 'sem nome');
+
+            $schema_submit = [];
+            if (!empty($secao['form_schema_json'])) {
+                $decoded_schema = json_decode((string)$secao['form_schema_json'], true);
+                $schema_submit = eventos_cliente_normalizar_schema($decoded_schema);
+            }
+
+            if (!empty($schema_submit)) {
+                $compiled = eventos_cliente_montar_resposta_schema($schema_submit, $_POST);
+                if (empty($compiled['ok'])) {
+                    $error = implode(' | ', array_slice((array)($compiled['errors'] ?? []), 0, 2));
+                } else {
+                    $content = (string)($compiled['content_html'] ?? '');
+
+                    // Campos de upload dentro do schema
+                    foreach ($schema_submit as $field) {
+                        if (($field['type'] ?? '') !== 'file') {
                             continue;
                         }
-
-                        try {
-                            $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/cliente_dj';
-                            $upload_result = $uploader->upload($file, $prefix);
-                            $save_result = eventos_reuniao_salvar_anexo(
-                                $pdo,
-                                (int)$link['meeting_id'],
-                                'dj_protocolo',
-                                $upload_result,
-                                'cliente',
-                                null
-                            );
-                            if (empty($save_result['ok'])) {
-                                $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
-                            }
-                        } catch (Throwable $e) {
-                            $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . $e->getMessage();
+                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)($field['id'] ?? ''));
+                        $field_input = 'file_' . $field_id;
+                        $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
+                        if (!empty($field['required']) && empty($field_uploads)) {
+                            $error = 'Campo obrigatório sem anexo: ' . (string)($field['label'] ?? 'Arquivo');
+                            break;
+                        }
+                        if (!empty($field_uploads)) {
+                            $uploads = array_merge($uploads, $field_uploads);
                         }
                     }
                 }
-
-                if (!empty($upload_errors)) {
-                    $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
-                } else {
-                    // Travar seção somente quando tudo foi salvo sem erro
-                    eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
-                    $success = true;
-                }
-
-                // Recarregar seção e anexos
-                $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], 'dj_protocolo');
-                $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], 'dj_protocolo');
             } else {
-                $error = $result['error'] ?? 'Erro ao salvar';
+                $content = (string)($_POST['content_html'] ?? '');
+            }
+
+            if ($error === '') {
+                // Salvar conteúdo (como cliente)
+                $result = eventos_reuniao_salvar_secao(
+                    $pdo,
+                    $link['meeting_id'],
+                    'dj_protocolo',
+                    $content,
+                    0, // user_id = 0 para cliente
+                    'Envio do cliente',
+                    'cliente',
+                    !empty($schema_submit) ? json_encode($schema_submit, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
+                );
+                
+                if ($result['ok']) {
+                    $upload_errors = [];
+                    if (!empty($uploads)) {
+                        $uploader = new MagaluUpload();
+                        foreach ($uploads as $file) {
+                            if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                                $upload_errors[] = 'Falha no arquivo: ' . ($file['name'] ?? 'sem nome');
+                                continue;
+                            }
+
+                            try {
+                                $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/cliente_dj';
+                                $upload_result = $uploader->upload($file, $prefix);
+                                $save_result = eventos_reuniao_salvar_anexo(
+                                    $pdo,
+                                    (int)$link['meeting_id'],
+                                    'dj_protocolo',
+                                    $upload_result,
+                                    'cliente',
+                                    null
+                                );
+                                if (empty($save_result['ok'])) {
+                                    $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
+                                }
+                            } catch (Throwable $e) {
+                                $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . $e->getMessage();
+                            }
+                        }
+                    }
+
+                    if (!empty($upload_errors)) {
+                        $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
+                    } else {
+                        // Travar seção somente quando tudo foi salvo sem erro
+                        eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
+                        $success = true;
+                    }
+
+                    // Recarregar seção e anexos
+                    $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], 'dj_protocolo');
+                    $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], 'dj_protocolo');
+                } else {
+                    $error = $result['error'] ?? 'Erro ao salvar';
+                }
             }
         }
     }
@@ -157,6 +306,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
 $is_locked = $secao && !empty($secao['is_locked']);
 $content = $secao['content_html'] ?? '';
+$form_schema = [];
+if (!empty($secao['form_schema_json'])) {
+    $decoded = json_decode((string)$secao['form_schema_json'], true);
+    $form_schema = eventos_cliente_normalizar_schema($decoded);
+}
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -722,6 +876,64 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             <div class="form-section">
                 <h3>🎵 Músicas e Protocolos</h3>
                 
+                <?php if (!empty($form_schema)): ?>
+                <div class="instructions">
+                    <strong>Preencha os campos abaixo:</strong>
+                    <ul>
+                        <li>Os campos com <strong>*</strong> são obrigatórios.</li>
+                        <li>Use respostas claras e objetivas para alinharmos seu evento.</li>
+                    </ul>
+                </div>
+
+                <?php foreach ($form_schema as $field): ?>
+                    <?php
+                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)($field['id'] ?? ''));
+                        $field_name = 'field_' . $field_id;
+                        $file_name = 'file_' . $field_id;
+                        $label = (string)($field['label'] ?? '');
+                        $required = !empty($field['required']);
+                        $required_attr = $required ? ' required' : '';
+                    ?>
+                    <?php if (($field['type'] ?? '') === 'divider'): ?>
+                        <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
+                    <?php elseif (($field['type'] ?? '') === 'section'): ?>
+                        <h4 style="margin-top: 1.1rem; margin-bottom: 0.6rem; color: #1e3a8a;"><?= eventos_cliente_e($label) ?></h4>
+                    <?php else: ?>
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display:block; font-weight:600; color:#334155; margin-bottom:0.35rem;" for="<?= eventos_cliente_e($field_name) ?>">
+                                <?= eventos_cliente_e($label) ?><?= $required ? ' *' : '' ?>
+                            </label>
+
+                            <?php if (($field['type'] ?? '') === 'textarea'): ?>
+                                <textarea id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>></textarea>
+                            <?php elseif (($field['type'] ?? '') === 'yesno'): ?>
+                                <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                                    <option value="">Selecione...</option>
+                                    <option value="sim">Sim</option>
+                                    <option value="nao">Não</option>
+                                </select>
+                            <?php elseif (($field['type'] ?? '') === 'select'): ?>
+                                <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                                    <option value="">Selecione...</option>
+                                    <?php foreach (($field['options'] ?? []) as $opt): ?>
+                                        <option value="<?= eventos_cliente_e((string)$opt) ?>"><?= eventos_cliente_e((string)$opt) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php elseif (($field['type'] ?? '') === 'file'): ?>
+                                <input type="file" id="<?= eventos_cliente_e($file_name) ?>" name="<?= eventos_cliente_e($file_name) ?>[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"<?= $required_attr ?>>
+                            <?php else: ?>
+                                <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+
+                <div class="attachments-box">
+                    <label for="anexosInput">Anexos adicionais (opcional)</label>
+                    <input type="file" id="anexosInput" name="anexos[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
+                    <p class="attachments-help">Use para anexar arquivos extras não previstos em campos específicos.</p>
+                </div>
+                <?php else: ?>
                 <div class="instructions">
                     <strong>Instruções:</strong>
                     <ul>
@@ -750,6 +962,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                     <input type="file" id="anexosInput" name="anexos[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
                     <p class="attachments-help">Envie playlist, roteiro, arte do convite e materiais de referência.</p>
                 </div>
+                <?php endif; ?>
 
                 <?php if (!empty($anexos)): ?>
                 <div class="attachments-list">
@@ -788,12 +1001,14 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             
             document.getElementById('djForm').addEventListener('submit', function(e) {
                 const editor = document.getElementById('editor');
-                document.getElementById('contentInput').value = editor.innerHTML;
-                
-                if (!editor.innerText.trim()) {
-                    e.preventDefault();
-                    alert('Por favor, preencha as informações antes de enviar.');
-                    return false;
+                const contentInput = document.getElementById('contentInput');
+                if (editor && contentInput) {
+                    contentInput.value = editor.innerHTML;
+                    if (!editor.innerText.trim()) {
+                        e.preventDefault();
+                        alert('Por favor, preencha as informações antes de enviar.');
+                        return false;
+                    }
                 }
                 
                 if (!confirm('Confirma o envio das informações? Após enviar, não será possível alterar.')) {
