@@ -521,6 +521,27 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         color: #0f172a;
     }
 
+    .prefill-block {
+        background: #ffffff;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        padding: 0.85rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .prefill-block h5 {
+        margin: 0 0 0.65rem 0;
+        font-size: 0.84rem;
+        color: #1e3a8a;
+        font-weight: 700;
+    }
+
+    .prefill-divider {
+        border: 0;
+        border-top: 1px dashed #cbd5e1;
+        margin: 0.7rem 0 0.95rem 0;
+    }
+
     .prefill-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -970,72 +991,88 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             </div>
 
             <div class="prefill-builder">
-                <h4>🧩 Pré-preenchimento Inteligente (formulário)</h4>
-                <div class="prefill-grid">
-                    <div class="prefill-field">
-                        <label for="templateModelo">Modelo rápido</label>
-                        <select id="templateModelo" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="15anos">15 anos (completo)</option>
-                            <option value="casamento">Casamento (resumido)</option>
-                            <option value="infantil">Infantil (resumido)</option>
-                        </select>
+                <h4>🧩 Construtor de Formulário</h4>
+
+                <div class="prefill-block">
+                    <h5>Modelos salvos</h5>
+                    <div class="prefill-grid">
+                        <div class="prefill-field" style="grid-column: 1 / -1;">
+                            <label for="savedTemplateSelect">Escolher modelo</label>
+                            <select id="savedTemplateSelect" <?= $is_locked ? 'disabled' : '' ?>>
+                                <option value="">Selecionar modelo salvo...</option>
+                                <?php foreach ($form_templates as $template): ?>
+                                    <option value="<?= (int)$template['id'] ?>"><?= htmlspecialchars((string)$template['nome']) ?><?= !empty($template['categoria']) ? ' - ' . htmlspecialchars((string)$template['categoria']) : '' ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
-                    <div class="prefill-field">
-                        <label for="savedTemplateSelect">Modelos salvos</label>
-                        <select id="savedTemplateSelect" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="">Selecionar modelo salvo...</option>
-                            <?php foreach ($form_templates as $template): ?>
-                                <option value="<?= (int)$template['id'] ?>"><?= htmlspecialchars((string)$template['nome']) ?><?= !empty($template['categoria']) ? ' - ' . htmlspecialchars((string)$template['categoria']) : '' ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="prefill-field">
-                        <label for="fieldType">Tipo de campo</label>
-                        <select id="fieldType" onchange="onChangeFieldType()" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="text">Texto curto</option>
-                            <option value="textarea">Texto longo</option>
-                            <option value="yesno">Opção Sim/Não</option>
-                            <option value="select">Múltipla escolha</option>
-                            <option value="file">Upload de arquivo</option>
-                            <option value="section">Título de seção</option>
-                        </select>
-                    </div>
-                    <div class="prefill-field" style="grid-column: 1 / -1;">
-                        <label for="fieldQuestion">Pergunta / título</label>
-                        <input id="fieldQuestion" type="text" placeholder="Digite a pergunta..." <?= $is_locked ? 'disabled' : '' ?>>
-                    </div>
-                    <div class="prefill-field">
-                        <label for="fieldRequired">Obrigatório</label>
-                        <select id="fieldRequired" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="1">Sim</option>
-                            <option value="0">Não</option>
-                        </select>
-                    </div>
-                    <div class="prefill-field">
-                        <label for="templateCategory">Categoria do modelo</label>
-                        <select id="templateCategory" <?= $is_locked ? 'disabled' : '' ?>>
-                            <option value="15anos">15 anos</option>
-                            <option value="casamento">Casamento</option>
-                            <option value="infantil">Infantil</option>
-                            <option value="geral">Geral</option>
-                        </select>
-                    </div>
-                    <div class="prefill-field" style="grid-column: 1 / -1;">
-                        <label for="templateSaveName">Nome para salvar modelo (opcional)</label>
-                        <input id="templateSaveName" type="text" placeholder="Ex.: 15 anos completo padrão Smile" <?= $is_locked ? 'disabled' : '' ?>>
-                    </div>
-                    <div class="prefill-field" id="fieldOptionsWrap" style="grid-column: 1 / -1; display: none;">
-                        <label for="fieldOptions">Opções (uma por linha)</label>
-                        <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3" <?= $is_locked ? 'disabled' : '' ?>></textarea>
+                    <div class="prefill-actions">
+                        <button type="button" class="btn btn-secondary" onclick="carregarModeloSalvo()" <?= $is_locked ? 'disabled' : '' ?>>📥 Carregar modelo salvo</button>
                     </div>
                 </div>
-                <div class="prefill-actions">
-                    <button type="button" class="btn btn-primary" onclick="aplicarTemplateModelo()" <?= $is_locked ? 'disabled' : '' ?>>📄 Aplicar modelo</button>
-                    <button type="button" class="btn btn-secondary" onclick="carregarModeloSalvo()" <?= $is_locked ? 'disabled' : '' ?>>📥 Carregar salvo</button>
-                    <button type="button" class="btn btn-secondary" onclick="salvarModeloAtual()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar como modelo</button>
-                    <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
-                    <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
+
+                <hr class="prefill-divider">
+
+                <div class="prefill-block">
+                    <h5>Criação e preenchimento</h5>
+                    <div class="prefill-grid">
+                        <div class="prefill-field">
+                            <label for="fieldType">Tipo de campo</label>
+                            <select id="fieldType" onchange="onChangeFieldType()" <?= $is_locked ? 'disabled' : '' ?>>
+                                <option value="text">Texto curto</option>
+                                <option value="textarea">Texto longo</option>
+                                <option value="yesno">Opção Sim/Não</option>
+                                <option value="select">Múltipla escolha</option>
+                                <option value="file">Upload de arquivo</option>
+                                <option value="section">Título de seção</option>
+                            </select>
+                        </div>
+                        <div class="prefill-field">
+                            <label for="fieldRequired">Obrigatório</label>
+                            <select id="fieldRequired" <?= $is_locked ? 'disabled' : '' ?>>
+                                <option value="1">Sim</option>
+                                <option value="0">Não</option>
+                            </select>
+                        </div>
+                        <div class="prefill-field" style="grid-column: 1 / -1;">
+                            <label for="fieldQuestion">Pergunta / título</label>
+                            <input id="fieldQuestion" type="text" placeholder="Digite a pergunta..." <?= $is_locked ? 'disabled' : '' ?>>
+                        </div>
+                        <div class="prefill-field" id="fieldOptionsWrap" style="grid-column: 1 / -1; display: none;">
+                            <label for="fieldOptions">Opções (uma por linha)</label>
+                            <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3" <?= $is_locked ? 'disabled' : '' ?>></textarea>
+                        </div>
+                    </div>
+                    <div class="prefill-actions">
+                        <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
+                        <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
+                    </div>
                 </div>
+
+                <hr class="prefill-divider">
+
+                <div class="prefill-block">
+                    <h5>Salvar modelo atual</h5>
+                    <div class="prefill-grid">
+                        <div class="prefill-field">
+                            <label for="templateCategory">Categoria do modelo</label>
+                            <select id="templateCategory" <?= $is_locked ? 'disabled' : '' ?>>
+                                <option value="15anos">15 anos</option>
+                                <option value="casamento">Casamento</option>
+                                <option value="infantil">Infantil</option>
+                                <option value="geral">Geral</option>
+                            </select>
+                        </div>
+                        <div class="prefill-field" style="grid-column: 1 / -1;">
+                            <label for="templateSaveName">Nome para salvar modelo</label>
+                            <input id="templateSaveName" type="text" placeholder="Ex.: 15 anos completo padrão Smile" <?= $is_locked ? 'disabled' : '' ?>>
+                        </div>
+                    </div>
+                    <div class="prefill-actions">
+                        <button type="button" class="btn btn-secondary" onclick="salvarModeloAtual()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar como modelo</button>
+                    </div>
+                </div>
+
                 <p class="prefill-note">Monte o formulário por campos (estilo Google Forms). Você pode salvar modelos e reutilizar nos próximos eventos.</p>
                 <div id="builderFieldsList" class="builder-fields-list"></div>
                 <div class="builder-preview-box">
@@ -1063,8 +1100,8 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 <button type="button" class="btn btn-secondary" onclick="toggleLegacyEditor()">📝 Mostrar/ocultar editor avançado</button>
             </div>
             <?php endif; ?>
-            <?php $legacy_wrap_id = ($key === 'dj_protocolo') ? ' id="legacyEditorWrapDj"' : ''; ?>
-            <div class="editor-wrapper legacy-editor-wrap"<?= $legacy_wrap_id ?>>
+            <?php $legacy_wrap_attrs = ($key === 'dj_protocolo') ? ' id="legacyEditorWrapDj" style="display:none;"' : ''; ?>
+            <div class="editor-wrapper legacy-editor-wrap"<?= $legacy_wrap_attrs ?>>
                 <?php 
                 $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
                 ?>
@@ -1109,7 +1146,6 @@ let searchAbortController = null;
 let eventsCacheLoaded = false;
 let eventsMasterCache = [];
 const eventsQueryCache = new Map();
-const snapshotData = <?= json_encode($snapshot ?? [], JSON_UNESCAPED_UNICODE) ?>;
 const savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
     return [
         'id' => (int)($template['id'] ?? 0),
@@ -1458,81 +1494,6 @@ function appendEditorContent(content, section = 'dj_protocolo') {
     const current = getEditorContent(section);
     const html = current ? `${current}\n${content}` : content;
     setEditorContent(html, section);
-}
-
-function buildTemplateModelo(modelo) {
-    const mk = (type, label, required = true, options = []) => ({
-        id: 'f_' + Math.random().toString(36).slice(2, 10),
-        type,
-        label,
-        required: !!required,
-        options: Array.isArray(options) ? options : []
-    });
-
-    if (modelo === 'casamento') {
-        return [
-            mk('section', 'Cerimonial'),
-            mk('textarea', 'Entrada dos noivos / padrinhos'),
-            mk('textarea', 'Música para entrada'),
-            mk('textarea', 'Momentos especiais (alianças, homenagens, etc)'),
-            mk('section', 'Repertório'),
-            mk('textarea', 'Ritmos que devem tocar'),
-            mk('textarea', 'Ritmos que não devem tocar', false),
-            mk('textarea', 'Músicas que não podem faltar'),
-            mk('text', 'Link da playlist (Spotify/YouTube)', false),
-            mk('file', 'Anexe roteiro, playlist e referências', false)
-        ];
-    }
-
-    if (modelo === 'infantil') {
-        return [
-            mk('section', 'Momentos principais'),
-            mk('textarea', 'Entrada / recepção'),
-            mk('textarea', 'Parabéns'),
-            mk('textarea', 'Momento especial adicional', false),
-            mk('section', 'Gosto musical'),
-            mk('textarea', 'Músicas favoritas'),
-            mk('textarea', 'Músicas que não tocar', false),
-            mk('yesno', 'Vai ter personagem/atração especial?', false),
-            mk('file', 'Anexe referências visuais / roteiro', false)
-        ];
-    }
-
-    return [
-        mk('section', 'Identificação'),
-        mk('text', 'Nome da debutante'),
-        mk('text', 'Data da festa'),
-        mk('section', 'Músicas do cerimonial'),
-        mk('textarea', 'Música da entrada da debutante (com link e tempo de início)'),
-        mk('textarea', 'Músicas para anel, sapato e momentos especiais', false),
-        mk('textarea', 'Valsa(s): quem dança + música + tempo'),
-        mk('textarea', 'Outro momento especial no cerimonial?', false),
-        mk('section', 'Gosto musical / repertório'),
-        mk('textarea', 'Quais ritmos tocar?'),
-        mk('textarea', 'Quais ritmos não tocar?', false),
-        mk('textarea', 'Alguma música que não pode faltar?', false),
-        mk('text', 'Link da playlist (Spotify/YouTube)', false),
-        mk('section', 'Cronograma'),
-        mk('yesno', 'Vai cantar parabéns após o cerimonial?'),
-        mk('textarea', 'Vai levar itens para o salão? Quais?', false),
-        mk('file', 'Anexe arquivos importantes (convite, arte, lista etc.)', false)
-    ];
-}
-
-function aplicarTemplateModelo() {
-    const select = document.getElementById('templateModelo');
-    if (!select) return;
-    const modelo = select.value || '15anos';
-    const template = buildTemplateModelo(modelo) || [];
-    if (!Array.isArray(template) || template.length === 0) {
-        alert('Modelo inválido.');
-        return;
-    }
-    const replace = formBuilderFields.length === 0 || confirm('Substituir o formulário atual pelo modelo selecionado?');
-    if (!replace) return;
-    formBuilderFields = normalizeFormSchema(template);
-    renderFormBuilderUI();
-    hideLegacyEditorIfSchemaExists();
 }
 
 function onChangeFieldType() {
