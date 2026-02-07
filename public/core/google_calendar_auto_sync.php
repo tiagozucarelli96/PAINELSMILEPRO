@@ -22,29 +22,18 @@ function google_calendar_auto_sync($pdo, string $source = ''): void {
 
         $logWebhookCheck = function (string $status, array $details) use ($pdo) {
             try {
-                $stmt = $pdo->prepare("
-                    SELECT criado_em 
-                    FROM google_calendar_sync_logs 
-                    WHERE tipo = 'webhook_check'
-                    ORDER BY criado_em DESC
-                    LIMIT 1
-                ");
-                $stmt->execute();
-                $last = $stmt->fetch(PDO::FETCH_ASSOC);
-                if ($last && !empty($last['criado_em'])) {
-                    $last_ts = strtotime((string)$last['criado_em']);
-                    if ($last_ts && (time() - $last_ts) < 1800) {
-                        return;
-                    }
+                if ($status !== 'erro') {
+                    return;
                 }
 
                 $stmt = $pdo->prepare("
                     INSERT INTO google_calendar_sync_logs (tipo, total_eventos, detalhes)
-                    VALUES ('webhook_check', 0, :detalhes)
+                    VALUES ('erro', 0, :detalhes)
                 ");
                 $payload = [
                     'status' => $status,
                     'details' => $details,
+                    'webhook_check' => true
                 ];
                 $stmt->execute([':detalhes' => json_encode($payload)]);
             } catch (Exception $e) {

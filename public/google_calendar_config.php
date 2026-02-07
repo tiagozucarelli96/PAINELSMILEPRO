@@ -191,12 +191,12 @@ try {
     // Tabela pode não existir ainda
 }
 
-// Último check de webhook
+// Último erro relacionado ao webhook
 $webhook_check = null;
 try {
     $stmt = $pdo->query("
         SELECT * FROM google_calendar_sync_logs 
-        WHERE tipo = 'webhook_check'
+        WHERE tipo = 'erro' AND detalhes ? 'webhook_check'
         ORDER BY criado_em DESC 
         LIMIT 1
     ");
