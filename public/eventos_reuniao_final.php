@@ -185,10 +185,11 @@ if ($meeting_id > 0) {
 }
 
 $form_templates = eventos_form_templates_listar($pdo);
-$dj_builder_mode = (isset($_GET['dj_builder']) && (string)$_GET['dj_builder'] === '1');
+$is_form_builder_page = (($_GET['page'] ?? '') === 'eventos_reuniao_form_builder');
+$dj_builder_mode = $is_form_builder_page || (isset($_GET['dj_builder']) && (string)$_GET['dj_builder'] === '1');
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $load_template_query_id = (int)($_GET['load_template'] ?? 0);
-$dj_builder_url = 'index.php?page=eventos_reuniao_final&id=' . (int)$meeting_id . '&tab=dj_protocolo&dj_builder=1';
+$dj_builder_url = 'index.php?page=eventos_reuniao_form_builder&id=' . (int)$meeting_id . '&tab=dj_protocolo';
 $dj_main_url = 'index.php?page=eventos_reuniao_final&id=' . (int)$meeting_id . '&tab=dj_protocolo';
 
 // Seções disponíveis
@@ -1106,9 +1107,12 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     <div class="dj-head-actions">
                         <span id="djDirtyBadge" class="dj-dirty-badge">Alterações não salvas</span>
                         <div class="dj-top-actions">
-                            <button type="button" class="btn btn-secondary" onclick="openPreviewModal()">Pre visualizar</button>
                             <button type="button" class="btn btn-primary" onclick="gerarLinkCliente()" id="btnGerarLink" <?= $is_locked ? 'disabled' : '' ?>>Gerar link</button>
+                            <?php if (!$dj_builder_mode): ?>
                             <a class="btn btn-primary" href="<?= htmlspecialchars($dj_builder_url) ?>">+ Criar novo Form</a>
+                            <?php else: ?>
+                            <a class="btn btn-secondary" href="<?= htmlspecialchars($dj_main_url) ?>">← Voltar</a>
+                            <?php endif; ?>
                             <button type="button" class="btn btn-secondary" onclick="openTemplatesModal()" <?= $is_locked ? 'disabled' : '' ?>>🗂️ Modelos</button>
                         </div>
                     </div>
@@ -1153,8 +1157,24 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     <div class="prefill-actions">
                         <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
                         <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
-                        <button type="button" class="btn btn-secondary" onclick="openSaveTemplateModal()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar modelo</button>
-                        <a class="btn btn-secondary" href="<?= htmlspecialchars($dj_main_url) ?>">← Voltar</a>
+                    </div>
+                    <div class="template-save-grid">
+                        <div class="prefill-field">
+                            <label for="quickTemplateCategory">Categoria do formulário</label>
+                            <select id="quickTemplateCategory" <?= $is_locked ? 'disabled' : '' ?>>
+                                <option value="15anos">15 anos</option>
+                                <option value="casamento">Casamento</option>
+                                <option value="infantil">Infantil</option>
+                                <option value="geral">Geral</option>
+                            </select>
+                        </div>
+                        <div class="prefill-field">
+                            <label for="quickTemplateName">Nome do formulário</label>
+                            <input id="quickTemplateName" type="text" placeholder="Ex.: 15 anos completo padrão Smile" <?= $is_locked ? 'disabled' : '' ?>>
+                        </div>
+                    </div>
+                    <div class="prefill-actions">
+                        <button type="button" class="btn btn-secondary" onclick="saveTemplateQuick()" <?= $is_locked ? 'disabled' : '' ?>>💾 Salvar modelo</button>
                     </div>
                     <p class="prefill-note">Monte o formulário por campos. Clique em salvar abaixo para persistir a estrutura.</p>
                     <div id="builderFieldsList" class="builder-fields-list"></div>
@@ -1245,51 +1265,6 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 <button type="button" class="btn btn-secondary" onclick="applySelectedTemplate()">📥 Carregar selecionado</button>
                 <button type="button" class="btn btn-secondary" onclick="overwriteSelectedTemplate()">♻️ Sobrescrever selecionado</button>
                 <button type="button" class="btn btn-secondary" onclick="archiveSelectedTemplate()">🗑️ Arquivar selecionado</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="modalPreviewForm">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>👁️ Pré-visualização do Formulário</h3>
-            <button type="button" class="modal-close" onclick="closePreviewModal()">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="builder-preview-box">
-                <div class="builder-preview-title">Visualização do cliente</div>
-                <div id="builderPreview"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="modalQuickSaveTemplate">
-    <div class="modal-content" style="max-width: 560px;">
-        <div class="modal-header">
-            <h3>💾 Salvar Modelo de Formulário</h3>
-            <button type="button" class="modal-close" onclick="closeSaveTemplateModal()">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div class="template-save-grid" style="margin-top: 0;">
-                <div class="prefill-field">
-                    <label for="quickTemplateCategory">Categoria</label>
-                    <select id="quickTemplateCategory">
-                        <option value="15anos">15 anos</option>
-                        <option value="casamento">Casamento</option>
-                        <option value="infantil">Infantil</option>
-                        <option value="geral">Geral</option>
-                    </select>
-                </div>
-                <div class="prefill-field">
-                    <label for="quickTemplateName">Nome do formulário</label>
-                    <input id="quickTemplateName" type="text" placeholder="Ex.: 15 anos completo padrão Smile">
-                </div>
-            </div>
-            <div class="prefill-actions">
-                <button type="button" class="btn btn-primary" onclick="saveTemplateQuick()">Salvar modelo</button>
-                <button type="button" class="btn btn-secondary" onclick="closeSaveTemplateModal()">Cancelar</button>
             </div>
         </div>
     </div>
@@ -2050,36 +2025,6 @@ function closeTemplatesModal() {
     if (modal) modal.classList.remove('show');
 }
 
-function openPreviewModal() {
-    renderFormBuilderUI();
-    const modal = document.getElementById('modalPreviewForm');
-    if (modal) modal.classList.add('show');
-}
-
-function closePreviewModal() {
-    const modal = document.getElementById('modalPreviewForm');
-    if (modal) modal.classList.remove('show');
-}
-
-function openSaveTemplateModal() {
-    if (djSectionLocked) return;
-    if (!Array.isArray(formBuilderFields) || !formBuilderFields.length || !hasUsefulSchemaFields(formBuilderFields)) {
-        alert('Adicione ao menos um campo preenchível antes de salvar como modelo.');
-        return;
-    }
-    const quickName = document.getElementById('quickTemplateName');
-    const quickCategory = document.getElementById('quickTemplateCategory');
-    if (quickName) quickName.value = '';
-    if (quickCategory) quickCategory.value = 'geral';
-    const modal = document.getElementById('modalQuickSaveTemplate');
-    if (modal) modal.classList.add('show');
-}
-
-function closeSaveTemplateModal() {
-    const modal = document.getElementById('modalQuickSaveTemplate');
-    if (modal) modal.classList.remove('show');
-}
-
 async function saveTemplateQuick() {
     if (djSectionLocked) return;
     if (!Array.isArray(formBuilderFields) || !formBuilderFields.length || !hasUsefulSchemaFields(formBuilderFields)) {
@@ -2113,7 +2058,6 @@ async function saveTemplateQuick() {
             return;
         }
 
-        closeSaveTemplateModal();
         await fetchTemplates();
         alert('Modelo salvo com sucesso!');
     } catch (err) {
@@ -2519,20 +2463,12 @@ window.addEventListener('click', function (e) {
     if (e.target && e.target.id === 'modalTemplates') {
         closeTemplatesModal();
     }
-    if (e.target && e.target.id === 'modalPreviewForm') {
-        closePreviewModal();
-    }
-    if (e.target && e.target.id === 'modalQuickSaveTemplate') {
-        closeSaveTemplateModal();
-    }
 });
 
 document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     fecharModal();
     closeTemplatesModal();
-    closePreviewModal();
-    closeSaveTemplateModal();
 });
 
 function bindSearchEvents() {
