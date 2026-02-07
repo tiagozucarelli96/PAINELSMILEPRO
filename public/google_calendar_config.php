@@ -175,38 +175,6 @@ if ($is_connected) {
 // Obter configuração atual
 $config = $helper->getConfig();
 
-// Webhook URL para exibição/diagnóstico
-$webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
-$webhook_url = google_calendar_normalize_webhook_url($webhook_url);
-
-// Obter logs de sincronização
-$logs = [];
-try {
-    $stmt = $pdo->query("
-        SELECT * FROM google_calendar_sync_logs 
-        ORDER BY criado_em DESC 
-        LIMIT 10
-    ");
-    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    // Tabela pode não existir ainda
-}
-
-// Último erro relacionado ao webhook
-$webhook_check = null;
-try {
-    $stmt = $pdo->query("
-        SELECT * FROM google_calendar_sync_logs 
-        WHERE tipo = 'erro'
-        AND jsonb_exists(COALESCE(detalhes, '{}'::jsonb), 'webhook_check')
-        ORDER BY criado_em DESC 
-        LIMIT 1
-    ");
-    $webhook_check = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-} catch (Exception $e) {
-    $webhook_check = null;
-}
-
 ob_start();
 ?>
 <style>
@@ -308,22 +276,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .calendar-item.selected {
     border-color: #1e40af;
     background: #dbeafe;
-}
-.logs-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 1rem;
-}
-.logs-table th,
-.logs-table td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid #e5e7eb;
-}
-.logs-table th {
-    background: #f3f4f6;
-    font-weight: 600;
-    color: #374151;
 }
 </style>
 
@@ -474,85 +426,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <?php endif; ?>
         <?php endif; ?>
         
-        <div style="margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 8px;">
-            <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem;">🔍 Diagnóstico do Webhook</h3>
-            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
-                URL do Webhook: <code><?= htmlspecialchars($webhook_url ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php') ?></code>
-            </p>
-            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
-                Status: <?= !empty($config['webhook_resource_id']) ? '✅ Registrado' : '❌ Não registrado' ?>
-            </p>
-            <?php if (!empty($config['webhook_resource_id'])): ?>
-            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
-                Resource ID: <code><?= htmlspecialchars(substr($config['webhook_resource_id'], 0, 50)) ?>...</code>
-            </p>
-            <?php endif; ?>
-            <?php if (!empty($webhook_check)): ?>
-            <?php
-                $detalhes_webhook = [];
-                if (!empty($webhook_check['detalhes'])) {
-                    $detalhes_webhook = json_decode($webhook_check['detalhes'], true) ?: [];
-                }
-                $status_webhook = $detalhes_webhook['status'] ?? 'N/A';
-                $details_msg = $detalhes_webhook['details']['mensagem'] ?? '';
-            ?>
-            <p style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b;">
-                Último check: <strong><?= htmlspecialchars($status_webhook) ?></strong>
-                em <?= htmlspecialchars(date('d/m/Y H:i', strtotime($webhook_check['criado_em'] ?? 'now'))) ?>
-            </p>
-            <?php if (!empty($details_msg)): ?>
-            <p style="margin: 0; font-size: 0.875rem; color: #b91c1c;">
-                Erro: <?= htmlspecialchars($details_msg) ?>
-            </p>
-            <?php endif; ?>
-            <?php endif; ?>
-            <p style="margin: 0; font-size: 0.75rem; color: #9ca3af;">
-                <strong>Nota:</strong> O webhook expira após alguns dias. Se não receber notificações, reative o webhook.
-                O sistema também sincroniza automaticamente via cron como backup.
-            </p>
-        </div>
-        
-        <a href="index.php?page=google_calendar_debug" class="btn btn-secondary" style="margin-left: 10px; text-decoration: none;">
-            🔍 Debug
-        </a>
+        <p style="margin-top: 0.75rem; font-size: 0.875rem; color: #64748b;">
+            O webhook expira após alguns dias. Se parar de receber mudanças automáticas, clique em <strong>Ativar Sincronização Automática</strong> novamente.
+        </p>
     </div>
-    
-    <!-- Logs de Sincronização -->
-    <?php if (!empty($logs)): ?>
-    <div class="section">
-        <h2>📊 Logs de Sincronização</h2>
-        <table class="logs-table">
-            <thead>
-                <tr>
-                    <th>Data/Hora</th>
-                    <th>Tipo</th>
-                    <th>Total de Eventos</th>
-                    <th>Detalhes</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($logs as $log): ?>
-                <tr>
-                    <td><?= date('d/m/Y H:i', strtotime($log['criado_em'])) ?></td>
-                    <td><?= htmlspecialchars($log['tipo']) ?></td>
-                    <td><?= $log['total_eventos'] ?></td>
-                    <td>
-                        <?php if ($log['detalhes']): ?>
-                        <?php 
-                        $detalhes = json_decode($log['detalhes'], true);
-                        if ($detalhes): 
-                        ?>
-                        Importados: <?= $detalhes['importados'] ?? 0 ?>, 
-                        Atualizados: <?= $detalhes['atualizados'] ?? 0 ?>
-                        <?php endif; ?>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
-    <?php endif; ?>
     <?php endif; ?>
     <?php endif; ?>
 </div>
@@ -569,7 +446,6 @@ function selectCalendar(calendarId, calendarName) {
     const nameField = document.getElementById('selected_calendar_name');
     if (nameField) {
         nameField.value = calendarName;
-        console.log('Calendário selecionado:', calendarId, 'Nome:', calendarName);
     }
     
     // Atualizar visualmente a seleção
@@ -599,7 +475,6 @@ function validateCalendarSelection() {
     
     if (nameField) {
         nameField.value = calendarName;
-        console.log('Enviando formulário - Calendário ID:', calendarId, 'Nome:', calendarName);
     }
     
     return true;
