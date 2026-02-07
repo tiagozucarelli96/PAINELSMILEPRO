@@ -76,6 +76,7 @@ try {
 
     if ($config && isset($_GET['test_webhook'])) {
         $debug_info['testando_webhook'] = true;
+        $debug_info['hide_calendars'] = true;
         try {
             $resultado = $helper->registerWebhook($config['google_calendar_id'], $debug_info['webhook_url']);
             $debug_info['test_webhook_result'] = $resultado;
@@ -160,6 +161,17 @@ pre {
         
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Webhook URL</h3>
         <pre><?= htmlspecialchars($debug_info['webhook_url'] ?? 'N/A') ?></pre>
+
+        <?php if (!empty($debug_info['testando_webhook'])): ?>
+        <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Teste de Webhook</h3>
+        <?php if (!empty($debug_info['test_webhook_result'])): ?>
+        <div class="alert alert-success">✅ Webhook registrado</div>
+        <pre><?= htmlspecialchars(json_encode($debug_info['test_webhook_result'], JSON_PRETTY_PRINT)) ?></pre>
+        <?php else: ?>
+        <div class="alert alert-error">❌ Falha ao registrar webhook</div>
+        <pre><?= htmlspecialchars($debug_info['test_webhook_error'] ?? 'Sem detalhes') ?></pre>
+        <?php endif; ?>
+        <?php endif; ?>
         
         <?php if (isset($debug_info['testando_calendario'])): ?>
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Teste de Sincronização</h3>
@@ -192,18 +204,7 @@ pre {
         <pre><?= htmlspecialchars($debug_info['test_url'] ?? 'N/A') ?></pre>
         <?php endif; ?>
 
-        <?php if (!empty($debug_info['testando_webhook'])): ?>
-        <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Teste de Webhook</h3>
-        <?php if (!empty($debug_info['test_webhook_result'])): ?>
-        <div class="alert alert-success">✅ Webhook registrado</div>
-        <pre><?= htmlspecialchars(json_encode($debug_info['test_webhook_result'], JSON_PRETTY_PRINT)) ?></pre>
-        <?php else: ?>
-        <div class="alert alert-error">❌ Falha ao registrar webhook</div>
-        <pre><?= htmlspecialchars($debug_info['test_webhook_error'] ?? 'Sem detalhes') ?></pre>
-        <?php endif; ?>
-        <?php endif; ?>
-        
-        <?php if (isset($debug_info['calendarios'])): ?>
+        <?php if (isset($debug_info['calendarios']) && empty($debug_info['hide_calendars'])): ?>
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Calendários Disponíveis</h3>
         <pre><?= htmlspecialchars(json_encode($debug_info['calendarios'], JSON_PRETTY_PRINT)) ?></pre>
         <?php endif; ?>
