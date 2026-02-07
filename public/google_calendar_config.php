@@ -17,6 +17,13 @@ $mensagem = '';
 $erro = '';
 $helper = new GoogleCalendarHelper();
 
+function google_calendar_normalize_webhook_url(string $url): string {
+    if (strpos($url, '/google/webhook') !== false) {
+        return str_replace('/google/webhook', '/google_calendar_webhook.php', $url);
+    }
+    return $url;
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = $_POST['acao'] ?? '';
@@ -67,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
+                $webhook_url = google_calendar_normalize_webhook_url($webhook_url);
                 $helper->registerWebhook($calendar_id, $webhook_url);
                 $mensagem = 'Calendário configurado e sincronização automática ativada com sucesso!';
             } catch (Exception $e) {
@@ -96,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
+            $webhook_url = google_calendar_normalize_webhook_url($webhook_url);
             
             error_log("[GOOGLE_CALENDAR_CONFIG] Ativando webhook para: {$config['google_calendar_id']}");
             error_log("[GOOGLE_CALENDAR_CONFIG] Webhook URL: $webhook_url");
@@ -164,6 +173,10 @@ if ($is_connected) {
 
 // Obter configuração atual
 $config = $helper->getConfig();
+
+// Webhook URL para exibição/diagnóstico
+$webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
+$webhook_url = google_calendar_normalize_webhook_url($webhook_url);
 
 // Obter logs de sincronização
 $logs = [];

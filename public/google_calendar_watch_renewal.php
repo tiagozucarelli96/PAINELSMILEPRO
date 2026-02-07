@@ -44,6 +44,9 @@ try {
     error_log("[GOOGLE_WATCH_RENEWAL] 📋 Encontrados " . count($webhooks) . " webhook(s) para renovar");
     
     $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google_calendar_webhook.php');
+    if (strpos($webhook_url, '/google/webhook') !== false) {
+        $webhook_url = str_replace('/google/webhook', '/google_calendar_webhook.php', $webhook_url);
+    }
     
     foreach ($webhooks as $webhook) {
         $calendar_id = $webhook['google_calendar_id'];
