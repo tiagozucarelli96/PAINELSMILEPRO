@@ -5,6 +5,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/core/google_calendar_auto_sync.php';
 
 // Verificar permissões
 $agenda = new AgendaHelper();
@@ -16,6 +17,9 @@ if (!$agenda->canAccessAgenda($usuario_id)) {
 }
 
 $usuario_id = $_SESSION['user_id'] ?? 1;
+
+// Auto-sync Google Calendar ao carregar a agenda (com throttling por sessão)
+google_calendar_auto_sync($GLOBALS['pdo'], 'agenda');
 
 // Processar ações AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao'])) {

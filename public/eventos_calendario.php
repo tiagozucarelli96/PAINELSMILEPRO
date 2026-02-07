@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/core/google_calendar_auto_sync.php';
 
 // Verificar permissão
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
@@ -19,6 +20,9 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 }
 
 $user_id = $_SESSION['id'] ?? $_SESSION['user_id'] ?? 0;
+
+// Auto-sync Google Calendar ao carregar o calendário (com throttling por sessão)
+google_calendar_auto_sync($GLOBALS['pdo'], 'eventos_calendario');
 
 // Mês/Ano atual
 $month = (int)($_GET['month'] ?? date('n'));
