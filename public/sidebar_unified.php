@@ -1678,8 +1678,13 @@ if ($current_page === 'dashboard') {
             var success = params.get('success');
             var error = params.get('error');
             if (typeof customAlert === 'function') {
-                if (success) customAlert(decodeURIComponent(success), 'Sucesso');
-                if (error) customAlert(decodeURIComponent(error), 'Erro');
+                if (success) {
+                    customAlert(decodeURIComponent(success), 'Sucesso');
+                } else if (error) {
+                    var decodedError = decodeURIComponent(error);
+                    var looksSuccess = /sucesso|sucess|atualizado|salvo/i.test(decodedError);
+                    customAlert(decodedError, looksSuccess ? 'Sucesso' : 'Erro');
+                }
             }
         })();
         

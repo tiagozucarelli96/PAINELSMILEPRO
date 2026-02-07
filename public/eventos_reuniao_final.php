@@ -260,6 +260,13 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         gap: 0.75rem;
         margin-bottom: 1rem;
     }
+
+    .search-hint {
+        margin-top: -0.25rem;
+        margin-bottom: 0.75rem;
+        color: #64748b;
+        font-size: 0.8rem;
+    }
     
     .search-input {
         flex: 1;
@@ -303,6 +310,24 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     .event-item.selected {
         background: #eff6ff;
         border-left: 3px solid #1e3a8a;
+    }
+
+    .event-item-label {
+        font-size: 0.75rem;
+        color: #1d4ed8;
+        font-weight: 700;
+        margin-top: 0.35rem;
+    }
+
+    .selected-event-summary {
+        display: none;
+        margin-top: 0.75rem;
+        border: 1px solid #c7d2fe;
+        border-radius: 8px;
+        background: #eef2ff;
+        color: #1e3a8a;
+        font-size: 0.85rem;
+        padding: 0.75rem;
     }
     
     .event-info h4 {
@@ -458,6 +483,59 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         font-size: 0.95rem;
         color: #374151;
     }
+
+    .prefill-builder {
+        background: #f8fafc;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .prefill-builder h4 {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.95rem;
+        color: #0f172a;
+    }
+
+    .prefill-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+
+    .prefill-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    .prefill-field label {
+        font-size: 0.78rem;
+        color: #475569;
+        font-weight: 600;
+    }
+
+    .prefill-field input,
+    .prefill-field select,
+    .prefill-field textarea {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.55rem 0.65rem;
+        font-size: 0.85rem;
+    }
+
+    .prefill-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+    }
+
+    .prefill-actions .btn {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+    }
     
     .link-display {
         display: flex;
@@ -601,6 +679,10 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             flex-direction: column;
             gap: 0.5rem;
         }
+
+        .prefill-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 
@@ -618,13 +700,15 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <div class="event-selector">
         <h3>🔍 Buscar Evento</h3>
         <div class="search-wrapper">
-            <input type="text" id="eventSearch" class="search-input" placeholder="Digite o nome do evento, cliente ou data...">
-            <button type="button" class="btn btn-primary" onclick="searchEvents()">Buscar</button>
+            <input type="text" id="eventSearch" class="search-input" placeholder="Digite nome, cliente, local ou data...">
+            <button type="button" class="btn btn-primary" onclick="searchEvents(null, true)">Buscar</button>
         </div>
+        <div class="search-hint">Busca inteligente: digitou, filtrou. A lista também usa cache para reduzir atraso.</div>
         <div id="eventsList" class="events-list" style="display: none;"></div>
         <div id="loadingEvents" style="display: none; padding: 2rem; text-align: center; color: #64748b;">
             Carregando eventos...
         </div>
+        <div id="selectedEventSummary" class="selected-event-summary"></div>
         <div id="selectedEvent" style="display: none; margin-top: 1rem;">
             <button type="button" class="btn btn-success" onclick="criarReuniao()">
                 ✓ Criar Reunião para este Evento
@@ -636,8 +720,29 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     <!-- Reunião Existente -->
     <?php 
     $snapshot = json_decode($reuniao['me_event_snapshot'], true) ?: [];
+    $nome_evento = trim((string)($snapshot['nome'] ?? ''));
+    if ($nome_evento === '') {
+        $nome_evento = 'Evento';
+    }
     $data_evento = $snapshot['data'] ?? '';
     $data_fmt = $data_evento ? date('d/m/Y', strtotime($data_evento)) : 'Sem data';
+    $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? $snapshot['horainicio'] ?? $snapshot['horario_inicio'] ?? ''));
+    $hora_fim = trim((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? $snapshot['hora_termino'] ?? ''));
+    $horario_evento = $hora_inicio !== '' ? $hora_inicio : 'Horário não informado';
+    if ($hora_inicio !== '' && $hora_fim !== '') {
+        $horario_evento .= ' - ' . $hora_fim;
+    }
+    $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? $snapshot['nomecliente'] ?? 'Cliente não informado'));
+    $cliente_telefone = trim((string)($snapshot['cliente']['telefone'] ?? $snapshot['telefonecliente'] ?? ''));
+    $cliente_email = trim((string)($snapshot['cliente']['email'] ?? $snapshot['emailcliente'] ?? ''));
+    $tipo_evento = trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? ''));
+    $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
+    $local_evento = trim((string)($snapshot['local'] ?? $snapshot['nomelocal'] ?? ''));
+    if ($local_evento === '') {
+        $local_evento = 'Local não definido';
+    }
+    $convidados_evento = (int)($snapshot['convidados'] ?? $snapshot['nconvidados'] ?? 0);
+    $evento_me_id = (int)($snapshot['id'] ?? $reuniao['me_event_id'] ?? 0);
     ?>
     
     <div class="page-header">
@@ -662,24 +767,54 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     
     <!-- Header do Evento -->
     <div class="event-header">
-        <h2><?= htmlspecialchars($snapshot['nome'] ?? 'Evento') ?></h2>
+        <h2><?= htmlspecialchars($nome_evento) ?></h2>
         <div class="event-meta">
             <div class="event-meta-item">
                 <span>📅</span>
-                <span><?= $data_fmt ?> às <?= htmlspecialchars($snapshot['hora_inicio'] ?? '') ?></span>
+                <span><?= $data_fmt ?> • <?= htmlspecialchars($horario_evento) ?></span>
             </div>
             <div class="event-meta-item">
                 <span>📍</span>
-                <span><?= htmlspecialchars($snapshot['local'] ?? 'Local não definido') ?></span>
+                <span><?= htmlspecialchars($local_evento) ?></span>
             </div>
             <div class="event-meta-item">
                 <span>👥</span>
-                <span><?= (int)($snapshot['convidados'] ?? 0) ?> convidados</span>
+                <span><?= $convidados_evento ?> convidados</span>
             </div>
             <div class="event-meta-item">
                 <span>👤</span>
-                <span><?= htmlspecialchars($snapshot['cliente']['nome'] ?? 'Cliente') ?></span>
+                <span><?= htmlspecialchars($cliente_nome) ?></span>
             </div>
+            <?php if ($cliente_telefone !== ''): ?>
+            <div class="event-meta-item">
+                <span>📞</span>
+                <span><?= htmlspecialchars($cliente_telefone) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($cliente_email !== ''): ?>
+            <div class="event-meta-item">
+                <span>✉️</span>
+                <span><?= htmlspecialchars($cliente_email) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($tipo_evento !== ''): ?>
+            <div class="event-meta-item">
+                <span>🏷️</span>
+                <span><?= htmlspecialchars($tipo_evento) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($unidade_evento !== ''): ?>
+            <div class="event-meta-item">
+                <span>🏢</span>
+                <span><?= htmlspecialchars($unidade_evento) ?></span>
+            </div>
+            <?php endif; ?>
+            <?php if ($evento_me_id > 0): ?>
+            <div class="event-meta-item">
+                <span>#️⃣</span>
+                <span>ID ME: <?= $evento_me_id ?></span>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     
@@ -715,6 +850,44 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     <input type="text" id="clienteLinkInput" class="link-input" readonly placeholder="Clique em 'Gerar Link' para criar">
                     <button type="button" class="btn btn-primary" onclick="gerarLinkCliente()">Gerar Link</button>
                     <button type="button" class="btn btn-secondary" onclick="copiarLink()" id="btnCopiar" style="display: none;">📋 Copiar</button>
+                </div>
+            </div>
+
+            <div class="prefill-builder">
+                <h4>🧩 Pré-preenchimento Inteligente (formulário)</h4>
+                <div class="prefill-grid">
+                    <div class="prefill-field">
+                        <label for="templateModelo">Modelo rápido</label>
+                        <select id="templateModelo" <?= $is_locked ? 'disabled' : '' ?>>
+                            <option value="15anos">15 anos (completo)</option>
+                            <option value="casamento">Casamento (resumido)</option>
+                            <option value="infantil">Infantil (resumido)</option>
+                        </select>
+                    </div>
+                    <div class="prefill-field">
+                        <label for="fieldType">Tipo de campo</label>
+                        <select id="fieldType" onchange="onChangeFieldType()" <?= $is_locked ? 'disabled' : '' ?>>
+                            <option value="textarea">Texto longo</option>
+                            <option value="text">Texto curto</option>
+                            <option value="yesno">Opção Sim/Não</option>
+                            <option value="select">Múltipla escolha</option>
+                            <option value="file">Upload de arquivo</option>
+                            <option value="section">Título de seção</option>
+                        </select>
+                    </div>
+                    <div class="prefill-field" style="grid-column: 1 / -1;">
+                        <label for="fieldQuestion">Pergunta / título</label>
+                        <input id="fieldQuestion" type="text" placeholder="Digite a pergunta..." <?= $is_locked ? 'disabled' : '' ?>>
+                    </div>
+                    <div class="prefill-field" id="fieldOptionsWrap" style="grid-column: 1 / -1; display: none;">
+                        <label for="fieldOptions">Opções (uma por linha)</label>
+                        <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3" <?= $is_locked ? 'disabled' : '' ?>></textarea>
+                    </div>
+                </div>
+                <div class="prefill-actions">
+                    <button type="button" class="btn btn-primary" onclick="aplicarTemplateModelo()" <?= $is_locked ? 'disabled' : '' ?>>📄 Aplicar modelo</button>
+                    <button type="button" class="btn btn-secondary" onclick="adicionarCampoFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➕ Adicionar campo</button>
+                    <button type="button" class="btn btn-secondary" onclick="inserirSeparadorFormulario()" <?= $is_locked ? 'disabled' : '' ?>>➖ Separador</button>
                 </div>
             </div>
             <?php endif; ?>
@@ -771,6 +944,13 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 let selectedEventId = null;
+let selectedEventData = null;
+let searchDebounceTimer = null;
+let searchAbortController = null;
+let eventsCacheLoaded = false;
+let eventsMasterCache = [];
+const eventsQueryCache = new Map();
+const snapshotData = <?= json_encode($snapshot ?? [], JSON_UNESCAPED_UNICODE) ?>;
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -889,60 +1069,157 @@ function initEditoresReuniao() {
     });
 }
 
-// Buscar eventos da ME
-async function searchEvents() {
-    const search = document.getElementById('eventSearch').value;
+function normalizeText(value) {
+    return (value || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+}
+
+function localFilterEvents(query) {
+    const q = normalizeText(query);
+    if (!q) {
+        return eventsMasterCache.slice(0, 50);
+    }
+    return eventsMasterCache.filter((ev) => {
+        const hay = normalizeText([
+            ev.nome,
+            ev.cliente,
+            ev.local,
+            ev.data_formatada,
+            ev.tipo
+        ].join(' '));
+        return hay.includes(q);
+    }).slice(0, 80);
+}
+
+function renderEventsList(events, query = '') {
+    const list = document.getElementById('eventsList');
+    if (!list) return;
+
+    if (!events || events.length === 0) {
+        list.innerHTML = `<div style="padding: 1rem; color: #64748b;">Nenhum evento encontrado</div>`;
+        list.style.display = 'block';
+        return;
+    }
+
+    const selectedId = Number(selectedEventId || 0);
+    list.innerHTML = events.map((ev) => {
+        const label = ev.label || `${ev.nome || 'Evento'} - ${ev.data_formatada || ''}`;
+        const isSelected = selectedId > 0 && Number(ev.id) === selectedId;
+        return `
+            <div class="event-item ${isSelected ? 'selected' : ''}" data-id="${ev.id}" onclick="selectEvent(this, ${ev.id})">
+                <div class="event-info">
+                    <h4>${ev.nome || 'Evento'}</h4>
+                    <p>${ev.cliente || 'Cliente'} • ${ev.local || 'Local'} • ${ev.convidados || 0} convidados</p>
+                    <div class="event-item-label">${label}</div>
+                </div>
+                <div class="event-date">${ev.data_formatada || '-'}</div>
+            </div>
+        `;
+    }).join('');
+    list.style.display = 'block';
+}
+
+async function fetchRemoteEvents(query = '', forceRefresh = false) {
+    const key = `${query}::${forceRefresh ? '1' : '0'}`;
+    if (!forceRefresh && eventsQueryCache.has(key)) {
+        return { ok: true, events: eventsQueryCache.get(key), fromCache: true };
+    }
+
+    if (searchAbortController) {
+        searchAbortController.abort();
+    }
+    searchAbortController = new AbortController();
+
+    const url = `index.php?page=eventos_me_proxy&action=list&search=${encodeURIComponent(query)}&days=120${forceRefresh ? '&refresh=1' : ''}`;
+    const resp = await fetch(url, { signal: searchAbortController.signal });
+    const data = await resp.json();
+    if (!data.ok) {
+        throw new Error(data.error || 'Erro ao buscar eventos');
+    }
+    const events = data.events || [];
+    eventsQueryCache.set(key, events);
+
+    if (!query) {
+        eventsMasterCache = events;
+        eventsCacheLoaded = true;
+    } else if (eventsMasterCache.length > 0) {
+        const existingIds = new Set(eventsMasterCache.map((e) => e.id));
+        events.forEach((ev) => {
+            if (!existingIds.has(ev.id)) {
+                eventsMasterCache.push(ev);
+            }
+        });
+    }
+
+    return { ok: true, events, fromCache: false };
+}
+
+// Buscar eventos da ME (smart search com cache local + debounce)
+async function searchEvents(queryOverride = null, forceRemote = false) {
+    const input = document.getElementById('eventSearch');
     const list = document.getElementById('eventsList');
     const loading = document.getElementById('loadingEvents');
-    
+    if (!input || !list || !loading) return;
+
+    const query = (queryOverride !== null ? queryOverride : input.value || '').trim();
     loading.style.display = 'block';
     list.style.display = 'none';
-    
+
     try {
-        const resp = await fetch(`index.php?page=eventos_me_proxy&action=list&search=${encodeURIComponent(search)}`);
-        const data = await resp.json();
-        
+        if (!eventsCacheLoaded) {
+            const remote = await fetchRemoteEvents('', false);
+            renderEventsList(remote.events, query);
+        }
+
+        const localResults = localFilterEvents(query);
+        renderEventsList(localResults, query);
         loading.style.display = 'none';
-        
-        if (!data.ok) {
-            list.innerHTML = `<div style="padding: 1rem; color: #dc2626;">${data.error || 'Erro ao buscar eventos'}</div>`;
-            list.style.display = 'block';
-            return;
+
+        if ((query.length >= 2 && forceRemote) || (query.length >= 3 && localResults.length < 8) || (forceRemote && query.length === 0)) {
+            const remote = await fetchRemoteEvents(query, forceRemote);
+            renderEventsList(remote.events, query);
         }
-        
-        if (!data.events || data.events.length === 0) {
-            list.innerHTML = `<div style="padding: 1rem; color: #64748b;">Nenhum evento encontrado</div>`;
-            list.style.display = 'block';
-            return;
-        }
-        
-        list.innerHTML = data.events.map(ev => `
-            <div class="event-item" onclick="selectEvent(${ev.id}, '${ev.nome.replace(/'/g, "\\'")}', '${ev.data_formatada}', '${(ev.local || '').replace(/'/g, "\\'")}')">
-                <div class="event-info">
-                    <h4>${ev.nome}</h4>
-                    <p>${ev.cliente || 'Cliente'} • ${ev.local || 'Local'} • ${ev.convidados} convidados</p>
-                </div>
-                <div class="event-date">${ev.data_formatada}</div>
-            </div>
-        `).join('');
-        list.style.display = 'block';
-        
     } catch (err) {
+        if (err && err.name === 'AbortError') {
+            return;
+        }
         loading.style.display = 'none';
         list.innerHTML = `<div style="padding: 1rem; color: #dc2626;">Erro: ${err.message}</div>`;
         list.style.display = 'block';
     }
 }
 
+function renderSelectedEventSummary(ev) {
+    const summary = document.getElementById('selectedEventSummary');
+    if (!summary) return;
+    if (!ev) {
+        summary.innerHTML = '';
+        summary.style.display = 'none';
+        return;
+    }
+    summary.innerHTML = `
+        <strong>Selecionado:</strong> ${ev.nome || 'Evento'}<br>
+        <span>${ev.data_formatada || '-'} • ${ev.hora || '-'} • ${ev.local || 'Local não informado'} • ${ev.cliente || 'Cliente'}</span>
+    `;
+    summary.style.display = 'block';
+}
+
 // Selecionar evento
-function selectEvent(id, nome, data, local) {
+function selectEvent(el, id) {
     selectedEventId = id;
-    
-    // Marcar como selecionado
+    selectedEventData = (eventsMasterCache || []).find((ev) => Number(ev.id) === Number(id))
+        || Array.from(eventsQueryCache.values()).flat().find((ev) => Number(ev.id) === Number(id))
+        || null;
+
     document.querySelectorAll('.event-item').forEach(el => el.classList.remove('selected'));
-    event.currentTarget.classList.add('selected');
-    
-    // Mostrar botão de criar
+    if (el) {
+        el.classList.add('selected');
+    }
+
+    renderSelectedEventSummary(selectedEventData);
     document.getElementById('selectedEvent').style.display = 'block';
 }
 
@@ -981,6 +1258,170 @@ function switchTab(section) {
     
     document.querySelector(`.tab-btn[onclick="switchTab('${section}')"]`).classList.add('active');
     document.getElementById(`tab-${section}`).classList.add('active');
+}
+
+function escapeHtmlForField(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+function getEditorContent(section = 'dj_protocolo') {
+    if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
+        return tinymce.get('editor-' + section).getContent() || '';
+    }
+    const el = document.getElementById('editor-' + section);
+    return el ? (el.value || '') : '';
+}
+
+function setEditorContent(content, section = 'dj_protocolo') {
+    if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
+        tinymce.get('editor-' + section).setContent(content || '');
+        return;
+    }
+    const el = document.getElementById('editor-' + section);
+    if (el) {
+        el.value = content || '';
+    }
+}
+
+function appendEditorContent(content, section = 'dj_protocolo') {
+    const current = getEditorContent(section);
+    const html = current ? `${current}\n${content}` : content;
+    setEditorContent(html, section);
+}
+
+function buildTemplateModelo(modelo) {
+    const nomeEvento = (snapshotData && snapshotData.nome) ? snapshotData.nome : '#NOMEDOEVENTO#';
+    const horario = (snapshotData && snapshotData.hora_inicio) ? snapshotData.hora_inicio : '#HORAEVENTO#';
+    const dataEvento = (snapshotData && snapshotData.data) ? new Date(snapshotData.data).toLocaleDateString('pt-BR') : '#DATAEVENTO#';
+
+    if (modelo === 'casamento') {
+        return `
+<h2>Organização do Evento - Casamento</h2>
+<p><strong>Evento:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Data:</strong> ${escapeHtmlForField(dataEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
+<p>Responda com o máximo de detalhes para alinharmos todos os momentos especiais.</p>
+<hr>
+<h3>Cerimonial</h3>
+<p><strong>Entrada dos noivos / padrinhos:</strong></p>
+<p>________________________________________</p>
+<p><strong>Música para entrada:</strong></p>
+<p>________________________________________</p>
+<h3>Repertório</h3>
+<p><strong>Ritmos que devem tocar:</strong></p>
+<p>________________________________________</p>
+<p><strong>Ritmos que não devem tocar:</strong></p>
+<p>________________________________________</p>
+<p><strong>Anexos necessários (opcional):</strong> Envie playlist, roteiro ou arquivos de referência no campo de anexos abaixo.</p>`;
+    }
+
+    if (modelo === 'infantil') {
+        return `
+<h2>Organização do Evento - Infantil</h2>
+<p><strong>Evento:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Data:</strong> ${escapeHtmlForField(dataEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
+<p>Preencha as informações para organização musical e momentos especiais.</p>
+<hr>
+<h3>Momentos principais</h3>
+<p><strong>Entrada / recepção:</strong></p>
+<p>________________________________________</p>
+<p><strong>Parabéns:</strong></p>
+<p>________________________________________</p>
+<h3>Gosto musical</h3>
+<p><strong>Músicas favoritas:</strong></p>
+<p>________________________________________</p>
+<p><strong>Músicas que não tocar:</strong></p>
+<p>________________________________________</p>
+<p><strong>Anexos necessários (opcional):</strong> Envie playlist, roteiro ou arquivos de referência no campo de anexos abaixo.</p>`;
+    }
+
+    return `
+<h2>Organização 15 anos</h2>
+<p><strong>Debutante:</strong> ${escapeHtmlForField(nomeEvento)} • <strong>Horário:</strong> ${escapeHtmlForField(horario)}</p>
+<p>Este formulário é essencial para alinharmos música, cerimonial e cronograma do evento.</p>
+<hr>
+<h3>Músicas do cerimonial</h3>
+<p><strong>Música da entrada da debutante:</strong></p>
+<p>________________________________________</p>
+<p><strong>Músicas para momentos especiais (anel, sapato, homenagens):</strong></p>
+<p>________________________________________</p>
+<p><strong>Valsas (quem dança + música + tempo):</strong></p>
+<p>________________________________________</p>
+<h3>Gosto musical / repertório</h3>
+<p><strong>Ritmos que tocar:</strong></p>
+<p>________________________________________</p>
+<p><strong>Ritmos que não tocar:</strong></p>
+<p>________________________________________</p>
+<p><strong>Playlist (Spotify/YouTube):</strong></p>
+<p>________________________________________</p>
+<h3>Cronograma</h3>
+<p><strong>Vai cantar parabéns após cerimonial?</strong> ( ) SIM  ( ) NÃO</p>
+<p><strong>Vai levar item para o salão? Se sim, qual?</strong></p>
+<p>________________________________________</p>
+<p><strong>Anexos necessários (opcional):</strong> envie convites, artes, listas ou referências no campo de anexos.</p>`;
+}
+
+function aplicarTemplateModelo() {
+    const select = document.getElementById('templateModelo');
+    if (!select) return;
+    const modelo = select.value || '15anos';
+    const template = buildTemplateModelo(modelo);
+    const current = getEditorContent('dj_protocolo').trim();
+    const replace = !current || confirm('Substituir o conteúdo atual pelo modelo selecionado?');
+    if (replace) {
+        setEditorContent(template, 'dj_protocolo');
+    } else {
+        appendEditorContent(template, 'dj_protocolo');
+    }
+}
+
+function onChangeFieldType() {
+    const fieldTypeEl = document.getElementById('fieldType');
+    const type = fieldTypeEl ? (fieldTypeEl.value || 'textarea') : 'textarea';
+    const optionsWrap = document.getElementById('fieldOptionsWrap');
+    if (!optionsWrap) return;
+    optionsWrap.style.display = type === 'select' ? 'block' : 'none';
+}
+
+function adicionarCampoFormulario() {
+    const fieldTypeEl = document.getElementById('fieldType');
+    const fieldQuestionEl = document.getElementById('fieldQuestion');
+    const fieldOptionsEl = document.getElementById('fieldOptions');
+    const type = fieldTypeEl ? (fieldTypeEl.value || 'textarea') : 'textarea';
+    const question = ((fieldQuestionEl ? fieldQuestionEl.value : '') || '').trim();
+    const options = ((fieldOptionsEl ? fieldOptionsEl.value : '') || '').trim();
+
+    if (!question) {
+        alert('Digite a pergunta/título para adicionar o campo.');
+        return;
+    }
+
+    let html = '';
+    if (type === 'section') {
+        html = `<h3>${escapeHtmlForField(question)}</h3>`;
+    } else if (type === 'text') {
+        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>________________________________________</p>`;
+    } else if (type === 'yesno') {
+        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>( ) SIM &nbsp;&nbsp; ( ) NÃO</p>`;
+    } else if (type === 'select') {
+        const list = options.split('\n').map(v => v.trim()).filter(Boolean);
+        if (!list.length) {
+            alert('Para múltipla escolha, informe pelo menos uma opção.');
+            return;
+        }
+        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><ul>${list.map(v => `<li>( ) ${escapeHtmlForField(v)}</li>`).join('')}</ul>`;
+    } else if (type === 'file') {
+        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p><em>Cliente deverá anexar arquivo no campo de anexos do formulário.</em></p>`;
+    } else {
+        html = `<p><strong>${escapeHtmlForField(question)}</strong></p><p>________________________________________</p>`;
+    }
+
+    appendEditorContent(html, 'dj_protocolo');
+    if (fieldQuestionEl) fieldQuestionEl.value = '';
+    if (fieldOptionsEl) fieldOptionsEl.value = '';
+}
+
+function inserirSeparadorFormulario() {
+    appendEditorContent('<hr>', 'dj_protocolo');
 }
 
 // Salvar seção (conteúdo vem do TinyMCE)
@@ -1186,10 +1627,26 @@ function formatDate(dateStr) {
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-// Buscar ao pressionar Enter
-document.getElementById('eventSearch')?.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') searchEvents();
-});
+function bindSearchEvents() {
+    const searchInput = document.getElementById('eventSearch');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', function () {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            searchEvents(searchInput.value, false);
+        }, 280);
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            searchEvents(searchInput.value, true);
+        }
+    });
+
+    searchEvents('', false);
+}
 
 // Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)
 if (meetingId) {
@@ -1198,7 +1655,15 @@ if (meetingId) {
     } else {
         loadTinyMCEAndInit();
     }
+} else {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindSearchEvents);
+    } else {
+        bindSearchEvents();
+    }
 }
+
+onChangeFieldType();
 </script>
 
 <?php endSidebar(); ?>

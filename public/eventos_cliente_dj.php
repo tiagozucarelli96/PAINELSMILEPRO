@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 $token = $_GET['token'] ?? $_POST['token'] ?? '';
 $error = '';
@@ -19,6 +20,44 @@ $link = null;
 $reuniao = null;
 $secao = null;
 $anexos = [];
+
+/**
+ * Converter estrutura de upload múltiplo para lista de arquivos.
+ */
+function eventos_cliente_normalizar_uploads(array $files, string $field): array {
+    if (empty($files[$field])) {
+        return [];
+    }
+
+    $entry = $files[$field];
+    if (!isset($entry['name'])) {
+        return [];
+    }
+
+    if (!is_array($entry['name'])) {
+        if (($entry['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return [];
+        }
+        return [$entry];
+    }
+
+    $normalized = [];
+    $count = count($entry['name']);
+    for ($i = 0; $i < $count; $i++) {
+        if (($entry['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+        $normalized[] = [
+            'name' => $entry['name'][$i] ?? '',
+            'type' => $entry['type'][$i] ?? '',
+            'tmp_name' => $entry['tmp_name'][$i] ?? '',
+            'error' => $entry['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+            'size' => $entry['size'][$i] ?? 0,
+        ];
+    }
+
+    return $normalized;
+}
 
 // Validar token
 if (empty($token)) {
@@ -53,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
             $error = 'Este formulário já foi enviado e não pode ser alterado.';
         } else {
             $content = $_POST['content_html'] ?? '';
+            $uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
             
             // Salvar conteúdo (como cliente)
             $result = eventos_reuniao_salvar_secao(
@@ -66,12 +106,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
             );
             
             if ($result['ok']) {
-                // Travar seção
-                eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
-                $success = true;
-                
-                // Recarregar seção
+                $upload_errors = [];
+                if (!empty($uploads)) {
+                    $uploader = new MagaluUpload();
+                    foreach ($uploads as $file) {
+                        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                            $upload_errors[] = 'Falha no arquivo: ' . ($file['name'] ?? 'sem nome');
+                            continue;
+                        }
+
+                        try {
+                            $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/cliente_dj';
+                            $upload_result = $uploader->upload($file, $prefix);
+                            $save_result = eventos_reuniao_salvar_anexo(
+                                $pdo,
+                                (int)$link['meeting_id'],
+                                'dj_protocolo',
+                                $upload_result,
+                                'cliente',
+                                null
+                            );
+                            if (empty($save_result['ok'])) {
+                                $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
+                            }
+                        } catch (Throwable $e) {
+                            $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . $e->getMessage();
+                        }
+                    }
+                }
+
+                if (!empty($upload_errors)) {
+                    $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
+                } else {
+                    // Travar seção somente quando tudo foi salvo sem erro
+                    eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
+                    $success = true;
+                }
+
+                // Recarregar seção e anexos
                 $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], 'dj_protocolo');
+                $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], 'dj_protocolo');
             } else {
                 $error = $result['error'] ?? 'Erro ao salvar';
             }
@@ -83,6 +157,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
 $is_locked = $secao && !empty($secao['is_locked']);
 $content = $secao['content_html'] ?? '';
+
+$evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
+$data_evento_raw = trim((string)($snapshot['data'] ?? ''));
+$data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : 'Não informada';
+$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? $snapshot['horainicio'] ?? ''));
+$hora_fim = trim((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? ''));
+$horario_evento = $hora_inicio !== '' ? $hora_inicio : 'Não informado';
+if ($hora_inicio !== '' && $hora_fim !== '') {
+    $horario_evento .= ' - ' . $hora_fim;
+}
+$local_evento = trim((string)($snapshot['local'] ?? $snapshot['nomelocal'] ?? 'Não informado'));
+$convidados_evento = (int)($snapshot['convidados'] ?? $snapshot['nconvidados'] ?? 0);
+$cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? $snapshot['nomecliente'] ?? 'Não informado'));
+$cliente_telefone = trim((string)($snapshot['cliente']['telefone'] ?? $snapshot['telefonecliente'] ?? ''));
+$cliente_email = trim((string)($snapshot['cliente']['email'] ?? $snapshot['emailcliente'] ?? ''));
+$tipo_evento = trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? ''));
+$unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -113,8 +204,10 @@ $content = $secao['content_html'] ?? '';
         
         .header img {
             max-width: 180px;
-            filter: brightness(0) invert(1);
             margin-bottom: 1rem;
+            filter: none;
+            background: transparent;
+            border-radius: 0;
         }
         
         .header h1 {
@@ -201,6 +294,71 @@ $content = $secao['content_html'] ?? '';
         
         .instructions ul {
             margin: 0.5rem 0 0 1.5rem;
+        }
+
+        .attachments-box {
+            margin-top: 1rem;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 0.875rem;
+            background: #f8fafc;
+        }
+
+        .attachments-box label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 0.5rem;
+        }
+
+        .attachments-box input[type="file"] {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+        }
+
+        .attachments-help {
+            margin-top: 0.4rem;
+            font-size: 0.78rem;
+            color: #64748b;
+        }
+
+        .attachments-list {
+            margin-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 0.75rem;
+        }
+
+        .attachments-list h4 {
+            margin: 0 0 0.5rem 0;
+            font-size: 0.9rem;
+            color: #334155;
+        }
+
+        .attachments-list ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .attachments-list li {
+            font-size: 0.84rem;
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+
+        .attachments-list a {
+            color: #1d4ed8;
+            text-decoration: none;
+        }
+
+        .attachments-list a:hover {
+            text-decoration: underline;
         }
         
         .editor-wrapper {
@@ -352,7 +510,8 @@ $content = $secao['content_html'] ?? '';
     <div class="header">
         <img src="logo.png" alt="Grupo Smile" onerror="this.style.display='none'">
         <h1>🎧 Organização - DJ / Músicas</h1>
-        <p>Preencha as informações musicais do seu evento</p>
+        <p><?= htmlspecialchars($evento_nome) ?> • <?= htmlspecialchars($data_evento_fmt) ?> • <?= htmlspecialchars($horario_evento) ?></p>
+        <p>Cliente: <?= htmlspecialchars($cliente_nome) ?></p>
     </div>
     
     <div class="container">
@@ -371,22 +530,79 @@ $content = $secao['content_html'] ?? '';
         </div>
         <?php elseif ($is_locked): ?>
         <div class="event-info">
-            <h2><?= htmlspecialchars($snapshot['nome'] ?? 'Seu Evento') ?></h2>
+            <h2><?= htmlspecialchars($evento_nome) ?></h2>
             <div class="event-details">
                 <div class="detail-item">
                     <span>📅</span>
                     <div>
                         <strong>Data</strong>
-                        <span><?= date('d/m/Y', strtotime($snapshot['data'] ?? 'now')) ?></span>
+                        <span><?= htmlspecialchars($data_evento_fmt) ?></span>
                     </div>
                 </div>
                 <div class="detail-item">
                     <span>⏰</span>
                     <div>
                         <strong>Horário</strong>
-                        <span><?= htmlspecialchars($snapshot['hora_inicio'] ?? '-') ?></span>
+                        <span><?= htmlspecialchars($horario_evento) ?></span>
                     </div>
                 </div>
+                <div class="detail-item">
+                    <span>📍</span>
+                    <div>
+                        <strong>Local</strong>
+                        <span><?= htmlspecialchars($local_evento) ?></span>
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <span>👥</span>
+                    <div>
+                        <strong>Convidados</strong>
+                        <span><?= $convidados_evento ?></span>
+                    </div>
+                </div>
+                <div class="detail-item">
+                    <span>👤</span>
+                    <div>
+                        <strong>Cliente</strong>
+                        <span><?= htmlspecialchars($cliente_nome) ?></span>
+                    </div>
+                </div>
+                <?php if ($cliente_telefone !== ''): ?>
+                <div class="detail-item">
+                    <span>📞</span>
+                    <div>
+                        <strong>Telefone</strong>
+                        <span><?= htmlspecialchars($cliente_telefone) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($cliente_email !== ''): ?>
+                <div class="detail-item">
+                    <span>✉️</span>
+                    <div>
+                        <strong>E-mail</strong>
+                        <span><?= htmlspecialchars($cliente_email) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($tipo_evento !== ''): ?>
+                <div class="detail-item">
+                    <span>🏷️</span>
+                    <div>
+                        <strong>Tipo</strong>
+                        <span><?= htmlspecialchars($tipo_evento) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($unidade_evento !== ''): ?>
+                <div class="detail-item">
+                    <span>🏢</span>
+                    <div>
+                        <strong>Unidade</strong>
+                        <span><?= htmlspecialchars($unidade_evento) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
         
@@ -400,44 +616,106 @@ $content = $secao['content_html'] ?? '';
             <div style="padding: 1rem; background: #f8fafc; border-radius: 8px; margin-top: 1rem;">
                 <?= $content ?: '<em>Sem conteúdo</em>' ?>
             </div>
+            <?php if (!empty($anexos)): ?>
+            <div class="attachments-list">
+                <h4>Anexos enviados</h4>
+                <ul>
+                    <?php foreach ($anexos as $anexo): ?>
+                    <li>
+                        <span>📎</span>
+                        <?php if (!empty($anexo['public_url'])): ?>
+                        <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                            <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
+                        </a>
+                        <?php else: ?>
+                        <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                        <?php endif; ?>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
         </div>
         <?php else: ?>
         <!-- Formulário editável -->
         <div class="event-info">
-            <h2><?= htmlspecialchars($snapshot['nome'] ?? 'Seu Evento') ?></h2>
+            <h2><?= htmlspecialchars($evento_nome) ?></h2>
             <div class="event-details">
                 <div class="detail-item">
                     <span>📅</span>
                     <div>
                         <strong>Data</strong>
-                        <span><?= date('d/m/Y', strtotime($snapshot['data'] ?? 'now')) ?></span>
+                        <span><?= htmlspecialchars($data_evento_fmt) ?></span>
                     </div>
                 </div>
                 <div class="detail-item">
                     <span>⏰</span>
                     <div>
                         <strong>Horário</strong>
-                        <span><?= htmlspecialchars($snapshot['hora_inicio'] ?? '-') ?></span>
+                        <span><?= htmlspecialchars($horario_evento) ?></span>
                     </div>
                 </div>
                 <div class="detail-item">
                     <span>📍</span>
                     <div>
                         <strong>Local</strong>
-                        <span><?= htmlspecialchars($snapshot['local'] ?? '-') ?></span>
+                        <span><?= htmlspecialchars($local_evento) ?></span>
                     </div>
                 </div>
                 <div class="detail-item">
                     <span>👥</span>
                     <div>
                         <strong>Convidados</strong>
-                        <span><?= (int)($snapshot['convidados'] ?? 0) ?></span>
+                        <span><?= $convidados_evento ?></span>
                     </div>
                 </div>
+                <div class="detail-item">
+                    <span>👤</span>
+                    <div>
+                        <strong>Cliente</strong>
+                        <span><?= htmlspecialchars($cliente_nome) ?></span>
+                    </div>
+                </div>
+                <?php if ($cliente_telefone !== ''): ?>
+                <div class="detail-item">
+                    <span>📞</span>
+                    <div>
+                        <strong>Telefone</strong>
+                        <span><?= htmlspecialchars($cliente_telefone) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($cliente_email !== ''): ?>
+                <div class="detail-item">
+                    <span>✉️</span>
+                    <div>
+                        <strong>E-mail</strong>
+                        <span><?= htmlspecialchars($cliente_email) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($tipo_evento !== ''): ?>
+                <div class="detail-item">
+                    <span>🏷️</span>
+                    <div>
+                        <strong>Tipo</strong>
+                        <span><?= htmlspecialchars($tipo_evento) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
+                <?php if ($unidade_evento !== ''): ?>
+                <div class="detail-item">
+                    <span>🏢</span>
+                    <div>
+                        <strong>Unidade</strong>
+                        <span><?= htmlspecialchars($unidade_evento) ?></span>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
         
-        <form method="POST" id="djForm">
+        <form method="POST" id="djForm" enctype="multipart/form-data">
             <input type="hidden" name="action" value="salvar">
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
             
@@ -466,6 +744,32 @@ $content = $secao['content_html'] ?? '';
                          contenteditable="true"><?= $content ?></div>
                 </div>
                 <input type="hidden" name="content_html" id="contentInput">
+
+                <div class="attachments-box">
+                    <label for="anexosInput">Anexos (opcional)</label>
+                    <input type="file" id="anexosInput" name="anexos[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
+                    <p class="attachments-help">Envie playlist, roteiro, arte do convite e materiais de referência.</p>
+                </div>
+
+                <?php if (!empty($anexos)): ?>
+                <div class="attachments-list">
+                    <h4>Arquivos já enviados</h4>
+                    <ul>
+                        <?php foreach ($anexos as $anexo): ?>
+                        <li>
+                            <span>📎</span>
+                            <?php if (!empty($anexo['public_url'])): ?>
+                            <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
+                            </a>
+                            <?php else: ?>
+                            <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                            <?php endif; ?>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+                <?php endif; ?>
             </div>
             
             <button type="submit" class="btn btn-primary" id="submitBtn">

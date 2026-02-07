@@ -353,6 +353,64 @@ function eventos_reuniao_get_anexos(PDO $pdo, int $meeting_id, string $section):
 }
 
 /**
+ * Classificar tipo do arquivo a partir do MIME.
+ */
+function eventos_reuniao_file_kind_from_mime(string $mime_type): string {
+    $mime = strtolower(trim($mime_type));
+    if (strpos($mime, 'image/') === 0) return 'imagem';
+    if (strpos($mime, 'audio/') === 0) return 'audio';
+    if (strpos($mime, 'video/') === 0) return 'video';
+    if ($mime === 'application/pdf') return 'pdf';
+    return 'outros';
+}
+
+/**
+ * Salvar metadados de anexo no banco.
+ */
+function eventos_reuniao_salvar_anexo(
+    PDO $pdo,
+    int $meeting_id,
+    string $section,
+    array $upload_result,
+    string $uploaded_by_type = 'interno',
+    ?int $uploaded_by_user_id = null
+): array {
+    $original_name = trim((string)($upload_result['nome_original'] ?? 'arquivo'));
+    $mime_type = trim((string)($upload_result['mime_type'] ?? 'application/octet-stream'));
+    $size_bytes = (int)($upload_result['tamanho_bytes'] ?? 0);
+    $storage_key = trim((string)($upload_result['chave_storage'] ?? ''));
+    $public_url = trim((string)($upload_result['url'] ?? ''));
+
+    if ($storage_key === '') {
+        return ['ok' => false, 'error' => 'storage_key inválido'];
+    }
+
+    $file_kind = eventos_reuniao_file_kind_from_mime($mime_type);
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_reunioes_anexos
+        (meeting_id, section, file_kind, original_name, mime_type, size_bytes, storage_key, public_url, uploaded_by_user_id, uploaded_by_type, uploaded_at)
+        VALUES
+        (:meeting_id, :section, :file_kind, :original_name, :mime_type, :size_bytes, :storage_key, :public_url, :uploaded_by_user_id, :uploaded_by_type, NOW())
+        RETURNING *
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':section' => $section,
+        ':file_kind' => $file_kind,
+        ':original_name' => $original_name !== '' ? $original_name : 'arquivo',
+        ':mime_type' => $mime_type !== '' ? $mime_type : 'application/octet-stream',
+        ':size_bytes' => max(0, $size_bytes),
+        ':storage_key' => $storage_key,
+        ':public_url' => $public_url !== '' ? $public_url : null,
+        ':uploaded_by_user_id' => $uploaded_by_user_id,
+        ':uploaded_by_type' => in_array($uploaded_by_type, ['interno', 'cliente', 'fornecedor'], true) ? $uploaded_by_type : 'interno'
+    ]);
+
+    return ['ok' => true, 'anexo' => $stmt->fetch(PDO::FETCH_ASSOC)];
+}
+
+/**
  * Gerar link público para cliente (DJ)
  */
 function eventos_reuniao_gerar_link_cliente(PDO $pdo, int $meeting_id, int $user_id): array {

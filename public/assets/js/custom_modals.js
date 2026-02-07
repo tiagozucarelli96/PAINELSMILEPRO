@@ -13,11 +13,40 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function normalizeAlertText(text) {
+    return (text || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+}
+
+function detectAlertSeverity(titulo, mensagem) {
+    const t = normalizeAlertText(titulo);
+    const m = normalizeAlertText(mensagem);
+
+    const successRegex = /(sucesso|sucess|atualizado com sucesso|salvo com sucesso|copiado com sucesso|concluido com sucesso|realizado com sucesso)/;
+    const errorRegex = /(erro|falha|nao foi possivel|invalido|excecao|problema|negado|expirad)/;
+
+    const titleLooksSuccess = successRegex.test(t);
+    const messageLooksSuccess = successRegex.test(m);
+    const titleLooksError = errorRegex.test(t);
+    const messageLooksError = errorRegex.test(m);
+
+    if ((titleLooksSuccess || messageLooksSuccess) && !messageLooksError) {
+        return 'success';
+    }
+    if (titleLooksError || messageLooksError) {
+        return 'error';
+    }
+    return 'warning';
+}
+
 // Ícone do título (Sucesso = check verde, Erro = X vermelho, demais = Aviso)
-function getAlertHeaderIcon(titulo) {
-    const t = (titulo || '').toLowerCase();
-    if (t === 'sucesso') return '<span class="custom-alert-header-icon custom-alert-icon-success">✓</span>';
-    if (t === 'erro') return '<span class="custom-alert-header-icon custom-alert-icon-error">✕</span>';
+function getAlertHeaderIcon(severity) {
+    if (severity === 'success') return '<span class="custom-alert-header-icon custom-alert-icon-success">✓</span>';
+    if (severity === 'error') return '<span class="custom-alert-header-icon custom-alert-icon-error">✕</span>';
     return '<span class="custom-alert-header-icon custom-alert-icon-warning">!</span>';
 }
 
@@ -29,12 +58,20 @@ function customAlert(mensagem, titulo = 'Aviso') {
         if (existing) {
             existing.remove();
         }
-        const icon = getAlertHeaderIcon(titulo);
+        const severity = detectAlertSeverity(titulo, mensagem);
+        const icon = getAlertHeaderIcon(severity);
+        let safeTitle = (titulo || 'Aviso').toString();
+        if (severity === 'success' && normalizeAlertText(safeTitle) === 'erro') {
+            safeTitle = 'Sucesso';
+        }
+        if (severity === 'error' && normalizeAlertText(safeTitle) === 'sucesso') {
+            safeTitle = 'Erro';
+        }
         const overlay = document.createElement('div');
         overlay.className = 'custom-alert-overlay';
         overlay.innerHTML = `
             <div class="custom-alert">
-                <div class="custom-alert-header">${icon} ${escapeHtml(titulo)}</div>
+                <div class="custom-alert-header is-${severity}">${icon} ${escapeHtml(safeTitle)}</div>
                 <div class="custom-alert-body">${escapeHtml(mensagem)}</div>
                 <div class="custom-alert-actions">
                     <button class="custom-alert-btn custom-alert-btn-primary" onclick="this.closest('.custom-alert-overlay').remove(); if (window.resolveCustomAlert) { window.resolveCustomAlert(); }">OK</button>
@@ -216,4 +253,3 @@ if (typeof window.originalPrompt === 'undefined') {
         return customPrompt(mensagem, valorPadrao || '', 'Informação');
     };
 }
-
