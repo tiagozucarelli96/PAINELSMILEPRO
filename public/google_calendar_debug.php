@@ -147,8 +147,8 @@ pre {
         <h2>🔍 Debug Google Calendar</h2>
         
         <a href="index.php?page=google_calendar_config" class="btn">← Voltar para Configuração</a>
-        <a href="?test_sync=1" class="btn" style="background: #10b981;">🧪 Testar Sincronização</a>
-        <a href="?test_webhook=1" class="btn" style="background: #2563eb;">🔔 Testar Webhook</a>
+        <a href="index.php?page=google_calendar_debug&test_sync=1" class="btn" style="background: #10b981;">🧪 Testar Sincronização</a>
+        <a href="index.php?page=google_calendar_debug&test_webhook=1" class="btn" style="background: #2563eb;">🔔 Testar Webhook</a>
         
         <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Status da Conexão</h3>
         <pre><?= $debug_info['conectado'] ? '✅ Conectado' : '❌ Não Conectado' ?></pre>
