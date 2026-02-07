@@ -21,6 +21,7 @@ $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $action = $_POST['action'] ?? '';
 $categoria_filter = $_GET['categoria'] ?? '';
 $search = trim((string)($_GET['search'] ?? ''));
+$is_ajax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 
 $error = '';
 $success = '';
@@ -38,6 +39,8 @@ $categorias_filtro = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
+    $upload_success_count = 0;
+    $upload_fail_messages = [];
     $categoria = $_POST['categoria'] ?? '';
     $nome = trim((string)($_POST['nome'] ?? ''));
     $descricao = trim((string)($_POST['descricao'] ?? ''));
@@ -45,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
 
     if (!isset($categorias[$categoria])) {
         $error = 'Categoria inválida.';
+        $upload_fail_messages[] = $error;
     } else {
         $uploaded_files = [];
         if (!empty($_FILES['imagens'])) {
@@ -65,24 +69,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
 
         if (empty($uploaded_files)) {
             $error = 'Selecione pelo menos uma imagem.';
+            $upload_fail_messages[] = $error;
         } else {
             $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-            $success_count = 0;
-            $fail_messages = [];
+            $upload_success_count = 0;
+            $upload_fail_messages = [];
 
             foreach ($uploaded_files as $file) {
                 if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                    $fail_messages[] = 'Falha ao ler uma das imagens selecionadas.';
+                    $upload_fail_messages[] = 'Falha ao ler uma das imagens selecionadas.';
                     continue;
                 }
 
                 if (!in_array((string)$file['type'], $allowed, true)) {
-                    $fail_messages[] = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WEBP.';
+                    $upload_fail_messages[] = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WEBP.';
                     continue;
                 }
 
                 if ((int)$file['size'] > 10 * 1024 * 1024) {
-                    $fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
+                    $upload_fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
                     continue;
                 }
 
@@ -95,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                 }
 
                 if ($nome_final === '') {
-                    $fail_messages[] = 'Não foi possível identificar o nome de uma imagem.';
+                    $upload_fail_messages[] = 'Não foi possível identificar o nome de uma imagem.';
                     continue;
                 }
 
@@ -104,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                     $result = $uploader->upload($file, 'galeria_eventos');
 
                     if (empty($result['chave_storage'])) {
-                        $fail_messages[] = 'Erro ao fazer upload para o storage.';
+                        $upload_fail_messages[] = 'Erro ao fazer upload para o storage.';
                         continue;
                     }
 
@@ -125,23 +130,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         ':size_bytes' => $result['tamanho_bytes'] ?? ($file['size'] ?? null),
                         ':uploaded_by' => $user_id > 0 ? $user_id : null
                     ]);
-                    $success_count++;
+                    $upload_success_count++;
                 } catch (Throwable $e) {
-                    $fail_messages[] = 'Erro ao fazer upload: ' . $e->getMessage();
+                    $upload_fail_messages[] = 'Erro ao fazer upload: ' . $e->getMessage();
                 }
             }
 
-            if ($success_count > 0) {
-                $success = $success_count === 1
+            if ($upload_success_count > 0) {
+                $success = $upload_success_count === 1
                     ? 'Imagem adicionada com sucesso.'
-                    : $success_count . ' imagens adicionadas com sucesso.';
+                    : $upload_success_count . ' imagens adicionadas com sucesso.';
             }
 
-            if (!empty($fail_messages)) {
-                $fail_messages = array_slice($fail_messages, 0, 3);
-                $error = implode(' ', $fail_messages);
+            if (!empty($upload_fail_messages)) {
+                $upload_fail_messages = array_slice($upload_fail_messages, 0, 3);
+                $error = implode(' ', $upload_fail_messages);
             }
         }
+    }
+
+    if ($is_ajax) {
+        $message = trim($success . ' ' . $error);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => $upload_success_count > 0,
+            'success_count' => $upload_success_count,
+            'error_count' => max(0, count($upload_fail_messages)),
+            'message' => $message !== '' ? $message : 'Upload finalizado.'
+        ]);
+        exit;
     }
 }
 
@@ -614,6 +631,21 @@ includeSidebar('Galeria de Imagens - Eventos');
         font-size: 0.92rem;
     }
 
+    .upload-status {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        color: #1e293b;
+        font-size: 0.82rem;
+        display: none;
+    }
+
+    .upload-status.show {
+        display: block;
+    }
+
     @media (max-width: 768px) {
         .galeria-container {
             padding: 12px;
@@ -732,7 +764,7 @@ includeSidebar('Galeria de Imagens - Eventos');
             <button type="button" class="modal-close" onclick="fecharModalUpload()">&times;</button>
         </div>
         <div class="modal-body">
-            <form method="POST" enctype="multipart/form-data">
+            <form method="POST" enctype="multipart/form-data" id="uploadForm">
                 <input type="hidden" name="action" value="upload">
 
                 <div class="form-group">
@@ -764,6 +796,7 @@ includeSidebar('Galeria de Imagens - Eventos');
                     <label class="form-label">Imagens (máx. 10MB cada) *</label>
                     <input type="file" name="imagens[]" class="form-input" accept="image/*" multiple required>
                 </div>
+                <div class="upload-status" id="uploadStatus"></div>
 
                 <div style="display:flex;justify-content:flex-end;gap:8px;">
                     <button type="button" class="btn btn-secondary" onclick="fecharModalUpload()">Cancelar</button>
@@ -947,6 +980,87 @@ includeSidebar('Galeria de Imagens - Eventos');
             }
         });
     });
+
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadStatus = document.getElementById('uploadStatus');
+
+    if (uploadForm && uploadStatus) {
+        uploadForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const categoria = uploadForm.querySelector('select[name="categoria"]')?.value || '';
+            const nome = uploadForm.querySelector('input[name="nome"]')?.value || '';
+            const descricao = uploadForm.querySelector('textarea[name="descricao"]')?.value || '';
+            const tags = uploadForm.querySelector('input[name="tags"]')?.value || '';
+            const fileInput = uploadForm.querySelector('input[type="file"][name="imagens[]"]');
+            const files = fileInput ? Array.from(fileInput.files || []) : [];
+            const submitBtn = uploadForm.querySelector('button[type="submit"]');
+
+            if (!categoria) {
+                alert('Selecione uma categoria.');
+                return;
+            }
+
+            if (files.length === 0) {
+                alert('Selecione pelo menos uma imagem.');
+                return;
+            }
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Enviando...';
+            }
+
+            uploadStatus.classList.add('show');
+            uploadStatus.textContent = `Enviando ${files.length} imagens...`;
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const formData = new FormData();
+                formData.append('action', 'upload');
+                formData.append('categoria', categoria);
+                formData.append('nome', nome);
+                formData.append('descricao', descricao);
+                formData.append('tags', tags);
+                formData.append('imagem', files[i]);
+
+                uploadStatus.textContent = `Enviando ${i + 1} de ${files.length}: ${files[i].name}`;
+
+                try {
+                    const response = await fetch(window.location.href, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    const data = await response.json();
+                    if (data && data.ok) {
+                        successCount += 1;
+                    } else {
+                        errorCount += 1;
+                    }
+                } catch (error) {
+                    errorCount += 1;
+                }
+            }
+
+            uploadStatus.textContent = `Finalizado: ${successCount} enviados, ${errorCount} com erro.`;
+
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Enviar';
+            }
+
+            if (successCount > 0) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
+            }
+        });
+    }
 </script>
 
 <?php endSidebar(); ?>
