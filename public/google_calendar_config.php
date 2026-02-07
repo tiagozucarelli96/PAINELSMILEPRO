@@ -57,8 +57,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 error_log("[GOOGLE_CALENDAR_CONFIG] ERRO: Calendário não foi salvo!");
             }
-            
-            $mensagem = 'Calendário configurado com sucesso!';
+
+            // Tentar ativar webhook automaticamente após salvar (sincronização automática)
+            try {
+                $token_info = $pdo->query("SELECT scope FROM google_calendar_tokens ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                $scope = $token_info['scope'] ?? '';
+                if (strpos($scope, 'calendar.readonly') !== false && strpos($scope, 'calendar') === false) {
+                    throw new Exception('Permissões insuficientes para ativar sincronização automática. Reconecte o Google Calendar.');
+                }
+
+                $webhook_url = getenv('GOOGLE_WEBHOOK_URL') ?: ($_ENV['GOOGLE_WEBHOOK_URL'] ?? 'https://painelsmilepro-production.up.railway.app/google/webhook');
+                $helper->registerWebhook($calendar_id, $webhook_url);
+                $mensagem = 'Calendário configurado e sincronização automática ativada com sucesso!';
+            } catch (Exception $e) {
+                $mensagem = 'Calendário configurado com sucesso!';
+                $erro = 'Não foi possível ativar a sincronização automática: ' . $e->getMessage();
+                error_log("[GOOGLE_CALENDAR_CONFIG] Auto webhook falhou: " . $e->getMessage());
+            }
         } catch (Exception $e) {
             $erro = $e->getMessage();
             error_log("[GOOGLE_CALENDAR_CONFIG] Erro ao salvar: " . $e->getMessage());

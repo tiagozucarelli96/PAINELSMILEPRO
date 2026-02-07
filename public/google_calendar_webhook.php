@@ -116,6 +116,16 @@ try {
         $stmt->execute([':config_id' => $config['id']]);
         
         error_log("[GOOGLE_WEBHOOK] ✅ Flag 'precisa_sincronizar' marcado para: " . substr($channel_token, 0, 30));
+
+        // Processar sincronização imediatamente (evita depender de cron)
+        $processor_script = __DIR__ . '/google_calendar_sync_processor.php';
+        if (file_exists($processor_script)) {
+            ob_start();
+            include $processor_script;
+            ob_end_clean();
+        } else {
+            error_log("[GOOGLE_WEBHOOK] ⚠️ Processador não encontrado: $processor_script");
+        }
     } elseif ($resource_state === 'not_exists') {
         // Canal expirado - limpar webhook
         $stmt = $pdo->prepare("
