@@ -19,6 +19,29 @@ if (empty($cep) || strlen($cep) !== 8) {
     exit;
 }
 
+function fetchCepUrl(string $url, int $timeoutSeconds = 5): array {
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'PainelSmilePro/1.0 (+CEP lookup)');
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
+
+    $response = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    return [
+        'ok' => $error === '',
+        'status' => $httpCode,
+        'body' => $response !== false ? (string)$response : '',
+        'error' => $error,
+    ];
+}
+
 try {
     // Rate limit simples por sessão (evita abuso em endpoints públicos)
     $now = time();
@@ -40,59 +63,98 @@ try {
         exit;
     }
 
-    // Buscar CEP via API ViaCEP
-    $url = "https://viacep.com.br/ws/{$cep}/json/";
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'PainelSmilePro/1.0 (+CEP lookup)');
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($error) {
-        throw new Exception("Erro ao buscar CEP: {$error}");
-    }
-    
-    if ($httpCode !== 200) {
-        throw new Exception("Erro HTTP {$httpCode} ao buscar CEP");
-    }
-    
-    $data = json_decode($response, true);
-    
-    if (isset($data['erro'])) {
-        echo json_encode([
-            'success' => false,
-            'message' => 'CEP não encontrado'
-        ]);
+    $providers = [
+        [
+            'name' => 'viacep',
+            'url' => "https://viacep.com.br/ws/{$cep}/json/",
+            'timeout' => 4,
+            'isNotFound' => function (array $data): bool {
+                return !empty($data['erro']);
+            },
+            'map' => function (array $data): array {
+                return [
+                    'cep' => $data['cep'] ?? '',
+                    'logradouro' => $data['logradouro'] ?? '',
+                    'complemento' => $data['complemento'] ?? '',
+                    'bairro' => $data['bairro'] ?? '',
+                    'cidade' => $data['localidade'] ?? '',
+                    'estado' => $data['uf'] ?? '',
+                ];
+            },
+        ],
+        [
+            'name' => 'brasilapi',
+            'url' => "https://brasilapi.com.br/api/cep/v1/{$cep}",
+            'timeout' => 5,
+            'isNotFound' => function (array $data): bool {
+                return !empty($data['errors']) || (!empty($data['message']) && stripos((string)$data['message'], 'not found') !== false);
+            },
+            'map' => function (array $data): array {
+                return [
+                    'cep' => $data['cep'] ?? '',
+                    'logradouro' => $data['street'] ?? '',
+                    'complemento' => '',
+                    'bairro' => $data['neighborhood'] ?? '',
+                    'cidade' => $data['city'] ?? '',
+                    'estado' => $data['state'] ?? '',
+                ];
+            },
+        ],
+    ];
+
+    $lastError = '';
+    foreach ($providers as $provider) {
+        $result = fetchCepUrl($provider['url'], (int)$provider['timeout']);
+        if (!$result['ok']) {
+            $lastError = $provider['name'] . ' curl: ' . $result['error'];
+            continue;
+        }
+        if ($result['status'] !== 200) {
+            if ($result['status'] === 404) {
+                echo json_encode(['success' => false, 'message' => 'CEP não encontrado']);
+                exit;
+            }
+            $lastError = $provider['name'] . ' http: ' . $result['status'];
+            continue;
+        }
+
+        $data = json_decode($result['body'], true);
+        if (!is_array($data)) {
+            $lastError = $provider['name'] . ' resposta inválida';
+            continue;
+        }
+        $isNotFound = $provider['isNotFound'];
+        if ($isNotFound($data)) {
+            echo json_encode(['success' => false, 'message' => 'CEP não encontrado']);
+            exit;
+        }
+
+        $map = $provider['map'];
+        $payload = [
+            'success' => true,
+            'data' => $map($data),
+        ];
+
+        // Guardar cache
+        $_SESSION['cep_cache'][$cep] = [
+            'ts' => $now,
+            'data' => $payload['data'],
+        ];
+
+        echo json_encode($payload);
         exit;
     }
-    
-    // Retornar dados formatados
-    $payload = [
-        'success' => true,
-        'data' => [
-            'cep' => $data['cep'] ?? '',
-            'logradouro' => $data['logradouro'] ?? '',
-            'complemento' => $data['complemento'] ?? '',
-            'bairro' => $data['bairro'] ?? '',
-            'cidade' => $data['localidade'] ?? '',
-            'estado' => $data['uf'] ?? ''
-        ]
-    ];
 
-    // Guardar cache
-    $_SESSION['cep_cache'][$cep] = [
-        'ts' => $now,
-        'data' => $payload['data'],
-    ];
+    if ($lastError !== '') {
+        error_log('[CEP] Falha ao buscar CEP ' . $cep . ': ' . $lastError);
+    }
 
-    echo json_encode($payload);
+    http_response_code(502);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Serviço de CEP indisponível. Tente novamente.'
+    ]);
+    exit;
     
 } catch (Exception $e) {
     http_response_code(500);
