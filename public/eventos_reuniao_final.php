@@ -1131,6 +1131,36 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 </div>
             </div>
             <?php endif; ?>
+
+            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
+            <div class="dj-builder-shell">
+                <div class="dj-builder-head">
+                    <div>
+                        <h4 class="dj-builder-title">🧩 Formulário opcional</h4>
+                        <?php if ($key === 'observacoes_gerais'): ?>
+                        <div class="dj-builder-subtitle">Selecione um formulário para preenchimento interno pela equipe.</div>
+                        <?php else: ?>
+                        <div class="dj-builder-subtitle">Selecione um formulário base para apoiar o preenchimento interno.</div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="dj-top-actions">
+                        <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Aplicar formulário</button>
+                    </div>
+                </div>
+                <div class="prefill-field" style="margin-top: 0.5rem;">
+                    <label for="sectionTemplateSelect-<?= $key ?>">Formulário salvo (opcional)</label>
+                    <select id="sectionTemplateSelect-<?= $key ?>" onchange="onChangeSectionTemplateSelect('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>
+                        <option value="">Nenhum formulário</option>
+                        <?php foreach ($form_templates as $template): ?>
+                        <option value="<?= (int)($template['id'] ?? 0) ?>">
+                            <?= htmlspecialchars((string)($template['nome'] ?? 'Modelo sem nome') . ' - ' . (string)($template['categoria'] ?? 'geral')) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="builder-field-meta" id="sectionTemplateMeta-<?= $key ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+            </div>
+            <?php endif; ?>
             
             <?php if ($is_locked): ?>
             <div class="locked-notice">
@@ -1186,6 +1216,8 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 const djSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
 const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($section_labels), true) ? $active_tab_query : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjSchema = <?= json_encode($dj_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let selectedEventId = null;
 let selectedEventData = null;
@@ -1206,6 +1238,14 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
 }, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let selectedDjTemplateId = null;
 let lastSavedDjSchemaSignature = '';
+let selectedSectionTemplateIds = {
+    decoracao: null,
+    observacoes_gerais: null,
+};
+let lastSavedSectionSchemaSignatures = {
+    decoracao: '',
+    observacoes_gerais: '',
+};
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -1582,6 +1622,12 @@ function hasUsefulSchemaFields(schema) {
     });
 }
 
+function stripHtmlToText(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html || '';
+    return (div.textContent || div.innerText || '').trim();
+}
+
 function updateShareAvailability() {
     const shareBtn = document.getElementById('btnGerarLink');
     const hint = document.getElementById('shareHint');
@@ -1610,9 +1656,9 @@ function updateShareAvailability() {
     if (hint) hint.textContent = hintText;
 }
 
-function buildSchemaHtmlForStorage(schema) {
+function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos') {
     if (!Array.isArray(schema) || schema.length === 0) return '';
-    let html = '<h2>Formulário DJ / Protocolos</h2>';
+    let html = `<h2>${escapeHtmlForField(title)}</h2>`;
     html += '<p><em>Estrutura gerada por campos dinâmicos (estilo formulário).</em></p>';
     schema.forEach((field) => {
         const label = escapeHtmlForField(field.label || '');
@@ -1689,6 +1735,106 @@ function onChangeDjTemplateSelect() {
     updateShareAvailability();
 }
 
+function getSectionFormTitle(section) {
+    if (section === 'decoracao') {
+        return 'Formulário de Decoração';
+    }
+    if (section === 'observacoes_gerais') {
+        return 'Formulário de Observações Gerais';
+    }
+    return 'Formulário';
+}
+
+function findTemplateIdBySchemaSignature(signature) {
+    if (!signature) return null;
+    const match = (savedFormTemplates || []).find((template) => {
+        const normalized = normalizeFormSchema(Array.isArray(template.schema) ? template.schema : []);
+        return getSchemaSignature(normalized) === signature;
+    });
+    return match ? Number(match.id || 0) : null;
+}
+
+function renderSectionTemplateSelect(section) {
+    const select = document.getElementById(`sectionTemplateSelect-${section}`);
+    if (!select) return;
+
+    const current = selectedSectionTemplateIds[section] ? String(selectedSectionTemplateIds[section]) : '';
+    const options = ['<option value="">Nenhum formulário</option>'];
+    (savedFormTemplates || []).forEach((template) => {
+        const id = Number(template.id || 0);
+        if (!id) return;
+        const label = `${String(template.nome || 'Modelo sem nome')} - ${String(template.categoria || 'geral')}`;
+        const selected = String(id) === current ? ' selected' : '';
+        options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    updateSectionTemplateMeta(section);
+}
+
+function updateSectionTemplateMeta(section) {
+    const meta = document.getElementById(`sectionTemplateMeta-${section}`);
+    if (!meta) return;
+
+    const templateId = selectedSectionTemplateIds[section] || null;
+    if (!templateId) {
+        meta.textContent = 'Nenhum formulário selecionado.';
+        return;
+    }
+
+    const template = savedFormTemplates.find((item) => Number(item.id) === Number(templateId));
+    if (!template) {
+        meta.textContent = 'Formulário selecionado não encontrado.';
+        return;
+    }
+
+    const stamp = template.updated_at ? formatDate(template.updated_at) : 'Sem data';
+    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${String(template.categoria || 'geral')} • Atualizado em ${stamp}`;
+}
+
+function onChangeSectionTemplateSelect(section) {
+    const select = document.getElementById(`sectionTemplateSelect-${section}`);
+    selectedSectionTemplateIds[section] = select && select.value ? Number(select.value) : null;
+    updateSectionTemplateMeta(section);
+}
+
+function aplicarTemplateNaSecao(section) {
+    const templateId = selectedSectionTemplateIds[section] || null;
+    if (!templateId) {
+        alert('Selecione um formulário para aplicar nesta seção.');
+        return;
+    }
+
+    const template = savedFormTemplates.find((item) => Number(item.id) === Number(templateId));
+    if (!template) {
+        alert('Formulário selecionado não encontrado.');
+        return;
+    }
+
+    const normalizedSchema = normalizeFormSchema(Array.isArray(template.schema) ? template.schema : []);
+    if (!hasUsefulSchemaFields(normalizedSchema)) {
+        alert('O formulário selecionado não possui campos válidos.');
+        return;
+    }
+
+    const currentContent = getEditorContent(section);
+    const hasCurrentContent = stripHtmlToText(currentContent) !== '';
+    if (hasCurrentContent) {
+        const shouldReplace = confirm('A seção já possui conteúdo. Deseja substituir pelo formulário selecionado?');
+        if (!shouldReplace) {
+            return;
+        }
+    }
+
+    const generatedHtml = buildSchemaHtmlForStorage(normalizedSchema, getSectionFormTitle(section));
+    setEditorContent(generatedHtml, section);
+}
+
+function renderAllSectionTemplateSelects() {
+    ['decoracao', 'observacoes_gerais'].forEach((section) => {
+        renderSectionTemplateSelect(section);
+    });
+}
+
 async function fetchTemplates() {
     const formData = new FormData();
     formData.append('action', 'listar_templates_form');
@@ -1713,7 +1859,16 @@ async function fetchTemplates() {
         const exists = savedFormTemplates.some((item) => Number(item.id) === Number(selectedDjTemplateId));
         if (!exists) selectedDjTemplateId = null;
     }
+    ['decoracao', 'observacoes_gerais'].forEach((section) => {
+        const templateId = selectedSectionTemplateIds[section] || null;
+        if (!templateId) return;
+        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(templateId));
+        if (!exists) {
+            selectedSectionTemplateIds[section] = null;
+        }
+    });
     renderDjTemplateSelect();
+    renderAllSectionTemplateSelects();
 }
 
 async function refreshDjTemplates() {
@@ -1773,14 +1928,44 @@ function initDjTemplateSelection() {
     updateShareAvailability();
 }
 
+function initSectionTemplateSelection() {
+    lastSavedSectionSchemaSignatures.decoracao = getSchemaSignature(initialDecoracaoSchema);
+    lastSavedSectionSchemaSignatures.observacoes_gerais = getSchemaSignature(initialObservacoesSchema);
+
+    const decoracaoTemplateId = findTemplateIdBySchemaSignature(lastSavedSectionSchemaSignatures.decoracao);
+    if (decoracaoTemplateId) {
+        selectedSectionTemplateIds.decoracao = decoracaoTemplateId;
+    }
+
+    const observacoesTemplateId = findTemplateIdBySchemaSignature(lastSavedSectionSchemaSignatures.observacoes_gerais);
+    if (observacoesTemplateId) {
+        selectedSectionTemplateIds.observacoes_gerais = observacoesTemplateId;
+    }
+
+    renderAllSectionTemplateSelects();
+}
+
 // Salvar seção (conteúdo vem do TinyMCE)
 async function salvarSecao(section) {
     let content = '';
+    let formSchemaJson = null;
     if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
         content = tinymce.get('editor-' + section).getContent();
     } else {
         const el = document.getElementById('editor-' + section);
         content = el ? el.value : '';
+    }
+
+    if (section === 'decoracao' || section === 'observacoes_gerais') {
+        const selectedTemplateId = selectedSectionTemplateIds[section] || null;
+        if (selectedTemplateId) {
+            const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
+            const normalizedSchema = normalizeFormSchema(template && Array.isArray(template.schema) ? template.schema : []);
+            if (template && hasUsefulSchemaFields(normalizedSchema)) {
+                formSchemaJson = JSON.stringify(normalizedSchema);
+                lastSavedSectionSchemaSignatures[section] = getSchemaSignature(normalizedSchema);
+            }
+        }
     }
     
     try {
@@ -1789,6 +1974,9 @@ async function salvarSecao(section) {
         formData.append('meeting_id', meetingId);
         formData.append('section', section);
         formData.append('content_html', content);
+        if (formSchemaJson !== null) {
+            formData.append('form_schema_json', formSchemaJson);
+        }
         
         const resp = await fetch(window.location.href, {
             method: 'POST',
@@ -2045,12 +2233,14 @@ if (meetingId) {
         document.addEventListener('DOMContentLoaded', function () {
             applyInitialTabFromQuery();
             loadTinyMCEAndInit();
+            initSectionTemplateSelection();
             initDjTemplateSelection();
             refreshDjTemplates();
         });
     } else {
         applyInitialTabFromQuery();
         loadTinyMCEAndInit();
+        initSectionTemplateSelection();
         initDjTemplateSelection();
         refreshDjTemplates();
     }
