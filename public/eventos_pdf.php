@@ -107,6 +107,38 @@ function e_pdf(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 }
 
+$qr_data_uri = '';
+$qr_target_url = '';
+try {
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host !== '') {
+        $scheme = 'http';
+        $xf_proto = trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        if ($xf_proto !== '') {
+            $scheme = explode(',', $xf_proto)[0];
+        } elseif (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            $scheme = 'https';
+        }
+
+        $qr_target_url = $scheme . '://' . $host . '/index.php?page=eventos_reuniao_final&id=' . $meeting_id;
+
+        // Evita dependência de lib externa: gera via serviço público e embute como data URI (melhor para PDF).
+        $qr_remote_url = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=0&data=' . rawurlencode($qr_target_url);
+        $ctx = stream_context_create([
+            'http' => ['timeout' => 2],
+            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+        ]);
+        $qr_raw = @file_get_contents($qr_remote_url, false, $ctx);
+        if (is_string($qr_raw) && $qr_raw !== '') {
+            $qr_data_uri = 'data:image/png;base64,' . base64_encode($qr_raw);
+        }
+    }
+} catch (Throwable $e) {
+    // Se falhar, seguimos sem QR Code.
+    $qr_data_uri = '';
+    $qr_target_url = '';
+}
+
 $doc_title = $section_title . ' - ' . $nome_evento;
 $content_html_or_placeholder = trim($content_html) !== ''
     ? $content_html
@@ -117,6 +149,18 @@ if ($logo_data_uri !== '') {
     $logo_html = '<img class="doc-logo" src="' . e_pdf($logo_data_uri) . '" alt="Grupo Smile Eventos">';
 }
 
+$qr_html = '';
+if ($qr_data_uri !== '') {
+    $qr_html = '<img class="doc-qr" src="' . e_pdf($qr_data_uri) . '" alt="QR Code">';
+}
+
+$data_evento_fmt = $data_fmt;
+if ($hora_inicio !== '' && $hora_fim !== '') {
+    $data_evento_fmt = $data_fmt . ' às ' . $hora_inicio . ' às ' . $hora_fim;
+} elseif ($hora_inicio !== '') {
+    $data_evento_fmt = $data_fmt . ' às ' . $hora_inicio;
+}
+
 $html = '<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -124,18 +168,27 @@ $html = '<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>' . e_pdf($doc_title) . '</title>
   <style>
-    :root { --ink:#0f172a; --muted:#64748b; --line:#e5e7eb; }
+    :root { --ink:#0f172a; --muted:#475569; --line:#e5e7eb; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); }
+    body { margin: 0; font-family: DejaVu Sans, Arial, sans-serif; color: var(--ink); }
     .doc { padding: 24px; }
-    .doc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 2px solid var(--line); }
-    .doc-logo { max-width: 200px; height: auto; object-fit: contain; }
-    .doc-head-right { flex: 1; }
-    .doc-event { font-size: 18px; font-weight: 900; margin: 0; }
-    .doc-section { margin: 6px 0 0 0; font-size: 14px; color: var(--muted); font-weight: 700; }
-    .doc-meta { margin-top: 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
-    .doc-meta-item { font-size: 12.5px; color: var(--ink); }
-    .doc-meta-item strong { color: var(--muted); font-weight: 800; margin-right: 6px; }
+    .doc-header { padding-bottom: 10px; border-bottom: 2px solid #0f172a; }
+    .doc-header-top { width: 100%; border-collapse: collapse; }
+    .doc-header-top td { vertical-align: top; }
+    .doc-logo { width: 300px; height: auto; object-fit: contain; }
+    .doc-issuer { text-align: center; padding-top: 8px; }
+    .doc-issuer-name { font-size: 18px; font-weight: 800; line-height: 1.1; }
+    .doc-issuer-sub { margin-top: 2px; font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.02em; }
+    .doc-qr-wrap { text-align: right; width: 180px; }
+    .doc-qr { width: 160px; height: 160px; }
+
+    .doc-meta-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .doc-meta-table td { width: 50%; vertical-align: top; font-size: 13.5px; padding-top: 4px; }
+    .doc-meta-row { margin: 0 0 6px 0; }
+    .doc-meta-label { font-weight: 900; }
+    .doc-meta-value { font-weight: 500; }
+
+    .doc-section-title { margin: 18px 0 12px 0; font-size: 16px; font-weight: 900; }
     .doc-body { padding-top: 16px; }
     .doc-body img { max-width: 100%; height: auto; }
     .doc-body table { width: 100%; border-collapse: collapse; }
@@ -143,7 +196,7 @@ $html = '<!doctype html>
     .doc-body h1, .doc-body h2, .doc-body h3 { margin: 0 0 10px 0; }
     .doc-body p { margin: 0 0 10px 0; }
 
-    @page { margin: 14mm; }
+    @page { margin: 12mm; }
     @media print {
       .doc { padding: 0; }
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -153,19 +206,31 @@ $html = '<!doctype html>
 <body>
   <div class="doc">
     <div class="doc-header">
-      <div>' . $logo_html . '</div>
-      <div class="doc-head-right">
-        <h1 class="doc-event">' . e_pdf($nome_evento) . '</h1>
-        <div class="doc-section">' . e_pdf($section_title) . '</div>
-        <div class="doc-meta">
-          <div class="doc-meta-item"><strong>Convidados:</strong>' . (int)$convidados_evento . '</div>
-          <div class="doc-meta-item"><strong>Data:</strong>' . e_pdf($data_fmt) . '</div>
-          <div class="doc-meta-item"><strong>Horário:</strong>' . e_pdf($horario_fmt) . '</div>
-          <div class="doc-meta-item"><strong>Emitido por:</strong>' . e_pdf($emitido_por) . '</div>
-        </div>
-      </div>
+      <table class="doc-header-top">
+        <tr>
+          <td>' . $logo_html . '</td>
+          <td class="doc-issuer">
+            <div class="doc-issuer-name">' . e_pdf($emitido_por) . '</div>
+            <div class="doc-issuer-sub">Emitido por</div>
+          </td>
+          <td class="doc-qr-wrap">' . $qr_html . '</td>
+        </tr>
+      </table>
+      <table class="doc-meta-table">
+        <tr>
+          <td>
+            <p class="doc-meta-row"><span class="doc-meta-label">Evento:</span> <span class="doc-meta-value">' . e_pdf($nome_evento) . '</span></p>
+            <p class="doc-meta-row"><span class="doc-meta-label">Data do Evento:</span> <span class="doc-meta-value">' . e_pdf($data_evento_fmt) . '</span></p>
+          </td>
+          <td>
+            <p class="doc-meta-row"><span class="doc-meta-label">Nº de Participantes:</span> <span class="doc-meta-value">' . (int)$convidados_evento . '</span></p>
+            <p class="doc-meta-row"><span class="doc-meta-label">Emitido por:</span> <span class="doc-meta-value">' . e_pdf($emitido_por) . '</span></p>
+          </td>
+        </tr>
+      </table>
     </div>
     <div class="doc-body">
+      <div class="doc-section-title">' . e_pdf($section_title) . '</div>
       ' . $content_html_or_placeholder . '
     </div>
   </div>';
@@ -210,4 +275,3 @@ if ($mode === 'pdf') {
 }
 
 echo $html;
-
