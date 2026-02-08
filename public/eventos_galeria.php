@@ -8,11 +8,23 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Detectar AJAX cedo para evitar redirect HTML em requests que esperam JSON (ex.: upload em lote via fetch).
+$is_ajax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
+
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+    if ($is_ajax) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Acesso negado ou sessao expirada. Recarregue a pagina e faça login novamente.'
+        ]);
+        exit;
+    }
     header('Location: index.php?page=dashboard');
     exit;
 }
@@ -21,7 +33,6 @@ $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $action = $_POST['action'] ?? '';
 $categoria_filter = $_GET['categoria'] ?? '';
 $search = trim((string)($_GET['search'] ?? ''));
-$is_ajax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 
 $error = '';
 $success = '';
@@ -830,6 +841,7 @@ includeSidebar('Galeria de Imagens - Eventos');
         background: #f8fafc;
         color: #1e293b;
         font-size: 0.82rem;
+        white-space: pre-wrap;
         display: none;
     }
 
@@ -1305,6 +1317,7 @@ includeSidebar('Galeria de Imagens - Eventos');
 
             let successCount = 0;
             let errorCount = 0;
+            const failures = [];
 
             for (let i = 0; i < files.length; i++) {
                 const formData = new FormData();
@@ -1325,25 +1338,39 @@ includeSidebar('Galeria de Imagens - Eventos');
                             'X-Requested-With': 'XMLHttpRequest'
                         }
                     });
+                    const contentType = response.headers.get('content-type') || '';
+                    if (!contentType.includes('application/json')) {
+                        throw new Error(`Resposta inesperada (HTTP ${response.status}). Talvez sessao expirada.`);
+                    }
                     const data = await response.json();
                     if (data && data.ok) {
                         successCount += 1;
                     } else {
                         errorCount += 1;
+                        const msg = (data && data.message) ? String(data.message) : 'Erro no upload.';
+                        failures.push(`${files[i].name}: ${msg}`);
                     }
                 } catch (error) {
                     errorCount += 1;
+                    failures.push(`${files[i].name}: ${error && error.message ? error.message : 'Erro de rede/JSON.'}`);
                 }
             }
 
-            uploadStatus.textContent = `Finalizado: ${successCount} enviados, ${errorCount} com erro.`;
+            let finalMsg = `Finalizado: ${successCount} enviados, ${errorCount} com erro.`;
+            if (failures.length > 0) {
+                const first = failures.slice(0, 12);
+                finalMsg += `\n\nErros (mostrando ${first.length} de ${failures.length}):\n- ${first.join('\n- ')}`;
+                finalMsg += `\n\nDica: limite atual da galeria e 10MB por imagem e formatos aceitos: JPG/PNG/GIF/WEBP.`;
+            }
+            uploadStatus.textContent = finalMsg;
 
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Enviar';
             }
 
-            if (successCount > 0) {
+            // Se houve erros, não recarregar automaticamente para o usuário conseguir ver o motivo.
+            if (successCount > 0 && errorCount === 0) {
                 setTimeout(() => {
                     window.location.reload();
                 }, 800);
