@@ -379,6 +379,14 @@ $public_pages = [
 ];
 $is_public_page = in_array($page, $public_pages);
 
+// Compatibilidade de link antigo: visitantes sem login devem cair na galeria pública.
+if (empty($_SESSION['logado']) && $page === 'eventos_galeria') {
+  $redirect_query = $_GET;
+  $redirect_query['page'] = 'eventos_galeria_public';
+  header('Location: index.php?' . http_build_query($redirect_query));
+  exit;
+}
+
 // Debug: verificar se rota existe antes de verificar login
 if (getenv('APP_DEBUG') === '1' && !empty($page) && !isset($routes[$page])) {
   error_log("⚠️ Rota não encontrada: '$page'. Rotas disponíveis: " . implode(', ', array_keys($routes)));

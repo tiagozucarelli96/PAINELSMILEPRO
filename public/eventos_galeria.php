@@ -209,6 +209,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir') {
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir_lote') {
+    $ids_raw = $_POST['ids'] ?? [];
+    if (!is_array($ids_raw)) {
+        $ids_raw = [$ids_raw];
+    }
+
+    $ids = [];
+    foreach ($ids_raw as $raw_id) {
+        $id = (int)$raw_id;
+        if ($id > 0) {
+            $ids[$id] = $id;
+        }
+    }
+    $ids = array_values($ids);
+
+    if (empty($ids)) {
+        $error = 'Selecione pelo menos uma imagem para exclusão em massa.';
+    } else {
+        try {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE deleted_at IS NULL AND id IN ({$placeholders})");
+            $stmt->execute($ids);
+            $removed = (int)$stmt->rowCount();
+
+            if ($removed > 0) {
+                $success = $removed === 1
+                    ? '1 imagem removida.'
+                    : $removed . ' imagens removidas.';
+            } else {
+                $error = 'Nenhuma imagem válida foi removida.';
+            }
+        } catch (Throwable $e) {
+            $error = 'Erro ao remover imagens: ' . $e->getMessage();
+        }
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'rotacionar') {
     $id = (int)($_POST['id'] ?? 0);
     $angulo = (int)($_POST['angulo'] ?? 90);
@@ -422,6 +459,33 @@ includeSidebar('Galeria de Imagens - Eventos');
         flex-wrap: wrap;
     }
 
+    .bulk-toolbar {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .bulk-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .bulk-count {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #334155;
+        margin-left: 4px;
+    }
+
     .filter-input {
         flex: 1;
         min-width: 220px;
@@ -456,6 +520,20 @@ includeSidebar('Galeria de Imagens - Eventos');
         overflow: hidden;
         position: relative;
         background: #f1f5f9;
+    }
+
+    .image-select {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        z-index: 2;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        border: 1px solid #cbd5e1;
+        background: rgba(255, 255, 255, 0.96);
+        cursor: pointer;
+        accent-color: #1d4ed8;
     }
 
     .image-wrapper img {
@@ -703,6 +781,17 @@ includeSidebar('Galeria de Imagens - Eventos');
                 <p style="margin:0;">Adicione imagens para montar seu acervo visual para clientes.</p>
             </div>
         <?php else: ?>
+            <div class="bulk-toolbar">
+                <div class="bulk-left">
+                    <button type="button" class="btn btn-secondary" onclick="selecionarTodasImagens()">Selecionar todas</button>
+                    <button type="button" class="btn btn-secondary" onclick="limparSelecaoImagens()">Limpar seleção</button>
+                    <span class="bulk-count" id="bulkCount">0 selecionadas</span>
+                </div>
+                <button type="button" class="btn btn-danger" id="btnBulkDelete" onclick="abrirConfirmacaoExclusaoLote()" disabled>
+                    🗑️ Excluir selecionadas
+                </button>
+            </div>
+
             <div class="images-grid">
                 <?php foreach ($imagens as $img): ?>
                     <?php
@@ -720,6 +809,11 @@ includeSidebar('Galeria de Imagens - Eventos');
                          data-preview-desc="<?= htmlspecialchars($img_desc) ?>"
                          data-preview-tags="<?= htmlspecialchars($img_tags) ?>">
                         <div class="image-wrapper">
+                            <input type="checkbox"
+                                   class="image-select js-image-select"
+                                   value="<?= $img_id ?>"
+                                   aria-label="Selecionar imagem <?= htmlspecialchars($img_name) ?>"
+                                   onclick="event.stopPropagation(); atualizarSelecaoLote();">
                             <img src="<?= htmlspecialchars($img_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
                                  loading="lazy"
@@ -755,6 +849,11 @@ includeSidebar('Galeria de Imagens - Eventos');
 <form method="POST" id="deleteImageForm" style="display:none;">
     <input type="hidden" name="action" value="excluir">
     <input type="hidden" name="id" id="deleteImageId" value="">
+</form>
+
+<form method="POST" id="deleteBulkForm" style="display:none;">
+    <input type="hidden" name="action" value="excluir_lote">
+    <div id="deleteBulkIds"></div>
 </form>
 
 <div class="modal-overlay" id="modalUpload">
@@ -859,7 +958,7 @@ includeSidebar('Galeria de Imagens - Eventos');
 </div>
 
 <script>
-    let pendingDeleteId = null;
+    let pendingDeleteIds = [];
 
     function abrirModalUpload() {
         document.getElementById('modalUpload').classList.add('show');
@@ -896,25 +995,100 @@ includeSidebar('Galeria de Imagens - Eventos');
     }
 
     function abrirConfirmacaoExclusao(id, nome) {
-        pendingDeleteId = Number(id) || null;
+        const numericId = Number(id) || 0;
+        pendingDeleteIds = numericId > 0 ? [numericId] : [];
         const text = document.getElementById('deleteConfirmText');
         text.textContent = nome
             ? `Deseja remover a imagem "${nome}"?`
             : 'Deseja remover esta imagem?';
+        const confirmBtn = document.querySelector('#modalDeleteConfirm .btn-danger');
+        if (confirmBtn) {
+            confirmBtn.textContent = 'Excluir imagem';
+        }
         document.getElementById('modalDeleteConfirm').classList.add('show');
     }
 
     function fecharConfirmacaoExclusao() {
-        pendingDeleteId = null;
+        pendingDeleteIds = [];
         document.getElementById('modalDeleteConfirm').classList.remove('show');
     }
 
     function confirmarExclusaoImagem() {
-        if (!pendingDeleteId) {
+        if (pendingDeleteIds.length === 0) {
             return;
         }
-        document.getElementById('deleteImageId').value = String(pendingDeleteId);
-        document.getElementById('deleteImageForm').submit();
+        if (pendingDeleteIds.length === 1) {
+            document.getElementById('deleteImageId').value = String(pendingDeleteIds[0]);
+            document.getElementById('deleteImageForm').submit();
+            return;
+        }
+
+        const bulkIds = document.getElementById('deleteBulkIds');
+        if (!bulkIds) {
+            return;
+        }
+        bulkIds.innerHTML = '';
+        pendingDeleteIds.forEach((id) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'ids[]';
+            input.value = String(id);
+            bulkIds.appendChild(input);
+        });
+        document.getElementById('deleteBulkForm').submit();
+    }
+
+    function getSelectedIds() {
+        return Array.from(document.querySelectorAll('.js-image-select:checked'))
+            .map((input) => Number(input.value))
+            .filter((id) => Number.isFinite(id) && id > 0);
+    }
+
+    function atualizarSelecaoLote() {
+        const ids = getSelectedIds();
+        const count = ids.length;
+        const countEl = document.getElementById('bulkCount');
+        const bulkBtn = document.getElementById('btnBulkDelete');
+
+        if (countEl) {
+            countEl.textContent = count === 1 ? '1 selecionada' : `${count} selecionadas`;
+        }
+        if (bulkBtn) {
+            bulkBtn.disabled = count === 0;
+        }
+    }
+
+    function selecionarTodasImagens() {
+        document.querySelectorAll('.js-image-select').forEach((input) => {
+            input.checked = true;
+        });
+        atualizarSelecaoLote();
+    }
+
+    function limparSelecaoImagens() {
+        document.querySelectorAll('.js-image-select').forEach((input) => {
+            input.checked = false;
+        });
+        atualizarSelecaoLote();
+    }
+
+    function abrirConfirmacaoExclusaoLote() {
+        const selected = getSelectedIds();
+        if (selected.length === 0) {
+            alert('Selecione pelo menos uma imagem.');
+            return;
+        }
+
+        pendingDeleteIds = selected;
+        const text = document.getElementById('deleteConfirmText');
+        text.textContent = selected.length === 1
+            ? 'Deseja remover 1 imagem selecionada?'
+            : `Deseja remover ${selected.length} imagens selecionadas?`;
+        const confirmBtn = document.querySelector('#modalDeleteConfirm .btn-danger');
+        if (confirmBtn) {
+            confirmBtn.textContent = selected.length === 1 ? 'Excluir imagem' : 'Excluir imagens';
+        }
+        document.getElementById('modalDeleteConfirm').classList.add('show');
     }
 
     async function rotacionarImagem(id) {
@@ -980,6 +1154,8 @@ includeSidebar('Galeria de Imagens - Eventos');
             }
         });
     });
+
+    atualizarSelecaoLote();
 
     const uploadForm = document.getElementById('uploadForm');
     const uploadStatus = document.getElementById('uploadStatus');
