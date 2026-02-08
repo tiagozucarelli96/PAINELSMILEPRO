@@ -73,6 +73,8 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
         'avisos' => []
     ];
 
+    // Só pega registros soft-deleted que ainda têm chave no storage.
+    // Após limpeza bem-sucedida, a chave é esvaziada para evitar reprocessamento.
     $where = "deleted_at IS NOT NULL AND COALESCE(storage_key, '') <> ''";
     $params = [];
 
@@ -143,6 +145,14 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
         return $resultado;
     }
 
+    $stmtMarkClean = $pdo->prepare("
+        UPDATE eventos_galeria
+        SET storage_key = '',
+            public_url = NULL
+        WHERE id = :id
+          AND deleted_at IS NOT NULL
+    ");
+
     foreach ($rows as $row) {
         $id = (int)($row['id'] ?? 0);
         $key = trim((string)($row['storage_key'] ?? ''));
@@ -153,6 +163,7 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
         try {
             $ok = $uploader->delete($key);
             if ($ok) {
+                $stmtMarkClean->execute([':id' => $id]);
                 $resultado['total_removidos_storage']++;
                 $resultado['removidos'][] = [
                     'id' => $id,
@@ -258,4 +269,3 @@ try {
         'executado_em' => date('Y-m-d H:i:s')
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 }
-

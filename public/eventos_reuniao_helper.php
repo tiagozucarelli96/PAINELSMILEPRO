@@ -743,6 +743,72 @@ function eventos_reuniao_reativar_links_cliente_dj(PDO $pdo, int $meeting_id): b
 }
 
 /**
+ * Destrava um quadro (slot) do formulário DJ para permitir nova edição do cliente.
+ * Mantém o mesmo token; apenas limpa submitted_at.
+ */
+function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $slot_index = max(1, min(50, (int)$slot_index));
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+
+    if ($has_slot_index_col) {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+              AND COALESCE(slot_index, 1) = :slot_index
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':slot_index' => $slot_index
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+    }
+
+    $link_id = (int)$stmt->fetchColumn();
+    if ($link_id <= 0) {
+        return ['ok' => false, 'error' => 'Link do cliente não encontrado para este quadro'];
+    }
+
+    $set = "is_active = TRUE";
+    if ($has_submitted_at_col) {
+        $set .= ", submitted_at = NULL";
+    }
+    $stmt = $pdo->prepare("UPDATE eventos_links_publicos SET {$set} WHERE id = :id");
+    $stmt->execute([':id' => $link_id]);
+
+    // Não usamos mais trava global da seção DJ, mas removemos caso exista (compatibilidade).
+    $stmt = $pdo->prepare("
+        UPDATE eventos_reunioes_secoes
+        SET is_locked = FALSE, locked_at = NULL, locked_by = NULL, updated_at = NOW(), updated_by = :user_id
+        WHERE meeting_id = :meeting_id AND section = 'dj_protocolo'
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':user_id' => $user_id
+    ]);
+
+    return ['ok' => true, 'link_id' => $link_id, 'slot_index' => $slot_index];
+}
+
+/**
  * Excluir reunião (e dados relacionados: seções, versões, anexos, links)
  */
 function eventos_reuniao_excluir(PDO $pdo, int $meeting_id): bool {
@@ -1097,6 +1163,31 @@ function eventos_link_publico_registrar_acesso(PDO $pdo, int $link_id): void {
         WHERE id = :id
     ");
     $stmt->execute([':id' => $link_id]);
+}
+
+/**
+ * Atualiza snapshot de conteúdo do link público sem marcar como enviado (não trava).
+ */
+function eventos_link_publico_salvar_snapshot(PDO $pdo, int $link_id, string $content_html): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($link_id <= 0) {
+        return false;
+    }
+
+    $has_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    if (!$has_snapshot_col) {
+        return true;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_links_publicos
+        SET content_html_snapshot = :html
+        WHERE id = :id
+    ");
+    return $stmt->execute([
+        ':id' => $link_id,
+        ':html' => $content_html
+    ]);
 }
 
 /**

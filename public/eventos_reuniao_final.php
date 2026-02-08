@@ -156,6 +156,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = eventos_reuniao_destravar_secao($pdo, $meeting_id, $section, $user_id);
             echo json_encode($result);
             exit;
+
+        case 'destravar_dj_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_destravar_dj_slot($pdo, $meeting_id, $slot_index, (int)$user_id);
+            echo json_encode($result);
+            exit;
             
         case 'atualizar_status':
             $status = $_POST['status'] ?? '';
@@ -1151,6 +1161,9 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             <?php foreach ($section_labels as $key => $info): 
                 $secao = $secoes[$key] ?? null;
                 $is_locked = $secao && !empty($secao['is_locked']);
+                if ($key === 'dj_protocolo') {
+                    $is_locked = false;
+                }
             ?>
             <button type="button" class="tab-btn <?= $key === 'decoracao' ? 'active' : '' ?>" onclick="switchTab('<?= $key ?>')">
                 <span><?= $info['icon'] ?></span>
@@ -1166,6 +1179,9 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             $secao = $secoes[$key] ?? null;
             $content = $secao['content_html'] ?? '';
             $is_locked = $secao && !empty($secao['is_locked']);
+            if ($key === 'dj_protocolo') {
+                $is_locked = false;
+            }
         ?>
         <div class="tab-content <?= $key === 'decoracao' ? 'active' : '' ?>" id="tab-<?= $key ?>">
             
@@ -1177,10 +1193,11 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro <?= $slot ?></h4>
                         <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link deste quadro para o cliente.</div>
                     </div>
-                    <div class="dj-top-actions">
-                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(<?= $slot ?>)" id="btnGerarLink-<?= $slot ?>">Gerar link</button>
-                    </div>
-                </div>
+	                    <div class="dj-top-actions">
+	                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(<?= $slot ?>)" id="btnGerarLink-<?= $slot ?>">Gerar link</button>
+	                        <button type="button" class="btn btn-secondary" onclick="destravarDjSlot(<?= $slot ?>)" id="btnDestravarDjSlot-<?= $slot ?>" style="display:none;">🔓 Destravar</button>
+	                    </div>
+	                </div>
                 <div class="prefill-field" style="margin-top: 0.5rem;">
                     <label for="djTemplateSelect-<?= $slot ?>">Formulário salvo</label>
                     <select id="djTemplateSelect-<?= $slot ?>" onchange="onChangeDjTemplateSelect(<?= $slot ?>)">
@@ -1305,7 +1322,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
 
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
-const djSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
+const legacyDjSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
 const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($section_labels), true) ? $active_tab_query : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -1316,6 +1333,7 @@ const initialDjLinks = <?= json_encode(array_map(static function (array $link): 
         'token' => (string)($link['token'] ?? ''),
         'slot_index' => (int)($link['slot_index'] ?? 1),
         'form_title' => (string)($link['form_title'] ?? ''),
+        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -1754,18 +1772,37 @@ function getSelectedDjTemplateData(slot) {
     return { template, schema };
 }
 
+function isDjSlotLocked(slot) {
+    const link = djLinksBySlot[slot] || null;
+    if (link && link.submitted_at) {
+        return true;
+    }
+    // Compatibilidade: se a seção antiga estiver travada e existir link no slot 1, considera travado.
+    if (legacyDjSectionLocked && Number(slot) === 1 && link) {
+        return true;
+    }
+    return false;
+}
+
 function updateShareAvailability(slot = 1) {
     const shareBtn = document.getElementById(`btnGerarLink-${slot}`);
     const hint = document.getElementById(`shareHint-${slot}`);
+    const unlockBtn = document.getElementById(`btnDestravarDjSlot-${slot}`);
+    const select = document.getElementById(`djTemplateSelect-${slot}`);
     if (!shareBtn) return;
 
     let disabled = false;
     let hintText = 'Selecione um formulário para habilitar o compartilhamento.';
 
-    if (djSectionLocked) {
+    if (isDjSlotLocked(slot)) {
         disabled = true;
-        hintText = 'A seção está travada. Destrave para editar ou gerar novo link.';
+        hintText = 'Este quadro está travado (cliente já enviou). Clique em "Destravar" para permitir nova edição.';
+        if (unlockBtn) unlockBtn.style.display = 'inline-flex';
+        if (select) select.disabled = true;
     } else {
+        if (unlockBtn) unlockBtn.style.display = 'none';
+        if (select) select.disabled = false;
+
         const selected = getSelectedDjTemplateData(slot);
         if (!selected.template) {
             disabled = true;
@@ -2629,6 +2666,33 @@ async function destravarSecao(section) {
             location.reload();
         } else {
             alert(data.error || 'Erro ao destravar');
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+// Destravar quadro do DJ (slot)
+async function destravarDjSlot(slot = 1) {
+    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    if (!confirm(`Destravar o quadro ${slotIndex} permite que o cliente edite e reenvie. Continuar?`)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'destravar_dj_slot');
+        formData.append('meeting_id', meetingId);
+        formData.append('slot_index', String(slotIndex));
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert(data.error || 'Erro ao destravar quadro');
         }
     } catch (err) {
         alert('Erro: ' + err.message);

@@ -245,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'salvar') {
-        if ($secao && !empty($secao['is_locked'])) {
+        if (!empty($link['submitted_at'])) {
             $error = 'Este formulário já foi enviado e está travado. Aguarde o desbloqueio da equipe para editar novamente.';
         } else {
             $uploads = [];
@@ -317,8 +317,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 );
                 
                 if ($result['ok']) {
-                    eventos_link_publico_registrar_envio($pdo, (int)$link['id'], $content);
-
                     $upload_errors = [];
                     if (!empty($uploads)) {
                         $uploader = new MagaluUpload();
@@ -350,9 +348,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 
                     if (!empty($upload_errors)) {
                         $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
+                        // Mantém snapshot atualizado para permitir reenvio após corrigir anexos.
+                        eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
                     } else {
-                        eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
-                        $success = true;
+                        $saved_link = eventos_link_publico_registrar_envio($pdo, (int)$link['id'], $content);
+                        if (empty($saved_link)) {
+                            $error = 'Conteúdo salvo, mas não foi possível finalizar o envio. Tente novamente.';
+                            eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
+                        } else {
+                            $success = true;
+                        }
                     }
 
                     // Recarregar seção e anexos
@@ -368,7 +373,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 
 // Dados do evento
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
-$is_locked = $secao && !empty($secao['is_locked']);
+$is_locked = !empty($link['submitted_at']);
 $content = trim((string)($link['content_html_snapshot'] ?? ''));
 if ($content === '') {
     $content = $secao['content_html'] ?? '';
