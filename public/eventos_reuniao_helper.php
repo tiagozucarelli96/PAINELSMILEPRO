@@ -71,6 +71,18 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         error_log('eventos_reuniao_ensure_schema: falha ao criar tabela eventos_form_templates: ' . $e->getMessage());
     }
 
+    // Campos adicionais para múltiplos links/formulários DJ por reunião.
+    try {
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS slot_index INTEGER");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS content_html_snapshot TEXT");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_title VARCHAR(160)");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_links_publicos: ' . $e->getMessage());
+    }
+
     $done = true;
 }
 
@@ -644,8 +656,90 @@ function eventos_reuniao_destravar_secao(PDO $pdo, int $meeting_id, string $sect
             'Seção destravada por funcionário'
         );
     }
+
+    if ($section === 'dj_protocolo') {
+        eventos_reuniao_reativar_links_cliente_dj($pdo, $meeting_id);
+    }
     
     return ['ok' => true];
+}
+
+/**
+ * Reativa links de cliente DJ ao destravar seção.
+ * Mantém apenas o link mais recente ativo por slot.
+ */
+function eventos_reuniao_reativar_links_cliente_dj(PDO $pdo, int $meeting_id): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return false;
+    }
+
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+
+    if ($has_slot_index_col) {
+        $sql = "
+            WITH latest AS (
+                SELECT DISTINCT ON (COALESCE(slot_index, 1)) id
+                FROM eventos_links_publicos
+                WHERE meeting_id = :meeting_id AND link_type = 'cliente_dj'
+                ORDER BY COALESCE(slot_index, 1), id DESC
+            )
+            UPDATE eventos_links_publicos lp
+            SET is_active = CASE WHEN lp.id IN (SELECT id FROM latest) THEN TRUE ELSE FALSE END
+        ";
+        if ($has_submitted_at_col) {
+            $sql .= ",
+                submitted_at = CASE
+                    WHEN lp.id IN (SELECT id FROM latest) THEN NULL
+                    ELSE lp.submitted_at
+                END
+            ";
+        }
+        $sql .= "
+            WHERE lp.meeting_id = :meeting_id
+              AND lp.link_type = 'cliente_dj'
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([':meeting_id' => $meeting_id]);
+    }
+
+    $stmtLatest = $pdo->prepare("
+        SELECT id
+        FROM eventos_links_publicos
+        WHERE meeting_id = :meeting_id AND link_type = 'cliente_dj'
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmtLatest->execute([':meeting_id' => $meeting_id]);
+    $latest_id = (int)$stmtLatest->fetchColumn();
+    if ($latest_id <= 0) {
+        return true;
+    }
+
+    $sql = "
+        UPDATE eventos_links_publicos
+        SET is_active = CASE WHEN id = :latest_id THEN TRUE ELSE FALSE END
+    ";
+    if ($has_submitted_at_col) {
+        $sql .= ",
+            submitted_at = CASE
+                WHEN id = :latest_id THEN NULL
+                ELSE submitted_at
+            END
+        ";
+    }
+    $sql .= "
+        WHERE meeting_id = :meeting_id
+          AND link_type = 'cliente_dj'
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    return $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':latest_id' => $latest_id
+    ]);
 }
 
 /**
@@ -760,65 +854,222 @@ function eventos_reuniao_salvar_anexo(
 }
 
 /**
- * Gerar link público para cliente (DJ)
+ * Gerar link público para cliente (DJ).
+ * Permite múltiplos links por reunião via slot_index.
  */
-function eventos_reuniao_gerar_link_cliente(PDO $pdo, int $meeting_id, int $user_id): array {
-    // Verificar se já existe link ativo
-    $stmt = $pdo->prepare("
-        SELECT * FROM eventos_links_publicos 
-        WHERE meeting_id = :meeting_id AND link_type = 'cliente_dj' AND is_active = TRUE
-        LIMIT 1
-    ");
-    $stmt->execute([':meeting_id' => $meeting_id]);
+function eventos_reuniao_gerar_link_cliente(
+    PDO $pdo,
+    int $meeting_id,
+    int $user_id,
+    ?array $schema_snapshot = null,
+    ?string $content_html_snapshot = null,
+    ?string $form_title = null,
+    int $slot_index = 1
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+
+    $slot_index = max(1, min(50, (int)$slot_index));
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $has_schema_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_schema_json');
+    $has_content_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    $has_form_title_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_title');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+
+    // Verificar se já existe link ativo para esse slot.
+    if ($has_slot_index_col) {
+        $stmt = $pdo->prepare("
+            SELECT * FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+              AND is_active = TRUE
+              AND COALESCE(slot_index, 1) = :slot_index
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':slot_index' => $slot_index
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT * FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id AND link_type = 'cliente_dj' AND is_active = TRUE
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+    }
     $link = $stmt->fetch(PDO::FETCH_ASSOC);
-    
     if ($link) {
         return ['ok' => true, 'link' => $link, 'created' => false];
     }
 
-    // Só permite criar link novo se houver formulário salvo (schema útil) ou conteúdo HTML no modo avançado.
     $secao = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
     if (!$secao) {
         return ['ok' => false, 'error' => 'Seção DJ/Protocolos não encontrada'];
     }
-    $has_schema = false;
-    if (!empty($secao['form_schema_json'])) {
+
+    $schema_normalized = [];
+    if (is_array($schema_snapshot)) {
+        $schema_normalized = eventos_form_template_normalizar_schema($schema_snapshot);
+    } elseif (!empty($secao['form_schema_json'])) {
         $decoded = json_decode((string)$secao['form_schema_json'], true);
         if (is_array($decoded)) {
-            $has_schema = eventos_form_template_tem_campo_util($decoded);
+            $schema_normalized = eventos_form_template_normalizar_schema($decoded);
         }
     }
-    $content_html = trim((string)($secao['content_html'] ?? ''));
+    $has_schema = !empty($schema_normalized) && eventos_form_template_tem_campo_util($schema_normalized);
+
+    $content_html = trim((string)($content_html_snapshot ?? ($secao['content_html'] ?? '')));
     $has_content = trim(strip_tags($content_html)) !== '';
     if (!$has_schema && !$has_content) {
         return ['ok' => false, 'error' => 'Salve o formulário da seção DJ antes de gerar o link para o cliente'];
     }
-    
-    // Gerar token seguro
+
+    // Se já existe token para o slot, reativa o mesmo token em vez de criar novo.
+    if ($has_slot_index_col) {
+        $stmt = $pdo->prepare("
+            SELECT * FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+              AND COALESCE(slot_index, 1) = :slot_index
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':slot_index' => $slot_index
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT * FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+    }
+    $existing_link = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($existing_link && empty($existing_link['is_active'])) {
+        $set_parts = ["is_active = TRUE"];
+        $params = [':id' => (int)$existing_link['id']];
+
+        if ($has_submitted_at_col) {
+            $set_parts[] = "submitted_at = NULL";
+        }
+        if ($has_schema_col) {
+            $set_parts[] = "form_schema_json = CAST(:form_schema_json AS jsonb)";
+            $params[':form_schema_json'] = $has_schema
+                ? json_encode($schema_normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : null;
+        }
+        if ($has_content_snapshot_col) {
+            $set_parts[] = "content_html_snapshot = :content_html_snapshot";
+            $params[':content_html_snapshot'] = $has_content ? $content_html : null;
+        }
+        if ($has_form_title_col) {
+            $set_parts[] = "form_title = :form_title";
+            $title = trim((string)$form_title);
+            if ($title !== '') {
+                $params[':form_title'] = function_exists('mb_substr') ? mb_substr($title, 0, 160) : substr($title, 0, 160);
+            } else {
+                $params[':form_title'] = null;
+            }
+        }
+
+        $sql = "UPDATE eventos_links_publicos
+                SET " . implode(', ', $set_parts) . "
+                WHERE id = :id
+                RETURNING *";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $reactivated = $stmt->fetch(PDO::FETCH_ASSOC) ?: $existing_link;
+        return ['ok' => true, 'link' => $reactivated, 'created' => false, 'reactivated' => true];
+    }
+
     $token = bin2hex(random_bytes(32));
-    
-    // Criar link
-    $stmt = $pdo->prepare("
-        INSERT INTO eventos_links_publicos 
-        (meeting_id, token, link_type, allowed_sections, is_active, created_by, created_at)
-        VALUES (:meeting_id, :token, 'cliente_dj', :sections, TRUE, :user_id, NOW())
-        RETURNING *
-    ");
-    $stmt->execute([
+    $columns = ['meeting_id', 'token', 'link_type', 'allowed_sections', 'is_active', 'created_by', 'created_at'];
+    $values = [':meeting_id', ':token', "'cliente_dj'", ':sections', 'TRUE', ':user_id', 'NOW()'];
+    $params = [
         ':meeting_id' => $meeting_id,
         ':token' => $token,
         ':sections' => json_encode(['dj_protocolo']),
         ':user_id' => $user_id
-    ]);
+    ];
+
+    if ($has_slot_index_col) {
+        $columns[] = 'slot_index';
+        $values[] = ':slot_index';
+        $params[':slot_index'] = $slot_index;
+    }
+    if ($has_schema_col) {
+        $columns[] = 'form_schema_json';
+        $values[] = 'CAST(:form_schema_json AS jsonb)';
+        $params[':form_schema_json'] = $has_schema
+            ? json_encode($schema_normalized, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            : null;
+    }
+    if ($has_content_snapshot_col) {
+        $columns[] = 'content_html_snapshot';
+        $values[] = ':content_html_snapshot';
+        $params[':content_html_snapshot'] = $has_content ? $content_html : null;
+    }
+    if ($has_form_title_col) {
+        $columns[] = 'form_title';
+        $values[] = ':form_title';
+        $title = trim((string)$form_title);
+        if ($title !== '') {
+            $params[':form_title'] = function_exists('mb_substr') ? mb_substr($title, 0, 160) : substr($title, 0, 160);
+        } else {
+            $params[':form_title'] = null;
+        }
+    }
+
+    $sql = "INSERT INTO eventos_links_publicos (" . implode(', ', $columns) . ")
+            VALUES (" . implode(', ', $values) . ")
+            RETURNING *";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $link = $stmt->fetch(PDO::FETCH_ASSOC);
-    
+
     return ['ok' => true, 'link' => $link, 'created' => true];
+}
+
+/**
+ * Lista links públicos ativos do cliente DJ por reunião.
+ */
+function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [];
+    }
+
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $sql = "
+        SELECT * FROM eventos_links_publicos
+        WHERE meeting_id = :meeting_id
+          AND link_type = 'cliente_dj'
+          AND is_active = TRUE
+        ORDER BY " . ($has_slot_index_col ? "COALESCE(slot_index, 1) ASC, " : "") . "id DESC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':meeting_id' => $meeting_id]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($rows as &$row) {
+        $decoded = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
+        $row['form_schema'] = is_array($decoded) ? $decoded : [];
+    }
+    unset($row);
+
+    return $rows;
 }
 
 /**
  * Buscar link público por token
  */
 function eventos_link_publico_get(PDO $pdo, string $token): ?array {
+    eventos_reuniao_ensure_schema($pdo);
     $stmt = $pdo->prepare("
         SELECT lp.*, r.me_event_snapshot, r.status as reuniao_status
         FROM eventos_links_publicos lp
@@ -826,7 +1077,14 @@ function eventos_link_publico_get(PDO $pdo, string $token): ?array {
         WHERE lp.token = :token
     ");
     $stmt->execute([':token' => $token]);
-    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return null;
+    }
+
+    $decoded = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
+    $row['form_schema'] = is_array($decoded) ? $decoded : [];
+    return $row;
 }
 
 /**
@@ -839,4 +1097,52 @@ function eventos_link_publico_registrar_acesso(PDO $pdo, int $link_id): void {
         WHERE id = :id
     ");
     $stmt->execute([':id' => $link_id]);
+}
+
+/**
+ * Registra envio do cliente no próprio link sem desativar o token.
+ */
+function eventos_link_publico_registrar_envio(PDO $pdo, int $link_id, string $content_html): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($link_id <= 0) {
+        return false;
+    }
+
+    $has_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+
+    $sql = "UPDATE eventos_links_publicos SET is_active = TRUE";
+    $params = [':id' => $link_id];
+
+    if ($has_snapshot_col) {
+        $sql .= ", content_html_snapshot = :content_html_snapshot";
+        $params[':content_html_snapshot'] = $content_html;
+    }
+    if ($has_submitted_at_col) {
+        $sql .= ", submitted_at = NOW()";
+    }
+    $sql .= " WHERE id = :id";
+
+    $stmt = $pdo->prepare($sql);
+    return $stmt->execute($params);
+}
+
+/**
+ * Desativa link público (ex.: após envio do cliente).
+ */
+function eventos_link_publico_desativar(PDO $pdo, int $link_id): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($link_id <= 0) {
+        return false;
+    }
+
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $sql = "UPDATE eventos_links_publicos SET is_active = FALSE";
+    if ($has_submitted_at_col) {
+        $sql .= ", submitted_at = NOW()";
+    }
+    $sql .= " WHERE id = :id";
+
+    $stmt = $pdo->prepare($sql);
+    return $stmt->execute([':id' => $link_id]);
 }

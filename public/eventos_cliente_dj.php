@@ -67,6 +67,46 @@ function eventos_cliente_e(string $value): string {
 }
 
 /**
+ * Codifica payload de preenchimento para reabrir o formulário.
+ */
+function eventos_cliente_encode_payload(array $payload): string {
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        return '';
+    }
+    return base64_encode($json);
+}
+
+/**
+ * Extrai payload salvo no HTML da resposta do cliente.
+ */
+function eventos_cliente_extract_payload_from_html(string $html): array {
+    if ($html === '') {
+        return [];
+    }
+    if (!preg_match('/data-smile-client-payload="([^"]+)"/', $html, $matches)) {
+        return [];
+    }
+    $encoded = html_entity_decode((string)($matches[1] ?? ''), ENT_QUOTES, 'UTF-8');
+    if ($encoded === '') {
+        return [];
+    }
+    $decoded = base64_decode($encoded, true);
+    if ($decoded === false || $decoded === '') {
+        return [];
+    }
+    $payload = json_decode($decoded, true);
+    if (!is_array($payload) || !isset($payload['values']) || !is_array($payload['values'])) {
+        return [];
+    }
+    $values = [];
+    foreach ($payload['values'] as $key => $value) {
+        $values[(string)$key] = (string)$value;
+    }
+    return $values;
+}
+
+/**
  * Normaliza schema dinâmico recebido da seção DJ.
  */
 function eventos_cliente_normalizar_schema($raw): array {
@@ -117,6 +157,7 @@ function eventos_cliente_normalizar_schema($raw): array {
 function eventos_cliente_montar_resposta_schema(array $schema, array $post): array {
     $errors = [];
     $parts = [];
+    $values = [];
 
     foreach ($schema as $field) {
         $field_id = trim((string)($field['id'] ?? ''));
@@ -158,10 +199,13 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
                 $errors[] = 'Valor inválido em: ' . $label;
                 continue;
             }
-            $value = $value === 'sim' ? 'Sim' : ($value === 'nao' ? 'Não' : '');
+            $display_value = $value === 'sim' ? 'Sim' : ($value === 'nao' ? 'Não' : '');
+        } else {
+            $display_value = $value;
         }
 
-        $answer = $value !== '' ? nl2br(eventos_cliente_e($value)) : '<em>Não informado</em>';
+        $values[$field_id] = $value;
+        $answer = $display_value !== '' ? nl2br(eventos_cliente_e($display_value)) : '<em>Não informado</em>';
         $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $answer . '</p>';
     }
 
@@ -169,6 +213,7 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
         'ok' => empty($errors),
         'errors' => $errors,
         'content_html' => implode("\n", $parts),
+        'values' => $values,
     ];
 }
 
@@ -200,14 +245,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'salvar') {
-        // Verificar se já está travado
-        if ($secao && $secao['is_locked']) {
-            $error = 'Este formulário já foi enviado e não pode ser alterado.';
+        if ($secao && !empty($secao['is_locked'])) {
+            $error = 'Este formulário já foi enviado e está travado. Aguarde o desbloqueio da equipe para editar novamente.';
         } else {
             $uploads = [];
 
             $schema_submit = [];
-            if (!empty($secao['form_schema_json'])) {
+            if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
+                $schema_submit = eventos_cliente_normalizar_schema($link['form_schema']);
+            } elseif (!empty($secao['form_schema_json'])) {
                 $decoded_schema = json_decode((string)$secao['form_schema_json'], true);
                 $schema_submit = eventos_cliente_normalizar_schema($decoded_schema);
             }
@@ -218,6 +264,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     $error = implode(' | ', array_slice((array)($compiled['errors'] ?? []), 0, 2));
                 } else {
                     $content = (string)($compiled['content_html'] ?? '');
+                    $slot_index = max(1, (int)($link['slot_index'] ?? 1));
+                    $form_title = trim((string)($link['form_title'] ?? ''));
+                    if ($form_title === '') {
+                        $form_title = 'Formulário DJ / Protocolos - Quadro ' . $slot_index;
+                    }
+                    $content = '<h2>' . eventos_cliente_e($form_title) . '</h2>' . "\n" . $content;
+
+                    $payload = eventos_cliente_encode_payload([
+                        'slot_index' => $slot_index,
+                        'values' => (array)($compiled['values'] ?? []),
+                    ]);
+                    if ($payload !== '') {
+                        $content .= "\n" . '<div data-smile-client-payload="' . eventos_cliente_e($payload) . '" style="display:none;"></div>';
+                    }
 
                     // Campos de upload dentro do schema
                     foreach ($schema_submit as $field) {
@@ -227,7 +287,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                         $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)($field['id'] ?? ''));
                         $field_input = 'file_' . $field_id;
                         $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
-                        if (!empty($field['required']) && empty($field_uploads)) {
+                        $has_existing_attachments = !empty($anexos);
+                        if (!empty($field['required']) && empty($field_uploads) && !$has_existing_attachments) {
                             $error = 'Campo obrigatório sem anexo: ' . (string)($field['label'] ?? 'Arquivo');
                             break;
                         }
@@ -256,6 +317,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 );
                 
                 if ($result['ok']) {
+                    eventos_link_publico_registrar_envio($pdo, (int)$link['id'], $content);
+
                     $upload_errors = [];
                     if (!empty($uploads)) {
                         $uploader = new MagaluUpload();
@@ -288,7 +351,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     if (!empty($upload_errors)) {
                         $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
                     } else {
-                        // Travar seção somente quando tudo foi salvo sem erro
                         eventos_reuniao_travar_secao($pdo, $link['meeting_id'], 'dj_protocolo', 0);
                         $success = true;
                     }
@@ -307,12 +369,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 // Dados do evento
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
 $is_locked = $secao && !empty($secao['is_locked']);
-$content = $secao['content_html'] ?? '';
+$content = trim((string)($link['content_html_snapshot'] ?? ''));
+if ($content === '') {
+    $content = $secao['content_html'] ?? '';
+}
 $form_schema = [];
-if (!empty($secao['form_schema_json'])) {
+if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
+    $form_schema = eventos_cliente_normalizar_schema($link['form_schema']);
+} elseif (!empty($secao['form_schema_json'])) {
     $decoded = json_decode((string)$secao['form_schema_json'], true);
     $form_schema = eventos_cliente_normalizar_schema($decoded);
 }
+$form_values = eventos_cliente_extract_payload_from_html($content);
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -889,12 +957,15 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 
                 <?php foreach ($form_schema as $field): ?>
                     <?php
-                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)($field['id'] ?? ''));
+                        $field_raw_id = (string)($field['id'] ?? '');
+                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $field_raw_id);
                         $field_name = 'field_' . $field_id;
                         $file_name = 'file_' . $field_id;
                         $label = (string)($field['label'] ?? '');
                         $required = !empty($field['required']);
                         $required_attr = $required ? ' required' : '';
+                        $file_required_attr = ($required && empty($anexos)) ? ' required' : '';
+                        $field_value = isset($form_values[$field_raw_id]) ? (string)$form_values[$field_raw_id] : '';
                     ?>
                     <?php if (($field['type'] ?? '') === 'divider'): ?>
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
@@ -907,24 +978,25 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                             </label>
 
                             <?php if (($field['type'] ?? '') === 'textarea'): ?>
-                                <textarea id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>></textarea>
+                                <textarea id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" rows="4" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>><?= eventos_cliente_e($field_value) ?></textarea>
                             <?php elseif (($field['type'] ?? '') === 'yesno'): ?>
                                 <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                                     <option value="">Selecione...</option>
-                                    <option value="sim">Sim</option>
-                                    <option value="nao">Não</option>
+                                    <option value="sim"<?= $field_value === 'sim' ? ' selected' : '' ?>>Sim</option>
+                                    <option value="nao"<?= $field_value === 'nao' ? ' selected' : '' ?>>Não</option>
                                 </select>
                             <?php elseif (($field['type'] ?? '') === 'select'): ?>
                                 <select id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                                     <option value="">Selecione...</option>
                                     <?php foreach (($field['options'] ?? []) as $opt): ?>
-                                        <option value="<?= eventos_cliente_e((string)$opt) ?>"><?= eventos_cliente_e((string)$opt) ?></option>
+                                        <?php $opt_value = (string)$opt; ?>
+                                        <option value="<?= eventos_cliente_e($opt_value) ?>"<?= $field_value === $opt_value ? ' selected' : '' ?>><?= eventos_cliente_e($opt_value) ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             <?php elseif (($field['type'] ?? '') === 'file'): ?>
-                                <input type="file" id="<?= eventos_cliente_e($file_name) ?>" name="<?= eventos_cliente_e($file_name) ?>[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"<?= $required_attr ?>>
+                                <input type="file" id="<?= eventos_cliente_e($file_name) ?>" name="<?= eventos_cliente_e($file_name) ?>[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"<?= $file_required_attr ?>>
                             <?php else: ?>
-                                <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
+                                <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
@@ -986,7 +1058,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             </button>
             
             <p style="text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #64748b;">
-                Após o envio, as informações não poderão ser alteradas.
+                Após o envio, a edição fica bloqueada até a equipe destravar novamente.
             </p>
         </form>
         

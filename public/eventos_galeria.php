@@ -38,6 +38,58 @@ $categorias_filtro = [
     '15_anos' => $categorias['15_anos']
 ];
 
+/**
+ * Remove arquivos do storage (Magalu Cloud) a partir das chaves informadas.
+ *
+ * @param array<int, string|null> $storageKeys
+ * @return array{deleted:int, failed:array<int, string>}
+ */
+function removerArquivosGaleriaStorage(array $storageKeys): array
+{
+    $normalized = [];
+    foreach ($storageKeys as $rawKey) {
+        $key = trim((string)$rawKey);
+        if ($key !== '') {
+            $normalized[$key] = $key;
+        }
+    }
+    $keys = array_values($normalized);
+
+    $result = [
+        'deleted' => 0,
+        'failed' => []
+    ];
+
+    if (empty($keys)) {
+        return $result;
+    }
+
+    try {
+        $uploader = new MagaluUpload();
+    } catch (Throwable $e) {
+        error_log('[EVENTOS_GALERIA] Falha ao iniciar MagaluUpload para exclusao: ' . $e->getMessage());
+        $result['failed'] = $keys;
+        return $result;
+    }
+
+    foreach ($keys as $key) {
+        try {
+            if ($uploader->delete($key)) {
+                $result['deleted']++;
+                error_log('[EVENTOS_GALERIA] Arquivo removido do storage: ' . $key);
+            } else {
+                $result['failed'][] = $key;
+                error_log('[EVENTOS_GALERIA] Falha ao remover arquivo do storage: ' . $key);
+            }
+        } catch (Throwable $e) {
+            $result['failed'][] = $key;
+            error_log('[EVENTOS_GALERIA] Excecao ao remover arquivo (' . $key . '): ' . $e->getMessage());
+        }
+    }
+
+    return $result;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
     $upload_success_count = 0;
     $upload_fail_messages = [];
@@ -198,11 +250,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
         try {
-            $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE id = :id");
+            $stmt = $pdo->prepare("SELECT storage_key FROM eventos_galeria WHERE id = :id AND deleted_at IS NULL");
             $stmt->execute([':id' => $id]);
-            $success = 'Imagem removida.';
+            $storageKey = $stmt->fetchColumn();
+
+            if ($storageKey === false) {
+                $error = 'Imagem nao encontrada ou ja removida.';
+            } else {
+                error_log('[EVENTOS_GALERIA] Exclusao individual solicitada. ID: ' . $id);
+
+                $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
+                $stmt->execute([':id' => $id]);
+                $removed = (int)$stmt->rowCount();
+
+                if ($removed > 0) {
+                    $storageResult = removerArquivosGaleriaStorage([(string)$storageKey]);
+                    $success = 'Imagem removida.';
+                    if (!empty($storageResult['failed'])) {
+                        $success .= ' Aviso: arquivo nao removido do storage.';
+                    }
+                    error_log(
+                        '[EVENTOS_GALERIA] Exclusao individual concluida. ID: '
+                        . $id
+                        . '; galeria_removidas=' . $removed
+                        . '; storage_ok=' . (int)$storageResult['deleted']
+                        . '; storage_fail=' . count($storageResult['failed'])
+                    );
+                } else {
+                    $error = 'Imagem nao encontrada ou ja removida.';
+                }
+            }
         } catch (Throwable $e) {
             $error = 'Erro ao remover imagem: ' . $e->getMessage();
+            error_log('[EVENTOS_GALERIA] Erro na exclusao individual (ID ' . $id . '): ' . $e->getMessage());
         }
     } else {
         $error = 'Imagem inválida para exclusão.';
@@ -229,19 +309,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir_lote') {
     } else {
         try {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE deleted_at IS NULL AND id IN ({$placeholders})");
-            $stmt->execute($ids);
-            $removed = (int)$stmt->rowCount();
+            $select = $pdo->prepare("SELECT id, storage_key FROM eventos_galeria WHERE deleted_at IS NULL AND id IN ({$placeholders})");
+            $select->execute($ids);
+            $rows = $select->fetchAll(PDO::FETCH_ASSOC);
 
-            if ($removed > 0) {
-                $success = $removed === 1
-                    ? '1 imagem removida.'
-                    : $removed . ' imagens removidas.';
-            } else {
+            if (empty($rows)) {
                 $error = 'Nenhuma imagem válida foi removida.';
+            } else {
+                $activeIds = [];
+                $storageKeys = [];
+                foreach ($rows as $row) {
+                    $activeId = (int)($row['id'] ?? 0);
+                    if ($activeId > 0) {
+                        $activeIds[$activeId] = $activeId;
+                    }
+                    $storageKeys[] = (string)($row['storage_key'] ?? '');
+                }
+                $activeIds = array_values($activeIds);
+
+                error_log('[EVENTOS_GALERIA] Exclusao em lote solicitada. IDs: ' . implode(',', $activeIds));
+
+                $activePlaceholders = implode(',', array_fill(0, count($activeIds), '?'));
+                $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE deleted_at IS NULL AND id IN ({$activePlaceholders})");
+                $stmt->execute($activeIds);
+                $removed = (int)$stmt->rowCount();
+
+                if ($removed > 0) {
+                    $storageResult = removerArquivosGaleriaStorage($storageKeys);
+                    $success = $removed === 1
+                        ? '1 imagem removida.'
+                        : $removed . ' imagens removidas.';
+                    if (!empty($storageResult['failed'])) {
+                        $success .= ' Aviso: ' . count($storageResult['failed']) . ' arquivo(s) nao foram removidos do storage.';
+                    }
+                    error_log(
+                        '[EVENTOS_GALERIA] Exclusao em lote concluida. '
+                        . 'galeria_removidas=' . $removed
+                        . '; storage_ok=' . (int)$storageResult['deleted']
+                        . '; storage_fail=' . count($storageResult['failed'])
+                    );
+                } else {
+                    $error = 'Nenhuma imagem válida foi removida.';
+                }
             }
         } catch (Throwable $e) {
             $error = 'Erro ao remover imagens: ' . $e->getMessage();
+            error_log('[EVENTOS_GALERIA] Erro na exclusao em lote: ' . $e->getMessage());
         }
     }
 }

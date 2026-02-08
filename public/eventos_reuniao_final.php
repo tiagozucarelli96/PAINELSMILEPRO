@@ -95,10 +95,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
                 exit;
             }
-            $result = eventos_reuniao_gerar_link_cliente($pdo, $meeting_id, $user_id);
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $schema_payload = $_POST['form_schema_json'] ?? null;
+            $content_snapshot = trim((string)($_POST['content_html'] ?? ''));
+            $form_title = trim((string)($_POST['form_title'] ?? ''));
+
+            $schema_array = null;
+            if ($schema_payload !== null && $schema_payload !== '') {
+                $decoded = json_decode((string)$schema_payload, true);
+                if (!is_array($decoded)) {
+                    echo json_encode(['ok' => false, 'error' => 'Schema inválido para gerar o link']);
+                    exit;
+                }
+                $schema_array = $decoded;
+            }
+
+            $result = eventos_reuniao_gerar_link_cliente(
+                $pdo,
+                $meeting_id,
+                (int)$user_id,
+                $schema_array,
+                $content_snapshot !== '' ? $content_snapshot : null,
+                $form_title !== '' ? $form_title : null,
+                $slot_index
+            );
             if ($result['ok']) {
                 $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
                 $result['url'] = $base_url . '/index.php?page=eventos_cliente_dj&token=' . $result['link']['token'];
+                $result['slot_index'] = $slot_index;
             }
             echo json_encode($result);
             exit;
@@ -185,6 +209,7 @@ if ($meeting_id > 0) {
 }
 
 $form_templates = eventos_form_templates_listar($pdo);
+$links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id) : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $decoracao_schema_raw = $secoes['decoracao']['form_schema_json'] ?? '[]';
 $decoracao_schema_decoded = json_decode((string)$decoracao_schema_raw, true);
@@ -734,6 +759,49 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         margin-top: 0.75rem;
     }
 
+    .section-form-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .section-form-item label {
+        display: block;
+        margin-bottom: 0.35rem;
+        color: #334155;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .section-form-item input,
+    .section-form-item textarea,
+    .section-form-item select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.55rem 0.65rem;
+        font-size: 0.85rem;
+        background: #fff;
+    }
+
+    .section-form-item textarea {
+        min-height: 110px;
+        resize: vertical;
+    }
+
+    .section-form-divider {
+        border: 0;
+        border-top: 1px solid #dbe3ef;
+        margin: 0.25rem 0;
+    }
+
+    .section-form-title {
+        margin: 0.4rem 0 0.2rem 0;
+        color: #1e3a8a;
+        font-size: 0.9rem;
+        font-weight: 700;
+    }
+
     .link-display {
         display: flex;
         gap: 0.5rem;
@@ -1102,19 +1170,20 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         <div class="tab-content <?= $key === 'decoracao' ? 'active' : '' ?>" id="tab-<?= $key ?>">
             
             <?php if ($key === 'dj_protocolo'): ?>
-            <div class="dj-builder-shell">
+            <?php for ($slot = 1; $slot <= 2; $slot++): ?>
+            <div class="dj-builder-shell"<?= $slot > 1 ? ' style="margin-top:0.9rem;"' : '' ?>>
                 <div class="dj-builder-head">
                     <div>
-                        <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos</h4>
-                        <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link para envio ao cliente.</div>
+                        <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro <?= $slot ?></h4>
+                        <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link deste quadro para o cliente.</div>
                     </div>
                     <div class="dj-top-actions">
-                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente()" id="btnGerarLink" <?= $is_locked ? 'disabled' : '' ?>>Gerar link</button>
+                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(<?= $slot ?>)" id="btnGerarLink-<?= $slot ?>">Gerar link</button>
                     </div>
                 </div>
                 <div class="prefill-field" style="margin-top: 0.5rem;">
-                    <label for="djTemplateSelect">Formulário salvo</label>
-                    <select id="djTemplateSelect" onchange="onChangeDjTemplateSelect()" <?= $is_locked ? 'disabled' : '' ?>>
+                    <label for="djTemplateSelect-<?= $slot ?>">Formulário salvo</label>
+                    <select id="djTemplateSelect-<?= $slot ?>" onchange="onChangeDjTemplateSelect(<?= $slot ?>)">
                         <option value="">Selecione um formulário...</option>
                         <?php foreach ($form_templates as $template): ?>
                         <option value="<?= (int)($template['id'] ?? 0) ?>">
@@ -1123,28 +1192,29 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="builder-field-meta" id="selectedDjTemplateMeta" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
-                <p class="share-hint" id="shareHint">Selecione um formulário para habilitar o compartilhamento.</p>
+                <div class="builder-field-meta" id="selectedDjTemplateMeta-<?= $slot ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+                <p class="share-hint" id="shareHint-<?= $slot ?>">Selecione um formulário para habilitar o compartilhamento.</p>
                 <div class="link-display">
-                    <input type="text" id="clienteLinkInput" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
-                    <button type="button" class="btn btn-secondary" onclick="copiarLink()" id="btnCopiar" style="display: none;">📋 Copiar</button>
+                    <input type="text" id="clienteLinkInput-<?= $slot ?>" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
+                    <button type="button" class="btn btn-secondary" onclick="copiarLink(<?= $slot ?>)" id="btnCopiar-<?= $slot ?>" style="display: none;">📋 Copiar</button>
                 </div>
             </div>
+            <?php endfor; ?>
             <?php endif; ?>
 
             <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
             <div class="dj-builder-shell">
                 <div class="dj-builder-head">
                     <div>
-                        <h4 class="dj-builder-title">🧩 Formulário opcional</h4>
+                        <h4 class="dj-builder-title">🧩 Formulário interno</h4>
                         <?php if ($key === 'observacoes_gerais'): ?>
-                        <div class="dj-builder-subtitle">Selecione um formulário para preenchimento interno pela equipe.</div>
+                        <div class="dj-builder-subtitle">Ao selecionar um formulário, ele aparece abaixo para preenchimento da equipe.</div>
                         <?php else: ?>
-                        <div class="dj-builder-subtitle">Selecione um formulário base para apoiar o preenchimento interno.</div>
+                        <div class="dj-builder-subtitle">Selecione um formulário e preencha os campos diretamente nesta aba.</div>
                         <?php endif; ?>
                     </div>
                     <div class="dj-top-actions">
-                        <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Aplicar formulário</button>
+                        <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Carregar formulário</button>
                     </div>
                 </div>
                 <div class="prefill-field" style="margin-top: 0.5rem;">
@@ -1159,6 +1229,12 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     </select>
                 </div>
                 <div class="builder-field-meta" id="sectionTemplateMeta-<?= $key ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+
+                <div class="builder-preview-box" id="sectionFormBox-<?= $key ?>" style="display:none; margin-top:0.85rem;">
+                    <div class="builder-preview-title">Preenchimento interno por formulário</div>
+                    <div class="section-form-fields" id="sectionFormFields-<?= $key ?>"></div>
+                    <p class="prefill-note" id="sectionFormHint-<?= $key ?>">Preencha os campos e salve a seção para registrar uma nova versão.</p>
+                </div>
             </div>
             <?php endif; ?>
             
@@ -1175,8 +1251,23 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             </div>
             <?php endif; ?>
             
-            <?php $editor_wrap_attrs = ($key === 'dj_protocolo') ? ' style="display:none;"' : ''; ?>
-            <div class="editor-wrapper legacy-editor-wrap"<?= $editor_wrap_attrs ?>>
+            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
+            <div class="legacy-editor-toggle">
+                <div>
+                    <strong>Texto livre (opcional)</strong>
+                    <div class="builder-field-meta">Mantido para observações extras. Clique para abrir/fechar.</div>
+                </div>
+                <button type="button" class="btn btn-secondary" id="btnToggleEditor-<?= $key ?>" onclick="toggleLegacyEditor('<?= $key ?>')">Abrir texto</button>
+            </div>
+            <?php endif; ?>
+
+            <?php
+            $editor_wrap_attrs = '';
+            if ($key === 'dj_protocolo' || $key === 'decoracao' || $key === 'observacoes_gerais') {
+                $editor_wrap_attrs = ' style="display:none;"';
+            }
+            ?>
+            <div class="editor-wrapper legacy-editor-wrap" id="legacyEditorWrap-<?= $key ?>"<?= $editor_wrap_attrs ?>>
                 <?php 
                 $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
                 ?>
@@ -1219,6 +1310,15 @@ const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($secti
 const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjSchema = <?= json_encode($dj_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialDjLinks = <?= json_encode(array_map(static function (array $link): array {
+    return [
+        'id' => (int)($link['id'] ?? 0),
+        'token' => (string)($link['token'] ?? ''),
+        'slot_index' => (int)($link['slot_index'] ?? 1),
+        'form_title' => (string)($link['form_title'] ?? ''),
+        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
+    ];
+}, $links_cliente_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -1236,8 +1336,9 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
         'schema' => is_array($template['schema'] ?? null) ? $template['schema'] : [],
     ];
 }, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-let selectedDjTemplateId = null;
-let lastSavedDjSchemaSignature = '';
+let selectedDjTemplateIds = { 1: null, 2: null };
+let lastSavedDjSchemaSignatures = { 1: '', 2: '' };
+let djLinksBySlot = { 1: null, 2: null };
 let selectedSectionTemplateIds = {
     decoracao: null,
     observacoes_gerais: null,
@@ -1245,6 +1346,15 @@ let selectedSectionTemplateIds = {
 let lastSavedSectionSchemaSignatures = {
     decoracao: '',
     observacoes_gerais: '',
+};
+const sectionLockedState = <?= json_encode([
+    'decoracao' => !empty($secoes['decoracao']['is_locked']),
+    'observacoes_gerais' => !empty($secoes['observacoes_gerais']['is_locked']),
+    'dj_protocolo' => !empty($secoes['dj_protocolo']['is_locked']),
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+let sectionFormDraftValues = {
+    decoracao: {},
+    observacoes_gerais: {},
 };
 
 var tinymceLoadTimeout = null;
@@ -1628,9 +1738,25 @@ function stripHtmlToText(html) {
     return (div.textContent || div.innerText || '').trim();
 }
 
-function updateShareAvailability() {
-    const shareBtn = document.getElementById('btnGerarLink');
-    const hint = document.getElementById('shareHint');
+function isLegacyGeneratedSchemaHtml(html) {
+    const text = stripHtmlToText(html || '');
+    if (!text) return false;
+    return text.includes('Estrutura gerada por campos dinâmicos') || text.includes('Campo de upload de arquivo');
+}
+
+function getSelectedDjTemplateData(slot) {
+    const templateId = Number(selectedDjTemplateIds[slot] || 0);
+    if (templateId <= 0) {
+        return { template: null, schema: [] };
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId) || null;
+    const schema = normalizeFormSchema(template && Array.isArray(template.schema) ? template.schema : []);
+    return { template, schema };
+}
+
+function updateShareAvailability(slot = 1) {
+    const shareBtn = document.getElementById(`btnGerarLink-${slot}`);
+    const hint = document.getElementById(`shareHint-${slot}`);
     if (!shareBtn) return;
 
     let disabled = false;
@@ -1639,21 +1765,31 @@ function updateShareAvailability() {
     if (djSectionLocked) {
         disabled = true;
         hintText = 'A seção está travada. Destrave para editar ou gerar novo link.';
-    } else if (!selectedDjTemplateId) {
-        disabled = true;
     } else {
-        const selectedTemplate = savedFormTemplates.find((item) => Number(item.id) === Number(selectedDjTemplateId));
-        const normalizedSchema = normalizeFormSchema(selectedTemplate && Array.isArray(selectedTemplate.schema) ? selectedTemplate.schema : []);
-        if (!selectedTemplate || !hasUsefulSchemaFields(normalizedSchema)) {
+        const selected = getSelectedDjTemplateData(slot);
+        if (!selected.template) {
+            disabled = true;
+        } else if (!hasUsefulSchemaFields(selected.schema)) {
             disabled = true;
             hintText = 'O formulário selecionado não possui campos válidos.';
         } else {
-            hintText = 'Clique em Gerar link para salvar o formulário na reunião e compartilhar com o cliente.';
+            hintText = `Clique em Gerar link para criar/usar o link do quadro ${slot}.`;
         }
     }
 
     shareBtn.disabled = disabled;
     if (hint) hint.textContent = hintText;
+}
+
+function setDjLinkOutput(slot, url) {
+    const input = document.getElementById(`clienteLinkInput-${slot}`);
+    const copyBtn = document.getElementById(`btnCopiar-${slot}`);
+    if (input) {
+        input.value = url || '';
+    }
+    if (copyBtn) {
+        copyBtn.style.display = url ? 'inline-flex' : 'none';
+    }
 }
 
 function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos') {
@@ -1693,11 +1829,11 @@ function getSchemaSignature(schema) {
     return JSON.stringify(normalizeFormSchema(schema || []));
 }
 
-function renderDjTemplateSelect() {
-    const select = document.getElementById('djTemplateSelect');
+function renderDjTemplateSelect(slot = 1) {
+    const select = document.getElementById(`djTemplateSelect-${slot}`);
     if (!select) return;
 
-    const current = selectedDjTemplateId ? String(selectedDjTemplateId) : '';
+    const current = selectedDjTemplateIds[slot] ? String(selectedDjTemplateIds[slot]) : '';
     const options = ['<option value="">Selecione um formulário...</option>'];
     (savedFormTemplates || []).forEach((template) => {
         const id = Number(template.id || 0);
@@ -1707,18 +1843,20 @@ function renderDjTemplateSelect() {
         options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
     });
     select.innerHTML = options.join('');
-    updateSelectedDjTemplateMeta();
+    updateSelectedDjTemplateMeta(slot);
 }
 
-function updateSelectedDjTemplateMeta() {
-    const meta = document.getElementById('selectedDjTemplateMeta');
+function updateSelectedDjTemplateMeta(slot = 1) {
+    const meta = document.getElementById(`selectedDjTemplateMeta-${slot}`);
     if (!meta) return;
-    if (!selectedDjTemplateId) {
+
+    const templateId = Number(selectedDjTemplateIds[slot] || 0);
+    if (templateId <= 0) {
         meta.textContent = 'Nenhum formulário selecionado.';
         return;
     }
 
-    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedDjTemplateId));
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId);
     if (!template) {
         meta.textContent = 'Formulário selecionado não encontrado.';
         return;
@@ -1728,11 +1866,18 @@ function updateSelectedDjTemplateMeta() {
     meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${String(template.categoria || 'geral')} • Atualizado em ${stamp}`;
 }
 
-function onChangeDjTemplateSelect() {
-    const select = document.getElementById('djTemplateSelect');
-    selectedDjTemplateId = select && select.value ? Number(select.value) : null;
-    updateSelectedDjTemplateMeta();
-    updateShareAvailability();
+function onChangeDjTemplateSelect(slot = 1) {
+    const select = document.getElementById(`djTemplateSelect-${slot}`);
+    selectedDjTemplateIds[slot] = select && select.value ? Number(select.value) : null;
+    updateSelectedDjTemplateMeta(slot);
+    updateShareAvailability(slot);
+}
+
+function renderAllDjTemplateSelects() {
+    [1, 2].forEach((slot) => {
+        renderDjTemplateSelect(slot);
+        updateShareAvailability(slot);
+    });
 }
 
 function getSectionFormTitle(section) {
@@ -1743,6 +1888,197 @@ function getSectionFormTitle(section) {
         return 'Formulário de Observações Gerais';
     }
     return 'Formulário';
+}
+
+function getSectionLegacyTitle(section) {
+    if (section === 'decoracao') {
+        return 'Observações complementares da decoração';
+    }
+    if (section === 'observacoes_gerais') {
+        return 'Observações gerais complementares';
+    }
+    return 'Observações complementares';
+}
+
+function getSelectedSectionSchema(section) {
+    const templateId = selectedSectionTemplateIds[section] || null;
+    if (!templateId) return [];
+    const template = savedFormTemplates.find((item) => Number(item.id) === Number(templateId));
+    if (!template) return [];
+    const normalizedSchema = normalizeFormSchema(Array.isArray(template.schema) ? template.schema : []);
+    if (!hasUsefulSchemaFields(normalizedSchema)) return [];
+    return normalizedSchema;
+}
+
+function encodePayloadBase64(payload) {
+    try {
+        const json = JSON.stringify(payload);
+        return btoa(unescape(encodeURIComponent(json)));
+    } catch (err) {
+        return '';
+    }
+}
+
+function decodePayloadBase64(encoded) {
+    try {
+        const json = decodeURIComponent(escape(atob(encoded)));
+        return JSON.parse(json);
+    } catch (err) {
+        return null;
+    }
+}
+
+function extractSectionPayloadFromContent(contentHtml) {
+    if (!contentHtml) return null;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = contentHtml;
+    const marker = wrapper.querySelector('[data-smile-form-payload]');
+    if (!marker) return null;
+    const encoded = String(marker.getAttribute('data-smile-form-payload') || '');
+    if (!encoded) return null;
+    return decodePayloadBase64(encoded);
+}
+
+function sectionHasAnyDraftValue(section) {
+    const draft = sectionFormDraftValues[section] || {};
+    return Object.values(draft).some((value) => String(value || '').trim() !== '');
+}
+
+function getFieldDomId(section, fieldId) {
+    const safe = String(fieldId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `section-field-${section}-${safe}`;
+}
+
+function getSectionFormValuesFromDom(section) {
+    const container = document.getElementById(`sectionFormFields-${section}`);
+    if (!container) return {};
+    const values = {};
+    container.querySelectorAll('[data-section-field]').forEach((el) => {
+        const fieldId = String(el.getAttribute('data-field-id') || '').trim();
+        if (!fieldId) return;
+        values[fieldId] = String(el.value || '');
+    });
+    return values;
+}
+
+function syncSectionFormDraft(section) {
+    sectionFormDraftValues[section] = getSectionFormValuesFromDom(section);
+}
+
+function renderSectionTemplateForm(section) {
+    const box = document.getElementById(`sectionFormBox-${section}`);
+    const fieldsWrap = document.getElementById(`sectionFormFields-${section}`);
+    const hint = document.getElementById(`sectionFormHint-${section}`);
+    if (!box || !fieldsWrap) return;
+
+    const schema = getSelectedSectionSchema(section);
+    if (!schema.length) {
+        box.style.display = 'none';
+        fieldsWrap.innerHTML = '';
+        if (hint) {
+            hint.textContent = 'Selecione um formulário para preencher esta seção.';
+        }
+        return;
+    }
+
+    box.style.display = 'block';
+    const disabledAttr = sectionLockedState[section] ? ' disabled' : '';
+    fieldsWrap.innerHTML = schema.map((field) => {
+        const type = String(field.type || 'text');
+        const label = escapeHtmlForField(String(field.label || 'Campo'));
+        const required = !!field.required;
+        const requiredMark = required ? ' *' : '';
+        const requiredAttr = required ? ' required' : '';
+        const fieldId = String(field.id || '');
+        const domId = getFieldDomId(section, fieldId);
+        const dataAttrs = `data-section-field="1" data-field-id="${escapeHtmlForField(fieldId)}"`;
+
+        if (type === 'divider') {
+            return '<hr class="section-form-divider">';
+        }
+        if (type === 'section') {
+            return `<h4 class="section-form-title">${label}</h4>`;
+        }
+        if (type === 'textarea') {
+            return `
+                <div class="section-form-item">
+                    <label for="${domId}">${label}${requiredMark}</label>
+                    <textarea id="${domId}" ${dataAttrs}${requiredAttr}${disabledAttr}></textarea>
+                </div>
+            `;
+        }
+        if (type === 'yesno') {
+            return `
+                <div class="section-form-item">
+                    <label for="${domId}">${label}${requiredMark}</label>
+                    <select id="${domId}" ${dataAttrs}${requiredAttr}${disabledAttr}>
+                        <option value="">Selecione...</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                    </select>
+                </div>
+            `;
+        }
+        if (type === 'select') {
+            const options = Array.isArray(field.options) ? field.options : [];
+            const optionsHtml = options.map((opt) => {
+                const text = escapeHtmlForField(String(opt || ''));
+                return `<option value="${text}">${text}</option>`;
+            }).join('');
+            return `
+                <div class="section-form-item">
+                    <label for="${domId}">${label}${requiredMark}</label>
+                    <select id="${domId}" ${dataAttrs}${requiredAttr}${disabledAttr}>
+                        <option value="">Selecione...</option>
+                        ${optionsHtml}
+                    </select>
+                </div>
+            `;
+        }
+        if (type === 'file') {
+            return `
+                <div class="section-form-item">
+                    <label for="${domId}">${label}${requiredMark}</label>
+                    <input type="text" id="${domId}" ${dataAttrs}${requiredAttr}${disabledAttr} placeholder="Informe nome, link ou referência do arquivo">
+                </div>
+            `;
+        }
+        return `
+            <div class="section-form-item">
+                <label for="${domId}">${label}${requiredMark}</label>
+                <input type="text" id="${domId}" ${dataAttrs}${requiredAttr}${disabledAttr}>
+            </div>
+        `;
+    }).join('');
+
+    const draft = sectionFormDraftValues[section] || {};
+    fieldsWrap.querySelectorAll('[data-section-field]').forEach((el) => {
+        const fieldId = String(el.getAttribute('data-field-id') || '').trim();
+        if (!fieldId) return;
+        if (Object.prototype.hasOwnProperty.call(draft, fieldId)) {
+            el.value = String(draft[fieldId] ?? '');
+        }
+        const eventName = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(eventName, () => syncSectionFormDraft(section));
+        if (el.tagName !== 'SELECT') {
+            el.addEventListener('change', () => syncSectionFormDraft(section));
+        }
+    });
+
+    if (hint) {
+        hint.textContent = sectionLockedState[section]
+            ? 'Seção travada. Os campos aparecem apenas para consulta.'
+            : 'Preencha os campos e clique em Salvar para registrar uma nova versão.';
+    }
+}
+
+function toggleLegacyEditor(section) {
+    const wrap = document.getElementById(`legacyEditorWrap-${section}`);
+    const btn = document.getElementById(`btnToggleEditor-${section}`);
+    if (!wrap || !btn) return;
+    const isOpen = wrap.style.display !== 'none';
+    wrap.style.display = isOpen ? 'none' : 'block';
+    btn.textContent = isOpen ? 'Abrir texto' : 'Fechar texto';
 }
 
 function findTemplateIdBySchemaSignature(signature) {
@@ -1793,8 +2129,23 @@ function updateSectionTemplateMeta(section) {
 
 function onChangeSectionTemplateSelect(section) {
     const select = document.getElementById(`sectionTemplateSelect-${section}`);
-    selectedSectionTemplateIds[section] = select && select.value ? Number(select.value) : null;
+    const previousTemplateId = selectedSectionTemplateIds[section] || null;
+    const nextTemplateId = select && select.value ? Number(select.value) : null;
+
+    if (previousTemplateId !== nextTemplateId && sectionHasAnyDraftValue(section)) {
+        const confirmed = confirm('Trocar o formulário vai limpar o preenchimento atual desta seção. Continuar?');
+        if (!confirmed) {
+            if (select) {
+                select.value = previousTemplateId ? String(previousTemplateId) : '';
+            }
+            return;
+        }
+        sectionFormDraftValues[section] = {};
+    }
+
+    selectedSectionTemplateIds[section] = nextTemplateId;
     updateSectionTemplateMeta(section);
+    renderSectionTemplateForm(section);
 }
 
 function aplicarTemplateNaSecao(section) {
@@ -1815,24 +2166,131 @@ function aplicarTemplateNaSecao(section) {
         alert('O formulário selecionado não possui campos válidos.');
         return;
     }
-
-    const currentContent = getEditorContent(section);
-    const hasCurrentContent = stripHtmlToText(currentContent) !== '';
-    if (hasCurrentContent) {
-        const shouldReplace = confirm('A seção já possui conteúdo. Deseja substituir pelo formulário selecionado?');
-        if (!shouldReplace) {
-            return;
-        }
-    }
-
-    const generatedHtml = buildSchemaHtmlForStorage(normalizedSchema, getSectionFormTitle(section));
-    setEditorContent(generatedHtml, section);
+    renderSectionTemplateForm(section);
 }
 
 function renderAllSectionTemplateSelects() {
     ['decoracao', 'observacoes_gerais'].forEach((section) => {
         renderSectionTemplateSelect(section);
+        renderSectionTemplateForm(section);
     });
+}
+
+function hydrateSectionFormDraftFromSavedContent(section) {
+    const payload = extractSectionPayloadFromContent(getEditorContent(section));
+    if (!payload || typeof payload !== 'object') return;
+
+    const payloadTemplateId = Number(payload.template_id || 0) || null;
+    if (!selectedSectionTemplateIds[section] && payloadTemplateId) {
+        selectedSectionTemplateIds[section] = payloadTemplateId;
+    }
+
+    if (payload.values && typeof payload.values === 'object') {
+        const normalizedValues = {};
+        Object.keys(payload.values).forEach((key) => {
+            normalizedValues[String(key)] = String(payload.values[key] ?? '');
+        });
+        sectionFormDraftValues[section] = normalizedValues;
+    }
+
+    if (typeof payload.legacy_html === 'string') {
+        setEditorContent(payload.legacy_html, section);
+    } else {
+        setEditorContent('', section);
+    }
+}
+
+function hydrateAllSectionFormDraftsFromSavedContent() {
+    ['decoracao', 'observacoes_gerais'].forEach((section) => {
+        hydrateSectionFormDraftFromSavedContent(section);
+    });
+}
+
+function buildSectionContentFromForm(section, schema, values, legacyContentHtml) {
+    const errors = [];
+    const parts = [];
+    const title = getSectionFormTitle(section);
+    const templateId = selectedSectionTemplateIds[section] || null;
+
+    parts.push(`<h2>${escapeHtmlForField(title)}</h2>`);
+    parts.push('<p><em>Preenchimento interno por formulário.</em></p>');
+
+    schema.forEach((field) => {
+        const type = String(field.type || 'text');
+        const label = String(field.label || 'Campo').trim();
+        const required = !!field.required;
+        const valueRaw = String(values[String(field.id || '')] || '').trim();
+
+        if (type === 'divider') {
+            parts.push('<hr>');
+            return;
+        }
+        if (type === 'section') {
+            parts.push(`<h3>${escapeHtmlForField(label)}</h3>`);
+            return;
+        }
+
+        if (required && valueRaw === '') {
+            errors.push(`Preencha o campo obrigatório: ${label}`);
+            return;
+        }
+
+        if (type === 'yesno' && valueRaw !== '' && !['sim', 'nao'].includes(valueRaw)) {
+            errors.push(`Valor inválido em: ${label}`);
+            return;
+        }
+
+        if (type === 'select' && valueRaw !== '') {
+            const options = Array.isArray(field.options) ? field.options.map((opt) => String(opt)) : [];
+            if (!options.includes(valueRaw)) {
+                errors.push(`Opção inválida em: ${label}`);
+                return;
+            }
+        }
+
+        let displayValue = valueRaw;
+        if (type === 'yesno') {
+            displayValue = valueRaw === 'sim' ? 'Sim' : (valueRaw === 'nao' ? 'Não' : '');
+        }
+
+        const answer = displayValue !== ''
+            ? escapeHtmlForField(displayValue).replace(/\n/g, '<br>')
+            : '<em>Não informado</em>';
+
+        parts.push(`<p><strong>${escapeHtmlForField(label)}</strong><br>${answer}</p>`);
+    });
+
+    if (errors.length > 0) {
+        return {
+            ok: false,
+            errors: errors,
+            content_html: ''
+        };
+    }
+
+    const trimmedLegacy = stripHtmlToText(legacyContentHtml);
+    if (trimmedLegacy !== '') {
+        parts.push('<hr>');
+        parts.push(`<h3>${escapeHtmlForField(getSectionLegacyTitle(section))}</h3>`);
+        parts.push(legacyContentHtml);
+    }
+
+    const payload = encodePayloadBase64({
+        section: section,
+        template_id: templateId,
+        schema_signature: getSchemaSignature(schema),
+        values: values,
+        legacy_html: trimmedLegacy !== '' ? legacyContentHtml : '',
+    });
+    if (payload !== '') {
+        parts.push(`<div data-smile-form-payload="${payload}" style="display:none;"></div>`);
+    }
+
+    return {
+        ok: true,
+        errors: [],
+        content_html: parts.join('\n'),
+    };
 }
 
 async function fetchTemplates() {
@@ -1855,10 +2313,14 @@ async function fetchTemplates() {
         created_by_user_id: Number(template.created_by_user_id || 0),
         schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
     }));
-    if (selectedDjTemplateId) {
-        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(selectedDjTemplateId));
-        if (!exists) selectedDjTemplateId = null;
-    }
+    [1, 2].forEach((slot) => {
+        const templateId = selectedDjTemplateIds[slot] || null;
+        if (!templateId) return;
+        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(templateId));
+        if (!exists) {
+            selectedDjTemplateIds[slot] = null;
+        }
+    });
     ['decoracao', 'observacoes_gerais'].forEach((section) => {
         const templateId = selectedSectionTemplateIds[section] || null;
         if (!templateId) return;
@@ -1867,7 +2329,7 @@ async function fetchTemplates() {
             selectedSectionTemplateIds[section] = null;
         }
     });
-    renderDjTemplateSelect();
+    renderAllDjTemplateSelects();
     renderAllSectionTemplateSelects();
 }
 
@@ -1877,55 +2339,52 @@ async function refreshDjTemplates() {
     } catch (err) {
         console.error(err);
     }
-    renderDjTemplateSelect();
-    updateShareAvailability();
-}
-
-async function saveSelectedTemplateToMeeting() {
-    if (!selectedDjTemplateId) {
-        return { ok: false, error: 'Selecione um formulário antes de gerar o link.' };
-    }
-    const selectedTemplate = savedFormTemplates.find((item) => Number(item.id) === Number(selectedDjTemplateId));
-    if (!selectedTemplate) {
-        return { ok: false, error: 'Formulário selecionado não encontrado.' };
-    }
-
-    const normalizedSchema = normalizeFormSchema(Array.isArray(selectedTemplate.schema) ? selectedTemplate.schema : []);
-    if (!hasUsefulSchemaFields(normalizedSchema)) {
-        return { ok: false, error: 'Formulário selecionado sem campos preenchíveis.' };
-    }
-
-    const nextSignature = getSchemaSignature(normalizedSchema);
-    if (nextSignature === lastSavedDjSchemaSignature) {
-        return { ok: true, skipped: true };
-    }
-
-    const contentHtml = buildSchemaHtmlForStorage(normalizedSchema);
-    const formData = new FormData();
-    formData.append('action', 'salvar_secao');
-    formData.append('meeting_id', meetingId);
-    formData.append('section', 'dj_protocolo');
-    formData.append('content_html', contentHtml);
-    formData.append('form_schema_json', JSON.stringify(normalizedSchema));
-
-    const resp = await fetch(window.location.href, {
-        method: 'POST',
-        body: formData
-    });
-    const data = await resp.json();
-    if (!data.ok) {
-        return { ok: false, error: data.error || 'Erro ao salvar formulário selecionado na reunião.' };
-    }
-
-    setEditorContent(contentHtml, 'dj_protocolo');
-    lastSavedDjSchemaSignature = nextSignature;
-    return { ok: true, skipped: false };
+    renderAllDjTemplateSelects();
 }
 
 function initDjTemplateSelection() {
-    lastSavedDjSchemaSignature = getSchemaSignature(initialDjSchema);
-    renderDjTemplateSelect();
-    updateShareAvailability();
+    [1, 2].forEach((slot) => {
+        selectedDjTemplateIds[slot] = null;
+        lastSavedDjSchemaSignatures[slot] = '';
+        djLinksBySlot[slot] = null;
+        setDjLinkOutput(slot, '');
+    });
+
+    if (Array.isArray(initialDjLinks)) {
+        initialDjLinks.forEach((link) => {
+            const slot = Number(link && link.slot_index ? link.slot_index : 1);
+            if (!Number.isFinite(slot) || slot < 1 || slot > 2) return;
+            if (!link || !link.token) return;
+            if (djLinksBySlot[slot]) return;
+
+            djLinksBySlot[slot] = link;
+            setDjLinkOutput(slot, `${window.location.origin}/index.php?page=eventos_cliente_dj&token=${link.token}`);
+
+            const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
+            if (hasUsefulSchemaFields(schema)) {
+                const signature = getSchemaSignature(schema);
+                lastSavedDjSchemaSignatures[slot] = signature;
+                const templateId = findTemplateIdBySchemaSignature(signature);
+                if (templateId) {
+                    selectedDjTemplateIds[slot] = templateId;
+                }
+            }
+        });
+    }
+
+    if (!selectedDjTemplateIds[1]) {
+        const fallbackSchema = normalizeFormSchema(Array.isArray(initialDjSchema) ? initialDjSchema : []);
+        if (hasUsefulSchemaFields(fallbackSchema)) {
+            const fallbackSignature = getSchemaSignature(fallbackSchema);
+            const fallbackTemplateId = findTemplateIdBySchemaSignature(fallbackSignature);
+            if (fallbackTemplateId) {
+                selectedDjTemplateIds[1] = fallbackTemplateId;
+                lastSavedDjSchemaSignatures[1] = fallbackSignature;
+            }
+        }
+    }
+
+    renderAllDjTemplateSelects();
 }
 
 function initSectionTemplateSelection() {
@@ -1942,29 +2401,32 @@ function initSectionTemplateSelection() {
         selectedSectionTemplateIds.observacoes_gerais = observacoesTemplateId;
     }
 
+    hydrateAllSectionFormDraftsFromSavedContent();
     renderAllSectionTemplateSelects();
 }
 
 // Salvar seção (conteúdo vem do TinyMCE)
 async function salvarSecao(section) {
-    let content = '';
+    let content = getEditorContent(section);
     let formSchemaJson = null;
-    if (typeof tinymce !== 'undefined' && tinymce.get('editor-' + section)) {
-        content = tinymce.get('editor-' + section).getContent();
-    } else {
-        const el = document.getElementById('editor-' + section);
-        content = el ? el.value : '';
-    }
 
     if (section === 'decoracao' || section === 'observacoes_gerais') {
-        const selectedTemplateId = selectedSectionTemplateIds[section] || null;
-        if (selectedTemplateId) {
-            const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
-            const normalizedSchema = normalizeFormSchema(template && Array.isArray(template.schema) ? template.schema : []);
-            if (template && hasUsefulSchemaFields(normalizedSchema)) {
-                formSchemaJson = JSON.stringify(normalizedSchema);
-                lastSavedSectionSchemaSignatures[section] = getSchemaSignature(normalizedSchema);
+        const normalizedSchema = getSelectedSectionSchema(section);
+        if (normalizedSchema.length > 0) {
+            syncSectionFormDraft(section);
+            const values = sectionFormDraftValues[section] || {};
+            let legacyContent = content;
+            if (!extractSectionPayloadFromContent(legacyContent) && isLegacyGeneratedSchemaHtml(legacyContent)) {
+                legacyContent = '';
             }
+            const built = buildSectionContentFromForm(section, normalizedSchema, values, legacyContent);
+            if (!built.ok) {
+                alert((built.errors || ['Preencha os campos obrigatórios do formulário.']).join(' | '));
+                return;
+            }
+            content = String(built.content_html || '');
+            formSchemaJson = JSON.stringify(normalizedSchema);
+            lastSavedSectionSchemaSignatures[section] = getSchemaSignature(normalizedSchema);
         }
     }
     
@@ -1995,25 +2457,37 @@ async function salvarSecao(section) {
 }
 
 // Gerar link para cliente
-async function gerarLinkCliente() {
-    updateShareAvailability();
-    const btn = document.getElementById('btnGerarLink');
+async function gerarLinkCliente(slot = 1) {
+    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    updateShareAvailability(slotIndex);
+    const btn = document.getElementById(`btnGerarLink-${slotIndex}`);
     if (btn && btn.disabled) {
-        const hint = document.getElementById('shareHint');
+        const hint = document.getElementById(`shareHint-${slotIndex}`);
         alert(hint ? hint.textContent : 'Salve a seção antes de compartilhar com o cliente.');
         return;
     }
 
     try {
-        const saveResult = await saveSelectedTemplateToMeeting();
-        if (!saveResult.ok) {
-            alert(saveResult.error || 'Não foi possível preparar o formulário para compartilhamento.');
+        const selected = getSelectedDjTemplateData(slotIndex);
+        if (!selected.template) {
+            alert('Selecione um formulário antes de gerar o link.');
             return;
         }
+        if (!hasUsefulSchemaFields(selected.schema)) {
+            alert('O formulário selecionado não possui campos válidos.');
+            return;
+        }
+
+        const formTitle = String(selected.template.nome || `Formulário DJ / Protocolos - Quadro ${slotIndex}`);
+        const contentHtml = buildSchemaHtmlForStorage(selected.schema, formTitle);
 
         const formData = new FormData();
         formData.append('action', 'gerar_link_cliente');
         formData.append('meeting_id', meetingId);
+        formData.append('slot_index', String(slotIndex));
+        formData.append('form_schema_json', JSON.stringify(selected.schema));
+        formData.append('content_html', contentHtml);
+        formData.append('form_title', formTitle);
         
         const resp = await fetch(window.location.href, {
             method: 'POST',
@@ -2022,8 +2496,15 @@ async function gerarLinkCliente() {
         const data = await resp.json();
         
         if (data.ok && data.url) {
-            document.getElementById('clienteLinkInput').value = data.url;
-            document.getElementById('btnCopiar').style.display = 'inline-flex';
+            setDjLinkOutput(slotIndex, data.url);
+            djLinksBySlot[slotIndex] = {
+                id: Number(data.link && data.link.id ? data.link.id : 0),
+                token: String(data.link && data.link.token ? data.link.token : ''),
+                slot_index: slotIndex,
+                form_title: formTitle,
+                form_schema: selected.schema
+            };
+            lastSavedDjSchemaSignatures[slotIndex] = getSchemaSignature(selected.schema);
             
             if (!data.created) {
                 alert('Link já existente recuperado');
@@ -2036,8 +2517,9 @@ async function gerarLinkCliente() {
     }
 }
 
-function copiarLink() {
-    const input = document.getElementById('clienteLinkInput');
+function copiarLink(slot = 1) {
+    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    const input = document.getElementById(`clienteLinkInput-${slotIndex}`);
     if (!input || !input.value) {
         alert('Nenhum link para copiar.');
         return;
