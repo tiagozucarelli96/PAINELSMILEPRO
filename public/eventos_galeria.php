@@ -101,6 +101,96 @@ function removerArquivosGaleriaStorage(array $storageKeys): array
     return $result;
 }
 
+/**
+ * Detecta MIME real do arquivo (não confia no browser).
+ */
+function eventosGaleriaDetectMime(string $path): string
+{
+    if ($path === '' || !file_exists($path)) {
+        return '';
+    }
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    if ($finfo === false) {
+        return '';
+    }
+    $mime = (string) (finfo_file($finfo, $path) ?: '');
+    finfo_close($finfo);
+    return $mime;
+}
+
+/**
+ * Converte HEIC/HEIF para JPG em arquivo temporário.
+ * @return string Caminho do JPG gerado.
+ */
+function eventosGaleriaConvertHeicToJpeg(string $srcPath, int $quality = 85): string
+{
+    $tmpBase = tempnam(sys_get_temp_dir(), 'heic_');
+    if ($tmpBase === false) {
+        throw new Exception('Falha ao criar arquivo temporario para conversao.');
+    }
+    // tempnam cria o arquivo; vamos usá-lo como base e gerar um .jpg ao lado.
+    @unlink($tmpBase);
+    $dstPath = $tmpBase . '.jpg';
+
+    // 1) Tentar via Imagick (mais eficiente se o build suportar HEIC).
+    if (class_exists('Imagick')) {
+        try {
+            $img = new Imagick();
+            $img->readImage($srcPath);
+            if (method_exists($img, 'autoOrient')) {
+                $img->autoOrient();
+            }
+            $img->setImageFormat('jpeg');
+            if (defined('Imagick::COMPRESSION_JPEG')) {
+                $img->setImageCompression(Imagick::COMPRESSION_JPEG);
+            }
+            $img->setImageCompressionQuality(max(1, min(100, $quality)));
+            if (method_exists($img, 'stripImage')) {
+                $img->stripImage();
+            }
+            $img->writeImage($dstPath);
+            $img->clear();
+            $img->destroy();
+
+            if (file_exists($dstPath) && filesize($dstPath) > 0) {
+                return $dstPath;
+            }
+        } catch (Throwable $e) {
+            error_log('[EVENTOS_GALERIA] Falha conversao HEIC via Imagick: ' . $e->getMessage());
+        }
+    }
+
+    // 2) Fallback via heif-convert (se existir no container).
+    $heifBin = trim((string) shell_exec('command -v heif-convert 2>/dev/null'));
+    if ($heifBin !== '') {
+        $cmd = escapeshellcmd($heifBin) . ' ' . escapeshellarg($srcPath) . ' ' . escapeshellarg($dstPath) . ' 2>&1';
+        $output = [];
+        $code = 0;
+        exec($cmd, $output, $code);
+        if ($code === 0 && file_exists($dstPath) && filesize($dstPath) > 0) {
+            return $dstPath;
+        }
+        error_log('[EVENTOS_GALERIA] Falha conversao HEIC via heif-convert. code=' . $code . ' out=' . implode(' | ', array_slice($output, 0, 3)));
+    }
+
+    // 3) Último fallback: ImageMagick CLI (magick/convert), se suportar HEIC.
+    $magickBin = trim((string) shell_exec('command -v magick 2>/dev/null'));
+    $convertBin = trim((string) shell_exec('command -v convert 2>/dev/null'));
+    $bin = $magickBin !== '' ? $magickBin : $convertBin;
+    if ($bin !== '') {
+        $cmd = escapeshellcmd($bin) . ' ' . escapeshellarg($srcPath) . ' -quality ' . (int)max(1, min(100, $quality)) . ' ' . escapeshellarg($dstPath) . ' 2>&1';
+        $output = [];
+        $code = 0;
+        exec($cmd, $output, $code);
+        if ($code === 0 && file_exists($dstPath) && filesize($dstPath) > 0) {
+            return $dstPath;
+        }
+        error_log('[EVENTOS_GALERIA] Falha conversao HEIC via imagemagick. code=' . $code . ' out=' . implode(' | ', array_slice($output, 0, 3)));
+    }
+
+    throw new Exception('Nao foi possivel converter HEIC/HEIF para JPG neste servidor.');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
     $upload_success_count = 0;
     $upload_fail_messages = [];
@@ -134,7 +224,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
             $error = 'Selecione pelo menos uma imagem.';
             $upload_fail_messages[] = $error;
         } else {
-            $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            // Aceita HEIC/HEIF e converte para JPG automaticamente.
+            $allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
             $upload_success_count = 0;
             $upload_fail_messages = [];
 
@@ -144,13 +235,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                     continue;
                 }
 
-                if (!in_array((string)$file['type'], $allowed, true)) {
-                    $upload_fail_messages[] = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF ou WEBP.';
+                if ((int)$file['size'] > 10 * 1024 * 1024) {
+                    $upload_fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
                     continue;
                 }
 
-                if ((int)$file['size'] > 10 * 1024 * 1024) {
-                    $upload_fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
+                $originalName = (string)($file['name'] ?? '');
+                $ext = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
+                $mimeDetected = eventosGaleriaDetectMime((string)($file['tmp_name'] ?? '')) ?: (string)($file['type'] ?? '');
+                $isHeic = in_array($ext, ['heic', 'heif'], true) || in_array($mimeDetected, ['image/heic', 'image/heif'], true);
+
+                if (!$isHeic && !in_array($mimeDetected, $allowed, true)) {
+                    $upload_fail_messages[] = 'Tipo de arquivo não permitido. Use JPG, PNG, GIF, WEBP ou HEIC.';
                     continue;
                 }
 
@@ -168,11 +264,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                 }
 
                 try {
+                    $tmpConverted = null;
+                    if ($isHeic) {
+                        $tmpConverted = eventosGaleriaConvertHeicToJpeg((string)$file['tmp_name']);
+                        $file['tmp_name'] = $tmpConverted;
+                        $file['name'] = ($file_base !== '' ? $file_base : 'imagem') . '.jpg';
+                        $file['type'] = 'image/jpeg';
+                        $file['size'] = (int)(filesize($tmpConverted) ?: 0);
+                    }
+
                     $uploader = new MagaluUpload();
                     $result = $uploader->upload($file, 'galeria_eventos');
 
                     if (empty($result['chave_storage'])) {
                         $upload_fail_messages[] = 'Erro ao fazer upload para o storage.';
+                        if (!empty($tmpConverted) && file_exists($tmpConverted)) {
+                            @unlink($tmpConverted);
+                        }
                         continue;
                     }
 
@@ -194,7 +302,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         ':uploaded_by' => $user_id > 0 ? $user_id : null
                     ]);
                     $upload_success_count++;
+
+                    if (!empty($tmpConverted) && file_exists($tmpConverted)) {
+                        @unlink($tmpConverted);
+                    }
                 } catch (Throwable $e) {
+                    if (!empty($tmpConverted) && file_exists($tmpConverted)) {
+                        @unlink($tmpConverted);
+                    }
                     $upload_fail_messages[] = 'Erro ao fazer upload: ' . $e->getMessage();
                 }
             }
@@ -981,15 +1096,15 @@ includeSidebar('Galeria de Imagens - Eventos');
     <div id="deleteBulkIds"></div>
 </form>
 
-<div class="modal-overlay" id="modalUpload">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3 class="modal-title">📷 Adicionar imagem</h3>
-            <button type="button" class="modal-close" onclick="fecharModalUpload()">&times;</button>
-        </div>
-        <div class="modal-body">
-            <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                <input type="hidden" name="action" value="upload">
+	<div class="modal-overlay" id="modalUpload">
+	    <div class="modal-content">
+	        <div class="modal-header">
+	            <h3 class="modal-title">📷 Adicionar imagem</h3>
+	            <button type="button" class="modal-close" onclick="cancelarUploadOuFecharModalUpload()">&times;</button>
+	        </div>
+	        <div class="modal-body">
+	            <form method="POST" enctype="multipart/form-data" id="uploadForm">
+	                <input type="hidden" name="action" value="upload">
 
                 <div class="form-group">
                     <label class="form-label">Categoria *</label>
@@ -1016,20 +1131,20 @@ includeSidebar('Galeria de Imagens - Eventos');
                     <input type="text" name="tags" class="form-input" placeholder="elegante, verde, pista">
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Imagens (máx. 10MB cada) *</label>
-                    <input type="file" name="imagens[]" class="form-input" accept="image/*" multiple required>
-                </div>
+	                <div class="form-group">
+	                    <label class="form-label">Imagens (JPG/PNG/GIF/WEBP/HEIC, máx. 10MB cada) *</label>
+	                    <input type="file" name="imagens[]" class="form-input" accept="image/*" multiple required>
+	                </div>
                 <div class="upload-status" id="uploadStatus"></div>
-
-                <div style="display:flex;justify-content:flex-end;gap:8px;">
-                    <button type="button" class="btn btn-secondary" onclick="fecharModalUpload()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Enviar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+	
+	                <div style="display:flex;justify-content:flex-end;gap:8px;">
+	                    <button type="button" class="btn btn-secondary" id="btnUploadCancel" onclick="cancelarUploadOuFecharModalUpload()">Cancelar</button>
+	                    <button type="submit" class="btn btn-primary">Enviar</button>
+	                </div>
+	            </form>
+	        </div>
+	    </div>
+	</div>
 
 <div class="modal-overlay" id="modalPreview">
     <div class="modal-content modal-content-preview">
@@ -1083,18 +1198,58 @@ includeSidebar('Galeria de Imagens - Eventos');
 </div>
 
 <script>
-    let pendingDeleteIds = [];
+	    let pendingDeleteIds = [];
+	    let uploadInProgress = false;
+	    let uploadCancelRequested = false;
+	    let currentUploadAbortController = null;
 
-    function abrirModalUpload() {
-        document.getElementById('modalUpload').classList.add('show');
-    }
+	    function abrirModalUpload() {
+	        const status = document.getElementById('uploadStatus');
+	        if (status) {
+	            status.classList.remove('show');
+	            status.textContent = '';
+	        }
+	        const cancelBtn = document.getElementById('btnUploadCancel');
+	        if (cancelBtn) {
+	            cancelBtn.textContent = 'Cancelar';
+	        }
+	        document.getElementById('modalUpload').classList.add('show');
+	    }
 
-    function fecharModalUpload() {
-        document.getElementById('modalUpload').classList.remove('show');
-    }
+	    function fecharModalUpload() {
+	        if (uploadInProgress) {
+	            // Evita que o envio continue "no fundo" com o modal fechado.
+	            solicitarCancelamentoUpload();
+	            return;
+	        }
+	        document.getElementById('modalUpload').classList.remove('show');
+	    }
 
-    function abrirModalPreview(src, nome, descricao, tags, id) {
-        const modal = document.getElementById('modalPreview');
+	    function solicitarCancelamentoUpload() {
+	        if (!uploadInProgress) {
+	            return;
+	        }
+	        uploadCancelRequested = true;
+	        if (currentUploadAbortController) {
+	            try { currentUploadAbortController.abort(); } catch (e) {}
+	        }
+	        const status = document.getElementById('uploadStatus');
+	        if (status) {
+	            status.classList.add('show');
+	            status.textContent = 'Cancelando envio...';
+	        }
+	    }
+
+	    function cancelarUploadOuFecharModalUpload() {
+	        if (uploadInProgress) {
+	            solicitarCancelamentoUpload();
+	            return;
+	        }
+	        fecharModalUpload();
+	    }
+
+	    function abrirModalPreview(src, nome, descricao, tags, id) {
+	        const modal = document.getElementById('modalPreview');
         const title = document.getElementById('previewTitle');
         const image = document.getElementById('previewImage');
         const description = document.getElementById('previewDescription');
@@ -1272,111 +1427,148 @@ includeSidebar('Galeria de Imagens - Eventos');
         });
     });
 
-    document.querySelectorAll('.modal-overlay').forEach((modal) => {
-        modal.addEventListener('click', (event) => {
-            if (event.target === modal) {
-                modal.classList.remove('show');
-            }
-        });
-    });
+	    document.querySelectorAll('.modal-overlay').forEach((modal) => {
+	        modal.addEventListener('click', (event) => {
+	            if (event.target === modal) {
+	                if (modal.id === 'modalUpload' && uploadInProgress) {
+	                    solicitarCancelamentoUpload();
+	                    return;
+	                }
+	                modal.classList.remove('show');
+	            }
+	        });
+	    });
 
     atualizarSelecaoLote();
 
     const uploadForm = document.getElementById('uploadForm');
     const uploadStatus = document.getElementById('uploadStatus');
 
-    if (uploadForm && uploadStatus) {
-        uploadForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
+	    if (uploadForm && uploadStatus) {
+	        uploadForm.addEventListener('submit', async (event) => {
+	            event.preventDefault();
+	            if (uploadInProgress) {
+	                return;
+	            }
 
-            const categoria = uploadForm.querySelector('select[name="categoria"]')?.value || '';
-            const nome = uploadForm.querySelector('input[name="nome"]')?.value || '';
-            const descricao = uploadForm.querySelector('textarea[name="descricao"]')?.value || '';
-            const tags = uploadForm.querySelector('input[name="tags"]')?.value || '';
-            const fileInput = uploadForm.querySelector('input[type="file"][name="imagens[]"]');
-            const files = fileInput ? Array.from(fileInput.files || []) : [];
-            const submitBtn = uploadForm.querySelector('button[type="submit"]');
+	            const categoria = uploadForm.querySelector('select[name="categoria"]')?.value || '';
+	            const nome = uploadForm.querySelector('input[name="nome"]')?.value || '';
+	            const descricao = uploadForm.querySelector('textarea[name="descricao"]')?.value || '';
+	            const tags = uploadForm.querySelector('input[name="tags"]')?.value || '';
+	            const fileInput = uploadForm.querySelector('input[type="file"][name="imagens[]"]');
+	            const files = fileInput ? Array.from(fileInput.files || []) : [];
+	            const submitBtn = uploadForm.querySelector('button[type="submit"]');
+	            const cancelBtn = document.getElementById('btnUploadCancel');
 
-            if (!categoria) {
-                alert('Selecione uma categoria.');
-                return;
-            }
+	            if (!categoria) {
+	                alert('Selecione uma categoria.');
+	                return;
+	            }
 
             if (files.length === 0) {
                 alert('Selecione pelo menos uma imagem.');
                 return;
             }
 
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.textContent = 'Enviando...';
-            }
+	            if (submitBtn) {
+	                submitBtn.disabled = true;
+	                submitBtn.textContent = 'Enviando...';
+	            }
+	            if (cancelBtn) {
+	                cancelBtn.disabled = false;
+	                cancelBtn.textContent = 'Cancelar envio';
+	            }
 
-            uploadStatus.classList.add('show');
-            uploadStatus.textContent = `Enviando ${files.length} imagens...`;
+	            uploadStatus.classList.add('show');
+	            uploadStatus.textContent = `Enviando ${files.length} imagens...`;
 
-            let successCount = 0;
-            let errorCount = 0;
-            const failures = [];
+	            uploadInProgress = true;
+	            uploadCancelRequested = false;
 
-            for (let i = 0; i < files.length; i++) {
-                const formData = new FormData();
-                formData.append('action', 'upload');
-                formData.append('categoria', categoria);
-                formData.append('nome', nome);
+	            let successCount = 0;
+	            let errorCount = 0;
+	            const failures = [];
+	            let cancelled = false;
+
+	            for (let i = 0; i < files.length; i++) {
+	                if (uploadCancelRequested) {
+	                    cancelled = true;
+	                    break;
+	                }
+	                const formData = new FormData();
+	                formData.append('action', 'upload');
+	                formData.append('categoria', categoria);
+	                formData.append('nome', nome);
                 formData.append('descricao', descricao);
                 formData.append('tags', tags);
                 formData.append('imagem', files[i]);
 
-                uploadStatus.textContent = `Enviando ${i + 1} de ${files.length}: ${files[i].name}`;
+	                uploadStatus.textContent = `Enviando ${i + 1} de ${files.length}: ${files[i].name}`;
 
-                try {
-                    const response = await fetch(window.location.href, {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-                    const contentType = response.headers.get('content-type') || '';
-                    if (!contentType.includes('application/json')) {
-                        throw new Error(`Resposta inesperada (HTTP ${response.status}). Talvez sessao expirada.`);
-                    }
-                    const data = await response.json();
-                    if (data && data.ok) {
-                        successCount += 1;
-                    } else {
-                        errorCount += 1;
-                        const msg = (data && data.message) ? String(data.message) : 'Erro no upload.';
-                        failures.push(`${files[i].name}: ${msg}`);
-                    }
-                } catch (error) {
-                    errorCount += 1;
-                    failures.push(`${files[i].name}: ${error && error.message ? error.message : 'Erro de rede/JSON.'}`);
-                }
-            }
+	                try {
+	                    currentUploadAbortController = new AbortController();
+	                    const response = await fetch(window.location.href, {
+	                        method: 'POST',
+	                        body: formData,
+	                        headers: {
+	                            'X-Requested-With': 'XMLHttpRequest'
+	                        },
+	                        signal: currentUploadAbortController.signal
+	                    });
+	                    const contentType = response.headers.get('content-type') || '';
+	                    if (!contentType.includes('application/json')) {
+	                        throw new Error(`Resposta inesperada (HTTP ${response.status}). Talvez sessao expirada.`);
+	                    }
+	                    const data = await response.json();
+	                    if (data && data.ok) {
+	                        successCount += 1;
+	                    } else {
+	                        errorCount += 1;
+	                        const msg = (data && data.message) ? String(data.message) : 'Erro no upload.';
+	                        failures.push(`${files[i].name}: ${msg}`);
+	                    }
+	                } catch (error) {
+	                    if (uploadCancelRequested || (error && error.name === 'AbortError')) {
+	                        cancelled = true;
+	                        break;
+	                    }
+	                    errorCount += 1;
+	                    failures.push(`${files[i].name}: ${error && error.message ? error.message : 'Erro de rede/JSON.'}`);
+	                } finally {
+	                    currentUploadAbortController = null;
+	                }
+	            }
 
-            let finalMsg = `Finalizado: ${successCount} enviados, ${errorCount} com erro.`;
-            if (failures.length > 0) {
-                const first = failures.slice(0, 12);
-                finalMsg += `\n\nErros (mostrando ${first.length} de ${failures.length}):\n- ${first.join('\n- ')}`;
-                finalMsg += `\n\nDica: limite atual da galeria e 10MB por imagem e formatos aceitos: JPG/PNG/GIF/WEBP.`;
-            }
-            uploadStatus.textContent = finalMsg;
+	            uploadInProgress = false;
+	            currentUploadAbortController = null;
 
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Enviar';
-            }
+	            let finalMsg = cancelled
+	                ? `Envio cancelado. ${successCount} enviados, ${errorCount} com erro.`
+	                : `Finalizado: ${successCount} enviados, ${errorCount} com erro.`;
+	            if (failures.length > 0) {
+	                const first = failures.slice(0, 12);
+	                finalMsg += `\n\nErros (mostrando ${first.length} de ${failures.length}):\n- ${first.join('\n- ')}`;
+	                finalMsg += `\n\nDica: limite atual da galeria e 10MB por imagem e formatos aceitos: JPG/PNG/GIF/WEBP/HEIC (HEIC vira JPG).`;
+	            }
+	            uploadStatus.textContent = finalMsg;
 
-            // Se houve erros, não recarregar automaticamente para o usuário conseguir ver o motivo.
-            if (successCount > 0 && errorCount === 0) {
-                setTimeout(() => {
-                    window.location.reload();
-                }, 800);
-            }
-        });
-    }
-</script>
+	            if (submitBtn) {
+	                submitBtn.disabled = false;
+	                submitBtn.textContent = 'Enviar';
+	            }
+	            if (cancelBtn) {
+	                cancelBtn.disabled = false;
+	                cancelBtn.textContent = 'Fechar';
+	            }
+
+	            // Se houve erros, não recarregar automaticamente para o usuário conseguir ver o motivo.
+	            if (!cancelled && successCount > 0 && errorCount === 0) {
+	                setTimeout(() => {
+	                    window.location.reload();
+	                }, 800);
+	            }
+	        });
+	    }
+	</script>
 
 <?php endSidebar(); ?>

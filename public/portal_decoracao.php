@@ -13,7 +13,13 @@ require_once __DIR__ . '/eventos_reuniao_helper.php';
 
 // Verificar login
 if (empty($_SESSION['portal_decoracao_logado']) || $_SESSION['portal_decoracao_logado'] !== true) {
-    header('Location: index.php?page=portal_decoracao_login');
+    $redirect = (string)($_SERVER['REQUEST_URI'] ?? '');
+    $redirect_param = '';
+    $starts_ok = (substr($redirect, 0, 9) === '/index.php' || substr($redirect, 0, 8) === 'index.php');
+    if ($redirect !== '' && $starts_ok && strpos($redirect, 'page=portal_decoracao') !== false) {
+        $redirect_param = '&redirect=' . urlencode($redirect);
+    }
+    header('Location: index.php?page=portal_decoracao_login' . $redirect_param);
     exit;
 }
 

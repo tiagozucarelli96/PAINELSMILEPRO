@@ -13,7 +13,13 @@ require_once __DIR__ . '/eventos_reuniao_helper.php';
 
 // Verificar login
 if (empty($_SESSION['portal_dj_logado']) || $_SESSION['portal_dj_logado'] !== true) {
-    header('Location: index.php?page=portal_dj_login');
+    $redirect = (string)($_SERVER['REQUEST_URI'] ?? '');
+    $redirect_param = '';
+    $starts_ok = (substr($redirect, 0, 9) === '/index.php' || substr($redirect, 0, 8) === 'index.php');
+    if ($redirect !== '' && $starts_ok && strpos($redirect, 'page=portal_dj') !== false) {
+        $redirect_param = '&redirect=' . urlencode($redirect);
+    }
+    header('Location: index.php?page=portal_dj_login' . $redirect_param);
     exit;
 }
 

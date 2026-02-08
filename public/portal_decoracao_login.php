@@ -10,9 +10,16 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 
+$redirect_raw = trim((string)($_GET['redirect'] ?? ''));
+$redirect_target = '';
+$starts_ok = (substr($redirect_raw, 0, 9) === '/index.php' || substr($redirect_raw, 0, 8) === 'index.php');
+if ($redirect_raw !== '' && $starts_ok && strpos($redirect_raw, 'page=portal_decoracao') !== false) {
+    $redirect_target = $redirect_raw;
+}
+
 // Se já logado, redirecionar
 if (!empty($_SESSION['portal_decoracao_logado']) && $_SESSION['portal_decoracao_logado'] === true) {
-    header('Location: index.php?page=portal_decoracao');
+    header('Location: ' . ($redirect_target !== '' ? $redirect_target : 'index.php?page=portal_decoracao'));
     exit;
 }
 
@@ -58,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['portal_decoracao_nome'] = $fornecedor['nome'];
             $_SESSION['portal_decoracao_token'] = $token;
             
-            header('Location: index.php?page=portal_decoracao');
+            header('Location: ' . ($redirect_target !== '' ? $redirect_target : 'index.php?page=portal_decoracao'));
             exit;
         }
     }

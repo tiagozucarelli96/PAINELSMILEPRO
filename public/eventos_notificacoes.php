@@ -102,7 +102,8 @@ function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
 
         $nome_evento = (string)($reuniao['nome_evento'] ?? 'Evento');
         $data_evento = (string)($reuniao['data_evento'] ?? '');
-        $data_fmt = $data_evento !== '' ? date('d/m/Y', strtotime($data_evento)) : '-';
+        $data_ts = $data_evento !== '' ? strtotime($data_evento) : false;
+        $data_fmt = $data_ts ? date('d/m/Y', $data_ts) : '-';
         $hora_inicio = trim((string)($reuniao['hora_inicio'] ?? ''));
         $hora_fim = trim((string)($reuniao['hora_fim'] ?? ''));
         $hora_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
