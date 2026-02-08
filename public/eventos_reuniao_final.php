@@ -290,6 +290,11 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         gap: 0.5rem;
         text-decoration: none;
     }
+
+    .btn-mini {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.825rem;
+    }
     
     .btn-primary {
         background: #1e3a8a;
@@ -1098,6 +1103,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             <?php else: ?>
             <button type="button" class="btn btn-secondary" onclick="reabrirReuniao()">↺ Reabrir</button>
             <?php endif; ?>
+            <button type="button" class="btn btn-secondary btn-mini" onclick="abrirModalImpressao()" title="Imprimir / PDF" aria-label="Imprimir / PDF">🖨️</button>
             <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
         </div>
     </div>
@@ -1316,6 +1322,33 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         </div>
         <div class="modal-body" id="versoesContent">
             <!-- Preenchido via JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Impressão / PDF -->
+<div class="modal-overlay" id="modalImpressao">
+    <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+            <h3>🖨️ Imprimir / PDF</h3>
+            <button type="button" class="modal-close" onclick="fecharModalImpressao()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin: 0; color: #64748b;">Escolha a aba para imprimir ou gerar PDF.</p>
+            <div style="margin-top: 1rem; display: grid; gap: 0.75rem;">
+                <div>
+                    <label for="printSectionSelect" style="display:block; font-weight: 700; color:#334155; font-size: 0.85rem; margin-bottom: 0.35rem;">Aba</label>
+                    <select id="printSectionSelect" style="width:100%; padding: 0.65rem 0.8rem; border:1px solid #e2e8f0; border-radius: 10px; background:#fff;">
+                        <option value="decoracao">Decoração</option>
+                        <option value="observacoes_gerais">Observações Gerais</option>
+                        <option value="dj_protocolo">DJ / Protocolos</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap: 0.75rem; justify-content: flex-end; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-secondary" onclick="emitirDocumentoReuniao('print')">Imprimir</button>
+                    <button type="button" class="btn btn-primary" onclick="emitirDocumentoReuniao('pdf')">Baixar PDF</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -2620,6 +2653,64 @@ async function verVersoes(section) {
 function fecharModal() {
     document.getElementById('modalVersoes').classList.remove('show');
 }
+
+function getActiveSectionForExport() {
+    const active = document.querySelector('.tab-content.active');
+    if (!active) return 'decoracao';
+    const id = active.id || '';
+    if (id.startsWith('tab-')) {
+        const section = id.slice(4);
+        if (['decoracao', 'observacoes_gerais', 'dj_protocolo'].includes(section)) {
+            return section;
+        }
+    }
+    return 'decoracao';
+}
+
+function abrirModalImpressao() {
+    const modal = document.getElementById('modalImpressao');
+    if (!modal) return;
+    const select = document.getElementById('printSectionSelect');
+    if (select) {
+        select.value = getActiveSectionForExport();
+    }
+    modal.classList.add('show');
+}
+
+function fecharModalImpressao() {
+    const modal = document.getElementById('modalImpressao');
+    if (!modal) return;
+    modal.classList.remove('show');
+}
+
+function emitirDocumentoReuniao(mode) {
+    if (!meetingId) {
+        alert('Reunião inválida.');
+        return;
+    }
+    const select = document.getElementById('printSectionSelect');
+    const section = select ? (select.value || 'decoracao') : 'decoracao';
+    const m = (mode === 'pdf') ? 'pdf' : 'print';
+    const url = `index.php?page=eventos_pdf&id=${meetingId}&section=${encodeURIComponent(section)}&mode=${encodeURIComponent(m)}`;
+    window.open(url, '_blank');
+    fecharModalImpressao();
+}
+
+document.addEventListener('click', function(ev) {
+    const modal = document.getElementById('modalImpressao');
+    if (!modal) return;
+    if (ev.target === modal) {
+        fecharModalImpressao();
+    }
+});
+
+document.addEventListener('keydown', function(ev) {
+    if (ev.key !== 'Escape') return;
+    const modal = document.getElementById('modalImpressao');
+    if (modal && modal.classList.contains('show')) {
+        fecharModalImpressao();
+    }
+});
 
 async function restaurarVersao(versionId) {
     if (!confirm('Restaurar esta versão? Uma nova versão será criada.')) return;
