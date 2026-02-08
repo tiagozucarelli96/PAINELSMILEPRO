@@ -468,10 +468,19 @@ function eventos_reuniao_salvar_secao(
     ?string $form_schema_json = null
 ): array {
     try {
+        $prev_html = '';
+        $prev_schema = null;
+
         $pdo->beginTransaction();
         
         // Buscar seção atual
         $secao = eventos_reuniao_get_secao($pdo, $meeting_id, $section);
+        if ($secao) {
+            $prev_html = (string)($secao['content_html'] ?? '');
+            if (array_key_exists('form_schema_json', $secao)) {
+                $prev_schema = (string)($secao['form_schema_json'] ?? '');
+            }
+        }
         
         if (!$secao) {
             // Criar seção se não existir
@@ -561,6 +570,28 @@ function eventos_reuniao_salvar_secao(
         $stmt->execute([':id' => $meeting_id, ':user_id' => $user_id]);
         
         $pdo->commit();
+
+        // Notificações (fora da transação)
+        try {
+            $changed_html = trim($prev_html) !== trim($content_html);
+            $changed_schema = false;
+            if ($form_schema_json !== null && $prev_schema !== null) {
+                $changed_schema = trim($prev_schema) !== trim($form_schema_json);
+            } elseif ($form_schema_json !== null && $prev_schema === null) {
+                // Se não tínhamos schema antes, qualquer schema enviado é uma mudança.
+                $changed_schema = trim($form_schema_json) !== '';
+            }
+
+            $should_notify = ($changed_html || $changed_schema)
+                && $section === 'decoracao'
+                && in_array($author_type, ['interno', 'fornecedor'], true);
+
+            if ($should_notify && function_exists('eventos_notificar_decoracao_atualizada')) {
+                eventos_notificar_decoracao_atualizada($pdo, $meeting_id);
+            }
+        } catch (Throwable $e) {
+            error_log("eventos_reuniao_salvar_secao: falha ao notificar decoração: " . $e->getMessage());
+        }
         
         return ['ok' => true, 'version' => $next];
         
@@ -836,16 +867,37 @@ function eventos_reuniao_excluir(PDO $pdo, int $meeting_id): bool {
  * Atualizar status da reunião
  */
 function eventos_reuniao_atualizar_status(PDO $pdo, int $meeting_id, string $status, int $user_id): bool {
+    $prev = null;
+    try {
+        $stmt_prev = $pdo->prepare("SELECT status FROM eventos_reunioes WHERE id = :id");
+        $stmt_prev->execute([':id' => $meeting_id]);
+        $prev = (string)($stmt_prev->fetchColumn() ?: '');
+    } catch (Throwable $e) {
+        // Se falhar, ainda tenta atualizar.
+        $prev = null;
+    }
+
     $stmt = $pdo->prepare("
-        UPDATE eventos_reunioes 
+        UPDATE eventos_reunioes
         SET status = :status, updated_at = NOW(), updated_by = :user_id
         WHERE id = :id
     ");
-    return $stmt->execute([
+    $ok = $stmt->execute([
         ':id' => $meeting_id,
         ':status' => $status,
         ':user_id' => $user_id
     ]);
+
+    // Notifica decoração quando marcada como concluída (transição).
+    try {
+        if ($ok && $prev !== null && $prev !== $status && $status === 'concluida' && function_exists('eventos_notificar_decoracao_reuniao_concluida')) {
+            eventos_notificar_decoracao_reuniao_concluida($pdo, $meeting_id);
+        }
+    } catch (Throwable $e) {
+        error_log("eventos_reuniao_atualizar_status: falha ao notificar decoração concluída: " . $e->getMessage());
+    }
+
+    return $ok;
 }
 
 /**

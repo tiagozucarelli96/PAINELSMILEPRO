@@ -196,6 +196,228 @@ function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
 }
 
 /**
+ * Notificar Decoração quando houver alteração relevante (ex.: seção de decoração editada)
+ */
+function eventos_notificar_decoracao_atualizada(PDO $pdo, int $meeting_id): void {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT r.id, r.me_event_id, r.me_event_snapshot, r.fornecedor_decoracao_id
+            FROM eventos_reunioes r
+            WHERE r.id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $meeting_id]);
+        $reuniao = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$reuniao) {
+            return;
+        }
+
+        $e = function($value): string {
+            return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+
+        $nome_evento = trim((string)($snapshot['nome'] ?? 'Evento'));
+        $data_evento = trim((string)($snapshot['data'] ?? ''));
+        $data_ts = $data_evento !== '' ? strtotime($data_evento) : false;
+        $data_fmt = $data_ts ? date('d/m/Y', $data_ts) : '-';
+        $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? ''));
+        $hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+        $hora_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
+        if ($hora_inicio !== '' && $hora_fim !== '') {
+            $hora_fmt = $hora_inicio . ' - ' . $hora_fim;
+        }
+        $local_evento = trim((string)($snapshot['local'] ?? ''));
+        $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? ''));
+
+        // Destinatários: fornecedor vinculado (se existir), senão todos fornecedores de decoração ativos.
+        $emails = [];
+        $fornecedor_id = (int)($reuniao['fornecedor_decoracao_id'] ?? 0);
+        if ($fornecedor_id > 0) {
+            $stmt = $pdo->prepare("SELECT email FROM eventos_fornecedores WHERE id = :id AND email IS NOT NULL");
+            $stmt->execute([':id' => $fornecedor_id]);
+            $email = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($email !== '') {
+                $emails[] = $email;
+            }
+        }
+
+        if (empty($emails)) {
+            $stmt = $pdo->query("
+                SELECT email
+                FROM eventos_fornecedores
+                WHERE tipo = 'decoracao'
+                  AND ativo = TRUE
+                  AND email IS NOT NULL
+                  AND email <> ''
+            ");
+            $emails = array_map('trim', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        }
+
+        $emails = array_values(array_unique(array_filter($emails, fn($x) => is_string($x) && trim($x) !== '')));
+        if (empty($emails)) {
+            return;
+        }
+
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+        $base_url = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+        if ($base_url === '' && $host !== '') {
+            $base_url = $scheme . '://' . $host;
+        }
+        $base_url = rtrim($base_url, '/');
+
+        $me_event_id = (int)($reuniao['me_event_id'] ?? 0);
+        $portal_url = $base_url !== '' && $me_event_id > 0
+            ? $base_url . "/index.php?page=portal_decoracao&me_event_id=" . $me_event_id
+            : "index.php?page=portal_decoracao";
+
+        $assunto = "ATUALIZACAO DECORACAO - SMILE EVENTOS";
+        $nome_evento_e = $e($nome_evento);
+        $data_fmt_e = $e($data_fmt);
+        $hora_fmt_e = $e($hora_fmt);
+        $local_e = $e($local_evento !== '' ? $local_evento : '-');
+        $cliente_e = $e($cliente_nome !== '' ? $cliente_nome : '-');
+        $portal_url_e = $e($portal_url);
+        $corpo = "
+            <h2>Atualização de Decoração</h2>
+            <p>Houve uma atualização nas informações de decoração do evento abaixo:</p>
+            <p><strong>Evento:</strong> {$nome_evento_e}</p>
+            <p><strong>Data:</strong> {$data_fmt_e}</p>
+            <p><strong>Horário:</strong> {$hora_fmt_e}</p>
+            <p><strong>Local:</strong> {$local_e}</p>
+            <p><strong>Cliente:</strong> {$cliente_e}</p>
+            <br>
+            <p><a href='{$portal_url_e}' style='display:inline-block;padding:12px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;'>Abrir no Portal Decoração</a></p>
+            <p style='color:#64748b;font-size:14px;margin-top:10px;'>Se o link solicitar login, entre com seu usuário do Portal Decoração.</p>
+            <br>
+            <p>Atenciosamente,<br>Grupo Smile</p>
+        ";
+
+        $emailHelper = new EmailGlobalHelper();
+        foreach ($emails as $to) {
+            $emailHelper->enviarEmail($to, $assunto, $corpo);
+        }
+    } catch (Throwable $e) {
+        error_log("Erro ao notificar decoração atualizada: " . $e->getMessage());
+    }
+}
+
+/**
+ * Notificar Decoração quando a reunião for marcada como concluída.
+ */
+function eventos_notificar_decoracao_reuniao_concluida(PDO $pdo, int $meeting_id): void {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT r.id, r.me_event_id, r.me_event_snapshot, r.fornecedor_decoracao_id
+            FROM eventos_reunioes r
+            WHERE r.id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $meeting_id]);
+        $reuniao = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$reuniao) {
+            return;
+        }
+
+        // Reaproveita a mesma regra de destinatários e layout, mudando o assunto/título.
+        // Para evitar duplicação pesada aqui, chamamos a função de atualização com assunto customizado via envio manual.
+        // (Implementação intencionalmente simples: mesma composição base, com assunto diferente.)
+        $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+
+        $e = function($value): string {
+            return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $nome_evento = trim((string)($snapshot['nome'] ?? 'Evento'));
+        $data_evento = trim((string)($snapshot['data'] ?? ''));
+        $data_ts = $data_evento !== '' ? strtotime($data_evento) : false;
+        $data_fmt = $data_ts ? date('d/m/Y', $data_ts) : '-';
+        $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? ''));
+        $hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+        $hora_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
+        if ($hora_inicio !== '' && $hora_fim !== '') {
+            $hora_fmt = $hora_inicio . ' - ' . $hora_fim;
+        }
+        $local_evento = trim((string)($snapshot['local'] ?? ''));
+        $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? ''));
+
+        $emails = [];
+        $fornecedor_id = (int)($reuniao['fornecedor_decoracao_id'] ?? 0);
+        if ($fornecedor_id > 0) {
+            $stmt = $pdo->prepare("SELECT email FROM eventos_fornecedores WHERE id = :id AND email IS NOT NULL");
+            $stmt->execute([':id' => $fornecedor_id]);
+            $email = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($email !== '') {
+                $emails[] = $email;
+            }
+        }
+
+        if (empty($emails)) {
+            $stmt = $pdo->query("
+                SELECT email
+                FROM eventos_fornecedores
+                WHERE tipo = 'decoracao'
+                  AND ativo = TRUE
+                  AND email IS NOT NULL
+                  AND email <> ''
+            ");
+            $emails = array_map('trim', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        }
+
+        $emails = array_values(array_unique(array_filter($emails, fn($x) => is_string($x) && trim($x) !== '')));
+        if (empty($emails)) {
+            return;
+        }
+
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+        $base_url = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+        if ($base_url === '' && $host !== '') {
+            $base_url = $scheme . '://' . $host;
+        }
+        $base_url = rtrim($base_url, '/');
+
+        $me_event_id = (int)($reuniao['me_event_id'] ?? 0);
+        $portal_url = $base_url !== '' && $me_event_id > 0
+            ? $base_url . "/index.php?page=portal_decoracao&me_event_id=" . $me_event_id
+            : "index.php?page=portal_decoracao";
+
+        $assunto = "REUNIAO CONCLUIDA - SMILE EVENTOS";
+        $nome_evento_e = $e($nome_evento);
+        $data_fmt_e = $e($data_fmt);
+        $hora_fmt_e = $e($hora_fmt);
+        $local_e = $e($local_evento !== '' ? $local_evento : '-');
+        $cliente_e = $e($cliente_nome !== '' ? $cliente_nome : '-');
+        $portal_url_e = $e($portal_url);
+        $corpo = "
+            <h2>Reunião concluída</h2>
+            <p>A reunião final do evento abaixo foi marcada como concluída e está pronta para conferência:</p>
+            <p><strong>Evento:</strong> {$nome_evento_e}</p>
+            <p><strong>Data:</strong> {$data_fmt_e}</p>
+            <p><strong>Horário:</strong> {$hora_fmt_e}</p>
+            <p><strong>Local:</strong> {$local_e}</p>
+            <p><strong>Cliente:</strong> {$cliente_e}</p>
+            <br>
+            <p><a href='{$portal_url_e}' style='display:inline-block;padding:12px 18px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;'>Abrir no Portal Decoração</a></p>
+            <p style='color:#64748b;font-size:14px;margin-top:10px;'>Se o link solicitar login, entre com seu usuário do Portal Decoração.</p>
+            <br>
+            <p>Atenciosamente,<br>Grupo Smile</p>
+        ";
+
+        $emailHelper = new EmailGlobalHelper();
+        foreach ($emails as $to) {
+            $emailHelper->enviarEmail($to, $assunto, $corpo);
+        }
+    } catch (Throwable $e) {
+        error_log("Erro ao notificar reunião concluída (decoração): " . $e->getMessage());
+    }
+}
+
+/**
  * Notificar quando conteúdo é atualizado (para fornecedores vinculados)
  */
 function eventos_notificar_conteudo_atualizado(PDO $pdo, int $meeting_id, string $section): void {
