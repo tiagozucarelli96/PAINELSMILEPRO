@@ -357,6 +357,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
                         } else {
                             $success = true;
+                            // Notifica o DJ por e-mail (assunto padrão exigido pelo negócio).
+                            try {
+                                if (function_exists('eventos_notificar_cliente_enviou_dj')) {
+                                    eventos_notificar_cliente_enviou_dj($pdo, (int)$link['meeting_id']);
+                                }
+                            } catch (Throwable $e) {
+                                error_log("Falha ao notificar envio DJ: " . $e->getMessage());
+                            }
                         }
                     }
 

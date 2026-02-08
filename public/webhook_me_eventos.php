@@ -127,6 +127,35 @@ function processarWebhook($data) {
             ':webhook_tipo' => $webhook_tipo, // Usar formato 'created' para compatibilidade
             ':webhook_data' => json_encode($data) // Salvar payload completo original
         ]);
+
+        // Aplicar atualização na reunião (snapshot) e invalidar cache ME local.
+        // Isso garante que o Portal/Calendários não fiquem com dados desatualizados (data/hora/local).
+        try {
+            require_once __DIR__ . '/eventos_me_helper.php';
+
+            $snapshot = eventos_me_criar_snapshot(is_array($evento_data) ? $evento_data : []);
+            $snapshot['me_status'] = ($status === 'cancelado') ? 'cancelado' : 'ativo';
+            $snapshot['webhook_event'] = (string)$webhook_tipo_original;
+            $snapshot['webhook_at'] = date('Y-m-d H:i:s');
+
+            $me_id_int = (int)$evento_id;
+            if ($me_id_int > 0) {
+                $stmt_up = $pdo->prepare("
+                    UPDATE eventos_reunioes
+                    SET me_event_snapshot = :snapshot, updated_at = NOW()
+                    WHERE me_event_id = :me_event_id
+                ");
+                $stmt_up->execute([
+                    ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+                    ':me_event_id' => $me_id_int,
+                ]);
+
+                // Limpa cache da ME para forçar refresh (listas e detalhes).
+                $pdo->exec("DELETE FROM eventos_me_cache");
+            }
+        } catch (Throwable $e) {
+            logWebhook("Aviso: falha ao atualizar snapshot/cache ME: " . $e->getMessage());
+        }
         
         logWebhook("Webhook processado com sucesso: {$webhook_tipo_original} ({$webhook_tipo}) - Evento ID: {$evento_id}");
         return true;

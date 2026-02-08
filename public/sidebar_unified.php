@@ -1793,6 +1793,8 @@ if ($current_page === 'dashboard') {
                 // Vendas (páginas com JS próprio — não carregar via AJAX)
                 'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
                 'vendas_kanban', 'vendas_links_publicos',
+                // Eventos (formulários reutilizáveis)
+                'formularios_eventos',
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
                 // Minha conta e gestão de documentos (includeSidebar)

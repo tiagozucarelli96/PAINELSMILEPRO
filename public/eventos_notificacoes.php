@@ -74,10 +74,17 @@ function eventos_notificar_link_cliente_criado(PDO $pdo, int $meeting_id, string
  */
 function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
     try {
-        // Buscar dados
+        // Buscar dados do evento/reunião
         $stmt = $pdo->prepare("
             SELECT r.*, 
                    (r.me_event_snapshot->>'nome') as nome_evento,
+                   (r.me_event_snapshot->>'data') as data_evento,
+                   (r.me_event_snapshot->>'hora_inicio') as hora_inicio,
+                   (r.me_event_snapshot->>'hora_fim') as hora_fim,
+                   (r.me_event_snapshot->>'local') as local_evento,
+                   (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome,
+                   (r.me_event_snapshot->'cliente'->>'email') as cliente_email,
+                   (r.me_event_snapshot->'cliente'->>'telefone') as cliente_telefone,
                    r.fornecedor_dj_id
             FROM eventos_reunioes r
             WHERE r.id = :id
@@ -85,7 +92,25 @@ function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
         $stmt->execute([':id' => $meeting_id]);
         $reuniao = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if (!$reuniao) return;
+        if (!$reuniao) {
+            return;
+        }
+
+        $e = function($value): string {
+            return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        };
+
+        $nome_evento = (string)($reuniao['nome_evento'] ?? 'Evento');
+        $data_evento = (string)($reuniao['data_evento'] ?? '');
+        $data_fmt = $data_evento !== '' ? date('d/m/Y', strtotime($data_evento)) : '-';
+        $hora_inicio = trim((string)($reuniao['hora_inicio'] ?? ''));
+        $hora_fim = trim((string)($reuniao['hora_fim'] ?? ''));
+        $hora_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
+        if ($hora_inicio !== '' && $hora_fim !== '') {
+            $hora_fmt = $hora_inicio . ' - ' . $hora_fim;
+        }
+        $local_evento = trim((string)($reuniao['local_evento'] ?? ''));
+        $cliente_nome = trim((string)($reuniao['cliente_nome'] ?? ''));
         
         // Notificar quem criou a reunião
         if (!empty($reuniao['created_by'])) {
@@ -98,26 +123,69 @@ function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
             );
         }
         
-        // Notificar DJ vinculado (se houver)
-        // Nota: DJ não tem user_id no sistema interno, então não envia push
-        // Podemos enviar e-mail se o fornecedor tiver email cadastrado
+        // Notificar DJ por e-mail (usa fornecedor vinculado; se não houver, envia para todos os DJs ativos)
+        $emails = [];
+
         if (!empty($reuniao['fornecedor_dj_id'])) {
             $stmt = $pdo->prepare("SELECT email FROM eventos_fornecedores WHERE id = :id AND email IS NOT NULL");
             $stmt->execute([':id' => $reuniao['fornecedor_dj_id']]);
-            $dj_email = $stmt->fetchColumn();
-            
-            if ($dj_email) {
-                $emailHelper = new EmailGlobalHelper();
-                $emailHelper->enviarEmail(
-                    $dj_email,
-                    "Novas informações de DJ - {$reuniao['nome_evento']}",
-                    "
-                        <h2>Nova atualização!</h2>
-                        <p>O cliente enviou as informações de músicas para o evento:</p>
-                        <p><strong>{$reuniao['nome_evento']}</strong></p>
-                        <p>Acesse o Portal DJ para visualizar os detalhes.</p>
-                    "
-                );
+            $dj_email = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($dj_email !== '') {
+                $emails[] = $dj_email;
+            }
+        }
+
+        if (empty($emails)) {
+            $stmt = $pdo->query("
+                SELECT email
+                FROM eventos_fornecedores
+                WHERE tipo = 'dj'
+                  AND ativo = TRUE
+                  AND email IS NOT NULL
+                  AND email <> ''
+            ");
+            $emails = array_map('trim', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+        }
+
+        $emails = array_values(array_unique(array_filter($emails, fn($x) => is_string($x) && trim($x) !== '')));
+        if (!empty($emails)) {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+
+            $base_url = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+            if ($base_url === '' && $host !== '') {
+                $base_url = $scheme . '://' . $host;
+            }
+            $base_url = rtrim($base_url, '/');
+            $portal_url = $base_url !== ''
+                ? $base_url . "/index.php?page=portal_dj&evento=" . (int)$meeting_id
+                : "index.php?page=portal_dj&evento=" . (int)$meeting_id;
+
+            $assunto = "FORMULARIO PREENCHIDO - SMILE EVENTOS";
+            $nome_evento_e = $e($nome_evento);
+            $data_fmt_e = $e($data_fmt);
+            $hora_fmt_e = $e($hora_fmt);
+            $local_e = $e($local_evento !== '' ? $local_evento : '-');
+            $cliente_e = $e($cliente_nome !== '' ? $cliente_nome : '-');
+            $portal_url_e = $e($portal_url);
+            $corpo = "
+                <h2>Formulário preenchido</h2>
+                <p>O cliente enviou/atualizou o formulário de DJ do evento abaixo:</p>
+                <p><strong>Evento:</strong> {$nome_evento_e}</p>
+                <p><strong>Data:</strong> {$data_fmt_e}</p>
+                <p><strong>Horário:</strong> {$hora_fmt_e}</p>
+                <p><strong>Local:</strong> {$local_e}</p>
+                <p><strong>Cliente:</strong> {$cliente_e}</p>
+                <br>
+                <p><a href='{$portal_url_e}' style='display:inline-block;padding:12px 18px;background:#1e3a8a;color:#fff;text-decoration:none;border-radius:8px;'>Abrir no Portal DJ</a></p>
+                <p style='color:#64748b;font-size:14px;margin-top:10px;'>Se o link solicitar login, entre com seu usuário do Portal DJ.</p>
+                <br>
+                <p>Atenciosamente,<br>Grupo Smile</p>
+            ";
+
+            $emailHelper = new EmailGlobalHelper();
+            foreach ($emails as $to) {
+                $emailHelper->enviarEmail($to, $assunto, $corpo);
             }
         }
         
