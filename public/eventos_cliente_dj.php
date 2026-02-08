@@ -204,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
         if ($secao && $secao['is_locked']) {
             $error = 'Este formulário já foi enviado e não pode ser alterado.';
         } else {
-            $uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
+            $uploads = [];
 
             $schema_submit = [];
             if (!empty($secao['form_schema_json'])) {
@@ -238,6 +238,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 }
             } else {
                 $content = (string)($_POST['content_html'] ?? '');
+                // Modo legado (editor livre): mantém upload genérico opcional.
+                $uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
             }
 
             if ($error === '') {
@@ -927,12 +929,6 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                         </div>
                     <?php endif; ?>
                 <?php endforeach; ?>
-
-                <div class="attachments-box">
-                    <label for="anexosInput">Anexos adicionais (opcional)</label>
-                    <input type="file" id="anexosInput" name="anexos[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
-                    <p class="attachments-help">Use para anexar arquivos extras não previstos em campos específicos.</p>
-                </div>
                 <?php else: ?>
                 <div class="instructions">
                     <strong>Instruções:</strong>

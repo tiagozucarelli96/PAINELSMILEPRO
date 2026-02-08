@@ -907,6 +907,7 @@ document.addEventListener('DOMContentLoaded', function () {
     renderTemplatesList();
     renderBuilderFields();
     updateSelectedTemplateMeta();
+    refreshTemplates();
 
     const nameInput = document.getElementById('templateName');
     const categoryInput = document.getElementById('templateCategory');
@@ -915,6 +916,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     if (categoryInput) {
         categoryInput.addEventListener('change', () => setBuilderDirty(true));
+    }
+});
+
+window.addEventListener('pageshow', function (event) {
+    if (event && event.persisted) {
+        refreshTemplates();
     }
 });
 </script>
