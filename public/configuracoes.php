@@ -156,6 +156,16 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <!-- Formulários de Eventos -->
+        <a href="index.php?page=formularios_eventos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #1d4ed8, #1e40af);">
+                <span class="funcionalidade-card-icon">🧩</span>
+                <div class="funcionalidade-card-title">Formularios eventos</div>
+                <div class="funcionalidade-card-subtitle">Criar e gerenciar formulários reutilizáveis</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- Sistema -->
         <a href="index.php?page=configuracoes" class="funcionalidade-card">

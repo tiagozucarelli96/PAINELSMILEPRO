@@ -279,6 +279,7 @@ $routes = [
   // 'config_itens' => 'config_itens.php',
   // 'config_itens_fixos' => 'config_itens_fixos.php',
   'config_sistema' => 'configuracoes.php',
+  'formularios_eventos' => 'formularios_eventos.php',
   'cron_diagnostico' => 'cron_diagnostico.php',
 
   // Financeiro
@@ -299,7 +300,6 @@ $routes = [
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
   'eventos' => 'eventos_landing.php',
   'eventos_reuniao_final' => 'eventos_reuniao_final.php',
-  'eventos_reuniao_form_builder' => 'eventos_reuniao_form_builder.php',
   'eventos_rascunhos' => 'eventos_rascunhos.php',
   'eventos_reunioes' => 'eventos_reunioes.php',
   'eventos_calendario' => 'eventos_calendario.php',
