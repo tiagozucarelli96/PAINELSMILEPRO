@@ -430,6 +430,105 @@ $month_names = [
             cursor: default;
             transform: none !important;
         }
+        .event-tag.more-btn {
+            border: 0;
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
+        }
+        .event-tag.more-btn.muted {
+            cursor: pointer;
+        }
+        .event-tag.more-btn:hover {
+            transform: none;
+        }
+        .event-tag.more-btn.muted:hover {
+            background: #cbd5e1;
+        }
+
+        /* Modal (lista de eventos do dia) */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.55);
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 1rem;
+            z-index: 9999;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal {
+            background: #ffffff;
+            width: min(560px, 100%);
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .modal-title {
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.1;
+        }
+        .modal-subtitle {
+            margin-top: 0.25rem;
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+        .modal-close {
+            border: 1px solid #e2e8f0;
+            background: #ffffff;
+            color: #0f172a;
+            border-radius: 10px;
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        .modal-close:hover {
+            background: #f1f5f9;
+        }
+        .modal-body {
+            padding: 1rem 1.25rem;
+            overflow: auto;
+        }
+        .modal-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .modal-item {
+            border: 1px solid #e5e7eb;
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 0.75rem 0.85rem;
+        }
+        .modal-link {
+            color: #1e3a8a;
+            text-decoration: none;
+            font-weight: 800;
+        }
+        .modal-link:hover {
+            text-decoration: underline;
+        }
+        .modal-meta {
+            margin-top: 0.25rem;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
 
         @media (max-width: 768px) {
             .container { padding: 1rem; }
@@ -555,14 +654,37 @@ $month_names = [
                            class="event-tag <?= $tag_class ?>"
                            title="<?= htmlspecialchars($title ?: $ev_name) ?>">
                             <?= htmlspecialchars($short) ?><?= (strlen($ev_name) > 15 ? '...' : '') ?>
-                        </a>
-                        <?php endforeach; ?>
-                        <?php if (count($day_events) > 3): ?>
-                        <span class="event-tag muted">+<?= (int)(count($day_events) - 3) ?> mais</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <?php $cell++; endfor; ?>
+	                        </a>
+	                        <?php endforeach; ?>
+	                        <?php if (count($day_events) > 3): ?>
+                            <?php
+                                $events_payload = [];
+                                foreach ($day_events as $ev_full) {
+                                    $events_payload[] = [
+                                        'name' => (string)($ev_full['nome_evento'] ?? ''),
+                                        'url' => '?page=portal_dj&evento=' . (int)($ev_full['id'] ?? 0),
+                                        'time' => (string)($ev_full['hora_evento'] ?? ''),
+                                        'local' => (string)($ev_full['local_evento'] ?? ''),
+                                        'cliente' => (string)($ev_full['cliente_nome'] ?? ''),
+                                    ];
+                                }
+                                $events_json = htmlspecialchars(
+                                    json_encode($events_payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                                    ENT_QUOTES,
+                                    'UTF-8'
+                                );
+                            ?>
+	                        <button
+                                type="button"
+                                class="event-tag muted more-btn"
+                                data-open-day-modal="1"
+                                data-date-display="<?= htmlspecialchars(sprintf('%02d/%02d/%04d', $day, $month, $year)) ?>"
+                                data-events="<?= $events_json ?>"
+                            >+<?= (int)(count($day_events) - 3) ?> mais</button>
+	                        <?php endif; ?>
+	                    </div>
+	                </div>
+	                <?php $cell++; endfor; ?>
 
                 <?php while ($cell % 7 !== 0):
                     $next_day = $cell - $start_weekday - $days_in_month + 1;
@@ -601,8 +723,106 @@ $month_names = [
             </div>
             <?php endforeach; ?>
         </div>
-        <?php endif; ?>
-        <?php endif; ?>
-    </div>
+	        <?php endif; ?>
+	        <?php endif; ?>
+	    </div>
+        <div id="dayModalOverlay" class="modal-overlay" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dayModalTitle">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="dayModalTitle">Eventos</div>
+                        <div class="modal-subtitle" id="dayModalSubtitle"></div>
+                    </div>
+                    <button type="button" class="modal-close" data-day-modal-close="1">Fechar</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-list" id="dayModalList"></div>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                const overlay = document.getElementById('dayModalOverlay');
+                const list = document.getElementById('dayModalList');
+                const title = document.getElementById('dayModalTitle');
+                const subtitle = document.getElementById('dayModalSubtitle');
+
+                if (!overlay || !list || !title || !subtitle) return;
+
+                function closeModal() {
+                    overlay.classList.remove('open');
+                    overlay.setAttribute('aria-hidden', 'true');
+                    document.body.style.overflow = '';
+                }
+
+                function openModal(btn) {
+                    const dateDisplay = btn.getAttribute('data-date-display') || '';
+                    let events = [];
+                    try {
+                        events = JSON.parse(btn.getAttribute('data-events') || '[]') || [];
+                    } catch (e) {
+                        events = [];
+                    }
+
+                    title.textContent = 'Eventos do dia';
+                    subtitle.textContent = (dateDisplay ? dateDisplay : '') + (events.length ? ' • ' + events.length : '');
+                    list.innerHTML = '';
+
+                    if (!events.length) {
+                        const empty = document.createElement('div');
+                        empty.style.color = '#64748b';
+                        empty.textContent = 'Nenhum evento.';
+                        list.appendChild(empty);
+                    } else {
+                        events.forEach((ev) => {
+                            const item = document.createElement('div');
+                            item.className = 'modal-item';
+
+                            const a = document.createElement('a');
+                            a.className = 'modal-link';
+                            a.href = ev.url || '#';
+                            a.textContent = ev.name || 'Evento';
+
+                            const meta = document.createElement('div');
+                            meta.className = 'modal-meta';
+                            const parts = [];
+                            if (ev.time) parts.push('Hora: ' + ev.time);
+                            if (ev.local) parts.push('Local: ' + ev.local);
+                            if (ev.cliente) parts.push('Cliente: ' + ev.cliente);
+                            meta.textContent = parts.join(' • ');
+
+                            item.appendChild(a);
+                            if (parts.length) item.appendChild(meta);
+                            list.appendChild(item);
+                        });
+                    }
+
+                    overlay.classList.add('open');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                }
+
+                document.addEventListener('click', (e) => {
+                    const openBtn = e.target.closest('[data-open-day-modal="1"]');
+                    if (openBtn) {
+                        openModal(openBtn);
+                        return;
+                    }
+                    if (e.target.closest('[data-day-modal-close="1"]')) {
+                        closeModal();
+                        return;
+                    }
+                    if (e.target === overlay) {
+                        closeModal();
+                    }
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && overlay.classList.contains('open')) {
+                        closeModal();
+                    }
+                });
+            })();
+        </script>
 </body>
 </html>
