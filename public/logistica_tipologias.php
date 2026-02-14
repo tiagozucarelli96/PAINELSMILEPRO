@@ -127,6 +127,12 @@ $is_editing_receita = is_array($edit_receita);
     font-size: 0.95rem;
 }
 
+.page-header-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .tipologia-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
@@ -349,7 +355,12 @@ $is_editing_receita = is_array($edit_receita);
             <h1 class="page-title">Tipologias</h1>
             <p class="page-subtitle">Gerencie os tipos usados no cadastro de insumos e receitas.</p>
         </div>
-        <a class="btn-secondary btn-link" href="index.php?page=logistica_catalogo">Voltar ao catálogo</a>
+        <div class="page-header-actions">
+            <?php if ($is_editing_insumo || $is_editing_receita): ?>
+                <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Novo cadastro</a>
+            <?php endif; ?>
+            <a class="btn-secondary btn-link" href="index.php?page=logistica_catalogo">Voltar ao catálogo</a>
+        </div>
     </div>
 
     <?php foreach ($errors as $error): ?>
@@ -367,12 +378,11 @@ $is_editing_receita = is_array($edit_receita);
                     <h2>Tipologias de Insumo</h2>
                     <p><?= count($tipologias_insumo) ?> cadastrada(s)</p>
                 </div>
-                <div class="section-actions">
-                    <?php if ($is_editing_insumo): ?>
+                <?php if ($is_editing_insumo): ?>
+                    <div class="section-actions">
                         <span class="edit-badge">Editando ID #<?= (int)$edit_insumo['id'] ?></span>
-                    <?php endif; ?>
-                    <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Novo cadastro</a>
-                </div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <form method="POST">
@@ -403,7 +413,7 @@ $is_editing_receita = is_array($edit_receita);
                     </div>
                 </div>
                 <div class="form-actions">
-                    <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar tipologia' : 'Criar tipologia' ?></button>
+                    <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar tipologia de insumo' : 'Criar tipologia de insumo' ?></button>
                     <?php if ($is_editing_insumo): ?>
                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Cancelar edição</a>
                     <?php endif; ?>
@@ -459,12 +469,11 @@ $is_editing_receita = is_array($edit_receita);
                     <h2>Tipologias de Receita</h2>
                     <p><?= count($tipologias_receita) ?> cadastrada(s)</p>
                 </div>
-                <div class="section-actions">
-                    <?php if ($is_editing_receita): ?>
+                <?php if ($is_editing_receita): ?>
+                    <div class="section-actions">
                         <span class="edit-badge">Editando ID #<?= (int)$edit_receita['id'] ?></span>
-                    <?php endif; ?>
-                    <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Novo cadastro</a>
-                </div>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <form method="POST">
@@ -495,7 +504,7 @@ $is_editing_receita = is_array($edit_receita);
                     </div>
                 </div>
                 <div class="form-actions">
-                    <button class="btn-primary" type="submit"><?= $is_editing_receita ? 'Atualizar tipologia' : 'Criar tipologia' ?></button>
+                    <button class="btn-primary" type="submit"><?= $is_editing_receita ? 'Atualizar tipologia de receita' : 'Criar tipologia de receita' ?></button>
                     <?php if ($is_editing_receita): ?>
                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Cancelar edição</a>
                     <?php endif; ?>
