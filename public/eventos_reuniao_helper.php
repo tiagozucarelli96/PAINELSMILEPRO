@@ -39,6 +39,26 @@ function eventos_reuniao_has_column(PDO $pdo, string $table, string $column): bo
 }
 
 /**
+ * Cache simples de existencia de tabelas.
+ */
+function eventos_reuniao_has_table(PDO $pdo, string $table): bool {
+    static $cache = [];
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_name = :table
+        LIMIT 1
+    ");
+    $stmt->execute([':table' => $table]);
+    $cache[$table] = (bool)$stmt->fetchColumn();
+    return $cache[$table];
+}
+
+/**
  * Garante estrutura necessária para formulário dinâmico da Reunião Final.
  */
 function eventos_reuniao_ensure_schema(PDO $pdo): void {
@@ -48,7 +68,9 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
     }
 
     try {
-        $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+        if (eventos_reuniao_has_table($pdo, 'eventos_reunioes_secoes')) {
+            $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+        }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao criar coluna form_schema_json: ' . $e->getMessage());
     }
@@ -73,12 +95,14 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
 
     // Campos adicionais para múltiplos links/formulários DJ por reunião.
     try {
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS slot_index INTEGER");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS content_html_snapshot TEXT");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_title VARCHAR(160)");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
-        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
+        if (eventos_reuniao_has_table($pdo, 'eventos_links_publicos')) {
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS slot_index INTEGER");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS content_html_snapshot TEXT");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_title VARCHAR(160)");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
+        }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_links_publicos: ' . $e->getMessage());
     }
@@ -94,10 +118,462 @@ function eventos_form_template_allowed_categories(): array {
 }
 
 /**
+ * Gera ID para campo de formulario.
+ */
+function eventos_form_template_field_id(string $prefix = 'f'): string {
+    try {
+        return $prefix . '_' . bin2hex(random_bytes(4));
+    } catch (Throwable $e) {
+        return $prefix . '_' . str_replace('.', '', uniqid('', true));
+    }
+}
+
+/**
+ * Normaliza texto livre para parser de importacao.
+ */
+function eventos_form_template_normalizar_texto(string $text): string {
+    $decoded = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $decoded = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $decoded);
+    $decoded = preg_replace('/\s+/u', ' ', $decoded);
+    return trim((string)$decoded);
+}
+
+/**
+ * Lowercase com fallback quando mbstring nao estiver ativo.
+ */
+function eventos_form_template_lower(string $text): string {
+    if (function_exists('mb_strtolower')) {
+        return mb_strtolower($text, 'UTF-8');
+    }
+    return strtolower($text);
+}
+
+/**
+ * Procura substring com fallback para ambientes sem mbstring.
+ */
+function eventos_form_template_contains(string $text, string $needle): bool {
+    if (function_exists('mb_strpos')) {
+        return mb_strpos($text, $needle) !== false;
+    }
+    return strpos($text, $needle) !== false;
+}
+
+/**
+ * Detecta se uma linha parece pergunta de preenchimento.
+ */
+function eventos_form_template_is_question_like(string $text): bool {
+    $text = eventos_form_template_normalizar_texto($text);
+    if ($text === '') {
+        return false;
+    }
+    $lower = eventos_form_template_lower($text);
+    $non_question_prefixes = [
+        'exemplo',
+        'devendo ',
+        'nossa recomend',
+        'importante:',
+        'lembrando',
+        'valores:',
+    ];
+    foreach ($non_question_prefixes as $prefix) {
+        if (str_starts_with($lower, $prefix)) {
+            return false;
+        }
+    }
+
+    $text_without_urls = preg_replace('/https?:\/\/\S+/i', '', $text);
+    if (eventos_form_template_contains((string)$text_without_urls, '?')) {
+        return true;
+    }
+
+    $starts = [
+        'qual ',
+        'quais ',
+        'cite ',
+        'descreva ',
+        'nos envie ',
+        'envie ',
+        'vai ',
+        'ira ',
+        'irá ',
+        'link da ',
+        'link do ',
+        'se ',
+    ];
+    foreach ($starts as $prefix) {
+        if (str_starts_with($lower, $prefix)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Detecta se o texto deve ser exibido como titulo de secao.
+ */
+function eventos_form_template_is_section_title(string $text, string $tag = 'p', bool $only_strong = false): bool {
+    $text = eventos_form_template_normalizar_texto($text);
+    if ($text === '' || eventos_form_template_contains($text, '?')) {
+        return false;
+    }
+
+    $tag = strtolower(trim($tag));
+    if (in_array($tag, ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], true)) {
+        return true;
+    }
+
+    $len = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+    if ($only_strong && $len <= 140 && !eventos_form_template_is_question_like($text)) {
+        return true;
+    }
+
+    $letters = preg_replace('/[^\pL]/u', '', $text);
+    if ($letters === '') {
+        return false;
+    }
+    $upper = preg_replace('/[^\p{Lu}]/u', '', $letters);
+    $letters_len = function_exists('mb_strlen') ? mb_strlen($letters) : strlen($letters);
+    if ($letters_len <= 0) {
+        return false;
+    }
+    $upper_len = function_exists('mb_strlen') ? mb_strlen($upper) : strlen($upper);
+    $ratio = $upper_len / $letters_len;
+    return $ratio >= 0.62 && $len <= 140;
+}
+
+/**
+ * Detecta texto de orientacao (nao preenchivel) para virar nota.
+ */
+function eventos_form_template_is_instruction_text(string $text): bool {
+    $text = eventos_form_template_normalizar_texto($text);
+    if ($text === '' || eventos_form_template_is_question_like($text)) {
+        return false;
+    }
+    $lower = eventos_form_template_lower($text);
+    if (str_starts_with($lower, 'exemplo')
+        || str_starts_with($lower, 'importante')
+        || str_starts_with($lower, 'lembrando')
+        || str_starts_with($lower, 'nossa recomend')
+        || str_starts_with($lower, 'a seguir iremos')
+        || str_starts_with($lower, 'devendo ')
+        || str_starts_with($lower, 'valores:')
+    ) {
+        return true;
+    }
+    $len = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+    return $len >= 80;
+}
+
+/**
+ * Define tipo de campo por heuristica.
+ */
+function eventos_form_template_guess_field_type(string $text, bool $yesno_hint = false): string {
+    $lower = eventos_form_template_lower(eventos_form_template_normalizar_texto($text));
+    if ($yesno_hint
+        || str_contains($lower, 'marque com x')
+        || str_contains($lower, '( ) sim')
+        || str_contains($lower, '( ) nao')
+        || str_contains($lower, 'irá cantar o parabéns')
+        || str_contains($lower, 'ira cantar o parabens')
+        || str_contains($lower, 'vai abrir os brinquedos')
+    ) {
+        return 'yesno';
+    }
+
+    if (str_contains($lower, 'link da playlist')
+        || str_contains($lower, 'qual horário')
+        || str_contains($lower, 'qual horario')
+        || str_contains($lower, 'vai chegar')
+    ) {
+        return 'text';
+    }
+
+    return 'textarea';
+}
+
+/**
+ * Parseia texto puro em blocos simples.
+ */
+function eventos_form_template_parse_text_blocks(string $source): array {
+    $lines = preg_split('/\R/u', $source) ?: [];
+    $blocks = [];
+    foreach ($lines as $line) {
+        $text = eventos_form_template_normalizar_texto((string)$line);
+        if ($text === '') {
+            continue;
+        }
+        if ($text === '---' || $text === '___') {
+            $blocks[] = ['kind' => 'divider'];
+            continue;
+        }
+        $yesno = (bool)(
+            preg_match('/\bsim\b/iu', $text)
+            && preg_match('/\bn[aã]o\b/iu', $text)
+        );
+        if ($yesno) {
+            $blocks[] = [
+                'kind' => 'table',
+                'yesno' => true,
+                'blank' => false,
+                'text' => $text,
+            ];
+            continue;
+        }
+        $blocks[] = [
+            'kind' => 'text',
+            'tag' => 'p',
+            'text' => $text,
+            'only_strong' => false,
+        ];
+    }
+    return $blocks;
+}
+
+/**
+ * Parseia HTML em blocos sequenciais.
+ */
+function eventos_form_template_parse_html_blocks(string $source): array {
+    if (!class_exists('DOMDocument')) {
+        return [];
+    }
+
+    $dom = new DOMDocument();
+    $prev_state = libxml_use_internal_errors(true);
+
+    $flags = 0;
+    if (defined('LIBXML_HTML_NODEFDTD')) {
+        $flags |= LIBXML_HTML_NODEFDTD;
+    }
+    if (defined('LIBXML_HTML_NOIMPLIED')) {
+        $flags |= LIBXML_HTML_NOIMPLIED;
+    }
+
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $source . '</body></html>';
+    $loaded = $dom->loadHTML($wrapped, $flags);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev_state);
+
+    if (!$loaded) {
+        return [];
+    }
+
+    $body_nodes = $dom->getElementsByTagName('body');
+    $body = $body_nodes->item(0);
+    if (!$body instanceof DOMElement) {
+        return [];
+    }
+
+    $container = $body;
+    $children = [];
+    foreach ($body->childNodes as $child) {
+        if ($child instanceof DOMElement) {
+            $children[] = $child;
+        }
+    }
+    if (count($children) === 1 && strtolower($children[0]->tagName) === 'div') {
+        $container = $children[0];
+    }
+
+    $blocks = [];
+    foreach ($container->childNodes as $node) {
+        if (!$node instanceof DOMElement) {
+            continue;
+        }
+        $tag = strtolower($node->tagName);
+
+        if ($tag === 'hr') {
+            $blocks[] = ['kind' => 'divider'];
+            continue;
+        }
+
+        if ($tag === 'table') {
+            $table_text = eventos_form_template_normalizar_texto((string)$node->textContent);
+            $has_yesno = (bool)(
+                preg_match('/\bsim\b/iu', $table_text)
+                && preg_match('/\bn[aã]o\b/iu', $table_text)
+            );
+            $is_blank = trim($table_text) === '';
+            $blocks[] = [
+                'kind' => 'table',
+                'yesno' => $has_yesno,
+                'blank' => $is_blank,
+                'text' => $table_text,
+            ];
+            continue;
+        }
+
+        if (in_array($tag, ['ul', 'ol'], true)) {
+            foreach ($node->getElementsByTagName('li') as $li) {
+                $txt = eventos_form_template_normalizar_texto((string)$li->textContent);
+                if ($txt === '') {
+                    continue;
+                }
+                $blocks[] = [
+                    'kind' => 'text',
+                    'tag' => 'li',
+                    'text' => $txt,
+                    'only_strong' => false,
+                ];
+            }
+            continue;
+        }
+
+        if (!in_array($tag, ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'div'], true)) {
+            continue;
+        }
+
+        $text = eventos_form_template_normalizar_texto((string)$node->textContent);
+        if ($text === '') {
+            continue;
+        }
+
+        $strong_parts = [];
+        foreach (['strong', 'b'] as $st_tag) {
+            foreach ($node->getElementsByTagName($st_tag) as $st_node) {
+                $part = eventos_form_template_normalizar_texto((string)$st_node->textContent);
+                if ($part !== '') {
+                    $strong_parts[] = $part;
+                }
+            }
+        }
+        $strong_text = eventos_form_template_normalizar_texto(implode(' ', $strong_parts));
+        $only_strong = ($strong_text !== '' && $strong_text === $text);
+
+        $blocks[] = [
+            'kind' => 'text',
+            'tag' => $tag,
+            'text' => $text,
+            'only_strong' => $only_strong,
+        ];
+    }
+
+    return $blocks;
+}
+
+/**
+ * Converte blocos para schema dinamico.
+ */
+function eventos_form_template_blocks_to_schema(array $blocks, bool $incluir_notas = true): array {
+    $schema = [];
+    $last_question_index = null;
+
+    $push = static function (
+        array &$items,
+        string $type,
+        string $label,
+        bool $required = false,
+        array $options = []
+    ): int {
+        $normalized_label = eventos_form_template_normalizar_texto($label);
+        if ($type !== 'divider' && $normalized_label === '') {
+            return -1;
+        }
+        $items[] = [
+            'id' => eventos_form_template_field_id($type === 'section' ? 's' : 'f'),
+            'type' => $type,
+            'label' => $type === 'divider' ? '---' : $normalized_label,
+            'required' => $required && !in_array($type, ['section', 'divider', 'note'], true),
+            'options' => $type === 'select' ? array_values(array_filter(array_map('trim', $options), static fn($v) => $v !== '')) : [],
+        ];
+        return count($items) - 1;
+    };
+
+    foreach ($blocks as $block) {
+        $kind = strtolower(trim((string)($block['kind'] ?? 'text')));
+
+        if ($kind === 'divider') {
+            $push($schema, 'divider', '---');
+            $last_question_index = null;
+            continue;
+        }
+
+        if ($kind === 'table') {
+            $table_text = eventos_form_template_normalizar_texto((string)($block['text'] ?? ''));
+            $yesno = !empty($block['yesno']);
+            $blank = !empty($block['blank']);
+
+            if ($yesno) {
+                $target_index = $last_question_index;
+                if ($target_index === null) {
+                    for ($i = count($schema) - 1; $i >= 0; $i--) {
+                        $type = strtolower(trim((string)($schema[$i]['type'] ?? '')));
+                        if (in_array($type, ['divider', 'section', 'note'], true)) {
+                            continue;
+                        }
+                        $target_index = $i;
+                        break;
+                    }
+                }
+
+                if ($target_index !== null && isset($schema[$target_index])) {
+                    $schema[$target_index]['type'] = 'yesno';
+                    $schema[$target_index]['required'] = false;
+                    $schema[$target_index]['options'] = [];
+                } elseif ($incluir_notas && $table_text !== '') {
+                    $push($schema, 'note', $table_text);
+                }
+            } elseif (!$blank && $incluir_notas && $table_text !== '') {
+                $push($schema, 'note', $table_text);
+            }
+            $last_question_index = null;
+            continue;
+        }
+
+        $text = eventos_form_template_normalizar_texto((string)($block['text'] ?? ''));
+        if ($text === '') {
+            continue;
+        }
+
+        $tag = strtolower(trim((string)($block['tag'] ?? 'p')));
+        $only_strong = !empty($block['only_strong']);
+
+        if (eventos_form_template_is_section_title($text, $tag, $only_strong)) {
+            $push($schema, 'section', $text);
+            $last_question_index = null;
+            continue;
+        }
+
+        if (eventos_form_template_is_question_like($text)) {
+            $field_type = eventos_form_template_guess_field_type($text, false);
+            $last_question_index = $push($schema, $field_type, $text);
+            continue;
+        }
+
+        if ($incluir_notas && eventos_form_template_is_instruction_text($text)) {
+            $push($schema, 'note', $text);
+        }
+        $last_question_index = null;
+    }
+
+    return $schema;
+}
+
+/**
+ * Gera schema automatico a partir de texto ou HTML.
+ */
+function eventos_form_template_gerar_schema_por_fonte(string $source, bool $incluir_notas = true): array {
+    $source = trim($source);
+    if ($source === '') {
+        return [];
+    }
+
+    $blocks = [];
+    if (preg_match('/<\s*[a-zA-Z][^>]*>/', $source)) {
+        $blocks = eventos_form_template_parse_html_blocks($source);
+    }
+    if (empty($blocks)) {
+        $blocks = eventos_form_template_parse_text_blocks($source);
+    }
+
+    $schema = eventos_form_template_blocks_to_schema($blocks, $incluir_notas);
+    return eventos_form_template_normalizar_schema($schema);
+}
+
+/**
  * Normaliza schema de formulário para persistência.
  */
 function eventos_form_template_normalizar_schema(array $schema): array {
-    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
     $normalized = [];
     foreach ($schema as $item) {
         if (!is_array($item)) {
@@ -108,7 +584,7 @@ function eventos_form_template_normalizar_schema(array $schema): array {
             $type = 'text';
         }
         $label = trim((string)($item['label'] ?? ''));
-        $required = !empty($item['required']) && !in_array($type, ['section', 'divider'], true);
+        $required = !empty($item['required']) && !in_array($type, ['section', 'divider', 'note'], true);
         $options = [];
         if ($type === 'select' && !empty($item['options']) && is_array($item['options'])) {
             foreach ($item['options'] as $opt) {
@@ -125,7 +601,7 @@ function eventos_form_template_normalizar_schema(array $schema): array {
 
         $id = trim((string)($item['id'] ?? ''));
         if ($id === '') {
-            $id = 'f_' . bin2hex(random_bytes(4));
+            $id = eventos_form_template_field_id($type === 'section' ? 's' : 'f');
         }
 
         $normalized[] = [

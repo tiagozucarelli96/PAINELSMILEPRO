@@ -289,29 +289,6 @@ includeSidebar('Eventos');
         </a>
     </div>
     
-    <!-- Portais Externos -->
-    <h2 class="section-title">Portais Externos (para Fornecedores)</h2>
-    <div class="modules-grid">
-        <div class="module-card" style="cursor: default; opacity: 0.8;">
-            <div class="module-icon blue">🎧</div>
-            <div class="module-title">Portal DJ</div>
-            <div class="module-desc">
-                Portal externo para DJs visualizarem suas agendas de eventos. 
-                Acesso com login e senha próprios.
-            </div>
-            <span class="module-badge external">Acesso: /index.php?page=portal_dj_login</span>
-        </div>
-        
-        <div class="module-card" style="cursor: default; opacity: 0.8;">
-            <div class="module-icon green">🎨</div>
-            <div class="module-title">Portal Decoração</div>
-            <div class="module-desc">
-                Portal externo para decoradores visualizarem informações dos eventos. 
-                Acesso com login e senha próprios.
-            </div>
-            <span class="module-badge external">Acesso: /index.php?page=portal_decoracao_login</span>
-        </div>
-    </div>
 </div>
 
 <?php endSidebar(); ?>

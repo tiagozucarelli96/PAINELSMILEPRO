@@ -57,6 +57,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(eventos_form_template_arquivar($pdo, $template_id));
             exit;
 
+        case 'gerar_schema_template_form':
+            $source_text = (string)($_POST['source_text'] ?? '');
+            $include_notes = ((string)($_POST['include_notes'] ?? '1')) !== '0';
+            $schema = eventos_form_template_gerar_schema_por_fonte($source_text, $include_notes);
+            if (empty($schema)) {
+                echo json_encode(['ok' => false, 'error' => 'Nao foi possivel gerar campos com o texto informado.']);
+                exit;
+            }
+            if (!eventos_form_template_tem_campo_util($schema)) {
+                echo json_encode(['ok' => false, 'error' => 'A importacao nao encontrou perguntas preenchiveis.']);
+                exit;
+            }
+            $fillable_types = ['text', 'textarea', 'yesno', 'select', 'file'];
+            $fillable_count = 0;
+            foreach ($schema as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $type = strtolower(trim((string)($field['type'] ?? '')));
+                if (in_array($type, $fillable_types, true)) {
+                    $fillable_count++;
+                }
+            }
+            echo json_encode([
+                'ok' => true,
+                'schema' => $schema,
+                'summary' => [
+                    'total' => count($schema),
+                    'fillable' => $fillable_count,
+                ],
+            ]);
+            exit;
+
         default:
             echo json_encode(['ok' => false, 'error' => 'Ação inválida']);
             exit;
@@ -313,6 +346,41 @@ includeSidebar('Formulários eventos');
         color: #166534;
     }
 
+    .import-box {
+        margin-bottom: 0.85rem;
+        padding: 0.75rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        background: #f8fafc;
+    }
+
+    .import-box textarea {
+        min-height: 150px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    .import-actions {
+        margin-top: 0.55rem;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
+    .import-check {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        font-size: 0.78rem;
+        color: #334155;
+    }
+
+    .import-check input[type="checkbox"] {
+        margin: 0;
+        width: auto;
+    }
+
     @media (max-width: 1080px) {
         .forms-grid {
             grid-template-columns: 1fr;
@@ -362,7 +430,22 @@ includeSidebar('Formulários eventos');
 
         <section class="panel">
             <h2>Montagem do formulário</h2>
-            <p>Monte o formulário por campos e salve como novo template.</p>
+            <p>Monte o formulário por campos ou importe texto/HTML e salve como novo template.</p>
+
+            <div class="import-box">
+                <div class="field-group full">
+                    <label for="importSource">Importar de texto/HTML (geração automática de campos)</label>
+                    <textarea id="importSource" rows="7" placeholder="Cole aqui o texto ou codigo HTML do formulario pronto..."></textarea>
+                </div>
+                <div class="import-actions">
+                    <label class="import-check" for="importIncludeNotes">
+                        <input type="checkbox" id="importIncludeNotes" checked>
+                        Manter instruções como texto informativo
+                    </label>
+                    <button type="button" class="btn btn-secondary" onclick="importFromSource(false)">⚙️ Gerar campos</button>
+                    <button type="button" class="btn btn-secondary" onclick="importFromSource(true)">⚡ Gerar e salvar novo</button>
+                </div>
+            </div>
 
             <div class="field-grid">
                 <div class="field-group">
@@ -386,6 +469,7 @@ includeSidebar('Formulários eventos');
                         <option value="yesno">Opção Sim/Não</option>
                         <option value="select">Múltipla escolha</option>
                         <option value="file">Upload de arquivo</option>
+                        <option value="note">Texto informativo</option>
                         <option value="section">Título de seção</option>
                     </select>
                 </div>
@@ -453,18 +537,19 @@ function formatDate(dateStr) {
 
 function normalizeFormSchema(schema) {
     if (!Array.isArray(schema)) return [];
-    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
     return schema.map((field) => {
         let type = String(field.type || 'text').trim().toLowerCase();
         if (!allowedTypes.includes(type)) type = 'text';
         const options = Array.isArray(field.options)
             ? field.options.map((v) => String(v).trim()).filter(Boolean)
             : [];
+        const neverRequired = ['section', 'divider', 'note'].includes(type);
         return {
             id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
             type: type,
             label: String(field.label || '').trim(),
-            required: !!field.required,
+            required: neverRequired ? false : !!field.required,
             options: options
         };
     }).filter((field) => field.type === 'divider' || field.label !== '');
@@ -477,6 +562,7 @@ function getFieldTypeLabel(type) {
         yesno: 'Sim/Não',
         select: 'Múltipla escolha',
         file: 'Upload',
+        note: 'Texto informativo',
         section: 'Título de seção',
         divider: 'Separador'
     };
@@ -622,7 +708,7 @@ function addField() {
         id: 'f_' + Math.random().toString(36).slice(2, 10),
         type: type,
         label: question,
-        required: type === 'section' || type === 'divider' ? false : required,
+        required: type === 'section' || type === 'divider' || type === 'note' ? false : required,
         options: []
     };
 
@@ -676,7 +762,7 @@ function moveField(index, direction) {
 function toggleRequired(index) {
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
     const field = formBuilderFields[index];
-    if (!field || field.type === 'section' || field.type === 'divider') return;
+    if (!field || field.type === 'section' || field.type === 'divider' || field.type === 'note') return;
     field.required = !field.required;
     renderBuilderFields();
     setBuilderDirty(true);
@@ -778,6 +864,61 @@ async function refreshTemplates() {
         updateSelectedTemplateMeta();
     } catch (err) {
         setStatus(err.message || 'Erro ao carregar formulários.', 'error');
+    }
+}
+
+function countFillableFields(schema) {
+    if (!Array.isArray(schema)) return 0;
+    const fillable = ['text', 'textarea', 'yesno', 'select', 'file'];
+    return schema.reduce((total, field) => {
+        const type = String(field && field.type ? field.type : '').toLowerCase();
+        return total + (fillable.includes(type) ? 1 : 0);
+    }, 0);
+}
+
+async function importFromSource(autoSave = false) {
+    const sourceEl = document.getElementById('importSource');
+    const includeNotesEl = document.getElementById('importIncludeNotes');
+    const sourceText = sourceEl ? String(sourceEl.value || '').trim() : '';
+    if (!sourceText) {
+        setStatus('Cole o texto/HTML para gerar os campos automaticamente.', 'error');
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'gerar_schema_template_form');
+        formData.append('source_text', sourceText);
+        formData.append('include_notes', includeNotesEl && includeNotesEl.checked ? '1' : '0');
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            setStatus(data.error || 'Erro ao importar texto para campos.', 'error');
+            return;
+        }
+
+        const importedSchema = normalizeFormSchema(Array.isArray(data.schema) ? data.schema : []);
+        if (!importedSchema.length || !hasUsefulSchemaFields(importedSchema)) {
+            setStatus('Nao foi possivel gerar perguntas preenchiveis a partir do texto informado.', 'error');
+            return;
+        }
+
+        formBuilderFields = importedSchema;
+        renderBuilderFields();
+        setBuilderDirty(true);
+
+        const total = importedSchema.length;
+        const fillable = countFillableFields(importedSchema);
+        setStatus(`Importacao concluida: ${total} item(ns), ${fillable} campo(s) preenchivel(is).`, 'success');
+
+        if (autoSave) {
+            await saveNewTemplate();
+        }
+    } catch (err) {
+        setStatus('Erro ao importar texto: ' + (err.message || err), 'error');
     }
 }
 

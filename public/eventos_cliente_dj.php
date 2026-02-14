@@ -113,7 +113,7 @@ function eventos_cliente_normalizar_schema($raw): array {
     if (!is_array($raw)) {
         return [];
     }
-    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    $allowed_types = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
     $schema = [];
     foreach ($raw as $item) {
         if (!is_array($item)) {
@@ -144,7 +144,7 @@ function eventos_cliente_normalizar_schema($raw): array {
             'id' => $id,
             'type' => $type,
             'label' => $label,
-            'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider',
+            'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider' && $type !== 'note',
             'options' => $options,
         ];
     }
@@ -172,6 +172,10 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
         }
         if ($field_type === 'section') {
             $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
+            continue;
+        }
+        if ($field_type === 'note') {
+            $parts[] = '<p><em>' . eventos_cliente_e($label) . '</em></p>';
             continue;
         }
         if ($field_type === 'file') {
@@ -984,6 +988,10 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
                     <?php elseif (($field['type'] ?? '') === 'section'): ?>
                         <h4 style="margin-top: 1.1rem; margin-bottom: 0.6rem; color: #1e3a8a;"><?= eventos_cliente_e($label) ?></h4>
+                    <?php elseif (($field['type'] ?? '') === 'note'): ?>
+                        <p style="margin: 0.2rem 0 0.9rem 0; color:#475569; font-size:0.9rem; background:#f8fafc; border:1px solid #dbe3ef; border-radius:8px; padding:0.65rem 0.75rem;">
+                            <?= eventos_cliente_e($label) ?>
+                        </p>
                     <?php else: ?>
                         <div style="margin-bottom: 1rem;">
                             <label style="display:block; font-weight:600; color:#334155; margin-bottom:0.35rem;" for="<?= eventos_cliente_e($field_name) ?>">

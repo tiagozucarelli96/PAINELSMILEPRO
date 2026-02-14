@@ -817,6 +817,17 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         font-weight: 700;
     }
 
+    .section-form-note {
+        margin: 0.2rem 0 0.3rem 0;
+        padding: 0.6rem 0.7rem;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid #dbe3ef;
+        color: #475569;
+        font-size: 0.83rem;
+        line-height: 1.45;
+    }
+
     .link-display {
         display: flex;
         gap: 0.5rem;
@@ -1756,16 +1767,17 @@ function appendEditorContent(content, section = 'dj_protocolo') {
 
 function normalizeFormSchema(schema) {
     if (!Array.isArray(schema)) return [];
-    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider'];
+    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
     return schema.map((field) => {
         let type = String(field.type || 'text').trim().toLowerCase();
         if (!allowedTypes.includes(type)) type = 'text';
         const options = Array.isArray(field.options) ? field.options.map((v) => String(v).trim()).filter(Boolean) : [];
+        const neverRequired = ['section', 'divider', 'note'].includes(type);
         return {
             id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
             type: type,
             label: String(field.label || '').trim(),
-            required: !!field.required,
+            required: neverRequired ? false : !!field.required,
             options: options
         };
     }).filter((field) => {
@@ -1875,6 +1887,10 @@ function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos'
         }
         if (field.type === 'section') {
             html += `<h3>${label}</h3>`;
+            return;
+        }
+        if (field.type === 'note') {
+            html += `<p><em>${label}</em></p>`;
             return;
         }
         if (field.type === 'yesno') {
@@ -2068,6 +2084,9 @@ function renderSectionTemplateForm(section) {
         }
         if (type === 'section') {
             return `<h4 class="section-form-title">${label}</h4>`;
+        }
+        if (type === 'note') {
+            return `<p class="section-form-note">${label}</p>`;
         }
         if (type === 'textarea') {
             return `
@@ -2297,6 +2316,10 @@ function buildSectionContentFromForm(section, schema, values, legacyContentHtml)
         }
         if (type === 'section') {
             parts.push(`<h3>${escapeHtmlForField(label)}</h3>`);
+            return;
+        }
+        if (type === 'note') {
+            parts.push(`<p><em>${escapeHtmlForField(label)}</em></p>`);
             return;
         }
 

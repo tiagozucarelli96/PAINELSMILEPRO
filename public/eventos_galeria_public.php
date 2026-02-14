@@ -11,10 +11,10 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 
 $categorias = [
-    'infantil' => ['icon' => '🎈', 'label' => 'Infantil'],
-    'casamento' => ['icon' => '💒', 'label' => 'Casamento'],
-    '15_anos' => ['icon' => '👑', 'label' => '15 Anos'],
-    'geral' => ['icon' => '🎉', 'label' => 'Geral']
+    'infantil' => ['symbol' => 'IN', 'label' => 'Infantil'],
+    'casamento' => ['symbol' => 'CS', 'label' => 'Casamento'],
+    '15_anos' => ['symbol' => '15', 'label' => '15 anos'],
+    'geral' => ['symbol' => 'GE', 'label' => 'Geral']
 ];
 $categorias_filtro = [
     'infantil' => $categorias['infantil'],
@@ -66,7 +66,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Galeria Smile Pro</title>
+    <title>Galeria Smile</title>
     <style>
         :root {
             --brand-blue: #0f2d75;
@@ -122,28 +122,32 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 
         .brand-line {
             display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 8px;
+            align-items: flex-start;
+            gap: 16px;
         }
 
         .brand-line img {
-            width: 52px;
-            height: 52px;
+            width: 92px;
+            height: 92px;
             object-fit: contain;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.08);
-            padding: 6px;
+            flex-shrink: 0;
         }
 
-        .brand-line h1 {
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding-top: 6px;
+        }
+
+        .brand-text h1 {
             margin: 0;
-            font-size: 1.45rem;
+            font-size: 2rem;
             font-weight: 800;
             letter-spacing: 0.2px;
         }
 
-        .hero-card p {
+        .brand-text p {
             margin: 0;
             max-width: 760px;
             color: rgba(255, 255, 255, 0.9);
@@ -184,7 +188,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             font-weight: 700;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 7px;
             transition: all 0.2s ease;
         }
 
@@ -196,6 +200,25 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 
         .cat:hover {
             border-color: #7ca7e8;
+        }
+
+        .cat-icon {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #dbeafe;
+            color: #1e3a8a;
+            font-size: 0.63rem;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 0.02em;
+        }
+
+        .cat.active .cat-icon {
+            background: rgba(255, 255, 255, 0.22);
+            color: #fff;
         }
 
         .search-row {
@@ -274,6 +297,23 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             margin: 0;
             color: var(--muted);
             font-size: 0.78rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .meta-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            color: #1e3a8a;
+            font-size: 0.56rem;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 0.02em;
         }
 
         .empty {
@@ -283,6 +323,21 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             text-align: center;
             padding: 40px 20px;
             color: var(--muted);
+        }
+
+        .empty-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 12px;
+            border-radius: 14px;
+            border: 2px solid #cbd5e1;
+            background: linear-gradient(160deg, #f8fafc 0%, #e2e8f0 100%);
+            color: #334155;
+            font-size: 0.74rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .modal {
@@ -362,6 +417,16 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 border-radius: 16px;
                 padding: 16px;
             }
+            .brand-line img {
+                width: 76px;
+                height: 76px;
+            }
+            .brand-text {
+                padding-top: 2px;
+            }
+            .brand-text h1 {
+                font-size: 1.55rem;
+            }
         }
     </style>
 </head>
@@ -370,12 +435,11 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <div class="hero-card">
             <div class="brand-line">
                 <img src="logo.png" alt="Grupo Smile">
-                <h1>Galeria Smile Pro</h1>
+                <div class="brand-text">
+                    <h1>Galeria Smile</h1>
+                    <p>Inspire-se com referências de decoração e ambientação dos eventos.</p>
+                </div>
             </div>
-            <p>
-                Inspire-se com referências de decoração e ambientação dos eventos.
-                Esta galeria é pública e apenas para visualização.
-            </p>
         </div>
     </section>
 
@@ -383,11 +447,13 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         <div class="toolbar">
             <div class="cats">
                 <a href="?page=eventos_galeria_public" class="cat <?= $categoria_filter === '' ? 'active' : '' ?>">
-                    📷 Todas (<?= array_sum($contadores) ?>)
+                    <span class="cat-icon">TD</span>
+                    Todas (<?= array_sum($contadores) ?>)
                 </a>
                 <?php foreach ($categorias_filtro as $key => $cat): ?>
                     <a href="?page=eventos_galeria_public&categoria=<?= urlencode($key) ?>" class="cat <?= $categoria_filter === $key ? 'active' : '' ?>">
-                        <?= htmlspecialchars($cat['icon']) ?> <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
+                        <span class="cat-icon"><?= htmlspecialchars($cat['symbol']) ?></span>
+                        <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
                     </a>
                 <?php endforeach; ?>
             </div>
@@ -404,7 +470,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 
         <?php if (empty($imagens)): ?>
             <div class="empty">
-                <p style="font-size:2rem;margin:0 0 8px;">🖼️</p>
+                <div class="empty-icon" aria-hidden="true">IMG</div>
                 <p style="margin:0 0 4px;"><strong>Nenhuma imagem disponível</strong></p>
                 <p style="margin:0;">Tente outro filtro ou volte mais tarde.</p>
             </div>
@@ -413,7 +479,15 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 <?php foreach ($imagens as $img): ?>
                     <?php
                     $img_id = (int)$img['id'];
-                    $img_name = (string)($img['nome'] ?? '');
+                    $img_categoria = (string)($img['categoria'] ?? '');
+                    $img_name = trim((string)($img['nome'] ?? ''));
+                    if ($img_categoria === 'infantil') {
+                        $img_name = 'Infantil';
+                    } elseif ($img_categoria === '15_anos') {
+                        $img_name = '15 anos';
+                    } elseif ($img_name === '') {
+                        $img_name = (string)($categorias[$img_categoria]['label'] ?? 'Imagem');
+                    }
                     $img_desc = (string)($img['descricao'] ?? '');
                     $img_fallback_src = 'eventos_galeria_public_imagem.php?id=' . $img_id;
                     $img_public_url = trim((string)($img['public_url'] ?? ''));
@@ -436,8 +510,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                         <div class="card-body">
                             <h3 class="card-title"><?= htmlspecialchars($img_name) ?></h3>
                             <p class="card-meta">
-                                <?= htmlspecialchars($categorias[$img['categoria']]['icon'] ?? '📷') ?>
-                                <?= htmlspecialchars($categorias[$img['categoria']]['label'] ?? (string)$img['categoria']) ?>
+                                <span class="meta-icon"><?= htmlspecialchars($categorias[$img_categoria]['symbol'] ?? 'TD') ?></span>
+                                <?= htmlspecialchars($categorias[$img_categoria]['label'] ?? $img_categoria) ?>
                             </p>
                         </div>
                     </article>
