@@ -12,6 +12,16 @@ CREATE TABLE IF NOT EXISTS demandas_boards (
     ativo BOOLEAN DEFAULT TRUE
 );
 
+-- 1.1 Visibilidade por quadro (opcional)
+-- Se um quadro não tiver registros aqui, permanece visível para todos os usuários.
+CREATE TABLE IF NOT EXISTS demandas_boards_usuarios (
+    id SERIAL PRIMARY KEY,
+    board_id INT NOT NULL REFERENCES demandas_boards(id) ON DELETE CASCADE,
+    usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(board_id, usuario_id)
+);
+
 -- 2. Listas
 CREATE TABLE IF NOT EXISTS demandas_listas (
     id SERIAL PRIMARY KEY,
@@ -124,6 +134,8 @@ ON demandas_fixas_log(demanda_fixa_id, dia_gerado);
 
 -- Índices
 CREATE INDEX IF NOT EXISTS idx_boards_criado_por ON demandas_boards(criado_por);
+CREATE INDEX IF NOT EXISTS idx_boards_usuarios_board ON demandas_boards_usuarios(board_id);
+CREATE INDEX IF NOT EXISTS idx_boards_usuarios_usuario ON demandas_boards_usuarios(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_listas_board ON demandas_listas(board_id);
 CREATE INDEX IF NOT EXISTS idx_listas_posicao ON demandas_listas(board_id, posicao);
 CREATE INDEX IF NOT EXISTS idx_cards_lista ON demandas_cards(lista_id);
@@ -136,4 +148,3 @@ CREATE INDEX IF NOT EXISTS idx_comentarios_card ON demandas_comentarios_trello(c
 CREATE INDEX IF NOT EXISTS idx_arquivos_card ON demandas_arquivos_trello(card_id);
 CREATE INDEX IF NOT EXISTS idx_notificacoes_user ON demandas_notificacoes(usuario_id, lida);
 CREATE INDEX IF NOT EXISTS idx_fixas_board ON demandas_fixas(board_id);
-

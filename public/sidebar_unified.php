@@ -1753,14 +1753,14 @@ if ($current_page === 'dashboard') {
                         return;
                     }
 
-                    // Solicita permissão uma vez por usuário/navegador para não incomodar a cada página.
-                    var promptKey = 'push_prompted_user_' + String(userId);
-                    var prompted = localStorage.getItem(promptKey) === '1';
-                    if (Notification.permission === 'default' && !prompted) {
-                        localStorage.setItem(promptKey, '1');
+                    // Se ainda não decidiu (default), solicitar novamente para evitar casos
+                    // em que a primeira tentativa não foi exibida ao usuário.
+                    if (Notification.permission === 'default') {
                         await manager.requestPermission();
-                        await manager.registerServiceWorker();
-                        await manager.subscribe();
+                        if (Notification.permission === 'granted') {
+                            await manager.registerServiceWorker();
+                            await manager.subscribe();
+                        }
                     }
                 } catch (err) {
                     console.warn('Push init falhou:', err && err.message ? err.message : err);

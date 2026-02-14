@@ -9,14 +9,15 @@ require_once __DIR__ . '/core/google_calendar_auto_sync.php';
 
 // Verificar permissões
 $agenda = new AgendaHelper();
-$usuario_id = $_SESSION['user_id'] ?? 1;
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
 
 if (!$agenda->canAccessAgenda($usuario_id)) {
     header('Location: index.php?page=dashboard');
     exit;
 }
 
-$usuario_id = $_SESSION['user_id'] ?? 1;
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
 
 // Auto-sync Google Calendar ao carregar a agenda (com throttling por sessão)
 google_calendar_auto_sync($GLOBALS['pdo'], 'agenda');
@@ -500,10 +501,10 @@ includeSidebar('Agenda');
                     <button class="btn btn-outline" onclick="toggleFilters()">
                         🔍 Filtros
                     </button>
+                    <?php if ($is_superadmin): ?>
                     <a href="agenda_config.php" class="btn btn-outline">
                         ⚙️ Config
                     </a>
-                    <?php if (!empty($_SESSION['perm_administrativo']) || !empty($_SESSION['perm_configuracoes'])): ?>
                     <a href="index.php?page=google_calendar_config" class="btn btn-outline" style="text-decoration: none;">
                         📅 Google Calendar
                     </a>

@@ -84,6 +84,40 @@ includeSidebar('Demandas');
     align-items: center;
 }
 
+.page-demandas-quadros-menu {
+    position: relative;
+}
+
+.page-demandas-quadros-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    width: 320px;
+    max-width: 85vw;
+    background: #ffffff;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+    z-index: 2200;
+    display: none;
+    overflow: hidden;
+}
+
+.page-demandas-quadros-dropdown.open {
+    display: block;
+}
+
+.page-demandas-quadros-dropdown-header {
+    padding: 0.75rem;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.page-demandas-quadros-dropdown-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
 .btn {
     padding: 0.5rem 1rem;
     border-radius: 6px;
@@ -174,6 +208,11 @@ includeSidebar('Demandas');
     overflow: hidden;
     flex-shrink: 0;
     transition: transform 0.3s ease;
+}
+
+/* Navegação de quadros movida para o botão "Quadros" no cabeçalho */
+.page-demandas-sidebar {
+    display: none !important;
 }
 
 .page-demandas-sidebar-header {
@@ -464,6 +503,46 @@ includeSidebar('Demandas');
     color: #172b4d;
     font-size: 0.875rem;
     line-height: 1.35;
+}
+
+.page-demandas-card-header-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+}
+
+.page-demandas-card-check {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    border-radius: 999px;
+    border: 2px solid #9ca3af;
+    background: #ffffff;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: all 0.2s ease;
+}
+
+.page-demandas-card-check:hover {
+    border-color: #3b82f6;
+    transform: scale(1.05);
+}
+
+.page-demandas-card-check.done {
+    border-color: #10b981;
+    background: #10b981;
+    color: #ffffff;
+}
+
+.page-demandas-card-title.done {
+    color: #6b7280;
+    text-decoration: line-through;
 }
 
 .page-demandas-card-badges {
@@ -1070,6 +1149,17 @@ includeSidebar('Demandas');
         <h1>📋 Demandas</h1>
         <div class="page-demandas-header-actions">
             <button class="btn btn-primary" onclick="abrirModalNovoCard()">➕ Novo Card</button>
+            <div class="page-demandas-quadros-menu">
+                <button class="btn btn-outline" type="button" id="btn-quadros-menu" onclick="toggleQuadrosMenu(event)">📚 Quadros</button>
+                <div id="quadros-menu-dropdown" class="page-demandas-quadros-dropdown">
+                    <div class="page-demandas-quadros-dropdown-header">
+                        <input type="text" id="quadros-menu-search" class="page-demandas-sidebar-search" placeholder="Buscar quadro..." oninput="filtrarQuadros(this.value)">
+                    </div>
+                    <div id="quadros-menu-list" class="page-demandas-quadros-dropdown-list">
+                        <div class="page-demandas-list-empty" style="padding: 1rem;">Carregando quadros...</div>
+                    </div>
+                </div>
+            </div>
             <button class="btn btn-outline" onclick="abrirModalNovaLista()">📋 Nova Lista</button>
             <button class="btn btn-outline" onclick="toggleDrawerFixas()">📅 Demandas Fixas</button>
             <button class="btn btn-outline" id="btn-density-toggle" type="button">↔ Modo compacto</button>
@@ -1224,10 +1314,11 @@ includeSidebar('Demandas');
 <div id="modal-novo-quadro" class="page-demandas-modal">
     <div class="page-demandas-modal-content">
         <div class="page-demandas-modal-header">
-            <h2>Novo Quadro</h2>
+            <h2 id="modal-quadro-title">Novo Quadro</h2>
             <button class="page-demandas-modal-close" onclick="fecharModal('modal-novo-quadro')">&times;</button>
         </div>
         <form id="form-novo-quadro">
+            <input type="hidden" id="quadro-id">
             <div class="page-demandas-form-group">
                 <label for="quadro-nome">Nome *</label>
                 <input type="text" id="quadro-nome" required>
@@ -1254,9 +1345,18 @@ includeSidebar('Demandas');
                     <span class="page-demandas-color-hex" id="quadro-cor-hex-display">#3b82f6</span>
                 </div>
             </div>
+            <div class="page-demandas-form-group">
+                <label for="quadro-usuarios-visiveis">Usuários que podem visualizar este quadro *</label>
+                <select id="quadro-usuarios-visiveis" multiple style="min-height: 150px;">
+                    <?php foreach ($usuarios as $user): ?>
+                        <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small style="color: #6b7280; font-size: 0.75rem;">Selecione 1 ou mais usuários (Ctrl/Cmd para múltiplos). Por padrão, todos ficam selecionados.</small>
+            </div>
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="button" class="btn btn-outline" onclick="fecharModal('modal-novo-quadro')">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Criar Quadro</button>
+                <button type="submit" class="btn btn-primary" id="quadro-submit-btn">Criar Quadro</button>
             </div>
         </form>
     </div>
@@ -1302,20 +1402,9 @@ includeSidebar('Demandas');
                 <label for="card-descricao">Descrição</label>
                 <textarea id="card-descricao"></textarea>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="page-demandas-form-group">
-                    <label for="card-prazo">Prazo</label>
-                    <input type="date" id="card-prazo">
-                </div>
-                <div class="page-demandas-form-group">
-                    <label for="card-prioridade">Prioridade</label>
-                    <select id="card-prioridade">
-                        <option value="media">Média</option>
-                        <option value="baixa">Baixa</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
-                </div>
+            <div class="page-demandas-form-group">
+                <label for="card-prazo">Prazo</label>
+                <input type="date" id="card-prazo">
             </div>
             <div class="page-demandas-form-group">
                 <label for="card-categoria">Categoria</label>
@@ -1373,20 +1462,9 @@ includeSidebar('Demandas');
                 <label for="edit-card-descricao">Descrição</label>
                 <textarea id="edit-card-descricao" rows="4"></textarea>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="page-demandas-form-group">
-                    <label for="edit-card-prazo">Prazo</label>
-                    <input type="date" id="edit-card-prazo">
-                </div>
-                <div class="page-demandas-form-group">
-                    <label for="edit-card-prioridade">Prioridade</label>
-                    <select id="edit-card-prioridade">
-                        <option value="baixa">Baixa</option>
-                        <option value="media">Média</option>
-                        <option value="alta">Alta</option>
-                        <option value="urgente">Urgente</option>
-                    </select>
-                </div>
+            <div class="page-demandas-form-group">
+                <label for="edit-card-prazo">Prazo</label>
+                <input type="date" id="edit-card-prazo">
             </div>
             <div class="page-demandas-form-group">
                 <label for="edit-card-categoria">Categoria</label>
@@ -1512,6 +1590,8 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         salvarEdicaoCard();
     });
+
+    resetarModalQuadro();
     
     document.getElementById('form-fixa')?.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -1579,6 +1659,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Fechar modais ao clicar fora
     document.addEventListener('click', function(e) {
+        if (!e.target.closest('.page-demandas-quadros-menu')) {
+            fecharQuadrosMenu();
+        }
         if (e.target.classList.contains('page-demandas-modal')) {
             fecharModal(e.target.id);
         }
@@ -1586,21 +1669,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function verificarResponsividade() {
-    const sidebar = document.getElementById('sidebar-boards');
     const btnToggle = document.getElementById('btn-toggle-sidebar');
-    
-    if (window.innerWidth < 1280) {
-        sidebar.classList.add('drawer');
-        if (btnToggle) btnToggle.style.display = 'block';
-    } else {
-        sidebar.classList.remove('drawer', 'open');
-        if (btnToggle) btnToggle.style.display = 'none';
-    }
+    if (btnToggle) btnToggle.style.display = 'none';
 }
 
 function toggleSidebarBoards() {
-    const sidebar = document.getElementById('sidebar-boards');
-    sidebar.classList.toggle('open');
+    // Navegação de quadros foi movida para o botão "Quadros" do cabeçalho.
 }
 
 // ============================================
@@ -1634,8 +1708,19 @@ async function carregarQuadros() {
 }
 
 function mostrarSkeletonQuadros() {
-    document.getElementById('boards-favoritos').innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(3);
-    document.getElementById('boards-todos').innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(5);
+    const favoritosEl = document.getElementById('boards-favoritos');
+    const todosEl = document.getElementById('boards-todos');
+    const menuListEl = document.getElementById('quadros-menu-list');
+
+    if (favoritosEl) {
+        favoritosEl.innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(3);
+    }
+    if (todosEl) {
+        todosEl.innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(5);
+    }
+    if (menuListEl) {
+        menuListEl.innerHTML = '<div class="page-demandas-skeleton page-demandas-skeleton-list"></div>'.repeat(5);
+    }
 }
 
 function atualizarFavoritos() {
@@ -1644,25 +1729,30 @@ function atualizarFavoritos() {
 }
 
 function renderizarSidebarQuadros() {
-    // Renderizar favoritos
     const favoritosEl = document.getElementById('boards-favoritos');
-    if (boardsFavoritos.length === 0) {
-        favoritosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum favorito</div>';
-    } else {
-        favoritosEl.innerHTML = boardsFavoritos.map(board => renderizarItemQuadro(board, true)).join('');
+    if (favoritosEl) {
+        if (boardsFavoritos.length === 0) {
+            favoritosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum favorito</div>';
+        } else {
+            favoritosEl.innerHTML = boardsFavoritos.map(board => renderizarItemQuadro(board, true)).join('');
+        }
     }
     
-    // Renderizar todos (excluindo favoritos)
     const todosEl = document.getElementById('boards-todos');
     const boardsSemFavoritos = boardsFiltrados.length > 0 
         ? boardsFiltrados.filter(b => !favoritosStorage.includes(b.id))
         : boards.filter(b => !favoritosStorage.includes(b.id));
     
-    if (boardsSemFavoritos.length === 0) {
-        todosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum quadro encontrado</div>';
-    } else {
-        todosEl.innerHTML = boardsSemFavoritos.map(board => renderizarItemQuadro(board, false)).join('');
+    if (todosEl) {
+        if (boardsSemFavoritos.length === 0) {
+            todosEl.innerHTML = '<div style="padding: 0.5rem; color: #9ca3af; font-size: 0.75rem;">Nenhum quadro encontrado</div>';
+        } else {
+            todosEl.innerHTML = boardsSemFavoritos.map(board => renderizarItemQuadro(board, false)).join('');
+        }
     }
+
+    renderizarQuadrosMenu();
+    atualizarBotaoQuadros();
 }
 
 function renderizarItemQuadro(board, isFavorito) {
@@ -1678,6 +1768,75 @@ function renderizarItemQuadro(board, isFavorito) {
             <span class="page-demandas-board-item-star" onclick="event.stopPropagation(); toggleFavorito(${board.id})">⭐</span>
         </div>
     `;
+}
+
+function renderizarQuadrosMenu() {
+    const menuListEl = document.getElementById('quadros-menu-list');
+    if (!menuListEl) {
+        return;
+    }
+
+    const lista = boardsFiltrados.length > 0 ? boardsFiltrados : boards;
+
+    if (lista.length === 0) {
+        menuListEl.innerHTML = '<div class="page-demandas-list-empty" style="padding: 1rem;">Nenhum quadro encontrado</div>';
+        return;
+    }
+
+    menuListEl.innerHTML = lista.map(board => {
+        const cor = board.cor || '#3b82f6';
+        const ativo = currentBoardId === board.id;
+        return `
+            <button type="button" class="page-demandas-board-item ${ativo ? 'active' : ''}" style="width: 100%; border: none; background: transparent; text-align: left;" onclick="selecionarQuadro(${board.id}); fecharQuadrosMenu();">
+                <div class="page-demandas-board-item-color" style="background: ${cor}"></div>
+                <div class="page-demandas-board-item-name">${escapeHtml(board.nome)}</div>
+                ${ativo ? '<span style="font-size: 0.75rem; color: #1d4ed8; font-weight: 600;">Selecionado</span>' : ''}
+            </button>
+        `;
+    }).join('');
+}
+
+function atualizarBotaoQuadros() {
+    const btn = document.getElementById('btn-quadros-menu');
+    if (!btn) {
+        return;
+    }
+    if (currentBoard && currentBoard.nome) {
+        btn.textContent = `📚 Quadros: ${currentBoard.nome}`;
+    } else {
+        btn.textContent = '📚 Quadros';
+    }
+}
+
+function toggleQuadrosMenu(event) {
+    if (event) {
+        event.stopPropagation();
+    }
+
+    const dropdown = document.getElementById('quadros-menu-dropdown');
+    if (!dropdown) {
+        return;
+    }
+
+    const vaiAbrir = !dropdown.classList.contains('open');
+    dropdown.classList.toggle('open');
+
+    if (vaiAbrir) {
+        const search = document.getElementById('quadros-menu-search');
+        if (search) {
+            search.value = '';
+            setTimeout(() => search.focus(), 0);
+        }
+        boardsFiltrados = [];
+        renderizarQuadrosMenu();
+    }
+}
+
+function fecharQuadrosMenu() {
+    const dropdown = document.getElementById('quadros-menu-dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('open');
+    }
 }
 
 function filtrarQuadros(termo) {
@@ -1738,6 +1897,7 @@ function selecionarQuadro(boardId) {
 
     currentBoardId = boardId;
     currentBoard = boardExiste;
+    fecharQuadrosMenu();
     
     // Fechar sidebar mobile após seleção
     if (window.innerWidth < 1280) {
@@ -1881,6 +2041,8 @@ function renderizarCards(listaId) {
     return cardsList.map(card => {
         const hoje = new Date();
         const prazo = card.prazo ? new Date(card.prazo) : null;
+        const statusAtual = (card.status || '').toLowerCase();
+        const cardConcluido = statusAtual === 'concluido';
         let prazoClass = '';
         let prazoText = '';
         
@@ -1916,10 +2078,12 @@ function renderizarCards(listaId) {
                  onclick="verCard(${card.id})"
                  ${prazoClass ? `data-prazo-class="${prazoClass}"` : ''}>
                 ${previewHtml}
-                <div class="page-demandas-card-title">${escapeHtml(card.titulo)}</div>
+                <div class="page-demandas-card-header-row">
+                    <button type="button" class="page-demandas-card-check ${cardConcluido ? 'done' : ''}" onclick="toggleStatusCardRapido(${card.id}, '${statusAtual}', event)" title="${cardConcluido ? 'Reabrir tarefa' : 'Concluir tarefa'}">${cardConcluido ? '✓' : ''}</button>
+                    <div class="page-demandas-card-title ${cardConcluido ? 'done' : ''}">${escapeHtml(card.titulo)}</div>
+                </div>
                 ${card.descricao ? `<div style="font-size: 0.75rem; color: #6b7280; margin: 0.5rem 0;">${escapeHtml(card.descricao.substring(0, 100))}${card.descricao.length > 100 ? '...' : ''}</div>` : ''}
                 <div class="page-demandas-card-badges">
-                    ${card.prioridade && card.prioridade !== 'media' ? `<span class="badge badge-prioridade prioridade-${card.prioridade}">${card.prioridade}</span>` : ''}
                     ${card.total_comentarios > 0 ? `<span class="badge badge-comentarios">💬 ${card.total_comentarios}</span>` : ''}
                     ${card.total_anexos > 0 ? `<span class="badge badge-anexos">📎 ${card.total_anexos}</span>` : ''}
                 </div>
@@ -1945,7 +2109,6 @@ async function criarCard(listaIdPredefinida = null) {
     const listaId = listaIdPredefinida || parseInt(document.getElementById('card-lista').value);
     const descricao = document.getElementById('card-descricao').value;
     const prazo = document.getElementById('card-prazo').value || null;
-    const prioridade = document.getElementById('card-prioridade').value;
     const categoria = document.getElementById('card-categoria').value || null;
     const usuarios = Array.from(document.getElementById('card-usuarios').selectedOptions).map(opt => parseInt(opt.value));
     const anexoInput = document.getElementById('card-anexo');
@@ -1959,7 +2122,6 @@ async function criarCard(listaIdPredefinida = null) {
                 titulo,
                 descricao,
                 prazo,
-                prioridade,
                 categoria,
                 usuarios
             })
@@ -2021,37 +2183,110 @@ async function moverCard(cardId, novaListaId, novaPosicao) {
     }
 }
 
+async function toggleStatusCardRapido(cardId, statusAtual, event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const action = statusAtual === 'concluido' ? 'reabrir' : 'concluir';
+
+    try {
+        const response = await apiFetch(`${API_BASE}?action=${action}&id=${cardId}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            await carregarTodosCards();
+            renderizarBoard();
+            mostrarToast(action === 'concluir' ? '✅ Tarefa concluída!' : '↩️ Tarefa reaberta!');
+        } else {
+            customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
+        }
+    } catch (error) {
+        console.error('Erro ao alternar status do card:', error);
+        customAlert('Erro ao alterar status da tarefa', '❌ Erro');
+    }
+}
+
+function selecionarUsuariosNoQuadro(ids = []) {
+    const select = document.getElementById('quadro-usuarios-visiveis');
+    if (!select) return;
+    const idSet = new Set((ids || []).map(id => Number(id)));
+    Array.from(select.options).forEach(option => {
+        option.selected = idSet.has(Number(option.value));
+    });
+}
+
+function obterUsuariosSelecionadosNoQuadro() {
+    const select = document.getElementById('quadro-usuarios-visiveis');
+    if (!select) return [];
+    return Array.from(select.selectedOptions)
+        .map(opt => parseInt(opt.value, 10))
+        .filter(id => Number.isFinite(id) && id > 0);
+}
+
+function resetarModalQuadro() {
+    document.getElementById('quadro-id').value = '';
+    document.getElementById('modal-quadro-title').textContent = 'Novo Quadro';
+    document.getElementById('quadro-submit-btn').textContent = 'Criar Quadro';
+    document.getElementById('form-novo-quadro').reset();
+    atualizarPreviewCor('#3b82f6');
+    selecionarUsuariosNoQuadro(usuarios.map(u => Number(u.id)));
+}
+
 async function criarQuadro() {
+    const quadroId = parseInt(document.getElementById('quadro-id').value || '0', 10);
+    const isEdicao = Number.isFinite(quadroId) && quadroId > 0;
     const nome = document.getElementById('quadro-nome').value.trim();
     const descricao = document.getElementById('quadro-descricao').value;
     const cor = document.getElementById('quadro-cor').value;
+    let usuariosVisiveis = obterUsuariosSelecionadosNoQuadro();
     
     if (!nome) {
         customAlert('Nome é obrigatório', '⚠️ Atenção');
         return;
     }
+
+    // Compatibilidade solicitada: padrão para todos os usuários
+    if (usuariosVisiveis.length === 0) {
+        usuariosVisiveis = usuarios.map(u => Number(u.id));
+    }
     
     try {
-        const response = await apiFetch(`${API_BASE}?action=criar_quadro`, {
-            method: 'POST',
-            body: JSON.stringify({ nome, descricao, cor })
+        const url = isEdicao
+            ? `${API_BASE}?action=atualizar_quadro&id=${quadroId}`
+            : `${API_BASE}?action=criar_quadro`;
+        const method = isEdicao ? 'PATCH' : 'POST';
+
+        const response = await apiFetch(url, {
+            method,
+            body: JSON.stringify({
+                nome,
+                descricao,
+                cor,
+                usuarios_visiveis: usuariosVisiveis
+            })
         });
         
         const data = await response.json();
         
         if (data.success) {
             fecharModal('modal-novo-quadro');
-            document.getElementById('form-novo-quadro').reset();
-            atualizarPreviewCor('#3b82f6');
+            resetarModalQuadro();
             await carregarQuadros();
-            selecionarQuadro(data.data.id);
-            mostrarToast('✅ Quadro criado com sucesso!');
+            const boardIdSelecionar = data.data?.id ? Number(data.data.id) : currentBoardId;
+            if (boardIdSelecionar) {
+                selecionarQuadro(boardIdSelecionar);
+            }
+            mostrarToast(isEdicao ? '✅ Quadro atualizado com sucesso!' : '✅ Quadro criado com sucesso!');
         } else {
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
-        customAlert('Erro ao criar quadro', '❌ Erro');
+        customAlert(isEdicao ? 'Erro ao atualizar quadro' : 'Erro ao criar quadro', '❌ Erro');
     }
 }
 
@@ -2175,7 +2410,6 @@ async function verCard(cardId) {
                     ${prazoHtml}
                     ${card.descricao ? `<p style="margin: 1rem 0; line-height: 1.6;">${escapeHtml(card.descricao)}</p>` : ''}
                     <p><strong>Status:</strong> ${card.status}</p>
-                    <p><strong>Prioridade:</strong> ${card.prioridade || 'Média'}</p>
                     ${card.categoria ? `<p><strong>Categoria:</strong> ${escapeHtml(card.categoria)}</p>` : ''}
                     <p><strong>Criado por:</strong> ${escapeHtml(card.criador_nome || 'Desconhecido')}</p>
                     <p><strong>Responsáveis:</strong> ${(card.usuarios || []).map(u => escapeHtml(u.nome)).join(', ') || 'Nenhum'}</p>
@@ -2251,7 +2485,6 @@ async function editarCard(cardId) {
             document.getElementById('edit-card-titulo').value = card.titulo;
             document.getElementById('edit-card-descricao').value = card.descricao || '';
             document.getElementById('edit-card-prazo').value = card.prazo || '';
-            document.getElementById('edit-card-prioridade').value = card.prioridade || 'media';
             document.getElementById('edit-card-categoria').value = card.categoria || '';
             
             const selectUsuarios = document.getElementById('edit-card-usuarios');
@@ -2275,7 +2508,6 @@ async function salvarEdicaoCard() {
     const titulo = document.getElementById('edit-card-titulo').value.trim();
     const descricao = document.getElementById('edit-card-descricao').value;
     const prazo = document.getElementById('edit-card-prazo').value || null;
-    const prioridade = document.getElementById('edit-card-prioridade').value;
     const categoria = document.getElementById('edit-card-categoria').value || null;
     const usuarios = Array.from(document.getElementById('edit-card-usuarios').selectedOptions).map(opt => parseInt(opt.value));
     
@@ -2286,7 +2518,6 @@ async function salvarEdicaoCard() {
                 titulo,
                 descricao,
                 prazo,
-                prioridade,
                 categoria,
                 usuarios
             })
@@ -2942,6 +3173,7 @@ function fecharModal(modalId) {
 }
 
 function abrirModalNovoQuadro() {
+    resetarModalQuadro();
     abrirModal('modal-novo-quadro');
 }
 
@@ -2984,7 +3216,7 @@ function toggleMenuActions() {
     menuEl.id = 'menu-actions';
     menuEl.style.cssText = 'position: fixed; top: 70px; right: 1rem; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 2000; min-width: 200px; padding: 0.5rem;';
     menuEl.innerHTML = `
-        <button class="btn btn-outline" onclick="renomearQuadro()" style="width: 100%; justify-content: flex-start; margin-bottom: 0.5rem;">✏️ Renomear Quadro</button>
+        <button class="btn btn-outline" onclick="editarQuadro()" style="width: 100%; justify-content: flex-start; margin-bottom: 0.5rem;">✏️ Editar Quadro</button>
         <button class="btn btn-outline" onclick="arquivarQuadro()" style="width: 100%; justify-content: flex-start; margin-bottom: 0.5rem;">📦 Arquivar Quadro</button>
         <button class="btn btn-outline" onclick="exportarCSV()" style="width: 100%; justify-content: flex-start;">📥 Exportar CSV</button>
     `;
@@ -3001,28 +3233,38 @@ function toggleMenuActions() {
     }, 100);
 }
 
-async function renomearQuadro() {
-    const novoNome = await customPrompt('Digite o novo nome do quadro:', 'Renomear Quadro', currentBoard?.nome || '');
-    if (!novoNome || novoNome.trim() === '') return;
-    
+async function editarQuadro() {
     try {
-        const response = await apiFetch(`${API_BASE}?action=atualizar_quadro&id=${currentBoardId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({ nome: novoNome.trim() })
-        });
+        const response = await apiFetch(`${API_BASE}?action=quadro&id=${currentBoardId}`);
         
         const data = await response.json();
         
         if (data.success) {
-            await carregarQuadros();
-            selecionarQuadro(currentBoardId);
-            mostrarToast('✅ Quadro renomeado com sucesso!');
+            const quadro = data.data || {};
+            document.getElementById('quadro-id').value = quadro.id || currentBoardId;
+            document.getElementById('modal-quadro-title').textContent = 'Editar Quadro';
+            document.getElementById('quadro-submit-btn').textContent = 'Salvar Alterações';
+            document.getElementById('quadro-nome').value = quadro.nome || '';
+            document.getElementById('quadro-descricao').value = quadro.descricao || '';
+
+            const cor = quadro.cor || '#3b82f6';
+            atualizarPreviewCor(cor);
+            document.getElementById('quadro-cor').value = cor;
+            document.getElementById('quadro-cor-hex').value = cor;
+            document.getElementById('quadro-cor-hex-display').textContent = cor;
+
+            const usuariosVisiveis = Array.isArray(quadro.usuarios_visiveis) ? quadro.usuarios_visiveis.map(v => Number(v)) : [];
+            selecionarUsuariosNoQuadro(
+                usuariosVisiveis.length > 0 ? usuariosVisiveis : usuarios.map(u => Number(u.id))
+            );
+
+            abrirModal('modal-novo-quadro');
         } else {
             customAlert('Erro: ' + (data.error || 'Erro desconhecido'), '❌ Erro');
         }
     } catch (error) {
         console.error('Erro:', error);
-        customAlert('Erro ao renomear quadro', '❌ Erro');
+        customAlert('Erro ao carregar quadro para edição', '❌ Erro');
     }
     
     document.getElementById('menu-actions')?.remove();
@@ -3165,6 +3407,10 @@ function atualizarPreviewCor(cor) {
     document.getElementById('quadro-cor-preview').style.background = cor;
     document.getElementById('quadro-cor-hex-display').textContent = cor;
     document.getElementById('quadro-cor').value = cor;
+    const hexInput = document.getElementById('quadro-cor-hex');
+    if (hexInput) {
+        hexInput.value = cor;
+    }
 }
 
 function atualizarCorDoHex(hex) {
@@ -3190,10 +3436,3 @@ function mostrarToast(mensagem, tipo = 'success') {
 </script>
 
 <?php endSidebar(); ?>
-.page-demandas #btn-toggle-sidebar {
-    left: calc(var(--sidebar-width) + 1.5rem);
-}
-
-.main-content.expanded .page-demandas #btn-toggle-sidebar {
-    left: 1.5rem;
-}

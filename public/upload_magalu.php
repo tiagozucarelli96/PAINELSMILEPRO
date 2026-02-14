@@ -24,7 +24,7 @@ class MagaluUpload {
     private $secretKey;
     private $maxSizeMB;
     
-    public function __construct() {
+    public function __construct(?int $maxSizeMB = null) {
         // Carregar variáveis de ambiente (Railway usa $_ENV)
         $this->bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
         $this->region = $_ENV['MAGALU_REGION'] ?? getenv('MAGALU_REGION') ?: 'br-se1';
@@ -32,8 +32,16 @@ class MagaluUpload {
         $this->accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
         $this->secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
         // Default mais realista para propostas/PDFs (pode ser sobrescrito por UPLOAD_MAX_MB)
-        // Suporta arquivos maiores (ex.: 50MB) quando o PHP também permitir (post_max_size/upload_max_filesize)
-        $this->maxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 60);
+        // Suporta arquivos maiores quando o PHP também permitir (post_max_size/upload_max_filesize)
+        $defaultMaxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 60);
+        if ($defaultMaxSizeMB <= 0) {
+            $defaultMaxSizeMB = 60;
+        }
+        if ($maxSizeMB !== null && $maxSizeMB > 0) {
+            $this->maxSizeMB = $maxSizeMB;
+        } else {
+            $this->maxSizeMB = $defaultMaxSizeMB;
+        }
         
         // Normalizar bucket name (minúsculas)
         $this->bucket = strtolower($this->bucket);

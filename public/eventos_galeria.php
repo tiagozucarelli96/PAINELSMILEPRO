@@ -36,6 +36,8 @@ $search = trim((string)($_GET['search'] ?? ''));
 
 $error = '';
 $success = '';
+$galeria_max_upload_mb = 100;
+$galeria_max_upload_bytes = $galeria_max_upload_mb * 1024 * 1024;
 
 $categorias = [
     'infantil' => ['icon' => '🎈', 'label' => 'Infantil'],
@@ -230,13 +232,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
             $upload_fail_messages = [];
 
             foreach ($uploaded_files as $file) {
-                if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                    $upload_fail_messages[] = 'Falha ao ler uma das imagens selecionadas.';
+                $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($upload_error !== UPLOAD_ERR_OK) {
+                    if ($upload_error === UPLOAD_ERR_INI_SIZE || $upload_error === UPLOAD_ERR_FORM_SIZE) {
+                        $upload_fail_messages[] = "Arquivo excede o limite permitido. Máximo {$galeria_max_upload_mb}MB por imagem.";
+                    } else {
+                        $upload_fail_messages[] = 'Falha ao ler uma das imagens selecionadas.';
+                    }
                     continue;
                 }
 
-                if ((int)$file['size'] > 10 * 1024 * 1024) {
-                    $upload_fail_messages[] = 'Arquivo muito grande. Máximo 10MB.';
+                if ((int)$file['size'] > $galeria_max_upload_bytes) {
+                    $upload_fail_messages[] = "Arquivo muito grande. Máximo {$galeria_max_upload_mb}MB.";
                     continue;
                 }
 
@@ -273,7 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         $file['size'] = (int)(filesize($tmpConverted) ?: 0);
                     }
 
-                    $uploader = new MagaluUpload();
+                    $uploader = new MagaluUpload($galeria_max_upload_mb);
                     $result = $uploader->upload($file, 'galeria_eventos');
 
                     if (empty($result['chave_storage'])) {
@@ -1132,7 +1139,7 @@ includeSidebar('Galeria de Imagens - Eventos');
                 </div>
 
 	                <div class="form-group">
-	                    <label class="form-label">Imagens (JPG/PNG/GIF/WEBP/HEIC, máx. 10MB cada) *</label>
+	                    <label class="form-label">Imagens (JPG/PNG/GIF/WEBP/HEIC, máx. <?= (int)$galeria_max_upload_mb ?>MB cada) *</label>
 	                    <input type="file" name="imagens[]" class="form-input" accept="image/*" multiple required>
 	                </div>
                 <div class="upload-status" id="uploadStatus"></div>
@@ -1465,10 +1472,17 @@ includeSidebar('Galeria de Imagens - Eventos');
 	                return;
 	            }
 
-            if (files.length === 0) {
-                alert('Selecione pelo menos uma imagem.');
-                return;
-            }
+	            if (files.length === 0) {
+	                alert('Selecione pelo menos uma imagem.');
+	                return;
+	            }
+
+                const maxSizeBytes = <?= (int)$galeria_max_upload_bytes ?>;
+                const oversizedFiles = files.filter((file) => Number(file.size || 0) > maxSizeBytes);
+                if (oversizedFiles.length > 0) {
+                    alert(`Há arquivo(s) acima de <?= (int)$galeria_max_upload_mb ?>MB. Remova os maiores e tente novamente.`);
+                    return;
+                }
 
 	            if (submitBtn) {
 	                submitBtn.disabled = true;
@@ -1548,7 +1562,7 @@ includeSidebar('Galeria de Imagens - Eventos');
 	            if (failures.length > 0) {
 	                const first = failures.slice(0, 12);
 	                finalMsg += `\n\nErros (mostrando ${first.length} de ${failures.length}):\n- ${first.join('\n- ')}`;
-	                finalMsg += `\n\nDica: limite atual da galeria e 10MB por imagem e formatos aceitos: JPG/PNG/GIF/WEBP/HEIC (HEIC vira JPG).`;
+	                finalMsg += `\n\nDica: limite atual da galeria e <?= (int)$galeria_max_upload_mb ?>MB por imagem e formatos aceitos: JPG/PNG/GIF/WEBP/HEIC (HEIC vira JPG).`;
 	            }
 	            uploadStatus.textContent = finalMsg;
 

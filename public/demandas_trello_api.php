@@ -55,26 +55,292 @@ header('Content-Type: application/json; charset=utf-8');
 // FUNÇÕES PRINCIPAIS
 // ============================================
 
+function valorBooleano($valor) {
+    if (is_bool($valor)) {
+        return $valor;
+    }
+    $texto = strtolower(trim((string)$valor));
+    return in_array($texto, ['1', 't', 'true', 'yes', 'y', 'on'], true);
+}
+
+function normalizarIdsUsuarios($usuarios) {
+    if (!is_array($usuarios)) {
+        return [];
+    }
+
+    $ids = [];
+    foreach ($usuarios as $usuario) {
+        $id = (int)$usuario;
+        if ($id > 0) {
+            $ids[] = $id;
+        }
+    }
+
+    $ids = array_values(array_unique($ids));
+    sort($ids);
+    return $ids;
+}
+
+function listarTodosUsuariosIds($pdo) {
+    try {
+        $stmt = $pdo->query("SELECT id FROM usuarios ORDER BY id");
+        $ids = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $id = (int)($row['id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        return $ids;
+    } catch (PDOException $e) {
+        error_log("Erro ao listar usuários para visibilidade de quadro: " . $e->getMessage());
+        return [];
+    }
+}
+
+function inicializarVisibilidadeBoards($pdo) {
+    static $inicializado = null;
+
+    if ($inicializado !== null) {
+        return $inicializado;
+    }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS demandas_boards_usuarios (
+                id SERIAL PRIMARY KEY,
+                board_id INT NOT NULL REFERENCES demandas_boards(id) ON DELETE CASCADE,
+                usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                criado_em TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(board_id, usuario_id)
+            )
+        ");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_boards_usuarios_board ON demandas_boards_usuarios(board_id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_boards_usuarios_usuario ON demandas_boards_usuarios(usuario_id)");
+        $inicializado = true;
+    } catch (PDOException $e) {
+        error_log("Aviso: não foi possível inicializar visibilidade de quadros: " . $e->getMessage());
+        $inicializado = false;
+    }
+
+    return $inicializado;
+}
+
+function obterUsuariosVisiveisBoard($pdo, $board_id) {
+    if (!inicializarVisibilidadeBoards($pdo)) {
+        return [];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT usuario_id
+            FROM demandas_boards_usuarios
+            WHERE board_id = :board_id
+            ORDER BY usuario_id
+        ");
+        $stmt->execute([':board_id' => $board_id]);
+
+        $ids = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $id = (int)($row['usuario_id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    } catch (PDOException $e) {
+        error_log("Erro ao obter usuários visíveis do quadro {$board_id}: " . $e->getMessage());
+        return [];
+    }
+}
+
+function salvarUsuariosVisiveisBoard($pdo, $board_id, $usuarios_ids) {
+    if (!inicializarVisibilidadeBoards($pdo)) {
+        return;
+    }
+
+    $usuarios_ids = normalizarIdsUsuarios($usuarios_ids);
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmtDelete = $pdo->prepare("DELETE FROM demandas_boards_usuarios WHERE board_id = :board_id");
+        $stmtDelete->execute([':board_id' => $board_id]);
+
+        if (!empty($usuarios_ids)) {
+            $stmtInsert = $pdo->prepare("
+                INSERT INTO demandas_boards_usuarios (board_id, usuario_id)
+                VALUES (:board_id, :usuario_id)
+                ON CONFLICT (board_id, usuario_id) DO NOTHING
+            ");
+
+            foreach ($usuarios_ids as $usuario_id) {
+                $stmtInsert->execute([
+                    ':board_id' => $board_id,
+                    ':usuario_id' => $usuario_id
+                ]);
+            }
+        }
+
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("Erro ao salvar visibilidade do quadro {$board_id}: " . $e->getMessage());
+    }
+}
+
+function usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin) {
+    if ($is_admin) {
+        return true;
+    }
+
+    try {
+        $stmtBoard = $pdo->prepare("SELECT ativo FROM demandas_boards WHERE id = :id");
+        $stmtBoard->execute([':id' => $board_id]);
+        $board = $stmtBoard->fetch(PDO::FETCH_ASSOC);
+
+        if (!$board || !valorBooleano($board['ativo'] ?? false)) {
+            return false;
+        }
+
+        if (!inicializarVisibilidadeBoards($pdo)) {
+            // Fallback seguro: sem tabela de visibilidade, mantém visibilidade legada
+            return true;
+        }
+
+        $stmtTemRestricao = $pdo->prepare("
+            SELECT 1
+            FROM demandas_boards_usuarios
+            WHERE board_id = :board_id
+            LIMIT 1
+        ");
+        $stmtTemRestricao->execute([':board_id' => $board_id]);
+        $temRestricao = (bool)$stmtTemRestricao->fetchColumn();
+
+        if (!$temRestricao) {
+            // Quadro legado sem mapeamento: visível para todos
+            return true;
+        }
+
+        $stmtAcesso = $pdo->prepare("
+            SELECT 1
+            FROM demandas_boards_usuarios
+            WHERE board_id = :board_id
+              AND usuario_id = :usuario_id
+            LIMIT 1
+        ");
+        $stmtAcesso->execute([
+            ':board_id' => $board_id,
+            ':usuario_id' => $usuario_id
+        ]);
+
+        return (bool)$stmtAcesso->fetchColumn();
+    } catch (PDOException $e) {
+        error_log("Erro ao validar acesso ao quadro {$board_id}: " . $e->getMessage());
+        return false;
+    }
+}
+
+function obterBoardIdDaLista($pdo, $lista_id) {
+    try {
+        $stmt = $pdo->prepare("SELECT board_id FROM demandas_listas WHERE id = :id");
+        $stmt->execute([':id' => $lista_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($row['board_id'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("Erro ao obter board da lista {$lista_id}: " . $e->getMessage());
+        return 0;
+    }
+}
+
+function obterBoardIdDoCard($pdo, $card_id) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT dl.board_id
+            FROM demandas_cards dc
+            JOIN demandas_listas dl ON dl.id = dc.lista_id
+            WHERE dc.id = :id
+        ");
+        $stmt->execute([':id' => $card_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($row['board_id'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("Erro ao obter board do card {$card_id}: " . $e->getMessage());
+        return 0;
+    }
+}
+
+function obterBoardIdDoAnexo($pdo, $anexo_id) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT dl.board_id
+            FROM demandas_arquivos_trello da
+            JOIN demandas_cards dc ON dc.id = da.card_id
+            JOIN demandas_listas dl ON dl.id = dc.lista_id
+            WHERE da.id = :id
+        ");
+        $stmt->execute([':id' => $anexo_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($row['board_id'] ?? 0);
+    } catch (PDOException $e) {
+        error_log("Erro ao obter board do anexo {$anexo_id}: " . $e->getMessage());
+        return 0;
+    }
+}
+
 /**
  * Listar todos os quadros disponíveis ao usuário
  */
 function listarQuadros($pdo, $usuario_id, $is_admin) {
     try {
-        // Regra de visibilidade: qualquer usuário autenticado com acesso ao módulo
-        // consegue ver os quadros ativos para colaboração entre equipes.
-        $stmt = $pdo->query("
-            SELECT db.*, 
-                   u.nome as criador_nome,
-                   COUNT(DISTINCT dl.id) as total_listas,
-                   COUNT(DISTINCT dc.id) as total_cards
-            FROM demandas_boards db
-            LEFT JOIN usuarios u ON u.id = db.criado_por
-            LEFT JOIN demandas_listas dl ON dl.board_id = db.id
-            LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
-            WHERE db.ativo = TRUE
-            GROUP BY db.id, u.nome
-            ORDER BY db.criado_em DESC
-        ");
+        $visibilidadeAtiva = inicializarVisibilidadeBoards($pdo);
+
+        if ($is_admin || !$visibilidadeAtiva) {
+            $stmt = $pdo->query("
+                SELECT db.*, 
+                       u.nome as criador_nome,
+                       COUNT(DISTINCT dl.id) as total_listas,
+                       COUNT(DISTINCT dc.id) as total_cards
+                FROM demandas_boards db
+                LEFT JOIN usuarios u ON u.id = db.criado_por
+                LEFT JOIN demandas_listas dl ON dl.board_id = db.id
+                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+                WHERE db.ativo = TRUE
+                GROUP BY db.id, u.nome
+                ORDER BY db.criado_em DESC
+            ");
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT db.*, 
+                       u.nome as criador_nome,
+                       COUNT(DISTINCT dl.id) as total_listas,
+                       COUNT(DISTINCT dc.id) as total_cards
+                FROM demandas_boards db
+                LEFT JOIN usuarios u ON u.id = db.criado_por
+                LEFT JOIN demandas_listas dl ON dl.board_id = db.id
+                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+                WHERE db.ativo = TRUE
+                  AND (
+                        NOT EXISTS (
+                            SELECT 1 
+                            FROM demandas_boards_usuarios dbu_all
+                            WHERE dbu_all.board_id = db.id
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM demandas_boards_usuarios dbu_user
+                            WHERE dbu_user.board_id = db.id
+                              AND dbu_user.usuario_id = :user_id
+                        )
+                  )
+                GROUP BY db.id, u.nome
+                ORDER BY db.criado_em DESC
+            ");
+            $stmt->execute([':user_id' => $usuario_id]);
+        }
         
         $quadros = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -93,8 +359,14 @@ function listarQuadros($pdo, $usuario_id, $is_admin) {
 /**
  * Listar listas (colunas) de um quadro
  */
-function listarListas($pdo, $board_id) {
+function listarListas($pdo, $board_id, $usuario_id, $is_admin) {
     try {
+        if (!usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             SELECT dl.*, 
                    COUNT(dc.id) as total_cards
@@ -123,8 +395,25 @@ function listarListas($pdo, $board_id) {
 /**
  * Listar cards de uma lista
  */
-function listarCards($pdo, $lista_id) {
+function listarCards($pdo, $lista_id, $usuario_id, $is_admin) {
     try {
+        $stmtLista = $pdo->prepare("SELECT board_id FROM demandas_listas WHERE id = :lista_id");
+        $stmtLista->execute([':lista_id' => $lista_id]);
+        $lista = $stmtLista->fetch(PDO::FETCH_ASSOC);
+
+        if (!$lista) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Lista não encontrada']);
+            exit;
+        }
+
+        $board_id = (int)($lista['board_id'] ?? 0);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             SELECT dc.*,
                    u_criador.nome as criador_nome
@@ -207,7 +496,7 @@ function listarCards($pdo, $lista_id) {
 /**
  * Criar novo card
  */
-function criarCard($pdo, $usuario_id, $dados) {
+function criarCard($pdo, $usuario_id, $dados, $is_admin) {
     try {
         $lista_id = (int)($dados['lista_id'] ?? 0);
         $titulo = trim($dados['titulo'] ?? '');
@@ -223,6 +512,31 @@ function criarCard($pdo, $usuario_id, $dados) {
             exit;
         }
         
+        // Buscar quadro/lista para validação de acesso e notificações
+        $stmt_board = $pdo->prepare("
+            SELECT dl.board_id, db.nome as board_nome
+            FROM demandas_listas dl
+            JOIN demandas_boards db ON db.id = dl.board_id
+            WHERE dl.id = :lista_id
+        ");
+        $stmt_board->execute([':lista_id' => $lista_id]);
+        $board_info = $stmt_board->fetch(PDO::FETCH_ASSOC);
+
+        if (!$board_info) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Lista não encontrada']);
+            exit;
+        }
+
+        $board_id = (int)($board_info['board_id'] ?? 0);
+        $board_nome = $board_info['board_nome'] ?? 'Quadro';
+
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+            exit;
+        }
+
         // Buscar posição máxima na lista
         $stmt_pos = $pdo->prepare("SELECT COALESCE(MAX(posicao), 0) + 1 as nova_pos FROM demandas_cards WHERE lista_id = :lista_id");
         $stmt_pos->execute([':lista_id' => $lista_id]);
@@ -248,18 +562,6 @@ function criarCard($pdo, $usuario_id, $dados) {
         
         $card = $stmt->fetch(PDO::FETCH_ASSOC);
         $card_id = (int)$card['id'];
-        
-        // Buscar board_id para notificações
-        $stmt_board = $pdo->prepare("
-            SELECT dl.board_id, db.nome as board_nome
-            FROM demandas_listas dl
-            JOIN demandas_boards db ON db.id = dl.board_id
-            WHERE dl.id = :lista_id
-        ");
-        $stmt_board->execute([':lista_id' => $lista_id]);
-        $board_info = $stmt_board->fetch(PDO::FETCH_ASSOC);
-        $board_id = $board_info['board_id'] ?? null;
-        $board_nome = $board_info['board_nome'] ?? 'Quadro';
         
         // Buscar todos os responsáveis de cards neste board (para notificar sobre novo card)
         $usuarios_notificar_novo_card = [];
@@ -325,8 +627,22 @@ function criarCard($pdo, $usuario_id, $dados) {
 /**
  * Mover card entre listas
  */
-function moverCard($pdo, $card_id, $nova_lista_id, $nova_posicao) {
+function moverCard($pdo, $card_id, $nova_lista_id, $nova_posicao, $usuario_id, $is_admin) {
     try {
+        $board_atual = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_atual <= 0 || !usuarioPodeAcessarBoard($pdo, $board_atual, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
+        $board_destino = obterBoardIdDaLista($pdo, $nova_lista_id);
+        if ($board_destino <= 0 || !usuarioPodeAcessarBoard($pdo, $board_destino, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso à lista de destino']);
+            exit;
+        }
+
         $pdo->beginTransaction();
         
         // Atualizar lista e posição do card
@@ -363,6 +679,13 @@ function moverCard($pdo, $card_id, $nova_lista_id, $nova_posicao) {
  */
 function atualizarCard($pdo, $card_id, $dados, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         // Verificar permissão: apenas criador, responsável ou admin pode editar
         if (!$is_admin) {
             $stmt_check = $pdo->prepare("
@@ -515,8 +838,15 @@ function atualizarCard($pdo, $card_id, $dados, $usuario_id, $is_admin) {
 /**
  * Concluir card
  */
-function concluirCard($pdo, $card_id) {
+function concluirCard($pdo, $card_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             UPDATE demandas_cards 
             SET status = 'concluido', atualizado_em = NOW()
@@ -539,8 +869,15 @@ function concluirCard($pdo, $card_id) {
 /**
  * Reabrir card
  */
-function reabrirCard($pdo, $card_id) {
+function reabrirCard($pdo, $card_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             UPDATE demandas_cards 
             SET status = 'pendente', atualizado_em = NOW()
@@ -563,8 +900,15 @@ function reabrirCard($pdo, $card_id) {
 /**
  * Adicionar comentário (com suporte a @menções)
  */
-function adicionarComentario($pdo, $usuario_id, $card_id, $mensagem) {
+function adicionarComentario($pdo, $usuario_id, $card_id, $mensagem, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         // Extrair menções (@usuario)
         $mencoes = [];
         preg_match_all('/@(\w+)/', $mensagem, $matches);
@@ -616,8 +960,15 @@ function adicionarComentario($pdo, $usuario_id, $card_id, $mensagem) {
 /**
  * Adicionar anexo
  */
-function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo) {
+function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         require_once __DIR__ . '/upload_magalu.php';
         
         $uploader = new MagaluUpload();
@@ -760,11 +1111,17 @@ function criarQuadro($pdo, $usuario_id, $dados) {
         $nome = trim($dados['nome'] ?? '');
         $descricao = $dados['descricao'] ?? null;
         $cor = $dados['cor'] ?? '#3b82f6';
+        $usuarios_visiveis = normalizarIdsUsuarios($dados['usuarios_visiveis'] ?? []);
         
         if (empty($nome)) {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Nome do quadro é obrigatório']);
             exit;
+        }
+
+        // Compatibilidade: se vier vazio, mantém visibilidade para todos os usuários
+        if (empty($usuarios_visiveis)) {
+            $usuarios_visiveis = listarTodosUsuariosIds($pdo);
         }
         
         $stmt = $pdo->prepare("
@@ -810,6 +1167,12 @@ function criarQuadro($pdo, $usuario_id, $dados) {
                 // Continuar mesmo se falhar criar uma lista
             }
         }
+
+        salvarUsuariosVisiveisBoard($pdo, (int)$quadro['id'], $usuarios_visiveis);
+        $quadro['usuarios_visiveis'] = obterUsuariosVisiveisBoard($pdo, (int)$quadro['id']);
+        if (empty($quadro['usuarios_visiveis'])) {
+            $quadro['usuarios_visiveis'] = listarTodosUsuariosIds($pdo);
+        }
         
         echo json_encode([
             'success' => true,
@@ -827,13 +1190,19 @@ function criarQuadro($pdo, $usuario_id, $dados) {
 /**
  * Criar nova lista
  */
-function criarLista($pdo, $board_id, $dados) {
+function criarLista($pdo, $board_id, $dados, $usuario_id, $is_admin) {
     try {
         $nome = trim($dados['nome'] ?? '');
         
         if (empty($nome)) {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Nome da lista é obrigatório']);
+            exit;
+        }
+
+        if (!usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
             exit;
         }
         
@@ -873,6 +1242,13 @@ function criarLista($pdo, $board_id, $dados) {
  */
 function deletarCard($pdo, $card_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoCard($pdo, $card_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         // Verificar permissão: apenas criador ou admin pode deletar
         if (!$is_admin) {
             $stmt_check = $pdo->prepare("SELECT criador_id FROM demandas_cards WHERE id = :id");
@@ -992,6 +1368,13 @@ function deletarQuadro($pdo, $board_id, $usuario_id, $is_admin) {
  */
 function deletarLista($pdo, $lista_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDaLista($pdo, $lista_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a esta lista']);
+            exit;
+        }
+
         // Verificar permissão: apenas criador do quadro ou admin pode deletar
         if (!$is_admin) {
             $stmt_check = $pdo->prepare("
@@ -1032,12 +1415,70 @@ function deletarLista($pdo, $lista_id, $usuario_id, $is_admin) {
 }
 
 /**
+ * Obter detalhes de um quadro (incluindo usuários visíveis)
+ */
+function obterQuadro($pdo, $board_id, $usuario_id, $is_admin) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT db.*,
+                   u.nome as criador_nome,
+                   COUNT(DISTINCT dl.id) as total_listas,
+                   COUNT(DISTINCT dc.id) as total_cards
+            FROM demandas_boards db
+            LEFT JOIN usuarios u ON u.id = db.criado_por
+            LEFT JOIN demandas_listas dl ON dl.board_id = db.id
+            LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+            WHERE db.id = :id
+              AND db.ativo = TRUE
+            GROUP BY db.id, u.nome
+        ");
+        $stmt->execute([':id' => $board_id]);
+        $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$quadro) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Quadro não encontrado']);
+            exit;
+        }
+
+        if (!usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+            exit;
+        }
+
+        $usuarios_visiveis = obterUsuariosVisiveisBoard($pdo, $board_id);
+        if (empty($usuarios_visiveis)) {
+            $usuarios_visiveis = listarTodosUsuariosIds($pdo);
+        }
+        $quadro['usuarios_visiveis'] = $usuarios_visiveis;
+
+        echo json_encode([
+            'success' => true,
+            'data' => $quadro
+        ]);
+        exit;
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+}
+
+/**
  * Atualizar quadro
  */
-function atualizarQuadro($pdo, $board_id, $dados) {
+function atualizarQuadro($pdo, $board_id, $dados, $usuario_id, $is_admin) {
     try {
+        if (!usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+            exit;
+        }
+
         $campos = [];
         $valores = [':id' => $board_id];
+        $atualizar_visibilidade = array_key_exists('usuarios_visiveis', $dados);
         
         if (isset($dados['nome'])) {
             $campos[] = 'nome = :nome';
@@ -1052,21 +1493,47 @@ function atualizarQuadro($pdo, $board_id, $dados) {
             $valores[':cor'] = $dados['cor'];
         }
         
-        if (empty($campos)) {
+        if (empty($campos) && !$atualizar_visibilidade) {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => 'Nenhum campo para atualizar']);
             exit;
         }
-        
-        $stmt = $pdo->prepare("
-            UPDATE demandas_boards 
-            SET " . implode(', ', $campos) . "
-            WHERE id = :id
-            RETURNING *
-        ");
-        $stmt->execute($valores);
-        
-        $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $quadro = null;
+
+        if (!empty($campos)) {
+            $stmt = $pdo->prepare("
+                UPDATE demandas_boards 
+                SET " . implode(', ', $campos) . "
+                WHERE id = :id
+                RETURNING *
+            ");
+            $stmt->execute($valores);
+            $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+        } else {
+            $stmt = $pdo->prepare("SELECT * FROM demandas_boards WHERE id = :id");
+            $stmt->execute([':id' => $board_id]);
+            $quadro = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$quadro) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Quadro não encontrado']);
+            exit;
+        }
+
+        if ($atualizar_visibilidade) {
+            $usuarios_visiveis = normalizarIdsUsuarios($dados['usuarios_visiveis'] ?? []);
+            if (empty($usuarios_visiveis)) {
+                $usuarios_visiveis = listarTodosUsuariosIds($pdo);
+            }
+            salvarUsuariosVisiveisBoard($pdo, $board_id, $usuarios_visiveis);
+        }
+
+        $quadro['usuarios_visiveis'] = obterUsuariosVisiveisBoard($pdo, $board_id);
+        if (empty($quadro['usuarios_visiveis'])) {
+            $quadro['usuarios_visiveis'] = listarTodosUsuariosIds($pdo);
+        }
         
         echo json_encode([
             'success' => true,
@@ -1084,8 +1551,15 @@ function atualizarQuadro($pdo, $board_id, $dados) {
 /**
  * Atualizar lista
  */
-function atualizarLista($pdo, $lista_id, $dados) {
+function atualizarLista($pdo, $lista_id, $dados, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDaLista($pdo, $lista_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a esta lista']);
+            exit;
+        }
+
         $campos = [];
         $valores = [':id' => $lista_id];
         
@@ -1130,8 +1604,17 @@ function atualizarLista($pdo, $lista_id, $dados) {
 /**
  * Download de anexo
  */
-function downloadAnexo($pdo, $anexo_id) {
+function downloadAnexo($pdo, $anexo_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoAnexo($pdo, $anexo_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            ob_clean();
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este anexo']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             SELECT da.*, dc.id as card_id
             FROM demandas_arquivos_trello da
@@ -1247,8 +1730,15 @@ function downloadAnexo($pdo, $anexo_id) {
 /**
  * Deletar anexo
  */
-function deletarAnexo($pdo, $anexo_id) {
+function deletarAnexo($pdo, $anexo_id, $usuario_id, $is_admin) {
     try {
+        $board_id = obterBoardIdDoAnexo($pdo, $anexo_id);
+        if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este anexo']);
+            exit;
+        }
+
         // Buscar info do anexo antes de deletar (para limpar do Magalu)
         $stmt_info = $pdo->prepare("SELECT chave_storage FROM demandas_arquivos_trello WHERE id = :id");
         $stmt_info->execute([':id' => $anexo_id]);
@@ -1381,21 +1871,24 @@ try {
     if ($method === 'GET') {
         if ($action === 'quadros') {
             listarQuadros($pdo, $usuario_id, $is_admin);
+        } elseif ($action === 'quadro' && $id) {
+            obterQuadro($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'listas' && $id) {
-            listarListas($pdo, $id);
+            listarListas($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'cards' && $id) {
-            listarCards($pdo, $id);
+            listarCards($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'notificacoes') {
             listarNotificacoes($pdo, $usuario_id);
         } elseif ($action === 'anexo' && $id) {
             // GET: Download de anexo
-            downloadAnexo($pdo, $id);
+            downloadAnexo($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'card' && $id) {
             // Detalhes de um card específico
             $stmt = $pdo->prepare("
                 SELECT dc.*, 
                        u_criador.nome as criador_nome,
                        dl.nome as lista_nome,
+                       db.id as board_id,
                        db.nome as board_nome
                 FROM demandas_cards dc
                 LEFT JOIN usuarios u_criador ON u_criador.id = dc.criador_id
@@ -1409,6 +1902,13 @@ try {
             if (!$card) {
                 http_response_code(404);
                 echo json_encode(['success' => false, 'error' => 'Card não encontrado']);
+                exit;
+            }
+
+            $board_id_card = (int)($card['board_id'] ?? 0);
+            if ($board_id_card <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id_card, $usuario_id, $is_admin)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
                 exit;
             }
             
@@ -1453,20 +1953,20 @@ try {
         if ($action === 'criar_quadro') {
             criarQuadro($pdo, $usuario_id, $data);
         } elseif ($action === 'criar_lista' && $id) {
-            criarLista($pdo, $id, $data);
+            criarLista($pdo, $id, $data, $usuario_id, $is_admin);
         } elseif ($action === 'criar_card') {
-            criarCard($pdo, $usuario_id, $data);
+            criarCard($pdo, $usuario_id, $data, $is_admin);
         } elseif ($action === 'mover_card' && $id) {
-            moverCard($pdo, $id, $data['nova_lista_id'] ?? null, $data['nova_posicao'] ?? 0);
+            moverCard($pdo, $id, $data['nova_lista_id'] ?? null, $data['nova_posicao'] ?? 0, $usuario_id, $is_admin);
         } elseif ($action === 'concluir' && $id) {
-            concluirCard($pdo, $id);
+            concluirCard($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'reabrir' && $id) {
-            reabrirCard($pdo, $id);
+            reabrirCard($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'comentario' && $id) {
-            adicionarComentario($pdo, $usuario_id, $id, $data['mensagem'] ?? '');
+            adicionarComentario($pdo, $usuario_id, $id, $data['mensagem'] ?? '', $is_admin);
         } elseif ($action === 'anexo' && $id) {
             if (isset($_FILES['arquivo'])) {
-                adicionarAnexo($pdo, $usuario_id, $id, $_FILES['arquivo']);
+                adicionarAnexo($pdo, $usuario_id, $id, $_FILES['arquivo'], $is_admin);
             } else {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'error' => 'Arquivo não fornecido']);
@@ -1481,9 +1981,9 @@ try {
         if ($action === 'atualizar_card' && $id) {
             atualizarCard($pdo, $id, $data, $usuario_id, $is_admin);
         } elseif ($action === 'atualizar_quadro' && $id) {
-            atualizarQuadro($pdo, $id, $data);
+            atualizarQuadro($pdo, $id, $data, $usuario_id, $is_admin);
         } elseif ($action === 'atualizar_lista' && $id) {
-            atualizarLista($pdo, $id, $data);
+            atualizarLista($pdo, $id, $data, $usuario_id, $is_admin);
         }
     } elseif ($method === 'DELETE') {
         if ($action === 'deletar_card' && $id) {
@@ -1493,7 +1993,7 @@ try {
         } elseif ($action === 'deletar_lista' && $id) {
             deletarLista($pdo, $id, $usuario_id, $is_admin);
         } elseif ($action === 'deletar_anexo' && $id) {
-            deletarAnexo($pdo, $id);
+            deletarAnexo($pdo, $id, $usuario_id, $is_admin);
         }
     }
     

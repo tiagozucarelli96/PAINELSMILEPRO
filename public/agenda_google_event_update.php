@@ -4,7 +4,19 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
+if (empty($_SESSION['logado'])) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Acesso negado']);
+    exit;
+}
+
+$can_update_google_event = (
+    !empty($_SESSION['perm_superadmin']) ||
+    !empty($_SESSION['perm_administrativo']) ||
+    !empty($_SESSION['perm_agenda'])
+);
+
+if (!$can_update_google_event) {
     http_response_code(403);
     echo json_encode(['error' => 'Acesso negado']);
     exit;

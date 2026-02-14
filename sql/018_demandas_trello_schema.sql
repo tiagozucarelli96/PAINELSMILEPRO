@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS demandas_boards (
     ativo BOOLEAN DEFAULT TRUE
 );
 
+-- 1.1 Visibilidade por quadro (opcional)
+-- Se um quadro não tiver registros aqui, permanece visível para todos os usuários.
+CREATE TABLE IF NOT EXISTS demandas_boards_usuarios (
+    id SERIAL PRIMARY KEY,
+    board_id INT NOT NULL REFERENCES demandas_boards(id) ON DELETE CASCADE,
+    usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    criado_em TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(board_id, usuario_id)
+);
+
 -- 2. Listas (Colunas do quadro)
 CREATE TABLE IF NOT EXISTS demandas_listas (
     id SERIAL PRIMARY KEY,
@@ -111,6 +121,8 @@ ON demandas_fixas_log(demanda_fixa_id, dia_gerado);
 
 -- ÍNDICES PARA PERFORMANCE
 CREATE INDEX IF NOT EXISTS idx_boards_criado_por ON demandas_boards(criado_por);
+CREATE INDEX IF NOT EXISTS idx_boards_usuarios_board ON demandas_boards_usuarios(board_id);
+CREATE INDEX IF NOT EXISTS idx_boards_usuarios_usuario ON demandas_boards_usuarios(usuario_id);
 CREATE INDEX IF NOT EXISTS idx_listas_board ON demandas_listas(board_id);
 CREATE INDEX IF NOT EXISTS idx_listas_posicao ON demandas_listas(board_id, posicao);
 CREATE INDEX IF NOT EXISTS idx_cards_lista ON demandas_cards(lista_id);
@@ -126,6 +138,7 @@ CREATE INDEX IF NOT EXISTS idx_fixas_board ON demandas_fixas(board_id);
 
 -- COMENTÁRIOS PARA DOCUMENTAÇÃO
 COMMENT ON TABLE demandas_boards IS 'Quadros estilo Trello - cada quadro contém múltiplas listas';
+COMMENT ON TABLE demandas_boards_usuarios IS 'Usuários que podem visualizar um quadro específico; sem registros = quadro visível para todos';
 COMMENT ON TABLE demandas_listas IS 'Colunas dentro de um quadro - ex: "To Do", "Em Progresso", "Feito"';
 COMMENT ON TABLE demandas_cards IS 'Cards (tarefas) dentro das listas - podem ser movidos entre listas';
 COMMENT ON TABLE demandas_cards_usuarios IS 'Relacionamento muitos-para-muitos: usuários atribuídos a cards';
@@ -134,4 +147,3 @@ COMMENT ON TABLE demandas_arquivos IS 'Anexos dos cards armazenados no Magalu Cl
 COMMENT ON TABLE demandas_notificacoes IS 'Notificações de menções, atribuições e movimentações';
 COMMENT ON TABLE demandas_fixas IS 'Templates de demandas que são geradas automaticamente via cron';
 COMMENT ON TABLE demandas_fixas_log IS 'Log de quando cada demanda fixa foi gerada para evitar duplicatas';
-
