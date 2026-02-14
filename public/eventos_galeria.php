@@ -544,7 +544,7 @@ if ($search !== '') {
 $where_sql = implode(' AND ', $where);
 
 $stmt = $pdo->prepare("
-    SELECT id, categoria, nome, descricao, tags, transform_css, size_bytes, uploaded_at
+    SELECT id, categoria, nome, descricao, tags, transform_css, size_bytes, uploaded_at, public_url
     FROM eventos_galeria
     WHERE {$where_sql}
     ORDER BY uploaded_at DESC
@@ -1047,7 +1047,9 @@ includeSidebar('Galeria de Imagens - Eventos');
                     $img_desc = (string)($img['descricao'] ?? '');
                     $img_tags = (string)($img['tags'] ?? '');
                     $img_transform = (string)($img['transform_css'] ?? '');
-                    $img_src = 'eventos_galeria_imagem.php?id=' . $img_id;
+                    $img_fallback_src = 'eventos_galeria_imagem.php?id=' . $img_id;
+                    $img_public_url = trim((string)($img['public_url'] ?? ''));
+                    $img_src = $img_public_url !== '' ? $img_public_url : $img_fallback_src;
                     ?>
                     <div class="image-card"
                          data-image-id="<?= $img_id ?>"
@@ -1064,6 +1066,9 @@ includeSidebar('Galeria de Imagens - Eventos');
                             <img src="<?= htmlspecialchars($img_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
                                  loading="lazy"
+                                 decoding="async"
+                                 data-fallback-src="<?= htmlspecialchars($img_fallback_src) ?>"
+                                 onerror="if (this.dataset.fallbackSrc && this.src !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; this.onerror = null; }"
                                  style="<?= $img_transform !== '' ? 'transform:' . htmlspecialchars($img_transform) . ';' : '' ?>">
                             <div class="image-actions">
                                 <button type="button" class="icon-btn" title="Girar" onclick="event.stopPropagation(); rotacionarImagem(<?= $img_id ?>)">↻</button>

@@ -20,7 +20,7 @@ if ($id <= 0) {
 
 try {
     $stmt = $pdo->prepare("
-        SELECT storage_key, public_url
+        SELECT storage_key, public_url, uploaded_at
         FROM eventos_galeria
         WHERE id = :id AND deleted_at IS NULL
     ");
@@ -34,10 +34,33 @@ try {
         exit;
     }
 
-    $storage_key = $row['storage_key'] ?? null;
-    $public_url = $row['public_url'] ?? null;
+    $storage_key = trim((string)($row['storage_key'] ?? ''));
+    $public_url = trim((string)($row['public_url'] ?? ''));
+    $uploaded_at_raw = (string)($row['uploaded_at'] ?? '');
+    $uploaded_at_ts = $uploaded_at_raw !== '' ? strtotime($uploaded_at_raw) : false;
 
-    if (!empty($storage_key) && file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    $etag_base = $id . '|' . $storage_key . '|' . $public_url . '|' . $uploaded_at_raw;
+    $etag = '"' . sha1($etag_base) . '"';
+
+    header('ETag: ' . $etag);
+    header('Cache-Control: public, max-age=3600, stale-while-revalidate=300');
+    if ($uploaded_at_ts !== false) {
+        header('Last-Modified: ' . gmdate('D, d M Y H:i:s', (int)$uploaded_at_ts) . ' GMT');
+    }
+
+    $if_none_match = (string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? '');
+    if ($if_none_match !== '' && strpos($if_none_match, $etag) !== false) {
+        http_response_code(304);
+        exit;
+    }
+
+    // Caminho rápido: URL pública quando disponível.
+    if ($public_url !== '') {
+        header('Location: ' . $public_url, true, 302);
+        exit;
+    }
+
+    if ($storage_key !== '' && file_exists(__DIR__ . '/../vendor/autoload.php')) {
         require_once __DIR__ . '/../vendor/autoload.php';
 
         if (class_exists('Aws\S3\S3Client')) {
@@ -66,20 +89,14 @@ try {
                         'Bucket' => $bucket,
                         'Key' => $storage_key,
                     ]);
-                    $presignedUrl = $s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
-
-                    header('Location: ' . (string)$presignedUrl);
+                    $presignedUrl = (string)$s3Client->createPresignedRequest($cmd, '+1 hour')->getUri();
+                    header('Location: ' . $presignedUrl, true, 302);
                     exit;
                 } catch (\Aws\Exception\AwsException $e) {
                     error_log('eventos_galeria_public_imagem presigned URL: ' . $e->getMessage());
                 }
             }
         }
-    }
-
-    if (!empty($public_url)) {
-        header('Location: ' . $public_url);
-        exit;
     }
 
     http_response_code(404);

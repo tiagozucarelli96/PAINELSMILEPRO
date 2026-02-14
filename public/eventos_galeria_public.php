@@ -41,7 +41,7 @@ if ($search !== '') {
 $where_sql = implode(' AND ', $where);
 
 $stmt = $pdo->prepare("
-    SELECT id, categoria, nome, descricao, tags, transform_css
+    SELECT id, categoria, nome, descricao, tags, transform_css, public_url
     FROM eventos_galeria
     WHERE {$where_sql}
     ORDER BY uploaded_at DESC
@@ -415,7 +415,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     $img_id = (int)$img['id'];
                     $img_name = (string)($img['nome'] ?? '');
                     $img_desc = (string)($img['descricao'] ?? '');
-                    $img_src = 'eventos_galeria_public_imagem.php?id=' . $img_id;
+                    $img_fallback_src = 'eventos_galeria_public_imagem.php?id=' . $img_id;
+                    $img_public_url = trim((string)($img['public_url'] ?? ''));
+                    $img_src = $img_public_url !== '' ? $img_public_url : $img_fallback_src;
                     $img_transform = (string)($img['transform_css'] ?? '');
                     ?>
                     <article class="card"
@@ -426,6 +428,9 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                             <img src="<?= htmlspecialchars($img_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
                                  loading="lazy"
+                                 decoding="async"
+                                 data-fallback-src="<?= htmlspecialchars($img_fallback_src) ?>"
+                                 onerror="if (this.dataset.fallbackSrc && this.src !== this.dataset.fallbackSrc) { this.src = this.dataset.fallbackSrc; this.onerror = null; }"
                                  style="<?= $img_transform !== '' ? 'transform:' . htmlspecialchars($img_transform) . ';' : '' ?>">
                         </div>
                         <div class="card-body">
