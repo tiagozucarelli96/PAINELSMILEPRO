@@ -6,6 +6,9 @@ class PushHelper {
     private $pdo;
     private $vapidPublicKey;
     private $vapidPrivateKey;
+    private $vapidSubject;
+    private $vapidValidationChecked;
+    private $vapidValidationError;
     private $useLibrary;
     
     public function __construct() {
@@ -28,6 +31,12 @@ class PushHelper {
         } else {
             $this->vapidPrivateKey = $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '';
         }
+
+        $this->vapidSubject = $_ENV['VAPID_SUBJECT'] ?? getenv('VAPID_SUBJECT') ?: 'mailto:painelsmilenotifica@smileeventos.com.br';
+        $this->vapidPublicKey = $this->normalizarChaveVapid($this->vapidPublicKey);
+        $this->vapidPrivateKey = $this->normalizarChaveVapid($this->vapidPrivateKey);
+        $this->vapidValidationChecked = false;
+        $this->vapidValidationError = '';
         
         // Carregar autoload do composer se disponível
         $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
@@ -82,7 +91,7 @@ class PushHelper {
                 'erros' => $erros
             ];
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Erro ao enviar push: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
@@ -92,8 +101,9 @@ class PushHelper {
      * Enviar push para endpoint específico
      */
     private function enviarParaEndpoint($subscription, $titulo, $mensagem, $data) {
-        if (empty($this->vapidPublicKey) || empty($this->vapidPrivateKey)) {
-            return ['success' => false, 'error' => 'Chaves VAPID não configuradas'];
+        $vapidError = $this->validarConfiguracaoVapid();
+        if ($vapidError !== '') {
+            return ['success' => false, 'error' => $vapidError];
         }
         
         // Usar biblioteca se disponível
@@ -114,7 +124,7 @@ class PushHelper {
             // @phpstan-ignore-next-line
             $webPush = new \Minishlink\WebPush\WebPush([
                 'VAPID' => [
-                    'subject' => 'mailto:painelsmilenotifica@smileeventos.com.br',
+                    'subject' => $this->vapidSubject,
                     'publicKey' => $this->vapidPublicKey,
                     'privateKey' => $this->vapidPrivateKey,
                 ],
@@ -149,7 +159,7 @@ class PushHelper {
                 return ['success' => false, 'error' => $error];
             }
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Erro ao enviar push com biblioteca: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
@@ -162,8 +172,67 @@ class PushHelper {
         try {
             $stmt = $this->pdo->prepare("UPDATE sistema_notificacoes_navegador SET ativo = FALSE WHERE endpoint = :endpoint");
             $stmt->execute([':endpoint' => $endpoint]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             error_log("Erro ao desativar subscription: " . $e->getMessage());
         }
+    }
+
+    private function normalizarChaveVapid($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+
+        $value = trim($value);
+        $value = trim($value, "\"'");
+        $value = preg_replace('/\s+/', '', $value);
+
+        return is_string($value) ? $value : '';
+    }
+
+    private function validarConfiguracaoVapid() {
+        if ($this->vapidValidationChecked) {
+            return $this->vapidValidationError;
+        }
+
+        $this->vapidValidationChecked = true;
+
+        if (empty($this->vapidPublicKey) || empty($this->vapidPrivateKey)) {
+            $this->vapidValidationError = 'Chaves VAPID não configuradas';
+            return $this->vapidValidationError;
+        }
+
+        if (!$this->useLibrary) {
+            return $this->vapidValidationError;
+        }
+
+        try {
+            // Valida formato e consistencia do par de chaves com uma assinatura real.
+            $validado = \Minishlink\WebPush\VAPID::validate([
+                'subject' => $this->vapidSubject,
+                'publicKey' => $this->vapidPublicKey,
+                'privateKey' => $this->vapidPrivateKey,
+            ]);
+
+            set_error_handler(function ($severity, $message, $file, $line) {
+                throw new ErrorException($message, 0, $severity, $file, $line);
+            });
+
+            try {
+                \Minishlink\WebPush\VAPID::getVapidHeaders(
+                    'https://fcm.googleapis.com',
+                    $this->vapidSubject,
+                    $validado['publicKey'],
+                    $validado['privateKey'],
+                    \Minishlink\WebPush\ContentEncoding::aes128gcm
+                );
+            } finally {
+                restore_error_handler();
+            }
+        } catch (Throwable $e) {
+            error_log("Falha na validacao VAPID: " . $e->getMessage());
+            $this->vapidValidationError = 'Chaves VAPID invalidas ou incompatíveis. Gere um novo par e configure VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY.';
+        }
+
+        return $this->vapidValidationError;
     }
 }

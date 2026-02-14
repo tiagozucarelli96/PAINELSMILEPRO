@@ -2,7 +2,7 @@
 /**
  * eventos_landing.php
  * Página inicial do módulo Eventos
- * Acesso: Reunião Final, Calendário, Galeria, Fornecedores
+ * Acesso: Reunião Final, Calendário e Fornecedores
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -23,7 +23,6 @@ $stats = [
     'reunioes_rascunho' => 0,
     'reunioes_concluidas' => 0,
     'fornecedores_ativos' => 0,
-    'galeria_imagens' => 0,
 ];
 
 try {
@@ -39,9 +38,6 @@ try {
     $stmt = $pdo->query("SELECT COUNT(*) FROM eventos_fornecedores WHERE ativo = TRUE");
     $stats['fornecedores_ativos'] = (int)$stmt->fetchColumn();
     
-    // Imagens na galeria
-    $stmt = $pdo->query("SELECT COUNT(*) FROM eventos_galeria WHERE deleted_at IS NULL");
-    $stats['galeria_imagens'] = (int)$stmt->fetchColumn();
 } catch (Exception $e) {
     error_log("Erro ao buscar stats eventos: " . $e->getMessage());
 }
@@ -210,7 +206,7 @@ includeSidebar('Eventos');
             Eventos
         </h1>
         <p class="page-subtitle">
-            Gerencie reuniões finais, portais de fornecedores e galeria de imagens
+            Gerencie reuniões finais e portais de fornecedores
         </p>
     </div>
     
@@ -229,10 +225,6 @@ includeSidebar('Eventos');
         <div class="stat-card">
             <div class="stat-value"><?= $stats['fornecedores_ativos'] ?></div>
             <div class="stat-label">Fornecedores Ativos</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value"><?= $stats['galeria_imagens'] ?></div>
-            <div class="stat-label">Imagens na Galeria</div>
         </div>
     </div>
     
@@ -264,16 +256,6 @@ includeSidebar('Eventos');
             <div class="module-desc">
                 Visualize todas as reuniões em um calendário mensal. 
                 Gere PDFs e crie links públicos de visualização.
-            </div>
-            <span class="module-badge internal">Interno</span>
-        </a>
-        
-        <a href="index.php?page=eventos_galeria" class="module-card">
-            <div class="module-icon green">🖼️</div>
-            <div class="module-title">Galeria de Imagens</div>
-            <div class="module-desc">
-                Gerencie imagens por categoria (Infantil, Casamento, 15 Anos). 
-                Anexe imagens às reuniões de decoração.
             </div>
             <span class="module-badge internal">Interno</span>
         </a>

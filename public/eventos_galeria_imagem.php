@@ -11,8 +11,8 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 
-// Verificar permissão (eventos ou superadmin)
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+// Verificar permissão (comercial ou superadmin)
+if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Acesso negado.';

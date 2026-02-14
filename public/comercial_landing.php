@@ -568,6 +568,11 @@ includeSidebar('Comercial');
                     <span class="funcionalidade-item-text">Ver Todas as Degustações</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
+                <a href="index.php?page=eventos_galeria" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
+                    <span class="funcionalidade-item-icon">🖼️</span>
+                    <span class="funcionalidade-item-text">Galeria de Imagens</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </a>
                 <a href="index.php?page=comercial_realizar_degustacao" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">🍽️</span>
                     <span class="funcionalidade-item-text">Realizar Degustação</span>
@@ -697,4 +702,3 @@ includeSidebar('Comercial');
 <?php
 endSidebar();
 ?>
-

@@ -58,6 +58,7 @@ return [
     'vendas_administracao' => 'perm_comercial',
     'vendas_kanban' => 'perm_comercial',
     'vendas_links_publicos' => 'perm_comercial',
+    'eventos_galeria' => 'perm_comercial',
     // Formulários públicos não precisam de permissão
     'vendas_form_casamento' => null,
     'vendas_form_infantil' => null,
@@ -143,13 +144,12 @@ return [
     'dados_contrato' => 'perm_dados_contrato',
     'uso_fiorino' => 'perm_uso_fiorino',
     
-    // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
+    // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
     'eventos_reuniao_final' => 'perm_eventos',
     'eventos_rascunhos' => 'perm_eventos',
     'eventos_reunioes' => 'perm_eventos',
     'eventos_calendario' => 'perm_eventos',
-    'eventos_galeria' => 'perm_eventos',
     'eventos_fornecedores' => 'perm_eventos',
     'eventos_pdf' => 'perm_eventos',
     'eventos_ver_imagem' => 'perm_eventos',

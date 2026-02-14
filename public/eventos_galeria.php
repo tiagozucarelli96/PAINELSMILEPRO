@@ -1,7 +1,7 @@
 <?php
 /**
  * eventos_galeria.php
- * Gestão interna da galeria de imagens de Eventos.
+ * Gestão interna da galeria de imagens (módulo Comercial).
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -15,7 +15,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/upload_magalu.php';
 
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     if ($is_ajax) {
         http_response_code(403);
         header('Content-Type: application/json; charset=utf-8');
@@ -566,7 +566,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 
 $public_path = 'index.php?page=eventos_galeria_public';
 
-includeSidebar('Galeria de Imagens - Eventos');
+includeSidebar('Galeria de Imagens - Comercial');
 ?>
 
 <style>
@@ -989,7 +989,7 @@ includeSidebar('Galeria de Imagens - Eventos');
             <div class="header-actions">
                 <button type="button" class="btn btn-secondary" id="btnCopyPublic" data-public-path="<?= htmlspecialchars($public_path) ?>">🔗 Copiar link público</button>
                 <button type="button" class="btn btn-primary" onclick="abrirModalUpload()">+ Adicionar imagem</button>
-                <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
+                <a href="index.php?page=comercial" class="btn btn-secondary">← Voltar</a>
             </div>
         </div>
 

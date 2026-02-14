@@ -38,8 +38,9 @@ define('ENCRYPTION_KEY', $_ENV['ENCRYPTION_KEY'] ?? 'sua_chave_de_criptografia_a
 
 // Configurações VAPID para Web Push Notifications
 // Priorizar variáveis de ambiente, mas usar fallback se não estiverem disponíveis
-define('VAPID_PUBLIC_KEY', $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: 'BNxfc5_e-iBuZmSeAQZX5DHfxoEtgb6L9eUkL8TpFkgS1JZpz0hMM9nek7TtLBPAwACFuxjEoKnNYxQlrhALsP8');
-define('VAPID_PRIVATE_KEY', $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: 'xP5iPdM_inQNVlazLlCmij3z4N10-xsmDAw-70KURZc');
+define('VAPID_PUBLIC_KEY', $_ENV['VAPID_PUBLIC_KEY'] ?? getenv('VAPID_PUBLIC_KEY') ?: '');
+define('VAPID_PRIVATE_KEY', $_ENV['VAPID_PRIVATE_KEY'] ?? getenv('VAPID_PRIVATE_KEY') ?: '');
+define('VAPID_SUBJECT', $_ENV['VAPID_SUBJECT'] ?? getenv('VAPID_SUBJECT') ?: 'mailto:painelsmilenotifica@smileeventos.com.br');
 
 // Configurações de Upload
 define('UPLOAD_MAX_SIZE', $_ENV['UPLOAD_MAX_SIZE'] ?? '10485760'); // 10MB
