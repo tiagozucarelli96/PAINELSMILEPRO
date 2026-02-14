@@ -351,6 +351,20 @@ if (!$is_modal) {
 
 <style>
 <?php if ($is_modal): ?>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+<?php endif; ?>
+* {
+    box-sizing: border-box;
+}
+html,
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #1e293b;
+    background: #f8fafc;
+}
+<?php if ($is_modal): ?>
 body {
     background: transparent;
 }
@@ -359,17 +373,24 @@ body {
     padding: 0.85rem;
 }
 .page-container h1 {
-    margin: 0 0 0.75rem;
-    font-size: 1.35rem;
+    display: none;
 }
 .section-card {
     margin-bottom: 0.9rem;
+    padding: 1rem;
+    box-shadow: none;
 }
 <?php endif; ?>
 .page-container {
     max-width: 1300px;
     margin: 0 auto;
     padding: 1.5rem;
+}
+.page-container h1 {
+    margin: 0 0 1rem;
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: #0f172a;
 }
 .section-card {
     background: #ffffff;
@@ -384,13 +405,36 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 1rem;
 }
+.form-grid > div {
+    min-width: 0;
+}
 .span-2 { grid-column: span 2; }
 .span-3 { grid-column: span 3; }
+.section-card h2 {
+    margin: 0 0 1rem;
+    font-size: 1.2rem;
+    color: #0f172a;
+}
+.field-label {
+    display: block;
+    margin: 0 0 0.35rem;
+    font-size: 0.88rem;
+    color: #334155;
+    font-weight: 600;
+}
 .form-input {
     width: 100%;
     padding: 0.6rem 0.75rem;
     border: 1px solid #cbd5f5;
     border-radius: 8px;
+    font-size: 0.95rem;
+    color: #0f172a;
+    background: #fff;
+}
+.form-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 .input-group {
     display: flex;
@@ -411,6 +455,9 @@ body {
     border: none;
     padding: 0.6rem 0.75rem;
     width: 100%;
+}
+.input-group input:focus {
+    outline: none;
 }
 .btn-primary {
     background: #2563eb;
@@ -478,6 +525,26 @@ body {
     font-size: 0.85rem;
     color: #64748b;
     cursor: pointer;
+}
+.check-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    color: #334155;
+}
+.check-item input {
+    width: 16px;
+    height: 16px;
+}
+.form-block {
+    margin-top: 1rem;
+}
+.form-actions {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.6rem;
 }
 .camera-box {
     display: none;
@@ -628,6 +695,26 @@ body {
     color: #0369a1;
     background: #f0f9ff;
 }
+@media (max-width: 900px) {
+    .span-2,
+    .span-3 {
+        grid-column: span 1;
+    }
+}
+@media (max-width: 640px) {
+    .page-container {
+        padding: 1rem;
+    }
+    .section-card {
+        padding: 1rem;
+    }
+    .scanner-manual {
+        flex-wrap: wrap;
+    }
+    .scanner-manual button {
+        width: 100%;
+    }
+}
 </style>
 
 <div class="page-container">
@@ -670,11 +757,11 @@ body {
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
             <div class="form-grid">
                 <div class="span-2">
-                    <label>Nome oficial *</label>
+                    <label class="field-label">Nome oficial *</label>
                     <input class="form-input" name="nome_oficial" required value="<?= h($edit_item['nome_oficial'] ?? '') ?>">
                 </div>
                 <div>
-                    <label>Tipologia</label>
+                    <label class="field-label">Tipologia</label>
                     <select class="form-input" name="tipologia_insumo_id">
                         <option value="">Selecione...</option>
                         <?php foreach ($tipologias as $tip): ?>
@@ -685,7 +772,7 @@ body {
                     </select>
                 </div>
                 <div>
-                    <label>Unidade de medida (padrão)</label>
+                    <label class="field-label">Unidade de medida (padrão)</label>
                     <select class="form-input" name="unidade_medida_padrao_id">
                         <option value="">Selecione...</option>
                         <?php foreach ($unidades_medida as $un): ?>
@@ -696,7 +783,7 @@ body {
                     </select>
                 </div>
                 <div>
-                    <label>Barcode</label>
+                    <label class="field-label">Barcode</label>
                     <div class="upload-actions">
                         <input class="form-input" id="barcode_input" name="barcode" value="<?= h($edit_item['barcode'] ?? $prefill_barcode) ?>">
                         <button type="button" class="btn-primary btn-scanner" id="open-scanner">Ler câmera</button>
@@ -704,16 +791,19 @@ body {
                 </div>
                 <?php if (!$no_checks): ?>
                 <div>
-                    <label>Fracionável</label>
-                    <input type="checkbox" name="fracionavel" <?= !isset($edit_item) || !empty($edit_item['fracionavel']) ? 'checked' : '' ?>>
+                    <label class="field-label">Fracionável</label>
+                    <label class="check-item">
+                        <input type="checkbox" name="fracionavel" <?= !isset($edit_item) || !empty($edit_item['fracionavel']) ? 'checked' : '' ?>>
+                        <span>Sim</span>
+                    </label>
                 </div>
                 <?php endif; ?>
                 <div>
-                    <label>Tamanho embalagem</label>
+                    <label class="field-label">Tamanho embalagem</label>
                     <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="number" step="0.001" value="<?= h($edit_item['tamanho_embalagem'] ?? '') ?>">
                 </div>
                 <div>
-                    <label>Unidade embalagem</label>
+                    <label class="field-label">Unidade embalagem</label>
                     <select class="form-input" name="unidade_embalagem">
                         <option value="">Selecione...</option>
                         <?php foreach ($unidades_medida as $un): ?>
@@ -725,7 +815,7 @@ body {
                 </div>
                 <?php if ($can_see_cost): ?>
                 <div>
-                    <label>Custo padrão</label>
+                    <label class="field-label">Custo padrão</label>
                     <div class="input-group">
                         <span>R$</span>
                         <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= isset($edit_item['custo_padrao']) && $edit_item['custo_padrao'] !== null ? number_format((float)$edit_item['custo_padrao'], 2, ',', '.') : '' ?>">
@@ -734,17 +824,23 @@ body {
                 <?php endif; ?>
                 <?php if (!$no_checks): ?>
                 <div>
-                    <label>Visível na lista</label>
-                    <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
+                    <label class="field-label">Visível na lista</label>
+                    <label class="check-item">
+                        <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
+                        <span>Sim</span>
+                    </label>
                 </div>
                 <div>
-                    <label>Ativo</label>
-                    <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                    <label class="field-label">Ativo</label>
+                    <label class="check-item">
+                        <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                        <span>Sim</span>
+                    </label>
                 </div>
                 <?php endif; ?>
             </div>
-            <div style="margin-top:1rem;">
-                <label>Foto</label>
+            <div class="form-block">
+                <label class="field-label">Foto</label>
                 <div class="upload-box">
                     <div class="upload-preview" id="foto_preview">
                         <?php if (!empty($edit_foto_url)): ?>
@@ -758,15 +854,15 @@ body {
                     </div>
                 </div>
             </div>
-            <div style="margin-top:1rem;">
-                <label>Sinônimos (1 por linha)</label>
+            <div class="form-block">
+                <label class="field-label">Sinônimos (1 por linha)</label>
                 <textarea class="form-input" name="sinonimos" rows="4"><?= h($edit_item['sinonimos'] ?? '') ?></textarea>
             </div>
-            <div style="margin-top:1rem;">
-                <label>Observações</label>
+            <div class="form-block">
+                <label class="field-label">Observações</label>
                 <textarea class="form-input" name="observacoes" rows="3"><?= h($edit_item['observacoes'] ?? '') ?></textarea>
             </div>
-            <div style="margin-top:1rem;">
+            <div class="form-actions">
                 <button class="btn-primary" type="submit">Salvar</button>
             </div>
         </form>

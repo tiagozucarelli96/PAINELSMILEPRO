@@ -46,6 +46,20 @@ $stmt = $GLOBALS['pdo']->prepare("
 ");
 $stmt->execute([$usuario_id]);
 $config = $stmt->fetch(PDO::FETCH_ASSOC);
+
+$host = (string)($_SERVER['HTTP_HOST'] ?? '');
+$base_url = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+
+if ($base_url === '' && $host !== '') {
+    $forwarded_proto = (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+    $forwarded_proto = strtolower(trim(explode(',', $forwarded_proto)[0] ?? ''));
+    $is_https = !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
+    $scheme = $forwarded_proto !== '' ? $forwarded_proto : ($is_https ? 'https' : 'http');
+    $base_url = $scheme . '://' . $host;
+}
+
+$base_url = rtrim($base_url, '/');
+$ics_sync_url = ($base_url !== '' ? $base_url : '') . '/agenda_ics.php?u=' . (int)$usuario_id;
 ?>
 <style>
         body {
@@ -263,7 +277,7 @@ $config = $stmt->fetch(PDO::FETCH_ASSOC);
                         <label>Link para sincronizar com seu calendário</label>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <input type="text" id="icsLink" readonly 
-                                   value="<?= 'https://' . $_SERVER['HTTP_HOST'] . dirname($_SERVER['REQUEST_URI']) . '/agenda_ics.php?u=' . $usuario_id ?>" 
+                                   value="<?= h($ics_sync_url) ?>" 
                                    style="flex: 1; background: #f3f4f6;">
                             <button type="button" class="btn btn-outline" onclick="copyICSLink()">
                                 📋 Copiar

@@ -38,7 +38,11 @@ require_once __DIR__ . '/upload_magalu.php';
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)$usuario_id_session;
-$is_admin = isset($_SESSION['permissao']) && strpos($_SESSION['permissao'], 'admin') !== false;
+$is_admin = (
+    !empty($_SESSION['perm_superadmin']) ||
+    !empty($_SESSION['perm_administrativo']) ||
+    (isset($_SESSION['permissao']) && strpos((string)$_SESSION['permissao'], 'admin') !== false)
+);
 
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
@@ -56,40 +60,21 @@ header('Content-Type: application/json; charset=utf-8');
  */
 function listarQuadros($pdo, $usuario_id, $is_admin) {
     try {
-        if ($is_admin) {
-            // Admin vê todos os quadros
-            $stmt = $pdo->query("
-                SELECT db.*, 
-                       u.nome as criador_nome,
-                       COUNT(DISTINCT dl.id) as total_listas,
-                       COUNT(DISTINCT dc.id) as total_cards
-                FROM demandas_boards db
-                LEFT JOIN usuarios u ON u.id = db.criado_por
-                LEFT JOIN demandas_listas dl ON dl.board_id = db.id
-                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
-                WHERE db.ativo = TRUE
-                GROUP BY db.id, u.nome
-                ORDER BY db.criado_em DESC
-            ");
-        } else {
-            // Usuário vê apenas quadros criados por ele ou que tem cards atribuídos
-            $stmt = $pdo->prepare("
-                SELECT DISTINCT db.*, 
-                       u.nome as criador_nome,
-                       COUNT(DISTINCT dl.id) as total_listas,
-                       COUNT(DISTINCT dc.id) as total_cards
-                FROM demandas_boards db
-                LEFT JOIN usuarios u ON u.id = db.criado_por
-                LEFT JOIN demandas_listas dl ON dl.board_id = db.id
-                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
-                LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
-                WHERE db.ativo = TRUE
-                  AND (db.criado_por = :user_id OR dcu.usuario_id = :user_id)
-                GROUP BY db.id, u.nome
-                ORDER BY db.criado_em DESC
-            ");
-            $stmt->execute([':user_id' => $usuario_id]);
-        }
+        // Regra de visibilidade: qualquer usuário autenticado com acesso ao módulo
+        // consegue ver os quadros ativos para colaboração entre equipes.
+        $stmt = $pdo->query("
+            SELECT db.*, 
+                   u.nome as criador_nome,
+                   COUNT(DISTINCT dl.id) as total_listas,
+                   COUNT(DISTINCT dc.id) as total_cards
+            FROM demandas_boards db
+            LEFT JOIN usuarios u ON u.id = db.criado_por
+            LEFT JOIN demandas_listas dl ON dl.board_id = db.id
+            LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+            WHERE db.ativo = TRUE
+            GROUP BY db.id, u.nome
+            ORDER BY db.criado_em DESC
+        ");
         
         $quadros = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -1520,4 +1505,3 @@ try {
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }
-

@@ -195,16 +195,19 @@ includeSidebar('Catálogo Logístico');
     position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(2px);
     display: none;
     align-items: center;
     justify-content: center;
+    padding: 1rem;
     z-index: 9999;
 }
 .modal {
     background: #fff;
-    border-radius: 12px;
-    width: min(1200px, 96vw);
-    height: 90vh;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    width: min(1200px, 95vw);
+    height: min(90vh, 860px);
     overflow: hidden;
     box-shadow: 0 20px 50px rgba(0,0,0,0.25);
     display: flex;
@@ -215,14 +218,15 @@ includeSidebar('Catálogo Logístico');
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.75rem 1rem;
+    padding: 0.85rem 1.15rem;
     border-bottom: 1px solid #e5e7eb;
-    background: #f8fafc;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 .modal-title {
     font-size: 1.1rem;
     font-weight: 700;
     color: #0f172a;
+    letter-spacing: 0.01em;
 }
 .modal-close {
     border: none;
@@ -237,14 +241,31 @@ includeSidebar('Catálogo Logístico');
     cursor: pointer;
     font-weight: 700;
 }
+.modal-close:hover {
+    background: #cbd5e1;
+}
 .modal-body {
     flex: 1;
-    background: #ffffff;
+    background: #f8fafc;
 }
 .modal-iframe {
     width: 100%;
     height: 100%;
     border: none;
+    background: #f8fafc;
+}
+@media (max-width: 768px) {
+    .modal-overlay {
+        padding: 0.4rem;
+    }
+    .modal {
+        width: 100%;
+        height: 94vh;
+        border-radius: 12px;
+    }
+    .modal-header {
+        padding: 0.75rem 0.9rem;
+    }
 }
 </style>
 
