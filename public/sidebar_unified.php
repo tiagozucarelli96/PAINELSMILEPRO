@@ -1620,7 +1620,6 @@ if ($current_page === 'dashboard') {
                 <?php
                 $logistica_breadcrumbs = [
                     'logistica' => 'Logística',
-                    'logistica_operacional' => 'Logística > Operacional',
                     'logistica_estoque' => 'Logística > Estoque',
                     'logistica_contagem' => 'Logística > Estoque > Contagem',
                     'logistica_entrada' => 'Logística > Estoque > Entrada',

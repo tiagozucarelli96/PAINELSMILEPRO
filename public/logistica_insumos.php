@@ -25,6 +25,7 @@ if (!$can_manage) {
 $errors = [];
 $messages = [];
 $duplicate_warning = null;
+$saved_modal_payload = null;
 
 function find_duplicates(PDO $pdo, string $nome, array $sinonimos, int $excludeId = 0): array {
     $conditions = [];
@@ -233,6 +234,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
                 $messages[] = 'Insumo atualizado.';
+                $saved_modal_payload = [
+                    'id' => $id,
+                    'nome_oficial' => $nome,
+                    'barcode' => $dados[':barcode'],
+                    'unidade_medida_padrao_id' => $unidade_id,
+                    'unidade_nome' => $unidade_nome
+                ];
             } else {
                 $cols = [
                     'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
@@ -257,7 +265,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($dados);
+                $new_id = (int)$pdo->lastInsertId();
                 $messages[] = 'Insumo criado.';
+                $saved_modal_payload = [
+                    'id' => $new_id,
+                    'nome_oficial' => $nome,
+                    'barcode' => $dados[':barcode'],
+                    'unidade_medida_padrao_id' => $unidade_id,
+                    'unidade_nome' => $unidade_nome
+                ];
             }
         }
     }
@@ -269,6 +285,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ->execute([':id' => $id]);
         }
     }
+}
+
+if ($is_modal && $saved_modal_payload !== null && empty($errors) && !$duplicate_warning) {
+    $payload_json = json_encode(
+        $saved_modal_payload,
+        JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    );
+    echo "<script>
+        try {
+            if (window.parent && typeof window.parent.onCadastroInsumoSalvo === 'function') {
+                window.parent.onCadastroInsumoSalvo({$payload_json});
+            } else if (window.parent && typeof window.parent.closeCatalogModal === 'function') {
+                window.parent.closeCatalogModal();
+                if (window.parent.location && typeof window.parent.location.reload === 'function') {
+                    window.parent.location.reload();
+                }
+            } else if (window.parent && typeof window.parent.closeCadastroInsumoModal === 'function') {
+                window.parent.closeCadastroInsumoModal();
+            }
+        } catch (e) {}
+    </script>";
+    exit;
 }
 
 $search = trim((string)($_GET['q'] ?? ''));
@@ -300,6 +338,7 @@ if ($edit_id > 0) {
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
 }
+$prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
 $edit_foto_url = null;
 if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
@@ -317,32 +356,14 @@ body {
 }
 .page-container {
     max-width: 100%;
-    padding: 0.5rem;
-}
-.section-card {
-    border: none;
-    box-shadow: none;
-    padding: 0;
-    margin: 0;
+    padding: 0.85rem;
 }
 .page-container h1 {
-    display: none;
+    margin: 0 0 0.75rem;
+    font-size: 1.35rem;
 }
-.section-card h2 {
-    font-size: 1.1rem;
-    margin-bottom: 0.5rem;
-}
-.form-grid {
-    gap: 0.65rem;
-}
-.form-input {
-    padding: 0.5rem 0.65rem;
-}
-.upload-box {
-    padding: 0.5rem;
-}
-.upload-actions {
-    margin-top: 0.35rem;
+.section-card {
+    margin-bottom: 0.9rem;
 }
 <?php endif; ?>
 .page-container {
@@ -466,6 +487,147 @@ body {
     border-radius: 10px;
     background: #f8fafc;
 }
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+.modal {
+    background: #fff;
+    border-radius: 12px;
+    width: min(480px, 94vw);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    padding: 1rem;
+}
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.modal-close {
+    border: none;
+    background: #e2e8f0;
+    color: #0f172a;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 700;
+}
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+.btn-scanner {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    color: #fff;
+    box-shadow: 0 2px 4px rgba(5,150,105,0.3);
+    white-space: nowrap;
+}
+.btn-scanner:hover {
+    background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+    box-shadow: 0 4px 8px rgba(5,150,105,0.35);
+}
+.scanner-preview {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #0f172a;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    margin: 0.75rem 0;
+}
+.scanner-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.scanner-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.scanner-line {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #22c55e, transparent);
+    animation: scanLine 2s ease-in-out infinite;
+    box-shadow: 0 0 10px #22c55e;
+}
+@keyframes scanLine {
+    0%, 100% { top: 25%; }
+    50% { top: 75%; }
+}
+.scanner-frame {
+    width: 80%;
+    height: 60%;
+    border: 2px solid rgba(34,197,94,0.6);
+    border-radius: 8px;
+    position: relative;
+}
+.scanner-frame::before,
+.scanner-frame::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: #22c55e;
+    border-style: solid;
+}
+.scanner-frame::before {
+    top: -2px;
+    left: -2px;
+    border-width: 3px 0 0 3px;
+    border-radius: 4px 0 0 0;
+}
+.scanner-frame::after {
+    top: -2px;
+    right: -2px;
+    border-width: 3px 3px 0 0;
+    border-radius: 0 4px 0 0;
+}
+.scanner-manual {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+.scanner-manual input {
+    flex: 1;
+}
+.scanner-status {
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    color: #64748b;
+    border-radius: 6px;
+}
+.scanner-status.success {
+    color: #15803d;
+    background: #f0fdf4;
+}
+.scanner-status.error {
+    color: #b91c1c;
+    background: #fef2f2;
+}
+.scanner-status.scanning {
+    color: #0369a1;
+    background: #f0f9ff;
+}
 </style>
 
 <div class="page-container">
@@ -536,10 +698,9 @@ body {
                 <div>
                     <label>Barcode</label>
                     <div class="upload-actions">
-                        <input class="form-input" id="barcode_input" name="barcode" value="<?= h($edit_item['barcode'] ?? '') ?>">
-                        <button type="button" class="btn-secondary" onclick="openBarcodeCamera()">Ler câmera</button>
+                        <input class="form-input" id="barcode_input" name="barcode" value="<?= h($edit_item['barcode'] ?? $prefill_barcode) ?>">
+                        <button type="button" class="btn-primary btn-scanner" id="open-scanner">Ler câmera</button>
                     </div>
-                    <input type="file" id="barcode_file" accept="image/*" capture="environment" style="display:none;">
                 </div>
                 <?php if (!$no_checks): ?>
                 <div>
@@ -673,6 +834,32 @@ body {
     <?php endif; ?>
 </div>
 
+<div class="modal-overlay" id="modal-scanner">
+    <div class="modal">
+        <div class="modal-header">
+            <strong>Leitor de Código de Barras</strong>
+            <button class="modal-close" type="button" id="close-scanner" title="Fechar">X</button>
+        </div>
+        <div class="scanner-preview" id="scanner-preview">
+            <video autoplay playsinline muted></video>
+            <div class="scanner-overlay">
+                <div class="scanner-frame">
+                    <div class="scanner-line"></div>
+                </div>
+            </div>
+        </div>
+        <div class="scanner-status" id="scanner-status">Posicione o código de barras na área destacada</div>
+        <div class="scanner-manual">
+            <input class="form-input" type="text" id="barcode-manual" placeholder="Ou digite o código manualmente...">
+            <button class="btn-primary" type="button" id="barcode-search">Usar</button>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" type="button" id="cancel-scanner">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 <script>
 document.getElementById('foto_file')?.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -685,32 +872,179 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
     reader.readAsDataURL(file);
 });
 
-async function openBarcodeCamera() {
-    const fileInput = document.getElementById('barcode_file');
-    if (!fileInput) return;
+let scannerActive = false;
+let scannerDetectedHandler = null;
+let lastScannedCode = '';
 
-    if (!('BarcodeDetector' in window)) {
-        alert('Leitura por câmera não suportada neste navegador. Digite o código manualmente.');
-        return;
-    }
-    fileInput.click();
+function setScannerStatus(message, type = '') {
+    const statusEl = document.getElementById('scanner-status');
+    if (!statusEl) return;
+    statusEl.className = type ? `scanner-status ${type}` : 'scanner-status';
+    statusEl.textContent = message;
 }
 
-document.getElementById('barcode_file')?.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-        const bitmap = await createImageBitmap(file);
-        const detector = new BarcodeDetector({ formats: ['code_128', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code'] });
-        const codes = await detector.detect(bitmap);
-        if (codes.length) {
-            const input = document.getElementById('barcode_input');
-            if (input) input.value = codes[0].rawValue || '';
-        } else {
-            alert('Nenhum código detectado na imagem.');
+function applyBarcodeValue(code) {
+    const normalized = (code || '').trim();
+    if (!normalized) return false;
+    const barcodeInput = document.getElementById('barcode_input');
+    if (!barcodeInput) return false;
+    barcodeInput.value = normalized;
+    barcodeInput.dispatchEvent(new Event('change'));
+    return true;
+}
+
+function handleBarcodeResult(code) {
+    const normalized = (code || '').trim();
+    if (!normalized) return;
+    if (normalized === lastScannedCode) return;
+    lastScannedCode = normalized;
+
+    if (applyBarcodeValue(normalized)) {
+        setScannerStatus(`Código lido: ${normalized}`, 'success');
+        setTimeout(() => {
+            closeScannerModal();
+            const barcodeInput = document.getElementById('barcode_input');
+            if (barcodeInput) {
+                barcodeInput.focus();
+                barcodeInput.select();
+            }
+        }, 650);
+    } else {
+        setScannerStatus('Não foi possível preencher o campo de código.', 'error');
+    }
+}
+
+function startScanner() {
+    if (typeof Quagga === 'undefined') {
+        setScannerStatus('Scanner indisponível neste navegador. Use o campo manual.', 'error');
+        return;
+    }
+
+    const previewEl = document.getElementById('scanner-preview');
+    if (!previewEl) return;
+    setScannerStatus('Iniciando câmera...', 'scanning');
+
+    Quagga.init({
+        inputStream: {
+            name: 'Live',
+            type: 'LiveStream',
+            target: previewEl,
+            constraints: {
+                facingMode: 'environment',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }
+        },
+        decoder: {
+            readers: [
+                'ean_reader',
+                'ean_8_reader',
+                'code_128_reader',
+                'code_39_reader',
+                'upc_reader',
+                'upc_e_reader'
+            ]
+        },
+        locate: true,
+        locator: {
+            patchSize: 'medium',
+            halfSample: true
         }
-    } catch (err) {
-        alert('Falha ao ler o código: ' + err.message);
+    }, function(err) {
+        if (err) {
+            console.error('Erro ao iniciar scanner:', err);
+            setScannerStatus('Erro ao acessar câmera. Use o campo manual.', 'error');
+            return;
+        }
+
+        scannerActive = true;
+        Quagga.start();
+        setScannerStatus('Posicione o código de barras na área destacada');
+    });
+
+    if (scannerDetectedHandler) {
+        Quagga.offDetected(scannerDetectedHandler);
+    }
+    scannerDetectedHandler = function(result) {
+        const code = result?.codeResult?.code || '';
+        if (code) {
+            handleBarcodeResult(code);
+        }
+    };
+    Quagga.onDetected(scannerDetectedHandler);
+}
+
+function stopScanner() {
+    if (typeof Quagga !== 'undefined' && scannerDetectedHandler) {
+        Quagga.offDetected(scannerDetectedHandler);
+        scannerDetectedHandler = null;
+    }
+    if (scannerActive && typeof Quagga !== 'undefined') {
+        try {
+            Quagga.stop();
+        } catch (err) {
+            console.error('Falha ao parar scanner:', err);
+        }
+        scannerActive = false;
+    }
+    lastScannedCode = '';
+}
+
+function openScannerModal() {
+    const modal = document.getElementById('modal-scanner');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    const manualInput = document.getElementById('barcode-manual');
+    if (manualInput) {
+        manualInput.value = '';
+    }
+    setScannerStatus('Posicione o código de barras na área destacada');
+    startScanner();
+}
+
+function closeScannerModal() {
+    stopScanner();
+    const modal = document.getElementById('modal-scanner');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+document.getElementById('open-scanner')?.addEventListener('click', openScannerModal);
+document.getElementById('close-scanner')?.addEventListener('click', closeScannerModal);
+document.getElementById('cancel-scanner')?.addEventListener('click', closeScannerModal);
+document.getElementById('modal-scanner')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-scanner') {
+        closeScannerModal();
+    }
+});
+
+document.getElementById('barcode-search')?.addEventListener('click', () => {
+    const manualInput = document.getElementById('barcode-manual');
+    const code = manualInput ? manualInput.value.trim() : '';
+    if (!code) {
+        setScannerStatus('Digite um código para continuar.', 'error');
+        return;
+    }
+    handleBarcodeResult(code);
+});
+
+document.getElementById('barcode-manual')?.addEventListener('keypress', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const code = e.target.value.trim();
+    if (!code) {
+        setScannerStatus('Digite um código para continuar.', 'error');
+        return;
+    }
+    handleBarcodeResult(code);
+});
+
+window.addEventListener('beforeunload', () => {
+    try {
+        stopScanner();
+    } catch (e) {
+        // no-op
     }
 });
 

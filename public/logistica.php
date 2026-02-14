@@ -127,15 +127,6 @@ ob_start();
     <?php else: ?>
     <div class="funcionalidades-grid">
         <?php if (!empty($_SESSION['perm_logistico']) || $is_superadmin): ?>
-        <a href="index.php?page=logistica_operacional" class="funcionalidade-card">
-            <div class="funcionalidade-card-header">
-                <span class="funcionalidade-card-icon">🗂️</span>
-                <div class="funcionalidade-card-title">Operacional</div>
-                <div class="funcionalidade-card-subtitle">Eventos, alertas e listas</div>
-            </div>
-            <div class="funcionalidade-card-content"></div>
-        </a>
-
         <a href="index.php?page=logistica_gerar_lista" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #3b82f6, #2563eb);">
                 <span class="funcionalidade-card-icon">🛒</span>

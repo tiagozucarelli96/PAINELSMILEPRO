@@ -19,7 +19,6 @@ return [
     // 'lc_index' => 'perm_logistico', // REMOVIDO: Módulo desativado
     // Logística
     'logistica' => 'perm_logistico',
-    'logistica_operacional' => 'perm_logistico',
     'logistica_divergencias' => 'perm_logistico_divergencias',
     'logistica_financeiro' => 'perm_logistico_financeiro',
     'configuracoes' => 'perm_configuracoes',

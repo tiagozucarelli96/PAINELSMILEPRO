@@ -95,13 +95,42 @@ if ($edit_receita_id > 0) {
 }
 
 includeSidebar('Tipologias - Logística');
+
+$is_editing_insumo = is_array($edit_insumo);
+$is_editing_receita = is_array($edit_receita);
 ?>
 
 <style>
 .page-container {
-    max-width: 1200px;
+    max-width: 1320px;
     margin: 0 auto;
     padding: 1.5rem;
+}
+
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.page-title {
+    margin: 0;
+    color: #0f172a;
+}
+
+.page-subtitle {
+    margin: 0.35rem 0 0;
+    color: #64748b;
+    font-size: 0.95rem;
+}
+
+.tipologia-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 1rem;
 }
 
 .section-card {
@@ -109,14 +138,34 @@ includeSidebar('Tipologias - Logística');
     border: 1px solid #e5e7eb;
     border-radius: 12px;
     padding: 1.5rem;
-    margin-bottom: 1.5rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    min-width: 0;
 }
 
-.section-card h2 {
-    margin: 0 0 1rem 0;
-    font-size: 1.25rem;
+.section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.section-head h2 {
+    margin: 0;
+    font-size: 1.2rem;
     color: #0f172a;
+}
+
+.section-head p {
+    margin: 0.35rem 0 0;
+    color: #64748b;
+    font-size: 0.88rem;
+}
+
+.section-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
 .form-row {
@@ -131,6 +180,49 @@ includeSidebar('Tipologias - Logística');
     padding: 0.6rem 0.75rem;
     border: 1px solid #cbd5f5;
     border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.field-label {
+    display: block;
+    margin: 0 0 0.4rem;
+    font-size: 0.88rem;
+    color: #334155;
+    font-weight: 600;
+}
+
+.check-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+    gap: 0.65rem;
+}
+
+.check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    color: #334155;
+}
+
+.check-item input {
+    width: 16px;
+    height: 16px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.2rem;
+}
+
+.btn-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 0.9rem;
 }
 
 .btn-primary {
@@ -141,6 +233,7 @@ includeSidebar('Tipologias - Logística');
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
+    text-decoration: none;
 }
 
 .btn-secondary {
@@ -150,6 +243,19 @@ includeSidebar('Tipologias - Logística');
     padding: 0.5rem 0.9rem;
     border-radius: 8px;
     cursor: pointer;
+    text-decoration: none;
+}
+
+.edit-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: #eff6ff;
+    color: #1d4ed8;
 }
 
 .table {
@@ -157,12 +263,35 @@ includeSidebar('Tipologias - Logística');
     border-collapse: collapse;
 }
 
+.table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 1rem;
+}
+
 .table th,
 .table td {
     text-align: left;
-    padding: 0.6rem;
+    padding: 0.65rem;
     border-bottom: 1px solid #e5e7eb;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.table th {
+    color: #475569;
+    font-weight: 600;
+    background: #f8fafc;
+}
+
+.table td:last-child {
+    white-space: normal;
+}
+
+.actions-row {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
 }
 
 .status-pill {
@@ -197,10 +326,31 @@ includeSidebar('Tipologias - Logística');
     background: #dcfce7;
     color: #166534;
 }
+
+@media (max-width: 760px) {
+    .page-container {
+        padding: 1rem;
+    }
+    .section-card {
+        padding: 1rem;
+    }
+    .tipologia-grid {
+        grid-template-columns: 1fr;
+    }
+    .check-grid {
+        grid-template-columns: 1fr;
+    }
+}
 </style>
 
 <div class="page-container">
-    <h1>Tipologias</h1>
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Tipologias</h1>
+            <p class="page-subtitle">Gerencie os tipos usados no cadastro de insumos e receitas.</p>
+        </div>
+        <a class="btn-secondary btn-link" href="index.php?page=logistica_catalogo">Voltar ao catálogo</a>
+    </div>
 
     <?php foreach ($errors as $error): ?>
         <div class="alert alert-error"><?= h($error) ?></div>
@@ -210,136 +360,190 @@ includeSidebar('Tipologias - Logística');
         <div class="alert alert-success"><?= h($message) ?></div>
     <?php endforeach; ?>
 
-    <div class="section-card">
-        <h2>Tipologia de Insumo</h2>
-        <form method="POST">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="tipo" value="insumo">
-            <input type="hidden" name="id" value="<?= $edit_insumo ? (int)$edit_insumo['id'] : '' ?>">
-            <div class="form-row">
+    <div class="tipologia-grid">
+        <div class="section-card">
+            <div class="section-head">
                 <div>
-                    <label>Nome</label>
-                    <input class="form-input" name="nome" required value="<?= h($edit_insumo['nome'] ?? '') ?>">
+                    <h2>Tipologias de Insumo</h2>
+                    <p><?= count($tipologias_insumo) ?> cadastrada(s)</p>
                 </div>
-                <div>
-                    <label>Ordem</label>
-                    <input class="form-input" name="ordem" type="number" value="<?= h($edit_insumo['ordem'] ?? 0) ?>">
-                </div>
-                <div>
-                    <label>Ativo</label>
-                    <input type="checkbox" name="ativo" <?= !isset($edit_insumo) || !empty($edit_insumo['ativo']) ? 'checked' : '' ?>>
-                </div>
-                <div>
-                    <label>Visível na lista</label>
-                    <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_insumo) || !empty($edit_insumo['visivel_na_lista']) ? 'checked' : '' ?>>
+                <div class="section-actions">
+                    <?php if ($is_editing_insumo): ?>
+                        <span class="edit-badge">Editando ID #<?= (int)$edit_insumo['id'] ?></span>
+                    <?php endif; ?>
+                    <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Novo cadastro</a>
                 </div>
             </div>
-            <button class="btn-primary" type="submit">Salvar</button>
-        </form>
 
-        <table class="table" style="margin-top: 1rem;">
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>Ordem</th>
-                    <th>Status</th>
-                    <th>Visível</th>
-                    <th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tipologias_insumo as $tip): ?>
-                    <tr>
-                        <td><?= h($tip['nome']) ?></td>
-                        <td><?= (int)$tip['ordem'] ?></td>
-                        <td>
-                            <span class="status-pill <?= $tip['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
-                                <?= $tip['ativo'] ? 'Ativo' : 'Inativo' ?>
-                            </span>
-                        </td>
-                        <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
-                        <td>
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="action" value="toggle">
-                                <input type="hidden" name="tipo" value="insumo">
-                                <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
-                                <button class="btn-secondary" type="submit">Ativar/Desativar</button>
-                            </form>
-                            <a class="btn-secondary" href="index.php?page=logistica_tipologias&edit_insumo_id=<?= (int)$tip['id'] ?>">Editar</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (empty($tipologias_insumo)): ?>
-                    <tr><td colspan="5">Nenhuma tipologia cadastrada.</td></tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
+            <form method="POST">
+                <input type="hidden" name="action" value="save">
+                <input type="hidden" name="tipo" value="insumo">
+                <input type="hidden" name="id" value="<?= $is_editing_insumo ? (int)$edit_insumo['id'] : '' ?>">
+                <div class="form-row">
+                    <div>
+                        <label class="field-label">Nome</label>
+                        <input class="form-input" name="nome" required value="<?= h($edit_insumo['nome'] ?? '') ?>" placeholder="Ex.: Hortifruti">
+                    </div>
+                    <div>
+                        <label class="field-label">Ordem</label>
+                        <input class="form-input" name="ordem" type="number" value="<?= h($edit_insumo['ordem'] ?? 10) ?>">
+                    </div>
+                    <div>
+                        <label class="field-label">Configuração</label>
+                        <div class="check-grid">
+                            <label class="check-item">
+                                <input type="checkbox" name="ativo" <?= $is_editing_insumo ? (!empty($edit_insumo['ativo']) ? 'checked' : '') : 'checked' ?>>
+                                Ativo
+                            </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="visivel_na_lista" <?= $is_editing_insumo ? (!empty($edit_insumo['visivel_na_lista']) ? 'checked' : '') : 'checked' ?>>
+                                Visível na lista
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn-primary" type="submit"><?= $is_editing_insumo ? 'Atualizar tipologia' : 'Criar tipologia' ?></button>
+                    <?php if ($is_editing_insumo): ?>
+                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias">Cancelar edição</a>
+                    <?php endif; ?>
+                </div>
+            </form>
 
-    <div class="section-card">
-        <h2>Tipologia de Receita</h2>
-        <form method="POST">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="tipo" value="receita">
-            <input type="hidden" name="id" value="<?= $edit_receita ? (int)$edit_receita['id'] : '' ?>">
-            <div class="form-row">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Ordem</th>
+                            <th>Status</th>
+                            <th>Visível</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($tipologias_insumo as $tip): ?>
+                            <tr>
+                                <td><?= h($tip['nome']) ?></td>
+                                <td><?= (int)$tip['ordem'] ?></td>
+                                <td>
+                                    <span class="status-pill <?= $tip['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
+                                        <?= $tip['ativo'] ? 'Ativo' : 'Inativo' ?>
+                                    </span>
+                                </td>
+                                <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
+                                <td>
+                                    <div class="actions-row">
+                                        <form method="POST">
+                                            <input type="hidden" name="action" value="toggle">
+                                            <input type="hidden" name="tipo" value="insumo">
+                                            <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
+                                            <button class="btn-secondary" type="submit">Ativar/Desativar</button>
+                                        </form>
+                                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_insumo_id=<?= (int)$tip['id'] ?>">Editar</a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($tipologias_insumo)): ?>
+                            <tr><td colspan="5">Nenhuma tipologia de insumo cadastrada.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-head">
                 <div>
-                    <label>Nome</label>
-                    <input class="form-input" name="nome" required value="<?= h($edit_receita['nome'] ?? '') ?>">
+                    <h2>Tipologias de Receita</h2>
+                    <p><?= count($tipologias_receita) ?> cadastrada(s)</p>
                 </div>
-                <div>
-                    <label>Ordem</label>
-                    <input class="form-input" name="ordem" type="number" value="<?= h($edit_receita['ordem'] ?? 0) ?>">
-                </div>
-                <div>
-                    <label>Ativo</label>
-                    <input type="checkbox" name="ativo" <?= !isset($edit_receita) || !empty($edit_receita['ativo']) ? 'checked' : '' ?>>
-                </div>
-                <div>
-                    <label>Visível na lista</label>
-                    <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_receita) || !empty($edit_receita['visivel_na_lista']) ? 'checked' : '' ?>>
+                <div class="section-actions">
+                    <?php if ($is_editing_receita): ?>
+                        <span class="edit-badge">Editando ID #<?= (int)$edit_receita['id'] ?></span>
+                    <?php endif; ?>
+                    <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Novo cadastro</a>
                 </div>
             </div>
-            <button class="btn-primary" type="submit">Salvar</button>
-        </form>
 
-        <table class="table" style="margin-top: 1rem;">
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>Ordem</th>
-                    <th>Status</th>
-                    <th>Visível</th>
-                    <th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($tipologias_receita as $tip): ?>
-                    <tr>
-                        <td><?= h($tip['nome']) ?></td>
-                        <td><?= (int)$tip['ordem'] ?></td>
-                        <td>
-                            <span class="status-pill <?= $tip['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
-                                <?= $tip['ativo'] ? 'Ativo' : 'Inativo' ?>
-                            </span>
-                        </td>
-                        <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
-                        <td>
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="action" value="toggle">
-                                <input type="hidden" name="tipo" value="receita">
-                                <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
-                                <button class="btn-secondary" type="submit">Ativar/Desativar</button>
-                            </form>
-                            <a class="btn-secondary" href="index.php?page=logistica_tipologias&edit_receita_id=<?= (int)$tip['id'] ?>">Editar</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (empty($tipologias_receita)): ?>
-                    <tr><td colspan="5">Nenhuma tipologia cadastrada.</td></tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
+            <form method="POST">
+                <input type="hidden" name="action" value="save">
+                <input type="hidden" name="tipo" value="receita">
+                <input type="hidden" name="id" value="<?= $is_editing_receita ? (int)$edit_receita['id'] : '' ?>">
+                <div class="form-row">
+                    <div>
+                        <label class="field-label">Nome</label>
+                        <input class="form-input" name="nome" required value="<?= h($edit_receita['nome'] ?? '') ?>" placeholder="Ex.: Finalização">
+                    </div>
+                    <div>
+                        <label class="field-label">Ordem</label>
+                        <input class="form-input" name="ordem" type="number" value="<?= h($edit_receita['ordem'] ?? 10) ?>">
+                    </div>
+                    <div>
+                        <label class="field-label">Configuração</label>
+                        <div class="check-grid">
+                            <label class="check-item">
+                                <input type="checkbox" name="ativo" <?= $is_editing_receita ? (!empty($edit_receita['ativo']) ? 'checked' : '') : 'checked' ?>>
+                                Ativo
+                            </label>
+                            <label class="check-item">
+                                <input type="checkbox" name="visivel_na_lista" <?= $is_editing_receita ? (!empty($edit_receita['visivel_na_lista']) ? 'checked' : '') : 'checked' ?>>
+                                Visível na lista
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn-primary" type="submit"><?= $is_editing_receita ? 'Atualizar tipologia' : 'Criar tipologia' ?></button>
+                    <?php if ($is_editing_receita): ?>
+                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias<?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Cancelar edição</a>
+                    <?php endif; ?>
+                </div>
+            </form>
+
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Ordem</th>
+                            <th>Status</th>
+                            <th>Visível</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($tipologias_receita as $tip): ?>
+                            <tr>
+                                <td><?= h($tip['nome']) ?></td>
+                                <td><?= (int)$tip['ordem'] ?></td>
+                                <td>
+                                    <span class="status-pill <?= $tip['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
+                                        <?= $tip['ativo'] ? 'Ativo' : 'Inativo' ?>
+                                    </span>
+                                </td>
+                                <td><?= $tip['visivel_na_lista'] ? 'Sim' : 'Não' ?></td>
+                                <td>
+                                    <div class="actions-row">
+                                        <form method="POST">
+                                            <input type="hidden" name="action" value="toggle">
+                                            <input type="hidden" name="tipo" value="receita">
+                                            <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
+                                            <button class="btn-secondary" type="submit">Ativar/Desativar</button>
+                                        </form>
+                                        <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_receita_id=<?= (int)$tip['id'] ?><?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Editar</a>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($tipologias_receita)): ?>
+                            <tr><td colspan="5">Nenhuma tipologia de receita cadastrada.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 

@@ -635,6 +635,57 @@ includeSidebar('Entrada de Mercadoria - Logística');
     border-radius: 6px;
 }
 
+.scanner-register-prompt {
+    display: none;
+    margin-top: 0.55rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.scanner-register-text {
+    font-size: 0.82rem;
+    color: #475569;
+}
+
+.scanner-register-actions {
+    display: flex;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.btn-quiet {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.8rem;
+    border-radius: 7px;
+}
+
+.modal-cadastro {
+    width: min(1320px, 96vw);
+    height: 92vh;
+    max-height: 92vh;
+    padding: 0;
+}
+
+.modal-cadastro .modal-header {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-cadastro-body {
+    flex: 1;
+    min-height: 0;
+}
+
+.modal-cadastro-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+}
+
 .barcode-indicator {
     display: inline-flex;
     align-items: center;
@@ -852,6 +903,14 @@ includeSidebar('Entrada de Mercadoria - Logística');
         <div class="scanner-status" id="scanner-status">
             Posicione o código de barras na área destacada
         </div>
+
+        <div class="scanner-register-prompt" id="scanner-register-prompt">
+            <div class="scanner-register-text" id="scanner-register-text">Produto não cadastrado. Deseja cadastrar?</div>
+            <div class="scanner-register-actions">
+                <button class="btn btn-secondary btn-quiet" type="button" id="scanner-register-yes">Cadastrar</button>
+                <button class="btn btn-secondary btn-quiet" type="button" id="scanner-register-no">Agora não</button>
+            </div>
+        </div>
         
         <div class="scanner-manual">
             <input type="text" id="barcode-manual" placeholder="Ou digite o código manualmente..." autocomplete="off">
@@ -868,6 +927,23 @@ includeSidebar('Entrada de Mercadoria - Logística');
     </div>
 </div>
 
+<!-- Modal Cadastro de Insumo -->
+<div class="modal-overlay" id="modal-cadastro-insumo">
+    <div class="modal modal-cadastro">
+        <div class="modal-header">
+            <strong>Cadastrar insumo</strong>
+            <button class="modal-close" type="button" id="close-cadastro-insumo" title="Fechar">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-cadastro-body">
+            <iframe id="cadastro-insumo-iframe" class="modal-cadastro-iframe" src="about:blank"></iframe>
+        </div>
+    </div>
+</div>
+
 <!-- Biblioteca QuaggaJS para leitura de código de barras -->
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
 
@@ -878,6 +954,7 @@ let selectedInsumo = null;
 let scannerActive = false;
 let lastScannedCode = '';
 let scanDebounceTimer = null;
+let pendingBarcodeCadastro = '';
 
 // ========== SCANNER DE CÓDIGO DE BARRAS ==========
 
@@ -885,6 +962,77 @@ function findInsumoByBarcode(code) {
     const normalizedCode = code.trim();
     return INSUMOS.find(i => i.barcode && i.barcode.trim() === normalizedCode);
 }
+
+function hideRegisterPrompt() {
+    const promptEl = document.getElementById('scanner-register-prompt');
+    if (promptEl) {
+        promptEl.style.display = 'none';
+    }
+    pendingBarcodeCadastro = '';
+}
+
+function showRegisterPrompt(code) {
+    pendingBarcodeCadastro = code;
+    const promptEl = document.getElementById('scanner-register-prompt');
+    const textEl = document.getElementById('scanner-register-text');
+    if (textEl) {
+        textEl.textContent = `Produto não cadastrado. Deseja cadastrar? (código: ${code})`;
+    }
+    if (promptEl) {
+        promptEl.style.display = 'block';
+    }
+}
+
+function openCadastroInsumoFromBarcode() {
+    if (!pendingBarcodeCadastro) return;
+    const barcode = pendingBarcodeCadastro;
+    stopScanner();
+    document.getElementById('modal-scanner').style.display = 'none';
+    hideRegisterPrompt();
+    openCadastroInsumoModal(barcode);
+}
+
+function openCadastroInsumoModal(barcode = '') {
+    const modal = document.getElementById('modal-cadastro-insumo');
+    const iframe = document.getElementById('cadastro-insumo-iframe');
+    let url = 'index.php?page=logistica_insumos&modal=1&nochecks=1';
+    if (barcode) {
+        url += `&barcode=${encodeURIComponent(barcode)}`;
+    }
+    iframe.src = url;
+    modal.style.display = 'flex';
+}
+
+function closeCadastroInsumoModal() {
+    const modal = document.getElementById('modal-cadastro-insumo');
+    const iframe = document.getElementById('cadastro-insumo-iframe');
+    if (iframe) {
+        iframe.src = 'about:blank';
+    }
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+window.onCadastroInsumoSalvo = function(insumo) {
+    if (insumo && Number(insumo.id) > 0) {
+        const normalized = {
+            id: Number(insumo.id),
+            nome_oficial: insumo.nome_oficial || '',
+            unidade_medida_padrao_id: insumo.unidade_medida_padrao_id || '',
+            unidade_nome: insumo.unidade_nome || '-',
+            barcode: insumo.barcode || ''
+        };
+        const idx = INSUMOS.findIndex(i => Number(i.id) === normalized.id);
+        if (idx >= 0) {
+            INSUMOS[idx] = { ...INSUMOS[idx], ...normalized };
+        } else {
+            INSUMOS.push(normalized);
+        }
+        addInsumoFromBarcode(normalized);
+    }
+    closeCadastroInsumoModal();
+};
 
 function addInsumoFromBarcode(insumo) {
     // Verifica se já existe uma linha vazia para usar
@@ -977,6 +1125,7 @@ function handleBarcodeResult(code) {
     const insumo = findInsumoByBarcode(code);
     
     if (insumo) {
+        hideRegisterPrompt();
         statusEl.className = 'scanner-status success';
         statusEl.textContent = `Encontrado: ${insumo.nome_oficial}`;
         addInsumoFromBarcode(insumo);
@@ -1002,6 +1151,7 @@ function handleBarcodeResult(code) {
     } else {
         statusEl.className = 'scanner-status error';
         statusEl.textContent = `Código "${code}" não encontrado no cadastro`;
+        showRegisterPrompt(code);
         
         setTimeout(() => {
             statusEl.className = 'scanner-status';
@@ -1077,11 +1227,13 @@ function openScannerModal() {
     document.getElementById('barcode-manual').value = '';
     document.getElementById('scanner-status').className = 'scanner-status';
     document.getElementById('scanner-status').textContent = 'Posicione o código de barras na área destacada';
+    hideRegisterPrompt();
     startScanner();
 }
 
 function closeScannerModal() {
     stopScanner();
+    hideRegisterPrompt();
     document.getElementById('modal-scanner').style.display = 'none';
 }
 
@@ -1107,6 +1259,21 @@ document.getElementById('barcode-manual').addEventListener('keypress', (e) => {
             handleBarcodeResult(code);
             e.target.value = '';
         }
+    }
+});
+
+document.getElementById('scanner-register-yes').addEventListener('click', () => {
+    openCadastroInsumoFromBarcode();
+});
+
+document.getElementById('scanner-register-no').addEventListener('click', () => {
+    hideRegisterPrompt();
+});
+
+document.getElementById('close-cadastro-insumo').addEventListener('click', closeCadastroInsumoModal);
+document.getElementById('modal-cadastro-insumo').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-cadastro-insumo') {
+        closeCadastroInsumoModal();
     }
 });
 
@@ -1217,6 +1384,9 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('modal-insumos').style.display === 'flex') {
         closeModal();
     }
+    if (e.key === 'Escape' && document.getElementById('modal-cadastro-insumo').style.display === 'flex') {
+        closeCadastroInsumoModal();
+    }
 });
 
 // Event delegation para os botões nas linhas
@@ -1268,8 +1438,10 @@ document.getElementById('add-row').addEventListener('click', () => {
         </div>
     `;
     container.appendChild(row);
-    // Abrir modal automaticamente para a nova linha
-    openModal(row);
+    const selectBtn = row.querySelector('.open-modal');
+    if (selectBtn) {
+        selectBtn.focus();
+    }
 });
 </script>
 

@@ -66,12 +66,12 @@ includeSidebar('Saldo de Estoque - Logística');
 <div class="saldo-container">
     <h1>Saldo atual</h1>
 
-    <form method="get" class="card" style="margin-bottom:1rem;">
+    <form method="get" class="card" style="margin-bottom:1rem;" id="saldo-filter-form">
         <input type="hidden" name="page" value="logistica_saldo">
         <div style="display:flex;gap:1rem;flex-wrap:wrap;">
             <div style="min-width:220px;">
                 <label>Unidade</label>
-                <select name="unidade_id">
+                <select name="unidade_id" id="saldo-unidade-select">
                     <?php foreach ($unidades as $u): ?>
                         <option value="<?= (int)$u['id'] ?>" <?= $unidade_id === (int)$u['id'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars($u['nome']) ?>
@@ -126,5 +126,11 @@ includeSidebar('Saldo de Estoque - Logística');
         </table>
     </div>
 </div>
+
+<script>
+document.getElementById('saldo-unidade-select')?.addEventListener('change', () => {
+    document.getElementById('saldo-filter-form')?.submit();
+});
+</script>
 
 <?php endSidebar(); ?>

@@ -342,7 +342,6 @@ function openCatalogModal(tipo, id) {
     if (id) {
         url += `&edit_id=${id}`;
     }
-    url += `&nochecks=1`;
     if (title) {
         title.textContent = tipo === 'insumo' ? 'Cadastro de Insumo' : 'Cadastro de Receita';
     }
