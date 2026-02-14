@@ -912,7 +912,7 @@ if ($current_page === 'dashboard') {
             position: fixed;
             top: 20px;
             left: 20px;
-            z-index: 1001;
+            z-index: 1201;
             background: #1e3a8a;
             color: white;
             border: none;
@@ -923,6 +923,23 @@ if ($current_page === 'dashboard') {
             font-weight: 500;
             box-shadow: 0 4px 15px rgba(30, 58, 138, 0.3);
             transition: all 0.3s ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.5);
+            z-index: 1190;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .sidebar-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
         }
         
         .sidebar-toggle:hover {
@@ -1455,6 +1472,7 @@ if ($current_page === 'dashboard') {
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
+                z-index: 1200 !important;
             }
             
             .sidebar.open {
@@ -1468,24 +1486,44 @@ if ($current_page === 'dashboard') {
             
             .sidebar-toggle {
                 display: block;
+                top: calc(env(safe-area-inset-top, 0px) + 12px);
+                left: 12px;
+                min-width: 44px;
+                min-height: 44px;
+                padding: 10px 12px;
+                border-radius: 10px;
             }
 
             .top-account-access {
-                top: 14px;
-                right: 14px;
+                display: none;
             }
 
             .top-account-text {
                 display: none;
+            }
+
+            .dashboard-header-info {
+                padding-left: 54px;
+            }
+
+            .dashboard-header-info h1 {
+                font-size: 2rem;
+                line-height: 1.15;
+            }
+
+            body.sidebar-mobile-open {
+                overflow: hidden !important;
+                touch-action: none;
             }
         }
     </style>
 </head>
 <body>
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar(false)"></div>
     
     <!-- Sidebar fixa -->
-    <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1000 !important;">
+    <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1200 !important;">
             <div class="sidebar-header">
                 <div class="user-info">
                     <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center; color: transparent;" : '' ?>">
@@ -1740,9 +1778,31 @@ if ($current_page === 'dashboard') {
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
             
             if (!sidebar || !mainContent) {
                 console.error('Sidebar ou mainContent não encontrados');
+                return;
+            }
+
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+            // Controle dedicado para mobile: usa classe .open
+            if (isMobile) {
+                const desiredState = typeof arguments[0] === 'boolean' ? arguments[0] : !sidebar.classList.contains('open');
+                if (desiredState) {
+                    sidebar.classList.add('open');
+                    document.body.classList.add('sidebar-mobile-open');
+                    if (sidebarOverlay) {
+                        sidebarOverlay.classList.add('open');
+                    }
+                } else {
+                    sidebar.classList.remove('open');
+                    document.body.classList.remove('sidebar-mobile-open');
+                    if (sidebarOverlay) {
+                        sidebarOverlay.classList.remove('open');
+                    }
+                }
                 return;
             }
             
@@ -1762,8 +1822,59 @@ if ($current_page === 'dashboard') {
                 mainContent.style.width = '100%';
             }
 
+            document.body.classList.remove('sidebar-mobile-open');
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.remove('open');
+            }
+
             // Forçar recalculo de layouts dependentes de largura (ex: FullCalendar).
             setTimeout(() => window.dispatchEvent(new Event('resize')), 150);
+        }
+
+        function syncSidebarByViewport() {
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+            if (!sidebar || !mainContent) return;
+
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+            if (typeof window.__lastSidebarMobileMode === 'undefined') {
+                window.__lastSidebarMobileMode = null;
+            }
+            if (window.__lastSidebarMobileMode === isMobile && arguments[0] !== true) {
+                return;
+            }
+            window.__lastSidebarMobileMode = isMobile;
+
+            if (isMobile) {
+                // Garante estado inicial fechado no mobile
+                sidebar.classList.remove('collapsed');
+                sidebar.classList.remove('open');
+                mainContent.classList.remove('expanded');
+                mainContent.style.marginLeft = '0';
+                mainContent.style.width = '100%';
+                document.body.classList.remove('sidebar-mobile-open');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.remove('open');
+                }
+                return;
+            }
+
+            // Em desktop, restaura comportamento padrão
+            sidebar.classList.remove('open');
+            document.body.classList.remove('sidebar-mobile-open');
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.remove('open');
+            }
+            if (sidebar.classList.contains('collapsed')) {
+                mainContent.classList.add('expanded');
+                mainContent.style.marginLeft = '0';
+                mainContent.style.width = '100%';
+            } else {
+                mainContent.classList.remove('expanded');
+                mainContent.style.marginLeft = '280px';
+                mainContent.style.width = 'calc(100% - 280px)';
+            }
         }
         
         // Função para voltar
@@ -1778,6 +1889,16 @@ if ($current_page === 'dashboard') {
         // Carregar conteúdo da página atual
         document.addEventListener('DOMContentLoaded', function() {
             const currentPage = '<?= $current_page ?>';
+            syncSidebarByViewport();
+
+            // Em mobile, fecha o menu ao tocar em uma opção da sidebar.
+            document.querySelectorAll('#sidebar .nav-item').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    if (window.matchMedia('(max-width: 768px)').matches) {
+                        toggleSidebar(false);
+                    }
+                });
+            });
             
             // Se for dashboard, logistico, configurações, cadastros, financeiro ou administrativo, 
             // o conteúdo já foi renderizado via PHP, não fazer nada
@@ -1811,6 +1932,8 @@ if ($current_page === 'dashboard') {
             // Auto-sync Google Calendar em background (com webhook + fallback)
             startGoogleCalendarAutoSync();
         });
+
+        window.addEventListener('resize', syncSidebarByViewport);
 
         function startGoogleCalendarAutoSync() {
             const syncUrl = 'google_calendar_auto_sync_ping.php';
