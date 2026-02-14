@@ -1,7 +1,7 @@
 <?php
 /**
  * formularios_eventos.php
- * Gestão central de formulários reutilizáveis para Eventos.
+ * Gestao central de formularios reutilizaveis para Eventos.
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -19,8 +19,9 @@ if (empty($_SESSION['perm_configuracoes']) && empty($_SESSION['perm_superadmin']
 
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+$request_method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($request_method === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
 
     switch ($action) {
@@ -39,9 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $schema_json = (string)($_POST['schema_json'] ?? '[]');
             $schema = json_decode($schema_json, true);
             if (!is_array($schema)) {
-                echo json_encode(['ok' => false, 'error' => 'Schema inválido']);
+                echo json_encode(['ok' => false, 'error' => 'Schema invalido']);
                 exit;
             }
+
             $result = eventos_form_template_salvar(
                 $pdo,
                 $template_name,
@@ -62,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $source_text = (string)($_POST['source_text'] ?? '');
             $include_notes = ((string)($_POST['include_notes'] ?? '1')) !== '0';
             $schema = eventos_form_template_gerar_schema_por_fonte($source_text, $include_notes);
+
             if (empty($schema)) {
                 echo json_encode(['ok' => false, 'error' => 'Nao foi possivel gerar campos com o texto informado.']);
                 exit;
@@ -70,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'A importacao nao encontrou perguntas preenchiveis.']);
                 exit;
             }
+
             $fillable_types = ['text', 'textarea', 'yesno', 'select', 'file'];
             $fillable_count = 0;
             foreach ($schema as $field) {
@@ -81,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $fillable_count++;
                 }
             }
+
             echo json_encode([
                 'ok' => true,
                 'schema' => $schema,
@@ -95,9 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $force_update = ((string)($_POST['force_update'] ?? '0')) === '1';
             $seed = eventos_form_template_seed_protocolo_15anos($pdo, $user_id, $force_update);
             if (empty($seed['ok'])) {
-                echo json_encode(['ok' => false, 'error' => (string)($seed['error'] ?? 'Falha ao garantir template padrão')]);
+                echo json_encode(['ok' => false, 'error' => (string)($seed['error'] ?? 'Falha ao garantir template padrao')]);
                 exit;
             }
+
             echo json_encode([
                 'ok' => true,
                 'seed' => $seed,
@@ -106,677 +112,766 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
 
         default:
-            echo json_encode(['ok' => false, 'error' => 'Ação inválida']);
+            echo json_encode(['ok' => false, 'error' => 'Acao invalida']);
             exit;
     }
 }
 
 eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $templates = eventos_form_templates_listar($pdo);
-includeSidebar('Formulários eventos');
+includeSidebar('Formularios eventos');
 ?>
 
 <style>
-    .forms-page {
-        max-width: 1520px;
+    .forms-shell {
+        max-width: 1500px;
         margin: 0 auto;
-        padding: 1.5rem;
-        background: #f8fafc;
+        padding: 1.2rem 1.2rem 1.5rem;
+        background: #f3f5f9;
+        min-height: calc(100vh - 90px);
     }
 
-    .forms-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 1rem;
-        flex-wrap: wrap;
-        margin-bottom: 1rem;
+    .view {
+        display: none;
     }
 
-    .forms-title {
-        margin: 0;
-        font-size: 1.5rem;
-        color: #0f172a;
-    }
-
-    .forms-subtitle {
-        margin: 0.3rem 0 0 0;
-        color: #64748b;
-        font-size: 0.9rem;
-    }
-
-    .forms-actions {
-        display: flex;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-        align-items: center;
+    .view.active {
+        display: block;
     }
 
     .btn {
-        padding: 0.62rem 1rem;
-        border-radius: 10px;
         border: 1px solid transparent;
-        font-size: 0.88rem;
-        font-weight: 600;
+        border-radius: 10px;
+        padding: 0.58rem 0.9rem;
+        font-size: 0.86rem;
+        font-weight: 700;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.45rem;
+        gap: 0.38rem;
     }
 
     .btn-primary {
-        background: #1d4ed8;
+        background: #3252cc;
         color: #fff;
     }
 
     .btn-primary:hover {
-        background: #1e40af;
+        background: #2541ad;
     }
 
     .btn-secondary {
-        background: #f1f5f9;
+        background: #eef2f8;
         color: #334155;
-        border-color: #cbd5e1;
+        border-color: #d1d9e6;
     }
 
     .btn-secondary:hover {
-        background: #e2e8f0;
+        background: #e5ebf4;
     }
 
     .btn-ghost {
         background: #fff;
         color: #334155;
-        border-color: #d6deea;
+        border-color: #d2dbe8;
     }
 
     .btn-ghost:hover {
-        background: #f8fafc;
+        background: #f8fafd;
     }
 
     .btn-danger {
-        background: #fee2e2;
+        background: #fff1f2;
         color: #b91c1c;
-        border-color: #fecaca;
+        border-color: #fecdd3;
     }
 
     .btn-danger:hover {
-        background: #fecaca;
+        background: #ffe4e6;
     }
 
-    .forms-grid {
-        display: grid;
-        grid-template-columns: minmax(320px, 0.9fr) minmax(520px, 1.9fr);
-        gap: 1.15rem;
-        align-items: start;
+    .library-topbar {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.95rem;
     }
 
-    .panel {
-        background: #fff;
-        border: 1px solid #dbe3ef;
-        border-radius: 12px;
-        padding: 1rem;
-    }
-
-    .panel-library {
-        position: sticky;
-        top: 1rem;
-    }
-
-    .panel h2 {
-        margin: 0 0 0.7rem 0;
-        font-size: 1.1rem;
+    .library-title {
+        margin: 0;
+        font-size: 1.5rem;
         color: #0f172a;
     }
 
-    .panel p {
-        margin: 0 0 0.8rem 0;
+    .library-subtitle {
+        margin: 0.35rem 0 0 0;
         color: #64748b;
-        font-size: 0.85rem;
-    }
-
-    .library-filters {
-        margin-top: 0.4rem;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 0.62rem;
-    }
-
-    .library-summary {
-        margin-top: 0.7rem;
-        padding: 0.55rem 0.75rem;
-        border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        background: #f8fafc;
-        color: #475569;
-        font-size: 0.8rem;
-        font-weight: 600;
+        font-size: 0.9rem;
     }
 
     .library-actions {
-        margin-top: 0.8rem;
-        border-top: 1px solid #e2e8f0;
-        padding-top: 0.8rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
     }
 
-    .library-actions-title {
-        margin: 0 0 0.45rem 0;
-        color: #334155;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        text-transform: uppercase;
-    }
-
-    .library-actions .toolbar {
-        margin-top: 0.55rem;
-    }
-
-    .field-grid {
+    .library-filters {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.75rem;
+        grid-template-columns: minmax(240px, 1fr) minmax(190px, 220px);
+        gap: 0.65rem;
+        margin-bottom: 0.85rem;
     }
 
     .field-group {
         display: flex;
         flex-direction: column;
-        gap: 0.35rem;
-    }
-
-    .field-group.full {
-        grid-column: 1 / -1;
+        gap: 0.34rem;
     }
 
     .field-group label {
-        font-size: 0.8rem;
-        font-weight: 600;
+        font-size: 0.78rem;
+        font-weight: 700;
         color: #334155;
     }
 
     .field-group input,
     .field-group select,
     .field-group textarea {
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        padding: 0.55rem 0.65rem;
-        font-size: 0.88rem;
         width: 100%;
+        border: 1px solid #cfd8e5;
+        border-radius: 10px;
+        padding: 0.57rem 0.68rem;
+        font-size: 0.9rem;
         background: #fff;
     }
 
-    .helper-text {
-        margin: 0.55rem 0 0 0;
-        font-size: 0.76rem;
-        color: #64748b;
+    .library-summary {
+        margin-bottom: 0.75rem;
+        color: #475569;
+        font-size: 0.82rem;
+        font-weight: 700;
     }
 
-    .toolbar {
+    .template-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 0.85rem;
+    }
+
+    .new-template-card,
+    .template-card {
+        border: 1px solid #d8e1ef;
+        border-radius: 14px;
+        background: #fff;
+        min-height: 178px;
+        padding: 0.9rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .new-template-card {
+        cursor: pointer;
         display: flex;
-        gap: 0.55rem;
-        flex-wrap: wrap;
-        margin-top: 0.75rem;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.65rem;
+        border-style: dashed;
+        border-width: 2px;
+        color: #334155;
+        background: #fbfcff;
     }
 
-    .templates-list {
-        margin-top: 0.8rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        max-height: 430px;
-        overflow-y: auto;
-        background: #fff;
+    .new-template-card:hover,
+    .template-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 22px rgba(37, 65, 173, 0.11);
+    }
+
+    .new-template-plus {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: #e9edfa;
+        color: #3151cb;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+        font-weight: 700;
+        line-height: 1;
     }
 
     .template-card {
-        padding: 0.75rem;
-        border-bottom: 1px solid #e2e8f0;
         cursor: pointer;
-        background: #fff;
-        transition: background-color 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        border-top: 5px solid #3252cc;
     }
 
-    .template-card:last-child {
-        border-bottom: none;
-    }
-
-    .template-card:hover {
-        background: #f8fafc;
-    }
-
-    .template-card.active {
-        border-left: 3px solid #2563eb;
-        background: #eff6ff;
-    }
-
-    .template-card-row {
+    .template-card-head {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 0.45rem;
+        gap: 0.6rem;
     }
 
     .template-card-title {
         margin: 0;
-        font-size: 0.9rem;
+        font-size: 1rem;
+        font-weight: 800;
         color: #0f172a;
-        font-weight: 700;
+        line-height: 1.3;
     }
 
-    .template-card-badge {
+    .template-card-category {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
-        padding: 0.16rem 0.48rem;
+        border: 1px solid #cfdbf2;
         border-radius: 999px;
-        border: 1px solid #cbd5e1;
-        background: #f8fafc;
-        color: #475569;
-        font-size: 0.72rem;
+        padding: 0.18rem 0.48rem;
+        font-size: 0.73rem;
         font-weight: 700;
-        line-height: 1;
-        white-space: nowrap;
+        color: #37537a;
+        background: #f5f8fd;
     }
 
     .template-card-meta {
-        margin: 0.22rem 0 0 0;
-        font-size: 0.77rem;
+        margin-top: 0.72rem;
         color: #64748b;
+        font-size: 0.79rem;
+        line-height: 1.38;
     }
 
-    .panel-editor {
-        overflow: hidden;
-    }
-
-    .editor-tabs {
-        margin-top: 0.85rem;
+    .template-card-footer {
+        margin-top: 0.72rem;
         display: flex;
-        gap: 0.42rem;
-        flex-wrap: wrap;
-        padding-bottom: 0.85rem;
-        border-bottom: 1px solid #e2e8f0;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
     }
 
-    .editor-tab-btn {
-        border: 1px solid #d7dfeb;
-        background: #f8fafc;
-        color: #475569;
-        border-radius: 999px;
+    .template-card-count {
+        color: #334155;
         font-size: 0.78rem;
         font-weight: 700;
-        padding: 0.38rem 0.7rem;
+    }
+
+    .mini-btn {
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #b91c1c;
+        border-radius: 8px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        padding: 0.3rem 0.5rem;
         cursor: pointer;
-        transition: all 0.15s ease;
     }
 
-    .editor-tab-btn:hover {
-        background: #eef2f7;
-        color: #334155;
+    .mini-btn:hover {
+        background: #fff1f2;
+        border-color: #fecdd3;
     }
 
-    .editor-tab-btn.active {
-        background: #1d4ed8;
-        border-color: #1d4ed8;
-        color: #fff;
+    .library-empty {
+        padding: 1rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        color: #64748b;
+        background: #fff;
+        font-size: 0.84rem;
     }
 
-    .editor-tab-panel {
+    .editor-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 0.82rem;
+    }
+
+    .editor-topbar {
+        background: #fff;
+        border: 1px solid #d7dfeb;
+        border-radius: 14px;
+        padding: 0.8rem;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+    }
+
+    .editor-main-info {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(150px, 180px);
+        gap: 0.55rem;
+        flex: 1;
+        min-width: 270px;
+    }
+
+    .editor-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    .import-panel {
+        background: #fff;
+        border: 1px solid #d7dfeb;
+        border-radius: 14px;
+        padding: 0.85rem;
         display: none;
-        margin-top: 0.9rem;
     }
 
-    .editor-tab-panel.active {
+    .import-panel.open {
         display: block;
     }
 
-    .editor-panel-title {
+    .import-panel h3 {
         margin: 0;
+        font-size: 0.98rem;
         color: #0f172a;
-        font-size: 1rem;
-        font-weight: 700;
     }
 
-    .editor-panel-subtitle {
-        margin: 0.26rem 0 0.75rem 0;
+    .import-panel p {
+        margin: 0.32rem 0 0.7rem 0;
         color: #64748b;
         font-size: 0.82rem;
     }
 
-    .editor-panel-card {
-        padding: 0.75rem;
-        border: 1px solid #dbe3ef;
-        border-radius: 10px;
-        background: #fff;
+    .import-panel textarea {
+        min-height: 140px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
     }
 
-    .builder-fields-list {
-        margin-top: 0.2rem;
+    .import-row {
+        margin-top: 0.62rem;
+        display: flex;
+        gap: 0.52rem;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .import-check {
+        display: inline-flex;
+        gap: 0.34rem;
+        align-items: center;
+        color: #334155;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .import-check input {
+        margin: 0;
+        width: auto;
+    }
+
+    .editor-layout {
+        display: grid;
+        grid-template-columns: minmax(520px, 1fr) 62px;
+        gap: 0.9rem;
+        align-items: start;
+    }
+
+    .form-canvas {
+        max-width: 860px;
+        margin: 0 auto;
+        width: 100%;
         display: flex;
         flex-direction: column;
-        gap: 0.55rem;
+        gap: 0.74rem;
     }
 
-    .builder-field-card {
+    .form-header-card {
         background: #fff;
-        border: 1px solid #dbe3ef;
-        border-radius: 8px;
-        padding: 0.7rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 0.75rem;
+        border: 1px solid #d7dfeb;
+        border-radius: 14px;
+        border-top: 9px solid #3252cc;
+        padding: 1rem 1rem 0.8rem;
     }
 
-    .builder-field-title {
+    .form-header-title {
         margin: 0;
-        font-size: 0.88rem;
+        font-size: 1.55rem;
         color: #0f172a;
-        font-weight: 700;
+        font-weight: 800;
+        line-height: 1.22;
     }
 
-    .builder-field-meta {
-        margin: 0.22rem 0 0 0;
+    .form-header-subtitle {
+        margin: 0.45rem 0 0 0;
         color: #64748b;
-        font-size: 0.78rem;
+        font-size: 0.86rem;
     }
 
-    .builder-field-actions {
+    .questions-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.72rem;
+    }
+
+    .question-card {
+        background: #fff;
+        border: 1px solid #d7dfeb;
+        border-left: 5px solid #4f6de0;
+        border-radius: 12px;
+        padding: 0.82rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    .question-head {
+        display: grid;
+        grid-template-columns: 42px 1fr 190px;
+        gap: 0.55rem;
+        align-items: center;
+    }
+
+    .question-index {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: #eef2ff;
+        color: #1d4ed8;
+        font-size: 0.82rem;
+        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .question-head input,
+    .question-head select,
+    .question-extra textarea {
+        width: 100%;
+        border: 1px solid #cfd8e5;
+        border-radius: 9px;
+        padding: 0.52rem 0.62rem;
+        font-size: 0.88rem;
+        background: #fff;
+    }
+
+    .question-extra {
+        margin-top: 0.56rem;
+    }
+
+    .question-extra textarea {
+        min-height: 78px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+    }
+
+    .question-note {
+        margin-top: 0.56rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        padding: 0.5rem 0.58rem;
+        color: #64748b;
+        font-size: 0.79rem;
+    }
+
+    .question-footer {
+        margin-top: 0.63rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+    }
+
+    .question-actions {
         display: flex;
         gap: 0.35rem;
         flex-wrap: wrap;
     }
 
-    .builder-field-actions .btn {
-        padding: 0.32rem 0.5rem;
-        font-size: 0.74rem;
-    }
-
-    .status-line {
-        margin-top: 0.85rem;
-        font-size: 0.8rem;
-        color: #475569;
-        min-height: 1.2rem;
-        padding: 0.56rem 0.7rem;
+    .question-mini-btn {
+        border: 1px solid #d4deec;
+        background: #f8fafd;
+        color: #334155;
         border-radius: 8px;
-        border: 1px solid #e2e8f0;
-        background: #f8fafc;
+        padding: 0.3rem 0.5rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        cursor: pointer;
     }
 
-    .status-line:empty {
+    .question-mini-btn:hover {
+        background: #eef3fa;
+    }
+
+    .required-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #334155;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+
+    .required-toggle.disabled {
+        opacity: 0.52;
+    }
+
+    .required-toggle input {
+        margin: 0;
+        width: auto;
+    }
+
+    .add-question-row {
+        display: flex;
+        justify-content: center;
+        margin-top: 0.2rem;
+    }
+
+    .tools-rail {
+        position: sticky;
+        top: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        background: #fff;
+        border: 1px solid #d7dfeb;
+        border-radius: 12px;
+        padding: 0.36rem;
+    }
+
+    .rail-btn {
+        border: 1px solid #d5deea;
+        background: #f8fafd;
+        color: #334155;
+        border-radius: 9px;
+        width: 44px;
+        height: 38px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .rail-btn:hover {
+        background: #edf2fa;
+    }
+
+    .status-box {
+        min-height: 1.05rem;
+        padding: 0.56rem 0.7rem;
+        border: 1px solid #d7dfeb;
+        border-radius: 9px;
+        font-size: 0.82rem;
+        color: #475569;
+        background: #fff;
+    }
+
+    .status-box:empty {
         display: none;
     }
 
-    .status-line.error {
+    .status-box.error {
         color: #b91c1c;
-        border-color: #fecaca;
+        border-color: #fecdd3;
         background: #fff1f2;
     }
 
-    .status-line.success {
+    .status-box.success {
         color: #166534;
         border-color: #bbf7d0;
         background: #f0fdf4;
     }
 
-    .import-box {
-        margin-bottom: 0;
-        padding: 0.8rem;
-        border: 1px dashed #cbd5e1;
-        border-radius: 10px;
-        background: #f8fafc;
+    .hidden-ui {
+        display: none !important;
     }
 
-    .import-box textarea {
-        min-height: 150px;
-        resize: vertical;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    }
-
-    .import-actions {
-        margin-top: 0.55rem;
-        display: flex;
-        align-items: center;
-        gap: 0.55rem;
-        flex-wrap: wrap;
-    }
-
-    .compact-toolbar .btn {
-        padding: 0.52rem 0.72rem;
-        font-size: 0.79rem;
-    }
-
-    .import-check {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.38rem;
-        font-size: 0.78rem;
-        color: #334155;
-    }
-
-    .import-check input[type="checkbox"] {
-        margin: 0;
-        width: auto;
-    }
-
-    .counter-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 24px;
-        padding: 0.12rem 0.45rem;
-        border-radius: 999px;
-        border: 1px solid #bfdbfe;
-        background: #eff6ff;
-        color: #1d4ed8;
-        font-size: 0.74rem;
-        font-weight: 700;
-    }
-
-    .hidden-accessibility {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-    }
-
-    @media (max-width: 1080px) {
-        .forms-grid {
+    @media (max-width: 1100px) {
+        .editor-layout {
             grid-template-columns: 1fr;
         }
 
-        .panel-library {
+        .tools-rail {
             position: static;
+            flex-direction: row;
+            justify-content: center;
+            width: fit-content;
+            margin: 0 auto;
+        }
+
+        .rail-btn {
+            width: 48px;
+        }
+    }
+
+    @media (max-width: 900px) {
+        .library-filters,
+        .editor-main-info {
+            grid-template-columns: 1fr;
+        }
+
+        .question-head {
+            grid-template-columns: 34px 1fr;
+        }
+
+        .question-head select {
+            grid-column: 1 / -1;
+        }
+
+        .library-actions,
+        .editor-actions {
+            width: 100%;
+        }
+
+        .library-actions .btn,
+        .editor-actions .btn {
+            flex: 1;
+            min-width: 145px;
         }
     }
 
     @media (max-width: 640px) {
-        .field-grid {
+        .forms-shell {
+            padding: 0.85rem;
+        }
+
+        .template-gallery {
             grid-template-columns: 1fr;
         }
 
-        .forms-actions .btn {
+        .question-footer {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .question-actions {
             width: 100%;
         }
 
-        .editor-tabs {
-            gap: 0.3rem;
+        .question-mini-btn {
+            flex: 1;
         }
     }
 </style>
 
-<div class="forms-page">
-    <div class="forms-header">
-        <div>
-            <h1 class="forms-title">🧩 Formularios eventos</h1>
-            <p class="forms-subtitle">Cadastre e mantenha os formulários reutilizáveis para reuniões de eventos.</p>
-        </div>
-        <div class="forms-actions">
-            <button type="button" class="btn btn-secondary" onclick="newTemplate()">+ Novo formulário</button>
-            <button type="button" class="btn btn-secondary" onclick="ensureProtocolo15Anos()">📌 Garantir protocolo 15 anos</button>
-            <button type="button" class="btn btn-secondary" onclick="refreshTemplates()">↻ Atualizar lista</button>
-        </div>
-    </div>
-
-    <div class="forms-grid">
-        <section class="panel panel-library">
-            <h2>Biblioteca de formulários</h2>
-            <p>Busque, filtre e escolha um formulário salvo para reutilizar.</p>
-
-            <div class="library-filters">
-                <div class="field-group">
-                    <label for="templatesSearch">Buscar por nome</label>
-                    <input type="text" id="templatesSearch" placeholder="Ex.: protocolo 15 anos" oninput="onTemplatesSearchInput(this.value)">
-                </div>
-                <div class="field-group">
-                    <label for="templatesCategoryFilter">Categoria</label>
-                    <select id="templatesCategoryFilter" onchange="onTemplatesCategoryFilterChange(this.value)">
-                        <option value="all">Todas</option>
-                        <option value="15anos">15 anos</option>
-                        <option value="casamento">Casamento</option>
-                        <option value="infantil">Infantil</option>
-                        <option value="geral">Geral</option>
-                    </select>
-                </div>
+<div class="forms-shell">
+    <section id="libraryView" class="view active">
+        <div class="library-topbar">
+            <div>
+                <h1 class="library-title">Formularios eventos</h1>
+                <p class="library-subtitle">Escolha um formulario salvo ou crie um novo, no estilo galeria.</p>
             </div>
-
-            <div class="library-summary" id="librarySummary">0 formulário(s)</div>
-            <div class="templates-list" id="templatesList"></div>
-
             <div class="library-actions">
-                <p class="library-actions-title">Ações no selecionado</p>
+                <button type="button" class="btn btn-secondary" onclick="refreshTemplates(true)">↻ Atualizar</button>
+                <button type="button" class="btn btn-secondary" onclick="ensureProtocolo15Anos()">📌 Garantir protocolo 15 anos</button>
+                <button type="button" class="btn btn-primary" onclick="startNewTemplate()">+ Novo formulario</button>
+            </div>
+        </div>
 
-                <label class="hidden-accessibility" for="savedTemplateSelect">Formulário selecionado</label>
-                <select id="savedTemplateSelect" onchange="onTemplateSelectChange()">
-                    <option value="">Selecione...</option>
+        <div class="library-filters">
+            <div class="field-group">
+                <label for="templatesSearch">Buscar formulario</label>
+                <input type="text" id="templatesSearch" placeholder="Digite parte do nome...">
+            </div>
+            <div class="field-group">
+                <label for="templatesCategoryFilter">Categoria</label>
+                <select id="templatesCategoryFilter">
+                    <option value="all">Todas</option>
+                    <option value="15anos">15 anos</option>
+                    <option value="casamento">Casamento</option>
+                    <option value="infantil">Infantil</option>
+                    <option value="geral">Geral</option>
                 </select>
+            </div>
+        </div>
 
-                <div class="toolbar compact-toolbar">
-                    <button type="button" class="btn btn-ghost" onclick="loadSelectedTemplate()">📥 Carregar</button>
-                    <button type="button" class="btn btn-ghost" onclick="overwriteSelectedTemplate()">♻️ Sobrescrever</button>
-                    <button type="button" class="btn btn-danger" onclick="archiveSelectedTemplate()">🗑️ Arquivar</button>
+        <div class="library-summary" id="librarySummary">0 formulario(s)</div>
+        <div class="template-gallery" id="templateGallery"></div>
+        <div class="library-empty hidden-ui" id="libraryEmpty">Nenhum formulario encontrado para o filtro aplicado.</div>
+        <div class="status-box" id="libraryStatus"></div>
+    </section>
+
+    <section id="editorView" class="view">
+        <div class="editor-shell">
+            <div class="editor-topbar">
+                <div class="editor-main-info">
+                    <div class="field-group">
+                        <label for="editorTemplateName">Nome do formulario</label>
+                        <input type="text" id="editorTemplateName" placeholder="Ex.: Protocolo 15 anos">
+                    </div>
+                    <div class="field-group">
+                        <label for="editorTemplateCategory">Categoria</label>
+                        <select id="editorTemplateCategory">
+                            <option value="15anos">15 anos</option>
+                            <option value="casamento">Casamento</option>
+                            <option value="infantil">Infantil</option>
+                            <option value="geral">Geral</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="status-line" id="selectedTemplateMeta">Nenhum formulário selecionado.</div>
-            </div>
-        </section>
 
-        <section class="panel panel-editor">
-            <h2>Editor do formulário</h2>
-            <p>Trabalhe por etapas para reduzir poluição visual e focar no que importa.</p>
-
-            <div class="editor-tabs" role="tablist" aria-label="Etapas do editor">
-                <button type="button" class="editor-tab-btn active" data-editor-tab="dados" onclick="switchEditorTab('dados')">1. Dados</button>
-                <button type="button" class="editor-tab-btn" data-editor-tab="manual" onclick="switchEditorTab('manual')">2. Montagem manual</button>
-                <button type="button" class="editor-tab-btn" data-editor-tab="importar" onclick="switchEditorTab('importar')">3. Importar texto</button>
-                <button type="button" class="editor-tab-btn" data-editor-tab="campos" onclick="switchEditorTab('campos')">4. Campos <span class="counter-badge" id="builderFieldsCount">0</span></button>
-            </div>
-
-            <div class="editor-tab-panel active" id="editorTab-dados" data-editor-panel="dados">
-                <h3 class="editor-panel-title">Dados base do formulário</h3>
-                <p class="editor-panel-subtitle">Defina nome e categoria antes de salvar.</p>
-                <div class="editor-panel-card">
-                    <div class="field-grid">
-                        <div class="field-group">
-                            <label for="templateName">Nome do formulário</label>
-                            <input type="text" id="templateName" placeholder="Ex.: 15 anos completo padrão Smile">
-                        </div>
-                        <div class="field-group">
-                            <label for="templateCategory">Categoria</label>
-                            <select id="templateCategory">
-                                <option value="15anos">15 anos</option>
-                                <option value="casamento">Casamento</option>
-                                <option value="infantil">Infantil</option>
-                                <option value="geral">Geral</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="toolbar">
-                        <button type="button" class="btn btn-primary" onclick="saveNewTemplate()">💾 Salvar novo</button>
-                        <button type="button" class="btn btn-secondary" onclick="newTemplate()">+ Novo formulário</button>
-                        <button type="button" class="btn btn-secondary" onclick="clearBuilder(true)">Limpar campos</button>
-                    </div>
+                <div class="editor-actions">
+                    <button type="button" class="btn btn-ghost" onclick="backToLibrary()">← Formularios</button>
+                    <button type="button" class="btn btn-ghost" onclick="toggleImportPanel()">&lt;/&gt; Ler codigo fonte</button>
+                    <button type="button" class="btn btn-secondary" onclick="addFieldByType('text')">+ Pergunta</button>
+                    <button type="button" class="btn btn-primary" id="btnSaveTemplate" onclick="saveCurrentTemplate()">Salvar novo</button>
+                    <button type="button" class="btn btn-danger" id="btnArchiveCurrent" onclick="archiveTemplate()">Arquivar</button>
                 </div>
             </div>
 
-            <div class="editor-tab-panel" id="editorTab-manual" data-editor-panel="manual">
-                <h3 class="editor-panel-title">Montagem manual</h3>
-                <p class="editor-panel-subtitle">Adicione campos avulsos sem importar conteúdo externo.</p>
-                <div class="editor-panel-card">
-                    <div class="field-grid">
-                        <div class="field-group">
-                            <label for="fieldType">Tipo de campo</label>
-                            <select id="fieldType" onchange="onChangeFieldType()">
-                                <option value="text">Texto curto</option>
-                                <option value="textarea">Texto longo</option>
-                                <option value="yesno">Opção Sim/Não</option>
-                                <option value="select">Múltipla escolha</option>
-                                <option value="file">Upload de arquivo</option>
-                                <option value="note">Texto informativo</option>
-                                <option value="section">Título de seção</option>
-                            </select>
-                        </div>
-                        <div class="field-group">
-                            <label for="fieldRequired">Obrigatório</label>
-                            <select id="fieldRequired">
-                                <option value="1">Sim</option>
-                                <option value="0">Não</option>
-                            </select>
-                        </div>
-                        <div class="field-group full">
-                            <label for="fieldQuestion">Pergunta / título</label>
-                            <input type="text" id="fieldQuestion" placeholder="Digite a pergunta...">
-                        </div>
-                        <div class="field-group full" id="fieldOptionsWrap" style="display:none;">
-                            <label for="fieldOptions">Opções (uma por linha)</label>
-                            <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3"></textarea>
-                        </div>
-                    </div>
-                    <div class="toolbar">
-                        <button type="button" class="btn btn-secondary" onclick="addField()">+ Adicionar campo</button>
-                        <button type="button" class="btn btn-secondary" onclick="addDivider()">− Separador</button>
-                        <button type="button" class="btn btn-ghost" onclick="switchEditorTab('campos')">Ver campos adicionados</button>
-                    </div>
+            <div class="import-panel" id="importPanel">
+                <h3>Importar por texto/HTML</h3>
+                <p>Cole o codigo fonte ou texto do formulario para gerar os campos automaticamente.</p>
+                <div class="field-group">
+                    <label for="importSource">Fonte</label>
+                    <textarea id="importSource" placeholder="Cole aqui o texto ou codigo HTML..."></textarea>
                 </div>
-            </div>
-
-            <div class="editor-tab-panel" id="editorTab-importar" data-editor-panel="importar">
-                <h3 class="editor-panel-title">Importar texto/HTML</h3>
-                <p class="editor-panel-subtitle">Cole o conteúdo pronto e gere a estrutura automaticamente.</p>
-                <div class="import-box">
-                    <div class="field-group full">
-                        <label for="importSource">Fonte para importação</label>
-                        <textarea id="importSource" rows="7" placeholder="Cole aqui o texto ou codigo HTML do formulario pronto..."></textarea>
-                    </div>
-                    <div class="import-actions">
-                        <label class="import-check" for="importIncludeNotes">
-                            <input type="checkbox" id="importIncludeNotes" checked>
-                            Manter instruções como texto informativo
-                        </label>
+                <div class="import-row">
+                    <label class="import-check" for="importIncludeNotes">
+                        <input type="checkbox" id="importIncludeNotes" checked>
+                        Manter instrucoes como texto informativo
+                    </label>
+                    <div style="display:flex; gap:0.45rem; flex-wrap:wrap;">
                         <button type="button" class="btn btn-secondary" onclick="importFromSource(false)">⚙️ Gerar campos</button>
-                        <button type="button" class="btn btn-secondary" onclick="importFromSource(true)">⚡ Gerar e salvar novo</button>
+                        <button type="button" class="btn btn-primary" onclick="importFromSource(true)">⚡ Gerar e salvar</button>
                     </div>
                 </div>
             </div>
 
-            <div class="editor-tab-panel" id="editorTab-campos" data-editor-panel="campos">
-                <h3 class="editor-panel-title">Campos adicionados</h3>
-                <p class="editor-panel-subtitle">Revise a ordem e ajustes antes de salvar.</p>
-                <div class="editor-panel-card">
-                    <p class="helper-text">Dica: use setas para ordenar e "Obrig." para alternar obrigatoriedade nos campos preenchíveis.</p>
-                    <div class="builder-fields-list" id="builderFieldsList"></div>
+            <div class="editor-layout">
+                <div class="form-canvas">
+                    <div class="form-header-card">
+                        <h2 class="form-header-title" id="editorFormTitlePreview">Formulario sem titulo</h2>
+                        <p class="form-header-subtitle">Edite as perguntas abaixo. Clique em salvar para persistir.</p>
+                    </div>
+
+                    <div class="questions-stack" id="questionList"></div>
+
+                    <div class="add-question-row">
+                        <button type="button" class="btn btn-secondary" onclick="addFieldByType('text')">+ Adicionar pergunta</button>
+                    </div>
                 </div>
+
+                <aside class="tools-rail" aria-label="Atalhos de campos">
+                    <button type="button" class="rail-btn" title="Pergunta" onclick="addFieldByType('text')">+Q</button>
+                    <button type="button" class="rail-btn" title="Secao" onclick="addFieldByType('section')">Sec</button>
+                    <button type="button" class="rail-btn" title="Nota" onclick="addFieldByType('note')">Nota</button>
+                    <button type="button" class="rail-btn" title="Separador" onclick="addFieldByType('divider')">---</button>
+                </aside>
             </div>
 
-            <div class="status-line" id="statusMessage"></div>
-        </section>
-    </div>
+            <div class="status-box" id="editorStatus"></div>
+        </div>
+    </section>
 </div>
 
 <script>
 const allowedTemplateCategories = ['15anos', 'casamento', 'infantil', 'geral'];
+const fieldTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
+
 let savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
     return [
         'id' => (int)($template['id'] ?? 0),
@@ -788,12 +883,12 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
     ];
 }, $templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
-let selectedTemplateId = null;
+let searchTerm = '';
+let searchCategory = 'all';
+let editingTemplateId = null;
 let formBuilderFields = [];
 let builderDirty = false;
-let templatesSearchTerm = '';
-let templatesCategoryFilter = 'all';
-let activeEditorTab = 'dados';
+let importPanelOpen = false;
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -809,24 +904,15 @@ function formatDate(dateStr) {
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-function normalizeFormSchema(schema) {
-    if (!Array.isArray(schema)) return [];
-    const allowedTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
-    return schema.map((field) => {
-        let type = String(field.type || 'text').trim().toLowerCase();
-        if (!allowedTypes.includes(type)) type = 'text';
-        const options = Array.isArray(field.options)
-            ? field.options.map((v) => String(v).trim()).filter(Boolean)
-            : [];
-        const neverRequired = ['section', 'divider', 'note'].includes(type);
-        return {
-            id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
-            type: type,
-            label: String(field.label || '').trim(),
-            required: neverRequired ? false : !!field.required,
-            options: options
-        };
-    }).filter((field) => field.type === 'divider' || field.label !== '');
+function getCategoryLabel(category) {
+    const key = String(category || 'geral').toLowerCase();
+    const map = {
+        '15anos': '15 anos',
+        'casamento': 'Casamento',
+        'infantil': 'Infantil',
+        'geral': 'Geral'
+    };
+    return map[key] || 'Geral';
 }
 
 function getFieldTypeLabel(type) {
@@ -836,22 +922,38 @@ function getFieldTypeLabel(type) {
         yesno: 'Sim/Não',
         select: 'Múltipla escolha',
         file: 'Upload',
-        note: 'Texto informativo',
         section: 'Título de seção',
-        divider: 'Separador'
+        divider: 'Separador',
+        note: 'Texto informativo'
     };
     return map[type] || type;
 }
 
-function getCategoryLabel(category) {
-    const map = {
-        '15anos': '15 anos',
-        'casamento': 'Casamento',
-        'infantil': 'Infantil',
-        'geral': 'Geral'
-    };
-    const key = String(category || '').toLowerCase();
-    return map[key] || String(category || 'Geral');
+function generateFieldId() {
+    return 'f_' + Math.random().toString(36).slice(2, 10);
+}
+
+function normalizeFormSchema(schema) {
+    if (!Array.isArray(schema)) return [];
+    return schema.map((field) => {
+        let type = String(field.type || 'text').trim().toLowerCase();
+        if (!fieldTypes.includes(type)) {
+            type = 'text';
+        }
+
+        const options = Array.isArray(field.options)
+            ? field.options.map((value) => String(value).trim()).filter(Boolean)
+            : [];
+
+        const neverRequired = ['section', 'divider', 'note'].includes(type);
+        return {
+            id: String(field.id || generateFieldId()),
+            type: type,
+            label: String(field.label || '').trim(),
+            required: neverRequired ? false : !!field.required,
+            options: type === 'select' ? options : []
+        };
+    }).filter((field) => field.type === 'divider' || field.label !== '');
 }
 
 function hasUsefulSchemaFields(schema) {
@@ -863,230 +965,294 @@ function hasUsefulSchemaFields(schema) {
     });
 }
 
-function setStatus(message, type = '') {
-    const status = document.getElementById('statusMessage');
-    if (!status) return;
-    status.className = 'status-line' + (type ? ' ' + type : '');
-    status.textContent = message || '';
+function updateStatus(el, message, type = '') {
+    if (!el) return;
+    el.className = 'status-box' + (type ? ' ' + type : '');
+    el.textContent = message || '';
 }
 
-function setBuilderDirty(isDirty) {
-    builderDirty = !!isDirty;
+function setLibraryStatus(message, type = '') {
+    updateStatus(document.getElementById('libraryStatus'), message, type);
 }
 
-function onChangeFieldType() {
-    const fieldType = document.getElementById('fieldType');
-    const wrap = document.getElementById('fieldOptionsWrap');
-    if (!fieldType || !wrap) return;
-    wrap.style.display = fieldType.value === 'select' ? 'block' : 'none';
+function setEditorStatus(message, type = '') {
+    updateStatus(document.getElementById('editorStatus'), message, type);
 }
 
-function renderTemplatesSelect() {
-    const select = document.getElementById('savedTemplateSelect');
-    if (!select) return;
-    const current = selectedTemplateId ? String(selectedTemplateId) : '';
-    const options = ['<option value="">Selecione...</option>'];
-    savedFormTemplates.forEach((template) => {
-        const id = Number(template.id || 0);
-        if (!id) return;
-        const label = `${String(template.nome || 'Modelo sem nome')} - ${getCategoryLabel(String(template.categoria || 'geral'))}`;
-        const selected = String(id) === current ? ' selected' : '';
-        options.push(`<option value="${id}"${selected}>${escapeHtml(label)}</option>`);
-    });
-    select.innerHTML = options.join('');
+function setBuilderDirty(flag) {
+    builderDirty = !!flag;
 }
 
-function getFilteredTemplatesList() {
-    const term = String(templatesSearchTerm || '').trim().toLowerCase();
-    const category = String(templatesCategoryFilter || 'all').trim().toLowerCase();
+function ensureDiscardChanges() {
+    if (!builderDirty) {
+        return true;
+    }
+    return confirm('Existem alteracoes nao salvas. Deseja continuar mesmo assim?');
+}
+
+function showLibraryView() {
+    const library = document.getElementById('libraryView');
+    const editor = document.getElementById('editorView');
+    if (library) library.classList.add('active');
+    if (editor) editor.classList.remove('active');
+}
+
+function showEditorView() {
+    const library = document.getElementById('libraryView');
+    const editor = document.getElementById('editorView');
+    if (library) library.classList.remove('active');
+    if (editor) editor.classList.add('active');
+}
+
+function updateEditorHeader() {
+    const nameInput = document.getElementById('editorTemplateName');
+    const previewTitle = document.getElementById('editorFormTitlePreview');
+    const saveBtn = document.getElementById('btnSaveTemplate');
+    const archiveBtn = document.getElementById('btnArchiveCurrent');
+
+    const currentName = nameInput ? String(nameInput.value || '').trim() : '';
+    if (previewTitle) {
+        previewTitle.textContent = currentName !== '' ? currentName : 'Formulario sem titulo';
+    }
+
+    if (saveBtn) {
+        saveBtn.textContent = editingTemplateId ? 'Salvar alteracoes' : 'Salvar novo';
+    }
+
+    if (archiveBtn) {
+        archiveBtn.style.display = editingTemplateId ? 'inline-flex' : 'none';
+    }
+}
+
+function getFilteredTemplates() {
+    const term = String(searchTerm || '').trim().toLowerCase();
+    const category = String(searchCategory || 'all').toLowerCase();
+
     return savedFormTemplates.filter((template) => {
         const nome = String(template.nome || '').toLowerCase();
         const categoria = String(template.categoria || 'geral').toLowerCase();
         const matchTerm = term === '' || nome.includes(term);
-        const matchCategory = category === 'all' || categoria === category;
+        const matchCategory = category === 'all' || category === categoria;
         return matchTerm && matchCategory;
     });
 }
 
-function updateLibrarySummary(filteredTotal = null) {
+function renderLibrary() {
+    const gallery = document.getElementById('templateGallery');
     const summary = document.getElementById('librarySummary');
-    if (!summary) return;
-    const visible = filteredTotal === null ? getFilteredTemplatesList().length : Number(filteredTotal || 0);
-    const total = Array.isArray(savedFormTemplates) ? savedFormTemplates.length : 0;
-    if (visible === total) {
-        summary.textContent = `${total} formulário(s) disponível(is)`;
-        return;
-    }
-    summary.textContent = `${visible} de ${total} formulário(s)`;
-}
+    const empty = document.getElementById('libraryEmpty');
+    if (!gallery || !summary || !empty) return;
 
-function renderTemplatesList() {
-    const list = document.getElementById('templatesList');
-    if (!list) return;
-    if (!savedFormTemplates.length) {
-        updateLibrarySummary(0);
-        list.innerHTML = '<div class="template-card"><p class="template-card-meta">Nenhum formulário salvo ainda.</p></div>';
-        return;
-    }
+    const filtered = getFilteredTemplates();
+    const total = savedFormTemplates.length;
+    summary.textContent = filtered.length === total
+        ? `${total} formulario(s)`
+        : `${filtered.length} de ${total} formulario(s)`;
 
-    const filteredTemplates = getFilteredTemplatesList();
-    updateLibrarySummary(filteredTemplates.length);
+    const cards = [];
+    cards.push(`
+        <button type="button" class="new-template-card" onclick="startNewTemplate()">
+            <span class="new-template-plus">+</span>
+            <strong>Novo formulario</strong>
+            <span style="font-size:0.78rem; color:#64748b;">Criar do zero</span>
+        </button>
+    `);
 
-    if (!filteredTemplates.length) {
-        list.innerHTML = '<div class="template-card"><p class="template-card-meta">Nenhum formulário encontrado para este filtro.</p></div>';
-        return;
-    }
-
-    list.innerHTML = filteredTemplates.map((template) => {
+    filtered.forEach((template) => {
         const id = Number(template.id || 0);
-        const activeClass = Number(selectedTemplateId) === id ? 'active' : '';
+        if (!id) return;
+
         const nome = escapeHtml(String(template.nome || 'Modelo sem nome'));
         const categoria = escapeHtml(getCategoryLabel(String(template.categoria || 'geral')));
         const stamp = escapeHtml(formatDate(String(template.updated_at || '')));
-        return `
-            <div class="template-card ${activeClass}" onclick="selectTemplateFromCard(${id})">
-                <div class="template-card-row">
-                    <p class="template-card-title">${nome}</p>
-                    <span class="template-card-badge">${categoria}</span>
+        const schema = normalizeFormSchema(Array.isArray(template.schema) ? template.schema : []);
+        const fillableCount = schema.filter((field) => ['text', 'textarea', 'yesno', 'select', 'file'].includes(String(field.type || '').toLowerCase())).length;
+
+        cards.push(`
+            <article class="template-card" onclick="openTemplateById(${id})">
+                <div>
+                    <div class="template-card-head">
+                        <p class="template-card-title">${nome}</p>
+                        <span class="template-card-category">${categoria}</span>
+                    </div>
+                    <p class="template-card-meta">Atualizado em ${stamp}</p>
                 </div>
-                <p class="template-card-meta">Atualizado em ${stamp}</p>
+                <div class="template-card-footer">
+                    <span class="template-card-count">${fillableCount} campo(s)</span>
+                    <button type="button" class="mini-btn" onclick="archiveTemplateFromCard(event, ${id})">Arquivar</button>
+                </div>
+            </article>
+        `);
+    });
+
+    gallery.innerHTML = cards.join('');
+
+    if (filtered.length === 0) {
+        empty.classList.remove('hidden-ui');
+    } else {
+        empty.classList.add('hidden-ui');
+    }
+}
+
+function defaultLabelByType(type) {
+    switch (type) {
+        case 'section':
+            return 'Titulo da secao';
+        case 'note':
+            return 'Texto informativo';
+        case 'divider':
+            return '---';
+        default:
+            return 'Pergunta sem titulo';
+    }
+}
+
+function createField(type = 'text') {
+    const normalizedType = fieldTypes.includes(type) ? type : 'text';
+    return {
+        id: generateFieldId(),
+        type: normalizedType,
+        label: defaultLabelByType(normalizedType),
+        required: ['section', 'divider', 'note'].includes(normalizedType) ? false : false,
+        options: normalizedType === 'select' ? ['Opcao 1'] : []
+    };
+}
+
+function renderQuestionList() {
+    const list = document.getElementById('questionList');
+    if (!list) return;
+
+    if (!Array.isArray(formBuilderFields) || formBuilderFields.length === 0) {
+        list.innerHTML = `
+            <div class="question-card" style="border-left-color:#94a3b8;">
+                <p class="form-header-subtitle" style="margin:0;">Nenhum campo adicionado ainda. Use + Pergunta para iniciar.</p>
             </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = formBuilderFields.map((field, index) => {
+        const type = String(field.type || 'text');
+        const label = escapeHtml(String(field.label || ''));
+        const required = !!field.required;
+        const optionsText = escapeHtml(Array.isArray(field.options) ? field.options.join('\n') : '');
+        const canRequire = ['text', 'textarea', 'yesno', 'select', 'file'].includes(type);
+
+        const typeOptions = fieldTypes.map((opt) => {
+            const selected = opt === type ? ' selected' : '';
+            return `<option value="${opt}"${selected}>${escapeHtml(getFieldTypeLabel(opt))}</option>`;
+        }).join('');
+
+        let extraHtml = '';
+        if (type === 'select') {
+            extraHtml = `
+                <div class="question-extra">
+                    <label style="font-size:0.76rem; font-weight:700; color:#475569; display:block; margin-bottom:0.3rem;">Opcoes (uma por linha)</label>
+                    <textarea oninput="setFieldOptions(${index}, this.value)" placeholder="Opcao 1&#10;Opcao 2">${optionsText}</textarea>
+                </div>
+            `;
+        } else if (type === 'divider') {
+            extraHtml = `<div class="question-note">Separador visual entre grupos de perguntas.</div>`;
+        } else if (type === 'section') {
+            extraHtml = `<div class="question-note">Titulo para dividir blocos do formulario.</div>`;
+        } else if (type === 'note') {
+            extraHtml = `<div class="question-note">Texto exibido para orientacao do cliente (nao preenchivel).</div>`;
+        }
+
+        return `
+            <article class="question-card">
+                <div class="question-head">
+                    <span class="question-index">${index + 1}</span>
+                    <input type="text" value="${label}" placeholder="Pergunta sem titulo" oninput="setFieldLabel(${index}, this.value)">
+                    <select onchange="setFieldType(${index}, this.value)">${typeOptions}</select>
+                </div>
+                ${extraHtml}
+                <div class="question-footer">
+                    <label class="required-toggle ${canRequire ? '' : 'disabled'}">
+                        <input type="checkbox" ${required ? 'checked' : ''} ${canRequire ? '' : 'disabled'} onchange="setFieldRequired(${index}, this.checked)">
+                        Obrigatoria
+                    </label>
+                    <div class="question-actions">
+                        <button type="button" class="question-mini-btn" onclick="moveField(${index}, -1)">↑</button>
+                        <button type="button" class="question-mini-btn" onclick="moveField(${index}, 1)">↓</button>
+                        <button type="button" class="question-mini-btn" onclick="duplicateField(${index})">Duplicar</button>
+                        <button type="button" class="question-mini-btn" onclick="removeField(${index})">Excluir</button>
+                    </div>
+                </div>
+            </article>
         `;
     }).join('');
 }
 
-function updateSelectedTemplateMeta() {
-    const meta = document.getElementById('selectedTemplateMeta');
-    if (!meta) return;
-    if (!selectedTemplateId) {
-        meta.textContent = 'Nenhum formulário selecionado.';
-        return;
-    }
-    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
-    if (!template) {
-        meta.textContent = 'Formulário selecionado não encontrado.';
-        return;
-    }
-    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${getCategoryLabel(String(template.categoria || 'geral'))} • Atualizado em ${formatDate(template.updated_at || '')}`;
+function addFieldByType(type = 'text') {
+    formBuilderFields.push(createField(type));
+    setBuilderDirty(true);
+    renderQuestionList();
+    setEditorStatus('Campo adicionado.', 'success');
 }
 
-function renderBuilderFields() {
-    const list = document.getElementById('builderFieldsList');
-    const counter = document.getElementById('builderFieldsCount');
-    if (counter) {
-        counter.textContent = String(Array.isArray(formBuilderFields) ? formBuilderFields.length : 0);
+function setFieldLabel(index, value) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    formBuilderFields[index].label = String(value || '');
+    setBuilderDirty(true);
+    if (index === 0) {
+        renderQuestionList();
     }
-    if (!list) return;
-    if (!formBuilderFields.length) {
-        list.innerHTML = '<div class="builder-field-card"><p class="builder-field-meta">Nenhum campo adicionado ainda.</p></div>';
-        return;
-    }
-    list.innerHTML = formBuilderFields.map((field, index) => `
-        <div class="builder-field-card">
-            <div>
-                <p class="builder-field-title">${index + 1}. ${escapeHtml(field.label || '(sem título)')}</p>
-                <p class="builder-field-meta">
-                    ${escapeHtml(getFieldTypeLabel(field.type))}
-                    ${field.required ? ' • Obrigatório' : ' • Opcional'}
-                    ${field.options && field.options.length ? ' • ' + field.options.length + ' opção(ões)' : ''}
-                </p>
-            </div>
-            <div class="builder-field-actions">
-                <button type="button" class="btn btn-secondary" onclick="moveField(${index}, -1)">↑</button>
-                <button type="button" class="btn btn-secondary" onclick="moveField(${index}, 1)">↓</button>
-                <button type="button" class="btn btn-secondary" onclick="toggleRequired(${index})">Obrig.</button>
-                <button type="button" class="btn btn-danger" onclick="removeField(${index})">Excluir</button>
-            </div>
-        </div>
-    `).join('');
 }
 
-function selectTemplateFromCard(templateId) {
-    selectedTemplateId = Number(templateId) || null;
-    const select = document.getElementById('savedTemplateSelect');
-    if (select) {
-        select.value = selectedTemplateId ? String(selectedTemplateId) : '';
-    }
-    renderTemplatesSelect();
-    renderTemplatesList();
-    updateSelectedTemplateMeta();
-}
-
-function onTemplateSelectChange() {
-    const select = document.getElementById('savedTemplateSelect');
-    selectedTemplateId = select && select.value ? Number(select.value) : null;
-    renderTemplatesList();
-    updateSelectedTemplateMeta();
-}
-
-function onTemplatesSearchInput(value) {
-    templatesSearchTerm = String(value || '');
-    renderTemplatesList();
-}
-
-function onTemplatesCategoryFilterChange(value) {
-    templatesCategoryFilter = String(value || 'all');
-    renderTemplatesList();
-}
-
-function addField() {
-    const fieldType = document.getElementById('fieldType');
-    const fieldRequired = document.getElementById('fieldRequired');
-    const fieldQuestion = document.getElementById('fieldQuestion');
-    const fieldOptions = document.getElementById('fieldOptions');
-    const type = fieldType ? (fieldType.value || 'text') : 'text';
-    const question = ((fieldQuestion ? fieldQuestion.value : '') || '').trim();
-    const optionsRaw = ((fieldOptions ? fieldOptions.value : '') || '').trim();
-    const required = (fieldRequired ? fieldRequired.value : '1') === '1';
-
-    if (type !== 'divider' && !question) {
-        setStatus('Digite a pergunta/título para adicionar o campo.', 'error');
-        return;
+function setFieldType(index, type) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const field = formBuilderFields[index];
+    let nextType = String(type || 'text').toLowerCase();
+    if (!fieldTypes.includes(nextType)) {
+        nextType = 'text';
     }
 
-    const field = {
-        id: 'f_' + Math.random().toString(36).slice(2, 10),
-        type: type,
-        label: question,
-        required: type === 'section' || type === 'divider' || type === 'note' ? false : required,
-        options: []
-    };
-
-    if (type === 'select') {
-        field.options = optionsRaw.split('\n').map((v) => v.trim()).filter(Boolean);
-        if (!field.options.length) {
-            setStatus('Para múltipla escolha, informe ao menos uma opção.', 'error');
-            return;
+    field.type = nextType;
+    if (nextType === 'select') {
+        field.options = Array.isArray(field.options) && field.options.length ? field.options : ['Opcao 1'];
+        if ((field.label || '').trim() === '' || field.label === '---') {
+            field.label = 'Pergunta sem titulo';
         }
+    } else {
+        field.options = [];
     }
 
-    formBuilderFields.push(field);
-    renderBuilderFields();
+    if (nextType === 'divider') {
+        field.label = '---';
+        field.required = false;
+    } else if (nextType === 'section' && (field.label || '').trim() === '') {
+        field.label = 'Titulo da secao';
+        field.required = false;
+    } else if (nextType === 'note' && (field.label || '').trim() === '') {
+        field.label = 'Texto informativo';
+        field.required = false;
+    }
+
+    if (['section', 'divider', 'note'].includes(nextType)) {
+        field.required = false;
+    }
+
     setBuilderDirty(true);
-    setStatus('');
-    switchEditorTab('campos');
-    if (fieldQuestion) fieldQuestion.value = '';
-    if (fieldOptions) fieldOptions.value = '';
+    renderQuestionList();
 }
 
-function addDivider() {
-    formBuilderFields.push({
-        id: 'f_' + Math.random().toString(36).slice(2, 10),
-        type: 'divider',
-        label: '---',
-        required: false,
-        options: []
-    });
-    renderBuilderFields();
+function setFieldRequired(index, checked) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const field = formBuilderFields[index];
+    if (['section', 'divider', 'note'].includes(String(field.type || ''))) {
+        field.required = false;
+    } else {
+        field.required = !!checked;
+    }
     setBuilderDirty(true);
-    setStatus('');
-    switchEditorTab('campos');
+    renderQuestionList();
 }
 
-function removeField(index) {
-    if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
-    formBuilderFields.splice(index, 1);
-    renderBuilderFields();
+function setFieldOptions(index, rawText) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const options = String(rawText || '').split('\n').map((item) => item.trim()).filter(Boolean);
+    formBuilderFields[index].options = options;
     setBuilderDirty(true);
 }
 
@@ -1094,77 +1260,188 @@ function moveField(index, direction) {
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
     const target = index + direction;
     if (target < 0 || target >= formBuilderFields.length) return;
-    const item = formBuilderFields[index];
+    const tmp = formBuilderFields[index];
     formBuilderFields[index] = formBuilderFields[target];
-    formBuilderFields[target] = item;
-    renderBuilderFields();
+    formBuilderFields[target] = tmp;
     setBuilderDirty(true);
+    renderQuestionList();
 }
 
-function toggleRequired(index) {
+function duplicateField(index) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const src = formBuilderFields[index];
+    const clone = {
+        id: generateFieldId(),
+        type: String(src.type || 'text'),
+        label: String(src.label || ''),
+        required: !!src.required,
+        options: Array.isArray(src.options) ? src.options.map((value) => String(value)) : []
+    };
+    formBuilderFields.splice(index + 1, 0, clone);
+    setBuilderDirty(true);
+    renderQuestionList();
+}
+
+function removeField(index) {
     if (!Array.isArray(formBuilderFields) || index < 0 || index >= formBuilderFields.length) return;
-    const field = formBuilderFields[index];
-    if (!field || field.type === 'section' || field.type === 'divider' || field.type === 'note') return;
-    field.required = !field.required;
-    renderBuilderFields();
+    formBuilderFields.splice(index, 1);
     setBuilderDirty(true);
+    renderQuestionList();
 }
 
-function loadTemplateIntoBuilder(template) {
-    if (!template) return;
-    formBuilderFields = normalizeFormSchema(Array.isArray(template.schema) ? template.schema : []);
-    const name = document.getElementById('templateName');
-    const category = document.getElementById('templateCategory');
-    if (name) name.value = String(template.nome || '');
-    if (category) category.value = allowedTemplateCategories.includes(String(template.categoria || 'geral'))
-        ? String(template.categoria || 'geral')
-        : 'geral';
-    renderBuilderFields();
-    setBuilderDirty(false);
-    setStatus(`Formulário "${String(template.nome || 'modelo')}" carregado.`, 'success');
+function populateEditorFromTemplate(template) {
+    const nameInput = document.getElementById('editorTemplateName');
+    const categoryInput = document.getElementById('editorTemplateCategory');
+
+    if (nameInput) {
+        nameInput.value = String(template && template.nome ? template.nome : '');
+    }
+    if (categoryInput) {
+        const category = String(template && template.categoria ? template.categoria : 'geral');
+        categoryInput.value = allowedTemplateCategories.includes(category) ? category : 'geral';
+    }
+
+    formBuilderFields = normalizeFormSchema(Array.isArray(template && template.schema ? template.schema : []) ? template.schema : []);
+    renderQuestionList();
+    updateEditorHeader();
 }
 
-function clearBuilder(confirmIfDirty) {
-    if (confirmIfDirty && builderDirty && !confirm('Limpar campos atuais? As alterações não salvas serão perdidas.')) {
+function openTemplateById(templateId) {
+    const id = Number(templateId || 0);
+    if (!id) return;
+
+    if (!ensureDiscardChanges()) {
         return;
     }
-    formBuilderFields = [];
-    const name = document.getElementById('templateName');
-    const category = document.getElementById('templateCategory');
-    if (name) name.value = '';
-    if (category) category.value = 'geral';
-    renderBuilderFields();
+
+    const template = savedFormTemplates.find((item) => Number(item.id) === id);
+    if (!template) {
+        setLibraryStatus('Formulario selecionado nao encontrado.', 'error');
+        return;
+    }
+
+    editingTemplateId = id;
+    importPanelOpen = false;
+    toggleImportPanel(false);
+
+    populateEditorFromTemplate(template);
     setBuilderDirty(false);
-    setStatus('Construtor limpo.', 'success');
+    showEditorView();
+    setEditorStatus(`Editando "${String(template.nome || 'formulario')}".`, 'success');
 }
 
-function newTemplate() {
-    selectedTemplateId = null;
-    renderTemplatesSelect();
-    renderTemplatesList();
-    updateSelectedTemplateMeta();
-    clearBuilder(true);
-    switchEditorTab('dados');
+function startNewTemplate() {
+    if (!ensureDiscardChanges()) {
+        return;
+    }
+
+    editingTemplateId = null;
+    importPanelOpen = false;
+    toggleImportPanel(false);
+
+    const nameInput = document.getElementById('editorTemplateName');
+    const categoryInput = document.getElementById('editorTemplateCategory');
+    if (nameInput) nameInput.value = '';
+    if (categoryInput) categoryInput.value = 'geral';
+
+    formBuilderFields = [createField('text')];
+    renderQuestionList();
+    updateEditorHeader();
+    setBuilderDirty(true);
+
+    showEditorView();
+    setEditorStatus('Novo formulario criado. Edite e salve.', 'success');
 }
 
-function validateTemplateInputs() {
-    const nameEl = document.getElementById('templateName');
-    const categoryEl = document.getElementById('templateCategory');
-    const templateName = (nameEl ? nameEl.value : '').trim();
-    const templateCategory = (categoryEl ? categoryEl.value : 'geral') || 'geral';
+function backToLibrary() {
+    if (!ensureDiscardChanges()) {
+        return;
+    }
+    showLibraryView();
+    setEditorStatus('');
+    setLibraryStatus('');
+    renderLibrary();
+}
+
+function toggleImportPanel(forceOpen = null) {
+    const panel = document.getElementById('importPanel');
+    if (!panel) return;
+
+    if (typeof forceOpen === 'boolean') {
+        importPanelOpen = forceOpen;
+    } else {
+        importPanelOpen = !importPanelOpen;
+    }
+
+    panel.classList.toggle('open', importPanelOpen);
+}
+
+async function importFromSource(autoSave = false) {
+    const sourceEl = document.getElementById('importSource');
+    const includeNotesEl = document.getElementById('importIncludeNotes');
+    const sourceText = sourceEl ? String(sourceEl.value || '').trim() : '';
+
+    if (!sourceText) {
+        setEditorStatus('Cole o texto ou codigo HTML para importar.', 'error');
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'gerar_schema_template_form');
+        formData.append('source_text', sourceText);
+        formData.append('include_notes', includeNotesEl && includeNotesEl.checked ? '1' : '0');
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+
+        if (!data.ok) {
+            setEditorStatus(data.error || 'Erro ao importar campos.', 'error');
+            return;
+        }
+
+        const schema = normalizeFormSchema(Array.isArray(data.schema) ? data.schema : []);
+        if (!schema.length || !hasUsefulSchemaFields(schema)) {
+            setEditorStatus('Nao foi possivel gerar perguntas preenchiveis.', 'error');
+            return;
+        }
+
+        formBuilderFields = schema;
+        renderQuestionList();
+        setBuilderDirty(true);
+
+        const fillable = schema.filter((field) => ['text', 'textarea', 'yesno', 'select', 'file'].includes(String(field.type || '').toLowerCase())).length;
+        setEditorStatus(`Importacao concluida: ${schema.length} item(ns), ${fillable} campo(s) preenchivel(is).`, 'success');
+
+        if (autoSave) {
+            await saveCurrentTemplate();
+        }
+    } catch (err) {
+        setEditorStatus('Erro ao importar: ' + (err.message || err), 'error');
+    }
+}
+
+function validateCurrentEditor() {
+    const nameInput = document.getElementById('editorTemplateName');
+    const categoryInput = document.getElementById('editorTemplateCategory');
+    const templateName = String(nameInput ? nameInput.value : '').trim();
+    const templateCategory = String(categoryInput ? categoryInput.value : 'geral') || 'geral';
 
     if (templateName.length < 3) {
-        setStatus('Informe um nome com no mínimo 3 caracteres.', 'error');
+        setEditorStatus('Informe um nome com pelo menos 3 caracteres.', 'error');
         return null;
     }
     if (!allowedTemplateCategories.includes(templateCategory)) {
-        setStatus('Categoria inválida.', 'error');
+        setEditorStatus('Categoria invalida.', 'error');
         return null;
     }
 
     const normalized = normalizeFormSchema(formBuilderFields);
     if (!normalized.length || !hasUsefulSchemaFields(normalized)) {
-        setStatus('Adicione ao menos um campo preenchível antes de salvar.', 'error');
+        setEditorStatus('Adicione ao menos um campo preenchivel antes de salvar.', 'error');
         return null;
     }
 
@@ -1175,110 +1452,95 @@ function validateTemplateInputs() {
     };
 }
 
-async function refreshTemplates() {
+async function saveCurrentTemplate() {
+    const payload = validateCurrentEditor();
+    if (!payload) return;
+
     try {
         const formData = new FormData();
-        formData.append('action', 'listar_templates_form');
+        formData.append('action', 'salvar_template_form');
+        formData.append('template_name', payload.templateName);
+        formData.append('template_category', payload.templateCategory);
+        formData.append('schema_json', JSON.stringify(payload.schema));
+        if (editingTemplateId) {
+            formData.append('template_id', String(editingTemplateId));
+        }
+
         const resp = await fetch(window.location.href, {
             method: 'POST',
             body: formData
         });
         const data = await resp.json();
-        if (!data.ok) {
-            throw new Error(data.error || 'Erro ao listar formulários');
+
+        if (!data.ok || !data.template) {
+            setEditorStatus(data.error || 'Erro ao salvar formulario.', 'error');
+            return;
         }
-        const templates = Array.isArray(data.templates) ? data.templates : [];
-        savedFormTemplates = templates.map((template) => ({
-            id: Number(template.id || 0),
-            nome: String(template.nome || ''),
-            categoria: String(template.categoria || 'geral'),
-            updated_at: String(template.updated_at || ''),
-            created_by_user_id: Number(template.created_by_user_id || 0),
-            schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
-        }));
-        if (selectedTemplateId) {
-            const exists = savedFormTemplates.some((item) => Number(item.id) === Number(selectedTemplateId));
-            if (!exists) {
-                selectedTemplateId = null;
-            }
-        }
-        renderTemplatesSelect();
-        renderTemplatesList();
-        updateSelectedTemplateMeta();
+
+        editingTemplateId = Number(data.template.id || 0) || null;
+        setBuilderDirty(false);
+        updateEditorHeader();
+        await refreshTemplates(false);
+        setEditorStatus(editingTemplateId ? 'Formulario salvo com sucesso.' : 'Formulario salvo.', 'success');
     } catch (err) {
-        setStatus(err.message || 'Erro ao carregar formulários.', 'error');
+        setEditorStatus('Erro ao salvar formulario: ' + (err.message || err), 'error');
     }
 }
 
-function countFillableFields(schema) {
-    if (!Array.isArray(schema)) return 0;
-    const fillable = ['text', 'textarea', 'yesno', 'select', 'file'];
-    return schema.reduce((total, field) => {
-        const type = String(field && field.type ? field.type : '').toLowerCase();
-        return total + (fillable.includes(type) ? 1 : 0);
-    }, 0);
-}
+async function archiveTemplate(templateId = null) {
+    const targetId = Number(templateId || editingTemplateId || 0);
+    if (!targetId) {
+        setEditorStatus('Nenhum formulario selecionado para arquivar.', 'error');
+        return;
+    }
 
-async function importFromSource(autoSave = false) {
-    const sourceEl = document.getElementById('importSource');
-    const includeNotesEl = document.getElementById('importIncludeNotes');
-    const sourceText = sourceEl ? String(sourceEl.value || '').trim() : '';
-    if (!sourceText) {
-        setStatus('Cole o texto/HTML para gerar os campos automaticamente.', 'error');
+    const template = savedFormTemplates.find((item) => Number(item.id) === targetId);
+    const nome = String(template && template.nome ? template.nome : 'formulario');
+    if (!confirm(`Arquivar "${nome}"?`)) {
         return;
     }
 
     try {
         const formData = new FormData();
-        formData.append('action', 'gerar_schema_template_form');
-        formData.append('source_text', sourceText);
-        formData.append('include_notes', includeNotesEl && includeNotesEl.checked ? '1' : '0');
+        formData.append('action', 'arquivar_template_form');
+        formData.append('template_id', String(targetId));
+
         const resp = await fetch(window.location.href, {
             method: 'POST',
             body: formData
         });
         const data = await resp.json();
         if (!data.ok) {
-            setStatus(data.error || 'Erro ao importar texto para campos.', 'error');
+            const msg = data.error || 'Erro ao arquivar formulario.';
+            if (document.getElementById('editorView').classList.contains('active')) {
+                setEditorStatus(msg, 'error');
+            } else {
+                setLibraryStatus(msg, 'error');
+            }
             return;
         }
 
-        const importedSchema = normalizeFormSchema(Array.isArray(data.schema) ? data.schema : []);
-        if (!importedSchema.length || !hasUsefulSchemaFields(importedSchema)) {
-            setStatus('Nao foi possivel gerar perguntas preenchiveis a partir do texto informado.', 'error');
-            return;
+        if (Number(editingTemplateId || 0) === targetId) {
+            editingTemplateId = null;
+            formBuilderFields = [];
+            setBuilderDirty(false);
+            showLibraryView();
+            setEditorStatus('');
         }
 
-        formBuilderFields = importedSchema;
-        renderBuilderFields();
-        setBuilderDirty(true);
-        switchEditorTab('campos');
-
-        const total = importedSchema.length;
-        const fillable = countFillableFields(importedSchema);
-        setStatus(`Importacao concluida: ${total} item(ns), ${fillable} campo(s) preenchivel(is).`, 'success');
-
-        if (autoSave) {
-            await saveNewTemplate();
-        }
+        await refreshTemplates(false);
+        setLibraryStatus('Formulario arquivado com sucesso.', 'success');
     } catch (err) {
-        setStatus('Erro ao importar texto: ' + (err.message || err), 'error');
+        setLibraryStatus('Erro ao arquivar formulario: ' + (err.message || err), 'error');
     }
 }
 
-function switchEditorTab(tab) {
-    const nextTab = String(tab || 'dados');
-    activeEditorTab = nextTab;
-
-    document.querySelectorAll('.editor-tab-btn').forEach((btn) => {
-        const key = String(btn.getAttribute('data-editor-tab') || '');
-        btn.classList.toggle('active', key === nextTab);
-    });
-
-    document.querySelectorAll('[data-editor-panel]').forEach((panel) => {
-        const key = String(panel.getAttribute('data-editor-panel') || '');
-        panel.classList.toggle('active', key === nextTab);
-    });
+function archiveTemplateFromCard(event, templateId) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    archiveTemplate(templateId);
 }
 
 async function ensureProtocolo15Anos(forceUpdate = false) {
@@ -1288,13 +1550,14 @@ async function ensureProtocolo15Anos(forceUpdate = false) {
         if (forceUpdate) {
             formData.append('force_update', '1');
         }
+
         const resp = await fetch(window.location.href, {
             method: 'POST',
             body: formData
         });
         const data = await resp.json();
         if (!data.ok) {
-            setStatus(data.error || 'Não foi possível garantir o protocolo 15 anos.', 'error');
+            setLibraryStatus(data.error || 'Nao foi possivel garantir o protocolo 15 anos.', 'error');
             return;
         }
 
@@ -1308,170 +1571,103 @@ async function ensureProtocolo15Anos(forceUpdate = false) {
             schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
         }));
 
-        const protocolo = savedFormTemplates.find((item) => (
-            String(item.nome || '').toLowerCase() === 'protocolo 15 anos' && String(item.categoria || '') === '15anos'
-        )) || null;
-        selectedTemplateId = protocolo ? Number(protocolo.id || 0) : selectedTemplateId;
-
-        renderTemplatesSelect();
-        renderTemplatesList();
-        updateSelectedTemplateMeta();
-        setStatus('Template "protocolo 15 anos" garantido com sucesso.', 'success');
+        renderLibrary();
+        setLibraryStatus('Template "protocolo 15 anos" garantido.', 'success');
     } catch (err) {
-        setStatus('Erro ao garantir template padrão: ' + (err.message || err), 'error');
+        setLibraryStatus('Erro ao garantir template: ' + (err.message || err), 'error');
     }
 }
 
-async function saveTemplateRequest(payload) {
-    const formData = new FormData();
-    formData.append('action', 'salvar_template_form');
-    if (payload.templateId) {
-        formData.append('template_id', String(payload.templateId));
-    }
-    formData.append('template_name', payload.templateName);
-    formData.append('template_category', payload.templateCategory);
-    formData.append('schema_json', JSON.stringify(payload.schema));
-
-    const resp = await fetch(window.location.href, {
-        method: 'POST',
-        body: formData
-    });
-    return resp.json();
-}
-
-async function saveNewTemplate() {
-    const payload = validateTemplateInputs();
-    if (!payload) return;
-
-    try {
-        const data = await saveTemplateRequest(payload);
-        if (!data.ok || !data.template) {
-            setStatus(data.error || 'Erro ao salvar formulário.', 'error');
-            return;
-        }
-        selectedTemplateId = Number(data.template.id || 0) || null;
-        await refreshTemplates();
-        setBuilderDirty(false);
-        setStatus('Formulário salvo com sucesso.', 'success');
-    } catch (err) {
-        setStatus('Erro ao salvar formulário: ' + err.message, 'error');
-    }
-}
-
-async function loadSelectedTemplate() {
-    if (!selectedTemplateId) {
-        setStatus('Selecione um formulário para carregar.', 'error');
-        return;
-    }
-    if (builderDirty && !confirm('Existem alterações não salvas. Deseja carregar outro formulário mesmo assim?')) {
-        return;
-    }
-    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
-    if (!template) {
-        setStatus('Formulário selecionado não encontrado.', 'error');
-        return;
-    }
-    loadTemplateIntoBuilder(template);
-}
-
-async function overwriteSelectedTemplate() {
-    if (!selectedTemplateId) {
-        setStatus('Selecione um formulário para sobrescrever.', 'error');
-        return;
-    }
-    const payload = validateTemplateInputs();
-    if (!payload) return;
-    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
-    if (!template) {
-        setStatus('Formulário selecionado não encontrado.', 'error');
-        return;
-    }
-    if (!confirm(`Sobrescrever "${String(template.nome || 'formulário')}" com os campos atuais?`)) {
-        return;
-    }
-
-    try {
-        const data = await saveTemplateRequest({
-            ...payload,
-            templateId: selectedTemplateId
-        });
-        if (!data.ok || !data.template) {
-            setStatus(data.error || 'Erro ao sobrescrever formulário.', 'error');
-            return;
-        }
-        selectedTemplateId = Number(data.template.id || 0) || null;
-        await refreshTemplates();
-        setBuilderDirty(false);
-        setStatus('Formulário sobrescrito com sucesso.', 'success');
-    } catch (err) {
-        setStatus('Erro ao sobrescrever formulário: ' + err.message, 'error');
-    }
-}
-
-async function archiveSelectedTemplate() {
-    if (!selectedTemplateId) {
-        setStatus('Selecione um formulário para arquivar.', 'error');
-        return;
-    }
-    const template = savedFormTemplates.find((item) => Number(item.id) === Number(selectedTemplateId));
-    if (!template) {
-        setStatus('Formulário selecionado não encontrado.', 'error');
-        return;
-    }
-    if (!confirm(`Arquivar "${String(template.nome || 'formulário')}"?`)) {
-        return;
-    }
+async function refreshTemplates(showMessage = false) {
     try {
         const formData = new FormData();
-        formData.append('action', 'arquivar_template_form');
-        formData.append('template_id', String(selectedTemplateId));
+        formData.append('action', 'listar_templates_form');
+
         const resp = await fetch(window.location.href, {
             method: 'POST',
             body: formData
         });
         const data = await resp.json();
         if (!data.ok) {
-            setStatus(data.error || 'Erro ao arquivar formulário.', 'error');
-            return;
+            throw new Error(data.error || 'Erro ao listar formularios');
         }
-        selectedTemplateId = null;
-        await refreshTemplates();
-        setStatus('Formulário arquivado.', 'success');
+
+        const templates = Array.isArray(data.templates) ? data.templates : [];
+        savedFormTemplates = templates.map((template) => ({
+            id: Number(template.id || 0),
+            nome: String(template.nome || ''),
+            categoria: String(template.categoria || 'geral'),
+            updated_at: String(template.updated_at || ''),
+            created_by_user_id: Number(template.created_by_user_id || 0),
+            schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
+        }));
+
+        renderLibrary();
+
+        if (editingTemplateId) {
+            const updated = savedFormTemplates.find((item) => Number(item.id) === Number(editingTemplateId));
+            if (updated) {
+                populateEditorFromTemplate({
+                    ...updated,
+                    schema: formBuilderFields
+                });
+                updateEditorHeader();
+            } else if (!builderDirty) {
+                showLibraryView();
+            }
+        }
+
+        if (showMessage) {
+            setLibraryStatus('Lista atualizada.', 'success');
+        }
     } catch (err) {
-        setStatus('Erro ao arquivar formulário: ' + err.message, 'error');
+        setLibraryStatus(err.message || 'Erro ao carregar formularios.', 'error');
     }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    onChangeFieldType();
-    renderTemplatesSelect();
-    renderTemplatesList();
-    renderBuilderFields();
-    updateSelectedTemplateMeta();
-    switchEditorTab(activeEditorTab);
-    refreshTemplates();
-
-    const nameInput = document.getElementById('templateName');
-    const categoryInput = document.getElementById('templateCategory');
     const searchInput = document.getElementById('templatesSearch');
-    const categoryFilterInput = document.getElementById('templatesCategoryFilter');
-    if (nameInput) {
-        nameInput.addEventListener('input', () => setBuilderDirty(true));
-    }
-    if (categoryInput) {
-        categoryInput.addEventListener('change', () => setBuilderDirty(true));
-    }
+    const categoryInput = document.getElementById('templatesCategoryFilter');
+    const nameInput = document.getElementById('editorTemplateName');
+    const categoryEditor = document.getElementById('editorTemplateCategory');
+
     if (searchInput) {
-        searchInput.addEventListener('input', (event) => onTemplatesSearchInput(event.target.value));
+        searchInput.addEventListener('input', (event) => {
+            searchTerm = String(event.target.value || '');
+            renderLibrary();
+        });
     }
-    if (categoryFilterInput) {
-        categoryFilterInput.addEventListener('change', (event) => onTemplatesCategoryFilterChange(event.target.value));
+
+    if (categoryInput) {
+        categoryInput.addEventListener('change', (event) => {
+            searchCategory = String(event.target.value || 'all');
+            renderLibrary();
+        });
     }
+
+    if (nameInput) {
+        nameInput.addEventListener('input', () => {
+            setBuilderDirty(true);
+            updateEditorHeader();
+        });
+    }
+
+    if (categoryEditor) {
+        categoryEditor.addEventListener('change', () => {
+            setBuilderDirty(true);
+            updateEditorHeader();
+        });
+    }
+
+    renderLibrary();
+    renderQuestionList();
+    updateEditorHeader();
+    refreshTemplates(false);
 });
 
 window.addEventListener('pageshow', function (event) {
     if (event && event.persisted) {
-        refreshTemplates();
+        refreshTemplates(false);
     }
 });
 </script>
