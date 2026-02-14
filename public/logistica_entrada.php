@@ -8,7 +8,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
     http_response_code(403);
@@ -31,12 +30,6 @@ function parse_decimal_local(string $value): float {
 
 $errors = [];
 $messages = [];
-
-try {
-    logistica_ensure_insumo_base_schema($pdo);
-} catch (Throwable $e) {
-    $errors[] = 'Falha ao preparar estrutura de insumo base: ' . $e->getMessage();
-}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -106,23 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $unidades = $pdo->query("SELECT id, nome FROM logistica_unidades WHERE ativo IS TRUE ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $insumos = $pdo->query("
-    SELECT i.id,
-           i.nome_oficial,
-           COALESCE(b.nome_base, i.nome_oficial) AS insumo_base_nome,
-           CASE
-               WHEN COALESCE(b.nome_base, '') <> ''
-                    AND LOWER(TRIM(b.nome_base)) <> LOWER(TRIM(i.nome_oficial))
-               THEN b.nome_base || ' (' || i.nome_oficial || ')'
-               ELSE i.nome_oficial
-           END AS nome_exibicao,
-           i.unidade_medida_padrao_id,
-           i.barcode,
-           u.nome AS unidade_nome
+    SELECT i.id, i.nome_oficial, i.unidade_medida_padrao_id, i.barcode, u.nome AS unidade_nome
     FROM logistica_insumos i
-    LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
     LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
     WHERE i.ativo IS TRUE
-    ORDER BY COALESCE(b.nome_base, i.nome_oficial), i.nome_oficial
+    ORDER BY i.nome_oficial
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 includeSidebar('Entrada de Mercadoria - Logística');
@@ -977,18 +958,6 @@ let pendingBarcodeCadastro = '';
 
 // ========== SCANNER DE CÓDIGO DE BARRAS ==========
 
-function buildInsumoDisplayName(insumo) {
-    if (!insumo) return '';
-    const nomeBase = (insumo.insumo_base_nome || '').trim();
-    const nomeOficial = (insumo.nome_oficial || '').trim();
-    const nomeExibicao = (insumo.nome_exibicao || '').trim();
-    if (nomeExibicao) return nomeExibicao;
-    if (!nomeBase) return nomeOficial;
-    if (!nomeOficial) return nomeBase;
-    if (nomeBase.toLowerCase() === nomeOficial.toLowerCase()) return nomeOficial;
-    return `${nomeBase} (${nomeOficial})`;
-}
-
 function findInsumoByBarcode(code) {
     const normalizedCode = code.trim();
     return INSUMOS.find(i => i.barcode && i.barcode.trim() === normalizedCode);
@@ -1047,16 +1016,9 @@ function closeCadastroInsumoModal() {
 
 window.onCadastroInsumoSalvo = function(insumo) {
     if (insumo && Number(insumo.id) > 0) {
-        const insumoBase = insumo.insumo_base_nome || insumo.nome_oficial || '';
         const normalized = {
             id: Number(insumo.id),
             nome_oficial: insumo.nome_oficial || '',
-            insumo_base_nome: insumoBase,
-            nome_exibicao: buildInsumoDisplayName({
-                nome_oficial: insumo.nome_oficial || '',
-                insumo_base_nome: insumoBase,
-                nome_exibicao: insumo.nome_exibicao || ''
-            }),
             unidade_medida_padrao_id: insumo.unidade_medida_padrao_id || '',
             unidade_nome: insumo.unidade_nome || '-',
             barcode: insumo.barcode || ''
@@ -1119,7 +1081,7 @@ function addInsumoFromBarcode(insumo) {
     }
     
     // Preenche a linha com os dados do insumo
-    targetRow.querySelector('.item-nome').value = buildInsumoDisplayName(insumo);
+    targetRow.querySelector('.item-nome').value = insumo.nome_oficial;
     targetRow.querySelector('.item-id').value = insumo.id;
     targetRow.querySelector('.item-unidade').textContent = insumo.unidade_nome || '-';
     targetRow.querySelector('.item-unidade-id').value = insumo.unidade_medida_padrao_id || '';
@@ -1165,7 +1127,7 @@ function handleBarcodeResult(code) {
     if (insumo) {
         hideRegisterPrompt();
         statusEl.className = 'scanner-status success';
-        statusEl.textContent = `Encontrado: ${buildInsumoDisplayName(insumo)}`;
+        statusEl.textContent = `Encontrado: ${insumo.nome_oficial}`;
         addInsumoFromBarcode(insumo);
         
         // Som de sucesso (beep)
@@ -1354,12 +1316,7 @@ function renderInsumos() {
     const term = document.getElementById('search-insumo').value.toLowerCase();
     const list = document.getElementById('insumo-list');
     list.innerHTML = '';
-    const filtered = INSUMOS.filter(i => {
-        const nomeOficial = (i.nome_oficial || '').toLowerCase();
-        const nomeBase = (i.insumo_base_nome || '').toLowerCase();
-        const nomeExibicao = buildInsumoDisplayName(i).toLowerCase();
-        return nomeOficial.includes(term) || nomeBase.includes(term) || nomeExibicao.includes(term);
-    });
+    const filtered = INSUMOS.filter(i => (i.nome_oficial || '').toLowerCase().includes(term));
     
     if (filtered.length === 0) {
         list.innerHTML = '<div style="padding: 1rem; color: #64748b; text-align: center;">Nenhum insumo encontrado</div>';
@@ -1369,7 +1326,7 @@ function renderInsumos() {
     filtered.forEach(item => {
         const div = document.createElement('div');
         div.className = 'modal-list-item';
-        div.textContent = buildInsumoDisplayName(item);
+        div.textContent = item.nome_oficial;
         div.onclick = () => {
             selectedInsumo = item;
             [...list.querySelectorAll('.selected')].forEach(n => n.classList.remove('selected'));
@@ -1402,7 +1359,7 @@ function closeModal() {
 
 function applySelection() {
     if (!currentRow || !selectedInsumo) return;
-    currentRow.querySelector('.item-nome').value = buildInsumoDisplayName(selectedInsumo);
+    currentRow.querySelector('.item-nome').value = selectedInsumo.nome_oficial;
     currentRow.querySelector('.item-id').value = selectedInsumo.id;
     const unidadeEl = currentRow.querySelector('.item-unidade');
     unidadeEl.textContent = selectedInsumo.unidade_nome || '-';

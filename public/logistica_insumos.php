@@ -9,7 +9,6 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
-require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
 $no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
@@ -27,14 +26,6 @@ $errors = [];
 $messages = [];
 $duplicate_warning = null;
 $saved_modal_payload = null;
-$insumo_bases = [];
-
-try {
-    logistica_ensure_insumo_base_schema($pdo);
-    $insumo_bases = logistica_fetch_insumo_base_options($pdo, false);
-} catch (Throwable $e) {
-    $errors[] = 'Falha ao preparar estrutura de insumo base: ' . $e->getMessage();
-}
 
 function find_duplicates(PDO $pdo, string $nome, array $sinonimos, int $excludeId = 0): array {
     $conditions = [];
@@ -140,16 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save') {
         $id = (int)($_POST['id'] ?? 0);
         $nome = trim((string)($_POST['nome_oficial'] ?? ''));
-        $insumo_base_nome_input = trim((string)($_POST['insumo_base_nome'] ?? ''));
         $sinonimos_raw = trim((string)($_POST['sinonimos'] ?? ''));
         $sinonimos = array_values(array_filter(array_map('trim', preg_split('/\R/', $sinonimos_raw))));
         $confirm_duplicate = !empty($_POST['confirm_duplicate']);
 
         if ($nome === '') {
             $errors[] = 'Nome oficial é obrigatório.';
-        }
-        if ($insumo_base_nome_input === '') {
-            $insumo_base_nome_input = $nome;
         }
 
         if (!$errors && !$confirm_duplicate) {
@@ -198,19 +185,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $unidade_nome = $stmt->fetchColumn() ?: null;
             }
 
-            $insumo_base = logistica_find_or_create_insumo_base(
-                $pdo,
-                $insumo_base_nome_input !== '' ? $insumo_base_nome_input : $nome
-            );
-            if (!$insumo_base) {
-                $errors[] = 'Informe um nome válido para o insumo base.';
-            }
-        }
-
-        if (!$errors && !$duplicate_warning) {
             $dados = [
                 ':nome_oficial' => $nome,
-                ':insumo_base_id' => (int)$insumo_base['id'],
                 ':foto_url' => $foto_url,
                 ':foto_chave_storage' => $foto_chave,
                 ':unidade_medida' => $unidade_nome,
@@ -235,7 +211,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $sql = "
                     UPDATE logistica_insumos
                     SET nome_oficial = :nome_oficial,
-                        insumo_base_id = :insumo_base_id,
                         foto_url = :foto_url,
                         foto_chave_storage = :foto_chave_storage,
                         unidade_medida = :unidade_medida,
@@ -262,19 +237,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $saved_modal_payload = [
                     'id' => $id,
                     'nome_oficial' => $nome,
-                    'insumo_base_nome' => $insumo_base['nome_base'] ?? $nome,
                     'barcode' => $dados[':barcode'],
                     'unidade_medida_padrao_id' => $unidade_id,
                     'unidade_nome' => $unidade_nome
                 ];
             } else {
                 $cols = [
-                    'nome_oficial', 'insumo_base_id', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
+                    'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
                     'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
                     'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
                 ];
                 $vals = [
-                    ':nome_oficial', ':insumo_base_id', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
+                    ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
                     ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
                     ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
                 ];
@@ -296,7 +270,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $saved_modal_payload = [
                     'id' => $new_id,
                     'nome_oficial' => $nome,
-                    'insumo_base_nome' => $insumo_base['nome_base'] ?? $nome,
                     'barcode' => $dados[':barcode'],
                     'unidade_medida_padrao_id' => $unidade_id,
                     'unidade_nome' => $unidade_nome
@@ -340,20 +313,17 @@ $search = trim((string)($_GET['q'] ?? ''));
 $where = '';
 $params = [];
 if ($search !== '') {
-    $where = "WHERE LOWER(i.nome_oficial) LIKE LOWER(:q)
-              OR LOWER(COALESCE(i.sinonimos, '')) LIKE LOWER(:q)
-              OR LOWER(COALESCE(b.nome_base, '')) LIKE LOWER(:q)";
+    $where = "WHERE LOWER(nome_oficial) LIKE LOWER(:q) OR LOWER(sinonimos) LIKE LOWER(:q)";
     $params[':q'] = '%' . $search . '%';
 }
 
 $stmt = $pdo->prepare("
-    SELECT i.*, b.nome_base AS insumo_base_nome, t.nome AS tipologia_nome, u.nome AS unidade_nome
+    SELECT i.*, t.nome AS tipologia_nome, u.nome AS unidade_nome
     FROM logistica_insumos i
-    LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
     LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
     LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
     {$where}
-    ORDER BY COALESCE(b.nome_base, i.nome_oficial), i.nome_oficial
+    ORDER BY i.nome_oficial
 ");
 $stmt->execute($params);
 $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -364,18 +334,11 @@ $unidades_medida = ensure_unidades_medida($pdo);
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
 if ($edit_id > 0) {
-    $stmt = $pdo->prepare("
-        SELECT i.*, b.nome_base AS insumo_base_nome
-        FROM logistica_insumos i
-        LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
-        WHERE i.id = :id
-    ");
+    $stmt = $pdo->prepare("SELECT * FROM logistica_insumos WHERE id = :id");
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 $prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
-$prefill_insumo_base = trim((string)($_POST['insumo_base_nome'] ?? ($edit_item['insumo_base_nome'] ?? ($edit_item['nome_oficial'] ?? ''))));
-$prefill_insumo_base = $prefill_insumo_base !== '' ? $prefill_insumo_base : trim((string)($_POST['nome_oficial'] ?? ($edit_item['nome_oficial'] ?? '')));
 $edit_foto_url = null;
 if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
@@ -428,11 +391,6 @@ body {
     padding: 0.6rem 0.75rem;
     border: 1px solid #cbd5f5;
     border-radius: 8px;
-}
-.form-hint {
-    margin-top: 0.3rem;
-    color: #64748b;
-    font-size: 0.8rem;
 }
 .input-group {
     display: flex;
@@ -715,11 +673,6 @@ body {
                     <label>Nome oficial *</label>
                     <input class="form-input" name="nome_oficial" required value="<?= h($edit_item['nome_oficial'] ?? '') ?>">
                 </div>
-                <div class="span-2">
-                    <label>Insumo base *</label>
-                    <input class="form-input" name="insumo_base_nome" list="insumo-base-list" required value="<?= h($prefill_insumo_base) ?>" placeholder="Ex.: Queijo mussarela">
-                    <div class="form-hint">Use o nome genérico para agrupar marcas/códigos diferentes do mesmo produto.</div>
-                </div>
                 <div>
                     <label>Tipologia</label>
                     <select class="form-input" name="tipologia_insumo_id">
@@ -816,11 +769,6 @@ body {
             <div style="margin-top:1rem;">
                 <button class="btn-primary" type="submit">Salvar</button>
             </div>
-            <datalist id="insumo-base-list">
-                <?php foreach ($insumo_bases as $base): ?>
-                    <option value="<?= h($base['nome_base']) ?>"></option>
-                <?php endforeach; ?>
-            </datalist>
         </form>
     </div>
 
@@ -835,7 +783,6 @@ body {
         <thead>
             <tr>
                 <th>Foto</th>
-                <th>Insumo base</th>
                 <th>Nome</th>
                 <th>Tipologia</th>
                 <th>Unidade</th>
@@ -857,7 +804,6 @@ body {
                             -
                         <?php endif; ?>
                     </td>
-                    <td><?= h($insumo['insumo_base_nome'] ?? $insumo['nome_oficial']) ?></td>
                     <td><?= h($insumo['nome_oficial']) ?></td>
                         <td><?= h($insumo['tipologia_nome'] ?? '') ?></td>
                         <td><?= h($insumo['unidade_medida'] ?? '') ?></td>
@@ -880,7 +826,7 @@ body {
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($insumos)): ?>
-                    <tr><td colspan="<?= $can_see_cost ? '8' : '7' ?>">Nenhum insumo encontrado.</td></tr>
+                    <tr><td colspan="<?= $can_see_cost ? '7' : '6' ?>">Nenhum insumo encontrado.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -924,21 +870,6 @@ document.getElementById('foto_file')?.addEventListener('change', (e) => {
         preview.innerHTML = '<img src="' + reader.result + '" alt="Preview">';
     };
     reader.readAsDataURL(file);
-});
-
-const nomeOficialInput = document.querySelector('input[name="nome_oficial"]');
-const insumoBaseInput = document.querySelector('input[name="insumo_base_nome"]');
-let insumoBaseTouched = insumoBaseInput ? insumoBaseInput.value.trim() !== '' : false;
-
-insumoBaseInput?.addEventListener('input', () => {
-    insumoBaseTouched = insumoBaseInput.value.trim() !== '';
-});
-
-nomeOficialInput?.addEventListener('input', () => {
-    if (!insumoBaseInput) return;
-    if (!insumoBaseTouched || insumoBaseInput.value.trim() === '') {
-        insumoBaseInput.value = nomeOficialInput.value;
-    }
 });
 
 let scannerActive = false;

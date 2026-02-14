@@ -7,7 +7,6 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
-require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 
@@ -15,14 +14,6 @@ if (!$can_manage) {
     http_response_code(403);
     echo '<div class="alert-error">Acesso negado.</div>';
     exit;
-}
-
-$catalog_messages = [];
-
-try {
-    logistica_ensure_insumo_base_schema($pdo);
-} catch (Throwable $e) {
-    $catalog_messages[] = 'Aviso: estrutura de insumo base ainda não disponível (' . $e->getMessage() . ').';
 }
 
 $tipo = trim((string)($_GET['tipo'] ?? 'todos'));
@@ -33,6 +24,7 @@ $tipo = in_array($tipo, ['todos', 'insumos', 'receitas'], true) ? $tipo : 'todos
 $status = in_array($status, ['todos', 'ativos', 'inativos'], true) ? $status : 'todos';
 
 $itens = [];
+$catalog_messages = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -52,21 +44,17 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
     $sql = "
         SELECT i.id,
                i.nome_oficial AS nome,
-               COALESCE(b.nome_base, i.nome_oficial) AS nome_base,
                i.ativo,
                t.nome AS tipologia,
                u.nome AS unidade
         FROM logistica_insumos i
-        LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
         LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
         LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
     ";
     $conds = [];
     $params = [];
     if ($search !== '') {
-        $conds[] = "(LOWER(i.nome_oficial) LIKE LOWER(:q)
-                     OR LOWER(COALESCE(i.sinonimos, '')) LIKE LOWER(:q)
-                     OR LOWER(COALESCE(b.nome_base, '')) LIKE LOWER(:q))";
+        $conds[] = "(LOWER(i.nome_oficial) LIKE LOWER(:q) OR LOWER(COALESCE(i.sinonimos, '')) LIKE LOWER(:q))";
         $params[':q'] = '%' . $search . '%';
     }
     if ($status === 'ativos') {
@@ -77,17 +65,13 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
     if ($conds) {
         $sql .= " WHERE " . implode(' AND ', $conds);
     }
-    $sql .= " ORDER BY COALESCE(b.nome_base, i.nome_oficial), i.nome_oficial";
+    $sql .= " ORDER BY i.nome_oficial";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        $nome_catalogo = $row['nome_base'] ?? $row['nome'] ?? '';
-        if (!empty($row['nome']) && !empty($row['nome_base']) && strcasecmp((string)$row['nome_base'], (string)$row['nome']) !== 0) {
-            $nome_catalogo .= ' (' . $row['nome'] . ')';
-        }
         $itens[] = [
             'tipo' => 'Insumo',
-            'nome' => $nome_catalogo,
+            'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
             'extra' => $row['unidade'] ?? '',
             'ativo' => !empty($row['ativo']),

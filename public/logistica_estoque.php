@@ -9,7 +9,6 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
-require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
     http_response_code(403);
@@ -23,7 +22,6 @@ $open_quick_modal = false;
 $quick_form = [
     'barcode' => '',
     'nome_oficial' => '',
-    'insumo_base_nome' => '',
     'unidade_medida_padrao_id' => '',
     'unidade_embalagem' => '',
     'tipologia_insumo_id' => ''
@@ -39,20 +37,8 @@ function fetch_tipologias_insumo_ativas(PDO $pdo): array {
     return $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 }
 
-try {
-    logistica_ensure_insumo_base_schema($pdo);
-} catch (Throwable $e) {
-    $quick_errors[] = 'Falha ao preparar estrutura de insumo base: ' . $e->getMessage();
-}
-
 $unidades_medida = fetch_unidades_medida_ativas($pdo);
 $tipologias_insumo = fetch_tipologias_insumo_ativas($pdo);
-$insumo_bases = [];
-try {
-    $insumo_bases = logistica_fetch_insumo_base_options($pdo, false);
-} catch (Throwable $e) {
-    $quick_errors[] = 'Falha ao carregar opções de insumo base: ' . $e->getMessage();
-}
 
 $unidade_index = [];
 foreach ($unidades_medida as $item) {
@@ -71,7 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
     $quick_form = [
         'barcode' => trim((string)($_POST['barcode'] ?? '')),
         'nome_oficial' => trim((string)($_POST['nome_oficial'] ?? '')),
-        'insumo_base_nome' => trim((string)($_POST['insumo_base_nome'] ?? '')),
         'unidade_medida_padrao_id' => (string)(int)($_POST['unidade_medida_padrao_id'] ?? 0),
         'unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')),
         'tipologia_insumo_id' => (string)(int)($_POST['tipologia_insumo_id'] ?? 0)
@@ -83,9 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
 
     if ($quick_form['nome_oficial'] === '') {
         $quick_errors[] = 'Informe o nome do insumo.';
-    }
-    if ($quick_form['insumo_base_nome'] === '') {
-        $quick_form['insumo_base_nome'] = $quick_form['nome_oficial'];
     }
 
     $unidade_medida_padrao_id = (int)$quick_form['unidade_medida_padrao_id'];
@@ -105,22 +87,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
     }
 
     if ($quick_form['barcode'] !== '') {
-        $stmt = $pdo->prepare("
-            SELECT i.id, i.nome_oficial, b.nome_base
-            FROM logistica_insumos i
-            LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
-            WHERE i.barcode = :barcode
-            LIMIT 1
-        ");
+        $stmt = $pdo->prepare("SELECT id, nome_oficial FROM logistica_insumos WHERE barcode = :barcode LIMIT 1");
         $stmt->execute([':barcode' => $quick_form['barcode']]);
         $existing = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($existing) {
-            $nome_existente = $existing['nome_oficial'] ?? 'outro insumo';
-            $base_existente = trim((string)($existing['nome_base'] ?? ''));
-            if ($base_existente !== '' && strcasecmp($base_existente, $nome_existente) !== 0) {
-                $nome_existente = $base_existente . ' (' . $nome_existente . ')';
-            }
-            $quick_errors[] = 'Este código de barras já está cadastrado para "' . $nome_existente . '" (ID ' . (int)$existing['id'] . ').';
+            $quick_errors[] = 'Este código de barras já está cadastrado para "' . ($existing['nome_oficial'] ?? 'outro insumo') . '" (ID ' . (int)$existing['id'] . ').';
         }
     }
 
@@ -139,28 +110,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
 
     if (empty($quick_errors)) {
         try {
-            $insumo_base = logistica_find_or_create_insumo_base(
-                $pdo,
-                $quick_form['insumo_base_nome'] !== '' ? $quick_form['insumo_base_nome'] : $quick_form['nome_oficial']
-            );
-            if (!$insumo_base) {
-                throw new RuntimeException('Nome do insumo base inválido.');
-            }
-
             $stmt = $pdo->prepare(
                 "INSERT INTO logistica_insumos
-                    (nome_oficial, insumo_base_id, unidade_medida, unidade_medida_padrao_id, tipologia_insumo_id,
+                    (nome_oficial, unidade_medida, unidade_medida_padrao_id, tipologia_insumo_id,
                      visivel_na_lista, ativo, barcode, fracionavel, unidade_embalagem,
                      foto_url, foto_chave_storage)
                  VALUES
-                    (:nome_oficial, :insumo_base_id, :unidade_medida, :unidade_medida_padrao_id, :tipologia_insumo_id,
+                    (:nome_oficial, :unidade_medida, :unidade_medida_padrao_id, :tipologia_insumo_id,
                      TRUE, TRUE, :barcode, TRUE, :unidade_embalagem,
                      :foto_url, :foto_chave_storage)"
             );
 
             $stmt->execute([
                 ':nome_oficial' => $quick_form['nome_oficial'],
-                ':insumo_base_id' => (int)$insumo_base['id'],
                 ':unidade_medida' => $unidade_index[$unidade_medida_padrao_id] ?? null,
                 ':unidade_medida_padrao_id' => $unidade_medida_padrao_id,
                 ':tipologia_insumo_id' => $tipologia_insumo_id,
@@ -176,7 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'quick
             $quick_form = [
                 'barcode' => '',
                 'nome_oficial' => '',
-                'insumo_base_nome' => '',
                 'unidade_medida_padrao_id' => '',
                 'unidade_embalagem' => '',
                 'tipologia_insumo_id' => ''
@@ -341,7 +302,8 @@ ob_start();
 
 .modal-body {
     padding: 1rem;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .quick-layout {
@@ -355,6 +317,7 @@ ob_start();
     border-radius: 10px;
     padding: 0.9rem;
     background: #fff;
+    min-width: 0;
 }
 
 .quick-panel h4 {
@@ -514,11 +477,26 @@ ob_start();
     overflow: hidden;
     position: relative;
     margin: 0.7rem 0;
+    display: none;
+}
+
+.scanner-preview.active {
+    display: block;
 }
 
 .scanner-preview video {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
+    object-fit: cover;
+}
+
+.scanner-preview canvas {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    height: 100% !important;
     object-fit: cover;
 }
 
@@ -586,6 +564,7 @@ ob_start();
 
 .scanner-manual input {
     flex: 1;
+    min-width: 0;
 }
 
 .quick-note {
@@ -630,6 +609,7 @@ ob_start();
 
     .modal-body {
         padding: 0.75rem;
+        overflow-x: hidden;
     }
 
     .btn-row button,
@@ -647,7 +627,17 @@ ob_start();
     }
 
     .scanner-preview {
-        aspect-ratio: 16 / 11;
+        aspect-ratio: 4 / 3;
+    }
+
+    .scanner-manual {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .scanner-manual input,
+    .scanner-manual button {
+        width: 100%;
     }
 }
 </style>
@@ -767,12 +757,6 @@ ob_start();
                         </div>
 
                         <div class="form-row">
-                            <label class="field-label" for="quick-insumo-base">Insumo base *</label>
-                            <input class="form-input" id="quick-insumo-base" name="insumo_base_nome" list="quick-insumo-base-list" required value="<?= h($quick_form['insumo_base_nome'] !== '' ? $quick_form['insumo_base_nome'] : $quick_form['nome_oficial']) ?>" placeholder="Ex.: Queijo mussarela">
-                            <div class="form-hint">Use o nome genérico para agrupar marcas/códigos no mesmo item base.</div>
-                        </div>
-
-                        <div class="form-row">
                             <label class="field-label" for="quick-unidade-medida">Unidade de medida *</label>
                             <select class="form-select" id="quick-unidade-medida" name="unidade_medida_padrao_id" required>
                                 <option value="">Selecione...</option>
@@ -838,11 +822,6 @@ ob_start();
                             <button class="btn-primary" type="submit" <?= $can_quick_save ? '' : 'disabled' ?>>Salvar insumo</button>
                             <a class="btn-secondary" href="index.php?page=logistica_insumos" target="_blank" rel="noopener">Cadastro completo</a>
                         </div>
-                        <datalist id="quick-insumo-base-list">
-                            <?php foreach ($insumo_bases as $base): ?>
-                                <option value="<?= h($base['nome_base']) ?>"></option>
-                            <?php endforeach; ?>
-                        </datalist>
                     </form>
                 </div>
             </div>
@@ -863,6 +842,18 @@ function setQuickScannerStatus(message, type = '') {
     if (!statusEl) return;
     statusEl.className = type ? `scanner-status ${type}` : 'scanner-status';
     statusEl.textContent = message;
+}
+
+function setQuickScannerPreviewVisible(visible) {
+    const previewEl = document.getElementById('quick-scanner-preview');
+    if (!previewEl) return;
+    previewEl.classList.toggle('active', !!visible);
+}
+
+function setQuickScannerButtonState(active) {
+    const startBtn = document.getElementById('start-quick-scanner');
+    if (!startBtn) return;
+    startBtn.textContent = active ? 'Parar câmera' : 'Iniciar câmera';
 }
 
 function setQuickBarcode(code) {
@@ -1032,6 +1023,8 @@ function startQuickScanner() {
 
     const previewEl = document.getElementById('quick-scanner-preview');
     if (!previewEl) return;
+    setQuickScannerPreviewVisible(true);
+    setQuickScannerButtonState(true);
 
     setQuickScannerStatus('Iniciando câmera...', 'scanning');
 
@@ -1064,6 +1057,8 @@ function startQuickScanner() {
     }, function(err) {
         if (err) {
             console.error('Erro ao iniciar scanner rápido:', err);
+            setQuickScannerPreviewVisible(false);
+            setQuickScannerButtonState(false);
             setQuickScannerStatus('Erro ao acessar câmera. Use o campo manual.', 'error');
             return;
         }
@@ -1103,13 +1098,14 @@ function stopQuickScanner() {
     }
 
     quickLastScanned = '';
+    setQuickScannerPreviewVisible(false);
+    setQuickScannerButtonState(false);
 }
 
 function openQuickModal() {
     const modal = document.getElementById('modal-quick-insumo');
     if (!modal) return;
     modal.style.display = 'flex';
-    quickBaseTouched = false;
 
     const manualInput = document.getElementById('quick-barcode-manual');
     if (manualInput) {
@@ -1125,7 +1121,7 @@ function openQuickModal() {
     setQuickPhotoHint();
 
     const panel = document.getElementById('quick-form-panel');
-    const hasServerPrefill = <?= ($open_quick_modal || $quick_form['barcode'] !== '' || $quick_form['nome_oficial'] !== '' || $quick_form['insumo_base_nome'] !== '' || $quick_form['unidade_medida_padrao_id'] !== '' || $quick_form['unidade_embalagem'] !== '' || $quick_form['tipologia_insumo_id'] !== '') ? 'true' : 'false' ?>;
+    const hasServerPrefill = <?= ($open_quick_modal || $quick_form['barcode'] !== '' || $quick_form['nome_oficial'] !== '' || $quick_form['unidade_medida_padrao_id'] !== '' || $quick_form['unidade_embalagem'] !== '' || $quick_form['tipologia_insumo_id'] !== '') ? 'true' : 'false' ?>;
 
     if (!hasServerPrefill && panel) {
         panel.classList.remove('visible');
@@ -1135,15 +1131,8 @@ function openQuickModal() {
         if (displayInput) displayInput.value = '';
     }
 
-    const quickNome = document.getElementById('quick-nome');
-    const quickBase = document.getElementById('quick-insumo-base');
-    if (quickBase && quickBase.value.trim() === '' && quickNome) {
-        quickBase.value = quickNome.value;
-    }
-
-    setQuickScannerStatus('Iniciando câmera...', 'scanning');
     stopQuickScanner();
-    startQuickScanner();
+    setQuickScannerStatus('Leitura opcional: clique em "Iniciar câmera" para escanear.', '');
 }
 
 function closeQuickModal() {
@@ -1164,7 +1153,11 @@ document.getElementById('modal-quick-insumo')?.addEventListener('click', (event)
 });
 
 document.getElementById('start-quick-scanner')?.addEventListener('click', () => {
-    stopQuickScanner();
+    if (quickScannerActive) {
+        stopQuickScanner();
+        setQuickScannerStatus('Câmera parada. Você pode digitar o código manualmente.', '');
+        return;
+    }
     startQuickScanner();
 });
 
@@ -1207,21 +1200,6 @@ document.getElementById('quick-photo-file')?.addEventListener('change', (event) 
     }
 });
 
-let quickBaseTouched = false;
-const quickNomeInput = document.getElementById('quick-nome');
-const quickBaseInput = document.getElementById('quick-insumo-base');
-
-quickBaseInput?.addEventListener('input', () => {
-    quickBaseTouched = quickBaseInput.value.trim() !== '';
-});
-
-quickNomeInput?.addEventListener('input', () => {
-    if (!quickBaseInput) return;
-    if (!quickBaseTouched || quickBaseInput.value.trim() === '') {
-        quickBaseInput.value = quickNomeInput.value;
-    }
-});
-
 document.getElementById('quick-barcode-manual')?.addEventListener('keypress', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
@@ -1236,7 +1214,7 @@ document.getElementById('quick-barcode-manual')?.addEventListener('keypress', (e
 document.getElementById('skip-quick-barcode')?.addEventListener('click', () => {
     stopQuickScanner();
     setQuickBarcode('');
-    setQuickScannerStatus('Continuando sem código de barras.', 'scanning');
+    setQuickScannerStatus('Continuando sem código de barras.', '');
 });
 
 window.addEventListener('beforeunload', () => {
