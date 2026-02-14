@@ -287,6 +287,7 @@ $routes = [
   // Administrativo
   'administrativo_auditoria' => 'verificacao_completa_erros.php',
   'administrativo_stats' => 'sistema_unificado.php',
+  'administrativo_notificacoes' => 'administrativo_notificacoes.php',
   
   // Scripts de migração/setup
   'apply_permissoes_sidebar_columns' => 'apply_permissoes_sidebar_columns.php',

@@ -2116,6 +2116,9 @@ if ($current_page === 'dashboard') {
             } else if (tipoNotificacao.includes('comercial')) {
                 urlDestino = 'index.php?page=comercial';
             }
+            if (notif.url_destino && String(notif.url_destino).trim() !== '') {
+                urlDestino = String(notif.url_destino).trim();
+            }
             // Preparado para expansão futura - outros tipos podem ser adicionados aqui
             
             return `

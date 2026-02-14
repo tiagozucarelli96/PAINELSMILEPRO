@@ -165,6 +165,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Notificações -->
+        <a href="index.php?page=administrativo_notificacoes" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <span class="funcionalidade-card-icon">🔔</span>
+                <div class="funcionalidade-card-title">Notificações</div>
+                <div class="funcionalidade-card-subtitle">Disparo manual por push, painel e e-mail</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Gestão de Documentos -->
         <a href="index.php?page=administrativo_gestao_documentos" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #0ea5e9);">

@@ -125,6 +125,7 @@ return [
     // Administrativo
     'administrativo_auditoria' => 'perm_administrativo',
     'administrativo_stats' => 'perm_administrativo',
+    'administrativo_notificacoes' => 'perm_administrativo',
     'administrativo_historico' => 'perm_administrativo',
     'verificacao_completa_erros' => 'perm_administrativo',
     'sistema_unificado' => 'perm_administrativo',
