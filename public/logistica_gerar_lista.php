@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 if (!$can_manage) {
@@ -23,6 +24,12 @@ $result_totals = [];
 $result_meta = [];
 $payload_saved = null;
 
+try {
+    logistica_ensure_insumo_base_schema($pdo);
+} catch (Throwable $e) {
+    $errors[] = 'Falha ao preparar estrutura de insumo base: ' . $e->getMessage();
+}
+
 function parse_decimal_local($value): float {
     $raw = trim((string)$value);
     if ($raw === '') return 0.0;
@@ -36,12 +43,44 @@ function parse_decimal_local($value): float {
     return $normalized === '' ? 0.0 : (float)$normalized;
 }
 
+function build_insumo_bucket_map(array $insumos_map): array {
+    $representantes = [];
+
+    foreach ($insumos_map as $insumo_id => $insumo) {
+        $base_id = (int)($insumo['insumo_base_id'] ?? 0);
+        $tipologia_id = (int)($insumo['tipologia_insumo_id'] ?? 0);
+        $unidade_id = (int)($insumo['unidade_medida_padrao_id'] ?? 0);
+        $bucket_key = $base_id > 0
+            ? ('base:' . $base_id . '|tip:' . $tipologia_id . '|un:' . $unidade_id)
+            : ('insumo:' . (int)$insumo_id);
+
+        if (!isset($representantes[$bucket_key]) || $insumo_id < $representantes[$bucket_key]) {
+            $representantes[$bucket_key] = (int)$insumo_id;
+        }
+    }
+
+    $bucket_map = [];
+    foreach ($insumos_map as $insumo_id => $insumo) {
+        $base_id = (int)($insumo['insumo_base_id'] ?? 0);
+        $tipologia_id = (int)($insumo['tipologia_insumo_id'] ?? 0);
+        $unidade_id = (int)($insumo['unidade_medida_padrao_id'] ?? 0);
+        $bucket_key = $base_id > 0
+            ? ('base:' . $base_id . '|tip:' . $tipologia_id . '|un:' . $unidade_id)
+            : ('insumo:' . (int)$insumo_id);
+
+        $bucket_map[(int)$insumo_id] = (int)($representantes[$bucket_key] ?? $insumo_id);
+    }
+
+    return $bucket_map;
+}
+
 function explode_receita(
     int $receita_id,
     float $multiplicador,
     array $componentes_by_receita,
     array $insumos_map,
     array $receitas_yield,
+    array $insumo_bucket_map,
     array &$totais,
     array &$stack,
     array &$errors
@@ -68,7 +107,8 @@ function explode_receita(
         $item_id = (int)($comp['item_id'] ?? 0);
         if ($tipo === 'insumo') {
             if (!isset($insumos_map[$item_id])) { continue; }
-            $totais[$item_id] = ($totais[$item_id] ?? 0) + $quantidade_final;
+            $bucket_id = (int)($insumo_bucket_map[$item_id] ?? $item_id);
+            $totais[$bucket_id] = ($totais[$bucket_id] ?? 0) + $quantidade_final;
         } else {
             $yield_sub = (float)($receitas_yield[$item_id] ?? 0);
             if ($yield_sub <= 0) {
@@ -76,7 +116,7 @@ function explode_receita(
                 continue;
             }
             $sub_multiplier = $quantidade_final / $yield_sub;
-            explode_receita($item_id, $sub_multiplier, $componentes_by_receita, $insumos_map, $receitas_yield, $totais, $stack, $errors);
+            explode_receita($item_id, $sub_multiplier, $componentes_by_receita, $insumos_map, $receitas_yield, $insumo_bucket_map, $totais, $stack, $errors);
         }
     }
     unset($stack[$receita_id]);
@@ -88,6 +128,7 @@ function build_lista_consolidada(
     array $insumos_map,
     array $receitas_yield,
     array $componentes_by_receita,
+    array $insumo_bucket_map,
     array &$errors
 ): array {
     $totais = [];
@@ -119,7 +160,8 @@ function build_lista_consolidada(
 
             if ($tipo === 'insumo') {
                 if (!isset($insumos_map[$item_id])) { continue; }
-                $totais[$item_id] = ($totais[$item_id] ?? 0) + $quantidade;
+                $bucket_id = (int)($insumo_bucket_map[$item_id] ?? $item_id);
+                $totais[$bucket_id] = ($totais[$bucket_id] ?? 0) + $quantidade;
             } else {
                 $yield = (float)($receitas_yield[$item_id] ?? 0);
                 if ($yield <= 0) {
@@ -128,7 +170,7 @@ function build_lista_consolidada(
                 }
                 $multiplicador = $quantidade / $yield;
                 $stack = [];
-                explode_receita($item_id, $multiplicador, $componentes_by_receita, $insumos_map, $receitas_yield, $totais, $stack, $errors);
+                explode_receita($item_id, $multiplicador, $componentes_by_receita, $insumos_map, $receitas_yield, $insumo_bucket_map, $totais, $stack, $errors);
             }
         }
     }
@@ -141,6 +183,7 @@ function build_totais_evento(
     array $insumos_map,
     array $receitas_yield,
     array $componentes_by_receita,
+    array $insumo_bucket_map,
     array &$errors
 ): array {
     $totais = [];
@@ -152,7 +195,8 @@ function build_totais_evento(
 
         if ($tipo === 'insumo') {
             if (!isset($insumos_map[$item_id])) { continue; }
-            $totais[$item_id] = ($totais[$item_id] ?? 0) + $quantidade;
+            $bucket_id = (int)($insumo_bucket_map[$item_id] ?? $item_id);
+            $totais[$bucket_id] = ($totais[$bucket_id] ?? 0) + $quantidade;
         } else {
             $yield = (float)($receitas_yield[$item_id] ?? 0);
             if ($yield <= 0) {
@@ -161,7 +205,7 @@ function build_totais_evento(
             }
             $multiplicador = $quantidade / $yield;
             $stack = [];
-            explode_receita($item_id, $multiplicador, $componentes_by_receita, $insumos_map, $receitas_yield, $totais, $stack, $errors);
+            explode_receita($item_id, $multiplicador, $componentes_by_receita, $insumos_map, $receitas_yield, $insumo_bucket_map, $totais, $stack, $errors);
         }
     }
     return $totais;
@@ -214,10 +258,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $insumos_map = [];
-    $stmt = $pdo->query("SELECT id, nome_oficial, tipologia_insumo_id, unidade_medida_padrao_id FROM logistica_insumos");
+    $stmt = $pdo->query("
+        SELECT i.id,
+               i.nome_oficial,
+               i.tipologia_insumo_id,
+               i.unidade_medida_padrao_id,
+               i.insumo_base_id,
+               COALESCE(b.nome_base, i.nome_oficial) AS insumo_base_nome
+        FROM logistica_insumos i
+        LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
+    ");
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $insumos_map[(int)$row['id']] = $row;
     }
+    $insumo_bucket_map = build_insumo_bucket_map($insumos_map);
 
     $receitas_yield = [];
     $stmt = $pdo->query("SELECT id, rendimento_base_pessoas FROM logistica_receitas");
@@ -236,7 +290,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
-        [$totais, $unit_lock] = build_lista_consolidada($payload, $eventos_map, $insumos_map, $receitas_yield, $componentes_by_receita, $errors);
+        [$totais, $unit_lock] = build_lista_consolidada(
+            $payload,
+            $eventos_map,
+            $insumos_map,
+            $receitas_yield,
+            $componentes_by_receita,
+            $insumo_bucket_map,
+            $errors
+        );
         if (!$errors) {
             $result_totals = $totais;
             $payload_saved = $payload;
@@ -299,6 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $insumos_map,
                             $receitas_yield,
                             $componentes_by_receita,
+                            $insumo_bucket_map,
                             $errors
                         );
                         foreach ($totais_evento as $insumo_id => $quantidade) {
@@ -358,10 +421,15 @@ $eventos_stmt->execute([
 $eventos = $eventos_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $insumos_select = $pdo->query("
-    SELECT id, nome_oficial, unidade_medida_padrao_id, sinonimos
-    FROM logistica_insumos
-    WHERE ativo IS TRUE
-    ORDER BY nome_oficial
+    SELECT i.id,
+           i.nome_oficial,
+           COALESCE(b.nome_base, i.nome_oficial) AS insumo_base_nome,
+           i.unidade_medida_padrao_id,
+           i.sinonimos
+    FROM logistica_insumos i
+    LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
+    WHERE i.ativo IS TRUE
+    ORDER BY COALESCE(b.nome_base, i.nome_oficial), i.nome_oficial
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 $receitas_select = $pdo->query("
@@ -560,7 +628,7 @@ includeSidebar('Logística - Gerar Lista');
                         $tid = $insumo['tipologia_insumo_id'] ?: 0;
                         if (!isset($by_tip[$tid])) { $by_tip[$tid] = []; }
                         $by_tip[$tid][] = [
-                            'nome' => $insumo['nome_oficial'],
+                            'nome' => $insumo['insumo_base_nome'] ?? $insumo['nome_oficial'],
                             'unidade' => $unidades[$insumo['unidade_medida_padrao_id']] ?? '',
                             'quantidade' => $qtd
                         ];
@@ -635,7 +703,15 @@ includeSidebar('Logística - Gerar Lista');
 
 <script>
 const EVENTOS = <?= json_encode($eventos, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+const INSUMOS = <?= json_encode(array_map(static function ($i) {
+    $nome = logistica_compose_insumo_display_name($i['insumo_base_nome'] ?? '', $i['nome_oficial'] ?? '');
+    return [
+        'id' => (int)$i['id'],
+        'nome' => $nome,
+        'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0),
+        'sinonimos' => $i['sinonimos'] ?? ''
+    ];
+}, $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'rendimento' => (int)($r['rendimento_base_pessoas'] ?? 1)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 let selectedEvents = [];

@@ -8,11 +8,19 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
+require_once __DIR__ . '/logistica_insumo_base_helper.php';
 
 if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
     http_response_code(403);
     echo '<div class="alert-error">Acesso negado.</div>';
     exit;
+}
+
+$page_errors = [];
+try {
+    logistica_ensure_insumo_base_schema($pdo);
+} catch (Throwable $e) {
+    $page_errors[] = 'Falha ao preparar estrutura de insumo base: ' . $e->getMessage();
 }
 
 $unidades = $pdo->query("SELECT id, nome, codigo FROM logistica_unidades WHERE ativo IS TRUE ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
@@ -25,18 +33,25 @@ $q = trim((string)($_GET['q'] ?? ''));
 $params = [':uid' => $unidade_id];
 $where = "WHERE 1=1";
 if ($q !== '') {
-    $where .= " AND LOWER(i.nome_oficial) LIKE :q";
+    $where .= " AND (
+        LOWER(i.nome_oficial) LIKE :q
+        OR LOWER(COALESCE(b.nome_base, '')) LIKE :q
+    )";
     $params[':q'] = '%' . strtolower($q) . '%';
 }
 
 $stmt = $pdo->prepare("
-    SELECT i.nome_oficial, i.foto_url, u.nome AS unidade_nome,
+    SELECT i.nome_oficial,
+           COALESCE(b.nome_base, i.nome_oficial) AS insumo_base_nome,
+           i.foto_url,
+           u.nome AS unidade_nome,
            s.quantidade_atual, s.updated_at
     FROM logistica_insumos i
+    LEFT JOIN logistica_insumos_base b ON b.id = i.insumo_base_id
     LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
     LEFT JOIN logistica_estoque_saldos s ON s.insumo_id = i.id AND s.unidade_id = :uid
     $where
-    ORDER BY i.nome_oficial
+    ORDER BY COALESCE(b.nome_base, i.nome_oficial), i.nome_oficial
 ");
 $stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -66,6 +81,10 @@ includeSidebar('Saldo de Estoque - Logística');
 <div class="saldo-container">
     <h1>Saldo atual</h1>
 
+    <?php foreach ($page_errors as $error): ?>
+        <div class="alert-error" style="margin-bottom:1rem;"><?= htmlspecialchars($error) ?></div>
+    <?php endforeach; ?>
+
     <form method="get" class="card" style="margin-bottom:1rem;" id="saldo-filter-form">
         <input type="hidden" name="page" value="logistica_saldo">
         <div style="display:flex;gap:1rem;flex-wrap:wrap;">
@@ -81,7 +100,7 @@ includeSidebar('Saldo de Estoque - Logística');
             </div>
             <div style="flex:1;min-width:260px;">
                 <label>Buscar insumo</label>
-                <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Nome do insumo">
+                <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Nome base ou nome cadastrado">
             </div>
             <div style="align-self:flex-end;">
                 <button class="btn btn-primary" type="submit">Filtrar</button>
@@ -115,7 +134,16 @@ includeSidebar('Saldo de Estoque - Logística');
                                     <?php endif; ?>
                                 </div>
                             </td>
-                            <td><?= htmlspecialchars($r['nome_oficial']) ?></td>
+                            <td>
+                                <strong><?= htmlspecialchars($r['insumo_base_nome'] ?? $r['nome_oficial']) ?></strong>
+                                <?php
+                                    $base_nome = trim((string)($r['insumo_base_nome'] ?? ''));
+                                    $nome_oficial = trim((string)($r['nome_oficial'] ?? ''));
+                                ?>
+                                <?php if ($base_nome !== '' && strcasecmp($base_nome, $nome_oficial) !== 0): ?>
+                                    <div style="font-size:.82rem;color:#64748b;"><?= htmlspecialchars($nome_oficial) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td><?= htmlspecialchars($r['unidade_nome'] ?? '-') ?></td>
                             <td><?= number_format((float)($r['quantidade_atual'] ?? 0), 3, ',', '.') ?></td>
                             <td><?= format_date($r['updated_at'] ?? null) ?></td>
