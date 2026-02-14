@@ -118,7 +118,7 @@ includeSidebar('Formulários eventos');
 
 <style>
     .forms-page {
-        max-width: 1400px;
+        max-width: 1520px;
         margin: 0 auto;
         padding: 1.5rem;
         background: #f8fafc;
@@ -149,11 +149,12 @@ includeSidebar('Formulários eventos');
         display: flex;
         gap: 0.6rem;
         flex-wrap: wrap;
+        align-items: center;
     }
 
     .btn {
         padding: 0.62rem 1rem;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid transparent;
         font-size: 0.88rem;
         font-weight: 600;
@@ -183,6 +184,16 @@ includeSidebar('Formulários eventos');
         background: #e2e8f0;
     }
 
+    .btn-ghost {
+        background: #fff;
+        color: #334155;
+        border-color: #d6deea;
+    }
+
+    .btn-ghost:hover {
+        background: #f8fafc;
+    }
+
     .btn-danger {
         background: #fee2e2;
         color: #b91c1c;
@@ -195,8 +206,8 @@ includeSidebar('Formulários eventos');
 
     .forms-grid {
         display: grid;
-        grid-template-columns: minmax(320px, 1fr) minmax(420px, 2fr);
-        gap: 1rem;
+        grid-template-columns: minmax(320px, 0.9fr) minmax(520px, 1.9fr);
+        gap: 1.15rem;
         align-items: start;
     }
 
@@ -205,6 +216,11 @@ includeSidebar('Formulários eventos');
         border: 1px solid #dbe3ef;
         border-radius: 12px;
         padding: 1rem;
+    }
+
+    .panel-library {
+        position: sticky;
+        top: 1rem;
     }
 
     .panel h2 {
@@ -217,6 +233,43 @@ includeSidebar('Formulários eventos');
         margin: 0 0 0.8rem 0;
         color: #64748b;
         font-size: 0.85rem;
+    }
+
+    .library-filters {
+        margin-top: 0.4rem;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.62rem;
+    }
+
+    .library-summary {
+        margin-top: 0.7rem;
+        padding: 0.55rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #475569;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .library-actions {
+        margin-top: 0.8rem;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 0.8rem;
+    }
+
+    .library-actions-title {
+        margin: 0 0 0.45rem 0;
+        color: #334155;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+
+    .library-actions .toolbar {
+        margin-top: 0.55rem;
     }
 
     .field-grid {
@@ -249,6 +302,7 @@ includeSidebar('Formulários eventos');
         padding: 0.55rem 0.65rem;
         font-size: 0.88rem;
         width: 100%;
+        background: #fff;
     }
 
     .helper-text {
@@ -268,8 +322,9 @@ includeSidebar('Formulários eventos');
         margin-top: 0.8rem;
         border: 1px solid #e2e8f0;
         border-radius: 8px;
-        max-height: 360px;
+        max-height: 430px;
         overflow-y: auto;
+        background: #fff;
     }
 
     .template-card {
@@ -277,6 +332,7 @@ includeSidebar('Formulários eventos');
         border-bottom: 1px solid #e2e8f0;
         cursor: pointer;
         background: #fff;
+        transition: background-color 0.15s ease;
     }
 
     .template-card:last-child {
@@ -292,11 +348,33 @@ includeSidebar('Formulários eventos');
         background: #eff6ff;
     }
 
+    .template-card-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.45rem;
+    }
+
     .template-card-title {
         margin: 0;
         font-size: 0.9rem;
         color: #0f172a;
         font-weight: 700;
+    }
+
+    .template-card-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.16rem 0.48rem;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        color: #475569;
+        font-size: 0.72rem;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
     }
 
     .template-card-meta {
@@ -305,8 +383,73 @@ includeSidebar('Formulários eventos');
         color: #64748b;
     }
 
-    .builder-fields-list {
+    .panel-editor {
+        overflow: hidden;
+    }
+
+    .editor-tabs {
+        margin-top: 0.85rem;
+        display: flex;
+        gap: 0.42rem;
+        flex-wrap: wrap;
+        padding-bottom: 0.85rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .editor-tab-btn {
+        border: 1px solid #d7dfeb;
+        background: #f8fafc;
+        color: #475569;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 0.38rem 0.7rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .editor-tab-btn:hover {
+        background: #eef2f7;
+        color: #334155;
+    }
+
+    .editor-tab-btn.active {
+        background: #1d4ed8;
+        border-color: #1d4ed8;
+        color: #fff;
+    }
+
+    .editor-tab-panel {
+        display: none;
         margin-top: 0.9rem;
+    }
+
+    .editor-tab-panel.active {
+        display: block;
+    }
+
+    .editor-panel-title {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .editor-panel-subtitle {
+        margin: 0.26rem 0 0.75rem 0;
+        color: #64748b;
+        font-size: 0.82rem;
+    }
+
+    .editor-panel-card {
+        padding: 0.75rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .builder-fields-list {
+        margin-top: 0.2rem;
         display: flex;
         flex-direction: column;
         gap: 0.55rem;
@@ -348,23 +491,35 @@ includeSidebar('Formulários eventos');
     }
 
     .status-line {
-        margin-top: 0.7rem;
+        margin-top: 0.85rem;
         font-size: 0.8rem;
-        color: #334155;
+        color: #475569;
         min-height: 1.2rem;
+        padding: 0.56rem 0.7rem;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+
+    .status-line:empty {
+        display: none;
     }
 
     .status-line.error {
         color: #b91c1c;
+        border-color: #fecaca;
+        background: #fff1f2;
     }
 
     .status-line.success {
         color: #166534;
+        border-color: #bbf7d0;
+        background: #f0fdf4;
     }
 
     .import-box {
-        margin-bottom: 0.85rem;
-        padding: 0.75rem;
+        margin-bottom: 0;
+        padding: 0.8rem;
         border: 1px dashed #cbd5e1;
         border-radius: 10px;
         background: #f8fafc;
@@ -384,6 +539,11 @@ includeSidebar('Formulários eventos');
         flex-wrap: wrap;
     }
 
+    .compact-toolbar .btn {
+        padding: 0.52rem 0.72rem;
+        font-size: 0.79rem;
+    }
+
     .import-check {
         display: inline-flex;
         align-items: center;
@@ -397,15 +557,53 @@ includeSidebar('Formulários eventos');
         width: auto;
     }
 
+    .counter-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        padding: 0.12rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.74rem;
+        font-weight: 700;
+    }
+
+    .hidden-accessibility {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     @media (max-width: 1080px) {
         .forms-grid {
             grid-template-columns: 1fr;
+        }
+
+        .panel-library {
+            position: static;
         }
     }
 
     @media (max-width: 640px) {
         .field-grid {
             grid-template-columns: 1fr;
+        }
+
+        .forms-actions .btn {
+            width: 100%;
+        }
+
+        .editor-tabs {
+            gap: 0.3rem;
         }
     }
 </style>
@@ -424,98 +622,154 @@ includeSidebar('Formulários eventos');
     </div>
 
     <div class="forms-grid">
-        <section class="panel">
-            <h2>Formulários salvos</h2>
-            <p>Selecione um formulário para carregar, sobrescrever ou arquivar.</p>
+        <section class="panel panel-library">
+            <h2>Biblioteca de formulários</h2>
+            <p>Busque, filtre e escolha um formulário salvo para reutilizar.</p>
 
-            <div class="field-group">
-                <label for="savedTemplateSelect">Selecionar formulário</label>
-                <select id="savedTemplateSelect" onchange="onTemplateSelectChange()">
-                    <option value="">Selecione...</option>
-                </select>
-            </div>
-
-            <div class="toolbar">
-                <button type="button" class="btn btn-secondary" onclick="loadSelectedTemplate()">📥 Carregar selecionado</button>
-                <button type="button" class="btn btn-secondary" onclick="overwriteSelectedTemplate()">♻️ Sobrescrever selecionado</button>
-                <button type="button" class="btn btn-danger" onclick="archiveSelectedTemplate()">🗑️ Arquivar selecionado</button>
-            </div>
-
-            <div class="status-line" id="selectedTemplateMeta">Nenhum formulário selecionado.</div>
-            <div class="templates-list" id="templatesList"></div>
-        </section>
-
-        <section class="panel">
-            <h2>Montagem do formulário</h2>
-            <p>Monte o formulário por campos ou importe texto/HTML e salve como novo template.</p>
-
-            <div class="import-box">
-                <div class="field-group full">
-                    <label for="importSource">Importar de texto/HTML (geração automática de campos)</label>
-                    <textarea id="importSource" rows="7" placeholder="Cole aqui o texto ou codigo HTML do formulario pronto..."></textarea>
-                </div>
-                <div class="import-actions">
-                    <label class="import-check" for="importIncludeNotes">
-                        <input type="checkbox" id="importIncludeNotes" checked>
-                        Manter instruções como texto informativo
-                    </label>
-                    <button type="button" class="btn btn-secondary" onclick="importFromSource(false)">⚙️ Gerar campos</button>
-                    <button type="button" class="btn btn-secondary" onclick="importFromSource(true)">⚡ Gerar e salvar novo</button>
-                </div>
-            </div>
-
-            <div class="field-grid">
+            <div class="library-filters">
                 <div class="field-group">
-                    <label for="templateName">Nome do formulário</label>
-                    <input type="text" id="templateName" placeholder="Ex.: 15 anos completo padrão Smile">
+                    <label for="templatesSearch">Buscar por nome</label>
+                    <input type="text" id="templatesSearch" placeholder="Ex.: protocolo 15 anos" oninput="onTemplatesSearchInput(this.value)">
                 </div>
                 <div class="field-group">
-                    <label for="templateCategory">Categoria</label>
-                    <select id="templateCategory">
+                    <label for="templatesCategoryFilter">Categoria</label>
+                    <select id="templatesCategoryFilter" onchange="onTemplatesCategoryFilterChange(this.value)">
+                        <option value="all">Todas</option>
                         <option value="15anos">15 anos</option>
                         <option value="casamento">Casamento</option>
                         <option value="infantil">Infantil</option>
                         <option value="geral">Geral</option>
                     </select>
                 </div>
-                <div class="field-group">
-                    <label for="fieldType">Tipo de campo</label>
-                    <select id="fieldType" onchange="onChangeFieldType()">
-                        <option value="text">Texto curto</option>
-                        <option value="textarea">Texto longo</option>
-                        <option value="yesno">Opção Sim/Não</option>
-                        <option value="select">Múltipla escolha</option>
-                        <option value="file">Upload de arquivo</option>
-                        <option value="note">Texto informativo</option>
-                        <option value="section">Título de seção</option>
-                    </select>
+            </div>
+
+            <div class="library-summary" id="librarySummary">0 formulário(s)</div>
+            <div class="templates-list" id="templatesList"></div>
+
+            <div class="library-actions">
+                <p class="library-actions-title">Ações no selecionado</p>
+
+                <label class="hidden-accessibility" for="savedTemplateSelect">Formulário selecionado</label>
+                <select id="savedTemplateSelect" onchange="onTemplateSelectChange()">
+                    <option value="">Selecione...</option>
+                </select>
+
+                <div class="toolbar compact-toolbar">
+                    <button type="button" class="btn btn-ghost" onclick="loadSelectedTemplate()">📥 Carregar</button>
+                    <button type="button" class="btn btn-ghost" onclick="overwriteSelectedTemplate()">♻️ Sobrescrever</button>
+                    <button type="button" class="btn btn-danger" onclick="archiveSelectedTemplate()">🗑️ Arquivar</button>
                 </div>
-                <div class="field-group">
-                    <label for="fieldRequired">Obrigatório</label>
-                    <select id="fieldRequired">
-                        <option value="1">Sim</option>
-                        <option value="0">Não</option>
-                    </select>
-                </div>
-                <div class="field-group full">
-                    <label for="fieldQuestion">Pergunta / título</label>
-                    <input type="text" id="fieldQuestion" placeholder="Digite a pergunta...">
-                </div>
-                <div class="field-group full" id="fieldOptionsWrap" style="display:none;">
-                    <label for="fieldOptions">Opções (uma por linha)</label>
-                    <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3"></textarea>
+                <div class="status-line" id="selectedTemplateMeta">Nenhum formulário selecionado.</div>
+            </div>
+        </section>
+
+        <section class="panel panel-editor">
+            <h2>Editor do formulário</h2>
+            <p>Trabalhe por etapas para reduzir poluição visual e focar no que importa.</p>
+
+            <div class="editor-tabs" role="tablist" aria-label="Etapas do editor">
+                <button type="button" class="editor-tab-btn active" data-editor-tab="dados" onclick="switchEditorTab('dados')">1. Dados</button>
+                <button type="button" class="editor-tab-btn" data-editor-tab="manual" onclick="switchEditorTab('manual')">2. Montagem manual</button>
+                <button type="button" class="editor-tab-btn" data-editor-tab="importar" onclick="switchEditorTab('importar')">3. Importar texto</button>
+                <button type="button" class="editor-tab-btn" data-editor-tab="campos" onclick="switchEditorTab('campos')">4. Campos <span class="counter-badge" id="builderFieldsCount">0</span></button>
+            </div>
+
+            <div class="editor-tab-panel active" id="editorTab-dados" data-editor-panel="dados">
+                <h3 class="editor-panel-title">Dados base do formulário</h3>
+                <p class="editor-panel-subtitle">Defina nome e categoria antes de salvar.</p>
+                <div class="editor-panel-card">
+                    <div class="field-grid">
+                        <div class="field-group">
+                            <label for="templateName">Nome do formulário</label>
+                            <input type="text" id="templateName" placeholder="Ex.: 15 anos completo padrão Smile">
+                        </div>
+                        <div class="field-group">
+                            <label for="templateCategory">Categoria</label>
+                            <select id="templateCategory">
+                                <option value="15anos">15 anos</option>
+                                <option value="casamento">Casamento</option>
+                                <option value="infantil">Infantil</option>
+                                <option value="geral">Geral</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="toolbar">
+                        <button type="button" class="btn btn-primary" onclick="saveNewTemplate()">💾 Salvar novo</button>
+                        <button type="button" class="btn btn-secondary" onclick="newTemplate()">+ Novo formulário</button>
+                        <button type="button" class="btn btn-secondary" onclick="clearBuilder(true)">Limpar campos</button>
+                    </div>
                 </div>
             </div>
 
-            <div class="toolbar">
-                <button type="button" class="btn btn-secondary" onclick="addField()">+ Adicionar campo</button>
-                <button type="button" class="btn btn-secondary" onclick="addDivider()">− Separador</button>
-                <button type="button" class="btn btn-primary" onclick="saveNewTemplate()">💾 Salvar novo</button>
-                <button type="button" class="btn btn-secondary" onclick="clearBuilder(true)">Limpar campos</button>
+            <div class="editor-tab-panel" id="editorTab-manual" data-editor-panel="manual">
+                <h3 class="editor-panel-title">Montagem manual</h3>
+                <p class="editor-panel-subtitle">Adicione campos avulsos sem importar conteúdo externo.</p>
+                <div class="editor-panel-card">
+                    <div class="field-grid">
+                        <div class="field-group">
+                            <label for="fieldType">Tipo de campo</label>
+                            <select id="fieldType" onchange="onChangeFieldType()">
+                                <option value="text">Texto curto</option>
+                                <option value="textarea">Texto longo</option>
+                                <option value="yesno">Opção Sim/Não</option>
+                                <option value="select">Múltipla escolha</option>
+                                <option value="file">Upload de arquivo</option>
+                                <option value="note">Texto informativo</option>
+                                <option value="section">Título de seção</option>
+                            </select>
+                        </div>
+                        <div class="field-group">
+                            <label for="fieldRequired">Obrigatório</label>
+                            <select id="fieldRequired">
+                                <option value="1">Sim</option>
+                                <option value="0">Não</option>
+                            </select>
+                        </div>
+                        <div class="field-group full">
+                            <label for="fieldQuestion">Pergunta / título</label>
+                            <input type="text" id="fieldQuestion" placeholder="Digite a pergunta...">
+                        </div>
+                        <div class="field-group full" id="fieldOptionsWrap" style="display:none;">
+                            <label for="fieldOptions">Opções (uma por linha)</label>
+                            <textarea id="fieldOptions" rows="3" placeholder="Opção 1&#10;Opção 2&#10;Opção 3"></textarea>
+                        </div>
+                    </div>
+                    <div class="toolbar">
+                        <button type="button" class="btn btn-secondary" onclick="addField()">+ Adicionar campo</button>
+                        <button type="button" class="btn btn-secondary" onclick="addDivider()">− Separador</button>
+                        <button type="button" class="btn btn-ghost" onclick="switchEditorTab('campos')">Ver campos adicionados</button>
+                    </div>
+                </div>
             </div>
 
-            <p class="helper-text">Dica: "Sobrescrever selecionado" atualiza o template escolhido com os campos atuais.</p>
-            <div class="builder-fields-list" id="builderFieldsList"></div>
+            <div class="editor-tab-panel" id="editorTab-importar" data-editor-panel="importar">
+                <h3 class="editor-panel-title">Importar texto/HTML</h3>
+                <p class="editor-panel-subtitle">Cole o conteúdo pronto e gere a estrutura automaticamente.</p>
+                <div class="import-box">
+                    <div class="field-group full">
+                        <label for="importSource">Fonte para importação</label>
+                        <textarea id="importSource" rows="7" placeholder="Cole aqui o texto ou codigo HTML do formulario pronto..."></textarea>
+                    </div>
+                    <div class="import-actions">
+                        <label class="import-check" for="importIncludeNotes">
+                            <input type="checkbox" id="importIncludeNotes" checked>
+                            Manter instruções como texto informativo
+                        </label>
+                        <button type="button" class="btn btn-secondary" onclick="importFromSource(false)">⚙️ Gerar campos</button>
+                        <button type="button" class="btn btn-secondary" onclick="importFromSource(true)">⚡ Gerar e salvar novo</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="editor-tab-panel" id="editorTab-campos" data-editor-panel="campos">
+                <h3 class="editor-panel-title">Campos adicionados</h3>
+                <p class="editor-panel-subtitle">Revise a ordem e ajustes antes de salvar.</p>
+                <div class="editor-panel-card">
+                    <p class="helper-text">Dica: use setas para ordenar e "Obrig." para alternar obrigatoriedade nos campos preenchíveis.</p>
+                    <div class="builder-fields-list" id="builderFieldsList"></div>
+                </div>
+            </div>
+
             <div class="status-line" id="statusMessage"></div>
         </section>
     </div>
@@ -537,6 +791,9 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
 let selectedTemplateId = null;
 let formBuilderFields = [];
 let builderDirty = false;
+let templatesSearchTerm = '';
+let templatesCategoryFilter = 'all';
+let activeEditorTab = 'dados';
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -586,6 +843,17 @@ function getFieldTypeLabel(type) {
     return map[type] || type;
 }
 
+function getCategoryLabel(category) {
+    const map = {
+        '15anos': '15 anos',
+        'casamento': 'Casamento',
+        'infantil': 'Infantil',
+        'geral': 'Geral'
+    };
+    const key = String(category || '').toLowerCase();
+    return map[key] || String(category || 'Geral');
+}
+
 function hasUsefulSchemaFields(schema) {
     if (!Array.isArray(schema)) return false;
     return schema.some((field) => {
@@ -621,30 +889,67 @@ function renderTemplatesSelect() {
     savedFormTemplates.forEach((template) => {
         const id = Number(template.id || 0);
         if (!id) return;
-        const label = `${String(template.nome || 'Modelo sem nome')} - ${String(template.categoria || 'geral')}`;
+        const label = `${String(template.nome || 'Modelo sem nome')} - ${getCategoryLabel(String(template.categoria || 'geral'))}`;
         const selected = String(id) === current ? ' selected' : '';
         options.push(`<option value="${id}"${selected}>${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
 }
 
+function getFilteredTemplatesList() {
+    const term = String(templatesSearchTerm || '').trim().toLowerCase();
+    const category = String(templatesCategoryFilter || 'all').trim().toLowerCase();
+    return savedFormTemplates.filter((template) => {
+        const nome = String(template.nome || '').toLowerCase();
+        const categoria = String(template.categoria || 'geral').toLowerCase();
+        const matchTerm = term === '' || nome.includes(term);
+        const matchCategory = category === 'all' || categoria === category;
+        return matchTerm && matchCategory;
+    });
+}
+
+function updateLibrarySummary(filteredTotal = null) {
+    const summary = document.getElementById('librarySummary');
+    if (!summary) return;
+    const visible = filteredTotal === null ? getFilteredTemplatesList().length : Number(filteredTotal || 0);
+    const total = Array.isArray(savedFormTemplates) ? savedFormTemplates.length : 0;
+    if (visible === total) {
+        summary.textContent = `${total} formulário(s) disponível(is)`;
+        return;
+    }
+    summary.textContent = `${visible} de ${total} formulário(s)`;
+}
+
 function renderTemplatesList() {
     const list = document.getElementById('templatesList');
     if (!list) return;
     if (!savedFormTemplates.length) {
+        updateLibrarySummary(0);
         list.innerHTML = '<div class="template-card"><p class="template-card-meta">Nenhum formulário salvo ainda.</p></div>';
         return;
     }
-    list.innerHTML = savedFormTemplates.map((template) => {
+
+    const filteredTemplates = getFilteredTemplatesList();
+    updateLibrarySummary(filteredTemplates.length);
+
+    if (!filteredTemplates.length) {
+        list.innerHTML = '<div class="template-card"><p class="template-card-meta">Nenhum formulário encontrado para este filtro.</p></div>';
+        return;
+    }
+
+    list.innerHTML = filteredTemplates.map((template) => {
         const id = Number(template.id || 0);
         const activeClass = Number(selectedTemplateId) === id ? 'active' : '';
         const nome = escapeHtml(String(template.nome || 'Modelo sem nome'));
-        const categoria = escapeHtml(String(template.categoria || 'geral'));
+        const categoria = escapeHtml(getCategoryLabel(String(template.categoria || 'geral')));
         const stamp = escapeHtml(formatDate(String(template.updated_at || '')));
         return `
             <div class="template-card ${activeClass}" onclick="selectTemplateFromCard(${id})">
-                <p class="template-card-title">${nome}</p>
-                <p class="template-card-meta">${categoria} • Atualizado em ${stamp}</p>
+                <div class="template-card-row">
+                    <p class="template-card-title">${nome}</p>
+                    <span class="template-card-badge">${categoria}</span>
+                </div>
+                <p class="template-card-meta">Atualizado em ${stamp}</p>
             </div>
         `;
     }).join('');
@@ -662,11 +967,15 @@ function updateSelectedTemplateMeta() {
         meta.textContent = 'Formulário selecionado não encontrado.';
         return;
     }
-    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${String(template.categoria || 'geral')} • Atualizado em ${formatDate(template.updated_at || '')}`;
+    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${getCategoryLabel(String(template.categoria || 'geral'))} • Atualizado em ${formatDate(template.updated_at || '')}`;
 }
 
 function renderBuilderFields() {
     const list = document.getElementById('builderFieldsList');
+    const counter = document.getElementById('builderFieldsCount');
+    if (counter) {
+        counter.textContent = String(Array.isArray(formBuilderFields) ? formBuilderFields.length : 0);
+    }
     if (!list) return;
     if (!formBuilderFields.length) {
         list.innerHTML = '<div class="builder-field-card"><p class="builder-field-meta">Nenhum campo adicionado ainda.</p></div>';
@@ -694,6 +1003,10 @@ function renderBuilderFields() {
 
 function selectTemplateFromCard(templateId) {
     selectedTemplateId = Number(templateId) || null;
+    const select = document.getElementById('savedTemplateSelect');
+    if (select) {
+        select.value = selectedTemplateId ? String(selectedTemplateId) : '';
+    }
     renderTemplatesSelect();
     renderTemplatesList();
     updateSelectedTemplateMeta();
@@ -704,6 +1017,16 @@ function onTemplateSelectChange() {
     selectedTemplateId = select && select.value ? Number(select.value) : null;
     renderTemplatesList();
     updateSelectedTemplateMeta();
+}
+
+function onTemplatesSearchInput(value) {
+    templatesSearchTerm = String(value || '');
+    renderTemplatesList();
+}
+
+function onTemplatesCategoryFilterChange(value) {
+    templatesCategoryFilter = String(value || 'all');
+    renderTemplatesList();
 }
 
 function addField() {
@@ -741,6 +1064,7 @@ function addField() {
     renderBuilderFields();
     setBuilderDirty(true);
     setStatus('');
+    switchEditorTab('campos');
     if (fieldQuestion) fieldQuestion.value = '';
     if (fieldOptions) fieldOptions.value = '';
 }
@@ -756,6 +1080,7 @@ function addDivider() {
     renderBuilderFields();
     setBuilderDirty(true);
     setStatus('');
+    switchEditorTab('campos');
 }
 
 function removeField(index) {
@@ -819,6 +1144,7 @@ function newTemplate() {
     renderTemplatesList();
     updateSelectedTemplateMeta();
     clearBuilder(true);
+    switchEditorTab('dados');
 }
 
 function validateTemplateInputs() {
@@ -926,6 +1252,7 @@ async function importFromSource(autoSave = false) {
         formBuilderFields = importedSchema;
         renderBuilderFields();
         setBuilderDirty(true);
+        switchEditorTab('campos');
 
         const total = importedSchema.length;
         const fillable = countFillableFields(importedSchema);
@@ -937,6 +1264,21 @@ async function importFromSource(autoSave = false) {
     } catch (err) {
         setStatus('Erro ao importar texto: ' + (err.message || err), 'error');
     }
+}
+
+function switchEditorTab(tab) {
+    const nextTab = String(tab || 'dados');
+    activeEditorTab = nextTab;
+
+    document.querySelectorAll('.editor-tab-btn').forEach((btn) => {
+        const key = String(btn.getAttribute('data-editor-tab') || '');
+        btn.classList.toggle('active', key === nextTab);
+    });
+
+    document.querySelectorAll('[data-editor-panel]').forEach((panel) => {
+        const key = String(panel.getAttribute('data-editor-panel') || '');
+        panel.classList.toggle('active', key === nextTab);
+    });
 }
 
 async function ensureProtocolo15Anos(forceUpdate = false) {
@@ -1106,15 +1448,24 @@ document.addEventListener('DOMContentLoaded', function () {
     renderTemplatesList();
     renderBuilderFields();
     updateSelectedTemplateMeta();
+    switchEditorTab(activeEditorTab);
     refreshTemplates();
 
     const nameInput = document.getElementById('templateName');
     const categoryInput = document.getElementById('templateCategory');
+    const searchInput = document.getElementById('templatesSearch');
+    const categoryFilterInput = document.getElementById('templatesCategoryFilter');
     if (nameInput) {
         nameInput.addEventListener('input', () => setBuilderDirty(true));
     }
     if (categoryInput) {
         categoryInput.addEventListener('change', () => setBuilderDirty(true));
+    }
+    if (searchInput) {
+        searchInput.addEventListener('input', (event) => onTemplatesSearchInput(event.target.value));
+    }
+    if (categoryFilterInput) {
+        categoryFilterInput.addEventListener('change', (event) => onTemplatesCategoryFilterChange(event.target.value));
     }
 });
 
