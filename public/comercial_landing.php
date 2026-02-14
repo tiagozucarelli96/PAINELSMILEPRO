@@ -568,11 +568,6 @@ includeSidebar('Comercial');
                     <span class="funcionalidade-item-text">Ver Todas as Degustações</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </a>
-                <a href="index.php?page=eventos_galeria" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
-                    <span class="funcionalidade-item-icon">🖼️</span>
-                    <span class="funcionalidade-item-text">Galeria de Imagens</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </a>
                 <a href="index.php?page=comercial_realizar_degustacao" class="funcionalidade-card-item" style="text-decoration: none; color: inherit;">
                     <span class="funcionalidade-item-icon">🍽️</span>
                     <span class="funcionalidade-item-text">Realizar Degustação</span>
@@ -580,6 +575,22 @@ includeSidebar('Comercial');
                 </a>
             </div>
         </div>
+
+        <!-- Galeria de Imagens -->
+        <a href="index.php?page=eventos_galeria" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
+                <span class="funcionalidade-card-icon">🖼️</span>
+                <div class="funcionalidade-card-title">Galeria de Imagens</div>
+                <div class="funcionalidade-card-subtitle">Visualizar fotos e conteúdos salvos</div>
+            </div>
+            <div class="funcionalidade-card-content">
+                <div class="funcionalidade-card-item">
+                    <span class="funcionalidade-item-icon">📷</span>
+                    <span class="funcionalidade-item-text">Abrir Galeria</span>
+                    <span class="funcionalidade-item-arrow">→</span>
+                </div>
+            </div>
+        </a>
         
         <!-- Inscrições -->
         <div class="funcionalidade-card" style="cursor: default;">
