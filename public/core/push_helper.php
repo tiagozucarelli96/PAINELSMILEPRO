@@ -9,6 +9,7 @@ class PushHelper {
     private $vapidSubject;
     private $vapidValidationChecked;
     private $vapidValidationError;
+    private $missingMathExtensionWarned;
     private $useLibrary;
     
     public function __construct() {
@@ -37,6 +38,7 @@ class PushHelper {
         $this->vapidPrivateKey = $this->normalizarChaveVapid($this->vapidPrivateKey);
         $this->vapidValidationChecked = false;
         $this->vapidValidationError = '';
+        $this->missingMathExtensionWarned = false;
         
         // Carregar autoload do composer se disponível
         $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
@@ -121,35 +123,37 @@ class PushHelper {
      */
     private function enviarComBiblioteca($subscription, $titulo, $mensagem, $data) {
         try {
-            // @phpstan-ignore-next-line
-            $webPush = new \Minishlink\WebPush\WebPush([
-                'VAPID' => [
-                    'subject' => $this->vapidSubject,
-                    'publicKey' => $this->vapidPublicKey,
-                    'privateKey' => $this->vapidPrivateKey,
-                ],
-            ]);
-            
-            // @phpstan-ignore-next-line
-            $pushSubscription = \Minishlink\WebPush\Subscription::create([
-                'endpoint' => $subscription['endpoint'],
-                'keys' => [
-                    'p256dh' => $subscription['chave_publica'],
-                    'auth' => $subscription['chave_autenticacao'],
-                ],
-            ]);
-            
-            // Payload
-            $payload = json_encode([
-                'title' => $titulo,
-                'body' => $mensagem,
-                'data' => $data,
-                'icon' => '/favicon.ico',
-                'badge' => '/favicon.ico'
-            ]);
-            
-            // Enviar notificação
-            $result = $webPush->sendOneNotification($pushSubscription, $payload);
+            $result = $this->executarComFiltroAvisoMathExtension(function () use ($subscription, $titulo, $mensagem, $data) {
+                // @phpstan-ignore-next-line
+                $webPush = new \Minishlink\WebPush\WebPush([
+                    'VAPID' => [
+                        'subject' => $this->vapidSubject,
+                        'publicKey' => $this->vapidPublicKey,
+                        'privateKey' => $this->vapidPrivateKey,
+                    ],
+                ]);
+                
+                // @phpstan-ignore-next-line
+                $pushSubscription = \Minishlink\WebPush\Subscription::create([
+                    'endpoint' => $subscription['endpoint'],
+                    'keys' => [
+                        'p256dh' => $subscription['chave_publica'],
+                        'auth' => $subscription['chave_autenticacao'],
+                    ],
+                ]);
+                
+                // Payload
+                $payload = json_encode([
+                    'title' => $titulo,
+                    'body' => $mensagem,
+                    'data' => $data,
+                    'icon' => '/favicon.ico',
+                    'badge' => '/favicon.ico'
+                ]);
+                
+                // Enviar notificação
+                return $webPush->sendOneNotification($pushSubscription, $payload);
+            });
             
             // Processar resultado
             if ($result->isSuccess()) {
@@ -234,5 +238,28 @@ class PushHelper {
         }
 
         return $this->vapidValidationError;
+    }
+
+    private function executarComFiltroAvisoMathExtension(callable $callback) {
+        set_error_handler(function ($severity, $message) {
+            if (($severity === E_USER_NOTICE || $severity === E_NOTICE)
+                && is_string($message)
+                && strpos($message, 'GMP or BCMath extension') !== false
+            ) {
+                if (!$this->missingMathExtensionWarned) {
+                    error_log('[WebPush] ' . $message);
+                    $this->missingMathExtensionWarned = true;
+                }
+                return true;
+            }
+
+            return false;
+        });
+
+        try {
+            return $callback();
+        } finally {
+            restore_error_handler();
+        }
     }
 }

@@ -218,6 +218,7 @@ if ($meeting_id > 0) {
     }
 }
 
+eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $form_templates = eventos_form_templates_listar($pdo);
 $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id) : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));

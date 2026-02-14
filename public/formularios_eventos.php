@@ -25,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
         case 'listar_templates_form':
+            eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
             echo json_encode([
                 'ok' => true,
                 'templates' => eventos_form_templates_listar($pdo),
@@ -90,12 +91,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             exit;
 
+        case 'garantir_template_protocolo_15anos':
+            $force_update = ((string)($_POST['force_update'] ?? '0')) === '1';
+            $seed = eventos_form_template_seed_protocolo_15anos($pdo, $user_id, $force_update);
+            if (empty($seed['ok'])) {
+                echo json_encode(['ok' => false, 'error' => (string)($seed['error'] ?? 'Falha ao garantir template padrão')]);
+                exit;
+            }
+            echo json_encode([
+                'ok' => true,
+                'seed' => $seed,
+                'templates' => eventos_form_templates_listar($pdo),
+            ]);
+            exit;
+
         default:
             echo json_encode(['ok' => false, 'error' => 'Ação inválida']);
             exit;
     }
 }
 
+eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $templates = eventos_form_templates_listar($pdo);
 includeSidebar('Formulários eventos');
 ?>
@@ -402,6 +418,7 @@ includeSidebar('Formulários eventos');
         </div>
         <div class="forms-actions">
             <button type="button" class="btn btn-secondary" onclick="newTemplate()">+ Novo formulário</button>
+            <button type="button" class="btn btn-secondary" onclick="ensureProtocolo15Anos()">📌 Garantir protocolo 15 anos</button>
             <button type="button" class="btn btn-secondary" onclick="refreshTemplates()">↻ Atualizar lista</button>
         </div>
     </div>
@@ -919,6 +936,47 @@ async function importFromSource(autoSave = false) {
         }
     } catch (err) {
         setStatus('Erro ao importar texto: ' + (err.message || err), 'error');
+    }
+}
+
+async function ensureProtocolo15Anos(forceUpdate = false) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'garantir_template_protocolo_15anos');
+        if (forceUpdate) {
+            formData.append('force_update', '1');
+        }
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            setStatus(data.error || 'Não foi possível garantir o protocolo 15 anos.', 'error');
+            return;
+        }
+
+        const templates = Array.isArray(data.templates) ? data.templates : [];
+        savedFormTemplates = templates.map((template) => ({
+            id: Number(template.id || 0),
+            nome: String(template.nome || ''),
+            categoria: String(template.categoria || 'geral'),
+            updated_at: String(template.updated_at || ''),
+            created_by_user_id: Number(template.created_by_user_id || 0),
+            schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
+        }));
+
+        const protocolo = savedFormTemplates.find((item) => (
+            String(item.nome || '').toLowerCase() === 'protocolo 15 anos' && String(item.categoria || '') === '15anos'
+        )) || null;
+        selectedTemplateId = protocolo ? Number(protocolo.id || 0) : selectedTemplateId;
+
+        renderTemplatesSelect();
+        renderTemplatesList();
+        updateSelectedTemplateMeta();
+        setStatus('Template "protocolo 15 anos" garantido com sucesso.', 'success');
+    } catch (err) {
+        setStatus('Erro ao garantir template padrão: ' + (err.message || err), 'error');
     }
 }
 

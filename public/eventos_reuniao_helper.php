@@ -118,6 +118,84 @@ function eventos_form_template_allowed_categories(): array {
 }
 
 /**
+ * Schema padrão do formulário "protocolo 15 anos".
+ */
+function eventos_form_template_schema_protocolo_15anos(): array {
+    return [
+        ['type' => 'section', 'label' => 'ORGANIZAÇÃO 15 ANOS'],
+        ['type' => 'note', 'label' => 'A seguir iremos fazer algumas perguntas importantes para realização do seu evento. Após o envio do formulário, sinalize nossa equipe.'],
+        ['type' => 'note', 'label' => 'Evite usar abreviações e gírias. Quanto mais transparente, melhor.'],
+        ['type' => 'note', 'label' => 'Importante: este formulário não deve ser alterado 15 dias antes do evento ou enviado posterior a isso.'],
+        ['type' => 'divider', 'label' => '---'],
+
+        ['type' => 'section', 'label' => 'Músicas'],
+        ['type' => 'note', 'label' => 'Envie o link da música (YouTube) e o tempo de início. Exemplo: Valsa 0:20.'],
+        ['type' => 'textarea', 'label' => 'Música da entrada da debutante para o cerimonial'],
+        ['type' => 'textarea', 'label' => 'Vai ter sapato, anel e etc? Se sim, quais são as músicas desses momentos?'],
+        ['type' => 'textarea', 'label' => 'Valsa. Se for ter mais de uma, descreva quem irá dançar e qual música.'],
+        ['type' => 'textarea', 'label' => 'Irá ter mais algum momento especial no cerimonial? Cite o momento e a música.'],
+
+        ['type' => 'section', 'label' => 'GOSTO MUSICAL / REPERTÓRIO'],
+        ['type' => 'textarea', 'label' => 'Qual ritmo(s) tocar?'],
+        ['type' => 'textarea', 'label' => 'Qual ritmo(s) não tocar?'],
+        ['type' => 'textarea', 'label' => 'Alguma música em especial que não pode faltar?'],
+        ['type' => 'textarea', 'label' => 'Cite 5 artistas/banda que mais gosta.'],
+        ['type' => 'text', 'label' => 'Link da playlist (opcional).'],
+
+        ['type' => 'section', 'label' => 'CRONOGRAMA'],
+        ['type' => 'yesno', 'label' => 'Irá cantar o parabéns após o cerimonial?'],
+        ['type' => 'note', 'label' => 'Recomendação: cantar após o cerimonial para aproveitar melhor a festa e manter maquiagem/cabelo em bom estado.'],
+        ['type' => 'textarea', 'label' => 'Irá ter algum fornecedor externo? Se sim, cite NOME e FUNÇÃO.'],
+        ['type' => 'textarea', 'label' => 'Vai levar algum item para o salão? (caderno, lembrancinha etc). Se sim, cite aqui.'],
+        ['type' => 'textarea', 'label' => 'Se algum item tiver especificação de entrega aos convidados, descreva.'],
+        ['type' => 'text', 'label' => 'Vai se arrumar no buffet? Se sim, qual horário vai chegar?'],
+
+        ['type' => 'section', 'label' => 'INFORMAÇÕES IMPORTANTES (EVENTOS LISBON 1 - PARQUE DOS SINOS)'],
+        ['type' => 'note', 'label' => 'Sobre organização das mesas: para eventos com mais de 60 pessoas, montamos mesas com 10 lugares cada.'],
+        ['type' => 'yesno', 'label' => 'Vai abrir os brinquedos?'],
+        ['type' => 'note', 'label' => 'Valores dos brinquedos: até 6 crianças R$ 100,00; a partir de 6 crianças R$ 200,00; acima de 14 crianças, a cada 10 acrescenta-se R$ 100,00 por monitor adicional.'],
+    ];
+}
+
+/**
+ * Garante que o template padrão "protocolo 15 anos" exista no banco atual.
+ */
+function eventos_form_template_seed_protocolo_15anos(PDO $pdo, int $user_id = 0, bool $force_update = false): array {
+    eventos_reuniao_ensure_schema($pdo);
+
+    $template_name = 'protocolo 15 anos';
+    $template_category = '15anos';
+
+    $stmt = $pdo->prepare("
+        SELECT id
+        FROM eventos_form_templates
+        WHERE lower(nome) = lower(:nome)
+          AND categoria = :categoria
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':nome' => $template_name,
+        ':categoria' => $template_category,
+    ]);
+    $existing_id = (int)($stmt->fetchColumn() ?: 0);
+
+    if ($existing_id > 0 && !$force_update) {
+        return ['ok' => true, 'mode' => 'exists', 'template_id' => $existing_id];
+    }
+
+    $schema = eventos_form_template_schema_protocolo_15anos();
+    return eventos_form_template_salvar(
+        $pdo,
+        $template_name,
+        $template_category,
+        $schema,
+        $user_id,
+        $existing_id > 0 ? $existing_id : null
+    );
+}
+
+/**
  * Gera ID para campo de formulario.
  */
 function eventos_form_template_field_id(string $prefix = 'f'): string {
