@@ -393,6 +393,40 @@ ob_start();
     font-size: 0.82rem;
 }
 
+.camera-capture-box {
+    display: none;
+    margin-top: 0.55rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 0.6rem;
+}
+
+.camera-capture-box.active {
+    display: block;
+}
+
+.camera-live-preview {
+    width: 100%;
+    aspect-ratio: 4/3;
+    border-radius: 8px;
+    background: #0f172a;
+    overflow: hidden;
+}
+
+.camera-live-preview video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.camera-capture-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
 .btn-primary {
     background: #2563eb;
     color: #fff;
@@ -561,6 +595,7 @@ ob_start();
 
     .btn-row button,
     .photo-actions button,
+    .camera-capture-actions button,
     .form-actions button,
     .form-actions a {
         flex: 1;
@@ -738,10 +773,20 @@ ob_start();
                                 <button class="btn-secondary" type="button" id="quick-photo-gallery-btn">Escolher da galeria</button>
                             </div>
                             <input type="file" id="quick-photo-file" name="quick_foto_file" accept="image/*" style="display:none;">
+                            <div class="camera-capture-box" id="quick-camera-capture-box">
+                                <div class="camera-live-preview">
+                                    <video id="quick-camera-live" autoplay playsinline muted></video>
+                                </div>
+                                <div class="camera-capture-actions">
+                                    <button class="btn-primary" type="button" id="quick-camera-shot">Capturar foto</button>
+                                    <button class="btn-secondary" type="button" id="quick-camera-cancel">Cancelar câmera</button>
+                                </div>
+                            </div>
+                            <canvas id="quick-camera-canvas" style="display:none;"></canvas>
                             <div class="photo-preview" id="quick-photo-preview">
                                 <span class="photo-placeholder">Nenhuma foto selecionada.</span>
                             </div>
-                            <div class="form-hint">No celular, use “Tirar foto” para abrir a câmera traseira.</div>
+                            <div class="form-hint" id="quick-photo-hint">No celular, use “Tirar foto” para abrir a câmera traseira.</div>
                         </div>
 
                         <div class="form-actions">
@@ -760,6 +805,8 @@ ob_start();
 let quickScannerActive = false;
 let quickScannerHandler = null;
 let quickLastScanned = '';
+let quickPhotoStream = null;
+const quickPhotoHintDefault = 'No celular, use “Tirar foto” para abrir a câmera traseira.';
 
 function setQuickScannerStatus(message, type = '') {
     const statusEl = document.getElementById('quick-scanner-status');
@@ -797,6 +844,123 @@ function renderQuickPhotoPreview(file) {
         preview.innerHTML = '<img src="' + reader.result + '" alt="Prévia da foto do insumo">';
     };
     reader.readAsDataURL(file);
+}
+
+function setQuickPhotoHint(message = '') {
+    const hintEl = document.getElementById('quick-photo-hint');
+    if (!hintEl) return;
+    hintEl.textContent = message || quickPhotoHintDefault;
+}
+
+function stopQuickPhotoCamera() {
+    if (quickPhotoStream) {
+        quickPhotoStream.getTracks().forEach((track) => track.stop());
+        quickPhotoStream = null;
+    }
+
+    const cameraBox = document.getElementById('quick-camera-capture-box');
+    const liveVideo = document.getElementById('quick-camera-live');
+    if (liveVideo) {
+        liveVideo.srcObject = null;
+    }
+    if (cameraBox) {
+        cameraBox.classList.remove('active');
+    }
+}
+
+function openNativePhotoPicker(mode = 'gallery') {
+    const input = document.getElementById('quick-photo-file');
+    if (!input) return;
+    if (mode === 'camera') {
+        input.setAttribute('capture', 'environment');
+    } else {
+        input.removeAttribute('capture');
+    }
+    input.click();
+}
+
+async function openQuickPhotoCamera() {
+    stopQuickPhotoCamera();
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setQuickPhotoHint('Câmera direta indisponível neste navegador. Use o anexo para tirar/escolher a foto.');
+        openNativePhotoPicker('camera');
+        return;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: { ideal: 'environment' }
+            },
+            audio: false
+        });
+
+        const cameraBox = document.getElementById('quick-camera-capture-box');
+        const liveVideo = document.getElementById('quick-camera-live');
+        if (!cameraBox || !liveVideo) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
+        }
+
+        quickPhotoStream = stream;
+        liveVideo.srcObject = stream;
+        cameraBox.classList.add('active');
+        setQuickPhotoHint('Câmera aberta. Clique em “Capturar foto”.');
+    } catch (err) {
+        console.error('Erro ao abrir câmera para foto:', err);
+        setQuickPhotoHint('Não foi possível abrir a câmera diretamente. Use o anexo para tirar/escolher a foto.');
+        openNativePhotoPicker('camera');
+    }
+}
+
+function captureQuickPhotoFromCamera() {
+    const liveVideo = document.getElementById('quick-camera-live');
+    const canvas = document.getElementById('quick-camera-canvas');
+    const input = document.getElementById('quick-photo-file');
+
+    if (!quickPhotoStream || !liveVideo || !canvas || !input) {
+        setQuickPhotoHint('Câmera não está ativa no momento.');
+        return;
+    }
+
+    const width = liveVideo.videoWidth;
+    const height = liveVideo.videoHeight;
+    if (!width || !height) {
+        setQuickPhotoHint('Aguardando imagem da câmera. Tente novamente em 1 segundo.');
+        return;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        setQuickPhotoHint('Falha ao processar a imagem da câmera.');
+        return;
+    }
+
+    ctx.drawImage(liveVideo, 0, 0, width, height);
+    canvas.toBlob((blob) => {
+        if (!blob) {
+            setQuickPhotoHint('Não foi possível capturar a foto.');
+            return;
+        }
+
+        const file = new File([blob], `insumo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+
+        if (typeof DataTransfer !== 'undefined') {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            renderQuickPhotoPreview(file);
+            setQuickPhotoHint('Foto capturada com sucesso.');
+            stopQuickPhotoCamera();
+        } else {
+            setQuickPhotoHint('Seu navegador não suporta anexar direto da câmera. Use o anexo para selecionar a foto.');
+            stopQuickPhotoCamera();
+            openNativePhotoPicker('camera');
+        }
+    }, 'image/jpeg', 0.92);
 }
 
 function handleQuickBarcodeResult(code) {
@@ -905,7 +1069,9 @@ function openQuickModal() {
     if (photoInput) {
         photoInput.value = '';
     }
+    stopQuickPhotoCamera();
     renderQuickPhotoPreview(null);
+    setQuickPhotoHint();
 
     const panel = document.getElementById('quick-form-panel');
     const hasServerPrefill = <?= ($open_quick_modal || $quick_form['barcode'] !== '' || $quick_form['nome_oficial'] !== '' || $quick_form['unidade_medida_padrao_id'] !== '' || $quick_form['unidade_embalagem'] !== '' || $quick_form['tipologia_insumo_id'] !== '') ? 'true' : 'false' ?>;
@@ -925,6 +1091,7 @@ function openQuickModal() {
 
 function closeQuickModal() {
     stopQuickScanner();
+    stopQuickPhotoCamera();
     const modal = document.getElementById('modal-quick-insumo');
     if (modal) {
         modal.style.display = 'none';
@@ -955,22 +1122,32 @@ document.getElementById('use-quick-barcode')?.addEventListener('click', () => {
 });
 
 document.getElementById('quick-photo-camera-btn')?.addEventListener('click', () => {
-    const input = document.getElementById('quick-photo-file');
-    if (!input) return;
-    input.setAttribute('capture', 'environment');
-    input.click();
+    openQuickPhotoCamera();
 });
 
 document.getElementById('quick-photo-gallery-btn')?.addEventListener('click', () => {
-    const input = document.getElementById('quick-photo-file');
-    if (!input) return;
-    input.removeAttribute('capture');
-    input.click();
+    stopQuickPhotoCamera();
+    openNativePhotoPicker('gallery');
+});
+
+document.getElementById('quick-camera-shot')?.addEventListener('click', () => {
+    captureQuickPhotoFromCamera();
+});
+
+document.getElementById('quick-camera-cancel')?.addEventListener('click', () => {
+    stopQuickPhotoCamera();
+    setQuickPhotoHint();
 });
 
 document.getElementById('quick-photo-file')?.addEventListener('change', (event) => {
     const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+    stopQuickPhotoCamera();
     renderQuickPhotoPreview(file);
+    if (file) {
+        setQuickPhotoHint('Foto selecionada e pronta para envio.');
+    } else {
+        setQuickPhotoHint();
+    }
 });
 
 document.getElementById('quick-barcode-manual')?.addEventListener('keypress', (event) => {
@@ -993,6 +1170,7 @@ document.getElementById('skip-quick-barcode')?.addEventListener('click', () => {
 window.addEventListener('beforeunload', () => {
     try {
         stopQuickScanner();
+        stopQuickPhotoCamera();
     } catch (e) {
         // no-op
     }

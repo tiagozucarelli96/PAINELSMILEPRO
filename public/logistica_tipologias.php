@@ -58,6 +58,50 @@ function handle_tipologia_toggle(PDO $pdo, string $table, int $id): void {
     $stmt->execute([':id' => $id]);
 }
 
+function handle_tipologia_delete(PDO $pdo, string $tipo, int $id, array &$errors, array &$messages): void {
+    if ($id <= 0) {
+        $errors[] = 'Tipologia inválida para exclusão.';
+        return;
+    }
+
+    if ($tipo === 'insumo') {
+        $check = $pdo->prepare("SELECT COUNT(*) FROM logistica_insumos WHERE tipologia_insumo_id = :id");
+        $check->execute([':id' => $id]);
+        $count = (int)$check->fetchColumn();
+        if ($count > 0) {
+            $errors[] = 'Não foi possível apagar a tipologia de insumo: existem ' . $count . ' insumo(s) vinculado(s).';
+            return;
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM logistica_tipologias_insumo WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        if ($stmt->rowCount() > 0) {
+            $messages[] = 'Tipologia de insumo apagada.';
+        } else {
+            $errors[] = 'Tipologia de insumo não encontrada.';
+        }
+        return;
+    }
+
+    if ($tipo === 'receita') {
+        $check = $pdo->prepare("SELECT COUNT(*) FROM logistica_receitas WHERE tipologia_receita_id = :id");
+        $check->execute([':id' => $id]);
+        $count = (int)$check->fetchColumn();
+        if ($count > 0) {
+            $errors[] = 'Não foi possível apagar a tipologia de receita: existem ' . $count . ' receita(s) vinculada(s).';
+            return;
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM logistica_tipologias_receita WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        if ($stmt->rowCount() > 0) {
+            $messages[] = 'Tipologia de receita apagada.';
+        } else {
+            $errors[] = 'Tipologia de receita não encontrada.';
+        }
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $tipo = $_POST['tipo'] ?? '';
@@ -73,6 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id > 0) {
             handle_tipologia_toggle($pdo, $table, $id);
         }
+    }
+
+    if ($action === 'delete' && in_array($tipo, ['insumo', 'receita'], true)) {
+        $id = (int)($_POST['id'] ?? 0);
+        handle_tipologia_delete($pdo, $tipo, $id, $errors, $messages);
     }
 }
 
@@ -245,6 +294,16 @@ $is_editing_receita = is_array($edit_receita);
 .btn-secondary {
     background: #e2e8f0;
     color: #1f2937;
+    border: none;
+    padding: 0.5rem 0.9rem;
+    border-radius: 8px;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.btn-danger {
+    background: #fee2e2;
+    color: #991b1b;
     border: none;
     padding: 0.5rem 0.9rem;
     border-radius: 8px;
@@ -451,6 +510,12 @@ $is_editing_receita = is_array($edit_receita);
                                             <button class="btn-secondary" type="submit">Ativar/Desativar</button>
                                         </form>
                                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_insumo_id=<?= (int)$tip['id'] ?>">Editar</a>
+                                        <form method="POST" onsubmit="return confirm('Apagar esta tipologia de insumo? Esta ação não pode ser desfeita.');">
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="tipo" value="insumo">
+                                            <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
+                                            <button class="btn-danger" type="submit">Apagar</button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -542,6 +607,12 @@ $is_editing_receita = is_array($edit_receita);
                                             <button class="btn-secondary" type="submit">Ativar/Desativar</button>
                                         </form>
                                         <a class="btn-secondary btn-link" href="index.php?page=logistica_tipologias&edit_receita_id=<?= (int)$tip['id'] ?><?= $is_editing_insumo ? '&edit_insumo_id=' . (int)$edit_insumo['id'] : '' ?>">Editar</a>
+                                        <form method="POST" onsubmit="return confirm('Apagar esta tipologia de receita? Esta ação não pode ser desfeita.');">
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="tipo" value="receita">
+                                            <input type="hidden" name="id" value="<?= (int)$tip['id'] ?>">
+                                            <button class="btn-danger" type="submit">Apagar</button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
