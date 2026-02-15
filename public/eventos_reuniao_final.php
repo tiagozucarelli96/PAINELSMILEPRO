@@ -166,6 +166,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = eventos_reuniao_destravar_dj_slot($pdo, $meeting_id, $slot_index, (int)$user_id);
             echo json_encode($result);
             exit;
+
+        case 'excluir_dj_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_excluir_dj_slot($pdo, $meeting_id, $slot_index, (int)$user_id);
+            echo json_encode($result);
+            exit;
             
         case 'atualizar_status':
             $status = $_POST['status'] ?? '';
@@ -600,6 +610,44 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     .dj-top-actions .btn {
         min-width: 160px;
         justify-content: center;
+    }
+
+    .dj-slots-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.8rem;
+    }
+
+    .dj-slots-controls h4 {
+        margin: 0;
+        font-size: 1rem;
+        color: #0f172a;
+    }
+
+    .dj-slots-controls p {
+        margin: 0.2rem 0 0 0;
+        font-size: 0.82rem;
+        color: #64748b;
+    }
+
+    .dj-slots-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+    }
+
+    .btn-slot-remove {
+        background: #fff1f2;
+        border-color: #fecdd3;
+        color: #b91c1c;
+        min-width: 0 !important;
+    }
+
+    .btn-slot-remove:hover {
+        background: #ffe4e6;
     }
 
     .dj-builder-create-only {
@@ -1037,6 +1085,10 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         .dj-top-actions .btn {
             min-width: 100%;
         }
+
+        .dj-slots-controls .btn {
+            width: 100%;
+        }
     }
 </style>
 
@@ -1204,37 +1256,17 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         <div class="tab-content <?= $key === 'decoracao' ? 'active' : '' ?>" id="tab-<?= $key ?>">
             
             <?php if ($key === 'dj_protocolo'): ?>
-            <?php for ($slot = 1; $slot <= 2; $slot++): ?>
-            <div class="dj-builder-shell"<?= $slot > 1 ? ' style="margin-top:0.9rem;"' : '' ?>>
-                <div class="dj-builder-head">
+            <div class="dj-builder-shell">
+                <div class="dj-slots-controls">
                     <div>
-                        <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro <?= $slot ?></h4>
-                        <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link deste quadro para o cliente.</div>
+                        <h4>🧩 DJ / Protocolos</h4>
+                        <p>Comece sem quadros. Adicione somente quando precisar gerar um novo link para o cliente.</p>
                     </div>
-	                    <div class="dj-top-actions">
-	                        <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(<?= $slot ?>)" id="btnGerarLink-<?= $slot ?>">Gerar link</button>
-	                        <button type="button" class="btn btn-secondary" onclick="destravarDjSlot(<?= $slot ?>)" id="btnDestravarDjSlot-<?= $slot ?>" style="display:none;">🔓 Destravar</button>
-	                    </div>
-	                </div>
-                <div class="prefill-field" style="margin-top: 0.5rem;">
-                    <label for="djTemplateSelect-<?= $slot ?>">Formulário salvo</label>
-                    <select id="djTemplateSelect-<?= $slot ?>" onchange="onChangeDjTemplateSelect(<?= $slot ?>)">
-                        <option value="">Selecione um formulário...</option>
-                        <?php foreach ($form_templates as $template): ?>
-                        <option value="<?= (int)($template['id'] ?? 0) ?>">
-                            <?= htmlspecialchars((string)($template['nome'] ?? 'Modelo sem nome') . ' - ' . (string)($template['categoria'] ?? 'geral')) ?>
-                        </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
                 </div>
-                <div class="builder-field-meta" id="selectedDjTemplateMeta-<?= $slot ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
-                <p class="share-hint" id="shareHint-<?= $slot ?>">Selecione um formulário para habilitar o compartilhamento.</p>
-                <div class="link-display">
-                    <input type="text" id="clienteLinkInput-<?= $slot ?>" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
-                    <button type="button" class="btn btn-secondary" onclick="copiarLink(<?= $slot ?>)" id="btnCopiar-<?= $slot ?>" style="display: none;">📋 Copiar</button>
-                </div>
+                <div id="djSlotsEmptyState" class="dj-builder-empty-state">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
+                <div id="djSlotsContainer" class="dj-slots-stack"></div>
             </div>
-            <?php endfor; ?>
             <?php endif; ?>
 
             <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
@@ -1399,9 +1431,12 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
         'schema' => is_array($template['schema'] ?? null) ? $template['schema'] : [],
     ];
 }, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-let selectedDjTemplateIds = { 1: null, 2: null };
-let lastSavedDjSchemaSignatures = { 1: '', 2: '' };
-let djLinksBySlot = { 1: null, 2: null };
+const DJ_SLOT_MIN = 1;
+const DJ_SLOT_MAX = 50;
+let djSlotOrder = [];
+let selectedDjTemplateIds = {};
+let lastSavedDjSchemaSignatures = {};
+let djLinksBySlot = {};
 let selectedSectionTemplateIds = {
     decoracao: null,
     observacoes_gerais: null,
@@ -1808,7 +1843,174 @@ function isLegacyGeneratedSchemaHtml(html) {
     return text.includes('Estrutura gerada por campos dinâmicos') || text.includes('Campo de upload de arquivo');
 }
 
+function normalizeSlotIndex(slot) {
+    const parsed = Number(slot);
+    if (!Number.isInteger(parsed)) return null;
+    if (parsed < DJ_SLOT_MIN || parsed > DJ_SLOT_MAX) return null;
+    return parsed;
+}
+
+function ensureDjSlotState(slot) {
+    if (!Object.prototype.hasOwnProperty.call(selectedDjTemplateIds, slot)) {
+        selectedDjTemplateIds[slot] = null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(lastSavedDjSchemaSignatures, slot)) {
+        lastSavedDjSchemaSignatures[slot] = '';
+    }
+    if (!Object.prototype.hasOwnProperty.call(djLinksBySlot, slot)) {
+        djLinksBySlot[slot] = null;
+    }
+}
+
+function getSortedDjSlots() {
+    return djSlotOrder
+        .map((slot) => normalizeSlotIndex(slot))
+        .filter((slot) => slot !== null)
+        .sort((a, b) => a - b);
+}
+
+function djSlotExists(slot) {
+    const normalized = normalizeSlotIndex(slot);
+    if (normalized === null) return false;
+    return djSlotOrder.includes(normalized);
+}
+
+function findNextDjSlotIndex() {
+    const used = new Set(getSortedDjSlots());
+    for (let slot = DJ_SLOT_MIN; slot <= DJ_SLOT_MAX; slot += 1) {
+        if (!used.has(slot)) {
+            return slot;
+        }
+    }
+    return null;
+}
+
+function buildDjSlotCardHtml(slot) {
+    return `
+        <div class="dj-builder-shell" data-dj-slot="${slot}">
+            <div class="dj-builder-head">
+                <div>
+                    <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro ${slot}</h4>
+                    <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link deste quadro para o cliente.</div>
+                </div>
+                <div class="dj-top-actions">
+                    <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(${slot})" id="btnGerarLink-${slot}">Gerar link</button>
+                    <button type="button" class="btn btn-secondary" onclick="destravarDjSlot(${slot})" id="btnDestravarDjSlot-${slot}" style="display:none;">🔓 Destravar</button>
+                    <button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir quadro</button>
+                </div>
+            </div>
+            <div class="prefill-field" style="margin-top: 0.5rem;">
+                <label for="djTemplateSelect-${slot}">Formulário salvo</label>
+                <select id="djTemplateSelect-${slot}" onchange="onChangeDjTemplateSelect(${slot})">
+                    <option value="">Selecione um formulário...</option>
+                </select>
+            </div>
+            <div class="builder-field-meta" id="selectedDjTemplateMeta-${slot}" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+            <p class="share-hint" id="shareHint-${slot}">Selecione um formulário para habilitar o compartilhamento.</p>
+            <div class="link-display">
+                <input type="text" id="clienteLinkInput-${slot}" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
+                <button type="button" class="btn btn-secondary" onclick="copiarLink(${slot})" id="btnCopiar-${slot}" style="display:none;">📋 Copiar</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderDjSlots() {
+    const container = document.getElementById('djSlotsContainer');
+    const empty = document.getElementById('djSlotsEmptyState');
+    if (!container || !empty) return;
+
+    const slots = getSortedDjSlots();
+    if (slots.length === 0) {
+        container.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+
+    empty.style.display = 'none';
+    container.innerHTML = slots.map((slot) => buildDjSlotCardHtml(slot)).join('');
+
+    slots.forEach((slot) => {
+        ensureDjSlotState(slot);
+        renderDjTemplateSelect(slot);
+        const link = djLinksBySlot[slot] || null;
+        if (link && link.token) {
+            setDjLinkOutput(slot, `${window.location.origin}/index.php?page=eventos_cliente_dj&token=${link.token}`);
+        } else {
+            setDjLinkOutput(slot, '');
+        }
+        updateShareAvailability(slot);
+    });
+}
+
+function addDjSlot(preferredSlot = null) {
+    const slot = preferredSlot !== null ? normalizeSlotIndex(preferredSlot) : findNextDjSlotIndex();
+    if (slot === null) {
+        alert('Limite de quadros atingido (máximo de 50).');
+        return null;
+    }
+    if (!djSlotExists(slot)) {
+        djSlotOrder.push(slot);
+    }
+    djSlotOrder = getSortedDjSlots();
+    ensureDjSlotState(slot);
+    renderDjSlots();
+
+    const select = document.getElementById(`djTemplateSelect-${slot}`);
+    if (select) {
+        select.focus();
+    }
+    return slot;
+}
+
+async function excluirDjSlot(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        return;
+    }
+
+    const link = djLinksBySlot[slotIndex] || null;
+    if (link && link.submitted_at) {
+        alert('Este quadro já foi enviado pelo cliente e não pode ser excluído.');
+        return;
+    }
+
+    if (!confirm(`Excluir o quadro ${slotIndex}?`)) {
+        return;
+    }
+
+    if (meetingId) {
+        try {
+            const formData = new FormData();
+            formData.append('action', 'excluir_dj_slot');
+            formData.append('meeting_id', String(meetingId));
+            formData.append('slot_index', String(slotIndex));
+            const resp = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                alert(data.error || 'Erro ao excluir quadro');
+                return;
+            }
+        } catch (err) {
+            alert('Erro: ' + err.message);
+            return;
+        }
+    }
+
+    djSlotOrder = getSortedDjSlots().filter((item) => item !== slotIndex);
+    delete selectedDjTemplateIds[slotIndex];
+    delete lastSavedDjSchemaSignatures[slotIndex];
+    delete djLinksBySlot[slotIndex];
+    renderDjSlots();
+}
+
 function getSelectedDjTemplateData(slot) {
+    if (!djSlotExists(slot)) {
+        return { template: null, schema: [] };
+    }
     const templateId = Number(selectedDjTemplateIds[slot] || 0);
     if (templateId <= 0) {
         return { template: null, schema: [] };
@@ -1823,7 +2025,6 @@ function isDjSlotLocked(slot) {
     if (link && link.submitted_at) {
         return true;
     }
-    // Compatibilidade: se a seção antiga estiver travada e existir link no slot 1, considera travado.
     if (legacyDjSectionLocked && Number(slot) === 1 && link) {
         return true;
     }
@@ -1961,10 +2162,7 @@ function onChangeDjTemplateSelect(slot = 1) {
 }
 
 function renderAllDjTemplateSelects() {
-    [1, 2].forEach((slot) => {
-        renderDjTemplateSelect(slot);
-        updateShareAvailability(slot);
-    });
+    renderDjSlots();
 }
 
 function getSectionFormTitle(section) {
@@ -2407,7 +2605,7 @@ async function fetchTemplates() {
         created_by_user_id: Number(template.created_by_user_id || 0),
         schema: normalizeFormSchema(Array.isArray(template.schema) ? template.schema : [])
     }));
-    [1, 2].forEach((slot) => {
+    getSortedDjSlots().forEach((slot) => {
         const templateId = selectedDjTemplateIds[slot] || null;
         if (!templateId) return;
         const exists = savedFormTemplates.some((item) => Number(item.id) === Number(templateId));
@@ -2437,22 +2635,23 @@ async function refreshDjTemplates() {
 }
 
 function initDjTemplateSelection() {
-    [1, 2].forEach((slot) => {
-        selectedDjTemplateIds[slot] = null;
-        lastSavedDjSchemaSignatures[slot] = '';
-        djLinksBySlot[slot] = null;
-        setDjLinkOutput(slot, '');
-    });
+    djSlotOrder = [];
+    selectedDjTemplateIds = {};
+    lastSavedDjSchemaSignatures = {};
+    djLinksBySlot = {};
 
     if (Array.isArray(initialDjLinks)) {
         initialDjLinks.forEach((link) => {
-            const slot = Number(link && link.slot_index ? link.slot_index : 1);
-            if (!Number.isFinite(slot) || slot < 1 || slot > 2) return;
+            const slot = normalizeSlotIndex(link && link.slot_index ? link.slot_index : 1);
+            if (slot === null) return;
             if (!link || !link.token) return;
-            if (djLinksBySlot[slot]) return;
+            if (djSlotExists(slot) && djLinksBySlot[slot]) return;
 
+            if (!djSlotExists(slot)) {
+                djSlotOrder.push(slot);
+            }
+            ensureDjSlotState(slot);
             djLinksBySlot[slot] = link;
-            setDjLinkOutput(slot, `${window.location.origin}/index.php?page=eventos_cliente_dj&token=${link.token}`);
 
             const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
             if (hasUsefulSchemaFields(schema)) {
@@ -2466,19 +2665,8 @@ function initDjTemplateSelection() {
         });
     }
 
-    if (!selectedDjTemplateIds[1]) {
-        const fallbackSchema = normalizeFormSchema(Array.isArray(initialDjSchema) ? initialDjSchema : []);
-        if (hasUsefulSchemaFields(fallbackSchema)) {
-            const fallbackSignature = getSchemaSignature(fallbackSchema);
-            const fallbackTemplateId = findTemplateIdBySchemaSignature(fallbackSignature);
-            if (fallbackTemplateId) {
-                selectedDjTemplateIds[1] = fallbackTemplateId;
-                lastSavedDjSchemaSignatures[1] = fallbackSignature;
-            }
-        }
-    }
-
-    renderAllDjTemplateSelects();
+    djSlotOrder = getSortedDjSlots();
+    renderDjSlots();
 }
 
 function initSectionTemplateSelection() {
@@ -2552,7 +2740,11 @@ async function salvarSecao(section) {
 
 // Gerar link para cliente
 async function gerarLinkCliente(slot = 1) {
-    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
     updateShareAvailability(slotIndex);
     const btn = document.getElementById(`btnGerarLink-${slotIndex}`);
     if (btn && btn.disabled) {
@@ -2612,7 +2804,11 @@ async function gerarLinkCliente(slot = 1) {
 }
 
 function copiarLink(slot = 1) {
-    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
     const input = document.getElementById(`clienteLinkInput-${slotIndex}`);
     if (!input || !input.value) {
         alert('Nenhum link para copiar.');
@@ -2789,7 +2985,11 @@ async function destravarSecao(section) {
 
 // Destravar quadro do DJ (slot)
 async function destravarDjSlot(slot = 1) {
-    const slotIndex = Number(slot) === 2 ? 2 : 1;
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
     if (!confirm(`Destravar o quadro ${slotIndex} permite que o cliente edite e reenvie. Continuar?`)) return;
 
     try {

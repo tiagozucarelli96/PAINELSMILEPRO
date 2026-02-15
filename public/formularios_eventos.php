@@ -524,13 +524,20 @@ includeSidebar('Formularios eventos');
         border-radius: 12px;
         padding: 0.82rem;
         box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        transition: border-color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
     }
 
     .question-head {
         display: grid;
-        grid-template-columns: 42px 1fr 190px;
+        grid-template-columns: 74px 1fr 190px;
         gap: 0.55rem;
         align-items: center;
+    }
+
+    .question-order-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.34rem;
     }
 
     .question-index {
@@ -544,6 +551,38 @@ includeSidebar('Formularios eventos');
         display: inline-flex;
         align-items: center;
         justify-content: center;
+    }
+
+    .drag-handle {
+        border: 1px solid #d7dfeb;
+        background: #f8fafc;
+        color: #475569;
+        width: 30px;
+        height: 34px;
+        border-radius: 8px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        cursor: grab;
+        line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .drag-handle:hover {
+        background: #eef2ff;
+        border-color: #c7d2fe;
+        color: #1e40af;
+    }
+
+    .question-card.dragging {
+        opacity: 0.62;
+        border-color: #93c5fd;
+    }
+
+    .question-card.drop-target {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
     }
 
     .question-head input,
@@ -714,7 +753,7 @@ includeSidebar('Formularios eventos');
         }
 
         .question-head {
-            grid-template-columns: 34px 1fr;
+            grid-template-columns: 74px 1fr;
         }
 
         .question-head select {
@@ -765,8 +804,6 @@ includeSidebar('Formularios eventos');
                 <p class="library-subtitle">Escolha um formulario salvo ou crie um novo, no estilo galeria.</p>
             </div>
             <div class="library-actions">
-                <button type="button" class="btn btn-secondary" onclick="refreshTemplates(true)">↻ Atualizar</button>
-                <button type="button" class="btn btn-secondary" onclick="ensureProtocolo15Anos()">📌 Garantir protocolo 15 anos</button>
                 <button type="button" class="btn btn-primary" onclick="startNewTemplate()">+ Novo formulario</button>
             </div>
         </div>
@@ -817,10 +854,13 @@ includeSidebar('Formularios eventos');
                     <button type="button" class="btn btn-ghost" onclick="backToLibrary()">← Formularios</button>
                     <button type="button" class="btn btn-ghost" onclick="toggleImportPanel()">&lt;/&gt; Ler codigo fonte</button>
                     <button type="button" class="btn btn-secondary" onclick="addFieldByType('text')">+ Pergunta</button>
-                    <button type="button" class="btn btn-primary" id="btnSaveTemplate" onclick="saveCurrentTemplate()">Salvar novo</button>
+                    <button type="button" class="btn btn-secondary" onclick="openPreviewTab()">Prévia</button>
+                    <button type="button" class="btn btn-primary" id="btnSaveTemplate" onclick="handleSaveButtonClick(event)">Salvar novo</button>
                     <button type="button" class="btn btn-danger" id="btnArchiveCurrent" onclick="archiveTemplate()">Arquivar</button>
                 </div>
             </div>
+
+            <div class="status-box" id="editorStatusTop"></div>
 
             <div class="import-panel" id="importPanel">
                 <h3>Importar por texto/HTML</h3>
@@ -889,6 +929,8 @@ let editingTemplateId = null;
 let formBuilderFields = [];
 let builderDirty = false;
 let importPanelOpen = false;
+let saveInFlight = false;
+let draggingQuestionIndex = null;
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -976,7 +1018,14 @@ function setLibraryStatus(message, type = '') {
 }
 
 function setEditorStatus(message, type = '') {
+    updateStatus(document.getElementById('editorStatusTop'), message, type);
     updateStatus(document.getElementById('editorStatus'), message, type);
+    if (message && type === 'error') {
+        const anchor = document.getElementById('editorStatusTop');
+        if (anchor && typeof anchor.scrollIntoView === 'function') {
+            anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 }
 
 function setBuilderDirty(flag) {
@@ -1160,9 +1209,12 @@ function renderQuestionList() {
         }
 
         return `
-            <article class="question-card">
+            <article class="question-card" data-index="${index}" draggable="true">
                 <div class="question-head">
-                    <span class="question-index">${index + 1}</span>
+                    <div class="question-order-cell">
+                        <span class="question-index">${index + 1}</span>
+                        <button type="button" class="drag-handle" title="Arrastar para reordenar" aria-label="Arrastar pergunta">⋮⋮</button>
+                    </div>
                     <input type="text" value="${label}" placeholder="Pergunta sem titulo" oninput="setFieldLabel(${index}, this.value)">
                     <select onchange="setFieldType(${index}, this.value)">${typeOptions}</select>
                 </div>
@@ -1173,8 +1225,6 @@ function renderQuestionList() {
                         Obrigatoria
                     </label>
                     <div class="question-actions">
-                        <button type="button" class="question-mini-btn" onclick="moveField(${index}, -1)">↑</button>
-                        <button type="button" class="question-mini-btn" onclick="moveField(${index}, 1)">↓</button>
                         <button type="button" class="question-mini-btn" onclick="duplicateField(${index})">Duplicar</button>
                         <button type="button" class="question-mini-btn" onclick="removeField(${index})">Excluir</button>
                     </div>
@@ -1182,6 +1232,112 @@ function renderQuestionList() {
             </article>
         `;
     }).join('');
+    bindQuestionDragAndDrop();
+}
+
+function shouldIgnoreDragStartTarget(target) {
+    if (!target || !(target instanceof HTMLElement)) {
+        return false;
+    }
+    if (target.closest('.drag-handle')) {
+        return false;
+    }
+    return !!target.closest('input, select, textarea, button, label');
+}
+
+function clearQuestionDragState() {
+    draggingQuestionIndex = null;
+    const list = document.getElementById('questionList');
+    if (!list) return;
+    list.querySelectorAll('.question-card.dragging, .question-card.drop-target').forEach((card) => {
+        card.classList.remove('dragging');
+        card.classList.remove('drop-target');
+    });
+}
+
+function onQuestionDragStart(event) {
+    const card = event.currentTarget;
+    if (!card) return;
+    if (shouldIgnoreDragStartTarget(event.target)) {
+        event.preventDefault();
+        return;
+    }
+
+    const fromIndex = Number(card.dataset.index || -1);
+    if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= formBuilderFields.length) {
+        event.preventDefault();
+        return;
+    }
+
+    draggingQuestionIndex = fromIndex;
+    card.classList.add('dragging');
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(fromIndex));
+    }
+}
+
+function onQuestionDragOver(event) {
+    if (draggingQuestionIndex === null) {
+        return;
+    }
+    event.preventDefault();
+    const card = event.currentTarget;
+    if (!card) return;
+
+    const overIndex = Number(card.dataset.index || -1);
+    if (!Number.isInteger(overIndex) || overIndex === draggingQuestionIndex) {
+        return;
+    }
+    const list = document.getElementById('questionList');
+    if (!list) return;
+    list.querySelectorAll('.question-card.drop-target').forEach((el) => {
+        if (el !== card) {
+            el.classList.remove('drop-target');
+        }
+    });
+    card.classList.add('drop-target');
+}
+
+function onQuestionDrop(event) {
+    event.preventDefault();
+    const card = event.currentTarget;
+    if (!card) {
+        clearQuestionDragState();
+        return;
+    }
+
+    const toIndex = Number(card.dataset.index || -1);
+    const fromIndex = draggingQuestionIndex;
+    clearQuestionDragState();
+
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return;
+    if (fromIndex < 0 || toIndex < 0) return;
+    if (fromIndex === toIndex) return;
+    if (!Array.isArray(formBuilderFields) || formBuilderFields.length < 2) return;
+
+    const moved = formBuilderFields.splice(fromIndex, 1)[0];
+    if (!moved) return;
+    const insertIndex = fromIndex < toIndex ? (toIndex - 1) : toIndex;
+    formBuilderFields.splice(insertIndex, 0, moved);
+    setBuilderDirty(true);
+    renderQuestionList();
+}
+
+function onQuestionDragEnd() {
+    clearQuestionDragState();
+}
+
+function bindQuestionDragAndDrop() {
+    const list = document.getElementById('questionList');
+    if (!list) return;
+
+    list.querySelectorAll('.question-card[data-index]').forEach((card) => {
+        card.addEventListener('dragstart', onQuestionDragStart);
+        card.addEventListener('dragover', onQuestionDragOver);
+        card.addEventListener('drop', onQuestionDrop);
+        card.addEventListener('dragend', onQuestionDragEnd);
+    });
 }
 
 function addFieldByType(type = 'text') {
@@ -1287,6 +1443,181 @@ function removeField(index) {
     formBuilderFields.splice(index, 1);
     setBuilderDirty(true);
     renderQuestionList();
+}
+
+function buildPreviewFieldHtml(field) {
+    const type = String(field && field.type ? field.type : 'text').toLowerCase();
+    const label = escapeHtml(String(field && field.label ? field.label : ''));
+    const required = !!(field && field.required);
+    const reqMark = required ? ' <span style="color:#dc2626">*</span>' : '';
+
+    if (type === 'divider') {
+        return '<hr class="preview-divider">';
+    }
+    if (type === 'section') {
+        return `<h3 class="preview-section-title">${label}</h3>`;
+    }
+    if (type === 'note') {
+        return `<p class="preview-note">${label}</p>`;
+    }
+
+    if (type === 'textarea') {
+        return `<div class="preview-field"><label>${label}${reqMark}</label><textarea rows="4" placeholder="Sua resposta..." ${required ? 'required' : ''}></textarea></div>`;
+    }
+    if (type === 'yesno') {
+        return `<div class="preview-field"><label>${label}${reqMark}</label><select ${required ? 'required' : ''}><option value="">Selecione...</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>`;
+    }
+    if (type === 'select') {
+        const options = Array.isArray(field.options) ? field.options : [];
+        const optionHtml = options.map((opt) => `<option value="${escapeHtml(String(opt))}">${escapeHtml(String(opt))}</option>`).join('');
+        return `<div class="preview-field"><label>${label}${reqMark}</label><select ${required ? 'required' : ''}><option value="">Selecione...</option>${optionHtml}</select></div>`;
+    }
+    if (type === 'file') {
+        return `<div class="preview-field"><label>${label}${reqMark}</label><input type="file" ${required ? 'required' : ''}></div>`;
+    }
+
+    return `<div class="preview-field"><label>${label}${reqMark}</label><input type="text" placeholder="Sua resposta..." ${required ? 'required' : ''}></div>`;
+}
+
+function openPreviewTab() {
+    const schema = normalizeFormSchema(formBuilderFields);
+    if (!schema.length) {
+        setEditorStatus('Adicione ao menos um campo para visualizar a prévia.', 'error');
+        return;
+    }
+
+    const nameInput = document.getElementById('editorTemplateName');
+    const title = String(nameInput ? nameInput.value : '').trim() || 'Formulario sem titulo';
+    const fieldBlocks = schema.map((field) => buildPreviewFieldHtml(field)).join('');
+
+    const win = window.open('', '_blank');
+    if (!win) {
+        setEditorStatus('Nao foi possivel abrir a aba de previa. Verifique bloqueio de pop-up.', 'error');
+        return;
+    }
+
+    const previewHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prévia - ${escapeHtml(title)}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f6f8fc;
+            color: #0f172a;
+            line-height: 1.5;
+        }
+        .preview-header {
+            background: #1e3a8a;
+            color: #fff;
+            padding: 1rem 1.2rem;
+        }
+        .preview-header strong {
+            display: block;
+            font-size: 1rem;
+        }
+        .preview-header span {
+            opacity: 0.9;
+            font-size: 0.86rem;
+        }
+        .preview-container {
+            max-width: 820px;
+            margin: 1.35rem auto;
+            padding: 0 0.9rem 1.2rem;
+        }
+        .preview-card {
+            background: #fff;
+            border: 1px solid #dbe3ef;
+            border-radius: 14px;
+            padding: 1rem;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+        }
+        .preview-title {
+            margin: 0 0 0.35rem 0;
+            font-size: 1.55rem;
+            font-weight: 800;
+        }
+        .preview-sub {
+            margin: 0 0 1rem 0;
+            font-size: 0.88rem;
+            color: #64748b;
+        }
+        .preview-section-title {
+            margin: 1rem 0 0.45rem 0;
+            font-size: 1.04rem;
+            color: #1d4ed8;
+        }
+        .preview-note {
+            margin: 0.45rem 0;
+            font-size: 0.88rem;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.62rem 0.7rem;
+        }
+        .preview-divider {
+            border: 0;
+            border-top: 1px solid #e2e8f0;
+            margin: 0.85rem 0;
+        }
+        .preview-field {
+            margin-bottom: 0.78rem;
+        }
+        .preview-field label {
+            display: block;
+            margin-bottom: 0.35rem;
+            font-size: 0.86rem;
+            font-weight: 700;
+            color: #334155;
+        }
+        .preview-field input,
+        .preview-field textarea,
+        .preview-field select {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            padding: 0.58rem 0.68rem;
+            font-size: 0.88rem;
+            background: #fff;
+        }
+        .preview-submit {
+            margin-top: 0.7rem;
+            border: 0;
+            border-radius: 10px;
+            padding: 0.62rem 0.9rem;
+            font-size: 0.88rem;
+            font-weight: 700;
+            background: #3b82f6;
+            color: #fff;
+            opacity: 0.75;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-header">
+        <strong>Prévia de preenchimento</strong>
+        <span>Visualização aproximada de como o cliente verá o formulário ao abrir o link.</span>
+    </div>
+    <div class="preview-container">
+        <div class="preview-card">
+            <h1 class="preview-title">${escapeHtml(title)}</h1>
+            <p class="preview-sub">Esta aba é apenas para validação visual antes do envio ao cliente.</p>
+            ${fieldBlocks}
+            <button type="button" class="preview-submit" disabled>Enviar formulário (prévia)</button>
+        </div>
+    </div>
+</body>
+</html>`;
+
+    win.document.open();
+    win.document.write(previewHtml);
+    win.document.close();
 }
 
 function populateEditorFromTemplate(template) {
@@ -1453,10 +1784,24 @@ function validateCurrentEditor() {
 }
 
 async function saveCurrentTemplate() {
+    if (saveInFlight) {
+        return;
+    }
+
     const payload = validateCurrentEditor();
-    if (!payload) return;
+    if (!payload) {
+        return;
+    }
 
     try {
+        saveInFlight = true;
+        const saveBtn = document.getElementById('btnSaveTemplate');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Salvando...';
+        }
+        setEditorStatus('Salvando formulario...', '');
+
         const formData = new FormData();
         formData.append('action', 'salvar_template_form');
         formData.append('template_name', payload.templateName);
@@ -1470,7 +1815,13 @@ async function saveCurrentTemplate() {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const raw = await resp.text();
+        let data = null;
+        try {
+            data = JSON.parse(raw);
+        } catch (parseErr) {
+            throw new Error('Resposta invalida do servidor ao salvar.');
+        }
 
         if (!data.ok || !data.template) {
             setEditorStatus(data.error || 'Erro ao salvar formulario.', 'error');
@@ -1484,7 +1835,22 @@ async function saveCurrentTemplate() {
         setEditorStatus(editingTemplateId ? 'Formulario salvo com sucesso.' : 'Formulario salvo.', 'success');
     } catch (err) {
         setEditorStatus('Erro ao salvar formulario: ' + (err.message || err), 'error');
+    } finally {
+        saveInFlight = false;
+        const saveBtn = document.getElementById('btnSaveTemplate');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+        }
+        updateEditorHeader();
     }
+}
+
+function handleSaveButtonClick(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    saveCurrentTemplate();
 }
 
 async function archiveTemplate(templateId = null) {

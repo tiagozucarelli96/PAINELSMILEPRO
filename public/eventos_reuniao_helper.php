@@ -1394,6 +1394,60 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
 }
 
 /**
+ * Exclui um quadro (slot) DJ da reunião.
+ * Regra de segurança: não exclui quadro que já recebeu envio do cliente.
+ */
+function eventos_reuniao_excluir_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $slot_index = max(1, min(50, (int)$slot_index));
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+
+    $where_sql = "meeting_id = :meeting_id AND link_type = 'cliente_dj'";
+    $params = [':meeting_id' => $meeting_id];
+
+    if ($has_slot_index_col) {
+        $where_sql .= " AND COALESCE(slot_index, 1) = :slot_index";
+        $params[':slot_index'] = $slot_index;
+    } elseif ($slot_index !== 1) {
+        return ['ok' => false, 'error' => 'Este ambiente suporta apenas quadro 1'];
+    }
+
+    if ($has_submitted_at_col) {
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM eventos_links_publicos
+            WHERE {$where_sql}
+              AND submitted_at IS NOT NULL
+        ");
+        $stmt->execute($params);
+        $submitted_count = (int)$stmt->fetchColumn();
+        if ($submitted_count > 0) {
+            return ['ok' => false, 'error' => 'Este quadro já foi enviado pelo cliente e não pode ser excluído.'];
+        }
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_links_publicos
+        SET is_active = FALSE
+        WHERE {$where_sql}
+          AND is_active = TRUE
+    ");
+    $stmt->execute($params);
+
+    return [
+        'ok' => true,
+        'slot_index' => $slot_index,
+        'removed_links' => (int)$stmt->rowCount(),
+        'updated_by' => $user_id,
+    ];
+}
+
+/**
  * Excluir reunião (e dados relacionados: seções, versões, anexos, links)
  */
 function eventos_reuniao_excluir(PDO $pdo, int $meeting_id): bool {
