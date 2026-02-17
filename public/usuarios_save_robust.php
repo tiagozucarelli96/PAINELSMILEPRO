@@ -331,6 +331,20 @@ class UsuarioSaveManager {
                     $permissions[$key] = (isset($data[$key]) && $data[$key]) ? 1 : 0;
                 }
             }
+
+            // Se Logística foi habilitada e não vier escopo explícito, usar "todas".
+            // Evita usuário ficar com permissão marcada sem enxergar o módulo na sidebar.
+            if ($this->columnExists('unidade_scope')) {
+                $hasLogisticaPerm = (($permissions['perm_logistico'] ?? 0) === 1)
+                    || (($permissions['perm_logistico_divergencias'] ?? 0) === 1)
+                    || (($permissions['perm_logistico_financeiro'] ?? 0) === 1);
+                if ($hasLogisticaPerm) {
+                    $scope = trim((string)($data['unidade_scope'] ?? ''));
+                    if ($scope === '' || $scope === 'nenhuma') {
+                        $data['unidade_scope'] = 'todas';
+                    }
+                }
+            }
             
             if ($userId > 0) {
                 return $this->update($userId, $nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);

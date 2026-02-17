@@ -47,9 +47,20 @@ try {
   }
 
   // Escopo de unidade (Logística)
-  $_SESSION['unidade_scope'] = array_key_exists('unidade_scope', $u) && !empty($u['unidade_scope'])
+  $unidade_scope = array_key_exists('unidade_scope', $u) && !empty($u['unidade_scope'])
     ? (string)$u['unidade_scope']
     : 'nenhuma';
+
+  // Compatibilidade: quando há permissão de Logística mas escopo ficou no default "nenhuma",
+  // liberar o escopo para "todas" até existir gestão explícita desse campo no cadastro de usuários.
+  $has_logistica_perm = truthy($u['perm_logistico'] ?? false)
+    || truthy($u['perm_logistico_divergencias'] ?? false)
+    || truthy($u['perm_logistico_financeiro'] ?? false);
+  if ($unidade_scope === 'nenhuma' && $has_logistica_perm && !truthy($u['perm_superadmin'] ?? false)) {
+    $unidade_scope = 'todas';
+  }
+
+  $_SESSION['unidade_scope'] = $unidade_scope;
   $_SESSION['unidade_id'] = array_key_exists('unidade_id', $u) && $u['unidade_id'] !== null && $u['unidade_id'] !== ''
     ? (int)$u['unidade_id']
     : null;
