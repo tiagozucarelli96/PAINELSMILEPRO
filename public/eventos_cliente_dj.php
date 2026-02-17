@@ -1,7 +1,7 @@
 <?php
 /**
  * eventos_cliente_dj.php
- * Página pública para cliente preencher informações de DJ
+ * Página pública para cliente preencher formulários públicos da reunião final
  * Acessada via token único (sem login)
  */
 
@@ -20,6 +20,15 @@ $link = null;
 $reuniao = null;
 $secao = null;
 $anexos = [];
+$link_section = 'dj_protocolo';
+$section_meta = [
+    'page_title' => 'Organização do Evento - DJ/Músicas',
+    'header_title' => '🎧 Organização - DJ / Músicas',
+    'form_heading' => '🎵 Músicas e Protocolos',
+    'default_form_title_prefix' => 'Formulário DJ / Protocolos - Quadro ',
+    'upload_prefix' => 'cliente_dj',
+    'notify_dj' => true,
+];
 
 /**
  * Converter estrutura de upload múltiplo para lista de arquivos.
@@ -57,6 +66,20 @@ function eventos_cliente_normalizar_uploads(array $files, string $field): array 
     }
 
     return $normalized;
+}
+
+/**
+ * Normaliza notas enviadas para anexos múltiplos.
+ */
+function eventos_cliente_normalizar_notas_upload($raw_notes): array {
+    if (!is_array($raw_notes)) {
+        return [];
+    }
+    $notes = [];
+    foreach ($raw_notes as $note) {
+        $notes[] = trim((string)$note);
+    }
+    return $notes;
 }
 
 /**
@@ -107,6 +130,113 @@ function eventos_cliente_extract_payload_from_html(string $html): array {
 }
 
 /**
+ * Lista de seções permitidas para link público.
+ */
+function eventos_cliente_parse_allowed_sections($raw): array {
+    $sections = [];
+    if (is_array($raw)) {
+        $sections = $raw;
+    } elseif (is_string($raw) && trim($raw) !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $sections = $decoded;
+        }
+    }
+
+    $allowed = [];
+    foreach ($sections as $section) {
+        $normalized = strtolower(trim((string)$section));
+        if (in_array($normalized, ['dj_protocolo', 'observacoes_gerais'], true)) {
+            $allowed[] = $normalized;
+        }
+    }
+    if (empty($allowed)) {
+        $allowed[] = 'dj_protocolo';
+    }
+    return array_values(array_unique($allowed));
+}
+
+/**
+ * Resolve a seção principal atendida pelo token público.
+ */
+function eventos_cliente_resolver_secao_link(array $link): string {
+    $link_type = strtolower(trim((string)($link['link_type'] ?? '')));
+    if ($link_type === 'cliente_observacoes') {
+        return 'observacoes_gerais';
+    }
+    if ($link_type === 'cliente_dj') {
+        return 'dj_protocolo';
+    }
+
+    $allowed = eventos_cliente_parse_allowed_sections($link['allowed_sections'] ?? null);
+    if (in_array('observacoes_gerais', $allowed, true)) {
+        return 'observacoes_gerais';
+    }
+    return 'dj_protocolo';
+}
+
+/**
+ * Metadados visuais/comportamentais por seção pública.
+ */
+function eventos_cliente_get_section_meta(string $section): array {
+    $map = [
+        'dj_protocolo' => [
+            'page_title' => 'Organização do Evento - DJ/Músicas',
+            'header_title' => '🎧 Organização - DJ / Músicas',
+            'form_heading' => '🎵 Músicas e Protocolos',
+            'default_form_title_prefix' => 'Formulário DJ / Protocolos - Quadro ',
+            'upload_prefix' => 'cliente_dj',
+            'notify_dj' => true,
+        ],
+        'observacoes_gerais' => [
+            'page_title' => 'Organização do Evento - Observações Gerais',
+            'header_title' => '📝 Organização - Observações Gerais',
+            'form_heading' => '📝 Observações Gerais',
+            'default_form_title_prefix' => 'Formulário de Observações Gerais - Quadro ',
+            'upload_prefix' => 'cliente_observacoes',
+            'notify_dj' => false,
+        ],
+    ];
+    return $map[$section] ?? $map['dj_protocolo'];
+}
+
+/**
+ * Sanitiza HTML de texto informativo (note) mantendo tags básicas.
+ */
+function eventos_cliente_sanitizar_note_html(string $html): string {
+    $raw = trim($html);
+    if ($raw === '') {
+        return '';
+    }
+    $clean = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $raw) ?? '';
+    $clean = preg_replace('#<style\b[^>]*>.*?</style>#is', '', $clean) ?? '';
+    $clean = preg_replace('#<(iframe|object|embed)\b[^>]*>.*?</\1>#is', '', $clean) ?? '';
+    $clean = strip_tags($clean, '<p><br><strong><b><em><i><u><ul><ol><li><a><span><div><table><thead><tbody><tr><th><td><h1><h2><h3><h4><h5><h6><blockquote><hr>');
+    $clean = preg_replace('/\s+on[a-z]+\s*=\s*"[^"]*"/i', '', $clean) ?? $clean;
+    $clean = preg_replace("/\s+on[a-z]+\s*=\s*'[^']*'/i", '', $clean) ?? $clean;
+    $clean = preg_replace('/\s+on[a-z]+\s*=\s*[^\s>]+/i', '', $clean) ?? $clean;
+    $clean = preg_replace('/(href|src)\s*=\s*"javascript:[^"]*"/i', '$1="#"', $clean) ?? $clean;
+    $clean = preg_replace("/(href|src)\s*=\s*'javascript:[^']*'/i", '$1="#"', $clean) ?? $clean;
+    return trim($clean);
+}
+
+/**
+ * Retorna HTML seguro para campo de texto informativo.
+ */
+function eventos_cliente_note_html(array $field): string {
+    $raw_html = (string)($field['content_html'] ?? '');
+    $sanitized = eventos_cliente_sanitizar_note_html($raw_html);
+    if ($sanitized !== '') {
+        return $sanitized;
+    }
+    $fallback = trim((string)($field['label'] ?? ''));
+    if ($fallback === '') {
+        return '';
+    }
+    return '<em>' . eventos_cliente_e($fallback) . '</em>';
+}
+
+/**
  * Normaliza schema dinâmico recebido da seção DJ.
  */
 function eventos_cliente_normalizar_schema($raw): array {
@@ -124,7 +254,8 @@ function eventos_cliente_normalizar_schema($raw): array {
             $type = 'text';
         }
         $label = trim((string)($item['label'] ?? ''));
-        if ($label === '' && $type !== 'divider') {
+        $content_html = $type === 'note' ? eventos_cliente_sanitizar_note_html((string)($item['content_html'] ?? '')) : '';
+        if ($label === '' && $type !== 'divider' && !($type === 'note' && $content_html !== '')) {
             continue;
         }
         $options = [];
@@ -146,6 +277,7 @@ function eventos_cliente_normalizar_schema($raw): array {
             'label' => $label,
             'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider' && $type !== 'note',
             'options' => $options,
+            'content_html' => $type === 'note' ? $content_html : '',
         ];
     }
     return $schema;
@@ -175,7 +307,10 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
             continue;
         }
         if ($field_type === 'note') {
-            $parts[] = '<p><em>' . eventos_cliente_e($label) . '</em></p>';
+            $note_html = eventos_cliente_note_html($field);
+            if ($note_html !== '') {
+                $parts[] = '<div>' . $note_html . '</div>';
+            }
             continue;
         }
         if ($field_type === 'file') {
@@ -236,11 +371,15 @@ if (empty($token)) {
     } else {
         // Registrar acesso
         eventos_link_publico_registrar_acesso($pdo, $link['id']);
-        
+
+        // Resolver seção permitida pelo token e carregar dados.
+        $link_section = eventos_cliente_resolver_secao_link($link);
+        $section_meta = eventos_cliente_get_section_meta($link_section);
+
         // Buscar reunião e seção
         $reuniao = eventos_reuniao_get($pdo, $link['meeting_id']);
-        $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], 'dj_protocolo');
-        $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], 'dj_protocolo');
+        $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], $link_section);
+        $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
     }
 }
 
@@ -271,7 +410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     $slot_index = max(1, (int)($link['slot_index'] ?? 1));
                     $form_title = trim((string)($link['form_title'] ?? ''));
                     if ($form_title === '') {
-                        $form_title = 'Formulário DJ / Protocolos - Quadro ' . $slot_index;
+                        $form_title = (string)($section_meta['default_form_title_prefix'] ?? 'Formulário - Quadro ') . $slot_index;
                     }
                     $content = '<h2>' . eventos_cliente_e($form_title) . '</h2>' . "\n" . $content;
 
@@ -297,14 +436,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             break;
                         }
                         if (!empty($field_uploads)) {
-                            $uploads = array_merge($uploads, $field_uploads);
+                            $field_notes = eventos_cliente_normalizar_notas_upload($_POST['file_note_' . $field_id] ?? []);
+                            foreach ($field_uploads as $upload_index => $field_file) {
+                                $uploads[] = [
+                                    'file' => $field_file,
+                                    'note' => (string)($field_notes[$upload_index] ?? ''),
+                                ];
+                            }
                         }
                     }
                 }
             } else {
                 $content = (string)($_POST['content_html'] ?? '');
                 // Modo legado (editor livre): mantém upload genérico opcional.
-                $uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
+                $legacy_uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
+                $legacy_notes = eventos_cliente_normalizar_notas_upload($_POST['anexos_note'] ?? []);
+                foreach ($legacy_uploads as $upload_index => $legacy_file) {
+                    $uploads[] = [
+                        'file' => $legacy_file,
+                        'note' => (string)($legacy_notes[$upload_index] ?? ''),
+                    ];
+                }
             }
 
             if ($error === '') {
@@ -312,7 +464,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 $result = eventos_reuniao_salvar_secao(
                     $pdo,
                     $link['meeting_id'],
-                    'dj_protocolo',
+                    $link_section,
                     $content,
                     0, // user_id = 0 para cliente
                     'Envio do cliente',
@@ -324,22 +476,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     $upload_errors = [];
                     if (!empty($uploads)) {
                         $uploader = new MagaluUpload();
-                        foreach ($uploads as $file) {
+                        foreach ($uploads as $upload_item) {
+                            $file = is_array($upload_item['file'] ?? null) ? $upload_item['file'] : [];
+                            $file_note = trim((string)($upload_item['note'] ?? ''));
                             if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
                                 $upload_errors[] = 'Falha no arquivo: ' . ($file['name'] ?? 'sem nome');
                                 continue;
                             }
 
                             try {
-                                $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/cliente_dj';
+                                $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/' . (string)($section_meta['upload_prefix'] ?? 'cliente_dj');
                                 $upload_result = $uploader->upload($file, $prefix);
                                 $save_result = eventos_reuniao_salvar_anexo(
                                     $pdo,
                                     (int)$link['meeting_id'],
-                                    'dj_protocolo',
+                                    $link_section,
                                     $upload_result,
                                     'cliente',
-                                    null
+                                    null,
+                                    $file_note !== '' ? $file_note : null
                                 );
                                 if (empty($save_result['ok'])) {
                                     $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
@@ -361,20 +516,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
                         } else {
                             $success = true;
-                            // Notifica o DJ por e-mail (assunto padrão exigido pelo negócio).
-                            try {
-                                if (function_exists('eventos_notificar_cliente_enviou_dj')) {
-                                    eventos_notificar_cliente_enviou_dj($pdo, (int)$link['meeting_id']);
+                            if (!empty($section_meta['notify_dj'])) {
+                                // Notifica o DJ por e-mail (assunto padrão exigido pelo negócio).
+                                try {
+                                    if (function_exists('eventos_notificar_cliente_enviou_dj')) {
+                                        eventos_notificar_cliente_enviou_dj($pdo, (int)$link['meeting_id']);
+                                    }
+                                } catch (Throwable $e) {
+                                    error_log("Falha ao notificar envio DJ: " . $e->getMessage());
                                 }
-                            } catch (Throwable $e) {
-                                error_log("Falha ao notificar envio DJ: " . $e->getMessage());
                             }
                         }
                     }
 
                     // Recarregar seção e anexos
-                    $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], 'dj_protocolo');
-                    $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], 'dj_protocolo');
+                    $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], $link_section);
+                    $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
                 } else {
                     $error = $result['error'] ?? 'Erro ao salvar';
                 }
@@ -421,7 +578,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Organização do Evento - DJ/Músicas</title>
+    <title><?= eventos_cliente_e((string)($section_meta['page_title'] ?? 'Organização do Evento')) ?></title>
     <style>
         * {
             box-sizing: border-box;
@@ -587,10 +744,26 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 
         .attachments-list li {
             font-size: 0.84rem;
-            margin-bottom: 0.35rem;
+            margin-bottom: 0.55rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            background: #fff;
+        }
+
+        .attachment-item-head {
             display: flex;
             align-items: center;
             gap: 0.45rem;
+        }
+
+        .attachment-note {
+            margin-top: 0.3rem;
+            margin-left: 1.4rem;
+            font-size: 0.78rem;
+            color: #475569;
+            line-height: 1.4;
+            white-space: pre-wrap;
         }
 
         .attachments-list a {
@@ -600,6 +773,46 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 
         .attachments-list a:hover {
             text-decoration: underline;
+        }
+
+        .file-note-wrap {
+            display: none;
+            margin-top: 0.5rem;
+            background: #f8fafc;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            padding: 0.6rem;
+        }
+
+        .file-note-wrap.active {
+            display: block;
+        }
+
+        .file-note-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .file-note-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .file-note-item label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 0.25rem;
+        }
+
+        .file-note-item textarea {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 0.5rem;
+            font-size: 0.84rem;
+            resize: vertical;
+            min-height: 62px;
+            background: #fff;
         }
         
         .editor-wrapper {
@@ -750,7 +963,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 <body>
     <div class="header">
         <img src="logo.png" alt="Grupo Smile" onerror="this.style.display='none'">
-        <h1>🎧 Organização - DJ / Músicas</h1>
+        <h1><?= eventos_cliente_e((string)($section_meta['header_title'] ?? 'Organização do Evento')) ?></h1>
         <p><?= htmlspecialchars($evento_nome) ?> • <?= htmlspecialchars($data_evento_fmt) ?> • <?= htmlspecialchars($horario_evento) ?></p>
         <p>Cliente: <?= htmlspecialchars($cliente_nome) ?></p>
     </div>
@@ -863,13 +1076,18 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                 <ul>
                     <?php foreach ($anexos as $anexo): ?>
                     <li>
-                        <span>📎</span>
-                        <?php if (!empty($anexo['public_url'])): ?>
-                        <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
-                            <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
-                        </a>
-                        <?php else: ?>
-                        <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                        <div class="attachment-item-head">
+                            <span>📎</span>
+                            <?php if (!empty($anexo['public_url'])): ?>
+                            <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
+                            </a>
+                            <?php else: ?>
+                            <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
+                        <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
                         <?php endif; ?>
                     </li>
                     <?php endforeach; ?>
@@ -961,7 +1179,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
             
             <div class="form-section">
-                <h3>🎵 Músicas e Protocolos</h3>
+                <h3><?= eventos_cliente_e((string)($section_meta['form_heading'] ?? 'Formulário')) ?></h3>
                 
                 <?php if (!empty($form_schema)): ?>
                 <div class="instructions">
@@ -989,9 +1207,12 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                     <?php elseif (($field['type'] ?? '') === 'section'): ?>
                         <h4 style="margin-top: 1.1rem; margin-bottom: 0.6rem; color: #1e3a8a;"><?= eventos_cliente_e($label) ?></h4>
                     <?php elseif (($field['type'] ?? '') === 'note'): ?>
-                        <p style="margin: 0.2rem 0 0.9rem 0; color:#475569; font-size:0.9rem; background:#f8fafc; border:1px solid #dbe3ef; border-radius:8px; padding:0.65rem 0.75rem;">
-                            <?= eventos_cliente_e($label) ?>
-                        </p>
+                        <?php $note_html = eventos_cliente_note_html($field); ?>
+                        <?php if ($note_html !== ''): ?>
+                        <div style="margin: 0.2rem 0 0.9rem 0; color:#475569; font-size:0.9rem; background:#f8fafc; border:1px solid #dbe3ef; border-radius:8px; padding:0.65rem 0.75rem;">
+                            <?= $note_html ?>
+                        </div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <div style="margin-bottom: 1rem;">
                             <label style="display:block; font-weight:600; color:#334155; margin-bottom:0.35rem;" for="<?= eventos_cliente_e($field_name) ?>">
@@ -1015,7 +1236,16 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                                     <?php endforeach; ?>
                                 </select>
                             <?php elseif (($field['type'] ?? '') === 'file'): ?>
-                                <input type="file" id="<?= eventos_cliente_e($file_name) ?>" name="<?= eventos_cliente_e($file_name) ?>[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"<?= $file_required_attr ?>>
+                                <input type="file"
+                                       id="<?= eventos_cliente_e($file_name) ?>"
+                                       name="<?= eventos_cliente_e($file_name) ?>[]"
+                                       multiple
+                                       accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                                       style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"
+                                       data-note-target="<?= eventos_cliente_e($file_name) ?>Notes"
+                                       data-note-name="file_note_<?= eventos_cliente_e($field_id) ?>[]"
+                                       <?= $file_required_attr ?>>
+                                <div class="file-note-wrap" id="<?= eventos_cliente_e($file_name) ?>Notes"></div>
                             <?php else: ?>
                                 <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                             <?php endif; ?>
@@ -1026,10 +1256,16 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                 <div class="instructions">
                     <strong>Instruções:</strong>
                     <ul>
+                        <?php if ($link_section === 'observacoes_gerais'): ?>
+                        <li>Preencha os pontos e observações gerais com o máximo de clareza.</li>
+                        <li>Use os anexos para enviar referências, documentos ou listas complementares.</li>
+                        <li>Campos obrigatórios devem ser preenchidos antes do envio.</li>
+                        <?php else: ?>
                         <li>Para cada música, informe o <strong>link do YouTube</strong> e o <strong>tempo de início</strong></li>
                         <li>Exemplo: <em>Valsa 0:20 - https://youtube.com/...</em></li>
                         <li>Inclua músicas para: entrada, valsas, momentos especiais, abertura de pista</li>
                         <li>Informe também seu gosto musical e ritmos preferidos</li>
+                        <?php endif; ?>
                     </ul>
                 </div>
                 
@@ -1048,7 +1284,14 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 
                 <div class="attachments-box">
                     <label for="anexosInput">Anexos (opcional)</label>
-                    <input type="file" id="anexosInput" name="anexos[]" multiple accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
+                    <input type="file"
+                           id="anexosInput"
+                           name="anexos[]"
+                           multiple
+                           accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                           data-note-target="legacyAnexosNotes"
+                           data-note-name="anexos_note[]">
+                    <div class="file-note-wrap" id="legacyAnexosNotes"></div>
                     <p class="attachments-help">Envie playlist, roteiro, arte do convite e materiais de referência.</p>
                 </div>
                 <?php endif; ?>
@@ -1059,13 +1302,18 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                     <ul>
                         <?php foreach ($anexos as $anexo): ?>
                         <li>
-                            <span>📎</span>
-                            <?php if (!empty($anexo['public_url'])): ?>
-                            <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
-                                <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
-                            </a>
-                            <?php else: ?>
-                            <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                            <div class="attachment-item-head">
+                                <span>📎</span>
+                                <?php if (!empty($anexo['public_url'])): ?>
+                                <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                    <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
+                                </a>
+                                <?php else: ?>
+                                <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
+                            <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
                             <?php endif; ?>
                         </li>
                         <?php endforeach; ?>
@@ -1086,6 +1334,46 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
         <script>
             function execCmd(cmd) {
                 document.execCommand(cmd, false, null);
+            }
+
+            function escapeHtmlClient(text) {
+                const div = document.createElement('div');
+                div.textContent = text || '';
+                return div.innerHTML;
+            }
+
+            function renderUploadNotesForInput(input) {
+                if (!input) return;
+                const targetId = input.getAttribute('data-note-target') || '';
+                const noteName = input.getAttribute('data-note-name') || '';
+                if (!targetId || !noteName) return;
+
+                const wrap = document.getElementById(targetId);
+                if (!wrap) return;
+
+                const files = Array.from(input.files || []);
+                if (!files.length) {
+                    wrap.classList.remove('active');
+                    wrap.innerHTML = '';
+                    return;
+                }
+
+                wrap.classList.add('active');
+                wrap.innerHTML = files.map((file, index) => {
+                    const fileLabel = file && file.name ? file.name : `arquivo-${index + 1}`;
+                    return `
+                        <div class="file-note-item">
+                            <label for="${targetId}-note-${index}">Observação para ${escapeHtmlClient(fileLabel)} (opcional)</label>
+                            <textarea id="${targetId}-note-${index}" name="${noteName}" rows="2" placeholder="Ex.: tocar no telão após a valsa, versão editada, prioridade etc."></textarea>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            function bindUploadNoteInputs() {
+                document.querySelectorAll('input[type="file"][data-note-target]').forEach((input) => {
+                    input.addEventListener('change', () => renderUploadNotesForInput(input));
+                });
             }
             
             document.getElementById('djForm').addEventListener('submit', function(e) {
@@ -1108,6 +1396,8 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                 document.getElementById('submitBtn').disabled = true;
                 document.getElementById('submitBtn').innerText = 'Enviando...';
             });
+
+            bindUploadNoteInputs();
         </script>
         <?php endif; ?>
     </div>

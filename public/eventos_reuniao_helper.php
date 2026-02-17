@@ -107,6 +107,15 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_links_publicos: ' . $e->getMessage());
     }
 
+    // Observação opcional por arquivo enviado pelo cliente/equipe.
+    try {
+        if (eventos_reuniao_has_table($pdo, 'eventos_reunioes_anexos')) {
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS note TEXT");
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_reunioes_anexos: ' . $e->getMessage());
+    }
+
     $done = true;
 }
 
@@ -673,7 +682,17 @@ function eventos_form_template_normalizar_schema(array $schema): array {
             }
         }
 
-        if ($type !== 'divider' && $label === '') {
+        $content_html = '';
+        if ($type === 'note') {
+            $raw_content_html = trim((string)($item['content_html'] ?? ''));
+            if ($raw_content_html !== '') {
+                // Remove apenas scripts diretos; demais tags ficam para formatação rica.
+                $content_html = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $raw_content_html) ?? '';
+                $content_html = trim($content_html);
+            }
+        }
+
+        if ($type !== 'divider' && $label === '' && !($type === 'note' && $content_html !== '')) {
             continue;
         }
 
@@ -688,6 +707,7 @@ function eventos_form_template_normalizar_schema(array $schema): array {
             'label' => $label,
             'required' => $required,
             'options' => $options,
+            'content_html' => $type === 'note' ? $content_html : '',
         ];
     }
     return $normalized;
@@ -1328,15 +1348,26 @@ function eventos_reuniao_reativar_links_cliente_dj(PDO $pdo, int $meeting_id): b
 }
 
 /**
- * Destrava um quadro (slot) do formulário DJ para permitir nova edição do cliente.
+ * Destrava um quadro (slot) de link público do cliente.
  * Mantém o mesmo token; apenas limpa submitted_at.
  */
-function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+function eventos_reuniao_destravar_slot_cliente(
+    PDO $pdo,
+    int $meeting_id,
+    int $slot_index,
+    int $user_id,
+    string $link_type = 'cliente_dj',
+    ?string $unlock_section = null
+): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
+    $link_type = trim((string)$link_type);
+    if ($link_type === '') {
+        $link_type = 'cliente_dj';
+    }
     $slot_index = max(1, min(50, (int)$slot_index));
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
     $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
@@ -1346,13 +1377,14 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
             SELECT id
             FROM eventos_links_publicos
             WHERE meeting_id = :meeting_id
-              AND link_type = 'cliente_dj'
+              AND link_type = :link_type
               AND COALESCE(slot_index, 1) = :slot_index
             ORDER BY id DESC
             LIMIT 1
         ");
         $stmt->execute([
             ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type,
             ':slot_index' => $slot_index
         ]);
     } else {
@@ -1360,11 +1392,14 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
             SELECT id
             FROM eventos_links_publicos
             WHERE meeting_id = :meeting_id
-              AND link_type = 'cliente_dj'
+              AND link_type = :link_type
             ORDER BY id DESC
             LIMIT 1
         ");
-        $stmt->execute([':meeting_id' => $meeting_id]);
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type
+        ]);
     }
 
     $link_id = (int)$stmt->fetchColumn();
@@ -1379,36 +1414,66 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
     $stmt = $pdo->prepare("UPDATE eventos_links_publicos SET {$set} WHERE id = :id");
     $stmt->execute([':id' => $link_id]);
 
-    // Não usamos mais trava global da seção DJ, mas removemos caso exista (compatibilidade).
-    $stmt = $pdo->prepare("
-        UPDATE eventos_reunioes_secoes
-        SET is_locked = FALSE, locked_at = NULL, locked_by = NULL, updated_at = NOW(), updated_by = :user_id
-        WHERE meeting_id = :meeting_id AND section = 'dj_protocolo'
-    ");
-    $stmt->execute([
-        ':meeting_id' => $meeting_id,
-        ':user_id' => $user_id
-    ]);
+    if ($unlock_section !== null && trim($unlock_section) !== '') {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_reunioes_secoes
+            SET is_locked = FALSE, locked_at = NULL, locked_by = NULL, updated_at = NOW(), updated_by = :user_id
+            WHERE meeting_id = :meeting_id AND section = :section
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':user_id' => $user_id,
+            ':section' => $unlock_section
+        ]);
+    }
 
     return ['ok' => true, 'link_id' => $link_id, 'slot_index' => $slot_index];
 }
 
 /**
- * Exclui um quadro (slot) DJ da reunião.
+ * Destrava um quadro (slot) do formulário DJ para permitir nova edição do cliente.
+ * Mantém o mesmo token; apenas limpa submitted_at.
+ */
+function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+    return eventos_reuniao_destravar_slot_cliente(
+        $pdo,
+        $meeting_id,
+        $slot_index,
+        $user_id,
+        'cliente_dj',
+        'dj_protocolo'
+    );
+}
+
+/**
+ * Exclui um quadro (slot) de link público do cliente.
  * Regra de segurança: não exclui quadro que já recebeu envio do cliente.
  */
-function eventos_reuniao_excluir_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+function eventos_reuniao_excluir_slot_cliente(
+    PDO $pdo,
+    int $meeting_id,
+    int $slot_index,
+    int $user_id,
+    string $link_type = 'cliente_dj'
+): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
+    $link_type = trim((string)$link_type);
+    if ($link_type === '') {
+        $link_type = 'cliente_dj';
+    }
     $slot_index = max(1, min(50, (int)$slot_index));
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
     $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
 
-    $where_sql = "meeting_id = :meeting_id AND link_type = 'cliente_dj'";
-    $params = [':meeting_id' => $meeting_id];
+    $where_sql = "meeting_id = :meeting_id AND link_type = :link_type";
+    $params = [
+        ':meeting_id' => $meeting_id,
+        ':link_type' => $link_type
+    ];
 
     if ($has_slot_index_col) {
         $where_sql .= " AND COALESCE(slot_index, 1) = :slot_index";
@@ -1445,6 +1510,14 @@ function eventos_reuniao_excluir_dj_slot(PDO $pdo, int $meeting_id, int $slot_in
         'removed_links' => (int)$stmt->rowCount(),
         'updated_by' => $user_id,
     ];
+}
+
+/**
+ * Exclui um quadro (slot) DJ da reunião.
+ * Regra de segurança: não exclui quadro que já recebeu envio do cliente.
+ */
+function eventos_reuniao_excluir_dj_slot(PDO $pdo, int $meeting_id, int $slot_index, int $user_id): array {
+    return eventos_reuniao_excluir_slot_cliente($pdo, $meeting_id, $slot_index, $user_id, 'cliente_dj');
 }
 
 /**
@@ -1542,7 +1615,8 @@ function eventos_reuniao_salvar_anexo(
     string $section,
     array $upload_result,
     string $uploaded_by_type = 'interno',
-    ?int $uploaded_by_user_id = null
+    ?int $uploaded_by_user_id = null,
+    ?string $note = null
 ): array {
     $original_name = trim((string)($upload_result['nome_original'] ?? 'arquivo'));
     $mime_type = trim((string)($upload_result['mime_type'] ?? 'application/octet-stream'));
@@ -1556,14 +1630,24 @@ function eventos_reuniao_salvar_anexo(
 
     $file_kind = eventos_reuniao_file_kind_from_mime($mime_type);
 
-    $stmt = $pdo->prepare("
+    $has_note_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'note');
+    $sql = "
         INSERT INTO eventos_reunioes_anexos
-        (meeting_id, section, file_kind, original_name, mime_type, size_bytes, storage_key, public_url, uploaded_by_user_id, uploaded_by_type, uploaded_at)
+        (meeting_id, section, file_kind, original_name, mime_type, size_bytes, storage_key, public_url, uploaded_by_user_id, uploaded_by_type, uploaded_at";
+    if ($has_note_col) {
+        $sql .= ", note";
+    }
+    $sql .= ")
         VALUES
-        (:meeting_id, :section, :file_kind, :original_name, :mime_type, :size_bytes, :storage_key, :public_url, :uploaded_by_user_id, :uploaded_by_type, NOW())
+        (:meeting_id, :section, :file_kind, :original_name, :mime_type, :size_bytes, :storage_key, :public_url, :uploaded_by_user_id, :uploaded_by_type, NOW()";
+    if ($has_note_col) {
+        $sql .= ", :note";
+    }
+    $sql .= ")
         RETURNING *
-    ");
-    $stmt->execute([
+    ";
+
+    $params = [
         ':meeting_id' => $meeting_id,
         ':section' => $section,
         ':file_kind' => $file_kind,
@@ -1574,7 +1658,14 @@ function eventos_reuniao_salvar_anexo(
         ':public_url' => $public_url !== '' ? $public_url : null,
         ':uploaded_by_user_id' => $uploaded_by_user_id,
         ':uploaded_by_type' => in_array($uploaded_by_type, ['interno', 'cliente', 'fornecedor'], true) ? $uploaded_by_type : 'interno'
-    ]);
+    ];
+    if ($has_note_col) {
+        $clean_note = trim((string)($note ?? ''));
+        $params[':note'] = $clean_note !== '' ? $clean_note : null;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
 
     return ['ok' => true, 'anexo' => $stmt->fetch(PDO::FETCH_ASSOC)];
 }
@@ -1590,9 +1681,25 @@ function eventos_reuniao_gerar_link_cliente(
     ?array $schema_snapshot = null,
     ?string $content_html_snapshot = null,
     ?string $form_title = null,
-    int $slot_index = 1
+    int $slot_index = 1,
+    string $section = 'dj_protocolo',
+    string $link_type = 'cliente_dj'
 ): array {
     eventos_reuniao_ensure_schema($pdo);
+
+    $section = trim(strtolower($section));
+    $section_map = [
+        'dj_protocolo' => ['label' => 'DJ/Protocolos', 'default_link_type' => 'cliente_dj'],
+        'observacoes_gerais' => ['label' => 'Observações Gerais', 'default_link_type' => 'cliente_observacoes'],
+    ];
+    if (!isset($section_map[$section])) {
+        return ['ok' => false, 'error' => 'Seção inválida para geração de link'];
+    }
+    $section_label = (string)$section_map[$section]['label'];
+    $link_type = trim((string)$link_type);
+    if ($link_type === '') {
+        $link_type = (string)$section_map[$section]['default_link_type'];
+    }
 
     $slot_index = max(1, min(50, (int)$slot_index));
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
@@ -1606,7 +1713,7 @@ function eventos_reuniao_gerar_link_cliente(
         $stmt = $pdo->prepare("
             SELECT * FROM eventos_links_publicos
             WHERE meeting_id = :meeting_id
-              AND link_type = 'cliente_dj'
+              AND link_type = :link_type
               AND is_active = TRUE
               AND COALESCE(slot_index, 1) = :slot_index
             ORDER BY id DESC
@@ -1614,24 +1721,28 @@ function eventos_reuniao_gerar_link_cliente(
         ");
         $stmt->execute([
             ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type,
             ':slot_index' => $slot_index
         ]);
     } else {
         $stmt = $pdo->prepare("
             SELECT * FROM eventos_links_publicos
-            WHERE meeting_id = :meeting_id AND link_type = 'cliente_dj' AND is_active = TRUE
+            WHERE meeting_id = :meeting_id AND link_type = :link_type AND is_active = TRUE
             LIMIT 1
         ");
-        $stmt->execute([':meeting_id' => $meeting_id]);
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type
+        ]);
     }
     $link = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($link) {
         return ['ok' => true, 'link' => $link, 'created' => false];
     }
 
-    $secao = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+    $secao = eventos_reuniao_get_secao($pdo, $meeting_id, $section);
     if (!$secao) {
-        return ['ok' => false, 'error' => 'Seção DJ/Protocolos não encontrada'];
+        return ['ok' => false, 'error' => 'Seção ' . $section_label . ' não encontrada'];
     }
 
     $schema_normalized = [];
@@ -1648,7 +1759,7 @@ function eventos_reuniao_gerar_link_cliente(
     $content_html = trim((string)($content_html_snapshot ?? ($secao['content_html'] ?? '')));
     $has_content = trim(strip_tags($content_html)) !== '';
     if (!$has_schema && !$has_content) {
-        return ['ok' => false, 'error' => 'Salve o formulário da seção DJ antes de gerar o link para o cliente'];
+        return ['ok' => false, 'error' => 'Salve o formulário da seção ' . $section_label . ' antes de gerar o link para o cliente'];
     }
 
     // Se já existe token para o slot, reativa o mesmo token em vez de criar novo.
@@ -1656,24 +1767,28 @@ function eventos_reuniao_gerar_link_cliente(
         $stmt = $pdo->prepare("
             SELECT * FROM eventos_links_publicos
             WHERE meeting_id = :meeting_id
-              AND link_type = 'cliente_dj'
+              AND link_type = :link_type
               AND COALESCE(slot_index, 1) = :slot_index
             ORDER BY id DESC
             LIMIT 1
         ");
         $stmt->execute([
             ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type,
             ':slot_index' => $slot_index
         ]);
     } else {
         $stmt = $pdo->prepare("
             SELECT * FROM eventos_links_publicos
             WHERE meeting_id = :meeting_id
-              AND link_type = 'cliente_dj'
+              AND link_type = :link_type
             ORDER BY id DESC
             LIMIT 1
         ");
-        $stmt->execute([':meeting_id' => $meeting_id]);
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type
+        ]);
     }
     $existing_link = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($existing_link && empty($existing_link['is_active'])) {
@@ -1715,11 +1830,12 @@ function eventos_reuniao_gerar_link_cliente(
 
     $token = bin2hex(random_bytes(32));
     $columns = ['meeting_id', 'token', 'link_type', 'allowed_sections', 'is_active', 'created_by', 'created_at'];
-    $values = [':meeting_id', ':token', "'cliente_dj'", ':sections', 'TRUE', ':user_id', 'NOW()'];
+    $values = [':meeting_id', ':token', ':link_type', ':sections', 'TRUE', ':user_id', 'NOW()'];
     $params = [
         ':meeting_id' => $meeting_id,
         ':token' => $token,
-        ':sections' => json_encode(['dj_protocolo']),
+        ':link_type' => $link_type,
+        ':sections' => json_encode([$section]),
         ':user_id' => $user_id
     ];
 
@@ -1762,24 +1878,32 @@ function eventos_reuniao_gerar_link_cliente(
 }
 
 /**
- * Lista links públicos ativos do cliente DJ por reunião.
+ * Lista links públicos ativos de cliente por reunião e tipo.
  */
-function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id): array {
+function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id, string $link_type = 'cliente_dj'): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
         return [];
+    }
+
+    $link_type = trim((string)$link_type);
+    if ($link_type === '') {
+        $link_type = 'cliente_dj';
     }
 
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
     $sql = "
         SELECT * FROM eventos_links_publicos
         WHERE meeting_id = :meeting_id
-          AND link_type = 'cliente_dj'
+          AND link_type = :link_type
           AND is_active = TRUE
         ORDER BY " . ($has_slot_index_col ? "COALESCE(slot_index, 1) ASC, " : "") . "id DESC
     ";
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([':meeting_id' => $meeting_id]);
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':link_type' => $link_type
+    ]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     foreach ($rows as &$row) {

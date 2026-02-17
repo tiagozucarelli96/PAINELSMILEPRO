@@ -606,6 +606,27 @@ includeSidebar('Formularios eventos');
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
     }
 
+    .note-rich-wrap {
+        margin-top: 0.55rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 9px;
+        background: #fff;
+        padding: 0.5rem;
+    }
+
+    .note-rich-wrap label {
+        display: block;
+        margin-bottom: 0.38rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: #475569;
+    }
+
+    .note-rich-editor {
+        min-height: 160px;
+        width: 100%;
+    }
+
     .question-note {
         margin-top: 0.56rem;
         background: #f8fafc;
@@ -931,6 +952,9 @@ let builderDirty = false;
 let importPanelOpen = false;
 let saveInFlight = false;
 let draggingQuestionIndex = null;
+let noteEditorDraftByFieldId = {};
+let noteTinyLoading = false;
+let noteTinyReady = false;
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -975,6 +999,12 @@ function generateFieldId() {
     return 'f_' + Math.random().toString(36).slice(2, 10);
 }
 
+function sanitizeDomIdPart(value) {
+    const raw = String(value || '').trim();
+    if (raw === '') return '';
+    return raw.replace(/[^a-zA-Z0-9_\-:.]/g, '_');
+}
+
 function normalizeFormSchema(schema) {
     if (!Array.isArray(schema)) return [];
     return schema.map((field) => {
@@ -986,6 +1016,7 @@ function normalizeFormSchema(schema) {
         const options = Array.isArray(field.options)
             ? field.options.map((value) => String(value).trim()).filter(Boolean)
             : [];
+        const contentHtml = type === 'note' ? String(field.content_html || '').trim() : '';
 
         const neverRequired = ['section', 'divider', 'note'].includes(type);
         return {
@@ -993,9 +1024,14 @@ function normalizeFormSchema(schema) {
             type: type,
             label: String(field.label || '').trim(),
             required: neverRequired ? false : !!field.required,
-            options: type === 'select' ? options : []
+            options: type === 'select' ? options : [],
+            content_html: type === 'note' ? contentHtml : ''
         };
-    }).filter((field) => field.type === 'divider' || field.label !== '');
+    }).filter((field) => {
+        if (field.type === 'divider') return true;
+        if (field.label !== '') return true;
+        return field.type === 'note' && String(field.content_html || '').trim() !== '';
+    });
 }
 
 function hasUsefulSchemaFields(schema) {
@@ -1163,11 +1199,13 @@ function createField(type = 'text') {
         type: normalizedType,
         label: defaultLabelByType(normalizedType),
         required: ['section', 'divider', 'note'].includes(normalizedType) ? false : false,
-        options: normalizedType === 'select' ? ['Opcao 1'] : []
+        options: normalizedType === 'select' ? ['Opcao 1'] : [],
+        content_html: normalizedType === 'note' ? '<p>Texto informativo</p>' : ''
     };
 }
 
 function renderQuestionList() {
+    syncAllNoteEditorDrafts(true);
     const list = document.getElementById('questionList');
     if (!list) return;
 
@@ -1205,7 +1243,16 @@ function renderQuestionList() {
         } else if (type === 'section') {
             extraHtml = `<div class="question-note">Titulo para dividir blocos do formulario.</div>`;
         } else if (type === 'note') {
-            extraHtml = `<div class="question-note">Texto exibido para orientacao do cliente (nao preenchivel).</div>`;
+            const noteEditorId = `noteEditor-${sanitizeDomIdPart(field.id || index)}`;
+            const noteRaw = String(field.content_html || noteEditorDraftByFieldId[field.id] || '');
+            const noteText = escapeHtml(noteRaw);
+            extraHtml = `
+                <div class="question-note">Texto exibido para orientação do cliente (não preenchível).</div>
+                <div class="note-rich-wrap">
+                    <label for="${noteEditorId}">Conteúdo rico (Tiny)</label>
+                    <textarea class="note-rich-editor" id="${noteEditorId}" data-field-id="${escapeHtml(String(field.id || ''))}">${noteText}</textarea>
+                </div>
+            `;
         }
 
         return `
@@ -1233,6 +1280,7 @@ function renderQuestionList() {
         `;
     }).join('');
     bindQuestionDragAndDrop();
+    initNoteEditorsIfNeeded();
 }
 
 function shouldIgnoreDragStartTarget(target) {
@@ -1340,10 +1388,140 @@ function bindQuestionDragAndDrop() {
     });
 }
 
+function updateNoteFieldContentById(fieldId, html) {
+    const normalizedFieldId = String(fieldId || '').trim();
+    if (normalizedFieldId === '') return;
+    const nextHtml = String(html || '');
+    noteEditorDraftByFieldId[normalizedFieldId] = nextHtml;
+    const target = formBuilderFields.find((field) => String(field.id || '') === normalizedFieldId);
+    if (!target) return;
+    target.content_html = nextHtml;
+}
+
+function syncAllNoteEditorDrafts(removeEditors = false) {
+    const textareas = document.querySelectorAll('.note-rich-editor[data-field-id]');
+    if (!textareas || textareas.length === 0) return;
+    textareas.forEach((textarea) => {
+        const fieldId = String(textarea.getAttribute('data-field-id') || '').trim();
+        if (!fieldId) return;
+        let html = String(textarea.value || '');
+        if (typeof tinymce !== 'undefined') {
+            const editor = tinymce.get(textarea.id);
+            if (editor) {
+                html = String(editor.getContent() || '');
+                if (removeEditors) {
+                    editor.remove();
+                }
+            }
+        }
+        updateNoteFieldContentById(fieldId, html);
+    });
+}
+
+function loadTinyForNoteEditors() {
+    if (typeof tinymce !== 'undefined') {
+        noteTinyReady = true;
+        initNoteEditorsIfNeeded();
+        return;
+    }
+    if (noteTinyLoading) return;
+    noteTinyLoading = true;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js';
+    script.async = true;
+    script.onload = () => {
+        noteTinyLoading = false;
+        noteTinyReady = true;
+        initNoteEditorsIfNeeded();
+    };
+    script.onerror = () => {
+        noteTinyLoading = false;
+        noteTinyReady = false;
+    };
+    document.head.appendChild(script);
+}
+
+function initNoteEditorsIfNeeded() {
+    const textareas = Array.from(document.querySelectorAll('.note-rich-editor[data-field-id]'));
+    if (!textareas.length) return;
+
+    if (typeof tinymce === 'undefined' || !noteTinyReady) {
+        textareas.forEach((textarea) => {
+            if (textarea.dataset.noteBound === '1') return;
+            textarea.dataset.noteBound = '1';
+            textarea.addEventListener('input', () => {
+                updateNoteFieldContentById(textarea.getAttribute('data-field-id') || '', textarea.value || '');
+                setBuilderDirty(true);
+            });
+        });
+        return;
+    }
+
+    textareas.forEach((textarea) => {
+        if (tinymce.get(textarea.id)) return;
+        tinymce.init({
+            target: textarea,
+            menubar: true,
+            branding: false,
+            promotion: false,
+            plugins: 'advlist autolink lists link table code fullscreen wordcount',
+            toolbar: 'undo redo | blocks | bold italic underline strikethrough | alignleft aligncenter alignright | bullist numlist outdent indent | link table | removeformat | code fullscreen',
+            height: 250,
+            content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+            setup: (editor) => {
+                const fieldId = String(textarea.getAttribute('data-field-id') || '').trim();
+                const sync = () => {
+                    updateNoteFieldContentById(fieldId, editor.getContent() || '');
+                    setBuilderDirty(true);
+                };
+                editor.on('init', () => {
+                    if ((editor.getContent() || '') === '' && String(noteEditorDraftByFieldId[fieldId] || '') !== '') {
+                        editor.setContent(String(noteEditorDraftByFieldId[fieldId] || ''));
+                    }
+                });
+                editor.on('change keyup undo redo input', sync);
+            }
+        });
+    });
+}
+
+function sanitizeRichHtmlForPreview(html) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(html || '');
+    wrapper.querySelectorAll('script, style, iframe, object, embed').forEach((node) => node.remove());
+    wrapper.querySelectorAll('*').forEach((node) => {
+        Array.from(node.attributes).forEach((attr) => {
+            const attrName = String(attr.name || '').toLowerCase();
+            const attrValue = String(attr.value || '').toLowerCase();
+            if (attrName.startsWith('on')) {
+                node.removeAttribute(attr.name);
+                return;
+            }
+            if ((attrName === 'href' || attrName === 'src') && attrValue.startsWith('javascript:')) {
+                node.removeAttribute(attr.name);
+            }
+        });
+    });
+    return wrapper.innerHTML;
+}
+
+function getPreviewNoteHtml(field) {
+    const rich = String(field && field.content_html ? field.content_html : '').trim();
+    if (rich !== '') {
+        return sanitizeRichHtmlForPreview(rich);
+    }
+    const fallback = escapeHtml(String(field && field.label ? field.label : ''));
+    return fallback !== '' ? `<em>${fallback}</em>` : '';
+}
+
 function addFieldByType(type = 'text') {
     formBuilderFields.push(createField(type));
     setBuilderDirty(true);
     renderQuestionList();
+    if (String(type || '').toLowerCase() === 'note') {
+        loadTinyForNoteEditors();
+    }
     setEditorStatus('Campo adicionado.', 'success');
 }
 
@@ -1377,12 +1555,19 @@ function setFieldType(index, type) {
     if (nextType === 'divider') {
         field.label = '---';
         field.required = false;
+        field.content_html = '';
     } else if (nextType === 'section' && (field.label || '').trim() === '') {
         field.label = 'Titulo da secao';
         field.required = false;
+        field.content_html = '';
     } else if (nextType === 'note' && (field.label || '').trim() === '') {
         field.label = 'Texto informativo';
         field.required = false;
+        if (String(field.content_html || '').trim() === '') {
+            field.content_html = '<p>Texto informativo</p>';
+        }
+    } else if (nextType !== 'note') {
+        field.content_html = '';
     }
 
     if (['section', 'divider', 'note'].includes(nextType)) {
@@ -1391,6 +1576,9 @@ function setFieldType(index, type) {
 
     setBuilderDirty(true);
     renderQuestionList();
+    if (nextType === 'note') {
+        loadTinyForNoteEditors();
+    }
 }
 
 function setFieldRequired(index, checked) {
@@ -1431,7 +1619,8 @@ function duplicateField(index) {
         type: String(src.type || 'text'),
         label: String(src.label || ''),
         required: !!src.required,
-        options: Array.isArray(src.options) ? src.options.map((value) => String(value)) : []
+        options: Array.isArray(src.options) ? src.options.map((value) => String(value)) : [],
+        content_html: String(src.content_html || '')
     };
     formBuilderFields.splice(index + 1, 0, clone);
     setBuilderDirty(true);
@@ -1458,7 +1647,8 @@ function buildPreviewFieldHtml(field) {
         return `<h3 class="preview-section-title">${label}</h3>`;
     }
     if (type === 'note') {
-        return `<p class="preview-note">${label}</p>`;
+        const noteHtml = getPreviewNoteHtml(field);
+        return noteHtml !== '' ? `<div class="preview-note">${noteHtml}</div>` : '';
     }
 
     if (type === 'textarea') {
@@ -1480,6 +1670,7 @@ function buildPreviewFieldHtml(field) {
 }
 
 function openPreviewTab() {
+    syncAllNoteEditorDrafts(false);
     const schema = normalizeFormSchema(formBuilderFields);
     if (!schema.length) {
         setEditorStatus('Adicione ao menos um campo para visualizar a prévia.', 'error');
@@ -1756,6 +1947,7 @@ async function importFromSource(autoSave = false) {
 }
 
 function validateCurrentEditor() {
+    syncAllNoteEditorDrafts(false);
     const nameInput = document.getElementById('editorTemplateName');
     const categoryInput = document.getElementById('editorTemplateCategory');
     const templateName = String(nameInput ? nameInput.value : '').trim();
@@ -2027,6 +2219,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     renderLibrary();
     renderQuestionList();
+    loadTinyForNoteEditors();
     updateEditorHeader();
     refreshTemplates(false);
 });

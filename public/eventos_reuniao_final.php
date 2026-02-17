@@ -126,6 +126,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             echo json_encode($result);
             exit;
+
+        case 'gerar_link_cliente_observacoes':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $schema_payload = $_POST['form_schema_json'] ?? null;
+            $content_snapshot = trim((string)($_POST['content_html'] ?? ''));
+            $form_title = trim((string)($_POST['form_title'] ?? ''));
+
+            $schema_array = null;
+            if ($schema_payload !== null && $schema_payload !== '') {
+                $decoded = json_decode((string)$schema_payload, true);
+                if (!is_array($decoded)) {
+                    echo json_encode(['ok' => false, 'error' => 'Schema inválido para gerar o link']);
+                    exit;
+                }
+                $schema_array = $decoded;
+            }
+
+            $result = eventos_reuniao_gerar_link_cliente(
+                $pdo,
+                $meeting_id,
+                (int)$user_id,
+                $schema_array,
+                $content_snapshot !== '' ? $content_snapshot : null,
+                $form_title !== '' ? $form_title : null,
+                $slot_index,
+                'observacoes_gerais',
+                'cliente_observacoes'
+            );
+            if ($result['ok']) {
+                $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+                $result['url'] = $base_url . '/index.php?page=eventos_cliente_dj&token=' . $result['link']['token'];
+                $result['slot_index'] = $slot_index;
+            }
+            echo json_encode($result);
+            exit;
             
         case 'get_versoes':
             $section = $_POST['section'] ?? '';
@@ -174,6 +213,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
             $result = eventos_reuniao_excluir_dj_slot($pdo, $meeting_id, $slot_index, (int)$user_id);
+            echo json_encode($result);
+            exit;
+
+        case 'destravar_observacoes_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_destravar_slot_cliente(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                (int)$user_id,
+                'cliente_observacoes',
+                'observacoes_gerais'
+            );
+            echo json_encode($result);
+            exit;
+
+        case 'excluir_observacoes_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_excluir_slot_cliente($pdo, $meeting_id, $slot_index, (int)$user_id, 'cliente_observacoes');
             echo json_encode($result);
             exit;
             
@@ -230,7 +296,8 @@ if ($meeting_id > 0) {
 
 eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $form_templates = eventos_form_templates_listar($pdo);
-$links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id) : [];
+$links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj') : [];
+$links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $decoracao_schema_raw = $secoes['decoracao']['form_schema_json'] ?? '[]';
 $decoracao_schema_decoded = json_decode((string)$decoracao_schema_raw, true);
@@ -1281,7 +1348,12 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         <?php endif; ?>
                     </div>
                     <div class="dj-top-actions">
+                        <?php if ($key === 'decoracao'): ?>
                         <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Carregar formulário</button>
+                        <?php endif; ?>
+                        <?php if ($key === 'observacoes_gerais'): ?>
+                        <button type="button" class="btn btn-primary" onclick="addObservacoesClientSlot()">+ Adicionar formulário (cliente)</button>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="prefill-field" style="margin-top: 0.5rem;">
@@ -1296,6 +1368,13 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     </select>
                 </div>
                 <div class="builder-field-meta" id="sectionTemplateMeta-<?= $key ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+
+                <?php if ($key === 'observacoes_gerais'): ?>
+                <div style="margin-top:0.85rem;">
+                    <div id="obsSlotsEmptyState" class="dj-builder-empty-state">Nenhum link público criado para o cliente nesta seção.</div>
+                    <div id="obsSlotsContainer" class="dj-slots-stack"></div>
+                </div>
+                <?php endif; ?>
 
                 <div class="builder-preview-box" id="sectionFormBox-<?= $key ?>" style="display:none; margin-top:0.85rem;">
                     <div class="builder-preview-title">Preenchimento interno por formulário</div>
@@ -1414,6 +1493,16 @@ const initialDjLinks = <?= json_encode(array_map(static function (array $link): 
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialObservacoesClientLinks = <?= json_encode(array_map(static function (array $link): array {
+    return [
+        'id' => (int)($link['id'] ?? 0),
+        'token' => (string)($link['token'] ?? ''),
+        'slot_index' => (int)($link['slot_index'] ?? 1),
+        'form_title' => (string)($link['form_title'] ?? ''),
+        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
+    ];
+}, $links_cliente_observacoes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -1437,6 +1526,9 @@ let djSlotOrder = [];
 let selectedDjTemplateIds = {};
 let lastSavedDjSchemaSignatures = {};
 let djLinksBySlot = {};
+let observacoesSlotOrder = [];
+let selectedObservacoesTemplateIds = {};
+let observacoesLinksBySlot = {};
 let selectedSectionTemplateIds = {
     decoracao: null,
     observacoes_gerais: null,
@@ -1809,16 +1901,18 @@ function normalizeFormSchema(schema) {
         if (!allowedTypes.includes(type)) type = 'text';
         const options = Array.isArray(field.options) ? field.options.map((v) => String(v).trim()).filter(Boolean) : [];
         const neverRequired = ['section', 'divider', 'note'].includes(type);
+        const contentHtml = type === 'note' ? String(field.content_html || '').trim() : '';
         return {
             id: String(field.id || ('f_' + Math.random().toString(36).slice(2, 10))),
             type: type,
             label: String(field.label || '').trim(),
             required: neverRequired ? false : !!field.required,
-            options: options
+            options: options,
+            content_html: contentHtml
         };
     }).filter((field) => {
         if (field.type === 'divider') return true;
-        return field.label !== '';
+        return field.label !== '' || (field.type === 'note' && String(field.content_html || '').trim() !== '');
     });
 }
 
@@ -2076,6 +2170,35 @@ function setDjLinkOutput(slot, url) {
     }
 }
 
+function sanitizeRichHtmlForField(html) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(html || '');
+    wrapper.querySelectorAll('script, style, iframe, object, embed').forEach((node) => node.remove());
+    wrapper.querySelectorAll('*').forEach((node) => {
+        Array.from(node.attributes).forEach((attr) => {
+            const attrName = String(attr.name || '').toLowerCase();
+            const attrValue = String(attr.value || '').toLowerCase();
+            if (attrName.startsWith('on')) {
+                node.removeAttribute(attr.name);
+                return;
+            }
+            if ((attrName === 'href' || attrName === 'src') && attrValue.startsWith('javascript:')) {
+                node.removeAttribute(attr.name);
+            }
+        });
+    });
+    return wrapper.innerHTML;
+}
+
+function getFieldNoteHtml(field) {
+    const raw = String(field && field.content_html ? field.content_html : '').trim();
+    if (raw !== '') {
+        return sanitizeRichHtmlForField(raw);
+    }
+    const fallback = escapeHtmlForField(String(field && field.label ? field.label : ''));
+    return fallback !== '' ? `<em>${fallback}</em>` : '';
+}
+
 function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos') {
     if (!Array.isArray(schema) || schema.length === 0) return '';
     let html = `<h2>${escapeHtmlForField(title)}</h2>`;
@@ -2092,7 +2215,10 @@ function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos'
             return;
         }
         if (field.type === 'note') {
-            html += `<p><em>${label}</em></p>`;
+            const noteHtml = getFieldNoteHtml(field);
+            if (noteHtml !== '') {
+                html += `<div>${noteHtml}</div>`;
+            }
             return;
         }
         if (field.type === 'yesno') {
@@ -2163,6 +2289,388 @@ function onChangeDjTemplateSelect(slot = 1) {
 
 function renderAllDjTemplateSelects() {
     renderDjSlots();
+}
+
+function getSortedObservacoesSlots() {
+    return observacoesSlotOrder
+        .map((slot) => normalizeSlotIndex(slot))
+        .filter((slot) => slot !== null)
+        .sort((a, b) => a - b);
+}
+
+function observacoesSlotExists(slot) {
+    const normalized = normalizeSlotIndex(slot);
+    if (normalized === null) return false;
+    return observacoesSlotOrder.includes(normalized);
+}
+
+function ensureObservacoesSlotState(slot) {
+    if (!Object.prototype.hasOwnProperty.call(selectedObservacoesTemplateIds, slot)) {
+        selectedObservacoesTemplateIds[slot] = null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(observacoesLinksBySlot, slot)) {
+        observacoesLinksBySlot[slot] = null;
+    }
+}
+
+function findNextObservacoesSlotIndex() {
+    const used = new Set(getSortedObservacoesSlots());
+    for (let slot = DJ_SLOT_MIN; slot <= DJ_SLOT_MAX; slot += 1) {
+        if (!used.has(slot)) return slot;
+    }
+    return null;
+}
+
+function setObservacoesLinkOutput(slot, url) {
+    const input = document.getElementById(`obsClienteLinkInput-${slot}`);
+    const copyBtn = document.getElementById(`obsBtnCopiar-${slot}`);
+    if (input) {
+        input.value = url || '';
+    }
+    if (copyBtn) {
+        copyBtn.style.display = url ? 'inline-flex' : 'none';
+    }
+}
+
+function getSelectedObservacoesTemplateData(slot) {
+    if (!observacoesSlotExists(slot)) {
+        return { template: null, schema: [] };
+    }
+    const templateId = Number(selectedObservacoesTemplateIds[slot] || 0);
+    if (templateId <= 0) {
+        return { template: null, schema: [] };
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId) || null;
+    const schema = normalizeFormSchema(template && Array.isArray(template.schema) ? template.schema : []);
+    return { template, schema };
+}
+
+function isObservacoesSlotLocked(slot) {
+    const link = observacoesLinksBySlot[slot] || null;
+    return !!(link && link.submitted_at);
+}
+
+function updateObservacoesShareAvailability(slot) {
+    const shareBtn = document.getElementById(`obsBtnGerarLink-${slot}`);
+    const hint = document.getElementById(`obsShareHint-${slot}`);
+    const unlockBtn = document.getElementById(`obsBtnDestravar-${slot}`);
+    const select = document.getElementById(`obsTemplateSelect-${slot}`);
+    if (!shareBtn) return;
+
+    let disabled = false;
+    let hintText = 'Selecione um formulário para habilitar o compartilhamento.';
+
+    if (isObservacoesSlotLocked(slot)) {
+        disabled = true;
+        hintText = 'Este quadro está travado (cliente já enviou). Clique em "Destravar" para permitir nova edição.';
+        if (unlockBtn) unlockBtn.style.display = 'inline-flex';
+        if (select) select.disabled = true;
+    } else {
+        if (unlockBtn) unlockBtn.style.display = 'none';
+        if (select) select.disabled = false;
+
+        const selected = getSelectedObservacoesTemplateData(slot);
+        if (!selected.template) {
+            disabled = true;
+        } else if (!hasUsefulSchemaFields(selected.schema)) {
+            disabled = true;
+            hintText = 'O formulário selecionado não possui campos válidos.';
+        } else {
+            hintText = `Clique em Gerar link para criar/usar o link do quadro ${slot}.`;
+        }
+    }
+
+    shareBtn.disabled = disabled;
+    if (hint) hint.textContent = hintText;
+}
+
+function buildObservacoesSlotCardHtml(slot) {
+    return `
+        <div class="dj-builder-shell" data-obs-slot="${slot}">
+            <div class="dj-builder-head">
+                <div>
+                    <h4 class="dj-builder-title">🧩 Observações Gerais • Quadro ${slot}</h4>
+                    <div class="dj-builder-subtitle">Selecione um formulário e gere o link público para o cliente preencher.</div>
+                </div>
+                <div class="dj-top-actions">
+                    <button type="button" class="btn btn-primary" onclick="gerarLinkClienteObservacoes(${slot})" id="obsBtnGerarLink-${slot}">Gerar link</button>
+                    <button type="button" class="btn btn-secondary" onclick="destravarObservacoesSlot(${slot})" id="obsBtnDestravar-${slot}" style="display:none;">🔓 Destravar</button>
+                    <button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirObservacoesSlot(${slot})">🗑 Excluir quadro</button>
+                </div>
+            </div>
+            <div class="prefill-field" style="margin-top: 0.5rem;">
+                <label for="obsTemplateSelect-${slot}">Formulário salvo</label>
+                <select id="obsTemplateSelect-${slot}" onchange="onChangeObservacoesTemplateSelect(${slot})">
+                    <option value="">Selecione um formulário...</option>
+                </select>
+            </div>
+            <div class="builder-field-meta" id="obsSelectedTemplateMeta-${slot}" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+            <p class="share-hint" id="obsShareHint-${slot}">Selecione um formulário para habilitar o compartilhamento.</p>
+            <div class="link-display">
+                <input type="text" id="obsClienteLinkInput-${slot}" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
+                <button type="button" class="btn btn-secondary" onclick="copiarLinkObservacoes(${slot})" id="obsBtnCopiar-${slot}" style="display:none;">📋 Copiar</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderObservacoesTemplateSelect(slot) {
+    const select = document.getElementById(`obsTemplateSelect-${slot}`);
+    if (!select) return;
+    const current = selectedObservacoesTemplateIds[slot] ? String(selectedObservacoesTemplateIds[slot]) : '';
+    const options = ['<option value="">Selecione um formulário...</option>'];
+    (savedFormTemplates || []).forEach((template) => {
+        const id = Number(template.id || 0);
+        if (!id) return;
+        const label = `${String(template.nome || 'Modelo sem nome')} - ${String(template.categoria || 'geral')}`;
+        const selected = String(id) === current ? ' selected' : '';
+        options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    updateSelectedObservacoesTemplateMeta(slot);
+}
+
+function updateSelectedObservacoesTemplateMeta(slot) {
+    const meta = document.getElementById(`obsSelectedTemplateMeta-${slot}`);
+    if (!meta) return;
+    const templateId = Number(selectedObservacoesTemplateIds[slot] || 0);
+    if (templateId <= 0) {
+        meta.textContent = 'Nenhum formulário selecionado.';
+        return;
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId);
+    if (!template) {
+        meta.textContent = 'Formulário selecionado não encontrado.';
+        return;
+    }
+    const stamp = template.updated_at ? formatDate(template.updated_at) : 'Sem data';
+    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${String(template.categoria || 'geral')} • Atualizado em ${stamp}`;
+}
+
+function onChangeObservacoesTemplateSelect(slot) {
+    const select = document.getElementById(`obsTemplateSelect-${slot}`);
+    selectedObservacoesTemplateIds[slot] = select && select.value ? Number(select.value) : null;
+    updateSelectedObservacoesTemplateMeta(slot);
+    updateObservacoesShareAvailability(slot);
+}
+
+function renderObservacoesClientSlots() {
+    const container = document.getElementById('obsSlotsContainer');
+    const empty = document.getElementById('obsSlotsEmptyState');
+    if (!container || !empty) return;
+
+    const slots = getSortedObservacoesSlots();
+    if (slots.length === 0) {
+        container.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+    container.innerHTML = slots.map((slot) => buildObservacoesSlotCardHtml(slot)).join('');
+    slots.forEach((slot) => {
+        ensureObservacoesSlotState(slot);
+        renderObservacoesTemplateSelect(slot);
+        const link = observacoesLinksBySlot[slot] || null;
+        if (link && link.token) {
+            setObservacoesLinkOutput(slot, `${window.location.origin}/index.php?page=eventos_cliente_dj&token=${link.token}`);
+        } else {
+            setObservacoesLinkOutput(slot, '');
+        }
+        updateObservacoesShareAvailability(slot);
+    });
+}
+
+function addObservacoesClientSlot(preferredSlot = null) {
+    if (!meetingId) {
+        alert('Crie a reunião antes de adicionar links públicos.');
+        return null;
+    }
+    const slot = preferredSlot !== null ? normalizeSlotIndex(preferredSlot) : findNextObservacoesSlotIndex();
+    if (slot === null) {
+        alert('Limite de quadros atingido (máximo de 50).');
+        return null;
+    }
+    if (!observacoesSlotExists(slot)) {
+        observacoesSlotOrder.push(slot);
+    }
+    observacoesSlotOrder = getSortedObservacoesSlots();
+    ensureObservacoesSlotState(slot);
+    renderObservacoesClientSlots();
+    const select = document.getElementById(`obsTemplateSelect-${slot}`);
+    if (select) select.focus();
+    return slot;
+}
+
+async function excluirObservacoesSlot(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !observacoesSlotExists(slotIndex)) return;
+    const link = observacoesLinksBySlot[slotIndex] || null;
+    if (link && link.submitted_at) {
+        alert('Este quadro já foi enviado pelo cliente e não pode ser excluído.');
+        return;
+    }
+    if (!confirm(`Excluir o quadro ${slotIndex}?`)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'excluir_observacoes_slot');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (!data.ok) {
+            alert(data.error || 'Erro ao excluir quadro');
+            return;
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        return;
+    }
+
+    observacoesSlotOrder = getSortedObservacoesSlots().filter((item) => item !== slotIndex);
+    delete selectedObservacoesTemplateIds[slotIndex];
+    delete observacoesLinksBySlot[slotIndex];
+    renderObservacoesClientSlots();
+}
+
+async function gerarLinkClienteObservacoes(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !observacoesSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
+    updateObservacoesShareAvailability(slotIndex);
+    const btn = document.getElementById(`obsBtnGerarLink-${slotIndex}`);
+    if (btn && btn.disabled) {
+        const hint = document.getElementById(`obsShareHint-${slotIndex}`);
+        alert(hint ? hint.textContent : 'Selecione um formulário válido antes de gerar o link.');
+        return;
+    }
+
+    try {
+        const selected = getSelectedObservacoesTemplateData(slotIndex);
+        if (!selected.template) {
+            alert('Selecione um formulário antes de gerar o link.');
+            return;
+        }
+        if (!hasUsefulSchemaFields(selected.schema)) {
+            alert('O formulário selecionado não possui campos válidos.');
+            return;
+        }
+
+        const formTitle = String(selected.template.nome || `Observações Gerais - Quadro ${slotIndex}`);
+        const contentHtml = buildSchemaHtmlForStorage(selected.schema, formTitle);
+        const formData = new FormData();
+        formData.append('action', 'gerar_link_cliente_observacoes');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+        formData.append('form_schema_json', JSON.stringify(selected.schema));
+        formData.append('content_html', contentHtml);
+        formData.append('form_title', formTitle);
+
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.ok && data.url) {
+            setObservacoesLinkOutput(slotIndex, data.url);
+            observacoesLinksBySlot[slotIndex] = {
+                id: Number(data.link && data.link.id ? data.link.id : 0),
+                token: String(data.link && data.link.token ? data.link.token : ''),
+                slot_index: slotIndex,
+                form_title: formTitle,
+                form_schema: selected.schema,
+                submitted_at: data.link && data.link.submitted_at ? String(data.link.submitted_at) : null
+            };
+            if (!data.created) {
+                alert('Link já existente recuperado');
+            }
+            updateObservacoesShareAvailability(slotIndex);
+        } else {
+            alert(data.error || 'Erro ao gerar link');
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+function copiarLinkObservacoes(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !observacoesSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
+    const input = document.getElementById(`obsClienteLinkInput-${slotIndex}`);
+    if (!input || !input.value) {
+        alert('Nenhum link para copiar.');
+        return;
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(input.value).then(() => {
+            alert('Link copiado!');
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            alert('Link copiado!');
+        });
+        return;
+    }
+    input.select();
+    document.execCommand('copy');
+    alert('Link copiado!');
+}
+
+async function destravarObservacoesSlot(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !observacoesSlotExists(slotIndex)) {
+        alert('Quadro inválido.');
+        return;
+    }
+    if (!confirm(`Destravar o quadro ${slotIndex} permite que o cliente edite e reenvie. Continuar?`)) return;
+    try {
+        const formData = new FormData();
+        formData.append('action', 'destravar_observacoes_slot');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert(data.error || 'Erro ao destravar quadro');
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+function initObservacoesClientTemplateSelection() {
+    observacoesSlotOrder = [];
+    selectedObservacoesTemplateIds = {};
+    observacoesLinksBySlot = {};
+
+    if (Array.isArray(initialObservacoesClientLinks)) {
+        initialObservacoesClientLinks.forEach((link) => {
+            const slot = normalizeSlotIndex(link && link.slot_index ? link.slot_index : 1);
+            if (slot === null) return;
+            if (!link || !link.token) return;
+            if (!observacoesSlotExists(slot)) {
+                observacoesSlotOrder.push(slot);
+            }
+            ensureObservacoesSlotState(slot);
+            observacoesLinksBySlot[slot] = link;
+
+            const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
+            if (hasUsefulSchemaFields(schema)) {
+                const signature = getSchemaSignature(schema);
+                const templateId = findTemplateIdBySchemaSignature(signature);
+                if (templateId) {
+                    selectedObservacoesTemplateIds[slot] = templateId;
+                }
+            }
+        });
+    }
+
+    observacoesSlotOrder = getSortedObservacoesSlots();
+    renderObservacoesClientSlots();
 }
 
 function getSectionFormTitle(section) {
@@ -2285,7 +2793,8 @@ function renderSectionTemplateForm(section) {
             return `<h4 class="section-form-title">${label}</h4>`;
         }
         if (type === 'note') {
-            return `<p class="section-form-note">${label}</p>`;
+            const noteHtml = getFieldNoteHtml(field);
+            return `<div class="section-form-note">${noteHtml}</div>`;
         }
         if (type === 'textarea') {
             return `
@@ -2518,7 +3027,10 @@ function buildSectionContentFromForm(section, schema, values, legacyContentHtml)
             return;
         }
         if (type === 'note') {
-            parts.push(`<p><em>${escapeHtmlForField(label)}</em></p>`);
+            const noteHtml = getFieldNoteHtml(field);
+            if (noteHtml !== '') {
+                parts.push(`<div>${noteHtml}</div>`);
+            }
             return;
         }
 
@@ -2613,6 +3125,14 @@ async function fetchTemplates() {
             selectedDjTemplateIds[slot] = null;
         }
     });
+    getSortedObservacoesSlots().forEach((slot) => {
+        const templateId = selectedObservacoesTemplateIds[slot] || null;
+        if (!templateId) return;
+        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(templateId));
+        if (!exists) {
+            selectedObservacoesTemplateIds[slot] = null;
+        }
+    });
     ['decoracao', 'observacoes_gerais'].forEach((section) => {
         const templateId = selectedSectionTemplateIds[section] || null;
         if (!templateId) return;
@@ -2622,6 +3142,7 @@ async function fetchTemplates() {
         }
     });
     renderAllDjTemplateSelects();
+    renderObservacoesClientSlots();
     renderAllSectionTemplateSelects();
 }
 
@@ -3096,6 +3617,7 @@ if (meetingId) {
             loadTinyMCEAndInit();
             initSectionTemplateSelection();
             initDjTemplateSelection();
+            initObservacoesClientTemplateSelection();
             refreshDjTemplates();
         });
     } else {
@@ -3103,6 +3625,7 @@ if (meetingId) {
         loadTinyMCEAndInit();
         initSectionTemplateSelection();
         initDjTemplateSelection();
+        initObservacoesClientTemplateSelection();
         refreshDjTemplates();
     }
 } else {
