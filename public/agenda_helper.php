@@ -7,44 +7,103 @@ require_once __DIR__ . '/email_helper.php';
 class AgendaHelper {
     private $pdo;
     private $emailHelper;
+    private $permissionValueCache = [];
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
         // EmailHelper agora usa EmailGlobalHelper internamente (sistema_email_config)
         $this->emailHelper = new EmailHelper();
     }
+
+    /**
+     * Normaliza valores vindos do banco para boolean.
+     */
+    private function normalizeBool($value): bool {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int)$value === 1;
+        }
+
+        $normalized = strtolower(trim((string)$value));
+        if ($normalized === '' || in_array($normalized, ['0', 'f', 'false', 'off', 'no', 'n'], true)) {
+            return false;
+        }
+        if (in_array($normalized, ['1', 't', 'true', 'on', 'yes', 'y'], true)) {
+            return true;
+        }
+
+        return (bool)$value;
+    }
+
+    /**
+     * Lê uma permissão de usuário de forma resiliente (coluna opcional/legado).
+     * Retorna null quando coluna/registro não existir.
+     */
+    private function getUserPermissionValue($usuario_id, $columnName): ?bool {
+        $usuario_id = (int)$usuario_id;
+        if ($usuario_id <= 0 || !preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', (string)$columnName)) {
+            return null;
+        }
+
+        $cacheKey = $usuario_id . ':' . $columnName;
+        if (array_key_exists($cacheKey, $this->permissionValueCache)) {
+            return $this->permissionValueCache[$cacheKey];
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("SELECT {$columnName} FROM usuarios WHERE id = ?");
+            $stmt->execute([$usuario_id]);
+            $value = $stmt->fetchColumn();
+
+            if ($value === false) {
+                $this->permissionValueCache[$cacheKey] = null;
+                return null;
+            }
+
+            $normalized = $this->normalizeBool($value);
+            $this->permissionValueCache[$cacheKey] = $normalized;
+            return $normalized;
+        } catch (Throwable $e) {
+            $this->permissionValueCache[$cacheKey] = null;
+            return null;
+        }
+    }
     
     /**
      * Verificar permissões de agenda
      */
     public function canAccessAgenda($usuario_id) {
-        $stmt = $this->pdo->prepare("SELECT perm_agenda_ver FROM usuarios WHERE id = ?");
-        $stmt->execute([$usuario_id]);
-        return $stmt->fetchColumn() ?: false;
+        // Compatibilidade: alguns ambientes usam somente perm_agenda (sidebar),
+        // outros usam perm_agenda_ver (agenda legada).
+        $permAgenda = $this->getUserPermissionValue($usuario_id, 'perm_agenda');
+        $permAgendaVer = $this->getUserPermissionValue($usuario_id, 'perm_agenda_ver');
+
+        return (bool)($permAgenda || $permAgendaVer);
     }
-    
+
     public function canCreateEvents($usuario_id) {
-        $stmt = $this->pdo->prepare("SELECT perm_agenda_meus FROM usuarios WHERE id = ?");
-        $stmt->execute([$usuario_id]);
-        return $stmt->fetchColumn() ?: false;
+        $permAgendaMeus = $this->getUserPermissionValue($usuario_id, 'perm_agenda_meus');
+        if ($permAgendaMeus !== null) {
+            return $permAgendaMeus;
+        }
+
+        // Fallback para bancos legados sem perm_agenda_meus.
+        return $this->canAccessAgenda($usuario_id);
     }
-    
+
     public function canManageOthersEvents($usuario_id) {
-        $stmt = $this->pdo->prepare("SELECT perm_gerir_eventos_outros FROM usuarios WHERE id = ?");
-        $stmt->execute([$usuario_id]);
-        return $stmt->fetchColumn() ?: false;
+        return (bool)$this->getUserPermissionValue($usuario_id, 'perm_gerir_eventos_outros');
     }
-    
+
     public function canForceConflict($usuario_id) {
-        $stmt = $this->pdo->prepare("SELECT perm_forcar_conflito FROM usuarios WHERE id = ?");
-        $stmt->execute([$usuario_id]);
-        return $stmt->fetchColumn() ?: false;
+        return (bool)$this->getUserPermissionValue($usuario_id, 'perm_forcar_conflito');
     }
-    
+
     public function canViewReports($usuario_id) {
-        $stmt = $this->pdo->prepare("SELECT perm_agenda_relatorios FROM usuarios WHERE id = ?");
-        $stmt->execute([$usuario_id]);
-        return $stmt->fetchColumn() ?: false;
+        return (bool)$this->getUserPermissionValue($usuario_id, 'perm_agenda_relatorios');
     }
     
     /**
