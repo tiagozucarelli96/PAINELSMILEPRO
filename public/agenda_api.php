@@ -135,6 +135,26 @@ try {
     }
 
     // Formatar para FullCalendar
+    // Importante: a agenda interna usa TIMESTAMP sem timezone no banco.
+    // Para evitar deslocamento (ex.: -3h), enviamos data/hora sem offset para o FullCalendar.
+    $formatCalendarLocalDateTime = static function ($value) {
+        $value = trim((string)$value);
+        if ($value === '') {
+            return null;
+        }
+
+        // Remove timezone e fração de segundos, mantendo apenas data/hora local.
+        $value = preg_replace('/([+-]\d{2}:?\d{2}|Z)$/', '', $value);
+        $value = preg_replace('/\.\d+$/', '', $value);
+        $value = str_replace(' ', 'T', $value);
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $value)) {
+            $value .= ':00';
+        }
+
+        return substr($value, 0, 19);
+    };
+
     $eventos_formatados = [];
     foreach ($eventos as $evento) {
         // Definir cor baseada no tipo
@@ -206,17 +226,9 @@ try {
             // Mas como salvamos como 23:59:59, precisamos adicionar 1 dia
             $end_formatted = date('Y-m-d', strtotime($fim_date . ' +1 day'));
         } else {
-            // Evento com hora: usar formato ISO 8601 completo
-            $start_formatted = $evento['inicio'];
-            $end_formatted = $evento['fim'];
-            
-            // Se já estiver em formato ISO, usar direto; caso contrário, converter
-            if (strpos($start_formatted, 'T') === false) {
-                $start_formatted = date('c', $inicio_ts);
-            }
-            if (strpos($end_formatted, 'T') === false) {
-                $end_formatted = date('c', $fim_ts);
-            }
+            // Evento com hora: manter horário local sem timezone para evitar shift no cliente.
+            $start_formatted = $formatCalendarLocalDateTime($evento['inicio']) ?? date('Y-m-d\TH:i:s', $inicio_ts);
+            $end_formatted = $formatCalendarLocalDateTime($evento['fim']) ?? date('Y-m-d\TH:i:s', $fim_ts);
         }
         
         $evento_formatado = [

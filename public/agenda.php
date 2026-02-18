@@ -834,7 +834,7 @@ includeSidebar('Agenda');
                     list: 'Lista'
                 },
                 events: function(info, successCallback, failureCallback) {
-                    loadEvents(info.start, info.end, successCallback, failureCallback);
+                    loadEvents(info.startStr, info.endStr, successCallback, failureCallback);
                 },
                 eventClick: function(info) {
                     openEventModal('edit', info.event);
@@ -872,8 +872,8 @@ includeSidebar('Agenda');
         // Carregar eventos
         function loadEvents(start, end, successCallback, failureCallback) {
             const params = new URLSearchParams({
-                start: start.toISOString(),
-                end: end.toISOString(),
+                start: start,
+                end: end,
                 ...currentFilters
             });
             
