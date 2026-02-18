@@ -55,6 +55,22 @@ if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
     exit;
 }
 
+function vendas_parse_money($value): float {
+    if ($value === null) return 0.0;
+    if (is_string($value)) {
+        $value = trim($value);
+        if ($value === '') return 0.0;
+        $value = str_replace('.', '', $value);
+        $value = str_replace(',', '.', $value);
+        $value = preg_replace('/[^\d\.\-]/', '', $value);
+    }
+    return (float)$value;
+}
+
+function vendas_format_money_brl($value): string {
+    return number_format((float)$value, 2, ',', '.');
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -62,17 +78,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'salvar_comercial') {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
         $pacote = trim($_POST['pacote_contratado'] ?? '');
-        $valor_negociado = (float)($_POST['valor_negociado'] ?? 0);
-        $desconto = (float)($_POST['desconto'] ?? 0);
+        $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
+        $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
         
         // Buscar adicionais
         $adicionais = [];
         if (!empty($_POST['adicionais'])) {
             foreach ($_POST['adicionais'] as $adicional) {
-                if (!empty($adicional['item']) && !empty($adicional['valor'])) {
+                $item = trim((string)($adicional['item'] ?? ''));
+                $valor_raw = $adicional['valor'] ?? '';
+                if ($item !== '' && trim((string)$valor_raw) !== '') {
                     $adicionais[] = [
-                        'item' => trim($adicional['item']),
-                        'valor' => (float)$adicional['valor']
+                        'item' => $item,
+                        'valor' => vendas_parse_money($valor_raw)
                     ];
                 }
             }
@@ -893,6 +911,15 @@ ob_start();
     padding: 0.5rem;
     border-bottom: 1px solid #e5e7eb;
 }
+.valor-base-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: #eef2ff;
+    color: #3730a3;
+}
 
 .btn-remove {
     background: #ef4444;
@@ -1089,22 +1116,9 @@ ob_start();
                     </div>
                     
                     <div class="form-group">
-                        <label for="valor_negociado">Valor Negociado (R$):</label>
-                        <input type="number" id="valor_negociado" name="valor_negociado" step="0.01" 
-                               value="<?php echo $pre_contrato_editar['valor_negociado'] ?? 0; ?>" 
-                               onchange="calcularTotal()">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="desconto">Desconto (R$):</label>
-                        <input type="number" id="desconto" name="desconto" step="0.01" 
-                               value="<?php echo $pre_contrato_editar['desconto'] ?? 0; ?>" 
-                               onchange="calcularTotal()">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Adicionais:</label>
-                        <button type="button" class="btn btn-secondary" onclick="adicionarItem()">+ Adicionar Item</button>
+                        <label>Itens e valores:</label>
+                        <small style="display:block;color:#64748b;margin:.2rem 0 .6rem;">Preencha item e valor por linha. O total considera todas as linhas e aplica desconto, se houver.</small>
+                        <button type="button" class="btn btn-secondary" onclick="adicionarItem()">+ Adicionar linha</button>
                         <table class="adicionais-table" id="tabelaAdicionais">
                             <thead>
                                 <tr>
@@ -1114,22 +1128,66 @@ ob_start();
                                 </tr>
                             </thead>
                             <tbody>
+                                <tr>
+                                    <td>Pacote/Plano principal</td>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            inputmode="numeric"
+                                            class="money-input"
+                                            id="valor_negociado"
+                                            name="valor_negociado"
+                                            value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['valor_negociado'] ?? 0)); ?>"
+                                            required
+                                        >
+                                    </td>
+                                    <td><span class="valor-base-badge">Base</span></td>
+                                </tr>
                                 <?php foreach ($adicionais_editar as $idx => $adicional): ?>
                                     <tr>
                                         <td><input type="text" name="adicionais[<?php echo $idx; ?>][item]" 
                                                    value="<?php echo htmlspecialchars($adicional['item']); ?>" required></td>
-                                        <td><input type="number" name="adicionais[<?php echo $idx; ?>][valor]" 
-                                                   step="0.01" value="<?php echo $adicional['valor']; ?>" 
-                                                   onchange="calcularTotal()" required></td>
+                                        <td>
+                                            <input
+                                                type="text"
+                                                inputmode="numeric"
+                                                class="money-input"
+                                                name="adicionais[<?php echo $idx; ?>][valor]"
+                                                value="<?php echo htmlspecialchars(vendas_format_money_brl($adicional['valor'])); ?>"
+                                                required
+                                            >
+                                        </td>
                                         <td><button type="button" class="btn-remove" onclick="removerItem(this)">Remover</button></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
+
+                    <div class="form-group">
+                        <label for="desconto">Desconto aplicado (R$):</label>
+                        <input
+                            type="text"
+                            inputmode="numeric"
+                            class="money-input"
+                            id="desconto"
+                            name="desconto"
+                            value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['desconto'] ?? 0)); ?>"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label>Subtotal das linhas:</label>
+                        <input type="text" id="valor_subtotal_display" value="R$ 0,00" disabled>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Desconto:</label>
+                        <input type="text" id="desconto_display" value="R$ 0,00" disabled>
+                    </div>
                     
                     <div class="form-group">
-                        <label>Valor Total:</label>
+                        <label>Total final:</label>
                         <input type="text" id="valor_total_display" value="R$ 0,00" disabled style="font-weight: bold; font-size: 1.2rem;">
                     </div>
                     
@@ -1357,16 +1415,60 @@ ob_start();
 <script>
 let itemIndex = <?php echo count($adicionais_editar); ?>;
 
+function formatMoneyFromDigits(digits) {
+    if (!digits) return '';
+    const cents = digits.slice(-2).padStart(2, '0');
+    let ints = digits.slice(0, -2);
+    ints = ints.replace(/^0+(?=\d)/, '');
+    if (!ints) ints = '0';
+    ints = ints.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${ints},${cents}`;
+}
+
+function parseMoneyValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 0;
+    const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+    const num = parseFloat(normalized);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function formatMoneyDisplay(value) {
+    const num = Number.isFinite(value) ? value : 0;
+    return 'R$ ' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function bindMoneyInput(el) {
+    if (!el || el.dataset.moneyBound === '1') return;
+    el.dataset.moneyBound = '1';
+    el.addEventListener('input', function() {
+        const digits = (this.value || '').replace(/\D/g, '');
+        this.value = formatMoneyFromDigits(digits);
+        calcularTotal();
+    });
+    el.addEventListener('blur', function() {
+        const digits = (this.value || '').replace(/\D/g, '');
+        this.value = digits ? formatMoneyFromDigits(digits) : '0,00';
+        calcularTotal();
+    });
+}
+
+function initMoneyInputs(scope) {
+    (scope || document).querySelectorAll('.money-input').forEach(bindMoneyInput);
+}
+
 function adicionarItem() {
     const tbody = document.querySelector('#tabelaAdicionais tbody');
     const row = document.createElement('tr');
     row.innerHTML = `
         <td><input type="text" name="adicionais[${itemIndex}][item]" required></td>
-        <td><input type="number" name="adicionais[${itemIndex}][valor]" step="0.01" onchange="calcularTotal()" required></td>
+        <td><input type="text" inputmode="numeric" class="money-input" name="adicionais[${itemIndex}][valor]" required></td>
         <td><button type="button" class="btn-remove" onclick="removerItem(this)">Remover</button></td>
     `;
     tbody.appendChild(row);
+    initMoneyInputs(row);
     itemIndex++;
+    calcularTotal();
 }
 
 function removerItem(btn) {
@@ -1375,16 +1477,19 @@ function removerItem(btn) {
 }
 
 function calcularTotal() {
-    const valorNegociado = parseFloat(document.getElementById('valor_negociado').value || 0);
-    const desconto = parseFloat(document.getElementById('desconto').value || 0);
+    const valorNegociado = parseMoneyValue(document.getElementById('valor_negociado')?.value || 0);
+    const desconto = parseMoneyValue(document.getElementById('desconto')?.value || 0);
     
     let totalAdicionais = 0;
     document.querySelectorAll('#tabelaAdicionais input[name*="[valor]"]').forEach(input => {
-        totalAdicionais += parseFloat(input.value || 0);
+        totalAdicionais += parseMoneyValue(input.value);
     });
     
-    const total = valorNegociado + totalAdicionais - desconto;
-    document.getElementById('valor_total_display').value = 'R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const subtotal = valorNegociado + totalAdicionais;
+    const total = subtotal - desconto;
+    document.getElementById('valor_subtotal_display').value = formatMoneyDisplay(subtotal);
+    document.getElementById('desconto_display').value = formatMoneyDisplay(desconto);
+    document.getElementById('valor_total_display').value = formatMoneyDisplay(total);
 }
 
 function abrirModalAprovacao() {
@@ -1512,6 +1617,7 @@ document.querySelectorAll('.btn-apagar-pc').forEach(function(btn) {
 });
 
 // Calcular total inicial
+initMoneyInputs();
 calcularTotal();
 </script>
 

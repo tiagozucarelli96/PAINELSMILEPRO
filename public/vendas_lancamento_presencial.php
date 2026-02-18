@@ -40,6 +40,26 @@ if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
 }
 
 $locais_mapeados = vendas_buscar_locais_mapeados();
+$tipos_evento = [
+    'casamento' => [
+        'label' => 'Casamento',
+        'nome_label' => 'Nome dos noivos',
+        'nome_placeholder' => 'Ex: João e Maria',
+        'nome_erro' => 'Nome dos noivos é obrigatório.',
+    ],
+    '15anos' => [
+        'label' => '15 Anos / Debutante',
+        'nome_label' => 'Nome da debutante',
+        'nome_placeholder' => 'Ex: Maria Silva',
+        'nome_erro' => 'Nome da debutante é obrigatório.',
+    ],
+    'infantil' => [
+        'label' => 'Infantil',
+        'nome_label' => 'Nome do aniversariante',
+        'nome_placeholder' => 'Ex: Maria (5 anos)',
+        'nome_erro' => 'Nome do aniversariante é obrigatório.',
+    ],
+];
 
 // Edição
 $editar_id = (int)($_GET['editar'] ?? 0);
@@ -63,12 +83,29 @@ if ($editar_id) {
     }
 }
 
+$tipo_evento_form = 'casamento';
+$tipo_evento_get = (string)($_GET['tipo_evento'] ?? $_GET['tipo'] ?? '');
+if (isset($tipos_evento[$tipo_evento_get])) {
+    $tipo_evento_form = $tipo_evento_get;
+}
+if (!empty($registro['tipo_evento']) && isset($tipos_evento[(string)$registro['tipo_evento']])) {
+    $tipo_evento_form = (string)$registro['tipo_evento'];
+}
+if (!empty($_POST['tipo_evento']) && isset($tipos_evento[(string)$_POST['tipo_evento']])) {
+    $tipo_evento_form = (string)$_POST['tipo_evento'];
+}
+$tipo_evento_cfg = $tipos_evento[$tipo_evento_form];
+
 function vendas_money($v): float {
     if ($v === null) return 0.0;
     if (is_string($v)) {
         $v = str_replace(['.', ','], ['', '.'], $v);
     }
     return (float)$v;
+}
+
+function vendas_money_brl($v): string {
+    return number_format((float)$v, 2, ',', '.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -97,6 +134,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hora_inicio = (string)($_POST['horario_inicio'] ?? '');
         $hora_termino = (string)($_POST['horario_termino'] ?? '');
         $unidade = (string)($_POST['unidade'] ?? '');
+        $tipo_evento = (string)($_POST['tipo_evento'] ?? $tipo_evento_form);
+        if (!isset($tipos_evento[$tipo_evento])) {
+            $tipo_evento = 'casamento';
+        }
+        $tipo_evento_cfg = $tipos_evento[$tipo_evento];
         $nome_noivos = trim((string)($_POST['nome_noivos'] ?? ''));
         $num_convidados = (int)($_POST['num_convidados'] ?? 0);
         $como_conheceu = (string)($_POST['como_conheceu'] ?? '');
@@ -161,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $me_local_id = vendas_validar_local_mapeado($unidade);
             if (!$me_local_id) throw new Exception('Local não mapeado. Ajuste em Logística > Conexão.');
 
-            if ($nome_noivos === '') throw new Exception('Nome dos noivos é obrigatório.');
+            if ($nome_noivos === '') throw new Exception((string)$tipo_evento_cfg['nome_erro']);
             if ($num_convidados <= 0) throw new Exception('Nº de convidados deve ser maior que zero.');
 
             if ($como_conheceu === '') throw new Exception('Como conheceu é obrigatório.');
@@ -176,24 +218,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($desconto < 0) throw new Exception('Desconto deve ser >= 0.');
             if ($valor_total < 0) throw new Exception('Desconto não pode exceder o total.');
 
-            // Se marcar pronto_aprovacao: exigir anexo (novo) ou já existente (edição)
-            $tem_anexo_existente = false;
-            if ($id_edit > 0) {
-                $st = $pdo->prepare("SELECT COUNT(*) FROM vendas_anexos WHERE pre_contrato_id = ?");
-                $st->execute([$id_edit]);
-                $tem_anexo_existente = ((int)$st->fetchColumn() > 0);
-            }
-            $tem_upload = !empty($_FILES['anexo_orcamento']['tmp_name']);
-            if ($status === 'pronto_aprovacao' && !$tem_upload && !$tem_anexo_existente) {
-                throw new Exception('Para marcar como "Pronto para aprovação", é obrigatório anexar o orçamento/proposta.');
-            }
-
             $pdo->beginTransaction();
 
             if ($id_edit > 0) {
                 $st = $pdo->prepare("
                     UPDATE vendas_pre_contratos
-                    SET tipo_evento = 'casamento',
+                    SET tipo_evento = ?,
                         origem = 'presencial',
                         nome_completo = ?, cpf = ?, rg = ?, telefone = ?, email = ?,
                         cep = ?, endereco_completo = ?, numero = ?, complemento = ?, bairro = ?, cidade = ?, estado = ?, pais = ?, instagram = ?,
@@ -205,6 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE id = ?
                 ");
                 $st->execute([
+                    $tipo_evento,
                     $nome_completo, $cpf, $rg, $telefone, $email,
                     $cep, $endereco, $numero, $complemento, $bairro, $cidade, $estado, $pais, $instagram,
                     $data_evento, $unidade, $hora_inicio, $hora_termino,
@@ -234,7 +265,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      pacote_contratado, forma_pagamento, valor_negociado, desconto, valor_total,
                      observacoes_internas, responsavel_comercial_id, criado_por_ip)
                     VALUES
-                    ('casamento', 'presencial', ?,
+                    (?, 'presencial', ?,
                      ?, ?, ?, ?, ?,
                      ?, ?, ?, ?, ?, ?, ?, ?, ?,
                      ?, ?, ?, ?,
@@ -244,6 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     RETURNING id
                 ");
                 $st->execute([
+                    $tipo_evento,
                     $status,
                     $nome_completo, $cpf, $rg, $telefone, $email,
                     $cep, $endereco, $numero, $complemento, $bairro, $cidade, $estado, $pais, $instagram,
@@ -326,6 +358,12 @@ ob_start();
 .alert-error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
 .adicionais-table{width:100%;border-collapse:collapse;margin-top:.5rem}
 .adicionais-table th,.adicionais-table td{border-bottom:1px solid #e5e7eb;padding:.5rem;text-align:left}
+.tipo-evento-switch{display:flex;gap:.6rem;flex-wrap:wrap;margin:0 0 1rem}
+.tipo-evento-option{position:relative;display:inline-block}
+.tipo-evento-option input{position:absolute;opacity:0;pointer-events:none}
+.tipo-evento-option span{display:inline-block;padding:.48rem .9rem;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#334155;font-weight:700;cursor:pointer;transition:all .15s ease}
+.tipo-evento-option input:checked + span{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
+.valor-base-badge{display:inline-block;padding:.25rem .5rem;border-radius:999px;font-size:.75rem;font-weight:700;background:#eef2ff;color:#3730a3}
 </style>
 
 <div class="vendas-container">
@@ -345,6 +383,16 @@ ob_start();
     <form method="POST" enctype="multipart/form-data">
       <input type="hidden" name="action" value="salvar_presencial">
       <input type="hidden" name="pre_contrato_id" value="<?php echo (int)($registro['id'] ?? 0); ?>">
+
+      <div class="form-section-title">Tipo de evento</div>
+      <div class="tipo-evento-switch">
+        <?php foreach ($tipos_evento as $tipo_key => $tipo_cfg): ?>
+          <label class="tipo-evento-option">
+            <input type="radio" name="tipo_evento" value="<?php echo htmlspecialchars($tipo_key); ?>" <?php echo $tipo_evento_form === $tipo_key ? 'checked' : ''; ?>>
+            <span><?php echo htmlspecialchars($tipo_cfg['label']); ?></span>
+          </label>
+        <?php endforeach; ?>
+      </div>
 
       <div class="form-section-title">Cliente</div>
       <div class="form-group">
@@ -417,7 +465,7 @@ ob_start();
         </div>
       </div>
 
-      <div class="form-section-title">Evento (Casamento)</div>
+      <div class="form-section-title" id="titulo_evento_tipo">Evento (<?php echo htmlspecialchars($tipo_evento_cfg['label']); ?>)</div>
       <div class="form-row">
         <div class="form-group">
           <label>Data <span class="required">*</span></label>
@@ -450,8 +498,8 @@ ob_start();
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>Nome dos noivos <span class="required">*</span></label>
-          <input name="nome_noivos" required value="<?php echo htmlspecialchars($registro['nome_noivos'] ?? ''); ?>">
+          <label><span id="label_nome_evento_tipo"><?php echo htmlspecialchars($tipo_evento_cfg['nome_label']); ?></span> <span class="required">*</span></label>
+          <input id="nome_noivos" name="nome_noivos" required placeholder="<?php echo htmlspecialchars($tipo_evento_cfg['nome_placeholder']); ?>" value="<?php echo htmlspecialchars($registro['nome_noivos'] ?? ''); ?>">
         </div>
         <div class="form-group">
           <label>Nº convidados <span class="required">*</span></label>
@@ -500,27 +548,41 @@ ob_start();
           </select>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Valor negociado (R$) <span class="required">*</span></label>
-          <input type="number" step="0.01" min="0" name="valor_negociado" id="valor_negociado" value="<?php echo htmlspecialchars((string)($registro['valor_negociado'] ?? 0)); ?>" onchange="calcTotal()">
-        </div>
-        <div class="form-group">
-          <label>Desconto (R$)</label>
-          <input type="number" step="0.01" min="0" name="desconto" id="desconto" value="<?php echo htmlspecialchars((string)($registro['desconto'] ?? 0)); ?>" onchange="calcTotal()">
-        </div>
-      </div>
 
       <div class="form-group">
-        <label>Adicionais</label>
-        <button type="button" class="btn btn-secondary" onclick="addAdicional()">+ Adicionar adicional</button>
+        <label>Itens e valores</label>
+        <small style="display:block;color:#64748b;margin:.2rem 0 .6rem;">Preencha item e valor por linha. O total considera todas as linhas e aplica desconto, se houver.</small>
+        <button type="button" class="btn btn-secondary" onclick="addAdicional()">+ Adicionar linha</button>
         <table class="adicionais-table" id="tAdicionais">
-          <thead><tr><th>Item</th><th>Valor</th><th></th></tr></thead>
+          <thead><tr><th>Item</th><th>Valor (R$)</th><th></th></tr></thead>
           <tbody>
+            <tr>
+              <td>Pacote/Plano principal</td>
+              <td>
+                <input
+                  type="text"
+                  inputmode="numeric"
+                  class="money-input"
+                  name="valor_negociado"
+                  id="valor_negociado"
+                  required
+                  value="<?php echo htmlspecialchars(vendas_money_brl($registro['valor_negociado'] ?? 0)); ?>"
+                >
+              </td>
+              <td><span class="valor-base-badge">Base</span></td>
+            </tr>
             <?php foreach ($adicionais_editar as $i=>$a): ?>
               <tr>
                 <td><input name="adicionais[<?php echo $i; ?>][item]" value="<?php echo htmlspecialchars($a['item']); ?>"></td>
-                <td><input type="number" step="0.01" min="0" name="adicionais[<?php echo $i; ?>][valor]" value="<?php echo htmlspecialchars((string)$a['valor']); ?>" onchange="calcTotal()"></td>
+                <td>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    class="money-input"
+                    name="adicionais[<?php echo $i; ?>][valor]"
+                    value="<?php echo htmlspecialchars(vendas_money_brl($a['valor'])); ?>"
+                  >
+                </td>
                 <td><button type="button" class="btn btn-danger" onclick="rmRow(this)">Remover</button></td>
               </tr>
             <?php endforeach; ?>
@@ -528,8 +590,25 @@ ob_start();
         </table>
       </div>
 
+      <div class="form-row">
+        <div class="form-group">
+          <label>Desconto aplicado (R$)</label>
+          <input type="text" inputmode="numeric" class="money-input" name="desconto" id="desconto" value="<?php echo htmlspecialchars(vendas_money_brl($registro['desconto'] ?? 0)); ?>">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Subtotal das linhas</label>
+          <input id="valor_subtotal_display" disabled value="R$ 0,00">
+        </div>
+        <div class="form-group">
+          <label>Desconto</label>
+          <input id="desconto_display" disabled value="R$ 0,00">
+        </div>
+      </div>
       <div class="form-group">
-        <label>Total</label>
+        <label>Total final</label>
         <input id="valor_total_display" disabled value="R$ 0,00" style="font-weight:700">
       </div>
 
@@ -537,7 +616,7 @@ ob_start();
       <div class="form-group">
         <label>Upload orçamento/proposta</label>
         <input type="file" name="anexo_orcamento" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
-        <small style="color:#64748b">Se marcar como <strong>Pronto para aprovação</strong>, é obrigatório ter ao menos um anexo.</small>
+        <small style="color:#64748b">Anexo opcional. Você pode salvar sem arquivo e anexar depois, se necessário.</small>
       </div>
       <?php if (!empty($anexos_editar)): ?>
         <div class="form-group">
@@ -561,7 +640,7 @@ ob_start();
 
       <div style="display:flex;gap:1rem;flex-wrap:wrap">
         <button type="submit" class="btn btn-primary">Salvar</button>
-        <a class="btn btn-secondary" href="index.php?page=vendas_lancamento_presencial">Novo lançamento</a>
+        <a class="btn btn-secondary" href="index.php?page=vendas_lancamento_presencial&tipo_evento=<?php echo urlencode($tipo_evento_form); ?>">Novo lançamento</a>
         <?php if (!empty($registro['id'])): ?>
           <a class="btn btn-secondary" href="index.php?page=vendas_pre_contratos&editar=<?php echo (int)$registro['id']; ?>">Abrir na listagem</a>
         <?php endif; ?>
@@ -572,29 +651,92 @@ ob_start();
 
 <script>
 let idxAd = <?php echo (int)count($adicionais_editar); ?>;
+function formatMoneyFromDigits(digits){
+  if (!digits) return '';
+  const cents = digits.slice(-2).padStart(2, '0');
+  let ints = digits.slice(0, -2);
+  ints = ints.replace(/^0+(?=\d)/, '');
+  if (!ints) ints = '0';
+  ints = ints.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${ints},${cents}`;
+}
+function parseMoneyValue(value){
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const num = parseFloat(normalized);
+  return Number.isFinite(num) ? num : 0;
+}
+function formatMoneyDisplay(value){
+  const num = Number.isFinite(value) ? value : 0;
+  return 'R$ ' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function bindMoneyInput(el){
+  if (!el || el.dataset.moneyBound === '1') return;
+  el.dataset.moneyBound = '1';
+  el.addEventListener('input', function(){
+    const digits = (this.value || '').replace(/\D/g, '');
+    this.value = formatMoneyFromDigits(digits);
+    calcTotal();
+  });
+  el.addEventListener('blur', function(){
+    const digits = (this.value || '').replace(/\D/g, '');
+    this.value = digits ? formatMoneyFromDigits(digits) : '0,00';
+    calcTotal();
+  });
+}
+function initMoneyInputs(scope){
+  (scope || document).querySelectorAll('.money-input').forEach(bindMoneyInput);
+}
 function addAdicional(){
   const tb = document.querySelector('#tAdicionais tbody');
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input name="adicionais[${idxAd}][item]"></td>
-    <td><input type="number" step="0.01" min="0" name="adicionais[${idxAd}][valor]" onchange="calcTotal()"></td>
+    <td><input type="text" inputmode="numeric" class="money-input" name="adicionais[${idxAd}][valor]"></td>
     <td><button type="button" class="btn btn-danger" onclick="rmRow(this)">Remover</button></td>
   `;
   tb.appendChild(tr);
+  initMoneyInputs(tr);
   idxAd++;
+  calcTotal();
 }
 function rmRow(btn){
   btn.closest('tr').remove();
   calcTotal();
 }
 function calcTotal(){
-  const v = parseFloat(document.getElementById('valor_negociado')?.value || 0);
-  const d = parseFloat(document.getElementById('desconto')?.value || 0);
+  const v = parseMoneyValue(document.getElementById('valor_negociado')?.value || 0);
+  const d = parseMoneyValue(document.getElementById('desconto')?.value || 0);
   let add = 0;
-  document.querySelectorAll('#tAdicionais input[name*="[valor]"]').forEach(i => add += parseFloat(i.value || 0));
-  const total = v + add - d;
-  document.getElementById('valor_total_display').value = 'R$ ' + total.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.querySelectorAll('#tAdicionais input[name*="[valor]"]').forEach(i => add += parseMoneyValue(i.value));
+  const subtotal = v + add;
+  const total = subtotal - d;
+  document.getElementById('valor_subtotal_display').value = formatMoneyDisplay(subtotal);
+  document.getElementById('desconto_display').value = formatMoneyDisplay(d);
+  document.getElementById('valor_total_display').value = formatMoneyDisplay(total);
 }
+const tipoEventoConfig = <?php
+  echo json_encode(array_map(static function (array $cfg): array {
+      return [
+          'label' => (string)$cfg['label'],
+          'nome_label' => (string)$cfg['nome_label'],
+          'nome_placeholder' => (string)$cfg['nome_placeholder'],
+      ];
+  }, $tipos_evento), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+?>;
+function atualizarCamposTipoEvento(){
+  const selecionado = document.querySelector('input[name="tipo_evento"]:checked')?.value || 'casamento';
+  const cfg = tipoEventoConfig[selecionado] || tipoEventoConfig.casamento;
+  if (!cfg) return;
+  const titulo = document.getElementById('titulo_evento_tipo');
+  const label = document.getElementById('label_nome_evento_tipo');
+  const input = document.getElementById('nome_noivos');
+  if (titulo) titulo.textContent = `Evento (${cfg.label})`;
+  if (label) label.textContent = cfg.nome_label;
+  if (input) input.placeholder = cfg.nome_placeholder;
+}
+document.querySelectorAll('input[name="tipo_evento"]').forEach(el => el.addEventListener('change', atualizarCamposTipoEvento));
 document.getElementById('como_conheceu')?.addEventListener('change', function(){
   const wrap = document.getElementById('cc_outro_wrap');
   const input = document.getElementById('como_conheceu_outro');
@@ -607,7 +749,29 @@ document.getElementById('como_conheceu')?.addEventListener('change', function(){
     input.value = '';
   }
 });
+
+// Máscaras para evitar inconsistência de pontuação
+document.querySelector('input[name="cpf"]')?.addEventListener('input', function(e){
+  let value = (e.target.value || '').replace(/\D/g, '').slice(0, 11);
+  value = value.replace(/(\d{3})(\d)/, '$1.$2');
+  value = value.replace(/(\d{3})(\d)/, '$1.$2');
+  value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+  e.target.value = value;
+});
+document.querySelector('input[name="telefone"]')?.addEventListener('input', function(e){
+  let value = (e.target.value || '').replace(/\D/g, '').slice(0, 11);
+  if (value.length <= 10) {
+    value = value.replace(/(\d{2})(\d)/, '($1) $2');
+    value = value.replace(/(\d{4})(\d)/, '$1-$2');
+  } else {
+    value = value.replace(/(\d{2})(\d)/, '($1) $2');
+    value = value.replace(/(\d{5})(\d)/, '$1-$2');
+  }
+  e.target.value = value;
+});
+initMoneyInputs();
 calcTotal();
+atualizarCamposTipoEvento();
 
 // Busca automática de CEP (ViaCEP via endpoint interno)
 let cepTimeout = null;

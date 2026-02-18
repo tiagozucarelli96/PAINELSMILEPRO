@@ -483,6 +483,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     $img_name = trim((string)($img['nome'] ?? ''));
                     if ($img_categoria === 'infantil') {
                         $img_name = 'Infantil';
+                    } elseif ($img_categoria === 'casamento') {
+                        $img_name = 'Casamento';
                     } elseif ($img_categoria === '15_anos') {
                         $img_name = '15 anos';
                     } elseif ($img_name === '') {
