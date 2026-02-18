@@ -502,7 +502,7 @@ includeSidebar('Agenda');
                         🔍 Filtros
                     </button>
                     <?php if ($is_superadmin): ?>
-                    <a href="agenda_config.php" class="btn btn-outline">
+                    <a href="index.php?page=agenda_config" class="btn btn-outline">
                         ⚙️ Config
                     </a>
                     <a href="index.php?page=google_calendar_config" class="btn btn-outline" style="text-decoration: none;">

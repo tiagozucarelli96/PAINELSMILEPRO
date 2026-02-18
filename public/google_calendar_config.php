@@ -4,8 +4,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_administrativo'])) {
+if (empty($_SESSION['logado'])) {
     header('Location: index.php?page=login');
+    exit;
+}
+
+if (empty($_SESSION['perm_superadmin'])) {
+    header('Location: index.php?page=dashboard&error=' . urlencode('Acesso permitido apenas para superadmin.'));
     exit;
 }
 

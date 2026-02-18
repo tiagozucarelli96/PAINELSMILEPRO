@@ -6,8 +6,19 @@ require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/agenda_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
+if (empty($_SESSION['logado'])) {
+    header('Location: index.php?page=login');
+    exit;
+}
+
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+if (!$is_superadmin) {
+    header('Location: index.php?page=dashboard&error=' . urlencode('Acesso permitido apenas para superadmin.'));
+    exit;
+}
+
 $agenda = new AgendaHelper();
-$usuario_id = $_SESSION['user_id'] ?? 1;
+$usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
 
 // Definir a página atual para o sidebar_unified.php
 $_GET['page'] = 'agenda_config';

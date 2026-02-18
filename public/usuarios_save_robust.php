@@ -332,6 +332,22 @@ class UsuarioSaveManager {
                 }
             }
 
+            // Unificação de permissões da Agenda:
+            // perm_agenda (sidebar/módulo) e perm_agenda_ver (legado) devem caminhar juntas.
+            $hasPermAgendaCol = $this->columnExists('perm_agenda');
+            $hasPermAgendaVerCol = $this->columnExists('perm_agenda_ver');
+            if ($hasPermAgendaCol || $hasPermAgendaVerCol) {
+                $agendaEnabled = (($permissions['perm_agenda'] ?? 0) === 1)
+                    || (($permissions['perm_agenda_ver'] ?? 0) === 1);
+
+                if ($hasPermAgendaCol) {
+                    $permissions['perm_agenda'] = $agendaEnabled ? 1 : 0;
+                }
+                if ($hasPermAgendaVerCol) {
+                    $permissions['perm_agenda_ver'] = $agendaEnabled ? 1 : 0;
+                }
+            }
+
             // Se Logística foi habilitada e não vier escopo explícito, usar "todas".
             // Evita usuário ficar com permissão marcada sem enxergar o módulo na sidebar.
             if ($this->columnExists('unidade_scope')) {

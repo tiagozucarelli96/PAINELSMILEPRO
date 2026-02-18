@@ -46,6 +46,12 @@ try {
     $any = $any || $_SESSION[$k];
   }
 
+  // Unificação Agenda: trata perm_agenda e perm_agenda_ver como equivalentes.
+  // Evita inconsistência entre menu (perm_agenda) e validações legadas (perm_agenda_ver).
+  $agendaUnified = truthy($u['perm_agenda'] ?? false) || truthy($u['perm_agenda_ver'] ?? false);
+  $_SESSION['perm_agenda'] = $agendaUnified;
+  $_SESSION['perm_agenda_ver'] = $agendaUnified;
+
   // Escopo de unidade (Logística)
   $unidade_scope = array_key_exists('unidade_scope', $u) && !empty($u['unidade_scope'])
     ? (string)$u['unidade_scope']

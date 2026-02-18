@@ -39,8 +39,9 @@ return [
     // Páginas específicas dentro dos módulos
     
     // Agenda
-    'agenda_config' => 'perm_agenda',
+    'agenda_config' => 'perm_superadmin',
     'agenda_relatorios' => 'perm_agenda',
+    'google_calendar_config' => 'perm_superadmin',
     
     // Comercial
     'comercial_degustacoes' => 'perm_comercial',
