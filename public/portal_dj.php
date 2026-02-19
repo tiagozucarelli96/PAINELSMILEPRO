@@ -26,12 +26,6 @@ if (empty($_SESSION['portal_dj_logado']) || $_SESSION['portal_dj_logado'] !== tr
 $fornecedor_id = $_SESSION['portal_dj_fornecedor_id'];
 $nome = $_SESSION['portal_dj_nome'];
 
-// Mês/Ano atual (para calendário)
-$month = (int)($_GET['month'] ?? date('n'));
-$year = (int)($_GET['year'] ?? date('Y'));
-if ($month < 1) { $month = 12; $year--; }
-if ($month > 12) { $month = 1; $year++; }
-
 // Logout
 if (isset($_GET['logout'])) {
     // Invalidar sessão no banco
@@ -49,18 +43,22 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
-// Buscar eventos do mês (somente eventos com link de DJ gerado)
+// Buscar eventos dos próximos 30 dias (somente link DJ ativo, reunião concluída e tipo casamento/15 anos)
 $eventos = [];
-$eventos_por_dia = [];
+$eventos_por_data = [];
+$erro_eventos = '';
 try {
-    $first_day = mktime(0, 0, 0, $month, 1, $year);
-    $start_date = date('Y-m-01', $first_day);
-    $end_date = date('Y-m-t', $first_day);
+    $start = new DateTime('today');
+    $end = new DateTime('today');
+    $end->modify('+30 days');
+    $start_date = $start->format('Y-m-d');
+    $end_date = $end->format('Y-m-d');
+    $tipo_expr = "LOWER(REGEXP_REPLACE(COALESCE(NULLIF(r.me_event_snapshot->>'tipo_evento', ''), r.me_event_snapshot->>'unidade', ''), '[^a-z0-9]+', '', 'g'))";
 
     $stmt = $pdo->prepare("
         SELECT r.id,
                r.status,
-               (r.me_event_snapshot->>'data') as data_evento,
+               (r.me_event_snapshot->>'data')::date as data_evento,
                (r.me_event_snapshot->>'nome') as nome_evento,
                (r.me_event_snapshot->>'local') as local_evento,
                (r.me_event_snapshot->>'hora_inicio') as hora_evento,
@@ -71,23 +69,33 @@ try {
         JOIN eventos_links_publicos lp ON lp.meeting_id = r.id
         WHERE lp.link_type = 'cliente_dj'
           AND lp.is_active = TRUE
+          AND r.status = 'concluida'
           AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
           AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
+          AND (
+                {$tipo_expr} = 'casamento'
+                OR {$tipo_expr} LIKE '%15ano%'
+          )
         GROUP BY r.id, r.status, r.me_event_snapshot
-        ORDER BY (r.me_event_snapshot->>'data')::date ASC
+        ORDER BY (r.me_event_snapshot->>'data')::date ASC, (r.me_event_snapshot->>'hora_inicio') ASC
     ");
     $stmt->execute([':start' => $start_date, ':end' => $end_date]);
     $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     foreach ($eventos as $ev) {
-        $day = (int)date('j', strtotime($ev['data_evento']));
-        if (!isset($eventos_por_dia[$day])) {
-            $eventos_por_dia[$day] = [];
+        $data_evento = trim((string)($ev['data_evento'] ?? ''));
+        if ($data_evento === '') {
+            continue;
         }
-        $eventos_por_dia[$day][] = $ev;
+        $data_norm = date('Y-m-d', strtotime($data_evento));
+        if (!isset($eventos_por_data[$data_norm])) {
+            $eventos_por_data[$data_norm] = [];
+        }
+        $eventos_por_data[$data_norm][] = $ev;
     }
 } catch (Exception $e) {
     error_log("Erro portal DJ (lista calendário): " . $e->getMessage());
+    $erro_eventos = 'Erro interno ao buscar eventos.';
 }
 
 // Ver detalhes de um evento
@@ -99,17 +107,25 @@ if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
 
     try {
+        $tipo_expr = "LOWER(REGEXP_REPLACE(COALESCE(NULLIF(r.me_event_snapshot->>'tipo_evento', ''), r.me_event_snapshot->>'unidade', ''), '[^a-z0-9]+', '', 'g'))";
         $stmt = $pdo->prepare("
             SELECT r.id,
                    r.status,
                    r.me_event_snapshot,
-                   (r.me_event_snapshot->>'data') as data_evento,
+                   (r.me_event_snapshot->>'data')::date as data_evento,
                    (r.me_event_snapshot->>'nome') as nome_evento,
                    (r.me_event_snapshot->>'local') as local_evento,
                    (r.me_event_snapshot->>'hora_inicio') as hora_evento,
                    (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome
             FROM eventos_reunioes r
             WHERE r.id = :id
+              AND r.status = 'concluida'
+              AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
+              AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
+              AND (
+                    {$tipo_expr} = 'casamento'
+                    OR {$tipo_expr} LIKE '%15ano%'
+              )
               AND EXISTS (
                 SELECT 1 FROM eventos_links_publicos lp
                 WHERE lp.meeting_id = r.id
@@ -118,7 +134,7 @@ if (!empty($_GET['evento'])) {
               )
             LIMIT 1
         ");
-        $stmt->execute([':id' => $evento_id]);
+        $stmt->execute([':id' => $evento_id, ':start' => $start_date, ':end' => $end_date]);
         $evento_selecionado = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if ($evento_selecionado) {
@@ -130,12 +146,6 @@ if (!empty($_GET['evento'])) {
         $evento_selecionado = null;
     }
 }
-
-$month_names = [
-    1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março', 4 => 'Abril',
-    5 => 'Maio', 6 => 'Junho', 7 => 'Julho', 8 => 'Agosto',
-    9 => 'Setembro', 10 => 'Outubro', 11 => 'Novembro', 12 => 'Dezembro'
-];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -730,20 +740,44 @@ $month_names = [
         
         <?php else: ?>
         <!-- Calendário -->
-        <h2 class="section-title">📅 Calendário (somente eventos com formulário DJ gerado)</h2>
-
+        <h2 class="section-title">📅 Próximos eventos (30 dias)</h2>
+        <p style="color: #64748b; margin-top: -0.25rem; margin-bottom: 1rem;">Somente casamento e 15 anos, com reunião final concluída e link DJ ativo.</p>
         <div class="month-nav">
-            <a class="nav-btn" href="?page=portal_dj&month=<?= $month - 1 ?>&year=<?= $year ?>" aria-label="Mês anterior">←</a>
-            <h2><?= htmlspecialchars($month_names[$month] ?? '') ?> <?= (int)$year ?></h2>
-            <a class="nav-btn" href="?page=portal_dj&month=<?= $month + 1 ?>&year=<?= $year ?>" aria-label="Próximo mês">→</a>
-            <a href="?page=portal_dj" class="btn btn-primary" style="margin-left: auto;">Hoje</a>
+            <h2>Janela de <?= htmlspecialchars(date('d/m/Y', strtotime($start_date))) ?> até <?= htmlspecialchars(date('d/m/Y', strtotime($end_date))) ?></h2>
+            <a href="?page=portal_dj" class="btn btn-primary" style="margin-left: auto;">⟳ Atualizar</a>
         </div>
 
+        <?php if ($erro_eventos): ?>
+        <div class="empty-state">
+            <p style="font-size: 2rem;">⚠️</p>
+            <p><strong>Não foi possível carregar os eventos.</strong></p>
+            <p><?= htmlspecialchars($erro_eventos) ?></p>
+        </div>
+        <?php elseif (empty($eventos)): ?>
+        <div class="empty-state">
+            <p style="font-size: 2rem;">🎧</p>
+            <p><strong>Nenhum evento nos próximos 30 dias.</strong></p>
+            <p>Este calendário mostra eventos de casamento e 15 anos com reunião final concluída.</p>
+        </div>
+        <?php else: ?>
         <?php
-            $first_day = mktime(0, 0, 0, $month, 1, $year);
-            $days_in_month = (int)date('t', $first_day);
-            $start_weekday = (int)date('w', $first_day); // 0=Dom, 6=Sab
-            $today = date('Y-m-d');
+            $today = new DateTime('today');
+            $end = new DateTime('today');
+            $end->modify('+30 days');
+
+            $start_grid = new DateTime('today');
+            $weekday = (int)$start_grid->format('w');
+            if ($weekday > 0) {
+                $start_grid->modify('-' . $weekday . ' days');
+            }
+
+            $end_grid = clone $end;
+            $weekday_end = (int)$end_grid->format('w');
+            if ($weekday_end < 6) {
+                $end_grid->modify('+' . (6 - $weekday_end) . ' days');
+            }
+
+            $cursor = clone $start_grid;
         ?>
 
         <div class="calendar">
@@ -757,23 +791,14 @@ $month_names = [
                 <div>Sáb</div>
             </div>
             <div class="calendar-body">
-                <?php
-                    $cell = 0;
-                    for ($i = 0; $i < $start_weekday; $i++):
-                        $prev_day = date('j', strtotime("-" . ($start_weekday - $i) . " days", $first_day));
+                <?php while ($cursor <= $end_grid):
+                    $date_key = $cursor->format('Y-m-d');
+                    $is_today = $date_key === $today->format('Y-m-d');
+                    $is_outside = ($cursor < $today) || ($cursor > $end);
+                    $day_events = $eventos_por_data[$date_key] ?? [];
                 ?>
-                <div class="calendar-day other-month">
-                    <div class="day-number"><?= (int)$prev_day ?></div>
-                </div>
-                <?php $cell++; endfor; ?>
-
-                <?php for ($day = 1; $day <= $days_in_month; $day++):
-                    $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
-                    $is_today = $date === $today;
-                    $day_events = $eventos_por_dia[$day] ?? [];
-                ?>
-                <div class="calendar-day <?= $is_today ? 'today' : '' ?>">
-                    <div class="day-number"><?= (int)$day ?></div>
+                <div class="calendar-day <?= $is_outside ? 'other-month' : '' ?> <?= $is_today ? 'today' : '' ?>">
+                    <div class="day-number"><?= (int)$cursor->format('j') ?></div>
                     <div class="day-events">
                         <?php foreach (array_slice($day_events, 0, 3) as $ev): 
                             $title_parts = [];
@@ -783,15 +808,15 @@ $month_names = [
                             $title = trim(implode(' | ', array_filter($title_parts)));
                             $ev_name = (string)($ev['nome_evento'] ?? '');
                             $short = function_exists('mb_substr') ? mb_substr($ev_name, 0, 15) : substr($ev_name, 0, 15);
-                            $tag_class = !empty($ev['dj_submitted']) ? 'concluida' : 'rascunho';
+                            $len = function_exists('mb_strlen') ? mb_strlen($ev_name) : strlen($ev_name);
                         ?>
                         <a href="?page=portal_dj&evento=<?= (int)$ev['id'] ?>"
-                           class="event-tag <?= $tag_class ?>"
+                           class="event-tag concluida"
                            title="<?= htmlspecialchars($title ?: $ev_name) ?>">
-                            <?= htmlspecialchars($short) ?><?= (strlen($ev_name) > 15 ? '...' : '') ?>
-	                        </a>
-	                        <?php endforeach; ?>
-	                        <?php if (count($day_events) > 3): ?>
+                            <?= htmlspecialchars($short) ?><?= ($len > 15 ? '...' : '') ?>
+                        </a>
+                        <?php endforeach; ?>
+                        <?php if (count($day_events) > 3): ?>
                             <?php
                                 $events_payload = [];
                                 foreach ($day_events as $ev_full) {
@@ -809,36 +834,21 @@ $month_names = [
                                     'UTF-8'
                                 );
                             ?>
-	                        <button
+                        <button
                                 type="button"
                                 class="event-tag muted more-btn"
                                 data-open-day-modal="1"
-                                data-date-display="<?= htmlspecialchars(sprintf('%02d/%02d/%04d', $day, $month, $year)) ?>"
+                                data-date-display="<?= htmlspecialchars($cursor->format('d/m/Y')) ?>"
                                 data-events="<?= $events_json ?>"
                             >+<?= (int)(count($day_events) - 3) ?> mais</button>
-	                        <?php endif; ?>
-	                    </div>
-	                </div>
-	                <?php $cell++; endfor; ?>
-
-                <?php while ($cell % 7 !== 0):
-                    $next_day = $cell - $start_weekday - $days_in_month + 1;
-                ?>
-                <div class="calendar-day other-month">
-                    <div class="day-number"><?= (int)$next_day ?></div>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <?php $cell++; endwhile; ?>
+                <?php $cursor->modify('+1 day'); endwhile; ?>
             </div>
         </div>
 
-        <?php if (empty($eventos)): ?>
-        <div class="empty-state">
-            <p style="font-size: 2rem;">🎧</p>
-            <p><strong>Nenhum evento com formulário de DJ gerado neste mês.</strong></p>
-            <p>Os eventos aparecem aqui quando a equipe gera o link do formulário DJ na reunião final.</p>
-        </div>
-        <?php else: ?>
-        <h3 class="section-title" style="margin-top: 0;">📋 Eventos deste mês (<?= (int)count($eventos) ?>)</h3>
+        <h3 class="section-title" style="margin-top: 0;">📋 Eventos dos próximos 30 dias (<?= (int)count($eventos) ?>)</h3>
         <div class="events-grid">
             <?php foreach ($eventos as $ev):
                 $is_past = strtotime($ev['data_evento']) < strtotime('today');
