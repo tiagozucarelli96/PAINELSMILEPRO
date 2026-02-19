@@ -30,6 +30,62 @@ $secoes = [];
 $error = '';
 $success = '';
 
+function eventos_reuniao_normalizar_uploads_field(array $files, string $field): array {
+    if (empty($files[$field])) {
+        return [];
+    }
+
+    $entry = $files[$field];
+    if (!is_array($entry)) {
+        return [];
+    }
+
+    if (!is_array($entry['name'] ?? null)) {
+        if (($entry['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return [];
+        }
+        return [[
+            'name' => (string)($entry['name'] ?? ''),
+            'type' => (string)($entry['type'] ?? ''),
+            'tmp_name' => (string)($entry['tmp_name'] ?? ''),
+            'error' => (int)($entry['error'] ?? UPLOAD_ERR_NO_FILE),
+            'size' => (int)($entry['size'] ?? 0),
+        ]];
+    }
+
+    $items = [];
+    $names = $entry['name'];
+    $total = is_array($names) ? count($names) : 0;
+    for ($i = 0; $i < $total; $i++) {
+        if (($entry['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+        $items[] = [
+            'name' => (string)($entry['name'][$i] ?? ''),
+            'type' => (string)($entry['type'][$i] ?? ''),
+            'tmp_name' => (string)($entry['tmp_name'][$i] ?? ''),
+            'error' => (int)($entry['error'][$i] ?? UPLOAD_ERR_NO_FILE),
+            'size' => (int)($entry['size'][$i] ?? 0),
+        ];
+    }
+
+    return $items;
+}
+
+function eventos_reuniao_serializar_anexo(array $anexo): array {
+    return [
+        'id' => (int)($anexo['id'] ?? 0),
+        'original_name' => (string)($anexo['original_name'] ?? 'arquivo'),
+        'mime_type' => (string)($anexo['mime_type'] ?? 'application/octet-stream'),
+        'file_kind' => (string)($anexo['file_kind'] ?? 'outros'),
+        'size_bytes' => (int)($anexo['size_bytes'] ?? 0),
+        'public_url' => (string)($anexo['public_url'] ?? ''),
+        'uploaded_at' => array_key_exists('uploaded_at', $anexo) && $anexo['uploaded_at'] !== null ? (string)$anexo['uploaded_at'] : null,
+        'uploaded_by_type' => (string)($anexo['uploaded_by_type'] ?? ''),
+        'note' => (string)($anexo['note'] ?? ''),
+    ];
+}
+
 // Processar ações POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
@@ -252,6 +308,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ok = eventos_reuniao_atualizar_status($pdo, $meeting_id, $status, $user_id);
             echo json_encode(['ok' => $ok]);
             exit;
+
+        case 'upload_anexos_dj':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+
+            $uploads = eventos_reuniao_normalizar_uploads_field($_FILES, 'anexos');
+            if (empty($uploads)) {
+                echo json_encode(['ok' => false, 'error' => 'Nenhum arquivo enviado']);
+                exit;
+            }
+
+            $uploaded = 0;
+            $errors = [];
+
+            try {
+                $uploader = new MagaluUpload();
+            } catch (Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => 'Falha ao inicializar upload: ' . $e->getMessage()]);
+                exit;
+            }
+
+            foreach ($uploads as $file) {
+                if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                    $errors[] = 'Falha no arquivo: ' . (($file['name'] ?? '') !== '' ? $file['name'] : 'sem nome');
+                    continue;
+                }
+
+                try {
+                    $prefix = 'eventos/reunioes/' . $meeting_id . '/interno_dj';
+                    $upload_result = $uploader->upload($file, $prefix);
+                    $save_result = eventos_reuniao_salvar_anexo(
+                        $pdo,
+                        $meeting_id,
+                        'dj_protocolo',
+                        $upload_result,
+                        'interno',
+                        (int)$user_id
+                    );
+                    if (empty($save_result['ok'])) {
+                        $errors[] = (($file['name'] ?? '') !== '' ? $file['name'] : 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
+                        continue;
+                    }
+                    $uploaded++;
+                } catch (Throwable $e) {
+                    $errors[] = (($file['name'] ?? '') !== '' ? $file['name'] : 'arquivo') . ': ' . $e->getMessage();
+                }
+            }
+
+            if ($uploaded <= 0) {
+                echo json_encode(['ok' => false, 'error' => !empty($errors) ? implode(' | ', array_slice($errors, 0, 2)) : 'Não foi possível enviar os arquivos']);
+                exit;
+            }
+
+            $anexos_dj_response = array_map(
+                static function(array $anexo): array {
+                    return eventos_reuniao_serializar_anexo($anexo);
+                },
+                eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo')
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'uploaded' => $uploaded,
+                'warning' => !empty($errors) ? implode(' | ', array_slice($errors, 0, 2)) : '',
+                'anexos' => $anexos_dj_response
+            ]);
+            exit;
             
         case 'upload_imagem':
             $mid = (int)($_POST['meeting_id'] ?? 0);
@@ -298,6 +423,7 @@ eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $form_templates = eventos_form_templates_listar($pdo);
 $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj') : [];
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
+$anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $decoracao_schema_raw = $secoes['decoracao']['form_schema_json'] ?? '[]';
 $decoracao_schema_decoded = json_decode((string)$decoracao_schema_raw, true);
@@ -732,6 +858,125 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         padding: 1rem;
         color: #64748b;
         background: #ffffff;
+    }
+
+    .dj-anexos-box {
+        margin-top: 1rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #ffffff;
+        padding: 0.9rem;
+    }
+
+    .dj-anexos-head {
+        margin-bottom: 0.75rem;
+    }
+
+    .dj-anexos-head h4 {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #0f172a;
+    }
+
+    .dj-anexos-head p {
+        margin: 0.25rem 0 0 0;
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+
+    .dj-anexos-upload {
+        display: flex;
+        gap: 0.65rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .dj-anexos-upload input[type="file"] {
+        flex: 1;
+        min-width: 260px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.45rem 0.55rem;
+        font-size: 0.82rem;
+        background: #fff;
+    }
+
+    .dj-anexos-status {
+        margin-top: 0.6rem;
+        font-size: 0.8rem;
+        color: #475569;
+    }
+
+    .dj-anexos-status.error {
+        color: #b91c1c;
+    }
+
+    .dj-anexos-status.success {
+        color: #047857;
+    }
+
+    .dj-anexos-list {
+        margin-top: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .dj-anexo-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        background: #f8fafc;
+    }
+
+    .dj-anexo-info {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.55rem;
+        min-width: 0;
+        flex: 1;
+    }
+
+    .dj-anexo-icon {
+        font-size: 1.05rem;
+        line-height: 1;
+        margin-top: 0.1rem;
+    }
+
+    .dj-anexo-name {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #1e293b;
+        word-break: break-word;
+    }
+
+    .dj-anexo-meta {
+        margin-top: 0.15rem;
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .dj-anexo-note {
+        margin-top: 0.2rem;
+        font-size: 0.76rem;
+        color: #475569;
+    }
+
+    .dj-anexo-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+    }
+
+    .btn-upload-mini {
+        min-width: 110px;
+        justify-content: center;
     }
 
     .dj-dirty-badge {
@@ -1333,6 +1578,22 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 </div>
                 <div id="djSlotsEmptyState" class="dj-builder-empty-state">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
                 <div id="djSlotsContainer" class="dj-slots-stack"></div>
+
+                <div class="dj-anexos-box">
+                    <div class="dj-anexos-head">
+                        <h4>📎 Anexos para o DJ</h4>
+                        <p>Envie materiais de apoio (PDF, foto, áudio, vídeo e documentos). Eles ficam disponíveis no Portal DJ.</p>
+                    </div>
+                    <div class="dj-anexos-upload">
+                        <input type="file"
+                               id="djAnexosInput"
+                               multiple
+                               accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
+                        <button type="button" class="btn btn-primary btn-upload-mini" id="btnUploadDjAnexos" onclick="uploadDjAnexos()">Enviar arquivos</button>
+                    </div>
+                    <div class="dj-anexos-status" id="djAnexosStatus">Nenhum envio em andamento.</div>
+                    <div class="dj-anexos-list" id="djAnexosList"></div>
+                </div>
             </div>
             <?php endif; ?>
 
@@ -1503,6 +1764,9 @@ const initialObservacoesClientLinks = <?= json_encode(array_map(static function 
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_observacoes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialDjAnexos = <?= json_encode(array_map(static function(array $anexo): array {
+    return eventos_reuniao_serializar_anexo($anexo);
+}, $anexos_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -1526,6 +1790,7 @@ let djSlotOrder = [];
 let selectedDjTemplateIds = {};
 let lastSavedDjSchemaSignatures = {};
 let djLinksBySlot = {};
+let djAnexos = Array.isArray(initialDjAnexos) ? initialDjAnexos.slice() : [];
 let observacoesSlotOrder = [];
 let selectedObservacoesTemplateIds = {};
 let observacoesLinksBySlot = {};
@@ -2167,6 +2432,135 @@ function setDjLinkOutput(slot, url) {
     }
     if (copyBtn) {
         copyBtn.style.display = url ? 'inline-flex' : 'none';
+    }
+}
+
+function formatDjAnexoSize(sizeBytes) {
+    const size = Number(sizeBytes || 0);
+    if (!Number.isFinite(size) || size <= 0) return '-';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function getDjAnexoIcon(anexo) {
+    const kind = String(anexo && anexo.file_kind ? anexo.file_kind : '').toLowerCase();
+    if (kind === 'imagem') return '🖼️';
+    if (kind === 'video') return '🎬';
+    if (kind === 'audio') return '🎵';
+    if (kind === 'pdf') return '📄';
+    return '📎';
+}
+
+function setDjAnexosStatus(message, type = '') {
+    const status = document.getElementById('djAnexosStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.remove('error', 'success');
+    if (type === 'error' || type === 'success') {
+        status.classList.add(type);
+    }
+}
+
+function renderDjAnexosList() {
+    const list = document.getElementById('djAnexosList');
+    if (!list) return;
+
+    if (!Array.isArray(djAnexos) || djAnexos.length === 0) {
+        list.innerHTML = '<div class="builder-field-meta">Nenhum anexo enviado para o DJ ainda.</div>';
+        return;
+    }
+
+    list.innerHTML = djAnexos.map((anexo) => {
+        const name = escapeHtmlForField(String(anexo && anexo.original_name ? anexo.original_name : 'arquivo'));
+        const mime = escapeHtmlForField(String(anexo && anexo.mime_type ? anexo.mime_type : 'application/octet-stream'));
+        const size = formatDjAnexoSize(anexo && anexo.size_bytes ? anexo.size_bytes : 0);
+        const uploadedAt = anexo && anexo.uploaded_at ? formatDate(anexo.uploaded_at) : '-';
+        const uploadedBy = escapeHtmlForField(String(anexo && anexo.uploaded_by_type ? anexo.uploaded_by_type : 'interno'));
+        const noteRaw = String(anexo && anexo.note ? anexo.note : '').trim();
+        const noteHtml = noteRaw !== '' ? `<div class="dj-anexo-note"><strong>Obs:</strong> ${escapeHtmlForField(noteRaw)}</div>` : '';
+        const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
+        const urlEsc = escapeHtmlForField(url);
+        const icon = getDjAnexoIcon(anexo);
+        const actionsHtml = url !== ''
+            ? `<div class="dj-anexo-actions">
+                    <a class="btn btn-secondary btn-mini" href="${urlEsc}" target="_blank" rel="noopener noreferrer">Abrir</a>
+                    <a class="btn btn-primary btn-mini" href="${urlEsc}" target="_blank" rel="noopener noreferrer" download>Download</a>
+               </div>`
+            : '<div class="builder-field-meta">Sem URL pública disponível.</div>';
+
+        return `
+            <div class="dj-anexo-item">
+                <div class="dj-anexo-info">
+                    <span class="dj-anexo-icon">${icon}</span>
+                    <div>
+                        <div class="dj-anexo-name">${name}</div>
+                        <div class="dj-anexo-meta">${mime} • ${size} • ${uploadedAt} • ${uploadedBy}</div>
+                        ${noteHtml}
+                    </div>
+                </div>
+                ${actionsHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+async function uploadDjAnexos() {
+    if (!meetingId) {
+        alert('Reunião inválida.');
+        return;
+    }
+
+    const input = document.getElementById('djAnexosInput');
+    const button = document.getElementById('btnUploadDjAnexos');
+    if (!input || !button) return;
+
+    const files = Array.from(input.files || []);
+    if (!files.length) {
+        alert('Selecione ao menos um arquivo.');
+        return;
+    }
+
+    button.disabled = true;
+    setDjAnexosStatus('Enviando arquivos...', '');
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'upload_anexos_dj');
+        formData.append('meeting_id', String(meetingId));
+        files.forEach((file) => {
+            formData.append('anexos[]', file, file.name || 'arquivo');
+        });
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+
+        if (!data.ok) {
+            setDjAnexosStatus(data.error || 'Falha ao enviar anexos.', 'error');
+            return;
+        }
+
+        if (Array.isArray(data.anexos)) {
+            djAnexos = data.anexos;
+        }
+        renderDjAnexosList();
+        input.value = '';
+
+        const uploadedCount = Number(data.uploaded || files.length || 0);
+        const warning = String(data.warning || '').trim();
+        if (warning !== '') {
+            setDjAnexosStatus(`Upload concluído (${uploadedCount} arquivo(s)). Aviso: ${warning}`, 'success');
+        } else {
+            setDjAnexosStatus(`Upload concluído (${uploadedCount} arquivo(s)).`, 'success');
+        }
+    } catch (err) {
+        setDjAnexosStatus('Erro ao enviar anexos: ' + err.message, 'error');
+    } finally {
+        button.disabled = false;
     }
 }
 
@@ -3613,6 +4007,7 @@ function bindSearchEvents() {
 if (meetingId) {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
+            renderDjAnexosList();
             applyInitialTabFromQuery();
             loadTinyMCEAndInit();
             initSectionTemplateSelection();
@@ -3621,6 +4016,7 @@ if (meetingId) {
             refreshDjTemplates();
         });
     } else {
+        renderDjAnexosList();
         applyInitialTabFromQuery();
         loadTinyMCEAndInit();
         initSectionTemplateSelection();

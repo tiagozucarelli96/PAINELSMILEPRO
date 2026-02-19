@@ -1240,7 +1240,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                                        id="<?= eventos_cliente_e($file_name) ?>"
                                        name="<?= eventos_cliente_e($file_name) ?>[]"
                                        multiple
-                                       accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                                       accept=".png,.jpg,.jpeg,.webp,.heic,.heif,.pdf,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
                                        style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"
                                        data-note-target="<?= eventos_cliente_e($file_name) ?>Notes"
                                        data-note-name="file_note_<?= eventos_cliente_e($field_id) ?>[]"
@@ -1288,7 +1288,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                            id="anexosInput"
                            name="anexos[]"
                            multiple
-                           accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                           accept=".png,.jpg,.jpeg,.webp,.heic,.heif,.pdf,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
                            data-note-target="legacyAnexosNotes"
                            data-note-name="anexos_note[]">
                     <div class="file-note-wrap" id="legacyAnexosNotes"></div>

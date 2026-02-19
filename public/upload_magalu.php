@@ -99,7 +99,9 @@ class MagaluUpload {
         
         // Validar MIME type
         $allowedTypes = [
-            'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+            'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif',
+            'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo',
+            'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/mp4', 'audio/aac',
             'application/pdf', 'text/plain', 'text/csv',
             'application/msword', // .doc
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx

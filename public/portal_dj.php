@@ -197,6 +197,21 @@ $month_names = [
             background: #1e3a8a;
             color: white;
         }
+        .btn-primary:hover {
+            background: #1e40af;
+        }
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+        .btn-small {
+            padding: 0.4rem 0.7rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -289,19 +304,50 @@ $month_names = [
         .anexo-item {
             display: flex;
             align-items: center;
+            justify-content: space-between;
             gap: 0.75rem;
             padding: 0.75rem;
             background: #f1f5f9;
             border-radius: 6px;
             margin-bottom: 0.5rem;
+            border: 1px solid #e2e8f0;
+            flex-wrap: wrap;
         }
-        .anexo-item a {
-            color: #1e3a8a;
-            text-decoration: none;
+        .anexo-main {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.65rem;
+            min-width: 0;
+            flex: 1;
+        }
+        .anexo-icon {
+            font-size: 1.1rem;
+            line-height: 1;
+            margin-top: 0.1rem;
+        }
+        .anexo-info {
+            min-width: 0;
+        }
+        .anexo-name {
             font-size: 0.875rem;
+            font-weight: 700;
+            color: #0f172a;
+            word-break: break-word;
         }
-        .anexo-item a:hover {
-            text-decoration: underline;
+        .anexo-meta {
+            margin-top: 0.2rem;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+        .anexo-note {
+            margin-top: 0.2rem;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+        .anexo-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
         }
         .empty-state {
             text-align: center;
@@ -529,6 +575,44 @@ $month_names = [
             font-size: 0.85rem;
             color: #64748b;
         }
+        .anexo-preview-body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 240px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .anexo-preview-body img,
+        .anexo-preview-body video {
+            max-width: 100%;
+            max-height: 65vh;
+            display: block;
+        }
+        .anexo-preview-body audio {
+            width: min(560px, 100%);
+        }
+        .anexo-preview-body iframe {
+            width: 100%;
+            height: min(70vh, 640px);
+            border: 0;
+            background: #fff;
+        }
+        .anexo-preview-empty {
+            text-align: center;
+            color: #64748b;
+            font-size: 0.9rem;
+            padding: 2rem 1rem;
+        }
+        .anexo-preview-footer {
+            margin-top: 0.9rem;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
 
         @media (max-width: 768px) {
             .container { padding: 1rem; }
@@ -537,6 +621,13 @@ $month_names = [
             .day-number { font-size: 0.75rem; }
             .event-tag { font-size: 0.65rem; padding: 0.125rem 0.25rem; }
             .calendar-header div { padding: 0.5rem; font-size: 0.75rem; }
+            .anexo-actions {
+                width: 100%;
+            }
+            .anexo-actions .btn {
+                flex: 1;
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -579,14 +670,58 @@ $month_names = [
             <div class="anexos-list">
                 <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos</h3>
                 <?php foreach ($anexos as $a): ?>
+                <?php
+                    $anexo_url = trim((string)($a['public_url'] ?? ''));
+                    $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
+                    $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
+                    $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
+                    $anexo_size = (int)($a['size_bytes'] ?? 0);
+                    $anexo_note = trim((string)($a['note'] ?? ''));
+                    $anexo_icon = '📎';
+                    if ($anexo_kind === 'imagem') {
+                        $anexo_icon = '🖼️';
+                    } elseif ($anexo_kind === 'video') {
+                        $anexo_icon = '🎬';
+                    } elseif ($anexo_kind === 'audio') {
+                        $anexo_icon = '🎵';
+                    } elseif ($anexo_kind === 'pdf') {
+                        $anexo_icon = '📄';
+                    }
+                ?>
                 <div class="anexo-item">
-                    <span>📄</span>
-                    <a href="<?= htmlspecialchars($a['public_url'] ?: '#') ?>" target="_blank">
-                        <?= htmlspecialchars($a['original_name']) ?>
-                    </a>
-                    <span style="color: #94a3b8; font-size: 0.75rem;">
-                        (<?= round($a['size_bytes'] / 1024) ?> KB)
-                    </span>
+                    <div class="anexo-main">
+                        <span class="anexo-icon"><?= $anexo_icon ?></span>
+                        <div class="anexo-info">
+                            <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
+                            <div class="anexo-meta">
+                                <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
+                                • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
+                            </div>
+                            <?php if ($anexo_note !== ''): ?>
+                            <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="anexo-actions">
+                        <?php if ($anexo_url !== ''): ?>
+                        <button type="button"
+                                class="btn btn-secondary btn-small"
+                                data-open-anexo-modal="1"
+                                data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
+                                data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
+                                data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
+                                data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
+                            Visualizar
+                        </button>
+                        <a href="<?= htmlspecialchars($anexo_url) ?>"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           download
+                           class="btn btn-primary btn-small">Download</a>
+                        <?php else: ?>
+                        <span class="anexo-meta">Arquivo sem URL pública.</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -740,6 +875,29 @@ $month_names = [
                 </div>
             </div>
         </div>
+        <div id="anexoModalOverlay" class="modal-overlay" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="anexoModalTitle">
+                <div class="modal-header">
+                    <div>
+                        <div class="modal-title" id="anexoModalTitle">Pré-visualização</div>
+                        <div class="modal-subtitle" id="anexoModalSubtitle"></div>
+                    </div>
+                    <button type="button" class="modal-close" data-close-anexo-modal="1">Fechar</button>
+                </div>
+                <div class="modal-body">
+                    <div class="anexo-preview-body" id="anexoModalBody"></div>
+                    <div class="anexo-preview-footer">
+                        <a href="#"
+                           id="anexoModalDownload"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           download
+                           class="btn btn-primary btn-small">Download</a>
+                        <button type="button" class="btn btn-secondary btn-small" data-close-anexo-modal="1">Fechar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <script>
             (function() {
                 const overlay = document.getElementById('dayModalOverlay');
@@ -820,6 +978,124 @@ $month_names = [
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape' && overlay.classList.contains('open')) {
                         closeModal();
+                    }
+                });
+            })();
+
+            (function() {
+                const overlay = document.getElementById('anexoModalOverlay');
+                const body = document.getElementById('anexoModalBody');
+                const title = document.getElementById('anexoModalTitle');
+                const subtitle = document.getElementById('anexoModalSubtitle');
+                const downloadLink = document.getElementById('anexoModalDownload');
+
+                if (!overlay || !body || !title || !subtitle || !downloadLink) return;
+
+                function closeAttachmentModal() {
+                    overlay.classList.remove('open');
+                    overlay.setAttribute('aria-hidden', 'true');
+                    document.body.style.overflow = '';
+                    body.innerHTML = '';
+                    subtitle.textContent = '';
+                    downloadLink.setAttribute('href', '#');
+                    downloadLink.removeAttribute('download');
+                }
+
+                function getFileExtension(fileName) {
+                    const name = String(fileName || '').trim();
+                    const idx = name.lastIndexOf('.');
+                    if (idx < 0) return '';
+                    return name.slice(idx + 1).toLowerCase();
+                }
+
+                function openAttachmentModal(btn) {
+                    const url = String(btn.getAttribute('data-url') || '').trim();
+                    const name = String(btn.getAttribute('data-name') || 'arquivo').trim() || 'arquivo';
+                    const mime = String(btn.getAttribute('data-mime') || '').toLowerCase();
+                    const kind = String(btn.getAttribute('data-kind') || '').toLowerCase();
+                    const ext = getFileExtension(name);
+
+                    title.textContent = name;
+                    subtitle.textContent = mime || kind || 'Arquivo';
+                    body.innerHTML = '';
+
+                    if (url === '') {
+                        const msg = document.createElement('div');
+                        msg.className = 'anexo-preview-empty';
+                        msg.textContent = 'Arquivo sem URL pública para visualização.';
+                        body.appendChild(msg);
+                        downloadLink.setAttribute('href', '#');
+                        downloadLink.removeAttribute('download');
+                        downloadLink.style.display = 'none';
+                    } else {
+                        downloadLink.style.display = 'inline-flex';
+                        downloadLink.setAttribute('href', url);
+                        downloadLink.setAttribute('download', name);
+
+                        const isImage = kind === 'imagem'
+                            || mime.startsWith('image/')
+                            || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif'].includes(ext);
+                        const isVideo = kind === 'video'
+                            || mime.startsWith('video/')
+                            || ['mp4', 'mov', 'webm', 'ogg', 'avi'].includes(ext);
+                        const isAudio = kind === 'audio'
+                            || mime.startsWith('audio/')
+                            || ['mp3', 'wav', 'ogg', 'aac', 'm4a'].includes(ext);
+                        const isPdf = kind === 'pdf' || mime === 'application/pdf' || ext === 'pdf';
+
+                        if (isImage) {
+                            const img = document.createElement('img');
+                            img.src = url;
+                            img.alt = name;
+                            body.appendChild(img);
+                        } else if (isVideo) {
+                            const video = document.createElement('video');
+                            video.src = url;
+                            video.controls = true;
+                            video.preload = 'metadata';
+                            body.appendChild(video);
+                        } else if (isAudio) {
+                            const audio = document.createElement('audio');
+                            audio.src = url;
+                            audio.controls = true;
+                            audio.preload = 'metadata';
+                            body.appendChild(audio);
+                        } else if (isPdf) {
+                            const frame = document.createElement('iframe');
+                            frame.src = url;
+                            frame.title = name;
+                            body.appendChild(frame);
+                        } else {
+                            const msg = document.createElement('div');
+                            msg.className = 'anexo-preview-empty';
+                            msg.innerHTML = 'Pré-visualização não disponível para este formato.<br>Use o botão Download.';
+                            body.appendChild(msg);
+                        }
+                    }
+
+                    overlay.classList.add('open');
+                    overlay.setAttribute('aria-hidden', 'false');
+                    document.body.style.overflow = 'hidden';
+                }
+
+                document.addEventListener('click', (e) => {
+                    const openBtn = e.target.closest('[data-open-anexo-modal="1"]');
+                    if (openBtn) {
+                        openAttachmentModal(openBtn);
+                        return;
+                    }
+                    if (e.target.closest('[data-close-anexo-modal="1"]')) {
+                        closeAttachmentModal();
+                        return;
+                    }
+                    if (e.target === overlay) {
+                        closeAttachmentModal();
+                    }
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && overlay.classList.contains('open')) {
+                        closeAttachmentModal();
                     }
                 });
             })();
