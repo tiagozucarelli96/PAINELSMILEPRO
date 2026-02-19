@@ -220,7 +220,9 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_meeting ON eventos_convidados(meeting_id, deleted_at)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_draft ON eventos_convidados(meeting_id, is_draft)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_mesa ON eventos_convidados(meeting_id, numero_mesa)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_nome ON eventos_convidados(meeting_id, lower(nome))");
     } catch (Throwable $e) {
@@ -2859,6 +2861,7 @@ function eventos_convidados_normalizar_linha(array $row): array {
     $row['checkin_at'] = isset($row['checkin_at']) && $row['checkin_at'] !== null ? (string)$row['checkin_at'] : null;
     $row['checkin_by_user_id'] = isset($row['checkin_by_user_id']) && $row['checkin_by_user_id'] !== null ? (int)$row['checkin_by_user_id'] : null;
     $row['created_by_type'] = trim((string)($row['created_by_type'] ?? 'cliente'));
+    $row['is_draft'] = !empty($row['is_draft']);
     $row['is_checked_in'] = !empty($row['checkin_at']);
     return $row;
 }
@@ -3014,25 +3017,41 @@ function eventos_convidados_listar(PDO $pdo, int $meeting_id, string $search = '
 function eventos_convidados_resumo(PDO $pdo, int $meeting_id): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
-        return ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+        return ['total' => 0, 'checkin' => 0, 'pendentes' => 0, 'rascunho' => 0, 'publicados' => 0];
     }
 
-    $stmt = $pdo->prepare("
-        SELECT
-            COUNT(*)::int AS total,
-            COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin
-        FROM eventos_convidados
-        WHERE meeting_id = :meeting_id
-          AND deleted_at IS NULL
-    ");
+    $has_is_draft_col = eventos_reuniao_has_column($pdo, 'eventos_convidados', 'is_draft');
+    if ($has_is_draft_col) {
+        $stmt = $pdo->prepare("
+            SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin,
+                COALESCE(SUM(CASE WHEN COALESCE(is_draft, FALSE) THEN 1 ELSE 0 END), 0)::int AS rascunho
+            FROM eventos_convidados
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+        ");
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin
+            FROM eventos_convidados
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+        ");
+    }
     $stmt->execute([':meeting_id' => $meeting_id]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'checkin' => 0];
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'checkin' => 0, 'rascunho' => 0];
     $total = (int)($row['total'] ?? 0);
     $checkin = (int)($row['checkin'] ?? 0);
+    $rascunho = (int)($row['rascunho'] ?? 0);
     return [
         'total' => $total,
         'checkin' => $checkin,
         'pendentes' => max(0, $total - $checkin),
+        'rascunho' => $rascunho,
+        'publicados' => max(0, $total - $rascunho),
     ];
 }
 
@@ -3085,7 +3104,8 @@ function eventos_convidados_adicionar(
     ?string $faixa_etaria = null,
     ?string $numero_mesa = null,
     string $created_by_type = 'cliente',
-    int $created_by_user_id = 0
+    int $created_by_user_id = 0,
+    bool $is_draft = false
 ): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
@@ -3105,21 +3125,31 @@ function eventos_convidados_adicionar(
     }
     $mesa = eventos_convidados_tipo_usa_mesa($tipo) ? eventos_convidados_normalizar_mesa($numero_mesa) : '';
 
-    $stmt = $pdo->prepare("
-        INSERT INTO eventos_convidados
-        (meeting_id, nome, faixa_etaria, numero_mesa, created_by_type, created_by_user_id, created_at, updated_at)
-        VALUES
-        (:meeting_id, :nome, :faixa_etaria, :numero_mesa, :created_by_type, :created_by_user_id, NOW(), NOW())
-        RETURNING *
-    ");
-    $stmt->execute([
+    $has_is_draft_col = eventos_reuniao_has_column($pdo, 'eventos_convidados', 'is_draft');
+    $columns = ['meeting_id', 'nome', 'faixa_etaria', 'numero_mesa', 'created_by_type', 'created_by_user_id', 'created_at', 'updated_at'];
+    $values = [':meeting_id', ':nome', ':faixa_etaria', ':numero_mesa', ':created_by_type', ':created_by_user_id', 'NOW()', 'NOW()'];
+    $params = [
         ':meeting_id' => $meeting_id,
         ':nome' => $nome_norm,
         ':faixa_etaria' => $faixa !== '' ? $faixa : null,
         ':numero_mesa' => $mesa !== '' ? $mesa : null,
         ':created_by_type' => trim($created_by_type) !== '' ? trim($created_by_type) : 'cliente',
         ':created_by_user_id' => $created_by_user_id > 0 ? $created_by_user_id : null,
-    ]);
+    ];
+    if ($has_is_draft_col) {
+        $columns[] = 'is_draft';
+        $values[] = ':is_draft';
+        $params[':is_draft'] = $is_draft ? 1 : 0;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_convidados
+        (" . implode(', ', $columns) . ")
+        VALUES
+        (" . implode(', ', $values) . ")
+        RETURNING *
+    ");
+    $stmt->execute($params);
 
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     if (!$row) {
@@ -3139,7 +3169,8 @@ function eventos_convidados_atualizar(
     string $nome,
     ?string $faixa_etaria = null,
     ?string $numero_mesa = null,
-    int $updated_by_user_id = 0
+    int $updated_by_user_id = 0,
+    ?bool $set_draft = null
 ): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0 || $guest_id <= 0) {
@@ -3159,26 +3190,37 @@ function eventos_convidados_atualizar(
     }
     $mesa = eventos_convidados_tipo_usa_mesa($tipo) ? eventos_convidados_normalizar_mesa($numero_mesa) : '';
 
-    $stmt = $pdo->prepare("
-        UPDATE eventos_convidados
-        SET nome = :nome,
-            faixa_etaria = :faixa_etaria,
-            numero_mesa = :numero_mesa,
-            updated_by_user_id = :updated_by_user_id,
-            updated_at = NOW()
-        WHERE id = :id
-          AND meeting_id = :meeting_id
-          AND deleted_at IS NULL
-        RETURNING *
-    ");
-    $stmt->execute([
+    $set_parts = [
+        'nome = :nome',
+        'faixa_etaria = :faixa_etaria',
+        'numero_mesa = :numero_mesa',
+        'updated_by_user_id = :updated_by_user_id',
+        'updated_at = NOW()',
+    ];
+    $params = [
         ':id' => $guest_id,
         ':meeting_id' => $meeting_id,
         ':nome' => $nome_norm,
         ':faixa_etaria' => $faixa !== '' ? $faixa : null,
         ':numero_mesa' => $mesa !== '' ? $mesa : null,
         ':updated_by_user_id' => $updated_by_user_id > 0 ? $updated_by_user_id : null,
-    ]);
+    ];
+
+    $has_is_draft_col = eventos_reuniao_has_column($pdo, 'eventos_convidados', 'is_draft');
+    if ($has_is_draft_col && $set_draft !== null) {
+        $set_parts[] = 'is_draft = :is_draft';
+        $params[':is_draft'] = $set_draft ? 1 : 0;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_convidados
+        SET " . implode(', ', $set_parts) . "
+        WHERE id = :id
+          AND meeting_id = :meeting_id
+          AND deleted_at IS NULL
+        RETURNING *
+    ");
+    $stmt->execute($params);
 
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
     if (!$row) {
@@ -3234,6 +3276,26 @@ function eventos_convidados_toggle_checkin(
         return ['ok' => false, 'error' => 'Convidado inválido'];
     }
 
+    $has_is_draft_col = eventos_reuniao_has_column($pdo, 'eventos_convidados', 'is_draft');
+    if ($has_is_draft_col) {
+        $stmt_draft = $pdo->prepare("
+            SELECT COALESCE(is_draft, FALSE) AS is_draft
+            FROM eventos_convidados
+            WHERE id = :id
+              AND meeting_id = :meeting_id
+              AND deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmt_draft->execute([
+            ':id' => $guest_id,
+            ':meeting_id' => $meeting_id,
+        ]);
+        $draft_row = $stmt_draft->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($draft_row && !empty($draft_row['is_draft'])) {
+            return ['ok' => false, 'error' => 'Convidado ainda em rascunho. Clique em "Salvar geral" no portal do cliente.'];
+        }
+    }
+
     if ($checked_in) {
         $stmt = $pdo->prepare("
             UPDATE eventos_convidados
@@ -3276,6 +3338,42 @@ function eventos_convidados_toggle_checkin(
     }
 
     return ['ok' => true, 'convidado' => eventos_convidados_normalizar_linha($row)];
+}
+
+/**
+ * Publica todos os convidados em rascunho do cliente para um evento.
+ */
+function eventos_convidados_publicar_rascunhos_cliente(PDO $pdo, int $meeting_id, int $updated_by_user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $has_is_draft_col = eventos_reuniao_has_column($pdo, 'eventos_convidados', 'is_draft');
+    if (!$has_is_draft_col) {
+        return ['ok' => true, 'updated' => 0, 'resumo' => eventos_convidados_resumo($pdo, $meeting_id)];
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_convidados
+        SET is_draft = FALSE,
+            updated_by_user_id = :updated_by_user_id,
+            updated_at = NOW()
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+          AND created_by_type = 'cliente'
+          AND COALESCE(is_draft, FALSE) = TRUE
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':updated_by_user_id' => $updated_by_user_id > 0 ? $updated_by_user_id : null,
+    ]);
+
+    return [
+        'ok' => true,
+        'updated' => (int)$stmt->rowCount(),
+        'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+    ];
 }
 
 /**

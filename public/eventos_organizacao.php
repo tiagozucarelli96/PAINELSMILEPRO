@@ -37,6 +37,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     exit;
                 }
 
+                $stmt = $pdo->prepare("SELECT id FROM eventos_reunioes WHERE me_event_id = :me_event_id LIMIT 1");
+                $stmt->execute([':me_event_id' => $me_event_id]);
+                $existing_meeting_id = (int)($stmt->fetchColumn() ?: 0);
+                if ($existing_meeting_id > 0) {
+                    echo json_encode([
+                        'ok' => false,
+                        'already_exists' => true,
+                        'error' => 'Este evento já está organizado.',
+                        'reuniao' => ['id' => $existing_meeting_id],
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
+
                 $meeting_result = eventos_reuniao_get_or_create($pdo, $me_event_id, $user_id, $tipo_evento_real);
                 if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
                     echo json_encode(['ok' => false, 'error' => $meeting_result['error'] ?? 'Não foi possível organizar este evento.']);
@@ -310,6 +323,29 @@ includeSidebar('Organização eventos');
         margin: 0;
         font-size: 1.05rem;
         color: #1f2937;
+    }
+
+    .event-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .event-organizado-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #065f46;
+        background: #d1fae5;
+        border: 1px solid #a7f3d0;
+    }
+
+    .event-item.organized {
+        background: #f8fffb;
     }
 
     .event-info p {
@@ -594,7 +630,7 @@ includeSidebar('Organização eventos');
         <div id="loadingEvents" style="display:none; padding:1.3rem; text-align:center; color:#64748b;">Carregando eventos...</div>
         <div id="selectedEventSummary" class="selected-event-summary"></div>
         <div id="selectedEvent" class="selected-event">
-            <button type="button" class="btn btn-success" onclick="organizarEvento()">Organizar este Evento</button>
+            <button type="button" id="btnOrganizarEvento" class="btn btn-success" onclick="organizarEvento()">Organizar este Evento</button>
         </div>
     </div>
 
@@ -763,10 +799,20 @@ function localFilterEvents(query) {
             ev.cliente,
             ev.local,
             ev.data_formatada,
-            ev.tipo
+            ev.tipo,
+            ev.organizado ? 'organizado' : '',
+            ev.tipo_evento_real,
         ].join(' '));
         return hay.includes(q);
     }).slice(0, 80);
+}
+
+function getMeetingIdFromEvent(ev) {
+    return Number(ev && ev.meeting_id ? ev.meeting_id : 0);
+}
+
+function isEventOrganizado(ev) {
+    return getMeetingIdFromEvent(ev) > 0 || !!(ev && ev.organizado);
 }
 
 function renderEventsList(events) {
@@ -782,11 +828,15 @@ function renderEventsList(events) {
     const selectedId = Number(selectedEventId || 0);
     list.innerHTML = events.map((ev) => {
         const isSelected = selectedId > 0 && Number(ev.id) === selectedId;
+        const isOrganizado = isEventOrganizado(ev);
         const label = ev.label || `${ev.nome || 'Evento'} - ${ev.data_formatada || ''}`;
         return `
-            <div class="event-item ${isSelected ? 'selected' : ''}" data-id="${ev.id}" onclick="selectEvent(this, ${ev.id})">
+            <div class="event-item ${isSelected ? 'selected' : ''} ${isOrganizado ? 'organized' : ''}" data-id="${ev.id}" onclick="selectEvent(this, ${ev.id})">
                 <div class="event-info">
-                    <h4>${ev.nome || 'Evento'}</h4>
+                    <div class="event-title-row">
+                        <h4>${ev.nome || 'Evento'}</h4>
+                        ${isOrganizado ? '<span class="event-organizado-badge">Já organizado</span>' : ''}
+                    </div>
                     <p>${ev.cliente || 'Cliente'} • ${ev.local || 'Local'} • ${ev.convidados || 0} convidados</p>
                     <div class="event-item-label">${label}</div>
                 </div>
@@ -805,8 +855,34 @@ function renderSelectedEventSummary(ev) {
         summary.style.display = 'none';
         return;
     }
-    summary.innerHTML = `<strong>Selecionado:</strong> ${ev.nome || 'Evento'}<br><span>${ev.data_formatada || '-'} • ${ev.hora || '-'} • ${ev.local || 'Local não informado'} • ${ev.cliente || 'Cliente'}</span>`;
+    const meetingId = getMeetingIdFromEvent(ev);
+    const statusLine = meetingId > 0
+        ? `<br><span style="color:#065f46; font-weight:700;">✅ Já organizado (ID ${meetingId})</span>`
+        : '';
+    summary.innerHTML = `<strong>Selecionado:</strong> ${ev.nome || 'Evento'}<br><span>${ev.data_formatada || '-'} • ${ev.hora || '-'} • ${ev.local || 'Local não informado'} • ${ev.cliente || 'Cliente'}</span>${statusLine}`;
     summary.style.display = 'block';
+}
+
+function updateSelectedAction(ev) {
+    const selected = document.getElementById('selectedEvent');
+    const button = document.getElementById('btnOrganizarEvento');
+    if (!selected || !button) return;
+
+    if (!ev) {
+        selected.style.display = 'none';
+        return;
+    }
+
+    selected.style.display = 'block';
+    if (isEventOrganizado(ev)) {
+        button.textContent = 'Abrir organização existente';
+        button.classList.remove('btn-success');
+        button.classList.add('btn-primary');
+    } else {
+        button.textContent = 'Organizar este Evento';
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-success');
+    }
 }
 
 async function fetchRemoteEvents(query = '', forceRefresh = false) {
@@ -886,9 +962,7 @@ function selectEvent(el, id) {
     document.querySelectorAll('.event-item').forEach((item) => item.classList.remove('selected'));
     if (el) el.classList.add('selected');
     renderSelectedEventSummary(selectedEventData);
-
-    const selected = document.getElementById('selectedEvent');
-    if (selected) selected.style.display = 'block';
+    updateSelectedAction(selectedEventData);
 }
 
 function sugerirTipoEventoReal(ev) {
@@ -970,8 +1044,17 @@ async function confirmarOrganizarEvento() {
     try {
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
         const data = await parseJsonResponse(resp);
-        if (!data.ok || !data.reuniao || !data.reuniao.id) {
+        if (!data.ok) {
+            if (data.already_exists && data.reuniao && data.reuniao.id) {
+                alert(data.error || 'Este evento já está organizado. Abrindo a organização existente.');
+                window.location.href = `index.php?page=eventos_organizacao&id=${data.reuniao.id}`;
+                return;
+            }
             alert(data.error || 'Não foi possível organizar o evento.');
+            return;
+        }
+        if (!data.reuniao || !data.reuniao.id) {
+            alert('Não foi possível organizar o evento.');
             return;
         }
         window.location.href = `index.php?page=eventos_organizacao&id=${data.reuniao.id}`;
@@ -991,6 +1074,13 @@ async function organizarEvento() {
         alert('Selecione um evento primeiro.');
         return;
     }
+
+    const existingMeetingId = getMeetingIdFromEvent(selectedEventData);
+    if (existingMeetingId > 0) {
+        window.location.href = `index.php?page=eventos_organizacao&id=${existingMeetingId}`;
+        return;
+    }
+
     pendingOrganizarEventId = Number(selectedEventId);
     openTipoEventoModal();
 }

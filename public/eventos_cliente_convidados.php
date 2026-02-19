@@ -64,16 +64,40 @@ if ($token === '') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
     $action = trim((string)($_POST['action'] ?? ''));
-    if (!$editavel_convidados) {
-        eventos_cliente_convidados_redirect($token, false, 'Este card esta em modo somente visualizacao.');
-    }
+    $is_ajax = ((string)($_POST['ajax'] ?? '0') === '1');
+
+    $json_response = static function (array $payload): void {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    };
+
+    $json_or_redirect = static function (bool $ok, string $message, array $extra = []) use ($is_ajax, $json_response, $token): void {
+        if ($is_ajax) {
+            $json_response(array_merge(['ok' => $ok, 'message' => $message], $extra));
+        }
+        eventos_cliente_convidados_redirect($token, $ok, $message);
+    };
 
     switch ($action) {
+        case 'listar_convidados':
+            $json_response([
+                'ok' => true,
+                'convidados' => eventos_convidados_listar($pdo, $meeting_id),
+                'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+                'config' => eventos_convidados_get_config($pdo, $meeting_id),
+            ]);
+            break;
+
         case 'salvar_tipo_evento':
-            eventos_cliente_convidados_redirect($token, false, 'O tipo do evento e definido pela equipe de organizacao.');
+            $json_or_redirect(false, 'O tipo do evento e definido pela equipe de organizacao.');
             break;
 
         case 'adicionar_convidado':
+            if (!$editavel_convidados) {
+                $json_or_redirect(false, 'Este card esta em modo somente visualizacao.');
+                break;
+            }
             $result = eventos_convidados_adicionar(
                 $pdo,
                 $meeting_id,
@@ -81,15 +105,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                 (string)($_POST['faixa_etaria'] ?? ''),
                 (string)($_POST['numero_mesa'] ?? ''),
                 'cliente',
-                0
+                0,
+                true
             );
             if (empty($result['ok'])) {
-                eventos_cliente_convidados_redirect($token, false, (string)($result['error'] ?? 'Nao foi possivel adicionar o convidado.'));
+                $json_or_redirect(false, (string)($result['error'] ?? 'Nao foi possivel adicionar o convidado.'));
+                break;
             }
-            eventos_cliente_convidados_redirect($token, true, 'Convidado adicionado.');
+            $json_or_redirect(true, 'Convidado adicionado ao rascunho.', [
+                'convidado' => $result['convidado'] ?? null,
+                'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+            ]);
             break;
 
         case 'atualizar_convidado':
+            if (!$editavel_convidados) {
+                $json_or_redirect(false, 'Este card esta em modo somente visualizacao.');
+                break;
+            }
             $guest_id = (int)($_POST['guest_id'] ?? 0);
             $result = eventos_convidados_atualizar(
                 $pdo,
@@ -98,37 +131,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                 (string)($_POST['nome'] ?? ''),
                 (string)($_POST['faixa_etaria'] ?? ''),
                 (string)($_POST['numero_mesa'] ?? ''),
-                0
+                0,
+                true
             );
             if (empty($result['ok'])) {
-                eventos_cliente_convidados_redirect($token, false, (string)($result['error'] ?? 'Nao foi possivel atualizar o convidado.'));
+                $json_or_redirect(false, (string)($result['error'] ?? 'Nao foi possivel atualizar o convidado.'));
+                break;
             }
-            eventos_cliente_convidados_redirect($token, true, 'Convidado atualizado.');
+            $json_or_redirect(true, 'Convidado atualizado no rascunho.', [
+                'convidado' => $result['convidado'] ?? null,
+                'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+            ]);
             break;
 
         case 'excluir_convidado':
+            if (!$editavel_convidados) {
+                $json_or_redirect(false, 'Este card esta em modo somente visualizacao.');
+                break;
+            }
             $guest_id = (int)($_POST['guest_id'] ?? 0);
             $result = eventos_convidados_excluir($pdo, $meeting_id, $guest_id, 0);
             if (empty($result['ok'])) {
-                eventos_cliente_convidados_redirect($token, false, (string)($result['error'] ?? 'Nao foi possivel excluir o convidado.'));
+                $json_or_redirect(false, (string)($result['error'] ?? 'Nao foi possivel excluir o convidado.'));
+                break;
             }
-            eventos_cliente_convidados_redirect($token, true, 'Convidado excluido.');
+            $json_or_redirect(true, 'Convidado excluido.', [
+                'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+            ]);
+            break;
+
+        case 'salvar_geral_convidados':
+            if (!$editavel_convidados) {
+                $json_or_redirect(false, 'Este card esta em modo somente visualizacao.');
+                break;
+            }
+            $saved = eventos_convidados_publicar_rascunhos_cliente($pdo, $meeting_id, 0);
+            if (empty($saved['ok'])) {
+                $json_or_redirect(false, (string)($saved['error'] ?? 'Nao foi possivel salvar os rascunhos.'));
+                break;
+            }
+            $json_or_redirect(true, 'Lista salva com sucesso.', [
+                'updated' => (int)($saved['updated'] ?? 0),
+                'resumo' => $saved['resumo'] ?? eventos_convidados_resumo($pdo, $meeting_id),
+            ]);
             break;
 
         case 'importar_texto_cru':
-            $texto_cru = trim((string)($_POST['texto_cru'] ?? ''));
-            $result = eventos_convidados_importar_texto_cru($pdo, $meeting_id, $texto_cru, 'cliente', 0);
-            if (empty($result['ok'])) {
-                eventos_cliente_convidados_redirect($token, false, (string)($result['error'] ?? 'Nao foi possivel importar os convidados.'));
-            }
-            $msg = 'Importacao concluida: '
-                . (int)($result['inserted'] ?? 0) . ' adicionados'
-                . ' e ' . (int)($result['skipped'] ?? 0) . ' ignorados.';
-            eventos_cliente_convidados_redirect($token, true, $msg);
+            $json_or_redirect(false, 'Importacao por texto cru e disponivel somente no painel interno.');
             break;
 
         default:
-            eventos_cliente_convidados_redirect($token, false, 'Acao invalida.');
+            $json_or_redirect(false, 'Acao invalida.');
             break;
     }
 }
@@ -142,7 +195,19 @@ $tipo_evento = (string)($config_convidados['tipo_evento'] ?? 'infantil');
 $usa_mesa = !empty($config_convidados['usa_mesa']);
 $opcoes_faixa = is_array($config_convidados['opcoes_faixa'] ?? null) ? $config_convidados['opcoes_faixa'] : [];
 $convidados = ($meeting_id > 0 && $error === '') ? eventos_convidados_listar($pdo, $meeting_id) : [];
-$resumo = ($meeting_id > 0 && $error === '') ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+$resumo = ($meeting_id > 0 && $error === '') ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0, 'rascunho' => 0, 'publicados' => 0];
+$convidados_json = json_encode($convidados, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if ($convidados_json === false) {
+    $convidados_json = '[]';
+}
+$resumo_json = json_encode($resumo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if ($resumo_json === false) {
+    $resumo_json = '{"total":0,"checkin":0,"pendentes":0,"rascunho":0,"publicados":0}';
+}
+$opcoes_faixa_json = json_encode(array_values($opcoes_faixa), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+if ($opcoes_faixa_json === false) {
+    $opcoes_faixa_json = '[]';
+}
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
 $tipo_evento_label = $tipo_evento_real !== ''
     ? eventos_reuniao_tipo_evento_real_label($tipo_evento_real)
@@ -297,6 +362,16 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             background: #f1f5f9;
             border-color: #dbe3ef;
             color: #334155;
+        }
+
+        .btn-success {
+            background: #059669;
+            border-color: #047857;
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background: #047857;
         }
 
         .btn-danger {
@@ -454,6 +529,37 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             padding: 0.85rem 0.2rem 0.2rem;
         }
 
+        .save-row {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            align-items: center;
+        }
+
+        .page-status {
+            margin-top: 0.7rem;
+            font-size: 0.86rem;
+            color: #0f766e;
+            display: none;
+        }
+
+        .page-status.error {
+            color: #b91c1c;
+        }
+
+        .draft-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.18rem 0.5rem;
+            border-radius: 999px;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 0.72rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
         @media (max-width: 840px) {
             .guest-table.with-mesa .guest-head,
             .guest-table.with-mesa .guest-row,
@@ -518,27 +624,38 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                 <div class="stats">
                     <div class="stat-item">
                         <div class="stat-label">Total de convidados</div>
-                        <div class="stat-value"><?= (int)$resumo['total'] ?></div>
+                        <div id="sumTotal" class="stat-value"><?= (int)$resumo['total'] ?></div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Check-ins realizados</div>
-                        <div class="stat-value"><?= (int)$resumo['checkin'] ?></div>
+                        <div id="sumCheckin" class="stat-value"><?= (int)$resumo['checkin'] ?></div>
                     </div>
                     <div class="stat-item">
                         <div class="stat-label">Pendentes</div>
-                        <div class="stat-value"><?= (int)$resumo['pendentes'] ?></div>
+                        <div id="sumPendentes" class="stat-value"><?= (int)$resumo['pendentes'] ?></div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Em rascunho</div>
+                        <div id="sumRascunho" class="stat-value"><?= (int)($resumo['rascunho'] ?? 0) ?></div>
                     </div>
                 </div>
+                <?php if ($editavel_convidados): ?>
+                <div class="save-row">
+                    <button type="button" id="btnSalvarGeral" class="btn btn-success">Salvar geral</button>
+                    <span id="draftInfo" class="card-subtitle" style="margin-bottom:0;">Rascunhos pendentes: <?= (int)($resumo['rascunho'] ?? 0) ?></span>
+                </div>
+                <div id="pageStatus" class="page-status"></div>
+                <?php endif; ?>
             </section>
 
             <?php if ($editavel_convidados): ?>
             <section class="card">
                 <h3>Adicionar convidado</h3>
-                <div class="card-subtitle">Clique para abrir uma linha no estilo tabela e preencher os dados.</div>
+                <div class="card-subtitle">Voce pode ir adicionando normalmente. Os itens ficam em rascunho ate clicar em "Salvar geral".</div>
                 <button type="button" class="btn btn-primary" onclick="togglePanel('addGuestPanel')">+ Adicionar convidado</button>
 
                 <div id="addGuestPanel" class="toggle-panel">
-                    <form method="post" class="add-form-grid <?= $usa_mesa ? 'with-mesa' : 'without-mesa' ?>">
+                    <form method="post" id="addGuestForm" class="add-form-grid <?= $usa_mesa ? 'with-mesa' : 'without-mesa' ?>">
                         <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
                         <input type="hidden" name="action" value="adicionar_convidado">
 
@@ -565,24 +682,7 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                         <?php endif; ?>
 
                         <div>
-                            <button type="submit" class="btn btn-primary">Salvar convidado</button>
-                        </div>
-                    </form>
-                </div>
-            </section>
-
-            <section class="card">
-                <h3>Importar texto cru</h3>
-                <div class="card-subtitle">Se o cliente enviou no WhatsApp, cole aqui. O sistema preenche os nomes sem faixa e sem mesa.</div>
-                <button type="button" class="btn btn-secondary" onclick="togglePanel('importPanel')">Colar lista do WhatsApp</button>
-
-                <div id="importPanel" class="toggle-panel">
-                    <form method="post">
-                        <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-                        <input type="hidden" name="action" value="importar_texto_cru">
-                        <textarea name="texto_cru" rows="7" placeholder="Cole o texto da lista aqui..." required></textarea>
-                        <div class="actions-row">
-                            <button type="submit" class="btn btn-primary">Importar nomes</button>
+                            <button type="submit" class="btn btn-primary">Adicionar ao rascunho</button>
                         </div>
                     </form>
                 </div>
@@ -592,89 +692,272 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             <section class="card">
                 <h3>Lista atual de convidados</h3>
                 <div class="card-subtitle">Ordenada por mesa e em ordem alfabetica.</div>
-
-                <?php if (empty($convidados)): ?>
-                <div class="empty-text">Nenhum convidado cadastrado ainda.</div>
-                <?php else: ?>
-                <div class="guest-table <?= $usa_mesa ? 'with-mesa' : 'without-mesa' ?>">
-                    <div class="guest-head">
-                        <div>Nome</div>
-                        <div>Faixa etaria</div>
-                        <?php if ($usa_mesa): ?><div>Mesa</div><?php endif; ?>
-                        <div><?= $editavel_convidados ? 'Acoes' : 'Status' ?></div>
-                    </div>
-
-                    <?php foreach ($convidados as $convidado): ?>
-                        <?php
-                            $current_faixa = trim((string)($convidado['faixa_etaria'] ?? ''));
-                            $faixas_row = $opcoes_faixa;
-                            if ($current_faixa !== '' && !in_array($current_faixa, $faixas_row, true)) {
-                                array_unshift($faixas_row, $current_faixa);
-                            }
-                        ?>
-                        <?php if ($editavel_convidados): ?>
-                        <form method="post" class="guest-row">
-                            <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-                            <input type="hidden" name="action" value="atualizar_convidado">
-                            <input type="hidden" name="guest_id" value="<?= (int)$convidado['id'] ?>">
-
-                            <input type="text" name="nome" value="<?= htmlspecialchars((string)$convidado['nome']) ?>" maxlength="180" required>
-
-                            <select name="faixa_etaria">
-                                <option value="">Selecione</option>
-                                <?php foreach ($faixas_row as $opt): ?>
-                                <option value="<?= htmlspecialchars((string)$opt) ?>" <?= $current_faixa === (string)$opt ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars((string)$opt) ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-
-                            <?php if ($usa_mesa): ?>
-                            <input type="text" name="numero_mesa" value="<?= htmlspecialchars((string)($convidado['numero_mesa'] ?? '')) ?>" maxlength="20">
-                            <?php endif; ?>
-
-                            <div class="row-actions">
-                                <button type="submit" class="btn btn-secondary">Salvar</button>
-                                <button type="submit" class="btn btn-danger" onclick="return prepararExclusao(this)">Excluir</button>
-                            </div>
-                        </form>
-                        <?php else: ?>
-                        <div class="guest-row">
-                            <div><?= htmlspecialchars((string)$convidado['nome']) ?></div>
-                            <div><?= htmlspecialchars($current_faixa !== '' ? $current_faixa : '-') ?></div>
-                            <?php if ($usa_mesa): ?>
-                            <div><?= htmlspecialchars((string)($convidado['numero_mesa'] ?? '-')) ?></div>
-                            <?php endif; ?>
-                            <div><?= !empty($convidado['is_checked_in']) ? 'Presente' : 'Pendente' ?></div>
-                        </div>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
+                <div id="guestTableWrap"></div>
             </section>
         <?php endif; ?>
     </div>
 
     <script>
+        const token = <?= json_encode($token, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+        const editavelConvidados = <?= $editavel_convidados ? 'true' : 'false' ?>;
+        const usaMesa = <?= $usa_mesa ? 'true' : 'false' ?>;
+        const opcoesFaixaPadrao = <?= $opcoes_faixa_json ?>;
+        let convidadosState = <?= $convidados_json ?>;
+        let resumoState = <?= $resumo_json ?>;
+
         function togglePanel(id) {
             const el = document.getElementById(id);
             if (!el) return;
             el.classList.toggle('open');
         }
 
-        function prepararExclusao(button) {
-            if (!confirm('Deseja realmente excluir este convidado?')) {
-                return false;
-            }
-            const form = button.closest('form');
-            if (!form) return false;
-            const actionInput = form.querySelector('input[name="action"]');
-            if (actionInput) {
-                actionInput.value = 'excluir_convidado';
-            }
-            return true;
+        function escapeHtml(value) {
+            return (value ?? '').toString()
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
+        function showStatus(message, isError = false) {
+            const status = document.getElementById('pageStatus');
+            if (!status) return;
+            status.textContent = message || '';
+            status.classList.toggle('error', !!isError);
+            status.style.display = message ? 'block' : 'none';
+        }
+
+        function updateResumo(resumo) {
+            if (!resumo || typeof resumo !== 'object') return;
+            resumoState = resumo;
+            const total = document.getElementById('sumTotal');
+            const checkin = document.getElementById('sumCheckin');
+            const pendentes = document.getElementById('sumPendentes');
+            const rascunho = document.getElementById('sumRascunho');
+            if (total) total.textContent = String(Number(resumo.total || 0));
+            if (checkin) checkin.textContent = String(Number(resumo.checkin || 0));
+            if (pendentes) pendentes.textContent = String(Number(resumo.pendentes || 0));
+            if (rascunho) rascunho.textContent = String(Number(resumo.rascunho || 0));
+            updateDraftInfo();
+        }
+
+        function updateDraftInfo() {
+            const draftInfo = document.getElementById('draftInfo');
+            const saveBtn = document.getElementById('btnSalvarGeral');
+            const rascunho = Number((resumoState && resumoState.rascunho) ? resumoState.rascunho : 0);
+            if (draftInfo) {
+                draftInfo.textContent = `Rascunhos pendentes: ${rascunho}`;
+            }
+            if (saveBtn) {
+                saveBtn.disabled = rascunho <= 0;
+            }
+        }
+
+        function buildFaixaOptions(currentValue = '') {
+            const value = (currentValue || '').toString();
+            const options = Array.isArray(opcoesFaixaPadrao) ? opcoesFaixaPadrao.slice() : [];
+            if (value !== '' && !options.includes(value)) {
+                options.unshift(value);
+            }
+            let html = '<option value="">Selecione</option>';
+            options.forEach((item) => {
+                const selected = value === item ? ' selected' : '';
+                html += `<option value="${escapeHtml(item)}"${selected}>${escapeHtml(item)}</option>`;
+            });
+            return html;
+        }
+
+        function renderGuestTable() {
+            const wrap = document.getElementById('guestTableWrap');
+            if (!wrap) return;
+
+            if (!Array.isArray(convidadosState) || convidadosState.length === 0) {
+                wrap.innerHTML = '<div class="empty-text">Nenhum convidado cadastrado ainda.</div>';
+                return;
+            }
+
+            const rows = convidadosState.map((g) => {
+                const guestId = Number(g.id || 0);
+                const nome = (g.nome || '').toString();
+                const faixa = (g.faixa_etaria || '').toString();
+                const mesa = (g.numero_mesa || '').toString();
+                const isDraft = !!g.is_draft;
+                const statusText = isDraft ? 'Rascunho' : (g.is_checked_in ? 'Presente' : 'Pendente');
+
+                if (!editavelConvidados) {
+                    return `
+                        <div class="guest-row">
+                            <div>${escapeHtml(nome)}</div>
+                            <div>${escapeHtml(faixa !== '' ? faixa : '-')}</div>
+                            ${usaMesa ? `<div>${escapeHtml(mesa !== '' ? mesa : '-')}</div>` : ''}
+                            <div>${escapeHtml(statusText)}</div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <form method="post" class="guest-row guest-edit-form" data-guest-id="${guestId}">
+                        <input type="hidden" name="token" value="${escapeHtml(token)}">
+                        <input type="hidden" name="action" value="atualizar_convidado">
+                        <input type="hidden" name="guest_id" value="${guestId}">
+                        <input type="text" name="nome" value="${escapeHtml(nome)}" maxlength="180" required>
+                        <select name="faixa_etaria">
+                            ${buildFaixaOptions(faixa)}
+                        </select>
+                        ${usaMesa ? `<input type="text" name="numero_mesa" value="${escapeHtml(mesa)}" maxlength="20">` : ''}
+                        <div class="row-actions">
+                            ${isDraft ? '<span class="draft-badge">Rascunho</span>' : ''}
+                            <button type="submit" class="btn btn-secondary" data-submit-kind="save">Salvar</button>
+                            <button type="submit" class="btn btn-danger" data-submit-kind="delete">Excluir</button>
+                        </div>
+                    </form>
+                `;
+            }).join('');
+
+            wrap.innerHTML = `
+                <div class="guest-table ${usaMesa ? 'with-mesa' : 'without-mesa'}">
+                    <div class="guest-head">
+                        <div>Nome</div>
+                        <div>Faixa etaria</div>
+                        ${usaMesa ? '<div>Mesa</div>' : ''}
+                        <div>${editavelConvidados ? 'Acoes' : 'Status'}</div>
+                    </div>
+                    ${rows}
+                </div>
+            `;
+        }
+
+        async function postAction(action, payload = {}) {
+            const formData = new FormData();
+            formData.append('ajax', '1');
+            formData.append('token', token);
+            formData.append('action', action);
+            Object.entries(payload).forEach(([key, value]) => {
+                formData.append(key, value ?? '');
+            });
+
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const raw = await response.text();
+            let data = null;
+            try {
+                data = JSON.parse(raw);
+            } catch (_) {
+                throw new Error('Resposta invalida do servidor.');
+            }
+            if (!data || !data.ok) {
+                throw new Error((data && data.message) || (data && data.error) || 'Falha ao processar a solicitacao.');
+            }
+            return data;
+        }
+
+        async function refreshConvidados() {
+            const data = await postAction('listar_convidados');
+            convidadosState = Array.isArray(data.convidados) ? data.convidados : [];
+            renderGuestTable();
+            updateResumo(data.resumo || null);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderGuestTable();
+            updateResumo(resumoState);
+
+            const addForm = document.getElementById('addGuestForm');
+            if (addForm) {
+                addForm.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const nomeInput = addForm.querySelector('input[name="nome"]');
+                    const faixaInput = addForm.querySelector('select[name="faixa_etaria"]');
+                    const mesaInput = addForm.querySelector('input[name="numero_mesa"]');
+                    const submitBtn = addForm.querySelector('button[type="submit"]');
+
+                    if (submitBtn) submitBtn.disabled = true;
+                    showStatus('Salvando convidado no rascunho...');
+
+                    try {
+                        await postAction('adicionar_convidado', {
+                            nome: nomeInput ? nomeInput.value : '',
+                            faixa_etaria: faixaInput ? faixaInput.value : '',
+                            numero_mesa: mesaInput ? mesaInput.value : '',
+                        });
+                        if (nomeInput) nomeInput.value = '';
+                        if (faixaInput) faixaInput.value = '';
+                        if (mesaInput) mesaInput.value = '';
+                        await refreshConvidados();
+                        showStatus('Convidado adicionado ao rascunho.');
+                    } catch (err) {
+                        showStatus('Erro: ' + (err?.message || 'nao foi possivel salvar.'), true);
+                    } finally {
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                });
+            }
+
+            const guestWrap = document.getElementById('guestTableWrap');
+            if (guestWrap) {
+                guestWrap.addEventListener('submit', async (event) => {
+                    const form = event.target;
+                    if (!(form instanceof HTMLFormElement)) return;
+                    if (!form.classList.contains('guest-edit-form')) return;
+                    event.preventDefault();
+
+                    const submitter = event.submitter;
+                    const kind = submitter && submitter.dataset ? submitter.dataset.submitKind : 'save';
+                    const guestId = Number(form.querySelector('input[name="guest_id"]')?.value || 0);
+                    if (guestId <= 0) return;
+
+                    if (submitter) submitter.disabled = true;
+                    try {
+                        if (kind === 'delete') {
+                            if (!confirm('Deseja realmente excluir este convidado?')) {
+                                return;
+                            }
+                            showStatus('Excluindo convidado...');
+                            await postAction('excluir_convidado', { guest_id: String(guestId) });
+                            await refreshConvidados();
+                            showStatus('Convidado excluido.');
+                            return;
+                        }
+
+                        showStatus('Salvando alteracoes no rascunho...');
+                        await postAction('atualizar_convidado', {
+                            guest_id: String(guestId),
+                            nome: form.querySelector('input[name="nome"]')?.value || '',
+                            faixa_etaria: form.querySelector('select[name="faixa_etaria"]')?.value || '',
+                            numero_mesa: form.querySelector('input[name="numero_mesa"]')?.value || '',
+                        });
+                        await refreshConvidados();
+                        showStatus('Convidado atualizado no rascunho.');
+                    } catch (err) {
+                        showStatus('Erro: ' + (err?.message || 'nao foi possivel salvar.'), true);
+                    } finally {
+                        if (submitter) submitter.disabled = false;
+                    }
+                });
+            }
+
+            const btnSalvarGeral = document.getElementById('btnSalvarGeral');
+            if (btnSalvarGeral) {
+                btnSalvarGeral.addEventListener('click', async () => {
+                    btnSalvarGeral.disabled = true;
+                    showStatus('Publicando rascunhos...');
+                    try {
+                        const data = await postAction('salvar_geral_convidados');
+                        await refreshConvidados();
+                        const updated = Number(data.updated || 0);
+                        showStatus(updated > 0 ? `Lista salva com sucesso (${updated} rascunho(s) publicado(s)).` : 'Nao ha rascunhos pendentes para salvar.');
+                    } catch (err) {
+                        showStatus('Erro: ' + (err?.message || 'nao foi possivel salvar geral.'), true);
+                    } finally {
+                        updateDraftInfo();
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>

@@ -30,6 +30,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 
     try {
         switch ($action) {
+            case 'importar_texto_cru':
+                $texto_cru = trim((string)($_POST['texto_cru'] ?? ''));
+                $result = eventos_convidados_importar_texto_cru($pdo, $meeting_id, $texto_cru, 'interno', $user_id);
+                if (empty($result['ok'])) {
+                    echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'inserted' => (int)($result['inserted'] ?? 0),
+                    'skipped' => (int)($result['skipped'] ?? 0),
+                    'convidados' => eventos_convidados_listar($pdo, $meeting_id),
+                    'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+                    'config' => eventos_convidados_get_config($pdo, $meeting_id),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
             case 'toggle_checkin':
                 $guest_id = (int)($_POST['guest_id'] ?? 0);
                 $checked = ((string)($_POST['checked'] ?? '0') === '1');
@@ -240,6 +257,44 @@ includeSidebar('Lista de convidados');
         grid-template-columns: minmax(220px, 2fr) minmax(170px, 1fr) minmax(170px, 1fr);
     }
 
+    .import-box {
+        background: #fff;
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        padding: 0.9rem;
+        margin-bottom: 1rem;
+    }
+
+    .import-box h3 {
+        margin: 0 0 0.35rem 0;
+        color: #1f2937;
+        font-size: 1rem;
+    }
+
+    .import-box p {
+        margin: 0 0 0.55rem 0;
+        color: #64748b;
+        font-size: 0.84rem;
+    }
+
+    .import-box textarea {
+        width: 100%;
+        min-height: 110px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.62rem 0.7rem;
+        resize: vertical;
+        font-size: 0.86rem;
+        color: #1f2937;
+        background: #fff;
+    }
+
+    .import-actions {
+        margin-top: 0.55rem;
+        display: flex;
+        justify-content: flex-end;
+    }
+
     .filters label {
         display: block;
         font-size: 0.79rem;
@@ -399,12 +454,27 @@ includeSidebar('Lista de convidados');
                 <div class="stat-label">Pendentes</div>
                 <div id="sumPendentes" class="stat-value"><?= (int)$resumo['pendentes'] ?></div>
             </div>
+            <div class="stat">
+                <div class="stat-label">Em rascunho (cliente)</div>
+                <div id="sumRascunho" class="stat-value"><?= (int)($resumo['rascunho'] ?? 0) ?></div>
+            </div>
         </div>
     </div>
 
     <div class="info-note">
         <strong>Informacao importante para o time:</strong> para o mapeamento de mesa funcionar o cliente deve trazer a plaquinha com numero de mesa.
         Nao levamos os convidados ate a mesa; o numero e informado no momento da entrada.
+    </div>
+
+    <div class="import-box">
+        <h3>Importar texto cru (interno)</h3>
+        <p>Cole lista recebida por WhatsApp. O sistema cria nomes sem faixa e sem mesa.</p>
+        <form id="importTextoForm">
+            <textarea id="importTextoRaw" placeholder="Cole aqui um nome por linha, ou separados por virgula." required></textarea>
+            <div class="import-actions">
+                <button type="submit" class="btn btn-secondary" id="btnImportTexto">Importar lista</button>
+            </div>
+        </form>
     </div>
 
     <div class="filters">
@@ -501,9 +571,18 @@ function updateResumo(resumo) {
     const total = document.getElementById('sumTotal');
     const checkin = document.getElementById('sumCheckin');
     const pendentes = document.getElementById('sumPendentes');
+    const rascunho = document.getElementById('sumRascunho');
     if (total) total.textContent = String(Number(resumo.total || 0));
     if (checkin) checkin.textContent = String(Number(resumo.checkin || 0));
     if (pendentes) pendentes.textContent = String(Number(resumo.pendentes || 0));
+    if (rascunho) rascunho.textContent = String(Number(resumo.rascunho || 0));
+}
+
+function replaceConvidados(list) {
+    convidadosState.length = 0;
+    if (Array.isArray(list)) {
+        list.forEach((g) => convidadosState.push(g));
+    }
 }
 
 function showStatus(message, isError = false) {
@@ -582,18 +661,20 @@ function renderGrupos() {
             const faixa = (g.faixa_etaria || '').toString().trim();
             const mesa = (g.numero_mesa || '').toString().trim();
             const checkinDate = formatCheckinDate(g.checkin_at);
+            const isDraft = !!g.is_draft;
+            const origem = g.created_by_type === 'cliente' ? 'Origem: Cliente' : 'Origem: Interno';
             return `
                 <div class="guest-row ${usaMesa ? 'with-mesa' : 'without-mesa'}">
                     <div class="check-cell">
-                        <input type="checkbox" data-guest-id="${Number(g.id || 0)}" ${g.is_checked_in ? 'checked' : ''}>
+                        <input type="checkbox" data-guest-id="${Number(g.id || 0)}" ${g.is_checked_in ? 'checked' : ''} ${isDraft ? 'disabled' : ''}>
                     </div>
                     <div>
                         <div class="guest-name">${escapeHtml(g.nome || 'Convidado')}</div>
-                        <div class="guest-meta">${g.created_by_type === 'cliente' ? 'Origem: Cliente' : 'Origem: Interno'}</div>
+                        <div class="guest-meta">${origem}${isDraft ? ' • Rascunho' : ''}</div>
                     </div>
                     <div class="guest-meta">${faixa !== '' ? escapeHtml(faixa) : '-'}</div>
                     ${usaMesa ? `<div class="guest-meta">${mesa !== '' ? escapeHtml(mesa) : '-'}</div>` : ''}
-                    <div class="check-time">${checkinDate !== '' ? `Check-in: ${escapeHtml(checkinDate)}` : 'Sem check-in'}</div>
+                    <div class="check-time">${isDraft ? 'Rascunho' : (checkinDate !== '' ? `Check-in: ${escapeHtml(checkinDate)}` : 'Sem check-in')}</div>
                 </div>
             `;
         }).join('');
@@ -659,6 +740,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (mesa) {
         mesa.addEventListener('change', renderGrupos);
+    }
+
+    const importForm = document.getElementById('importTextoForm');
+    const importRaw = document.getElementById('importTextoRaw');
+    const btnImport = document.getElementById('btnImportTexto');
+    if (importForm && importRaw) {
+        importForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const texto = String(importRaw.value || '').trim();
+            if (!texto) {
+                showStatus('Cole algum conteudo para importar.', true);
+                return;
+            }
+
+            if (btnImport) btnImport.disabled = true;
+            showStatus('Importando lista...');
+            try {
+                const formData = new FormData();
+                formData.append('action', 'importar_texto_cru');
+                formData.append('meeting_id', String(meetingId));
+                formData.append('texto_cru', texto);
+
+                const response = await fetch(window.location.href, { method: 'POST', body: formData });
+                const raw = await response.text();
+                const data = parseJsonSafe(raw);
+                if (!data || !data.ok) {
+                    throw new Error((data && data.error) ? data.error : 'Falha ao importar lista');
+                }
+
+                replaceConvidados(data.convidados || []);
+                updateResumo(data.resumo || null);
+                preencherFiltroMesas();
+                renderGrupos();
+                importRaw.value = '';
+                showStatus(`Importacao concluida: ${Number(data.inserted || 0)} adicionados, ${Number(data.skipped || 0)} ignorados.`);
+            } catch (err) {
+                showStatus('Erro: ' + (err?.message || 'nao foi possivel importar.'), true);
+            } finally {
+                if (btnImport) btnImport.disabled = false;
+            }
+        });
     }
 
     const groupsWrap = document.getElementById('groupsWrap');

@@ -43,40 +43,33 @@ if (isset($_GET['logout'])) {
     exit;
 }
 
-// Buscar eventos dos próximos 30 dias (somente link DJ ativo, reunião concluída e tipo casamento/15 anos)
+// Buscar próximos 30 eventos (somente tipo real casamento/15 anos)
 $eventos = [];
 $eventos_por_data = [];
 $erro_eventos = '';
+$start_date = date('Y-m-d');
 try {
     $start = new DateTime('today');
-    $end = new DateTime('today');
-    $end->modify('+30 days');
     $start_date = $start->format('Y-m-d');
-    $end_date = $end->format('Y-m-d');
     $tipo_real_expr = "COALESCE(NULLIF(LOWER(TRIM(r.tipo_evento_real)), ''), LOWER(TRIM(COALESCE(r.me_event_snapshot->>'tipo_evento_real', ''))))";
 
     $stmt = $pdo->prepare("
         SELECT r.id,
+               r.me_event_id,
                r.status,
                (r.me_event_snapshot->>'data')::date as data_evento,
                (r.me_event_snapshot->>'nome') as nome_evento,
                (r.me_event_snapshot->>'local') as local_evento,
                (r.me_event_snapshot->>'hora_inicio') as hora_evento,
-               (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome,
-               BOOL_OR(lp.submitted_at IS NOT NULL) AS dj_submitted,
-               COUNT(*) FILTER (WHERE lp.is_active = TRUE) AS links_ativos
+               (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome
         FROM eventos_reunioes r
-        JOIN eventos_links_publicos lp ON lp.meeting_id = r.id
-        WHERE lp.link_type = 'cliente_dj'
-          AND lp.is_active = TRUE
-          AND r.status = 'concluida'
-          AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
+        WHERE (r.me_event_snapshot->>'data')::date >= :start
           AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
           AND {$tipo_real_expr} IN ('casamento', '15anos')
-        GROUP BY r.id, r.status, r.me_event_snapshot
-        ORDER BY (r.me_event_snapshot->>'data')::date ASC, (r.me_event_snapshot->>'hora_inicio') ASC
+        ORDER BY (r.me_event_snapshot->>'data')::date ASC, (r.me_event_snapshot->>'hora_inicio') ASC, r.id ASC
+        LIMIT 30
     ");
-    $stmt->execute([':start' => $start_date, ':end' => $end_date]);
+    $stmt->execute([':start' => $start_date]);
     $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     foreach ($eventos as $ev) {
@@ -107,6 +100,7 @@ if (!empty($_GET['evento'])) {
         $tipo_real_expr = "COALESCE(NULLIF(LOWER(TRIM(r.tipo_evento_real)), ''), LOWER(TRIM(COALESCE(r.me_event_snapshot->>'tipo_evento_real', ''))))";
         $stmt = $pdo->prepare("
             SELECT r.id,
+                   r.me_event_id,
                    r.status,
                    r.me_event_snapshot,
                    (r.me_event_snapshot->>'data')::date as data_evento,
@@ -116,19 +110,12 @@ if (!empty($_GET['evento'])) {
                    (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome
             FROM eventos_reunioes r
             WHERE r.id = :id
-              AND r.status = 'concluida'
-              AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
+              AND (r.me_event_snapshot->>'data')::date >= :start
               AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
               AND {$tipo_real_expr} IN ('casamento', '15anos')
-              AND EXISTS (
-                SELECT 1 FROM eventos_links_publicos lp
-                WHERE lp.meeting_id = r.id
-                  AND lp.link_type = 'cliente_dj'
-                  AND lp.is_active = TRUE
-              )
             LIMIT 1
         ");
-        $stmt->execute([':id' => $evento_id, ':start' => $start_date, ':end' => $end_date]);
+        $stmt->execute([':id' => $evento_id, ':start' => $start_date]);
         $evento_selecionado = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if ($evento_selecionado) {
@@ -734,10 +721,10 @@ if (!empty($_GET['evento'])) {
         
         <?php else: ?>
         <!-- Calendário -->
-        <h2 class="section-title">📅 Próximos eventos (30 dias)</h2>
-        <p style="color: #64748b; margin-top: -0.25rem; margin-bottom: 1rem;">Somente casamento e 15 anos, com reunião final concluída e link DJ ativo.</p>
+        <h2 class="section-title">📅 Próximos 30 eventos</h2>
+        <p style="color: #64748b; margin-top: -0.25rem; margin-bottom: 1rem;">Somente eventos com tipo real casamento ou 15 anos.</p>
         <div class="month-nav">
-            <h2>Janela de <?= htmlspecialchars(date('d/m/Y', strtotime($start_date))) ?> até <?= htmlspecialchars(date('d/m/Y', strtotime($end_date))) ?></h2>
+            <h2>Agenda por ordem de data/hora</h2>
             <a href="?page=portal_dj" class="btn btn-primary" style="margin-left: auto;">⟳ Atualizar</a>
         </div>
 
@@ -750,14 +737,27 @@ if (!empty($_GET['evento'])) {
         <?php elseif (empty($eventos)): ?>
         <div class="empty-state">
             <p style="font-size: 2rem;">🎧</p>
-            <p><strong>Nenhum evento nos próximos 30 dias.</strong></p>
-            <p>Este calendário mostra eventos de casamento e 15 anos com reunião final concluída.</p>
+            <p><strong>Nenhum evento disponível.</strong></p>
+            <p>Este calendário mostra os próximos 30 eventos com tipo real casamento ou 15 anos.</p>
         </div>
         <?php else: ?>
         <?php
             $today = new DateTime('today');
-            $end = new DateTime('today');
-            $end->modify('+30 days');
+            $end = clone $today;
+            if (!empty($eventos)) {
+                $ultimo_evento = end($eventos);
+                $ultima_data = trim((string)($ultimo_evento['data_evento'] ?? ''));
+                if ($ultima_data !== '') {
+                    $ts_ultima_data = strtotime($ultima_data);
+                    if ($ts_ultima_data) {
+                        $end = new DateTime(date('Y-m-d', $ts_ultima_data));
+                    }
+                }
+                reset($eventos);
+            }
+            if ($end < $today) {
+                $end = clone $today;
+            }
 
             $start_grid = new DateTime('today');
             $weekday = (int)$start_grid->format('w');
@@ -842,7 +842,7 @@ if (!empty($_GET['evento'])) {
             </div>
         </div>
 
-        <h3 class="section-title" style="margin-top: 0;">📋 Eventos dos próximos 30 dias (<?= (int)count($eventos) ?>)</h3>
+        <h3 class="section-title" style="margin-top: 0;">📋 Próximos 30 eventos (<?= (int)count($eventos) ?>)</h3>
         <div class="events-grid">
             <?php foreach ($eventos as $ev):
                 $is_past = strtotime($ev['data_evento']) < strtotime('today');

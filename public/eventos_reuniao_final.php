@@ -2039,6 +2039,8 @@ let djSlotOrder = [];
 let selectedDjTemplateIds = {};
 let lastSavedDjSchemaSignatures = {};
 let djLinksBySlot = {};
+let djPortalSaveInFlight = {};
+let djPortalSavePending = {};
 let djAnexos = Array.isArray(initialDjAnexos) ? initialDjAnexos.slice() : [];
 let djUploadCardOrder = [];
 let djUploadCardCounter = 0;
@@ -2529,9 +2531,6 @@ function buildDjSlotCardHtml(slot) {
                     <input type="checkbox" id="djPortalEditable-${slot}" onchange="onChangeDjPortalEditable(${slot})"${portalEditableChecked}>
                     Permitir edição/preenchimento do cliente
                 </label>
-                <div class="portal-settings-action">
-                    <button type="button" class="btn btn-primary" onclick="salvarDjSlotPortalConfig(${slot})" id="btnSalvarPortalConfig-${slot}">Salvar regras do portal</button>
-                </div>
             </div>
             <p class="share-hint" id="shareHint-${slot}">Selecione um formulário para configurar este quadro no portal.</p>
         </div>
@@ -2622,6 +2621,8 @@ async function excluirDjSlot(slot = 1) {
     delete selectedDjTemplateIds[slotIndex];
     delete lastSavedDjSchemaSignatures[slotIndex];
     delete djLinksBySlot[slotIndex];
+    delete djPortalSaveInFlight[slotIndex];
+    delete djPortalSavePending[slotIndex];
     renderDjSlots();
 }
 
@@ -2667,20 +2668,31 @@ function onChangeDjPortalVisibility(slot = 1) {
         visibleInput.checked = true;
     }
     updateShareAvailability(slot);
+    requestDjSlotPortalAutoSave(slot);
 }
 
 function onChangeDjPortalEditable(slot = 1) {
     syncDjPortalToggles(slot);
     updateShareAvailability(slot);
+    requestDjSlotPortalAutoSave(slot);
+}
+
+function requestDjSlotPortalAutoSave(slot = 1) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        return;
+    }
+    void salvarDjSlotPortalConfig(slotIndex, {
+        silentSuccess: true,
+        suppressValidationAlert: true,
+    });
 }
 
 function updateShareAvailability(slot = 1) {
-    const shareBtn = document.getElementById(`btnSalvarPortalConfig-${slot}`);
     const hint = document.getElementById(`shareHint-${slot}`);
     const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
     const editableInput = document.getElementById(`djPortalEditable-${slot}`);
     const select = document.getElementById(`djTemplateSelect-${slot}`);
-    if (!shareBtn) return;
 
     let disabled = false;
     let hintText = 'Selecione um formulário para configurar este quadro no portal.';
@@ -2688,7 +2700,7 @@ function updateShareAvailability(slot = 1) {
     syncDjPortalToggles(slot);
 
     if (isDjSlotLocked(slot)) {
-        hintText = 'Cliente já enviou este quadro. Marque "Permitir edição/preenchimento" e salve para destravar.';
+        hintText = 'Cliente já enviou este quadro. Marque "Permitir edição/preenchimento" para salvar e destravar automaticamente.';
         if (select) select.disabled = true;
     } else {
         if (select) select.disabled = false;
@@ -2712,7 +2724,6 @@ function updateShareAvailability(slot = 1) {
 
     if (visibleInput) visibleInput.disabled = disabled;
     if (editableInput) editableInput.disabled = disabled;
-    shareBtn.disabled = disabled;
     if (hint) hint.textContent = hintText;
 }
 
@@ -3114,6 +3125,7 @@ function onChangeDjTemplateSelect(slot = 1) {
     selectedDjTemplateIds[slot] = select && select.value ? Number(select.value) : null;
     updateSelectedDjTemplateMeta(slot);
     updateShareAvailability(slot);
+    requestDjSlotPortalAutoSave(slot);
 }
 
 function renderAllDjTemplateSelects() {
@@ -3989,6 +4001,8 @@ function initDjTemplateSelection() {
     selectedDjTemplateIds = {};
     lastSavedDjSchemaSignatures = {};
     djLinksBySlot = {};
+    djPortalSaveInFlight = {};
+    djPortalSavePending = {};
 
     if (Array.isArray(initialDjLinks)) {
         initialDjLinks.forEach((link) => {
@@ -4089,38 +4103,52 @@ async function salvarSecao(section) {
 }
 
 // Salvar visibilidade/edição do quadro DJ no portal do cliente
-async function salvarDjSlotPortalConfig(slot = 1) {
+async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
     const slotIndex = normalizeSlotIndex(slot);
+    const silentSuccess = !!(options && options.silentSuccess);
+    const suppressValidationAlert = !!(options && options.suppressValidationAlert);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
-        alert('Quadro inválido.');
-        return;
+        if (!suppressValidationAlert) {
+            alert('Quadro inválido.');
+        }
+        return false;
     }
     updateShareAvailability(slotIndex);
-    const btn = document.getElementById(`btnSalvarPortalConfig-${slotIndex}`);
-    if (btn && btn.disabled) {
-        const hint = document.getElementById(`shareHint-${slotIndex}`);
-        alert(hint ? hint.textContent : 'Selecione um formulário válido para configurar o portal.');
-        return;
+    if (djPortalSaveInFlight[slotIndex]) {
+        djPortalSavePending[slotIndex] = true;
+        return false;
     }
 
     try {
         const selected = getSelectedDjTemplateData(slotIndex);
         if (!selected.template) {
-            alert('Selecione um formulário antes de salvar as regras.');
-            return;
+            if (!suppressValidationAlert) {
+                alert('Selecione um formulário antes de salvar as regras.');
+            }
+            return false;
         }
         if (!hasUsefulSchemaFields(selected.schema)) {
-            alert('O formulário selecionado não possui campos válidos.');
-            return;
+            if (!suppressValidationAlert) {
+                alert('O formulário selecionado não possui campos válidos.');
+            }
+            return false;
         }
 
         const visibleInput = document.getElementById(`djPortalVisible-${slotIndex}`);
         const editableInput = document.getElementById(`djPortalEditable-${slotIndex}`);
+        if (!visibleInput || !editableInput || visibleInput.disabled || editableInput.disabled) {
+            if (!suppressValidationAlert) {
+                const hint = document.getElementById(`shareHint-${slotIndex}`);
+                alert(hint ? hint.textContent : 'Selecione um formulário válido para configurar o portal.');
+            }
+            return false;
+        }
+
         let portalVisible = !!(visibleInput && visibleInput.checked);
-        const portalEditable = !!(editableInput && editableInput.checked);
+        const portalEditable = !!editableInput.checked;
         if (portalEditable && !portalVisible) {
             portalVisible = true;
-            if (visibleInput) visibleInput.checked = true;
+            visibleInput.checked = true;
         }
 
         const formTitle = String(selected.template.nome || `Formulário DJ / Protocolos - Quadro ${slotIndex}`);
@@ -4135,13 +4163,7 @@ async function salvarDjSlotPortalConfig(slot = 1) {
         formData.append('form_schema_json', JSON.stringify(selected.schema));
         formData.append('content_html', contentHtml);
         formData.append('form_title', formTitle);
-
-        let originalText = '';
-        if (btn) {
-            originalText = btn.textContent || 'Salvar regras do portal';
-            btn.disabled = true;
-            btn.textContent = 'Salvando...';
-        }
+        djPortalSaveInFlight[slotIndex] = true;
         
         try {
             const resp = await fetch(window.location.href, {
@@ -4170,18 +4192,28 @@ async function salvarDjSlotPortalConfig(slot = 1) {
                 }
                 lastSavedDjSchemaSignatures[slotIndex] = getSchemaSignature(selected.schema);
                 updateShareAvailability(slotIndex);
-                alert('Configuração do portal salva para este quadro.');
+                if (!silentSuccess) {
+                    alert('Configuração do portal salva para este quadro.');
+                }
+                return true;
             } else {
                 alert(data.error || 'Erro ao salvar configuração do portal');
+                return false;
             }
         } finally {
-            if (btn) {
-                btn.textContent = originalText || 'Salvar regras do portal';
-                updateShareAvailability(slotIndex);
+            djPortalSaveInFlight[slotIndex] = false;
+            updateShareAvailability(slotIndex);
+            if (djPortalSavePending[slotIndex]) {
+                djPortalSavePending[slotIndex] = false;
+                void salvarDjSlotPortalConfig(slotIndex, {
+                    silentSuccess: true,
+                    suppressValidationAlert: true,
+                });
             }
         }
     } catch (err) {
         alert('Erro: ' + err.message);
+        return false;
     }
 }
 

@@ -49,8 +49,41 @@ try {
                 exit;
             }
             
+            // Mapear eventos já organizados para sinalização visual no frontend
+            $meeting_by_event = [];
+            $event_ids = [];
+            foreach ((array)$result['events'] as $ev_raw) {
+                $ev_id = eventos_me_pick_int((array)$ev_raw, ['id']);
+                if ($ev_id > 0) {
+                    $event_ids[$ev_id] = $ev_id;
+                }
+            }
+            if (!empty($event_ids)) {
+                $ids = array_values($event_ids);
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $pdo->prepare("
+                    SELECT id,
+                           me_event_id,
+                           status,
+                           COALESCE(
+                               NULLIF(LOWER(TRIM(tipo_evento_real)), ''),
+                               LOWER(TRIM(COALESCE(me_event_snapshot->>'tipo_evento_real', '')))
+                           ) AS tipo_evento_real_norm
+                    FROM eventos_reunioes
+                    WHERE me_event_id IN ($placeholders)
+                ");
+                $stmt->execute($ids);
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $meeting_by_event[(int)$row['me_event_id']] = [
+                        'id' => (int)$row['id'],
+                        'status' => (string)($row['status'] ?? ''),
+                        'tipo_evento_real' => (string)($row['tipo_evento_real_norm'] ?? ''),
+                    ];
+                }
+            }
+
             // Formatar eventos para o dropdown
-            $events = array_map(function($ev) {
+            $events = array_map(function($ev) use ($meeting_by_event) {
                 $nome = eventos_me_pick_text($ev, ['nomeevento', 'nome'], 'Sem nome');
                 $data = eventos_me_pick_text($ev, ['dataevento', 'data']);
                 $data_fmt = '';
@@ -67,8 +100,11 @@ try {
                 $convidados = eventos_me_pick_int($ev, ['nconvidados', 'convidados']);
                 $tipo = eventos_me_pick_text($ev, ['tipoevento', 'tipoEvento', 'tipo']);
                 
+                $event_id = eventos_me_pick_int($ev, ['id']);
+                $meeting = $meeting_by_event[$event_id] ?? null;
+
                 return [
-                    'id' => eventos_me_pick_int($ev, ['id']),
+                    'id' => $event_id,
                     'nome' => $nome,
                     'data' => $data,
                     'data_formatada' => $data_fmt,
@@ -77,6 +113,10 @@ try {
                     'convidados' => $convidados,
                     'cliente' => $cliente,
                     'tipo' => $tipo,
+                    'organizado' => $meeting !== null,
+                    'meeting_id' => $meeting ? (int)$meeting['id'] : 0,
+                    'reuniao_status' => $meeting ? (string)$meeting['status'] : '',
+                    'tipo_evento_real' => $meeting ? (string)$meeting['tipo_evento_real'] : '',
                     // Label para dropdown
                     'label' => sprintf(
                         '%s - %s (%s)',
