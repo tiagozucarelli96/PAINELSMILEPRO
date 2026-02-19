@@ -2576,18 +2576,35 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
+    $has_is_active_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'is_active');
+    $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
+    $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
+    $has_visivel_dj_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_dj');
+    $has_editavel_dj_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_dj');
+    $has_visivel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_convidados');
+    $has_editavel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados');
+    $has_created_by_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_by_user_id');
+    $has_created_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_at');
+    $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
+
     try {
         $existing = eventos_cliente_portal_get($pdo, $meeting_id);
         if ($existing) {
-            if (empty($existing['is_active'])) {
-                $stmt = $pdo->prepare("
-                    UPDATE eventos_cliente_portais
-                    SET is_active = TRUE, updated_at = NOW()
-                    WHERE id = :id
-                    RETURNING *
-                ");
-                $stmt->execute([':id' => (int)$existing['id']]);
-                $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
+            if ($has_is_active_col && empty($existing['is_active'])) {
+                $set_parts = ["is_active = TRUE"];
+                if ($has_updated_at_col) {
+                    $set_parts[] = "updated_at = NOW()";
+                }
+                if (!empty($set_parts)) {
+                    $stmt = $pdo->prepare("
+                        UPDATE eventos_cliente_portais
+                        SET " . implode(', ', $set_parts) . "
+                        WHERE id = :id
+                        RETURNING *
+                    ");
+                    $stmt->execute([':id' => (int)$existing['id']]);
+                    $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
+                }
             }
             return ['ok' => true, 'portal' => $existing, 'created' => false];
         }
@@ -2602,41 +2619,61 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
     }
 
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO eventos_cliente_portais (
-                meeting_id,
-                token,
-                is_active,
-                visivel_reuniao,
-                editavel_reuniao,
-                visivel_dj,
-                editavel_dj,
-                visivel_convidados,
-                editavel_convidados,
-                created_by_user_id,
-                created_at,
-                updated_at
-            ) VALUES (
-                :meeting_id,
-                :token,
-                TRUE,
-                FALSE,
-                FALSE,
-                FALSE,
-                FALSE,
-                FALSE,
-                FALSE,
-                :user_id,
-                NOW(),
-                NOW()
-            )
-            RETURNING *
-        ");
-        $stmt->execute([
+        $columns = ['meeting_id', 'token'];
+        $values = [':meeting_id', ':token'];
+        $params = [
             ':meeting_id' => $meeting_id,
             ':token' => $token,
-            ':user_id' => $user_id > 0 ? $user_id : null,
-        ]);
+        ];
+
+        if ($has_is_active_col) {
+            $columns[] = 'is_active';
+            $values[] = 'TRUE';
+        }
+        if ($has_visivel_reuniao_col) {
+            $columns[] = 'visivel_reuniao';
+            $values[] = 'FALSE';
+        }
+        if ($has_editavel_reuniao_col) {
+            $columns[] = 'editavel_reuniao';
+            $values[] = 'FALSE';
+        }
+        if ($has_visivel_dj_col) {
+            $columns[] = 'visivel_dj';
+            $values[] = 'FALSE';
+        }
+        if ($has_editavel_dj_col) {
+            $columns[] = 'editavel_dj';
+            $values[] = 'FALSE';
+        }
+        if ($has_visivel_convidados_col) {
+            $columns[] = 'visivel_convidados';
+            $values[] = 'FALSE';
+        }
+        if ($has_editavel_convidados_col) {
+            $columns[] = 'editavel_convidados';
+            $values[] = 'FALSE';
+        }
+        if ($has_created_by_col) {
+            $columns[] = 'created_by_user_id';
+            $values[] = ':user_id';
+            $params[':user_id'] = $user_id > 0 ? $user_id : null;
+        }
+        if ($has_created_at_col) {
+            $columns[] = 'created_at';
+            $values[] = 'NOW()';
+        }
+        if ($has_updated_at_col) {
+            $columns[] = 'updated_at';
+            $values[] = 'NOW()';
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_cliente_portais (" . implode(', ', $columns) . ")
+            VALUES (" . implode(', ', $values) . ")
+            RETURNING *
+        ");
+        $stmt->execute($params);
         $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
@@ -2670,29 +2707,69 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $visivel_convidados = !empty($config['visivel_convidados']);
     $editavel_convidados = !empty($config['editavel_convidados']);
 
+    if ($editavel_reuniao) {
+        $visivel_reuniao = true;
+    }
+    if ($editavel_dj) {
+        $visivel_dj = true;
+    }
+    if ($editavel_convidados) {
+        $visivel_convidados = true;
+    }
+
+    $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
+    $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
+    $has_visivel_dj_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_dj');
+    $has_editavel_dj_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_dj');
+    $has_visivel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_convidados');
+    $has_editavel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados');
+    $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
+
     try {
-        $stmt = $pdo->prepare("
-            UPDATE eventos_cliente_portais
-            SET visivel_reuniao = :visivel_reuniao,
-                editavel_reuniao = :editavel_reuniao,
-                visivel_dj = :visivel_dj,
-                editavel_dj = :editavel_dj,
-                visivel_convidados = :visivel_convidados,
-                editavel_convidados = :editavel_convidados,
-                updated_at = NOW()
-            WHERE id = :id
-            RETURNING *
-        ");
-        $stmt->execute([
-            ':visivel_reuniao' => $visivel_reuniao,
-            ':editavel_reuniao' => $editavel_reuniao,
-            ':visivel_dj' => $visivel_dj,
-            ':editavel_dj' => $editavel_dj,
-            ':visivel_convidados' => $visivel_convidados,
-            ':editavel_convidados' => $editavel_convidados,
-            ':id' => (int)$created['portal']['id'],
-        ]);
-        $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        $set_parts = [];
+        $params = [':id' => (int)$created['portal']['id']];
+
+        if ($has_visivel_reuniao_col) {
+            $set_parts[] = 'visivel_reuniao = :visivel_reuniao';
+            $params[':visivel_reuniao'] = $visivel_reuniao;
+        }
+        if ($has_editavel_reuniao_col) {
+            $set_parts[] = 'editavel_reuniao = :editavel_reuniao';
+            $params[':editavel_reuniao'] = $editavel_reuniao;
+        }
+        if ($has_visivel_dj_col) {
+            $set_parts[] = 'visivel_dj = :visivel_dj';
+            $params[':visivel_dj'] = $visivel_dj;
+        }
+        if ($has_editavel_dj_col) {
+            $set_parts[] = 'editavel_dj = :editavel_dj';
+            $params[':editavel_dj'] = $editavel_dj;
+        }
+        if ($has_visivel_convidados_col) {
+            $set_parts[] = 'visivel_convidados = :visivel_convidados';
+            $params[':visivel_convidados'] = $visivel_convidados;
+        }
+        if ($has_editavel_convidados_col) {
+            $set_parts[] = 'editavel_convidados = :editavel_convidados';
+            $params[':editavel_convidados'] = $editavel_convidados;
+        }
+        if ($has_updated_at_col) {
+            $set_parts[] = 'updated_at = NOW()';
+        }
+
+        if (!empty($set_parts)) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_cliente_portais
+                SET " . implode(', ', $set_parts) . "
+                WHERE id = :id
+                RETURNING *
+            ");
+            $stmt->execute($params);
+            $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        } else {
+            $portal = eventos_cliente_portal_get($pdo, (int)$meeting_id);
+        }
+
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
         }
