@@ -1,6 +1,7 @@
 <?php
 // push_helper.php — Helper para envio de Web Push Notifications
 require_once __DIR__ . '/../conexao.php';
+require_once __DIR__ . '/push_schema.php';
 
 class PushHelper {
     private $pdo;
@@ -11,6 +12,7 @@ class PushHelper {
     private $vapidValidationError;
     private $missingMathExtensionWarned;
     private $useLibrary;
+    private $schemaReady;
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'] ?? null;
@@ -39,6 +41,7 @@ class PushHelper {
         $this->vapidValidationChecked = false;
         $this->vapidValidationError = '';
         $this->missingMathExtensionWarned = false;
+        $this->schemaReady = false;
         
         // Carregar autoload do composer se disponível
         $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
@@ -55,6 +58,8 @@ class PushHelper {
      */
     public function enviarPush($usuario_id, $titulo = 'Portal Grupo Smile', $mensagem = 'Você tem novas atualizações no sistema.', $data = []) {
         try {
+            $this->ensurePushSchema();
+
             // Buscar subscriptions ativas do usuário
             $stmt = $this->pdo->prepare("
                 SELECT endpoint, chave_publica, chave_autenticacao
@@ -97,6 +102,22 @@ class PushHelper {
             error_log("Erro ao enviar push: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
+    }
+
+    private function ensurePushSchema() {
+        if ($this->schemaReady || !($this->pdo instanceof PDO)) {
+            return;
+        }
+
+        try {
+            if (function_exists('push_ensure_schema')) {
+                push_ensure_schema($this->pdo);
+            }
+        } catch (Throwable $e) {
+            error_log("[PUSH_HELPER] Falha ao garantir schema de push: " . $e->getMessage());
+        }
+
+        $this->schemaReady = true;
     }
     
     /**

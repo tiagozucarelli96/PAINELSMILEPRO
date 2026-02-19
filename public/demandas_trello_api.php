@@ -35,6 +35,7 @@ if (empty($usuario_id_session) || !$logado || (int)$logado !== 1) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)$usuario_id_session;
@@ -1019,6 +1020,23 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo, $is_admin) {
  */
 function listarNotificacoes($pdo, $usuario_id) {
     try {
+        $stmt_table = $pdo->prepare("
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = 'demandas_notificacoes'
+            LIMIT 1
+        ");
+        $stmt_table->execute();
+        if (!$stmt_table->fetchColumn()) {
+            echo json_encode([
+                'success' => true,
+                'data' => [],
+                'nao_lidas' => 0
+            ]);
+            exit;
+        }
+
         // Verificar se coluna referencia_id existe, senão usar alternativa
         $stmt_check = $pdo->query("
             SELECT column_name 
@@ -1088,6 +1106,22 @@ function listarNotificacoes($pdo, $usuario_id) {
  */
 function marcarNotificacaoComoLida($pdo, $notificacao_id) {
     try {
+        $stmt_table = $pdo->prepare("
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = 'demandas_notificacoes'
+            LIMIT 1
+        ");
+        $stmt_table->execute();
+        if (!$stmt_table->fetchColumn()) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Nenhuma notificação para atualizar'
+            ]);
+            exit;
+        }
+
         $stmt = $pdo->prepare("UPDATE demandas_notificacoes SET lida = TRUE WHERE id = :id");
         $stmt->execute([':id' => $notificacao_id]);
         
@@ -1845,19 +1879,54 @@ function gerarUrlPreview($chave_storage) {
     return "{$endpoint}/{$bucket}/{$chave_storage}";
 }
 
-function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem) {
+function criarNotificacao($pdo, $usuario_id, $tipo, $referencia_id, $mensagem, $titulo = '', $url_destino = '') {
     try {
-        $stmt = $pdo->prepare("
-            INSERT INTO demandas_notificacoes (usuario_id, tipo, referencia_id, mensagem)
-            VALUES (:user_id, :tipo, :ref_id, :msg)
-        ");
-        $stmt->execute([
-            ':user_id' => $usuario_id,
-            ':tipo' => $tipo,
-            ':ref_id' => $referencia_id,
-            ':msg' => $mensagem
-        ]);
-    } catch (PDOException $e) {
+        $usuario_id = (int)$usuario_id;
+        if ($usuario_id <= 0) {
+            return;
+        }
+
+        $tipo = trim((string)$tipo);
+        if ($tipo === '') {
+            $tipo = 'demanda';
+        }
+
+        $mapaTitulos = [
+            'tarefa_atribuida' => 'Nova tarefa atribuída',
+            'card_criado' => 'Novo card no quadro',
+            'card_atualizado' => 'Card atualizado',
+        ];
+        if ($titulo === '') {
+            $titulo = $mapaTitulos[$tipo] ?? 'Notificação de demanda';
+        }
+
+        $cardId = (int)$referencia_id;
+        if ($cardId <= 0) {
+            $cardId = null;
+        }
+
+        if (trim($url_destino) === '' && $cardId) {
+            $url_destino = 'index.php?page=demandas#card-' . $cardId;
+        }
+
+        static $dispatcher = null;
+        if (!$dispatcher) {
+            $dispatcher = new NotificationDispatcher($pdo);
+            $dispatcher->ensureInternalSchema();
+        }
+
+        $dispatcher->dispatch(
+            [['id' => $usuario_id]],
+            [
+                'tipo' => $tipo,
+                'referencia_id' => $cardId,
+                'titulo' => $titulo,
+                'mensagem' => (string)$mensagem,
+                'url_destino' => (string)$url_destino,
+            ],
+            ['internal' => true]
+        );
+    } catch (Throwable $e) {
         // Ignorar erros de notificação
         error_log("Erro ao criar notificação: " . $e->getMessage());
     }

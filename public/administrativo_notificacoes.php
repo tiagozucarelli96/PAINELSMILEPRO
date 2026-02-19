@@ -10,8 +10,7 @@ if (empty($_SESSION['logado']) || (empty($_SESSION['perm_administrativo']) && em
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
-require_once __DIR__ . '/core/push_helper.php';
-require_once __DIR__ . '/core/email_global_helper.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
 
 function adminNotifUsuarioLogadoId(): int
 {
@@ -25,23 +24,6 @@ function adminNotifBoolPost(string $campo, bool $default = false): bool
     }
     $valor = strtolower(trim((string)$_POST[$campo]));
     return in_array($valor, ['1', 'on', 'true', 'yes', 'sim'], true);
-}
-
-function adminNotifColunaExiste(PDO $pdo, string $tabela, string $coluna): bool
-{
-    $stmt = $pdo->prepare("
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = :table_name
-          AND column_name = :column_name
-        LIMIT 1
-    ");
-    $stmt->execute([
-        ':table_name' => $tabela,
-        ':column_name' => $coluna
-    ]);
-
-    return (bool)$stmt->fetchColumn();
 }
 
 function adminNotifGarantirSchema(PDO $pdo): void
@@ -68,25 +50,6 @@ function adminNotifGarantirSchema(PDO $pdo): void
     ");
 
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_admin_notif_disparos_criado_em ON administrativo_notificacoes_disparos(criado_em DESC)");
-
-    // Garantir estrutura mínima de notificações internas.
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS demandas_notificacoes (
-            id BIGSERIAL PRIMARY KEY,
-            usuario_id BIGINT REFERENCES usuarios(id) ON DELETE CASCADE,
-            tipo VARCHAR(50) NOT NULL,
-            referencia_id INT,
-            titulo VARCHAR(180),
-            mensagem TEXT NOT NULL,
-            url_destino TEXT,
-            lida BOOLEAN DEFAULT FALSE,
-            criada_em TIMESTAMPTZ DEFAULT NOW()
-        )
-    ");
-
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS titulo VARCHAR(180)");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS url_destino TEXT");
-    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_usuario ON demandas_notificacoes(usuario_id, lida)");
 }
 
 function adminNotifBuscarUsuariosAtivos(PDO $pdo): array
@@ -131,89 +94,6 @@ function adminNotifBuscarDestinatarios(PDO $pdo, string $modoDestino, array $ids
     $stmt->execute($ids);
 
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-}
-
-function adminNotifInserirInterna(PDO $pdo, int $usuarioId, string $titulo, string $mensagem, string $urlDestino = ''): array
-{
-    try {
-        if ($usuarioId <= 0) {
-            return ['success' => false, 'error' => 'Usuário inválido'];
-        }
-
-        $hasReferenciaId = adminNotifColunaExiste($pdo, 'demandas_notificacoes', 'referencia_id');
-        $hasTitulo = adminNotifColunaExiste($pdo, 'demandas_notificacoes', 'titulo');
-        $hasUrlDestino = adminNotifColunaExiste($pdo, 'demandas_notificacoes', 'url_destino');
-
-        $campos = ['usuario_id', 'tipo', 'mensagem', 'lida'];
-        $valores = [':usuario_id', ':tipo', ':mensagem', ':lida'];
-        $params = [
-            ':usuario_id' => $usuarioId,
-            ':tipo' => 'administrativo_manual',
-            ':mensagem' => $mensagem,
-            ':lida' => false
-        ];
-
-        if ($hasReferenciaId) {
-            $campos[] = 'referencia_id';
-            $valores[] = ':referencia_id';
-            $params[':referencia_id'] = null;
-        }
-
-        if ($hasTitulo) {
-            $campos[] = 'titulo';
-            $valores[] = ':titulo';
-            $params[':titulo'] = $titulo;
-        }
-
-        if ($hasUrlDestino) {
-            $campos[] = 'url_destino';
-            $valores[] = ':url_destino';
-            $params[':url_destino'] = $urlDestino !== '' ? $urlDestino : null;
-        }
-
-        $sql = "
-            INSERT INTO demandas_notificacoes (" . implode(', ', $campos) . ")
-            VALUES (" . implode(', ', $valores) . ")
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-
-        return ['success' => true];
-    } catch (Throwable $e) {
-        return ['success' => false, 'error' => $e->getMessage()];
-    }
-}
-
-function adminNotifCorpoEmail(string $titulo, string $mensagem, string $urlDestino = ''): string
-{
-    $tituloHtml = htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
-    $mensagemHtml = nl2br(htmlspecialchars($mensagem, ENT_QUOTES, 'UTF-8'));
-    $urlHtml = htmlspecialchars($urlDestino, ENT_QUOTES, 'UTF-8');
-
-    $botao = '';
-    if ($urlDestino !== '') {
-        $botao = "
-            <p style='margin-top: 18px;'>
-                <a href='{$urlHtml}' style='display:inline-block;background:#1e3a8a;color:#ffffff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;'>
-                    Abrir no Painel
-                </a>
-            </p>
-        ";
-    }
-
-    return "
-        <div style='font-family:Arial,sans-serif;line-height:1.6;color:#1f2937;max-width:700px;margin:0 auto;'>
-            <div style='background:#1e3a8a;color:#ffffff;padding:16px 18px;border-radius:10px 10px 0 0;'>
-                <h2 style='margin:0;font-size:20px;'>{$tituloHtml}</h2>
-            </div>
-            <div style='border:1px solid #dbe3ef;border-top:none;padding:16px 18px;border-radius:0 0 10px 10px;background:#ffffff;'>
-                <div style='font-size:15px;color:#334155;'>{$mensagemHtml}</div>
-                {$botao}
-                <p style='margin-top:22px;color:#64748b;font-size:13px;'>Mensagem enviada pelo módulo Administrativo.</p>
-            </div>
-        </div>
-    ";
 }
 
 function adminNotifRegistrarDisparo(PDO $pdo, array $dados): void
@@ -269,6 +149,8 @@ function adminNotifResumoTexto(string $texto, int $limite = 80): string
 }
 
 adminNotifGarantirSchema($pdo);
+$notificationDispatcher = new NotificationDispatcher($pdo);
+$notificationDispatcher->ensureInternalSchema();
 
 $erro = '';
 $sucesso = '';
@@ -315,91 +197,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
                 ? 'Selecione pelo menos um destinatário ativo.'
                 : 'Nenhum destinatário ativo encontrado.';
         } else {
-            $pushHelper = null;
-            $emailHelper = null;
-
-            if ($canalPush) {
-                try {
-                    $pushHelper = new PushHelper();
-                } catch (Throwable $e) {
-                    $erro = 'Falha ao iniciar envio Push: ' . $e->getMessage();
-                }
-            }
-
-            if ($erro === '' && $canalEmail) {
-                try {
-                    $emailHelper = new EmailGlobalHelper();
-                } catch (Throwable $e) {
-                    $erro = 'Falha ao iniciar envio de e-mail: ' . $e->getMessage();
-                }
-            }
-
             if ($erro === '') {
-                $contadores = [
-                    'total_destinatarios' => count($destinatarios),
-                    'enviados_interno' => 0,
-                    'enviados_push' => 0,
-                    'enviados_email' => 0,
-                    'falhas_interno' => 0,
-                    'falhas_push' => 0,
-                    'falhas_email' => 0,
-                    'emails_sem_endereco' => 0,
-                ];
-
-                foreach ($destinatarios as $usuario) {
-                    $usuarioId = (int)($usuario['id'] ?? 0);
-                    $emailUsuario = trim((string)($usuario['email'] ?? ''));
-
-                    if ($usuarioId <= 0) {
-                        continue;
-                    }
-
-                    if ($canalInterno) {
-                        $retornoInterno = adminNotifInserirInterna($pdo, $usuarioId, $titulo, $mensagem, $urlDestino);
-                        if (!empty($retornoInterno['success'])) {
-                            $contadores['enviados_interno']++;
-                        } else {
-                            $contadores['falhas_interno']++;
-                        }
-                    }
-
-                    if ($canalPush && $pushHelper) {
-                        $retornoPush = $pushHelper->enviarPush(
-                            $usuarioId,
-                            $titulo,
-                            $mensagem,
-                            [
-                                'url' => $urlDestino !== '' ? $urlDestino : 'index.php?page=dashboard',
-                                'tipo' => 'administrativo_manual'
-                            ]
-                        );
-
-                        if (!empty($retornoPush['success'])) {
-                            $contadores['enviados_push']++;
-                        } else {
-                            $contadores['falhas_push']++;
-                        }
-                    }
-
-                    if ($canalEmail && $emailHelper) {
-                        if ($emailUsuario === '' || !filter_var($emailUsuario, FILTER_VALIDATE_EMAIL)) {
-                            $contadores['emails_sem_endereco']++;
-                            $contadores['falhas_email']++;
-                        } else {
-                            $okEmail = $emailHelper->enviarEmail(
-                                $emailUsuario,
-                                $titulo,
-                                adminNotifCorpoEmail($titulo, $mensagem, $urlDestino),
-                                true
-                            );
-
-                            if ($okEmail) {
-                                $contadores['enviados_email']++;
-                            } else {
-                                $contadores['falhas_email']++;
-                            }
-                        }
-                    }
+                try {
+                    $contadores = $notificationDispatcher->dispatch(
+                        $destinatarios,
+                        [
+                            'tipo' => 'administrativo_manual',
+                            'titulo' => $titulo,
+                            'mensagem' => $mensagem,
+                            'url_destino' => $urlDestino,
+                            'email_assunto' => $titulo,
+                        ],
+                        [
+                            'internal' => $canalInterno,
+                            'push' => $canalPush,
+                            'email' => $canalEmail,
+                        ]
+                    );
+                } catch (Throwable $e) {
+                    $erro = 'Falha ao disparar notificação: ' . $e->getMessage();
+                    $contadores = [
+                        'total_destinatarios' => count($destinatarios),
+                        'enviados_interno' => 0,
+                        'enviados_push' => 0,
+                        'enviados_email' => 0,
+                        'falhas_interno' => 0,
+                        'falhas_push' => 0,
+                        'falhas_email' => 0,
+                        'emails_sem_endereco' => 0,
+                    ];
                 }
 
                 $canais = [];
@@ -430,8 +256,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
                     'criado_por_usuario_id' => adminNotifUsuarioLogadoId(),
                 ]);
 
-                $resumoEnvio = $contadores;
-                $sucesso = 'Disparo concluído.';
+                if ($erro === '') {
+                    $resumoEnvio = $contadores;
+                    $sucesso = 'Disparo concluído.';
+                }
             }
         }
     }

@@ -22,7 +22,7 @@ try {
         echo $enviado ? "Notificações enviadas com sucesso\n" : "Nenhuma notificação para enviar\n";
     } else {
         header('Content-Type: application/json');
-        echo json_encode(['success' => $enviado, 'message' => $enviado ? 'Notificações enviadas' : 'Nenhuma notificação pendente']);
+        echo json_encode(['success' => true, 'enviado' => (bool)$enviado, 'message' => $enviado ? 'Notificações enviadas' : 'Nenhuma notificação pendente']);
     }
     
 } catch (Exception $e) {

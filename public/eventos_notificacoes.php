@@ -6,8 +6,25 @@
  */
 
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/core/push_helper.php';
 require_once __DIR__ . '/core/email_global_helper.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
+
+function eventos_dispatcher(PDO $pdo): ?NotificationDispatcher {
+    static $dispatcher = null;
+
+    if ($dispatcher instanceof NotificationDispatcher) {
+        return $dispatcher;
+    }
+
+    try {
+        $dispatcher = new NotificationDispatcher($pdo);
+        $dispatcher->ensureInternalSchema();
+        return $dispatcher;
+    } catch (Throwable $e) {
+        error_log("Erro ao iniciar dispatcher de eventos: " . $e->getMessage());
+        return null;
+    }
+}
 
 /**
  * Notificar quando link de cliente DJ é criado
@@ -53,15 +70,21 @@ function eventos_notificar_link_cliente_criado(PDO $pdo, int $meeting_id, string
             );
         }
         
-        // Notificar internamente (push para quem criou)
+        // Notificar internamente (interna + push para quem criou)
         if (!empty($reuniao['created_by'])) {
-            $pushHelper = new PushHelper();
-            $pushHelper->enviarPush(
-                $reuniao['created_by'],
-                'Link DJ Enviado',
-                "Link criado para {$reuniao['nome_evento']}",
-                ['url' => "/index.php?page=eventos_reuniao_final&id={$meeting_id}"]
-            );
+            $dispatcher = eventos_dispatcher($pdo);
+            if ($dispatcher) {
+                $dispatcher->dispatch(
+                    [['id' => (int)$reuniao['created_by']]],
+                    [
+                        'tipo' => 'eventos_link_cliente_criado',
+                        'titulo' => 'Link DJ enviado',
+                        'mensagem' => "Link criado para {$reuniao['nome_evento']}",
+                        'url_destino' => "index.php?page=eventos_reuniao_final&id={$meeting_id}",
+                    ],
+                    ['internal' => true, 'push' => true]
+                );
+            }
         }
         
     } catch (Exception $e) {
@@ -115,13 +138,19 @@ function eventos_notificar_cliente_enviou_dj(PDO $pdo, int $meeting_id): void {
         
         // Notificar quem criou a reunião
         if (!empty($reuniao['created_by'])) {
-            $pushHelper = new PushHelper();
-            $pushHelper->enviarPush(
-                $reuniao['created_by'],
-                '🎵 Cliente enviou músicas!',
-                "O cliente preencheu as informações de DJ para {$reuniao['nome_evento']}",
-                ['url' => "/index.php?page=eventos_reuniao_final&id={$meeting_id}"]
-            );
+            $dispatcher = eventos_dispatcher($pdo);
+            if ($dispatcher) {
+                $dispatcher->dispatch(
+                    [['id' => (int)$reuniao['created_by']]],
+                    [
+                        'tipo' => 'eventos_cliente_enviou_dj',
+                        'titulo' => 'Cliente enviou músicas',
+                        'mensagem' => "O cliente preencheu as informações de DJ para {$reuniao['nome_evento']}",
+                        'url_destino' => "index.php?page=eventos_reuniao_final&id={$meeting_id}",
+                    ],
+                    ['internal' => true, 'push' => true]
+                );
+            }
         }
         
         // Notificar DJ por e-mail (usa fornecedor vinculado; se não houver, envia para todos os DJs ativos)

@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../conexao.php';
 
 class GoogleCalendarHelper {
+    private const APP_TIMEZONE = 'America/Sao_Paulo';
     private $pdo;
     private $client_id;
     private $client_secret;
@@ -131,6 +132,30 @@ class GoogleCalendarHelper {
         }
 
         return (bool)$this->webhook_expiration_is_timestamp;
+    }
+
+    /**
+     * Converte datetime do Google para horário local da aplicação.
+     */
+    private function normalizeGoogleDateTimeToAppTimezone(?string $value): ?string {
+        $raw = trim((string)$value);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $dt = new DateTimeImmutable($raw);
+        } catch (Exception $e) {
+            $ts = strtotime($raw);
+            if ($ts === false) {
+                return null;
+            }
+            $dt = new DateTimeImmutable('@' . $ts);
+        }
+
+        return $dt
+            ->setTimezone(new DateTimeZone(self::APP_TIMEZONE))
+            ->format('Y-m-d H:i:s');
     }
     
     /**
@@ -384,10 +409,16 @@ class GoogleCalendarHelper {
      * Sincronizar eventos de um calendário
      */
     public function syncCalendarEvents($calendar_id, $dias_futuro = 180) {
-        // Usar timezone UTC para garantir compatibilidade
-        $time_min = gmdate('Y-m-d\TH:i:s\Z', strtotime('today midnight'));
-        $time_max = gmdate('Y-m-d\TH:i:s\Z', strtotime("+$dias_futuro days 23:59:59"));
-        $sync_started_at = date('Y-m-d H:i:s');
+        // Montar janela em horário local e converter para UTC (formato exigido pela API do Google).
+        $app_tz = new DateTimeZone(self::APP_TIMEZONE);
+        $utc_tz = new DateTimeZone('UTC');
+        $time_min = (new DateTimeImmutable('today 00:00:00', $app_tz))
+            ->setTimezone($utc_tz)
+            ->format('Y-m-d\TH:i:s\Z');
+        $time_max = (new DateTimeImmutable('+' . (int)$dias_futuro . ' days 23:59:59', $app_tz))
+            ->setTimezone($utc_tz)
+            ->format('Y-m-d\TH:i:s\Z');
+        $sync_started_at = (new DateTimeImmutable('now', $app_tz))->format('Y-m-d H:i:s');
         
         error_log("[GOOGLE_CALENDAR_SYNC] Iniciando sincronização do calendário: $calendar_id");
         error_log("[GOOGLE_CALENDAR_SYNC] Período: $time_min até $time_max");
@@ -439,7 +470,7 @@ class GoogleCalendarHelper {
             $inicio = null;
             if (isset($event['start']['dateTime'])) {
                 // Evento com hora específica - converter considerando timezone
-                $inicio = date('Y-m-d H:i:s', strtotime($event['start']['dateTime']));
+                $inicio = $this->normalizeGoogleDateTimeToAppTimezone($event['start']['dateTime']);
             } elseif (isset($event['start']['date'])) {
                 // Evento de dia todo - usar a data exata (sem conversão de timezone)
                 // O Google retorna apenas a data (YYYY-MM-DD) sem timezone para eventos de dia todo
@@ -451,7 +482,7 @@ class GoogleCalendarHelper {
             $fim = null;
             if (isset($event['end']['dateTime'])) {
                 // Evento com hora específica - converter considerando timezone
-                $fim = date('Y-m-d H:i:s', strtotime($event['end']['dateTime']));
+                $fim = $this->normalizeGoogleDateTimeToAppTimezone($event['end']['dateTime']);
             } elseif (isset($event['end']['date'])) {
                 // Evento de dia todo - o Google retorna a data do DIA SEGUINTE como fim
                 // Ex: evento de 26/01 tem end.date = 27/01 (exclusivo)

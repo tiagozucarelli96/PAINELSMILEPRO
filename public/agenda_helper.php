@@ -3,16 +3,20 @@
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/email_helper.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
 
 class AgendaHelper {
     private $pdo;
     private $emailHelper;
+    private $notificationDispatcher;
     private $permissionValueCache = [];
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
         // EmailHelper agora usa EmailGlobalHelper internamente (sistema_email_config)
         $this->emailHelper = new EmailHelper();
+        $this->notificationDispatcher = new NotificationDispatcher($this->pdo);
+        $this->notificationDispatcher->ensureInternalSchema();
     }
 
     /**
@@ -451,40 +455,83 @@ class AgendaHelper {
             $stmt->execute([$evento_id]);
             $evento = $stmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$evento) return;
+            if (!$evento) {
+                return;
+            }
+
+            $tituloEvento = (string)($evento['titulo'] ?? 'Evento');
+            $inicioEvento = (string)($evento['inicio'] ?? '');
+            $fimEvento = (string)($evento['fim'] ?? '');
+            $responsavelNome = (string)($evento['responsavel_nome'] ?? 'Responsável');
+            $responsavelEmail = (string)($evento['responsavel_email'] ?? '');
+            $responsavelId = (int)($evento['responsavel_usuario_id'] ?? 0);
+            $espacoNome = (string)($evento['espaco_nome'] ?? '');
+            $descricaoEvento = (string)($evento['descricao'] ?? '');
+            $criadoPorNome = (string)($evento['criado_por_nome'] ?? '');
+            $acaoTexto = $tipo === 'criacao' ? 'Evento criado com sucesso.' : 'Evento atualizado.';
             
             // Preparar dados do e-mail
-            $assunto = "Agenda: {$evento['titulo']} - " . date('d/m/Y H:i', strtotime($evento['inicio']));
+            $assunto = "Agenda: {$tituloEvento} - " . date('d/m/Y H:i', strtotime($inicioEvento));
             
             $mensagem = "
-            <h3>📅 {$evento['titulo']}</h3>
-            <p><strong>Data/Hora:</strong> " . date('d/m/Y H:i', strtotime($evento['inicio'])) . " - " . date('H:i', strtotime($evento['fim'])) . "</p>
-            <p><strong>Duração:</strong> " . $this->calcularDuracao($evento['inicio'], $evento['fim']) . "</p>
+            <h3>📅 " . htmlspecialchars($tituloEvento, ENT_QUOTES, 'UTF-8') . "</h3>
+            <p><strong>Data/Hora:</strong> " . date('d/m/Y H:i', strtotime($inicioEvento)) . " - " . date('H:i', strtotime($fimEvento)) . "</p>
+            <p><strong>Duração:</strong> " . $this->calcularDuracao($inicioEvento, $fimEvento) . "</p>
             ";
             
-            if ($evento['espaco_nome']) {
-                $mensagem .= "<p><strong>Espaço:</strong> {$evento['espaco_nome']}</p>";
+            if ($espacoNome !== '') {
+                $mensagem .= "<p><strong>Espaço:</strong> " . htmlspecialchars($espacoNome, ENT_QUOTES, 'UTF-8') . "</p>";
             }
             
-            if ($evento['descricao']) {
-                $mensagem .= "<p><strong>Observações:</strong> {$evento['descricao']}</p>";
+            if ($descricaoEvento !== '') {
+                $mensagem .= "<p><strong>Observações:</strong> " . nl2br(htmlspecialchars($descricaoEvento, ENT_QUOTES, 'UTF-8')) . "</p>";
             }
             
-            $mensagem .= "<p><strong>Agendado por:</strong> {$evento['criado_por_nome']}</p>";
+            $mensagem .= "<p><strong>Agendado por:</strong> " . htmlspecialchars($criadoPorNome, ENT_QUOTES, 'UTF-8') . "</p>";
             
             if ($tipo === 'criacao') {
                 $mensagem .= "<p>✅ Evento criado com sucesso!</p>";
             } else {
                 $mensagem .= "<p>📝 Evento atualizado!</p>";
             }
-            
-            // Enviar e-mail
-            $this->emailHelper->enviarNotificacao(
-                $evento['responsavel_email'],
-                $evento['responsavel_nome'],
-                $assunto,
-                $mensagem
+
+            $mensagemInterna = sprintf(
+                '%s em %s (%s). %s',
+                $tituloEvento,
+                date('d/m/Y H:i', strtotime($inicioEvento)),
+                $this->calcularDuracao($inicioEvento, $fimEvento),
+                $acaoTexto
             );
+
+            if ($responsavelId > 0) {
+                $this->notificationDispatcher->dispatch(
+                    [['id' => $responsavelId, 'email' => $responsavelEmail]],
+                    [
+                        'tipo' => $tipo === 'criacao' ? 'agenda_evento_criado' : 'agenda_evento_atualizado',
+                        'referencia_id' => (int)$evento_id,
+                        'titulo' => $assunto,
+                        'mensagem' => $mensagemInterna,
+                        'url_destino' => 'index.php?page=agenda',
+                        'push_titulo' => 'Agenda atualizada',
+                        'push_mensagem' => $mensagemInterna,
+                        'email_assunto' => $assunto,
+                        'email_html' => $mensagem,
+                    ],
+                    [
+                        'internal' => true,
+                        'push' => true,
+                        'email' => true,
+                    ]
+                );
+            } elseif ($responsavelEmail !== '') {
+                // Fallback de e-mail para cenários sem responsável interno válido.
+                $this->emailHelper->enviarNotificacao(
+                    $responsavelEmail,
+                    $responsavelNome,
+                    $assunto,
+                    $mensagem
+                );
+            }
             
         } catch (Exception $e) {
             error_log("Erro ao enviar notificação de evento: " . $e->getMessage());

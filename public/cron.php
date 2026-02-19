@@ -219,29 +219,6 @@ if ($tipo === 'google_calendar_renewal') {
     exit;
 }
 
-if ($tipo === 'notificacoes') {
-    // Envio consolidado de notificações (e-mail + push)
-    try {
-        require_once __DIR__ . '/conexao.php';
-        require_once __DIR__ . '/core/notificacoes_helper.php';
-
-        $notificacoes = new NotificacoesHelper();
-        $enviado = $notificacoes->enviarNotificacoesConsolidadas();
-
-        echo json_encode([
-            'success' => (bool)$enviado,
-            'message' => $enviado ? 'Notificações enviadas' : 'Nenhuma notificação pendente'
-        ]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode([
-            'success' => false,
-            'error' => $e->getMessage()
-        ]);
-    }
-    exit;
-}
-
 if ($tipo === 'demandas_fixas') {
     try {
         $hoje = new DateTime();
@@ -368,11 +345,14 @@ if ($tipo === 'demandas_fixas') {
 } elseif ($tipo === 'notificacoes') {
     // Cron de notificações
     try {
-        require_once __DIR__ . '/cron_notificacoes.php';
+        require_once __DIR__ . '/core/notificacoes_helper.php';
+        $notificacoes = new NotificacoesHelper();
+        $enviado = $notificacoes->enviarNotificacoesConsolidadas();
         
         $resultado = [
             'success' => true,
-            'message' => 'Processamento de notificações executado'
+            'enviado' => (bool)$enviado,
+            'message' => $enviado ? 'Notificações enviadas' : 'Nenhuma notificação pendente'
         ];
         
         cron_logger_finish($pdo, $execucao_id, true, $resultado, $inicio_ms);

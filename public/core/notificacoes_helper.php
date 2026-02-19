@@ -2,19 +2,42 @@
 // notificacoes_helper.php — Sistema Global de Notificações (ETAPAS 13-17)
 require_once __DIR__ . '/../conexao.php';
 require_once __DIR__ . '/email_global_helper.php';
+require_once __DIR__ . '/notification_dispatcher.php';
 
 class NotificacoesHelper {
     private $pdo;
+    private $dispatcher;
     
     public function __construct() {
         $this->pdo = $GLOBALS['pdo'];
+        $this->dispatcher = null;
     }
     
     /**
      * Registrar uma nova notificação pendente (ETAPA 13)
      */
     public function registrarNotificacao($modulo, $tipo, $entidade_tipo, $entidade_id, $titulo, $descricao = '', $destinatario_tipo = 'ambos') {
+        $modulo = trim((string)$modulo);
+        $tipo = trim((string)$tipo);
+        $entidade_tipo = trim((string)$entidade_tipo);
+        $entidade_id = (int)$entidade_id;
+        $titulo = trim((string)$titulo);
+        $descricao = trim((string)$descricao);
+        $destinatario_tipo = trim((string)$destinatario_tipo);
+
+        if ($titulo === '') {
+            $titulo = 'Nova atualização';
+        }
+        if ($destinatario_tipo === '') {
+            $destinatario_tipo = 'ambos';
+        }
+
         try {
+            // Fluxo legado: fila consolidada
+            if (!$this->tableExists('sistema_notificacoes_pendentes')) {
+                return $this->enviarNotificacaoImediata($modulo, $tipo, $entidade_tipo, $entidade_id, $titulo, $descricao, $destinatario_tipo);
+            }
+
             $stmt = $this->pdo->prepare("
                 INSERT INTO sistema_notificacoes_pendentes 
                 (modulo, tipo, entidade_tipo, entidade_id, titulo, descricao, destinatario_tipo)
@@ -36,8 +59,168 @@ class NotificacoesHelper {
             return true;
         } catch (Exception $e) {
             error_log("Erro ao registrar notificação: " . $e->getMessage());
+            return $this->enviarNotificacaoImediata($modulo, $tipo, $entidade_tipo, $entidade_id, $titulo, $descricao, $destinatario_tipo);
+        }
+    }
+
+    private function getDispatcher() {
+        if ($this->dispatcher instanceof NotificationDispatcher) {
+            return $this->dispatcher;
+        }
+
+        try {
+            $this->dispatcher = new NotificationDispatcher($this->pdo);
+            $this->dispatcher->ensureInternalSchema();
+        } catch (Throwable $e) {
+            error_log("Erro ao iniciar NotificationDispatcher: " . $e->getMessage());
+            $this->dispatcher = null;
+        }
+
+        return $this->dispatcher;
+    }
+
+    private function tableExists($tableName): bool {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = :table
+                LIMIT 1
+            ");
+            $stmt->execute([':table' => $tableName]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
             return false;
         }
+    }
+
+    private function columnExists($tableName, $columnName): bool {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = :table
+                  AND column_name = :column
+                LIMIT 1
+            ");
+            $stmt->execute([
+                ':table' => $tableName,
+                ':column' => $columnName,
+            ]);
+            return (bool)$stmt->fetchColumn();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function buscarDestinatariosInternos($destinatario_tipo): array {
+        $destinatario_tipo = trim((string)$destinatario_tipo);
+        if (!in_array($destinatario_tipo, ['admin', 'ambos', 'contabilidade'], true)) {
+            $destinatario_tipo = 'ambos';
+        }
+
+        try {
+            $hasAtivo = $this->columnExists('usuarios', 'ativo');
+            $hasPermAdmin = $this->columnExists('usuarios', 'perm_administrativo');
+            $hasPermSuperadmin = $this->columnExists('usuarios', 'perm_superadmin');
+            $hasEmail = $this->columnExists('usuarios', 'email');
+
+            $select = $hasEmail ? 'id, email' : 'id, NULL::text AS email';
+            $where = $hasAtivo ? 'ativo IS DISTINCT FROM FALSE' : '1=1';
+
+            $filtrosPermissao = [];
+            if ($hasPermAdmin) {
+                $filtrosPermissao[] = 'perm_administrativo = TRUE';
+            }
+            if ($hasPermSuperadmin) {
+                $filtrosPermissao[] = 'perm_superadmin = TRUE';
+            }
+            if (!empty($filtrosPermissao)) {
+                $where .= ' AND (' . implode(' OR ', $filtrosPermissao) . ')';
+            }
+
+            $stmt = $this->pdo->query("SELECT {$select} FROM usuarios WHERE {$where} ORDER BY id ASC");
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            error_log("Erro ao buscar destinatários internos: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function enviarEmailContabilidade($titulo, $descricao): bool {
+        if (!$this->tableExists('contabilidade_acesso')) {
+            return false;
+        }
+
+        $resendKey = getenv('RESEND_API_KEY') ?: ($_ENV['RESEND_API_KEY'] ?? '');
+        if (trim((string)$resendKey) === '') {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->query("
+                SELECT email
+                FROM contabilidade_acesso
+                WHERE status = 'ativo'
+                  AND email IS NOT NULL
+                  AND email <> ''
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $email = trim((string)($stmt->fetchColumn() ?: ''));
+            if ($email === '') {
+                return false;
+            }
+
+            $emailHelper = new EmailGlobalHelper();
+            $body = $this->gerarCorpoEmail([[
+                'titulo' => $titulo,
+                'descricao' => $descricao,
+            ]]);
+            return (bool)$emailHelper->enviarEmail($email, 'Portal Grupo Smile - Atualização', $body, true);
+        } catch (Throwable $e) {
+            error_log("Erro ao enviar e-mail para contabilidade: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function enviarNotificacaoImediata($modulo, $tipo, $entidade_tipo, $entidade_id, $titulo, $descricao, $destinatario_tipo): bool {
+        $dispatcher = $this->getDispatcher();
+        if (!$dispatcher) {
+            return false;
+        }
+
+        $destinatarios = $this->buscarDestinatariosInternos($destinatario_tipo);
+        $mensagem = $descricao !== '' ? $descricao : $titulo;
+        $urlDestino = 'index.php?page=contabilidade';
+
+        $dispatchResult = $dispatcher->dispatch(
+            $destinatarios,
+            [
+                'tipo' => trim((string)$modulo) . '_' . trim((string)$tipo),
+                'referencia_id' => (int)$entidade_id > 0 ? (int)$entidade_id : null,
+                'titulo' => $titulo,
+                'mensagem' => $mensagem,
+                'url_destino' => $urlDestino,
+            ],
+            [
+                'internal' => true,
+                'push' => true,
+                'email' => false,
+            ]
+        );
+
+        $okInterno = ((int)$dispatchResult['enviados_interno']) > 0
+            || ((int)$dispatchResult['enviados_push']) > 0;
+
+        $okContabilidade = false;
+        if ($destinatario_tipo === 'contabilidade' || $destinatario_tipo === 'ambos') {
+            $okContabilidade = $this->enviarEmailContabilidade($titulo, $descricao);
+        }
+
+        return $okInterno || $okContabilidade;
     }
     
     /**
@@ -45,6 +228,10 @@ class NotificacoesHelper {
      */
     private function atualizarUltimaAtividade() {
         try {
+            if (!$this->tableExists('sistema_ultima_atividade')) {
+                return;
+            }
+
             $stmt = $this->pdo->prepare("
                 UPDATE sistema_ultima_atividade 
                 SET ultima_atividade = NOW()
@@ -61,6 +248,10 @@ class NotificacoesHelper {
 
     private function criarUltimaAtividade() {
         try {
+            if (!$this->tableExists('sistema_ultima_atividade')) {
+                return;
+            }
+
             $stmt = $this->pdo->prepare("
                 INSERT INTO sistema_ultima_atividade (id, ultima_atividade, ultimo_envio, bloqueado)
                 VALUES (1, NOW(), NULL, FALSE)
@@ -76,6 +267,14 @@ class NotificacoesHelper {
      */
     public function deveEnviarNotificacoes() {
         try {
+            if (
+                !$this->tableExists('sistema_email_config') ||
+                !$this->tableExists('sistema_ultima_atividade') ||
+                !$this->tableExists('sistema_notificacoes_pendentes')
+            ) {
+                return false;
+            }
+
             // Buscar configuração
             $stmt = $this->pdo->query("SELECT tempo_inatividade_minutos FROM sistema_email_config ORDER BY id DESC LIMIT 1");
             $config = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -121,6 +320,13 @@ class NotificacoesHelper {
      */
     public function enviarNotificacoesConsolidadas() {
         try {
+            if (
+                !$this->tableExists('sistema_notificacoes_pendentes') ||
+                !$this->tableExists('sistema_email_config')
+            ) {
+                return false;
+            }
+
             // Verificar se deve enviar
             if (!$this->deveEnviarNotificacoes()) {
                 return false;
@@ -218,8 +424,12 @@ class NotificacoesHelper {
             
             // Enviar e-mails (ETAPA 15)
             $email_helper = new EmailGlobalHelper();
-            require_once __DIR__ . '/push_helper.php';
-            $push_helper = new PushHelper();
+            $podePush = $this->tableExists('sistema_notificacoes_navegador');
+            $push_helper = null;
+            if ($podePush) {
+                require_once __DIR__ . '/push_helper.php';
+                $push_helper = new PushHelper();
+            }
             
             $enviados = 0;
             $push_enviados = 0;
@@ -253,38 +463,40 @@ class NotificacoesHelper {
             }
             
             // Enviar push notifications para usuários internos
-            foreach ($notificacoes as $notif) {
-                // Buscar usuários internos que devem receber esta notificação
-                $stmt = $this->pdo->prepare("
-                    SELECT DISTINCT u.id
-                    FROM usuarios u
-                    JOIN sistema_notificacoes_navegador snn ON snn.usuario_id = u.id
-                    WHERE u.ativo = TRUE
-                    AND snn.consentimento_permitido = TRUE
-                    AND snn.ativo = TRUE
-                    AND (
-                        (:modulo = 'contabilidade' AND :pref_contabilidade = TRUE) OR
-                        (:modulo = 'sistema' AND :pref_sistema = TRUE) OR
-                        (:modulo = 'financeiro' AND :pref_financeiro = TRUE)
-                    )
-                ");
-                $stmt->execute([
-                    ':modulo' => $notif['modulo'],
-                    ':pref_contabilidade' => $email_config['preferencia_notif_contabilidade'] ?? true,
-                    ':pref_sistema' => $email_config['preferencia_notif_sistema'] ?? true,
-                    ':pref_financeiro' => $email_config['preferencia_notif_financeiro'] ?? true
-                ]);
-                $usuarios_push = $stmt->fetchAll(PDO::FETCH_COLUMN);
-                
-                foreach ($usuarios_push as $user_id) {
-                    $result = $push_helper->enviarPush(
-                        $user_id,
-                        'Portal Grupo Smile',
-                        'Você tem novas atualizações no sistema.',
-                        ['notificacao_id' => $notif['id']]
-                    );
-                    if ($result['success']) {
-                        $push_enviados++;
+            if ($podePush && $push_helper) {
+                foreach ($notificacoes as $notif) {
+                    // Buscar usuários internos que devem receber esta notificação
+                    $stmt = $this->pdo->prepare("
+                        SELECT DISTINCT u.id
+                        FROM usuarios u
+                        JOIN sistema_notificacoes_navegador snn ON snn.usuario_id = u.id
+                        WHERE u.ativo = TRUE
+                        AND snn.consentimento_permitido = TRUE
+                        AND snn.ativo = TRUE
+                        AND (
+                            (:modulo = 'contabilidade' AND :pref_contabilidade = TRUE) OR
+                            (:modulo = 'sistema' AND :pref_sistema = TRUE) OR
+                            (:modulo = 'financeiro' AND :pref_financeiro = TRUE)
+                        )
+                    ");
+                    $stmt->execute([
+                        ':modulo' => $notif['modulo'],
+                        ':pref_contabilidade' => $email_config['preferencia_notif_contabilidade'] ?? true,
+                        ':pref_sistema' => $email_config['preferencia_notif_sistema'] ?? true,
+                        ':pref_financeiro' => $email_config['preferencia_notif_financeiro'] ?? true
+                    ]);
+                    $usuarios_push = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                    
+                    foreach ($usuarios_push as $user_id) {
+                        $result = $push_helper->enviarPush(
+                            $user_id,
+                            'Portal Grupo Smile',
+                            'Você tem novas atualizações no sistema.',
+                            ['notificacao_id' => $notif['id']]
+                        );
+                        if ($result['success']) {
+                            $push_enviados++;
+                        }
                     }
                 }
             }

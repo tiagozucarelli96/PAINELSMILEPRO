@@ -76,17 +76,30 @@ self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     
     const action = event.action || 'open';
-    const urlToOpen = '/index.php?page=dashboard';
+    const notifData = event.notification?.data || {};
+    let urlToOpen = typeof notifData.url === 'string' && notifData.url.trim() !== ''
+        ? notifData.url.trim()
+        : '/index.php?page=dashboard';
+
+    if (!/^https?:\/\//i.test(urlToOpen)) {
+        if (!urlToOpen.startsWith('/')) {
+            urlToOpen = '/' + urlToOpen;
+        }
+        urlToOpen = new URL(urlToOpen, self.location.origin).href;
+    }
     
     event.waitUntil(
         clients.matchAll({
             type: 'window',
             includeUncontrolled: true
         }).then((clientList) => {
-            // Se já existe uma janela aberta, focar nela
+            // Se já existe uma janela aberta, focar nela e navegar para o destino
             for (let i = 0; i < clientList.length; i++) {
                 const client = clientList[i];
-                if (client.url === urlToOpen && 'focus' in client) {
+                if ('focus' in client) {
+                    if ('navigate' in client) {
+                        client.navigate(urlToOpen);
+                    }
                     return client.focus();
                 }
             }

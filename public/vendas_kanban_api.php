@@ -16,6 +16,7 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
@@ -44,15 +45,12 @@ function vendasKanbanEnsureSchema(PDO $pdo): void
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_observacoes_card ON vendas_kanban_observacoes(card_id, criado_em DESC)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_observacoes_autor ON vendas_kanban_observacoes(autor_id)");
 
-    $pdo->exec("\n        CREATE TABLE IF NOT EXISTS demandas_notificacoes (\n            id SERIAL PRIMARY KEY,\n            usuario_id INT REFERENCES usuarios(id) ON DELETE CASCADE,\n            tipo VARCHAR(50) NOT NULL,\n            referencia_id INT,\n            mensagem TEXT NOT NULL,\n            lida BOOLEAN DEFAULT FALSE,\n            criada_em TIMESTAMPTZ DEFAULT NOW()\n        )\n    ");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS tipo VARCHAR(50)");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS referencia_id INT");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS mensagem TEXT");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS lida BOOLEAN DEFAULT FALSE");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS criada_em TIMESTAMPTZ DEFAULT NOW()");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS titulo VARCHAR(180)");
-    $pdo->exec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS url_destino TEXT");
-    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_usuario ON demandas_notificacoes(usuario_id, lida)");
+    try {
+        $dispatcher = new NotificationDispatcher($pdo);
+        $dispatcher->ensureInternalSchema();
+    } catch (Throwable $e) {
+        error_log("[VENDAS_KANBAN] Falha ao garantir schema de notificações: " . $e->getMessage());
+    }
 }
 
 function vendasKanbanNormalizeMentionKey(string $value): string
@@ -213,40 +211,27 @@ function vendasKanbanInserirNotificacaoMencao(PDO $pdo, int $destinatarioId, int
         return;
     }
 
-    $hasReferenciaId = vendasKanbanColumnExists($pdo, 'demandas_notificacoes', 'referencia_id');
-    $hasTitulo = vendasKanbanColumnExists($pdo, 'demandas_notificacoes', 'titulo');
-    $hasUrlDestino = vendasKanbanColumnExists($pdo, 'demandas_notificacoes', 'url_destino');
+    try {
+        static $dispatcher = null;
+        if (!$dispatcher) {
+            $dispatcher = new NotificationDispatcher($pdo);
+            $dispatcher->ensureInternalSchema();
+        }
 
-    $campos = ['usuario_id', 'tipo', 'mensagem', 'lida'];
-    $valores = [':usuario_id', ':tipo', ':mensagem', ':lida'];
-    $params = [
-        ':usuario_id' => $destinatarioId,
-        ':tipo' => 'vendas_card_mencao',
-        ':mensagem' => $mensagem,
-        ':lida' => false,
-    ];
-
-    if ($hasReferenciaId) {
-        $campos[] = 'referencia_id';
-        $valores[] = ':referencia_id';
-        $params[':referencia_id'] = $cardId;
+        $dispatcher->dispatch(
+            [['id' => $destinatarioId]],
+            [
+                'tipo' => 'vendas_card_mencao',
+                'referencia_id' => $cardId,
+                'titulo' => $titulo,
+                'mensagem' => $mensagem,
+                'url_destino' => $urlDestino,
+            ],
+            ['internal' => true]
+        );
+    } catch (Throwable $e) {
+        error_log("[VENDAS_KANBAN] Erro ao notificar menção: " . $e->getMessage());
     }
-
-    if ($hasTitulo) {
-        $campos[] = 'titulo';
-        $valores[] = ':titulo';
-        $params[':titulo'] = $titulo;
-    }
-
-    if ($hasUrlDestino) {
-        $campos[] = 'url_destino';
-        $valores[] = ':url_destino';
-        $params[':url_destino'] = $urlDestino;
-    }
-
-    $sql = "INSERT INTO demandas_notificacoes (" . implode(', ', $campos) . ") VALUES (" . implode(', ', $valores) . ")";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
 }
 
 function vendasKanbanBuscarNomeUsuario(PDO $pdo, int $usuarioId): string

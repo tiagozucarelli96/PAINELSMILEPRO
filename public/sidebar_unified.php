@@ -19,6 +19,16 @@ if (!isset($pdo) && isset($GLOBALS['pdo'])) {
 }
 
 require_once __DIR__ . '/notifications_bar.php';
+require_once __DIR__ . '/core/notification_dispatcher.php';
+
+try {
+    if (isset($pdo) && $pdo instanceof PDO) {
+        $sidebarNotificationDispatcher = new NotificationDispatcher($pdo);
+        $sidebarNotificationDispatcher->ensureInternalSchema();
+    }
+} catch (Throwable $e) {
+    error_log('[SIDEBAR] Falha ao garantir schema de notificações: ' . $e->getMessage());
+}
 
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';

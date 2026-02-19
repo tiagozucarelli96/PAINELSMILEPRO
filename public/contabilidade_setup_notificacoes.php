@@ -27,24 +27,13 @@ if (!file_exists($sql_file)) {
 }
 
 $sql_content = file_get_contents($sql_file);
-
-// Dividir em comandos individuais
-$commands = array_filter(
-    array_map('trim', explode(';', $sql_content)),
-    function($cmd) {
-        return !empty($cmd) && !preg_match('/^\s*--/', $cmd) && !preg_match('/^\s*\/\*/', $cmd);
-    }
-);
-
-foreach ($commands as $command) {
-    if (empty(trim($command))) continue;
-    
-    try {
-        $pdo->exec($command);
-        $sucessos[] = "Comando executado com sucesso";
-    } catch (PDOException $e) {
-        $erros[] = "Erro: " . $e->getMessage() . " (Comando: " . substr($command, 0, 100) . "...)";
-    }
+try {
+    // Executa o script inteiro de uma vez para evitar quebra incorreta por ';'
+    // dentro de funções, triggers ou blocos DO $$...$$.
+    $pdo->exec($sql_content);
+    $sucessos[] = "Schema executado com sucesso.";
+} catch (PDOException $e) {
+    $erros[] = "Erro ao executar schema: " . $e->getMessage();
 }
 
 ?>
