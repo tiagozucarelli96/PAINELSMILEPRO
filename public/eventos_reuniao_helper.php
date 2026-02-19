@@ -27,6 +27,7 @@ function eventos_reuniao_has_column(PDO $pdo, string $table, string $column): bo
         FROM information_schema.columns
         WHERE table_name = :table
           AND column_name = :column
+          AND table_schema = ANY (current_schemas(FALSE))
         LIMIT 1
     ");
     $stmt->execute([
@@ -51,6 +52,7 @@ function eventos_reuniao_has_table(PDO $pdo, string $table): bool {
         SELECT 1
         FROM information_schema.tables
         WHERE table_name = :table
+          AND table_schema = ANY (current_schemas(FALSE))
         LIMIT 1
     ");
     $stmt->execute([':table' => $table]);
@@ -2731,27 +2733,27 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
 
         if ($has_visivel_reuniao_col) {
             $set_parts[] = 'visivel_reuniao = :visivel_reuniao';
-            $params[':visivel_reuniao'] = $visivel_reuniao;
+            $params[':visivel_reuniao'] = $visivel_reuniao ? 1 : 0;
         }
         if ($has_editavel_reuniao_col) {
             $set_parts[] = 'editavel_reuniao = :editavel_reuniao';
-            $params[':editavel_reuniao'] = $editavel_reuniao;
+            $params[':editavel_reuniao'] = $editavel_reuniao ? 1 : 0;
         }
         if ($has_visivel_dj_col) {
             $set_parts[] = 'visivel_dj = :visivel_dj';
-            $params[':visivel_dj'] = $visivel_dj;
+            $params[':visivel_dj'] = $visivel_dj ? 1 : 0;
         }
         if ($has_editavel_dj_col) {
             $set_parts[] = 'editavel_dj = :editavel_dj';
-            $params[':editavel_dj'] = $editavel_dj;
+            $params[':editavel_dj'] = $editavel_dj ? 1 : 0;
         }
         if ($has_visivel_convidados_col) {
             $set_parts[] = 'visivel_convidados = :visivel_convidados';
-            $params[':visivel_convidados'] = $visivel_convidados;
+            $params[':visivel_convidados'] = $visivel_convidados ? 1 : 0;
         }
         if ($has_editavel_convidados_col) {
             $set_parts[] = 'editavel_convidados = :editavel_convidados';
-            $params[':editavel_convidados'] = $editavel_convidados;
+            $params[':editavel_convidados'] = $editavel_convidados ? 1 : 0;
         }
         if ($has_updated_at_col) {
             $set_parts[] = 'updated_at = NOW()';
