@@ -475,7 +475,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 if ($result['ok']) {
                     $upload_errors = [];
                     if (!empty($uploads)) {
-                        $uploader = new MagaluUpload();
+                        $uploader = new MagaluUpload(100);
                         foreach ($uploads as $upload_item) {
                             $file = is_array($upload_item['file'] ?? null) ? $upload_item['file'] : [];
                             $file_note = trim((string)($upload_item['note'] ?? ''));
@@ -1240,7 +1240,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                                        id="<?= eventos_cliente_e($file_name) ?>"
                                        name="<?= eventos_cliente_e($file_name) ?>[]"
                                        multiple
-                                       accept=".png,.jpg,.jpeg,.webp,.heic,.heif,.pdf,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                                       accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
                                        style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"
                                        data-note-target="<?= eventos_cliente_e($file_name) ?>Notes"
                                        data-note-name="file_note_<?= eventos_cliente_e($field_id) ?>[]"
@@ -1288,11 +1288,11 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                            id="anexosInput"
                            name="anexos[]"
                            multiple
-                           accept=".png,.jpg,.jpeg,.webp,.heic,.heif,.pdf,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv"
+                           accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
                            data-note-target="legacyAnexosNotes"
                            data-note-name="anexos_note[]">
                     <div class="file-note-wrap" id="legacyAnexosNotes"></div>
-                    <p class="attachments-help">Envie playlist, roteiro, arte do convite e materiais de referência.</p>
+                    <p class="attachments-help">Envie vários arquivos de uma vez (até 100MB por arquivo): playlist, roteiro, arte do convite e materiais de referência.</p>
                 </div>
                 <?php endif; ?>
 

@@ -44,6 +44,14 @@ function vendasKanbanEnsureSchema(PDO $pdo): void
     $pdo->exec("\n        CREATE TABLE IF NOT EXISTS vendas_kanban_observacoes (\n            id SERIAL PRIMARY KEY,\n            card_id INT NOT NULL REFERENCES vendas_kanban_cards(id) ON DELETE CASCADE,\n            autor_id INT REFERENCES usuarios(id) ON DELETE SET NULL,\n            observacao TEXT NOT NULL,\n            criado_em TIMESTAMPTZ DEFAULT NOW()\n        )\n    ");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_observacoes_card ON vendas_kanban_observacoes(card_id, criado_em DESC)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_observacoes_autor ON vendas_kanban_observacoes(autor_id)");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido BOOLEAN NOT NULL DEFAULT FALSE");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido_em TIMESTAMPTZ");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido_por INT REFERENCES usuarios(id) ON DELETE SET NULL");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado_por INT REFERENCES usuarios(id) ON DELETE SET NULL");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_cards_arquivado ON vendas_kanban_cards(arquivado)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_vendas_kanban_cards_concluido ON vendas_kanban_cards(concluido)");
 
     try {
         $dispatcher = new NotificationDispatcher($pdo);
@@ -290,6 +298,9 @@ try {
         if (!$card) {
             throw new Exception('Card não encontrado');
         }
+        if (!empty($card['arquivado'])) {
+            throw new Exception('Card arquivado não pode ser movido');
+        }
 
         $pdo->beginTransaction();
 
@@ -313,7 +324,7 @@ try {
             $board_id = (int)($board['id'] ?? 0);
         }
 
-        $stmt = $pdo->prepare("\n            SELECT vc.*,\n                   COUNT(\n                       CASE\n                           WHEN vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL THEN 1\n                           ELSE NULL\n                       END\n                   ) as total_cards\n            FROM vendas_kanban_colunas vc\n            LEFT JOIN vendas_kanban_cards vk ON vk.coluna_id = vc.id\n            LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id\n            WHERE vc.board_id = ?\n            GROUP BY vc.id\n            ORDER BY vc.posicao ASC\n        ");
+        $stmt = $pdo->prepare("\n            SELECT vc.*,\n                   COUNT(\n                       CASE\n                           WHEN (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)\n                                AND COALESCE(vk.arquivado, FALSE) = FALSE THEN 1\n                           ELSE NULL\n                       END\n                   ) as total_cards\n            FROM vendas_kanban_colunas vc\n            LEFT JOIN vendas_kanban_cards vk ON vk.coluna_id = vc.id\n            LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id\n            WHERE vc.board_id = ?\n            GROUP BY vc.id\n            ORDER BY vc.posicao ASC\n        ");
         $stmt->execute([$board_id]);
         $colunas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -322,11 +333,106 @@ try {
     } elseif ($action === 'listar_cards') {
         $coluna_id = (int)($_GET['coluna_id'] ?? 0);
 
-        $stmt = $pdo->prepare("\n            SELECT vk.*,\n                   vp.nome_completo,\n                   vp.nome_noivos,\n                   vp.telefone,\n                   vp.data_evento,\n                   vp.horario_inicio,\n                   vp.unidade,\n                   vp.valor_total\n            FROM vendas_kanban_cards vk\n            LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id\n            WHERE vk.coluna_id = ?\n              AND (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)\n            ORDER BY vk.posicao ASC, vk.id ASC\n        ");
+        $stmt = $pdo->prepare("\n            SELECT vk.*,\n                   vp.nome_completo,\n                   vp.nome_noivos,\n                   vp.telefone,\n                   vp.data_evento,\n                   vp.horario_inicio,\n                   vp.unidade,\n                   vp.valor_total\n            FROM vendas_kanban_cards vk\n            LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id\n            WHERE vk.coluna_id = ?\n              AND (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)\n              AND COALESCE(vk.arquivado, FALSE) = FALSE\n            ORDER BY vk.posicao ASC, vk.id ASC\n        ");
         $stmt->execute([$coluna_id]);
         $cards = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         echo json_encode(['success' => true, 'data' => $cards]);
+
+    } elseif ($action === 'toggle_concluido_card') {
+        $card_id = (int)($_POST['card_id'] ?? 0);
+        $concluidoRaw = $_POST['concluido'] ?? null;
+
+        if ($card_id <= 0) {
+            throw new Exception('Card inválido');
+        }
+        if ($concluidoRaw === null || $concluidoRaw === '') {
+            throw new Exception('Status de conclusão inválido');
+        }
+
+        $concluido = filter_var($concluidoRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($concluido === null) {
+            $concluido = ((string)$concluidoRaw === '1');
+        }
+        $concluidoInt = $concluido ? 1 : 0;
+
+        $stmtCard = $pdo->prepare('SELECT id, arquivado FROM vendas_kanban_cards WHERE id = :id LIMIT 1');
+        $stmtCard->execute([':id' => $card_id]);
+        $card = $stmtCard->fetch(PDO::FETCH_ASSOC);
+        if (!$card) {
+            throw new Exception('Card não encontrado');
+        }
+        if (!empty($card['arquivado'])) {
+            throw new Exception('Card arquivado não pode ser alterado');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE vendas_kanban_cards
+            SET concluido = (:concluido = 1),
+                concluido_em = CASE WHEN :concluido = 1 THEN NOW() ELSE NULL END,
+                concluido_por = CASE WHEN :concluido = 1 THEN :usuario_id ELSE NULL END,
+                atualizado_em = NOW()
+            WHERE id = :id
+            RETURNING id, concluido, concluido_em, concluido_por
+        ");
+        $stmt->execute([
+            ':id' => $card_id,
+            ':concluido' => $concluidoInt,
+            ':usuario_id' => $usuario_id > 0 ? $usuario_id : null,
+        ]);
+        $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'message' => $concluido ? 'Card marcado como concluído' : 'Card desmarcado',
+            'data' => $updated,
+        ]);
+
+    } elseif ($action === 'arquivar_card') {
+        $card_id = (int)($_POST['card_id'] ?? 0);
+        if ($card_id <= 0) {
+            throw new Exception('Card inválido');
+        }
+
+        $stmtCard = $pdo->prepare('SELECT id, arquivado FROM vendas_kanban_cards WHERE id = :id LIMIT 1');
+        $stmtCard->execute([':id' => $card_id]);
+        $card = $stmtCard->fetch(PDO::FETCH_ASSOC);
+        if (!$card) {
+            throw new Exception('Card não encontrado');
+        }
+
+        if (!empty($card['arquivado'])) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Card já está arquivado',
+                'data' => [
+                    'id' => $card_id,
+                    'arquivado' => true,
+                ],
+            ]);
+            return;
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE vendas_kanban_cards
+            SET arquivado = TRUE,
+                arquivado_em = NOW(),
+                arquivado_por = :usuario_id,
+                atualizado_em = NOW()
+            WHERE id = :id
+            RETURNING id, arquivado, arquivado_em, arquivado_por
+        ");
+        $stmt->execute([
+            ':id' => $card_id,
+            ':usuario_id' => $usuario_id > 0 ? $usuario_id : null,
+        ]);
+        $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Card arquivado com sucesso',
+            'data' => $updated,
+        ]);
 
     } elseif ($action === 'detalhes_card') {
         $card_id = (int)($_GET['card_id'] ?? 0);

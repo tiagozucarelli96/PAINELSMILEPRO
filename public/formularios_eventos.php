@@ -932,6 +932,8 @@ includeSidebar('Formularios eventos');
 <script>
 const allowedTemplateCategories = ['15anos', 'casamento', 'infantil', 'geral'];
 const fieldTypes = ['text', 'textarea', 'yesno', 'select', 'file', 'section', 'divider', 'note'];
+const fileFieldAccept = '.png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx';
+const fileFieldHint = 'Permite múltiplos arquivos e até 100MB por arquivo.';
 
 let savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
     return [
@@ -1663,7 +1665,7 @@ function buildPreviewFieldHtml(field) {
         return `<div class="preview-field"><label>${label}${reqMark}</label><select ${required ? 'required' : ''}><option value="">Selecione...</option>${optionHtml}</select></div>`;
     }
     if (type === 'file') {
-        return `<div class="preview-field"><label>${label}${reqMark}</label><input type="file" ${required ? 'required' : ''}></div>`;
+        return `<div class="preview-field"><label>${label}${reqMark}</label><input type="file" multiple accept="${fileFieldAccept}" ${required ? 'required' : ''}><div style="margin-top:0.3rem; font-size:0.75rem; color:#64748b;">${fileFieldHint}</div></div>`;
     }
 
     return `<div class="preview-field"><label>${label}${reqMark}</label><input type="text" placeholder="Sua resposta..." ${required ? 'required' : ''}></div>`;

@@ -52,6 +52,18 @@ if (!$board) {
     $board_id = $board['id'];
 }
 
+// Garantir colunas de status por card (concluído/arquivado)
+try {
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido BOOLEAN NOT NULL DEFAULT FALSE");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido_em TIMESTAMPTZ");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS concluido_por INT REFERENCES usuarios(id) ON DELETE SET NULL");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado BOOLEAN NOT NULL DEFAULT FALSE");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado_em TIMESTAMPTZ");
+    $pdo->exec("ALTER TABLE vendas_kanban_cards ADD COLUMN IF NOT EXISTS arquivado_por INT REFERENCES usuarios(id) ON DELETE SET NULL");
+} catch (Throwable $e) {
+    error_log('[VENDAS_KANBAN] Falha ao garantir colunas de status: ' . $e->getMessage());
+}
+
 // Ações de administração de colunas (somente admin)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -166,7 +178,8 @@ $stmt = $pdo->prepare("
     SELECT vc.*,
            COUNT(
                CASE
-                   WHEN vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL THEN 1
+                   WHEN (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)
+                        AND COALESCE(vk.arquivado, FALSE) = FALSE THEN 1
                    ELSE NULL
                END
            ) as total_cards
@@ -201,6 +214,7 @@ foreach ($colunas as $coluna) {
         LEFT JOIN vendas_pre_contratos vp ON vp.id = vk.pre_contrato_id
         WHERE vk.coluna_id = ?
           AND (vk.pre_contrato_id IS NULL OR vp.id IS NOT NULL)
+          AND COALESCE(vk.arquivado, FALSE) = FALSE
         ORDER BY vk.posicao ASC, vk.id ASC
     ");
     $stmt->execute([$coluna['id']]);
@@ -566,6 +580,17 @@ ob_start();
 .kanban-card.card-highlight {
     animation: cardPulse 1.4s ease;
 }
+.kanban-card.card-concluido {
+    border-left-color: #16a34a !important;
+    background: #f8fff9;
+}
+.kanban-card.card-concluido .card-titulo {
+    color: #475569;
+    text-decoration: line-through;
+}
+.kanban-card.card-concluido .card-subtitulo {
+    color: #64748b;
+}
 @keyframes cardPulse {
     0% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); }
     100% { box-shadow: 0 0 0 16px rgba(37,99,235,0); }
@@ -629,10 +654,49 @@ ob_start();
     font-size:.72rem;
     font-weight:700;
 }
+.card-pill-success {
+    border-color:#86efac;
+    background:#dcfce7;
+    color:#166534;
+}
 .card-observacao-hint {
     color:#64748b;
     font-size:.76rem;
     font-weight:600;
+}
+.card-inline-actions {
+    margin-top:.55rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.45rem;
+}
+.card-check-label {
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+    color:#334155;
+    font-size:.78rem;
+    font-weight:700;
+    cursor:pointer;
+}
+.card-check-label input[type="checkbox"] {
+    width:14px;
+    height:14px;
+    accent-color:#16a34a;
+}
+.card-arquivar-btn {
+    border:1px solid #fca5a5;
+    background:#fff1f2;
+    color:#be123c;
+    border-radius:8px;
+    padding:.28rem .52rem;
+    font-size:.74rem;
+    font-weight:700;
+    cursor:pointer;
+}
+.card-arquivar-btn:hover {
+    background:#ffe4e6;
 }
 
 /* Modal detalhado com observações */
@@ -904,8 +968,9 @@ ob_start();
                             $status_pre_label = $status_pre_raw !== '' ? ucwords(str_replace('_', ' ', $status_pre_raw)) : 'Sem status';
                             $valor_card = (float)($card['valor_total'] ?? 0);
                             $valor_formatado = $valor_card > 0 ? 'R$ ' . number_format($valor_card, 2, ',', '.') : '';
+                            $card_concluido = !empty($card['concluido']);
                         ?>
-                        <div class="kanban-card"
+                        <div class="kanban-card <?php echo $card_concluido ? 'card-concluido' : ''; ?>"
                              draggable="true"
                              data-card-id="<?php echo (int)$card['id']; ?>"
                              data-pre-contrato-id="<?php echo (int)($card['pre_contrato_id'] ?? 0); ?>"
@@ -922,6 +987,7 @@ ob_start();
                              data-horario-inicio="<?php echo htmlspecialchars($horario_inicio, ENT_QUOTES); ?>"
                              data-horario-termino="<?php echo htmlspecialchars($horario_termino, ENT_QUOTES); ?>"
                              data-data-evento="<?php echo htmlspecialchars($data_evento, ENT_QUOTES); ?>"
+                             data-card-concluido="<?php echo $card_concluido ? '1' : '0'; ?>"
                              style="border-left-color: <?php echo htmlspecialchars((string)($coluna['cor'] ?? '#3b82f6')); ?>;">
                             <div class="card-headline">
                                 <div class="card-titulo"><?php echo htmlspecialchars($titulo_card); ?></div>
@@ -958,12 +1024,23 @@ ob_start();
                             <?php endif; ?>
 
                             <div class="card-footer-row">
-                                <span class="card-pill"><?php echo htmlspecialchars($status_pre_label); ?></span>
+                                <div style="display:flex; align-items:center; gap:.35rem; flex-wrap:wrap;">
+                                    <span class="card-pill"><?php echo htmlspecialchars($status_pre_label); ?></span>
+                                    <span class="card-pill card-pill-success card-pill-concluido" style="<?php echo $card_concluido ? '' : 'display:none;'; ?>">Concluído</span>
+                                </div>
                                 <?php if ($valor_formatado !== ''): ?>
                                     <div class="card-valor"><?php echo htmlspecialchars($valor_formatado); ?></div>
                                 <?php else: ?>
                                     <span class="card-observacao-hint">Clique para detalhes</span>
                                 <?php endif; ?>
+                            </div>
+
+                            <div class="card-inline-actions">
+                                <label class="card-check-label">
+                                    <input type="checkbox" class="card-concluido-toggle" <?php echo $card_concluido ? 'checked' : ''; ?>>
+                                    <span>Concluído</span>
+                                </label>
+                                <button type="button" class="card-arquivar-btn">Arquivar</button>
                             </div>
 
                             <div class="card-acoes">
@@ -1198,6 +1275,33 @@ function updateCountsByDom() {
     });
 }
 
+function boolFromValue(value) {
+    if (typeof value === 'boolean') return value;
+    const norm = String(value ?? '').trim().toLowerCase();
+    return ['1', 'true', 't', 'yes', 'on'].includes(norm);
+}
+
+function cardIsConcluido(cardEl) {
+    return boolFromValue(cardEl?.dataset?.cardConcluido || '0');
+}
+
+function setCardConcluidoState(cardEl, concluido) {
+    if (!cardEl) return;
+    const active = !!concluido;
+    cardEl.dataset.cardConcluido = active ? '1' : '0';
+    cardEl.classList.toggle('card-concluido', active);
+
+    const checkbox = cardEl.querySelector('.card-concluido-toggle');
+    if (checkbox && checkbox.checked !== active) {
+        checkbox.checked = active;
+    }
+
+    const badge = cardEl.querySelector('.card-pill-concluido');
+    if (badge) {
+        badge.style.display = active ? 'inline-flex' : 'none';
+    }
+}
+
 document.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('dragstart', function(e) {
         isDraggingCard = true;
@@ -1222,6 +1326,7 @@ document.querySelectorAll('.kanban-card').forEach(card => {
     card.addEventListener('click', function(e) {
         if (isDraggingCard) return;
         if (e.target.closest('.card-acoes')) return;
+        if (e.target.closest('.card-inline-actions')) return;
         abrirModalDetalhesCard(this);
     });
 });
@@ -1229,6 +1334,27 @@ document.querySelectorAll('.kanban-card').forEach(card => {
 document.querySelectorAll('.card-acoes a').forEach(link => {
     link.addEventListener('click', function(e) {
         e.stopPropagation();
+    });
+});
+
+document.querySelectorAll('.card-concluido-toggle').forEach(input => {
+    input.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+    input.addEventListener('change', function(e) {
+        e.stopPropagation();
+        const cardEl = this.closest('.kanban-card');
+        if (!cardEl) return;
+        atualizarConcluidoCard(cardEl, this.checked, this);
+    });
+});
+
+document.querySelectorAll('.card-arquivar-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const cardEl = this.closest('.kanban-card');
+        if (!cardEl) return;
+        arquivarCard(cardEl, this);
     });
 });
 
@@ -1267,13 +1393,19 @@ function renderTextoComMencoes(texto) {
     return escaped.replace(/(^|\s)@([A-Za-z0-9._-]{2,60})/g, '$1<span class="mention-token">@$2</span>');
 }
 
-function formatarStatusLabel(status) {
+function formatarStatusLabel(status, concluido = false) {
     const raw = String(status || '').trim();
-    if (!raw) return '-';
-    return raw
-        .replace(/_/g, ' ')
-        .toLowerCase()
-        .replace(/\b\w/g, (char) => char.toUpperCase());
+    let label = '-';
+    if (raw) {
+        label = raw
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+    if (concluido) {
+        return label === '-' ? 'Concluído' : `${label} · Concluído`;
+    }
+    return label;
 }
 
 function setModalField(id, value) {
@@ -1313,6 +1445,87 @@ function setModalPreContratoLink(preContratoId) {
     }
 }
 
+async function atualizarConcluidoCard(cardEl, concluido, inputEl = null) {
+    const cardId = Number(cardEl?.dataset?.cardId || 0);
+    if (cardId <= 0) return;
+
+    if (inputEl) inputEl.disabled = true;
+    try {
+        const response = await fetch('vendas_kanban_api.php?action=toggle_concluido_card', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                card_id: String(cardId),
+                concluido: concluido ? '1' : '0',
+            }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error || 'Falha ao atualizar conclusão do card');
+        }
+
+        const concluidoServidor = boolFromValue(payload?.data?.concluido ?? concluido);
+        setCardConcluidoState(cardEl, concluidoServidor);
+
+        if (modalCardAtualId === cardId) {
+            setModalField(
+                'modalCardStatus',
+                formatarStatusLabel(cardEl?.dataset?.cardStatus || '', concluidoServidor)
+            );
+        }
+    } catch (error) {
+        const reverso = !concluido;
+        setCardConcluidoState(cardEl, reverso);
+        if (inputEl) inputEl.checked = reverso;
+        alert(error?.message || 'Não foi possível atualizar o status do card.');
+    } finally {
+        if (inputEl) inputEl.disabled = false;
+    }
+}
+
+async function arquivarCard(cardEl, buttonEl = null) {
+    const cardId = Number(cardEl?.dataset?.cardId || 0);
+    if (cardId <= 0) return;
+
+    if (!window.confirm('Arquivar este card? Ele sairá do Kanban atual.')) {
+        return;
+    }
+
+    if (buttonEl) buttonEl.disabled = true;
+    try {
+        const response = await fetch('vendas_kanban_api.php?action=arquivar_card', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                card_id: String(cardId),
+            }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+            throw new Error(payload?.error || 'Falha ao arquivar card');
+        }
+
+        if (modalCardAtualId === cardId) {
+            fecharModalDetalhesCard();
+        }
+
+        cardEl.remove();
+        updateCountsByDom();
+    } catch (error) {
+        alert(error?.message || 'Não foi possível arquivar o card.');
+    } finally {
+        if (buttonEl) buttonEl.disabled = false;
+    }
+}
+
 function preencherModalBase(cardEl) {
     const cardId = Number(cardEl?.dataset?.cardId || 0);
     const titulo = cardEl?.dataset?.cardTitulo || 'Detalhes do Card';
@@ -1329,7 +1542,7 @@ function preencherModalBase(cardEl) {
     setModalField('modalDataEvento', formatarDataBr(cardEl?.dataset?.dataEvento || ''));
     setModalField('modalHorarioInicio', cardEl?.dataset?.horarioInicio || '-');
     setModalField('modalHorarioTermino', cardEl?.dataset?.horarioTermino || '-');
-    setModalField('modalCardStatus', cardEl?.dataset?.cardStatus || '-');
+    setModalField('modalCardStatus', formatarStatusLabel(cardEl?.dataset?.cardStatus || '', cardIsConcluido(cardEl)));
     setModalField('modalColunaAtual', cardEl?.dataset?.colunaNome || '-');
     setModalField('modalValorContrato', cardEl?.dataset?.cardValor || '-');
     setModalField('modalDescricaoCard', cardEl?.dataset?.cardDescricao || '-');
@@ -1513,12 +1726,19 @@ async function carregarDetalhesCard(cardId) {
         setModalField('modalDataEvento', formatarDataBr(card.data_evento || modalCardAtual?.dataset?.dataEvento || ''));
         setModalField('modalHorarioInicio', card.horario_inicio || modalCardAtual?.dataset?.horarioInicio || '-');
         setModalField('modalHorarioTermino', card.horario_termino || modalCardAtual?.dataset?.horarioTermino || '-');
-        setModalField('modalCardStatus', formatarStatusLabel(card.pre_contrato_status || modalCardAtual?.dataset?.cardStatus || ''));
+        const cardConcluido = boolFromValue(card.concluido ?? modalCardAtual?.dataset?.cardConcluido ?? 0);
+        const statusBase = card.pre_contrato_status || modalCardAtual?.dataset?.cardStatus || '';
+        setModalField('modalCardStatus', formatarStatusLabel(statusBase, cardConcluido));
         setModalField('modalColunaAtual', card.coluna_nome || modalCardAtual?.dataset?.colunaNome || '-');
 
         const valor = Number(card.valor_total || 0);
         setModalField('modalValorContrato', valor > 0 ? `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : (modalCardAtual?.dataset?.cardValor || '-'));
         setModalField('modalDescricaoCard', card.descricao || modalCardAtual?.dataset?.cardDescricao || '-');
+
+        if (modalCardAtual) {
+            modalCardAtual.dataset.cardStatus = formatarStatusLabel(statusBase, false);
+            setCardConcluidoState(modalCardAtual, cardConcluido);
+        }
 
         setModalPreContratoLink(Number(card.pre_contrato_id || modalCardAtual?.dataset?.preContratoId || 0));
 

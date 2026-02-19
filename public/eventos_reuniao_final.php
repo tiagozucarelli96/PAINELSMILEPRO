@@ -831,6 +831,13 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         color: #64748b;
     }
 
+    .dj-slots-actions {
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
     .dj-slots-stack {
         display: flex;
         flex-direction: column;
@@ -873,20 +880,42 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         padding: 0.9rem;
     }
 
-    .dj-anexos-head {
-        margin-bottom: 0.75rem;
+    .dj-upload-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7rem;
     }
 
-    .dj-anexos-head h4 {
+    .dj-upload-card {
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        padding: 0.75rem;
+        background: #f8fafc;
+    }
+
+    .dj-upload-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .dj-upload-card-title {
         margin: 0;
-        font-size: 0.95rem;
-        color: #0f172a;
+        font-size: 0.82rem;
+        color: #334155;
+        font-weight: 700;
     }
 
-    .dj-anexos-head p {
-        margin: 0.25rem 0 0 0;
-        font-size: 0.78rem;
-        color: #64748b;
+    .btn-upload-remove {
+        color: #b91c1c;
+        border-color: #fecdd3;
+        background: #fff1f2;
+    }
+
+    .btn-upload-remove:hover {
+        background: #ffe4e6;
     }
 
     .dj-anexos-upload {
@@ -907,7 +936,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     }
 
     .dj-anexos-note {
-        margin-top: 0.55rem;
+        margin-top: 0.5rem;
     }
 
     .dj-anexos-note input {
@@ -1592,30 +1621,17 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                         <h4>🧩 DJ / Protocolos</h4>
                         <p>Comece sem quadros. Adicione somente quando precisar gerar um novo link para o cliente.</p>
                     </div>
-                    <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
+                    <div class="dj-slots-actions">
+                        <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
+                        <button type="button" class="btn btn-secondary" onclick="addDjUploadCard()">+ Adicionar arquivo</button>
+                    </div>
                 </div>
-                <div id="djSlotsEmptyState" class="dj-builder-empty-state">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
+                <div id="djSlotsEmptyState" class="dj-builder-empty-state" style="display:none;">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
                 <div id="djSlotsContainer" class="dj-slots-stack"></div>
 
-                <div class="dj-anexos-box">
-                    <div class="dj-anexos-head">
-                        <h4>📎 Anexos para o DJ</h4>
-                        <p>Envie materiais de apoio (PDF, foto, áudio, vídeo e documentos). Eles ficam disponíveis no Portal DJ.</p>
-                    </div>
-                    <div class="dj-anexos-upload">
-                        <input type="file"
-                               id="djAnexosInput"
-                               multiple
-                               accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
-                        <button type="button" class="btn btn-primary btn-upload-mini" id="btnUploadDjAnexos" onclick="uploadDjAnexos()">Enviar arquivos</button>
-                    </div>
-                    <div class="dj-anexos-note">
-                        <input type="text"
-                               id="djAnexosNote"
-                               maxlength="300"
-                               placeholder="Observação do upload (opcional). Ex.: materiais para abertura de pista">
-                    </div>
-                    <div class="dj-anexos-status" id="djAnexosStatus">Nenhum envio em andamento.</div>
+                <div class="dj-anexos-box" id="djAnexosBox" style="display:none;">
+                    <div id="djUploadCardsContainer" class="dj-upload-cards"></div>
+                    <div class="dj-anexos-status" id="djAnexosStatus" style="display:none;"></div>
                     <div class="dj-anexos-list" id="djAnexosList"></div>
                 </div>
             </div>
@@ -1815,6 +1831,8 @@ let selectedDjTemplateIds = {};
 let lastSavedDjSchemaSignatures = {};
 let djLinksBySlot = {};
 let djAnexos = Array.isArray(initialDjAnexos) ? initialDjAnexos.slice() : [];
+let djUploadCardOrder = [];
+let djUploadCardCounter = 0;
 let observacoesSlotOrder = [];
 let selectedObservacoesTemplateIds = {};
 let observacoesLinksBySlot = {};
@@ -2301,16 +2319,16 @@ function buildDjSlotCardHtml(slot) {
 function renderDjSlots() {
     const container = document.getElementById('djSlotsContainer');
     const empty = document.getElementById('djSlotsEmptyState');
-    if (!container || !empty) return;
+    if (!container) return;
 
     const slots = getSortedDjSlots();
     if (slots.length === 0) {
         container.innerHTML = '';
-        empty.style.display = 'block';
+        if (empty) empty.style.display = 'none';
         return;
     }
 
-    empty.style.display = 'none';
+    if (empty) empty.style.display = 'none';
     container.innerHTML = slots.map((slot) => buildDjSlotCardHtml(slot)).join('');
 
     slots.forEach((slot) => {
@@ -2485,6 +2503,87 @@ function setDjAnexosStatus(message, type = '') {
     if (type === 'error' || type === 'success') {
         status.classList.add(type);
     }
+    status.style.display = String(message || '').trim() !== '' ? 'block' : 'none';
+    refreshDjAnexosVisibility();
+}
+
+function refreshDjAnexosVisibility() {
+    const box = document.getElementById('djAnexosBox');
+    const status = document.getElementById('djAnexosStatus');
+    if (!box) return;
+
+    const hasCards = Array.isArray(djUploadCardOrder) && djUploadCardOrder.length > 0;
+    const hasAnexos = Array.isArray(djAnexos) && djAnexos.length > 0;
+    const hasStatus = !!(status && status.style.display !== 'none' && String(status.textContent || '').trim() !== '');
+    box.style.display = (hasCards || hasAnexos || hasStatus) ? 'block' : 'none';
+}
+
+function normalizeDjUploadCardId(cardId) {
+    const parsed = Number(cardId);
+    if (!Number.isInteger(parsed) || parsed <= 0) return null;
+    return parsed;
+}
+
+function nextDjUploadCardId() {
+    djUploadCardCounter += 1;
+    return djUploadCardCounter;
+}
+
+function buildDjUploadCardHtml(cardId, orderIndex) {
+    const uploadLabel = orderIndex + 1;
+    return `
+        <div class="dj-upload-card" data-upload-card="${cardId}">
+            <div class="dj-upload-card-head">
+                <div class="dj-upload-card-title">📎 Upload ${uploadLabel}</div>
+                <button type="button" class="btn btn-secondary btn-mini btn-upload-remove" onclick="removeDjUploadCard(${cardId})">Remover</button>
+            </div>
+            <div class="dj-anexos-upload">
+                <input type="file"
+                       id="djAnexosInput-${cardId}"
+                       multiple
+                       accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
+                <button type="button" class="btn btn-primary btn-upload-mini" id="btnUploadDjAnexos-${cardId}" onclick="uploadDjAnexos(${cardId})">Enviar arquivos</button>
+            </div>
+            <div class="dj-anexos-note">
+                <input type="text"
+                       id="djAnexosNote-${cardId}"
+                       maxlength="300"
+                       placeholder="Observação do upload (opcional). Ex.: materiais para abertura de pista">
+            </div>
+        </div>
+    `;
+}
+
+function renderDjUploadCards() {
+    const container = document.getElementById('djUploadCardsContainer');
+    if (!container) return;
+
+    if (!Array.isArray(djUploadCardOrder) || djUploadCardOrder.length === 0) {
+        container.innerHTML = '';
+        refreshDjAnexosVisibility();
+        return;
+    }
+
+    container.innerHTML = djUploadCardOrder.map((cardId, orderIndex) => buildDjUploadCardHtml(cardId, orderIndex)).join('');
+    refreshDjAnexosVisibility();
+}
+
+function addDjUploadCard() {
+    const cardId = nextDjUploadCardId();
+    djUploadCardOrder.push(cardId);
+    renderDjUploadCards();
+    const input = document.getElementById(`djAnexosInput-${cardId}`);
+    if (input) {
+        input.focus();
+    }
+    return cardId;
+}
+
+function removeDjUploadCard(cardId) {
+    const normalizedId = normalizeDjUploadCardId(cardId);
+    if (normalizedId === null) return;
+    djUploadCardOrder = djUploadCardOrder.filter((item) => item !== normalizedId);
+    renderDjUploadCards();
 }
 
 function renderDjAnexosList() {
@@ -2492,7 +2591,8 @@ function renderDjAnexosList() {
     if (!list) return;
 
     if (!Array.isArray(djAnexos) || djAnexos.length === 0) {
-        list.innerHTML = '<div class="builder-field-meta">Nenhum anexo enviado para o DJ ainda.</div>';
+        list.innerHTML = '';
+        refreshDjAnexosVisibility();
         return;
     }
 
@@ -2528,17 +2628,24 @@ function renderDjAnexosList() {
             </div>
         `;
     }).join('');
+    refreshDjAnexosVisibility();
 }
 
-async function uploadDjAnexos() {
+async function uploadDjAnexos(cardId) {
     if (!meetingId) {
         alert('Reunião inválida.');
         return;
     }
 
-    const input = document.getElementById('djAnexosInput');
-    const noteInput = document.getElementById('djAnexosNote');
-    const button = document.getElementById('btnUploadDjAnexos');
+    const normalizedCardId = normalizeDjUploadCardId(cardId);
+    if (normalizedCardId === null) {
+        alert('Upload inválido.');
+        return;
+    }
+
+    const input = document.getElementById(`djAnexosInput-${normalizedCardId}`);
+    const noteInput = document.getElementById(`djAnexosNote-${normalizedCardId}`);
+    const button = document.getElementById(`btnUploadDjAnexos-${normalizedCardId}`);
     if (!input || !button) return;
 
     const files = Array.from(input.files || []);
@@ -2548,7 +2655,7 @@ async function uploadDjAnexos() {
     }
 
     button.disabled = true;
-    setDjAnexosStatus('Enviando arquivos...', '');
+    setDjAnexosStatus(`Enviando arquivos do upload ${normalizedCardId}...`, '');
 
     try {
         const formData = new FormData();
@@ -2577,10 +2684,7 @@ async function uploadDjAnexos() {
             djAnexos = data.anexos;
         }
         renderDjAnexosList();
-        input.value = '';
-        if (noteInput) {
-            noteInput.value = '';
-        }
+        removeDjUploadCard(normalizedCardId);
 
         const uploadedCount = Number(data.uploaded || files.length || 0);
         const warning = String(data.warning || '').trim();
@@ -4039,6 +4143,7 @@ function bindSearchEvents() {
 if (meetingId) {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
+            renderDjUploadCards();
             renderDjAnexosList();
             applyInitialTabFromQuery();
             loadTinyMCEAndInit();
@@ -4048,6 +4153,7 @@ if (meetingId) {
             refreshDjTemplates();
         });
     } else {
+        renderDjUploadCards();
         renderDjAnexosList();
         applyInitialTabFromQuery();
         loadTinyMCEAndInit();

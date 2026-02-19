@@ -31,11 +31,11 @@ class MagaluUpload {
         $this->endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
         $this->accessKey = $_ENV['MAGALU_ACCESS_KEY'] ?? getenv('MAGALU_ACCESS_KEY');
         $this->secretKey = $_ENV['MAGALU_SECRET_KEY'] ?? getenv('MAGALU_SECRET_KEY');
-        // Default mais realista para propostas/PDFs (pode ser sobrescrito por UPLOAD_MAX_MB)
+        // Default para uploads de formulários e anexos (pode ser sobrescrito por UPLOAD_MAX_MB)
         // Suporta arquivos maiores quando o PHP também permitir (post_max_size/upload_max_filesize)
-        $defaultMaxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 60);
+        $defaultMaxSizeMB = (int)($_ENV['UPLOAD_MAX_MB'] ?? getenv('UPLOAD_MAX_MB') ?: 100);
         if ($defaultMaxSizeMB <= 0) {
-            $defaultMaxSizeMB = 60;
+            $defaultMaxSizeMB = 100;
         }
         if ($maxSizeMB !== null && $maxSizeMB > 0) {
             $this->maxSizeMB = $maxSizeMB;
@@ -108,6 +108,14 @@ class MagaluUpload {
             'application/vnd.ms-excel', // .xls
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
             'application/vnd.ms-excel.sheet.macroEnabled.12', // .xlsm
+            'application/vnd.ms-powerpoint', // .ppt
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+            'application/vnd.oasis.opendocument.text', // .odt
+            'application/vnd.oasis.opendocument.spreadsheet', // .ods
+            'application/vnd.oasis.opendocument.presentation', // .odp
+            'application/zip', 'application/x-zip-compressed',
+            'application/vnd.rar', 'application/x-rar-compressed',
+            'application/x-7z-compressed',
             'application/x-ofx', 'application/xml', 'text/xml', 'application/octet-stream'
         ];
         
