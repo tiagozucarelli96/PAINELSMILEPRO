@@ -53,7 +53,7 @@ try {
     $end->modify('+30 days');
     $start_date = $start->format('Y-m-d');
     $end_date = $end->format('Y-m-d');
-    $tipo_expr = "LOWER(REGEXP_REPLACE(COALESCE(NULLIF(r.me_event_snapshot->>'tipo_evento', ''), r.me_event_snapshot->>'unidade', ''), '[^a-z0-9]+', '', 'g'))";
+    $tipo_real_expr = "COALESCE(NULLIF(LOWER(TRIM(r.tipo_evento_real)), ''), LOWER(TRIM(COALESCE(r.me_event_snapshot->>'tipo_evento_real', ''))))";
 
     $stmt = $pdo->prepare("
         SELECT r.id,
@@ -72,10 +72,7 @@ try {
           AND r.status = 'concluida'
           AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
           AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
-          AND (
-                {$tipo_expr} = 'casamento'
-                OR {$tipo_expr} LIKE '%15ano%'
-          )
+          AND {$tipo_real_expr} IN ('casamento', '15anos')
         GROUP BY r.id, r.status, r.me_event_snapshot
         ORDER BY (r.me_event_snapshot->>'data')::date ASC, (r.me_event_snapshot->>'hora_inicio') ASC
     ");
@@ -107,7 +104,7 @@ if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
 
     try {
-        $tipo_expr = "LOWER(REGEXP_REPLACE(COALESCE(NULLIF(r.me_event_snapshot->>'tipo_evento', ''), r.me_event_snapshot->>'unidade', ''), '[^a-z0-9]+', '', 'g'))";
+        $tipo_real_expr = "COALESCE(NULLIF(LOWER(TRIM(r.tipo_evento_real)), ''), LOWER(TRIM(COALESCE(r.me_event_snapshot->>'tipo_evento_real', ''))))";
         $stmt = $pdo->prepare("
             SELECT r.id,
                    r.status,
@@ -122,10 +119,7 @@ if (!empty($_GET['evento'])) {
               AND r.status = 'concluida'
               AND (r.me_event_snapshot->>'data')::date BETWEEN :start AND :end
               AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
-              AND (
-                    {$tipo_expr} = 'casamento'
-                    OR {$tipo_expr} LIKE '%15ano%'
-              )
+              AND {$tipo_real_expr} IN ('casamento', '15anos')
               AND EXISTS (
                 SELECT 1 FROM eventos_links_publicos lp
                 WHERE lp.meeting_id = r.id

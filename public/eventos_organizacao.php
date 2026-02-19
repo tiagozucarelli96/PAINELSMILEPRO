@@ -27,12 +27,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
         switch ($action) {
             case 'organizar_evento':
                 $me_event_id = (int)($_POST['me_event_id'] ?? 0);
+                $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''));
                 if ($me_event_id <= 0) {
                     echo json_encode(['ok' => false, 'error' => 'Selecione um evento válido.']);
                     exit;
                 }
+                if ($tipo_evento_real === '') {
+                    echo json_encode(['ok' => false, 'error' => 'Selecione o tipo real do evento para continuar.']);
+                    exit;
+                }
 
-                $meeting_result = eventos_reuniao_get_or_create($pdo, $me_event_id, $user_id);
+                $meeting_result = eventos_reuniao_get_or_create($pdo, $me_event_id, $user_id, $tipo_evento_real);
                 if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
                     echo json_encode(['ok' => false, 'error' => $meeting_result['error'] ?? 'Não foi possível organizar este evento.']);
                     exit;
@@ -49,7 +54,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     'ok' => true,
                     'reuniao' => ['id' => $meeting_id],
                     'portal' => $portal_result['portal'],
+                    'tipo_evento_real' => $tipo_evento_real,
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
+            case 'atualizar_tipo_evento_real':
+                if ($meeting_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
+                    exit;
+                }
+                $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''));
+                if ($tipo_evento_real === '') {
+                    echo json_encode(['ok' => false, 'error' => 'Tipo de evento inválido.']);
+                    exit;
+                }
+                $updated = eventos_reuniao_atualizar_tipo_evento_real($pdo, $meeting_id, $tipo_evento_real, $user_id);
+                echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
             case 'salvar_portal_config':
@@ -129,6 +149,13 @@ $editavel_dj = !empty($portal['editavel_dj']);
 $visivel_convidados = !empty($portal['visivel_convidados']);
 $editavel_convidados = !empty($portal['editavel_convidados']);
 $convidados_resumo = $meeting_id > 0 ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+$tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
+$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
+$tipos_evento_real_options = [
+    'casamento' => 'Casamento',
+    '15anos' => '15 anos',
+    'infantil' => 'Infantil',
+];
 
 $has_dj_link = !empty($links_cliente_dj);
 $has_obs_link = !empty($links_cliente_observacoes);
@@ -448,6 +475,88 @@ includeSidebar('Organização eventos');
         color: #b91c1c;
     }
 
+    .tipo-real-config {
+        margin-top: 0.85rem;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 0.8rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+    }
+
+    .tipo-real-config label {
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .tipo-real-select {
+        min-width: 190px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.5rem 0.65rem;
+        font-size: 0.85rem;
+        background: #fff;
+        color: #1f2937;
+    }
+
+    .tipo-real-note {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+
+    .tipo-evento-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 60;
+        padding: 1rem;
+    }
+
+    .tipo-evento-modal.open {
+        display: flex;
+    }
+
+    .tipo-evento-modal-card {
+        width: min(460px, 100%);
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #dbe3ef;
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.22);
+        padding: 1rem;
+    }
+
+    .tipo-evento-modal-card h3 {
+        margin: 0;
+        color: #0f172a;
+    }
+
+    .tipo-evento-modal-card p {
+        margin: 0.45rem 0 0.8rem 0;
+        color: #64748b;
+        font-size: 0.86rem;
+    }
+
+    .tipo-evento-modal-card select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.58rem 0.7rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .tipo-evento-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
     @media (max-width: 768px) {
         .organizacao-container {
             padding: 1rem;
@@ -488,6 +597,23 @@ includeSidebar('Organização eventos');
             <button type="button" class="btn btn-success" onclick="organizarEvento()">Organizar este Evento</button>
         </div>
     </div>
+
+    <div id="tipoEventoModal" class="tipo-evento-modal" onclick="onTipoEventoModalBackdrop(event)">
+        <div class="tipo-evento-modal-card" role="dialog" aria-modal="true" aria-labelledby="tipoEventoModalTitle">
+            <h3 id="tipoEventoModalTitle">Defina o tipo real do evento</h3>
+            <p>Selecione o tipo para continuar. Essa informação será usada no Portal DJ e Lista de Convidados.</p>
+            <select id="tipoEventoModalSelect">
+                <option value="">Selecione o tipo...</option>
+                <?php foreach ($tipos_evento_real_options as $tipo_key => $tipo_label): ?>
+                <option value="<?= htmlspecialchars($tipo_key) ?>"><?= htmlspecialchars($tipo_label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="tipo-evento-modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeTipoEventoModal()">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmOrganizarEvento" onclick="confirmarOrganizarEvento()">Organizar evento</button>
+            </div>
+        </div>
+    </div>
     <?php else: ?>
     <div class="event-header">
         <h2><?= htmlspecialchars($nome_evento) ?></h2>
@@ -495,6 +621,7 @@ includeSidebar('Organização eventos');
             <div>📅 <?= htmlspecialchars($data_fmt) ?> • <?= htmlspecialchars($horario_fmt) ?></div>
             <div>📍 <?= htmlspecialchars($local_evento) ?></div>
             <div>👤 <?= htmlspecialchars($cliente_nome) ?></div>
+            <div>🏷️ <?= htmlspecialchars($tipo_evento_real_label) ?></div>
             <div class="status-badge">
                 <?= !empty($reuniao['status']) && $reuniao['status'] === 'concluida' ? 'Concluída' : 'Rascunho' ?>
             </div>
@@ -507,6 +634,18 @@ includeSidebar('Organização eventos');
             <input type="text" id="portalLinkInput" class="link-input" readonly value="<?= htmlspecialchars($portal_url) ?>">
             <button type="button" class="btn btn-secondary" onclick="copiarPortalLink()">📋 Copiar</button>
             <a href="<?= htmlspecialchars($portal_url) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Abrir</a>
+        </div>
+        <div class="tipo-real-config">
+            <label for="tipoEventoRealSelect">Tipo real do evento</label>
+            <select id="tipoEventoRealSelect" class="tipo-real-select">
+                <option value="">Selecione...</option>
+                <?php foreach ($tipos_evento_real_options as $tipo_key => $tipo_label): ?>
+                <option value="<?= htmlspecialchars($tipo_key) ?>" <?= $tipo_evento_real === $tipo_key ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($tipo_label) ?>
+                </option>
+                <?php endforeach; ?>
+            </select>
+            <span class="tipo-real-note">A alteração é salva automaticamente.</span>
         </div>
     </div>
 
@@ -568,7 +707,6 @@ includeSidebar('Organização eventos');
             </div>
             <div class="card-actions">
                 <a href="index.php?page=eventos_lista_convidados&id=<?= (int)$meeting_id ?>" class="btn btn-primary">Abrir Lista / Check-in</a>
-                <button type="button" class="btn btn-secondary" onclick="salvarConfigPortal()">Salvar</button>
             </div>
             <div class="helper-note">
                 <?= (int)$convidados_resumo['total'] ?> convidados cadastrados • <?= (int)$convidados_resumo['checkin'] ?> check-ins
@@ -591,6 +729,10 @@ let eventsMasterCache = [];
 const eventsQueryCache = new Map();
 let portalConfigSaveInFlight = false;
 let portalConfigSaveQueued = false;
+let tipoEventoSaveInFlight = false;
+let tipoEventoSaveQueuedValue = null;
+let pendingOrganizarEventId = null;
+let organizarEventoInFlight = false;
 
 async function parseJsonResponse(response) {
     const raw = await response.text();
@@ -735,6 +877,7 @@ async function searchEvents(queryOverride = null, forceRemote = false) {
 
 function selectEvent(el, id) {
     selectedEventId = Number(id);
+    pendingOrganizarEventId = selectedEventId;
     selectedEventData =
         (eventsMasterCache || []).find((ev) => Number(ev.id) === selectedEventId)
         || Array.from(eventsQueryCache.values()).flat().find((ev) => Number(ev.id) === selectedEventId)
@@ -748,15 +891,81 @@ function selectEvent(el, id) {
     if (selected) selected.style.display = 'block';
 }
 
-async function organizarEvento() {
-    if (!selectedEventId) {
+function sugerirTipoEventoReal(ev) {
+    if (!ev) return '';
+    const hay = normalizeText([
+        ev.nome,
+        ev.tipo,
+        ev.label,
+        ev.local,
+    ].join(' '));
+    if (!hay) return '';
+    if (hay.includes('15') && (hay.includes('anos') || hay.includes('ano'))) return '15anos';
+    if (hay.includes('casamento') || hay.includes('wedding')) return 'casamento';
+    if (hay.includes('infantil') || hay.includes('kids') || hay.includes('diverkids')) return 'infantil';
+    return '';
+}
+
+function openTipoEventoModal() {
+    const modal = document.getElementById('tipoEventoModal');
+    if (!modal) return;
+
+    const select = document.getElementById('tipoEventoModalSelect');
+    if (select) {
+        const sugerido = sugerirTipoEventoReal(selectedEventData);
+        select.value = sugerido || '';
+        setTimeout(() => select.focus(), 20);
+    }
+
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeTipoEventoModal() {
+    if (organizarEventoInFlight) return;
+    const modal = document.getElementById('tipoEventoModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function onTipoEventoModalBackdrop(event) {
+    const modal = document.getElementById('tipoEventoModal');
+    if (!modal) return;
+    if (event.target === modal) {
+        closeTipoEventoModal();
+    }
+}
+
+async function confirmarOrganizarEvento() {
+    if (organizarEventoInFlight) return;
+
+    const meEventId = Number(pendingOrganizarEventId || selectedEventId || 0);
+    if (meEventId <= 0) {
         alert('Selecione um evento primeiro.');
         return;
     }
 
+    const tipoSelect = document.getElementById('tipoEventoModalSelect');
+    const tipoEventoReal = tipoSelect ? String(tipoSelect.value || '').trim() : '';
+    if (tipoEventoReal === '') {
+        alert('Selecione o tipo real do evento para continuar.');
+        if (tipoSelect) tipoSelect.focus();
+        return;
+    }
+
+    const confirmBtn = document.getElementById('btnConfirmOrganizarEvento');
+    const previousLabel = confirmBtn ? confirmBtn.textContent : '';
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Organizando...';
+    }
+    organizarEventoInFlight = true;
+
     const formData = new FormData();
     formData.append('action', 'organizar_evento');
-    formData.append('me_event_id', String(selectedEventId));
+    formData.append('me_event_id', String(meEventId));
+    formData.append('tipo_evento_real', tipoEventoReal);
 
     try {
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
@@ -768,7 +977,22 @@ async function organizarEvento() {
         window.location.href = `index.php?page=eventos_organizacao&id=${data.reuniao.id}`;
     } catch (err) {
         alert('Erro: ' + err.message);
+    } finally {
+        organizarEventoInFlight = false;
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = previousLabel || 'Organizar evento';
+        }
     }
+}
+
+async function organizarEvento() {
+    if (!selectedEventId) {
+        alert('Selecione um evento primeiro.');
+        return;
+    }
+    pendingOrganizarEventId = Number(selectedEventId);
+    openTipoEventoModal();
 }
 
 function copiarPortalLink() {
@@ -790,6 +1014,62 @@ function mostrarStatusConfig(texto, isError = false) {
     el.textContent = texto;
     el.classList.toggle('error', !!isError);
     el.style.display = 'block';
+}
+
+async function salvarTipoEventoReal(tipoEventoReal) {
+    if (!meetingId) return;
+    const select = document.getElementById('tipoEventoRealSelect');
+    if (!select) return;
+
+    const nextValue = String(tipoEventoReal || '').trim();
+    const lastValue = String(select.dataset.lastValue || '').trim();
+    if (nextValue === lastValue) return;
+
+    if (tipoEventoSaveInFlight) {
+        tipoEventoSaveQueuedValue = nextValue;
+        return;
+    }
+
+    if (nextValue === '') {
+        mostrarStatusConfig('Selecione um tipo de evento válido.', true);
+        select.value = lastValue;
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'atualizar_tipo_evento_real');
+    formData.append('meeting_id', String(meetingId));
+    formData.append('tipo_evento_real', nextValue);
+
+    tipoEventoSaveInFlight = true;
+    select.disabled = true;
+    mostrarStatusConfig('Salvando tipo do evento...');
+
+    try {
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp);
+        if (!data.ok) {
+            select.value = lastValue;
+            mostrarStatusConfig(data.error || 'Erro ao salvar tipo do evento.', true);
+            return;
+        }
+        select.dataset.lastValue = nextValue;
+        mostrarStatusConfig('Tipo do evento salvo automaticamente.');
+    } catch (err) {
+        select.value = lastValue;
+        mostrarStatusConfig('Erro: ' + err.message, true);
+    } finally {
+        tipoEventoSaveInFlight = false;
+        select.disabled = false;
+        if (tipoEventoSaveQueuedValue !== null) {
+            const queuedValue = String(tipoEventoSaveQueuedValue || '').trim();
+            tipoEventoSaveQueuedValue = null;
+            if (queuedValue !== String(select.dataset.lastValue || '').trim()) {
+                select.value = queuedValue;
+                salvarTipoEventoReal(queuedValue);
+            }
+        }
+    }
 }
 
 async function salvarConfigPortal() {
@@ -866,6 +1146,34 @@ function bindPortalConfigAutoSave() {
     });
 }
 
+function bindTipoEventoRealAutoSave() {
+    const select = document.getElementById('tipoEventoRealSelect');
+    if (!select) return;
+    select.dataset.lastValue = String(select.value || '').trim();
+    select.addEventListener('change', () => {
+        salvarTipoEventoReal(select.value);
+    });
+}
+
+function bindTipoEventoModal() {
+    document.addEventListener('keydown', (event) => {
+        const modal = document.getElementById('tipoEventoModal');
+        if (!modal || !modal.classList.contains('open')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeTipoEventoModal();
+            return;
+        }
+        if (event.key === 'Enter') {
+            const target = event.target;
+            if (target && target.id === 'tipoEventoModalSelect') {
+                event.preventDefault();
+                confirmarOrganizarEvento();
+            }
+        }
+    });
+}
+
 function bindSearchEvents() {
     const searchInput = document.getElementById('eventSearch');
     if (!searchInput) return;
@@ -888,6 +1196,8 @@ function bindSearchEvents() {
 document.addEventListener('DOMContentLoaded', () => {
     bindSearchEvents();
     bindPortalConfigAutoSave();
+    bindTipoEventoRealAutoSave();
+    bindTipoEventoModal();
 });
 </script>
 

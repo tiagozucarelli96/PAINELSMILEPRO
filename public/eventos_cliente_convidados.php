@@ -70,12 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
 
     switch ($action) {
         case 'salvar_tipo_evento':
-            $tipo_evento = trim((string)($_POST['tipo_evento'] ?? 'infantil'));
-            $saved = eventos_convidados_salvar_config($pdo, $meeting_id, $tipo_evento, 'cliente', 0);
-            if (empty($saved['ok'])) {
-                eventos_cliente_convidados_redirect($token, false, (string)($saved['error'] ?? 'Nao foi possivel salvar o tipo do evento.'));
-            }
-            eventos_cliente_convidados_redirect($token, true, 'Tipo de evento atualizado.');
+            eventos_cliente_convidados_redirect($token, false, 'O tipo do evento e definido pela equipe de organizacao.');
             break;
 
         case 'adicionar_convidado':
@@ -148,6 +143,10 @@ $usa_mesa = !empty($config_convidados['usa_mesa']);
 $opcoes_faixa = is_array($config_convidados['opcoes_faixa'] ?? null) ? $config_convidados['opcoes_faixa'] : [];
 $convidados = ($meeting_id > 0 && $error === '') ? eventos_convidados_listar($pdo, $meeting_id) : [];
 $resumo = ($meeting_id > 0 && $error === '') ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+$tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
+$tipo_evento_label = $tipo_evento_real !== ''
+    ? eventos_reuniao_tipo_evento_real_label($tipo_evento_real)
+    : ($tipo_evento === 'mesa' ? '15 anos / Casamento' : 'Infantil');
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -508,29 +507,10 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
             <section class="card">
                 <h3>Tipo do evento</h3>
-                <div class="card-subtitle">Isso define as opcoes do select de faixa etaria e o uso de numero de mesa.</div>
-                <?php if ($editavel_convidados): ?>
-                <form method="post" id="tipoEventoForm">
-                    <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-                    <input type="hidden" name="action" value="salvar_tipo_evento">
-                    <input type="hidden" name="tipo_evento" id="tipoEventoInput" value="<?= htmlspecialchars($tipo_evento) ?>">
-                    <div class="tipo-wrap">
-                        <label class="tipo-item">
-                            <input type="checkbox" id="tipoInfantil" <?= $tipo_evento === 'infantil' ? 'checked' : '' ?>>
-                            <span>Festa infantil</span>
-                        </label>
-                        <label class="tipo-item">
-                            <input type="checkbox" id="tipoMesa" <?= $tipo_evento === 'mesa' ? 'checked' : '' ?>>
-                            <span>15 anos / Casamento</span>
-                        </label>
-                        <button type="submit" class="btn btn-primary">Salvar tipo</button>
-                    </div>
-                </form>
-                <?php else: ?>
+                <div class="card-subtitle">Definido pela equipe na organizacao do evento. Esse tipo controla faixa etaria e uso de mesa.</div>
                 <div class="tipo-wrap">
-                    <div class="tipo-item"><strong>Tipo selecionado:</strong> <?= $tipo_evento === 'mesa' ? '15 anos / Casamento' : 'Festa infantil' ?></div>
+                    <div class="tipo-item"><strong>Tipo selecionado:</strong> <?= htmlspecialchars($tipo_evento_label) ?></div>
                 </div>
-                <?php endif; ?>
             </section>
 
             <section class="card">
@@ -695,39 +675,6 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             return true;
         }
 
-        const tipoInfantil = document.getElementById('tipoInfantil');
-        const tipoMesa = document.getElementById('tipoMesa');
-        const tipoEventoInput = document.getElementById('tipoEventoInput');
-
-        function selecionarTipoEvento(valor) {
-            if (!tipoInfantil || !tipoMesa || !tipoEventoInput) return;
-            if (valor === 'mesa') {
-                tipoInfantil.checked = false;
-                tipoMesa.checked = true;
-                tipoEventoInput.value = 'mesa';
-                return;
-            }
-            tipoInfantil.checked = true;
-            tipoMesa.checked = false;
-            tipoEventoInput.value = 'infantil';
-        }
-
-        if (tipoInfantil && tipoMesa && tipoEventoInput) {
-            tipoInfantil.addEventListener('change', () => {
-                if (tipoInfantil.checked) {
-                    selecionarTipoEvento('infantil');
-                } else if (!tipoMesa.checked) {
-                    tipoInfantil.checked = true;
-                }
-            });
-            tipoMesa.addEventListener('change', () => {
-                if (tipoMesa.checked) {
-                    selecionarTipoEvento('mesa');
-                } else if (!tipoInfantil.checked) {
-                    tipoMesa.checked = true;
-                }
-            });
-        }
     </script>
 </body>
 </html>

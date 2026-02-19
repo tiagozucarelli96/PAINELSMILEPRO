@@ -271,6 +271,14 @@ function eventos_reuniao_tipo_evento_real_label(string $tipo_evento_real): strin
 }
 
 /**
+ * Mapeia tipo real para o tipo usado na lista de convidados.
+ */
+function eventos_reuniao_tipo_real_para_convidados_tipo(string $tipo_evento_real): string {
+    $tipo = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
+    return $tipo === 'infantil' ? 'infantil' : 'mesa';
+}
+
+/**
  * Schema padrão do formulário "protocolo 15 anos".
  */
 function eventos_form_template_schema_protocolo_15anos(): array {
@@ -1000,7 +1008,10 @@ eventos_reuniao_ensure_schema($pdo);
 /**
  * Buscar ou criar reunião para um evento ME
  */
-function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id): array {
+function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id, ?string $tipo_evento_real = null): array {
+    $tipo_evento_real_norm = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
+    $has_tipo_evento_real_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes', 'tipo_evento_real');
+
     // Verificar se já existe
     $stmt = $pdo->prepare("
         SELECT * FROM eventos_reunioes WHERE me_event_id = :me_event_id
@@ -1084,6 +1095,41 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id)
             }
         }
 
+        if ($tipo_evento_real_norm !== '' && $has_tipo_evento_real_col) {
+            $tipo_atual = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
+            if ($tipo_atual !== $tipo_evento_real_norm) {
+                $snapshot_update = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+                if (!is_array($snapshot_update)) {
+                    $snapshot_update = [];
+                }
+                $snapshot_update['tipo_evento_real'] = $tipo_evento_real_norm;
+                $snapshot_update['snapshot_at'] = date('Y-m-d H:i:s');
+
+                $stmt_tipo = $pdo->prepare("
+                    UPDATE eventos_reunioes
+                    SET tipo_evento_real = :tipo_evento_real,
+                        me_event_snapshot = :snapshot,
+                        updated_at = NOW()
+                    WHERE id = :id
+                    RETURNING *
+                ");
+                $stmt_tipo->execute([
+                    ':tipo_evento_real' => $tipo_evento_real_norm,
+                    ':snapshot' => json_encode($snapshot_update, JSON_UNESCAPED_UNICODE),
+                    ':id' => (int)$reuniao['id'],
+                ]);
+                $reuniao = $stmt_tipo->fetch(PDO::FETCH_ASSOC) ?: $reuniao;
+            }
+
+            eventos_convidados_salvar_config(
+                $pdo,
+                (int)$reuniao['id'],
+                eventos_reuniao_tipo_real_para_convidados_tipo($tipo_evento_real_norm),
+                'interno',
+                $user_id
+            );
+        }
+
         return ['ok' => true, 'reuniao' => $reuniao, 'created' => false];
     }
     
@@ -1094,18 +1140,30 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id)
     }
     
     $snapshot = eventos_me_criar_snapshot($event_result['event']);
+    if ($tipo_evento_real_norm !== '') {
+        $snapshot['tipo_evento_real'] = $tipo_evento_real_norm;
+    }
     
     // Criar reunião
-    $stmt = $pdo->prepare("
-        INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
-        VALUES (:me_event_id, :snapshot, 'rascunho', :user_id, NOW(), NOW())
-        RETURNING *
-    ");
-    $stmt->execute([
+    $insert_cols = ['me_event_id', 'me_event_snapshot', 'status', 'created_by', 'created_at', 'updated_at'];
+    $insert_vals = [':me_event_id', ':snapshot', "'rascunho'", ':user_id', 'NOW()', 'NOW()'];
+    $insert_params = [
         ':me_event_id' => $me_event_id,
         ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
         ':user_id' => $user_id
-    ]);
+    ];
+    if ($has_tipo_evento_real_col) {
+        $insert_cols[] = 'tipo_evento_real';
+        $insert_vals[] = ':tipo_evento_real';
+        $insert_params[':tipo_evento_real'] = $tipo_evento_real_norm !== '' ? $tipo_evento_real_norm : null;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_reunioes (" . implode(', ', $insert_cols) . ")
+        VALUES (" . implode(', ', $insert_vals) . ")
+        RETURNING *
+    ");
+    $stmt->execute($insert_params);
     $reuniao = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Criar seções vazias
@@ -1118,6 +1176,16 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id)
         ");
         $stmt->execute([':meeting_id' => $reuniao['id'], ':section' => $section]);
     }
+
+    if ($tipo_evento_real_norm !== '') {
+        eventos_convidados_salvar_config(
+            $pdo,
+            (int)$reuniao['id'],
+            eventos_reuniao_tipo_real_para_convidados_tipo($tipo_evento_real_norm),
+            'interno',
+            $user_id
+        );
+    }
     
     return ['ok' => true, 'reuniao' => $reuniao, 'created' => true];
 }
@@ -1129,6 +1197,75 @@ function eventos_reuniao_get(PDO $pdo, int $meeting_id): ?array {
     $stmt = $pdo->prepare("SELECT * FROM eventos_reunioes WHERE id = :id");
     $stmt->execute([':id' => $meeting_id]);
     return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+/**
+ * Atualiza o tipo real do evento definido manualmente na organização.
+ */
+function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, string $tipo_evento_real, int $user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $tipo = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
+    if ($tipo === '') {
+        return ['ok' => false, 'error' => 'Tipo de evento inválido'];
+    }
+
+    $has_tipo_evento_real_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes', 'tipo_evento_real');
+    if (!$has_tipo_evento_real_col) {
+        return ['ok' => false, 'error' => 'Campo tipo_evento_real indisponível neste ambiente'];
+    }
+
+    $reuniao = eventos_reuniao_get($pdo, $meeting_id);
+    if (!$reuniao) {
+        return ['ok' => false, 'error' => 'Reunião não encontrada'];
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+    $snapshot['tipo_evento_real'] = $tipo;
+    $snapshot['snapshot_at'] = date('Y-m-d H:i:s');
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_reunioes
+            SET tipo_evento_real = :tipo_evento_real,
+                me_event_snapshot = :snapshot,
+                updated_at = NOW()
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':tipo_evento_real' => $tipo,
+            ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+            ':id' => $meeting_id,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$row) {
+            return ['ok' => false, 'error' => 'Não foi possível atualizar o tipo do evento'];
+        }
+
+        // Sincroniza tipo da lista de convidados para evitar seleção manual pelo cliente.
+        $cfg = eventos_convidados_salvar_config(
+            $pdo,
+            $meeting_id,
+            eventos_reuniao_tipo_real_para_convidados_tipo($tipo),
+            'interno',
+            $user_id
+        );
+        if (empty($cfg['ok'])) {
+            error_log('eventos_reuniao_atualizar_tipo_evento_real: falha ao sincronizar convidados: ' . ($cfg['error'] ?? 'erro desconhecido'));
+        }
+
+        return ['ok' => true, 'reuniao' => $row];
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_atualizar_tipo_evento_real: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar tipo do evento'];
+    }
 }
 
 /**
@@ -2608,10 +2745,20 @@ function eventos_convidados_sugerir_tipo_por_reuniao(PDO $pdo, int $meeting_id):
         return 'infantil';
     }
 
+    $tipo_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
+    if ($tipo_real !== '') {
+        return eventos_reuniao_tipo_real_para_convidados_tipo($tipo_real);
+    }
+
     $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
     if (!is_array($snapshot)) {
         $snapshot = [];
     }
+    $tipo_real_snapshot = eventos_reuniao_normalizar_tipo_evento_real((string)($snapshot['tipo_evento_real'] ?? ''));
+    if ($tipo_real_snapshot !== '') {
+        return eventos_reuniao_tipo_real_para_convidados_tipo($tipo_real_snapshot);
+    }
+
     $tipo_raw = strtolower(trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? '')));
     if ($tipo_raw !== '') {
         if (str_contains($tipo_raw, '15') || str_contains($tipo_raw, 'casamento')) {
