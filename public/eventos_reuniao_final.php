@@ -382,6 +382,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'anexos' => $anexos_dj_response
             ]);
             exit;
+
+        case 'excluir_anexo_dj':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+
+            $anexo_id = (int)($_POST['anexo_id'] ?? 0);
+            if ($anexo_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Anexo inválido']);
+                exit;
+            }
+
+            $stmt_anexo = $pdo->prepare("
+                SELECT id, storage_key
+                FROM eventos_reunioes_anexos
+                WHERE id = :id
+                  AND meeting_id = :meeting_id
+                  AND section = 'dj_protocolo'
+                  AND deleted_at IS NULL
+                LIMIT 1
+            ");
+            $stmt_anexo->execute([
+                ':id' => $anexo_id,
+                ':meeting_id' => $meeting_id
+            ]);
+            $anexo = $stmt_anexo->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!$anexo) {
+                echo json_encode(['ok' => false, 'error' => 'Anexo não encontrado']);
+                exit;
+            }
+
+            $delete_warning = '';
+            $storage_key = trim((string)($anexo['storage_key'] ?? ''));
+            if ($storage_key !== '') {
+                try {
+                    $uploader = new MagaluUpload();
+                    $deleted = $uploader->delete($storage_key);
+                    if (!$deleted) {
+                        $delete_warning = 'Arquivo removido da lista, mas houve falha ao excluir no storage.';
+                    }
+                } catch (Throwable $e) {
+                    $delete_warning = 'Arquivo removido da lista, mas houve falha ao excluir no storage.';
+                }
+            }
+
+            $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
+            if ($has_deleted_by_col) {
+                $stmt_delete = $pdo->prepare("
+                    UPDATE eventos_reunioes_anexos
+                    SET deleted_at = NOW(), deleted_by = :user_id
+                    WHERE id = :id
+                ");
+                $stmt_delete->execute([
+                    ':id' => $anexo_id,
+                    ':user_id' => (int)$user_id
+                ]);
+            } else {
+                $stmt_delete = $pdo->prepare("
+                    UPDATE eventos_reunioes_anexos
+                    SET deleted_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmt_delete->execute([':id' => $anexo_id]);
+            }
+
+            $anexos_dj_response = array_map(
+                static function(array $item): array {
+                    return eventos_reuniao_serializar_anexo($item);
+                },
+                eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo')
+            );
+
+            echo json_encode([
+                'ok' => true,
+                'warning' => $delete_warning,
+                'anexos' => $anexos_dj_response
+            ]);
+            exit;
             
         case 'upload_imagem':
             $mid = (int)($_POST['meeting_id'] ?? 0);
@@ -1024,6 +1103,16 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
     .btn-upload-mini {
         min-width: 110px;
         justify-content: center;
+    }
+
+    .btn-anexo-delete {
+        background: #fff1f2;
+        border-color: #fecdd3;
+        color: #b91c1c;
+    }
+
+    .btn-anexo-delete:hover {
+        background: #ffe4e6;
     }
 
     .dj-dirty-badge {
@@ -2597,6 +2686,7 @@ function renderDjAnexosList() {
     }
 
     list.innerHTML = djAnexos.map((anexo) => {
+        const anexoId = Number(anexo && anexo.id ? anexo.id : 0);
         const name = escapeHtmlForField(String(anexo && anexo.original_name ? anexo.original_name : 'arquivo'));
         const mime = escapeHtmlForField(String(anexo && anexo.mime_type ? anexo.mime_type : 'application/octet-stream'));
         const size = formatDjAnexoSize(anexo && anexo.size_bytes ? anexo.size_bytes : 0);
@@ -2607,12 +2697,18 @@ function renderDjAnexosList() {
         const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
         const urlEsc = escapeHtmlForField(url);
         const icon = getDjAnexoIcon(anexo);
+        const deleteBtnHtml = anexoId > 0
+            ? `<button type="button" class="btn btn-secondary btn-mini btn-anexo-delete" onclick="excluirDjAnexo(${anexoId})">Excluir</button>`
+            : '';
         const actionsHtml = url !== ''
             ? `<div class="dj-anexo-actions">
                     <a class="btn btn-secondary btn-mini" href="${urlEsc}" target="_blank" rel="noopener noreferrer">Abrir</a>
                     <a class="btn btn-primary btn-mini" href="${urlEsc}" target="_blank" rel="noopener noreferrer" download>Download</a>
+                    ${deleteBtnHtml}
                </div>`
-            : '<div class="builder-field-meta">Sem URL pública disponível.</div>';
+            : `<div class="dj-anexo-actions">
+                    ${deleteBtnHtml}
+               </div>`;
 
         return `
             <div class="dj-anexo-item">
@@ -2697,6 +2793,59 @@ async function uploadDjAnexos(cardId) {
         setDjAnexosStatus('Erro ao enviar anexos: ' + err.message, 'error');
     } finally {
         button.disabled = false;
+    }
+}
+
+async function excluirDjAnexo(anexoId) {
+    if (!meetingId) {
+        alert('Reunião inválida.');
+        return;
+    }
+
+    const id = Number(anexoId || 0);
+    if (!Number.isInteger(id) || id <= 0) {
+        alert('Anexo inválido.');
+        return;
+    }
+
+    if (!confirm('Deseja excluir este anexo?')) {
+        return;
+    }
+
+    setDjAnexosStatus('Excluindo anexo...', '');
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'excluir_anexo_dj');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('anexo_id', String(id));
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+
+        if (!data.ok) {
+            setDjAnexosStatus(data.error || 'Falha ao excluir anexo.', 'error');
+            return;
+        }
+
+        if (Array.isArray(data.anexos)) {
+            djAnexos = data.anexos;
+        } else {
+            djAnexos = (Array.isArray(djAnexos) ? djAnexos : []).filter((item) => Number(item && item.id ? item.id : 0) !== id);
+        }
+        renderDjAnexosList();
+
+        const warning = String(data.warning || '').trim();
+        if (warning !== '') {
+            setDjAnexosStatus('Anexo excluído. Aviso: ' + warning, 'success');
+        } else {
+            setDjAnexosStatus('Anexo excluído com sucesso.', 'success');
+        }
+    } catch (err) {
+        setDjAnexosStatus('Erro ao excluir anexo: ' + err.message, 'error');
     }
 }
 
