@@ -299,6 +299,7 @@ $routes = [
 
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
   'eventos' => 'eventos_landing.php',
+  'eventos_organizacao' => 'eventos_organizacao.php',
   'eventos_reuniao_final' => 'eventos_reuniao_final.php',
   'eventos_rascunhos' => 'eventos_rascunhos.php',
   'eventos_reunioes' => 'eventos_reunioes.php',
@@ -317,6 +318,7 @@ $routes = [
   'portal_decoracao' => 'portal_decoracao.php',
   // Link público do cliente para DJ
   'eventos_cliente_dj' => 'eventos_cliente_dj.php',
+  'eventos_cliente_portal' => 'eventos_cliente_portal.php',
 
   // Outros
   'ver' => 'ver.php',
@@ -374,6 +376,7 @@ $public_pages = [
   'portal_decoracao',
   // Link público do cliente para DJ
   'eventos_cliente_dj',
+  'eventos_cliente_portal',
   // Galeria pública para clientes
   'eventos_galeria_public',
 ];

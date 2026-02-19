@@ -509,6 +509,14 @@ $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo,
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
+$scope = strtolower(trim((string)($_GET['scope'] ?? '')));
+$origin = strtolower(trim((string)($_GET['origin'] ?? '')));
+$back_href = 'index.php?page=eventos';
+if ($origin === 'organizacao') {
+    $back_href = $meeting_id > 0
+        ? 'index.php?page=eventos_organizacao&id=' . (int)$meeting_id
+        : 'index.php?page=eventos_organizacao';
+}
 $decoracao_schema_raw = $secoes['decoracao']['form_schema_json'] ?? '[]';
 $decoracao_schema_decoded = json_decode((string)$decoracao_schema_raw, true);
 $decoracao_schema_saved = is_array($decoracao_schema_decoded) ? $decoracao_schema_decoded : [];
@@ -520,13 +528,37 @@ $dj_schema_decoded = json_decode((string)$dj_schema_raw, true);
 $dj_schema_saved = is_array($dj_schema_decoded) ? $dj_schema_decoded : [];
 
 // Seções disponíveis
-$section_labels = [
+$all_section_labels = [
     'decoracao' => ['icon' => '🎨', 'label' => 'Decoração'],
     'observacoes_gerais' => ['icon' => '📝', 'label' => 'Observações Gerais'],
     'dj_protocolo' => ['icon' => '🎧', 'label' => 'DJ / Protocolos']
 ];
+$section_labels = $all_section_labels;
+if ($scope === 'reuniao') {
+    $section_labels = [
+        'decoracao' => $all_section_labels['decoracao'],
+        'observacoes_gerais' => $all_section_labels['observacoes_gerais'],
+    ];
+} elseif ($scope === 'dj') {
+    $section_labels = [
+        'dj_protocolo' => $all_section_labels['dj_protocolo'],
+    ];
+}
+$default_tab_key = (string)(array_key_first($section_labels) ?? 'decoracao');
+if ($default_tab_key === '' || !isset($section_labels[$default_tab_key])) {
+    $default_tab_key = 'decoracao';
+}
+if ($active_tab_query === '' || !isset($section_labels[$active_tab_query])) {
+    $active_tab_query = $default_tab_key;
+}
 
-includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
+$sidebar_title = $meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final';
+if ($scope === 'reuniao') {
+    $sidebar_title = $meeting_id > 0 ? 'Reunião Final - Decoração/Observações' : 'Nova Reunião Final';
+} elseif ($scope === 'dj') {
+    $sidebar_title = 'DJ / Protocolos';
+}
+includeSidebar($sidebar_title);
 ?>
 
 <style>
@@ -1548,7 +1580,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             <h1 class="page-title">📝 Nova Reunião Final</h1>
             <p class="page-subtitle">Selecione um evento da ME para criar a reunião</p>
         </div>
-        <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
+        <a href="<?= htmlspecialchars($back_href) ?>" class="btn btn-secondary">← Voltar</a>
     </div>
     
     <div class="event-selector">
@@ -1565,7 +1597,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         <div id="selectedEventSummary" class="selected-event-summary"></div>
         <div id="selectedEvent" style="display: none; margin-top: 1rem;">
             <button type="button" class="btn btn-success" onclick="criarReuniao()">
-                ✓ Criar Reunião para este Evento
+                <?= $origin === 'organizacao' ? 'Organizar este Evento' : '✓ Criar Reunião para este Evento' ?>
             </button>
         </div>
     </div>
@@ -1616,7 +1648,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
             <button type="button" class="btn btn-secondary" onclick="reabrirReuniao()">↺ Reabrir</button>
             <?php endif; ?>
             <button type="button" class="btn btn-secondary btn-mini" onclick="abrirModalImpressao()" title="Imprimir / PDF" aria-label="Imprimir / PDF">🖨️</button>
-            <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
+            <a href="<?= htmlspecialchars($back_href) ?>" class="btn btn-secondary">← Voltar</a>
         </div>
     </div>
     
@@ -1683,7 +1715,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                     $is_locked = false;
                 }
             ?>
-            <button type="button" class="tab-btn <?= $key === 'decoracao' ? 'active' : '' ?>" onclick="switchTab('<?= $key ?>')">
+            <button type="button" class="tab-btn <?= $key === $default_tab_key ? 'active' : '' ?>" onclick="switchTab('<?= $key ?>')">
                 <span><?= $info['icon'] ?></span>
                 <span><?= $info['label'] ?></span>
                 <?php if ($is_locked): ?>
@@ -1701,7 +1733,7 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 $is_locked = false;
             }
         ?>
-        <div class="tab-content <?= $key === 'decoracao' ? 'active' : '' ?>" id="tab-<?= $key ?>">
+        <div class="tab-content <?= $key === $default_tab_key ? 'active' : '' ?>" id="tab-<?= $key ?>">
             
             <?php if ($key === 'dj_protocolo'): ?>
             <div class="dj-builder-shell">
@@ -1852,9 +1884,9 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                 <div>
                     <label for="printSectionSelect" style="display:block; font-weight: 700; color:#334155; font-size: 0.85rem; margin-bottom: 0.35rem;">Aba</label>
                     <select id="printSectionSelect" style="width:100%; padding: 0.65rem 0.8rem; border:1px solid #e2e8f0; border-radius: 10px; background:#fff;">
-                        <option value="decoracao">Decoração</option>
-                        <option value="observacoes_gerais">Observações Gerais</option>
-                        <option value="dj_protocolo">DJ / Protocolos</option>
+                        <?php foreach ($section_labels as $section_key => $section_info): ?>
+                        <option value="<?= htmlspecialchars($section_key) ?>"><?= htmlspecialchars((string)($section_info['label'] ?? $section_key)) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div style="display:flex; gap: 0.75rem; justify-content: flex-end; flex-wrap: wrap;">
@@ -2247,8 +2279,11 @@ function switchTab(section) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     
-    document.querySelector(`.tab-btn[onclick="switchTab('${section}')"]`).classList.add('active');
-    document.getElementById(`tab-${section}`).classList.add('active');
+    const btn = document.querySelector(`.tab-btn[onclick="switchTab('${section}')"]`);
+    const tab = document.getElementById(`tab-${section}`);
+    if (!btn || !tab) return;
+    btn.classList.add('active');
+    tab.classList.add('active');
 }
 
 function applyInitialTabFromQuery() {

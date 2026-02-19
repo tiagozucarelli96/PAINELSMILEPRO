@@ -116,6 +116,37 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_reunioes_anexos: ' . $e->getMessage());
     }
 
+    // Portal do cliente por reunião (visibilidade e edição por módulo).
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_cliente_portais (
+                id BIGSERIAL PRIMARY KEY,
+                meeting_id BIGINT NOT NULL UNIQUE,
+                token VARCHAR(96) NOT NULL UNIQUE,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                visivel_reuniao BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE,
+                visivel_dj BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_dj BOOLEAN NOT NULL DEFAULT FALSE,
+                created_by_user_id INTEGER NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_reuniao BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_dj BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_dj BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_meeting ON eventos_cliente_portais(meeting_id)");
+        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_token ON eventos_cliente_portais(token)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_cliente_portais: ' . $e->getMessage());
+    }
+
     $done = true;
 }
 
@@ -2020,4 +2051,200 @@ function eventos_link_publico_desativar(PDO $pdo, int $link_id): bool {
 
     $stmt = $pdo->prepare($sql);
     return $stmt->execute([':id' => $link_id]);
+}
+
+/**
+ * URL base do portal do cliente.
+ */
+function eventos_cliente_portal_base_url(): string {
+    $candidates = [
+        (string)(getenv('EVENTOS_CLIENTE_PORTAL_BASE_URL') ?: ''),
+        (string)(getenv('APP_CLIENT_PORTAL_URL') ?: ''),
+        (string)(getenv('APP_URL') ?: ''),
+        (string)(getenv('BASE_URL') ?: ''),
+    ];
+    foreach ($candidates as $candidate) {
+        $value = trim($candidate);
+        if ($value !== '') {
+            return rtrim($value, '/');
+        }
+    }
+    return 'https://painelpro.smileeventos.com.br';
+}
+
+/**
+ * Monta URL pública do portal do cliente por token.
+ */
+function eventos_cliente_portal_build_url(string $token): string {
+    $base = eventos_cliente_portal_base_url();
+    return $base . '/index.php?page=eventos_cliente_portal&token=' . urlencode($token);
+}
+
+/**
+ * Converte linha de portal em estrutura consistente.
+ */
+function eventos_cliente_portal_normalizar_row(?array $row): ?array {
+    if (!$row) {
+        return null;
+    }
+    $token = trim((string)($row['token'] ?? ''));
+    $row['id'] = (int)($row['id'] ?? 0);
+    $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
+    $row['token'] = $token;
+    $row['is_active'] = !empty($row['is_active']);
+    $row['visivel_reuniao'] = !empty($row['visivel_reuniao']);
+    $row['editavel_reuniao'] = !empty($row['editavel_reuniao']);
+    $row['visivel_dj'] = !empty($row['visivel_dj']);
+    $row['editavel_dj'] = !empty($row['editavel_dj']);
+    $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
+    return $row;
+}
+
+/**
+ * Busca portal do cliente por reunião.
+ */
+function eventos_cliente_portal_get(PDO $pdo, int $meeting_id): ?array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return null;
+    }
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_cliente_portais
+        WHERE meeting_id = :meeting_id
+        LIMIT 1
+    ");
+    $stmt->execute([':meeting_id' => $meeting_id]);
+    return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+}
+
+/**
+ * Busca portal do cliente por token.
+ */
+function eventos_cliente_portal_get_by_token(PDO $pdo, string $token): ?array {
+    eventos_reuniao_ensure_schema($pdo);
+    $token = trim($token);
+    if ($token === '') {
+        return null;
+    }
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_cliente_portais
+        WHERE token = :token
+        LIMIT 1
+    ");
+    $stmt->execute([':token' => $token]);
+    return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+}
+
+/**
+ * Cria (ou retorna) portal do cliente para reunião.
+ */
+function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $existing = eventos_cliente_portal_get($pdo, $meeting_id);
+    if ($existing) {
+        if (empty($existing['is_active'])) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_cliente_portais
+                SET is_active = TRUE, updated_at = NOW()
+                WHERE id = :id
+                RETURNING *
+            ");
+            $stmt->execute([':id' => (int)$existing['id']]);
+            $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
+        }
+        return ['ok' => true, 'portal' => $existing, 'created' => false];
+    }
+
+    try {
+        $token = bin2hex(random_bytes(24));
+    } catch (Throwable $e) {
+        $token = bin2hex(pack('H*', substr(sha1(uniqid('portal_', true)), 0, 48)));
+    }
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_cliente_portais (
+            meeting_id,
+            token,
+            is_active,
+            visivel_reuniao,
+            editavel_reuniao,
+            visivel_dj,
+            editavel_dj,
+            created_by_user_id,
+            created_at,
+            updated_at
+        ) VALUES (
+            :meeting_id,
+            :token,
+            TRUE,
+            FALSE,
+            FALSE,
+            FALSE,
+            FALSE,
+            :user_id,
+            NOW(),
+            NOW()
+        )
+        RETURNING *
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':token' => $token,
+        ':user_id' => $user_id > 0 ? $user_id : null,
+    ]);
+    $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    if (!$portal) {
+        return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
+    }
+
+    return ['ok' => true, 'portal' => $portal, 'created' => true];
+}
+
+/**
+ * Atualiza configurações do portal do cliente por reunião.
+ */
+function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, array $config, int $user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $created = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
+    if (empty($created['ok']) || empty($created['portal']['id'])) {
+        return ['ok' => false, 'error' => $created['error'] ?? 'Portal não encontrado'];
+    }
+
+    $visivel_reuniao = !empty($config['visivel_reuniao']);
+    $editavel_reuniao = !empty($config['editavel_reuniao']);
+    $visivel_dj = !empty($config['visivel_dj']);
+    $editavel_dj = !empty($config['editavel_dj']);
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_cliente_portais
+        SET visivel_reuniao = :visivel_reuniao,
+            editavel_reuniao = :editavel_reuniao,
+            visivel_dj = :visivel_dj,
+            editavel_dj = :editavel_dj,
+            updated_at = NOW()
+        WHERE id = :id
+        RETURNING *
+    ");
+    $stmt->execute([
+        ':visivel_reuniao' => $visivel_reuniao,
+        ':editavel_reuniao' => $editavel_reuniao,
+        ':visivel_dj' => $visivel_dj,
+        ':editavel_dj' => $editavel_dj,
+        ':id' => (int)$created['portal']['id'],
+    ]);
+    $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    if (!$portal) {
+        return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
+    }
+
+    return ['ok' => true, 'portal' => $portal];
 }

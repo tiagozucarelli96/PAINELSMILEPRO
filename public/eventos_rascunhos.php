@@ -107,7 +107,7 @@ includeSidebar('Rascunhos - Reuniões');
     <div class="empty-state">
         <p style="font-size: 2rem; margin-bottom: 0.5rem;">📝</p>
         <p><strong>Nenhum rascunho</strong></p>
-        <p>Crie uma reunião em <a href="index.php?page=eventos_reuniao_final" style="color: #1e40af;">Reunião Final</a> para ela aparecer aqui enquanto estiver em rascunho.</p>
+        <p>Crie uma reunião em <a href="index.php?page=eventos_organizacao" style="color: #1e40af;">Organização eventos</a> para ela aparecer aqui enquanto estiver em rascunho.</p>
     </div>
     <?php else: ?>
     <ul class="lista-rascunhos">
@@ -123,7 +123,7 @@ includeSidebar('Rascunhos - Reuniões');
                 </div>
             </div>
             <div class="rascunho-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$r['id'] ?>" class="btn btn-primary">Abrir</a>
+                <a href="index.php?page=eventos_organizacao&id=<?= (int)$r['id'] ?>" class="btn btn-primary">Abrir</a>
                 <form method="POST" style="display: inline;" onsubmit="return confirmarExclusaoRascunho(event, this);">
                     <input type="hidden" name="action" value="excluir">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">

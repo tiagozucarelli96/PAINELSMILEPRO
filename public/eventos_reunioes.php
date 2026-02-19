@@ -280,7 +280,7 @@ $reunioes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="page-header">
         <h1 class="page-title">📋 Reuniões</h1>
         <div class="header-actions">
-            <a href="index.php?page=eventos_reuniao_final" class="btn btn-primary">+ Nova Reunião</a>
+            <a href="index.php?page=eventos_organizacao" class="btn btn-primary">+ Nova Organização</a>
             <a href="index.php?page=eventos_calendario" class="btn btn-secondary">📅 Calendário</a>
             <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
         </div>
@@ -334,7 +334,7 @@ $reunioes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </span>
                     </td>
                     <td class="actions">
-                        <a href="index.php?page=eventos_reuniao_final&id=<?= $r['id'] ?>" class="btn btn-primary btn-sm">Editar</a>
+                        <a href="index.php?page=eventos_organizacao&id=<?= $r['id'] ?>" class="btn btn-primary btn-sm">Editar</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>

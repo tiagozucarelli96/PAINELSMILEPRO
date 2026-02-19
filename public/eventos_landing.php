@@ -206,7 +206,7 @@ includeSidebar('Eventos');
             Eventos
         </h1>
         <p class="page-subtitle">
-            Gerencie reuniões finais e portais de fornecedores
+            Organize eventos, reuniões e portais de fornecedores
         </p>
     </div>
     
@@ -231,12 +231,12 @@ includeSidebar('Eventos');
     <!-- Módulos Internos -->
     <h2 class="section-title">Módulos Internos</h2>
     <div class="modules-grid">
-        <a href="index.php?page=eventos_reuniao_final" class="module-card">
+        <a href="index.php?page=eventos_organizacao" class="module-card">
             <div class="module-icon blue">📝</div>
-            <div class="module-title">Reunião Final</div>
+            <div class="module-title">Organização eventos</div>
             <div class="module-desc">
-                Crie e edite reuniões finais vinculadas aos eventos da ME. 
-                Inclui seções de Decoração, Observações e DJ/Protocolos.
+                Busque o evento, organize o portal do cliente e controle quais cards
+                ficam visíveis/editáveis para o cliente.
             </div>
             <span class="module-badge internal">Interno</span>
         </a>

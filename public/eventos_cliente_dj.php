@@ -20,7 +20,10 @@ $link = null;
 $reuniao = null;
 $secao = null;
 $anexos = [];
+$portal_config = null;
 $link_section = 'dj_protocolo';
+$link_visivel = true;
+$link_editavel = true;
 $section_meta = [
     'page_title' => 'Organização do Evento - DJ/Músicas',
     'header_title' => '🎧 Organização - DJ / Músicas',
@@ -380,6 +383,21 @@ if (empty($token)) {
         $reuniao = eventos_reuniao_get($pdo, $link['meeting_id']);
         $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], $link_section);
         $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
+        $portal_config = eventos_cliente_portal_get($pdo, (int)$link['meeting_id']);
+
+        if (is_array($portal_config) && !empty($portal_config)) {
+            if ($link_section === 'observacoes_gerais') {
+                $link_visivel = !empty($portal_config['visivel_reuniao']);
+                $link_editavel = !empty($portal_config['editavel_reuniao']);
+            } else {
+                $link_visivel = !empty($portal_config['visivel_dj']);
+                $link_editavel = !empty($portal_config['editavel_dj']);
+            }
+        }
+
+        if (!$link_visivel) {
+            $error = 'Este conteúdo não está disponível no portal do cliente no momento.';
+        }
     }
 }
 
@@ -388,7 +406,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'salvar') {
-        if (!empty($link['submitted_at'])) {
+        if (!$link_editavel) {
+            $error = 'Este formulário está em modo somente visualização.';
+        } elseif (!empty($link['submitted_at'])) {
             $error = 'Este formulário já foi enviado e está travado. Aguarde o desbloqueio da equipe para editar novamente.';
         } else {
             $uploads = [];
@@ -542,7 +562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 
 // Dados do evento
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
-$is_locked = !empty($link['submitted_at']);
+$is_locked = !empty($link['submitted_at']) || !$link_editavel;
 $content = trim((string)($link['content_html_snapshot'] ?? ''));
 if ($content === '') {
     $content = $secao['content_html'] ?? '';
@@ -1061,8 +1081,12 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
         </div>
         
         <div class="locked-notice">
-            <h3>🔒 Formulário já enviado</h3>
-            <p>Você já enviou as informações deste formulário. Se precisar fazer alterações, entre em contato com nossa equipe.</p>
+            <h3>🔒 Formulário bloqueado</h3>
+            <p>
+                <?= !$link_editavel
+                    ? 'Este formulário está disponível somente para visualização no momento.'
+                    : 'Você já enviou as informações deste formulário. Se precisar fazer alterações, entre em contato com nossa equipe.' ?>
+            </p>
         </div>
         
         <div class="form-section">

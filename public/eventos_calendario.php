@@ -343,7 +343,7 @@ includeSidebar('Calendário de Reuniões');
     <div class="page-header">
         <h1 class="page-title">📅 Calendário de Reuniões</h1>
         <div class="header-actions">
-            <a href="index.php?page=eventos_reuniao_final" class="btn btn-primary">+ Nova Reunião</a>
+            <a href="index.php?page=eventos_organizacao" class="btn btn-primary">+ Nova Organização</a>
             <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
         </div>
     </div>
@@ -393,7 +393,7 @@ includeSidebar('Calendário de Reuniões');
                 <div class="day-number"><?= $day ?></div>
                 <div class="day-events">
                     <?php foreach (array_slice($day_events, 0, 3) as $ev): ?>
-                    <a href="index.php?page=eventos_reuniao_final&id=<?= $ev['id'] ?>" 
+                    <a href="index.php?page=eventos_organizacao&id=<?= $ev['id'] ?>" 
                        class="event-tag <?= $ev['status'] ?>"
                        title="<?= htmlspecialchars($ev['nome_evento']) ?>">
                         <?= htmlspecialchars(mb_substr($ev['nome_evento'], 0, 15)) ?>...
@@ -446,7 +446,7 @@ includeSidebar('Calendário de Reuniões');
                 </p>
             </div>
             <div class="reuniao-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= $ev['id'] ?>" class="btn btn-primary btn-sm">Editar</a>
+                <a href="index.php?page=eventos_organizacao&id=<?= $ev['id'] ?>" class="btn btn-primary btn-sm">Editar</a>
             </div>
         </div>
         <?php endforeach; ?>
