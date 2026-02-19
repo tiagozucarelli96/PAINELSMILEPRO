@@ -314,6 +314,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
                 exit;
             }
+            $upload_note = trim((string)($_POST['anexo_note'] ?? ''));
+            if (strlen($upload_note) > 300) {
+                $upload_note = substr($upload_note, 0, 300);
+            }
 
             $uploads = eventos_reuniao_normalizar_uploads_field($_FILES, 'anexos');
             if (empty($uploads)) {
@@ -346,7 +350,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'dj_protocolo',
                         $upload_result,
                         'interno',
-                        (int)$user_id
+                        (int)$user_id,
+                        $upload_note !== '' ? $upload_note : null
                     );
                     if (empty($save_result['ok'])) {
                         $errors[] = (($file['name'] ?? '') !== '' ? $file['name'] : 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
@@ -897,6 +902,19 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 0.45rem 0.55rem;
+        font-size: 0.82rem;
+        background: #fff;
+    }
+
+    .dj-anexos-note {
+        margin-top: 0.55rem;
+    }
+
+    .dj-anexos-note input {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.5rem 0.6rem;
         font-size: 0.82rem;
         background: #fff;
     }
@@ -1590,6 +1608,12 @@ includeSidebar($meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final');
                                multiple
                                accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.doc,.docx,.xls,.xlsx,.xlsm,.txt,.csv">
                         <button type="button" class="btn btn-primary btn-upload-mini" id="btnUploadDjAnexos" onclick="uploadDjAnexos()">Enviar arquivos</button>
+                    </div>
+                    <div class="dj-anexos-note">
+                        <input type="text"
+                               id="djAnexosNote"
+                               maxlength="300"
+                               placeholder="Observação do upload (opcional). Ex.: materiais para abertura de pista">
                     </div>
                     <div class="dj-anexos-status" id="djAnexosStatus">Nenhum envio em andamento.</div>
                     <div class="dj-anexos-list" id="djAnexosList"></div>
@@ -2513,6 +2537,7 @@ async function uploadDjAnexos() {
     }
 
     const input = document.getElementById('djAnexosInput');
+    const noteInput = document.getElementById('djAnexosNote');
     const button = document.getElementById('btnUploadDjAnexos');
     if (!input || !button) return;
 
@@ -2529,6 +2554,10 @@ async function uploadDjAnexos() {
         const formData = new FormData();
         formData.append('action', 'upload_anexos_dj');
         formData.append('meeting_id', String(meetingId));
+        const uploadNote = noteInput ? String(noteInput.value || '').trim() : '';
+        if (uploadNote !== '') {
+            formData.append('anexo_note', uploadNote);
+        }
         files.forEach((file) => {
             formData.append('anexos[]', file, file.name || 'arquivo');
         });
@@ -2549,6 +2578,9 @@ async function uploadDjAnexos() {
         }
         renderDjAnexosList();
         input.value = '';
+        if (noteInput) {
+            noteInput.value = '';
+        }
 
         const uploadedCount = Number(data.uploaded || files.length || 0);
         const warning = String(data.warning || '').trim();
