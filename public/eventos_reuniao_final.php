@@ -221,6 +221,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             echo json_encode($result);
             exit;
+
+        case 'atualizar_dj_slot_portal_config':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $portal_visible = ((string)($_POST['portal_visible'] ?? '0') === '1');
+            $portal_editable = ((string)($_POST['portal_editable'] ?? '0') === '1');
+            if ($portal_editable) {
+                $portal_visible = true;
+            }
+            $schema_payload = $_POST['form_schema_json'] ?? null;
+            $content_snapshot = trim((string)($_POST['content_html'] ?? ''));
+            $form_title = trim((string)($_POST['form_title'] ?? ''));
+
+            $schema_array = null;
+            if ($schema_payload !== null && $schema_payload !== '') {
+                $decoded = json_decode((string)$schema_payload, true);
+                if (!is_array($decoded)) {
+                    echo json_encode(['ok' => false, 'error' => 'Schema inválido para configurar o quadro']);
+                    exit;
+                }
+                $schema_array = $decoded;
+            }
+
+            $result = eventos_reuniao_atualizar_slot_portal_config(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                'cliente_dj',
+                $portal_visible,
+                $portal_editable,
+                (int)$user_id,
+                $schema_array,
+                $content_snapshot !== '' ? $content_snapshot : null,
+                $form_title !== '' ? $form_title : null,
+                'dj_protocolo'
+            );
+            if (!empty($result['ok']) && !empty($result['link']['token'])) {
+                $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+                $result['url'] = $base_url . '/index.php?page=eventos_cliente_dj&token=' . $result['link']['token'];
+            }
+            echo json_encode($result);
+            exit;
             
         case 'get_versoes':
             $section = $_POST['section'] ?? '';
@@ -1380,6 +1425,40 @@ includeSidebar($sidebar_title);
         font-size: 0.8rem;
     }
 
+    .portal-settings {
+        margin-top: 0.65rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        padding: 0.75rem;
+        background: #fff;
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .portal-settings-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.84rem;
+        color: #334155;
+    }
+
+    .portal-settings-label input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #1e3a8a;
+    }
+
+    .portal-settings-action {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .portal-settings-action .btn {
+        min-width: 220px;
+        justify-content: center;
+    }
+
     .template-list {
         border: 1px solid #e2e8f0;
         border-radius: 8px;
@@ -1569,6 +1648,11 @@ includeSidebar($sidebar_title);
         .dj-slots-controls .btn {
             width: 100%;
         }
+
+        .portal-settings-action .btn {
+            width: 100%;
+            min-width: 0;
+        }
     }
 </style>
 
@@ -1740,7 +1824,7 @@ includeSidebar($sidebar_title);
                 <div class="dj-slots-controls">
                     <div>
                         <h4>🧩 DJ / Protocolos</h4>
-                        <p>Comece sem quadros. Adicione somente quando precisar gerar um novo link para o cliente.</p>
+                        <p>Comece sem quadros. Ao selecionar o formulário, defina se o cliente verá e poderá editar no portal.</p>
                     </div>
                     <div class="dj-slots-actions">
                         <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
@@ -1909,9 +1993,13 @@ const initialDjLinks = <?= json_encode(array_map(static function (array $link): 
     return [
         'id' => (int)($link['id'] ?? 0),
         'token' => (string)($link['token'] ?? ''),
+        'is_active' => !empty($link['is_active']),
         'slot_index' => (int)($link['slot_index'] ?? 1),
         'form_title' => (string)($link['form_title'] ?? ''),
         'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'portal_visible' => !empty($link['portal_visible']),
+        'portal_editable' => !empty($link['portal_editable']),
+        'portal_configured' => !empty($link['portal_configured']),
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -2411,16 +2499,17 @@ function findNextDjSlotIndex() {
 }
 
 function buildDjSlotCardHtml(slot) {
+    const link = djLinksBySlot[slot] || null;
+    const portalVisibleChecked = link && link.portal_visible ? ' checked' : '';
+    const portalEditableChecked = link && link.portal_editable ? ' checked' : '';
     return `
         <div class="dj-builder-shell" data-dj-slot="${slot}">
             <div class="dj-builder-head">
                 <div>
                     <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro ${slot}</h4>
-                    <div class="dj-builder-subtitle">Selecione um formulário salvo e gere o link deste quadro para o cliente.</div>
+                    <div class="dj-builder-subtitle">Selecione o formulário e configure a visibilidade/edição deste quadro no Portal do Cliente.</div>
                 </div>
                 <div class="dj-top-actions">
-                    <button type="button" class="btn btn-primary" onclick="gerarLinkCliente(${slot})" id="btnGerarLink-${slot}">Gerar link</button>
-                    <button type="button" class="btn btn-secondary" onclick="destravarDjSlot(${slot})" id="btnDestravarDjSlot-${slot}" style="display:none;">🔓 Destravar</button>
                     <button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir quadro</button>
                 </div>
             </div>
@@ -2431,11 +2520,20 @@ function buildDjSlotCardHtml(slot) {
                 </select>
             </div>
             <div class="builder-field-meta" id="selectedDjTemplateMeta-${slot}" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
-            <p class="share-hint" id="shareHint-${slot}">Selecione um formulário para habilitar o compartilhamento.</p>
-            <div class="link-display">
-                <input type="text" id="clienteLinkInput-${slot}" class="link-input" readonly placeholder="Clique em 'Gerar link' para criar">
-                <button type="button" class="btn btn-secondary" onclick="copiarLink(${slot})" id="btnCopiar-${slot}" style="display:none;">📋 Copiar</button>
+            <div class="portal-settings">
+                <label class="portal-settings-label" for="djPortalVisible-${slot}">
+                    <input type="checkbox" id="djPortalVisible-${slot}" onchange="onChangeDjPortalVisibility(${slot})"${portalVisibleChecked}>
+                    Exibir este quadro no Portal do Cliente
+                </label>
+                <label class="portal-settings-label" for="djPortalEditable-${slot}">
+                    <input type="checkbox" id="djPortalEditable-${slot}" onchange="onChangeDjPortalEditable(${slot})"${portalEditableChecked}>
+                    Permitir edição/preenchimento do cliente
+                </label>
+                <div class="portal-settings-action">
+                    <button type="button" class="btn btn-primary" onclick="salvarDjSlotPortalConfig(${slot})" id="btnSalvarPortalConfig-${slot}">Salvar regras do portal</button>
+                </div>
             </div>
+            <p class="share-hint" id="shareHint-${slot}">Selecione um formulário para configurar este quadro no portal.</p>
         </div>
     `;
 }
@@ -2458,12 +2556,7 @@ function renderDjSlots() {
     slots.forEach((slot) => {
         ensureDjSlotState(slot);
         renderDjTemplateSelect(slot);
-        const link = djLinksBySlot[slot] || null;
-        if (link && link.token) {
-            setDjLinkOutput(slot, `${window.location.origin}/index.php?page=eventos_cliente_dj&token=${link.token}`);
-        } else {
-            setDjLinkOutput(slot, '');
-        }
+        syncDjPortalToggles(slot);
         updateShareAvailability(slot);
     });
 }
@@ -2556,49 +2649,71 @@ function isDjSlotLocked(slot) {
     return false;
 }
 
+function syncDjPortalToggles(slot = 1) {
+    const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`djPortalEditable-${slot}`);
+    if (!visibleInput || !editableInput) {
+        return;
+    }
+    if (editableInput.checked && !visibleInput.checked) {
+        visibleInput.checked = true;
+    }
+}
+
+function onChangeDjPortalVisibility(slot = 1) {
+    const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`djPortalEditable-${slot}`);
+    if (visibleInput && editableInput && editableInput.checked && !visibleInput.checked) {
+        visibleInput.checked = true;
+    }
+    updateShareAvailability(slot);
+}
+
+function onChangeDjPortalEditable(slot = 1) {
+    syncDjPortalToggles(slot);
+    updateShareAvailability(slot);
+}
+
 function updateShareAvailability(slot = 1) {
-    const shareBtn = document.getElementById(`btnGerarLink-${slot}`);
+    const shareBtn = document.getElementById(`btnSalvarPortalConfig-${slot}`);
     const hint = document.getElementById(`shareHint-${slot}`);
-    const unlockBtn = document.getElementById(`btnDestravarDjSlot-${slot}`);
+    const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`djPortalEditable-${slot}`);
     const select = document.getElementById(`djTemplateSelect-${slot}`);
     if (!shareBtn) return;
 
     let disabled = false;
-    let hintText = 'Selecione um formulário para habilitar o compartilhamento.';
+    let hintText = 'Selecione um formulário para configurar este quadro no portal.';
+
+    syncDjPortalToggles(slot);
 
     if (isDjSlotLocked(slot)) {
-        disabled = true;
-        hintText = 'Este quadro está travado (cliente já enviou). Clique em "Destravar" para permitir nova edição.';
-        if (unlockBtn) unlockBtn.style.display = 'inline-flex';
+        hintText = 'Cliente já enviou este quadro. Marque "Permitir edição/preenchimento" e salve para destravar.';
         if (select) select.disabled = true;
     } else {
-        if (unlockBtn) unlockBtn.style.display = 'none';
         if (select) select.disabled = false;
+    }
 
-        const selected = getSelectedDjTemplateData(slot);
-        if (!selected.template) {
-            disabled = true;
-        } else if (!hasUsefulSchemaFields(selected.schema)) {
-            disabled = true;
-            hintText = 'O formulário selecionado não possui campos válidos.';
-        } else {
-            hintText = `Clique em Gerar link para criar/usar o link do quadro ${slot}.`;
+    const selected = getSelectedDjTemplateData(slot);
+    if (!selected.template) {
+        disabled = true;
+    } else if (!hasUsefulSchemaFields(selected.schema)) {
+        disabled = true;
+        hintText = 'O formulário selecionado não possui campos válidos.';
+    } else if (visibleInput && editableInput) {
+        if (!visibleInput.checked && !editableInput.checked) {
+            hintText = 'Quadro oculto do portal do cliente.';
+        } else if (visibleInput.checked && !editableInput.checked) {
+            hintText = 'Quadro visível no portal em modo somente leitura.';
+        } else if (visibleInput.checked && editableInput.checked) {
+            hintText = 'Quadro visível no portal com edição liberada para o cliente.';
         }
     }
 
+    if (visibleInput) visibleInput.disabled = disabled;
+    if (editableInput) editableInput.disabled = disabled;
     shareBtn.disabled = disabled;
     if (hint) hint.textContent = hintText;
-}
-
-function setDjLinkOutput(slot, url) {
-    const input = document.getElementById(`clienteLinkInput-${slot}`);
-    const copyBtn = document.getElementById(`btnCopiar-${slot}`);
-    if (input) {
-        input.value = url || '';
-    }
-    if (copyBtn) {
-        copyBtn.style.display = url ? 'inline-flex' : 'none';
-    }
 }
 
 function formatDjAnexoSize(sizeBytes) {
@@ -3973,25 +4088,25 @@ async function salvarSecao(section) {
     }
 }
 
-// Gerar link para cliente
-async function gerarLinkCliente(slot = 1) {
+// Salvar visibilidade/edição do quadro DJ no portal do cliente
+async function salvarDjSlotPortalConfig(slot = 1) {
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
         alert('Quadro inválido.');
         return;
     }
     updateShareAvailability(slotIndex);
-    const btn = document.getElementById(`btnGerarLink-${slotIndex}`);
+    const btn = document.getElementById(`btnSalvarPortalConfig-${slotIndex}`);
     if (btn && btn.disabled) {
         const hint = document.getElementById(`shareHint-${slotIndex}`);
-        alert(hint ? hint.textContent : 'Salve a seção antes de compartilhar com o cliente.');
+        alert(hint ? hint.textContent : 'Selecione um formulário válido para configurar o portal.');
         return;
     }
 
     try {
         const selected = getSelectedDjTemplateData(slotIndex);
         if (!selected.template) {
-            alert('Selecione um formulário antes de gerar o link.');
+            alert('Selecione um formulário antes de salvar as regras.');
             return;
         }
         if (!hasUsefulSchemaFields(selected.schema)) {
@@ -3999,69 +4114,75 @@ async function gerarLinkCliente(slot = 1) {
             return;
         }
 
+        const visibleInput = document.getElementById(`djPortalVisible-${slotIndex}`);
+        const editableInput = document.getElementById(`djPortalEditable-${slotIndex}`);
+        let portalVisible = !!(visibleInput && visibleInput.checked);
+        const portalEditable = !!(editableInput && editableInput.checked);
+        if (portalEditable && !portalVisible) {
+            portalVisible = true;
+            if (visibleInput) visibleInput.checked = true;
+        }
+
         const formTitle = String(selected.template.nome || `Formulário DJ / Protocolos - Quadro ${slotIndex}`);
         const contentHtml = buildSchemaHtmlForStorage(selected.schema, formTitle);
 
         const formData = new FormData();
-        formData.append('action', 'gerar_link_cliente');
-        formData.append('meeting_id', meetingId);
+        formData.append('action', 'atualizar_dj_slot_portal_config');
+        formData.append('meeting_id', String(meetingId));
         formData.append('slot_index', String(slotIndex));
+        formData.append('portal_visible', portalVisible ? '1' : '0');
+        formData.append('portal_editable', portalEditable ? '1' : '0');
         formData.append('form_schema_json', JSON.stringify(selected.schema));
         formData.append('content_html', contentHtml);
         formData.append('form_title', formTitle);
+
+        let originalText = '';
+        if (btn) {
+            originalText = btn.textContent || 'Salvar regras do portal';
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
+        }
         
-        const resp = await fetch(window.location.href, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await resp.json();
-        
-        if (data.ok && data.url) {
-            setDjLinkOutput(slotIndex, data.url);
-            djLinksBySlot[slotIndex] = {
-                id: Number(data.link && data.link.id ? data.link.id : 0),
-                token: String(data.link && data.link.token ? data.link.token : ''),
-                slot_index: slotIndex,
-                form_title: formTitle,
-                form_schema: selected.schema
-            };
-            lastSavedDjSchemaSignatures[slotIndex] = getSchemaSignature(selected.schema);
-            
-            if (!data.created) {
-                alert('Link já existente recuperado');
+        try {
+            const resp = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (data.ok) {
+                const link = data.link && typeof data.link === 'object' ? data.link : null;
+                if (link) {
+                    djLinksBySlot[slotIndex] = {
+                        id: Number(link.id || 0),
+                        token: String(link.token || ''),
+                        is_active: !('is_active' in link) ? true : !!link.is_active,
+                        slot_index: Number(link.slot_index || slotIndex),
+                        form_title: String(link.form_title || formTitle),
+                        form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : selected.schema,
+                        submitted_at: link.submitted_at ? String(link.submitted_at) : null,
+                        portal_visible: !!link.portal_visible,
+                        portal_editable: !!link.portal_editable,
+                        portal_configured: !!link.portal_configured
+                    };
+                } else {
+                    djLinksBySlot[slotIndex] = null;
+                }
+                lastSavedDjSchemaSignatures[slotIndex] = getSchemaSignature(selected.schema);
+                updateShareAvailability(slotIndex);
+                alert('Configuração do portal salva para este quadro.');
+            } else {
+                alert(data.error || 'Erro ao salvar configuração do portal');
             }
-        } else {
-            alert(data.error || 'Erro ao gerar link');
+        } finally {
+            if (btn) {
+                btn.textContent = originalText || 'Salvar regras do portal';
+                updateShareAvailability(slotIndex);
+            }
         }
     } catch (err) {
         alert('Erro: ' + err.message);
     }
-}
-
-function copiarLink(slot = 1) {
-    const slotIndex = normalizeSlotIndex(slot);
-    if (slotIndex === null || !djSlotExists(slotIndex)) {
-        alert('Quadro inválido.');
-        return;
-    }
-    const input = document.getElementById(`clienteLinkInput-${slotIndex}`);
-    if (!input || !input.value) {
-        alert('Nenhum link para copiar.');
-        return;
-    }
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(input.value).then(() => {
-            alert('Link copiado!');
-        }).catch(() => {
-            input.select();
-            document.execCommand('copy');
-            alert('Link copiado!');
-        });
-        return;
-    }
-    input.select();
-    document.execCommand('copy');
-    alert('Link copiado!');
 }
 
 // Ver versões

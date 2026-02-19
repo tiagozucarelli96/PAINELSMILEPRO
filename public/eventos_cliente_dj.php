@@ -385,13 +385,24 @@ if (empty($token)) {
         $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
         $portal_config = eventos_cliente_portal_get($pdo, (int)$link['meeting_id']);
 
+        $link_has_slot_rules = ($link_section === 'dj_protocolo') && !empty($link['portal_configured']);
+        if ($link_has_slot_rules) {
+            $link_visivel = !empty($link['portal_visible']);
+            $link_editavel = !empty($link['portal_editable']);
+        }
+
         if (is_array($portal_config) && !empty($portal_config)) {
             if ($link_section === 'observacoes_gerais') {
                 $link_visivel = !empty($portal_config['visivel_reuniao']);
                 $link_editavel = !empty($portal_config['editavel_reuniao']);
             } else {
-                $link_visivel = !empty($portal_config['visivel_dj']);
-                $link_editavel = !empty($portal_config['editavel_dj']);
+                if (!$link_has_slot_rules) {
+                    $link_visivel = !empty($portal_config['visivel_dj']);
+                    $link_editavel = !empty($portal_config['editavel_dj']);
+                } else {
+                    $link_visivel = $link_visivel && !empty($portal_config['visivel_dj']);
+                    $link_editavel = $link_editavel && !empty($portal_config['editavel_dj']);
+                }
             }
         }
 

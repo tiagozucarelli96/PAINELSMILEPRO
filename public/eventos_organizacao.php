@@ -23,55 +23,65 @@ $action = trim((string)($_POST['action'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     header('Content-Type: application/json; charset=utf-8');
+    try {
+        switch ($action) {
+            case 'organizar_evento':
+                $me_event_id = (int)($_POST['me_event_id'] ?? 0);
+                if ($me_event_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Selecione um evento válido.']);
+                    exit;
+                }
 
-    switch ($action) {
-        case 'organizar_evento':
-            $me_event_id = (int)($_POST['me_event_id'] ?? 0);
-            if ($me_event_id <= 0) {
-                echo json_encode(['ok' => false, 'error' => 'Selecione um evento válido.']);
+                $meeting_result = eventos_reuniao_get_or_create($pdo, $me_event_id, $user_id);
+                if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
+                    echo json_encode(['ok' => false, 'error' => $meeting_result['error'] ?? 'Não foi possível organizar este evento.']);
+                    exit;
+                }
+
+                $meeting_id = (int)$meeting_result['reuniao']['id'];
+                $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
+                if (empty($portal_result['ok']) || empty($portal_result['portal'])) {
+                    echo json_encode(['ok' => false, 'error' => $portal_result['error'] ?? 'Falha ao gerar link do portal do cliente.']);
+                    exit;
+                }
+
+                echo json_encode([
+                    'ok' => true,
+                    'reuniao' => ['id' => $meeting_id],
+                    'portal' => $portal_result['portal'],
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
-            }
 
-            $meeting_result = eventos_reuniao_get_or_create($pdo, $me_event_id, $user_id);
-            if (empty($meeting_result['ok']) || empty($meeting_result['reuniao']['id'])) {
-                echo json_encode(['ok' => false, 'error' => $meeting_result['error'] ?? 'Não foi possível organizar este evento.']);
+            case 'salvar_portal_config':
+                if ($meeting_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
+                    exit;
+                }
+
+                $result = eventos_cliente_portal_atualizar_config(
+                    $pdo,
+                    $meeting_id,
+                    [
+                        'visivel_reuniao' => ((string)($_POST['visivel_reuniao'] ?? '0') === '1'),
+                        'editavel_reuniao' => ((string)($_POST['editavel_reuniao'] ?? '0') === '1'),
+                        'visivel_dj' => ((string)($_POST['visivel_dj'] ?? '0') === '1'),
+                        'editavel_dj' => ((string)($_POST['editavel_dj'] ?? '0') === '1'),
+                        'visivel_convidados' => ((string)($_POST['visivel_convidados'] ?? '0') === '1'),
+                        'editavel_convidados' => ((string)($_POST['editavel_convidados'] ?? '0') === '1'),
+                    ],
+                    $user_id
+                );
+
+                echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
-            }
-
-            $meeting_id = (int)$meeting_result['reuniao']['id'];
-            $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
-            if (empty($portal_result['ok']) || empty($portal_result['portal'])) {
-                echo json_encode(['ok' => false, 'error' => $portal_result['error'] ?? 'Falha ao gerar link do portal do cliente.']);
-                exit;
-            }
-
-            echo json_encode([
-                'ok' => true,
-                'reuniao' => ['id' => $meeting_id],
-                'portal' => $portal_result['portal'],
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            exit;
-
-        case 'salvar_portal_config':
-            if ($meeting_id <= 0) {
-                echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
-                exit;
-            }
-
-            $result = eventos_cliente_portal_atualizar_config(
-                $pdo,
-                $meeting_id,
-                [
-                    'visivel_reuniao' => ((string)($_POST['visivel_reuniao'] ?? '0') === '1'),
-                    'editavel_reuniao' => ((string)($_POST['editavel_reuniao'] ?? '0') === '1'),
-                    'visivel_dj' => ((string)($_POST['visivel_dj'] ?? '0') === '1'),
-                    'editavel_dj' => ((string)($_POST['editavel_dj'] ?? '0') === '1'),
-                ],
-                $user_id
-            );
-
-            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            exit;
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_organizacao POST: ' . $e->getMessage());
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Erro interno ao processar a solicitação.',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
     }
 }
 
@@ -116,6 +126,9 @@ $visivel_reuniao = !empty($portal['visivel_reuniao']);
 $editavel_reuniao = !empty($portal['editavel_reuniao']);
 $visivel_dj = !empty($portal['visivel_dj']);
 $editavel_dj = !empty($portal['editavel_dj']);
+$visivel_convidados = !empty($portal['visivel_convidados']);
+$editavel_convidados = !empty($portal['editavel_convidados']);
+$convidados_resumo = $meeting_id > 0 ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
 
 $has_dj_link = !empty($links_cliente_dj);
 $has_obs_link = !empty($links_cliente_observacoes);
@@ -513,7 +526,6 @@ includeSidebar('Organização eventos');
             </div>
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=reuniao&origin=organizacao" class="btn btn-primary">Abrir Reunião Final</a>
-                <button type="button" class="btn btn-secondary" onclick="salvarConfigPortal()">Salvar</button>
             </div>
             <div class="helper-note">
                 <?= $has_obs_link ? 'Há link público ativo para Observações Gerais.' : 'Sem link público ativo de Observações Gerais.' ?>
@@ -535,10 +547,31 @@ includeSidebar('Organização eventos');
             </div>
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=dj&origin=organizacao" class="btn btn-primary">Abrir DJ / Protocolos</a>
-                <button type="button" class="btn btn-secondary" onclick="salvarConfigPortal()">Salvar</button>
             </div>
             <div class="helper-note">
                 <?= $has_dj_link ? 'Há link público ativo para DJ.' : 'Sem link público ativo de DJ.' ?>
+            </div>
+        </div>
+
+        <div class="module-card">
+            <h3>📋 Lista de Convidados</h3>
+            <p>Cliente preenche lista por nome/faixa etária e, quando aplicável, número da mesa. Uso interno com check-in por nome.</p>
+            <div class="module-options">
+                <label class="check-row">
+                    <input type="checkbox" id="cfgVisivelConvidados" <?= $visivel_convidados ? 'checked' : '' ?>>
+                    <span>Visível para o cliente</span>
+                </label>
+                <label class="check-row">
+                    <input type="checkbox" id="cfgEditavelConvidados" <?= $editavel_convidados ? 'checked' : '' ?>>
+                    <span>Editável pelo cliente</span>
+                </label>
+            </div>
+            <div class="card-actions">
+                <a href="index.php?page=eventos_lista_convidados&id=<?= (int)$meeting_id ?>" class="btn btn-primary">Abrir Lista / Check-in</a>
+                <button type="button" class="btn btn-secondary" onclick="salvarConfigPortal()">Salvar</button>
+            </div>
+            <div class="helper-note">
+                <?= (int)$convidados_resumo['total'] ?> convidados cadastrados • <?= (int)$convidados_resumo['checkin'] ?> check-ins
             </div>
         </div>
     </div>
@@ -556,6 +589,20 @@ let searchAbortController = null;
 let eventsCacheLoaded = false;
 let eventsMasterCache = [];
 const eventsQueryCache = new Map();
+let portalConfigSaveInFlight = false;
+let portalConfigSaveQueued = false;
+
+async function parseJsonResponse(response) {
+    const raw = await response.text();
+    if (raw === '') {
+        throw new Error('Resposta vazia do servidor.');
+    }
+    try {
+        return JSON.parse(raw);
+    } catch (err) {
+        throw new Error('Resposta inválida do servidor.');
+    }
+}
 
 function normalizeText(value) {
     return (value || '')
@@ -633,7 +680,7 @@ async function fetchRemoteEvents(query = '', forceRefresh = false) {
 
     const url = `index.php?page=eventos_me_proxy&action=list&search=${encodeURIComponent(query)}&days=120${forceRefresh ? '&refresh=1' : ''}`;
     const resp = await fetch(url, { signal: searchAbortController.signal });
-    const data = await resp.json();
+    const data = await parseJsonResponse(resp);
     if (!data.ok) {
         throw new Error(data.error || 'Erro ao buscar eventos');
     }
@@ -713,7 +760,7 @@ async function organizarEvento() {
 
     try {
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp);
         if (!data.ok || !data.reuniao || !data.reuniao.id) {
             alert(data.error || 'Não foi possível organizar o evento.');
             return;
@@ -748,10 +795,27 @@ function mostrarStatusConfig(texto, isError = false) {
 async function salvarConfigPortal() {
     if (!meetingId) return;
 
+    if (portalConfigSaveInFlight) {
+        portalConfigSaveQueued = true;
+        return;
+    }
+
     const visivelReuniao = document.getElementById('cfgVisivelReuniao');
     const editavelReuniao = document.getElementById('cfgEditavelReuniao');
     const visivelDj = document.getElementById('cfgVisivelDj');
     const editavelDj = document.getElementById('cfgEditavelDj');
+    const visivelConvidados = document.getElementById('cfgVisivelConvidados');
+    const editavelConvidados = document.getElementById('cfgEditavelConvidados');
+
+    if (editavelReuniao && editavelReuniao.checked && visivelReuniao) {
+        visivelReuniao.checked = true;
+    }
+    if (editavelDj && editavelDj.checked && visivelDj) {
+        visivelDj.checked = true;
+    }
+    if (editavelConvidados && editavelConvidados.checked && visivelConvidados) {
+        visivelConvidados.checked = true;
+    }
 
     const formData = new FormData();
     formData.append('action', 'salvar_portal_config');
@@ -760,18 +824,46 @@ async function salvarConfigPortal() {
     formData.append('editavel_reuniao', editavelReuniao && editavelReuniao.checked ? '1' : '0');
     formData.append('visivel_dj', visivelDj && visivelDj.checked ? '1' : '0');
     formData.append('editavel_dj', editavelDj && editavelDj.checked ? '1' : '0');
+    formData.append('visivel_convidados', visivelConvidados && visivelConvidados.checked ? '1' : '0');
+    formData.append('editavel_convidados', editavelConvidados && editavelConvidados.checked ? '1' : '0');
 
+    portalConfigSaveInFlight = true;
+    mostrarStatusConfig('Salvando configurações...');
     try {
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp);
         if (!data.ok) {
             mostrarStatusConfig(data.error || 'Erro ao salvar configurações.', true);
             return;
         }
-        mostrarStatusConfig('Configurações salvas.');
+        mostrarStatusConfig('Configurações salvas automaticamente.');
     } catch (err) {
         mostrarStatusConfig('Erro: ' + err.message, true);
+    } finally {
+        portalConfigSaveInFlight = false;
+        if (portalConfigSaveQueued) {
+            portalConfigSaveQueued = false;
+            salvarConfigPortal();
+        }
     }
+}
+
+function bindPortalConfigAutoSave() {
+    const ids = [
+        'cfgVisivelReuniao',
+        'cfgEditavelReuniao',
+        'cfgVisivelDj',
+        'cfgEditavelDj',
+        'cfgVisivelConvidados',
+        'cfgEditavelConvidados',
+    ];
+    ids.forEach((id) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.addEventListener('change', () => {
+            salvarConfigPortal();
+        });
+    });
 }
 
 function bindSearchEvents() {
@@ -795,6 +887,7 @@ function bindSearchEvents() {
 
 document.addEventListener('DOMContentLoaded', () => {
     bindSearchEvents();
+    bindPortalConfigAutoSave();
 });
 </script>
 

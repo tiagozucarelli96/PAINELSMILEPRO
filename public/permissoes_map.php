@@ -148,6 +148,7 @@ return [
     // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
     'eventos_organizacao' => 'perm_eventos',
+    'eventos_lista_convidados' => 'perm_eventos',
     'eventos_reuniao_final' => 'perm_eventos',
     'eventos_rascunhos' => 'perm_eventos',
     'eventos_reunioes' => 'perm_eventos',
@@ -163,4 +164,5 @@ return [
     // Link público do cliente para DJ
     'eventos_cliente_dj' => null,
     'eventos_cliente_portal' => null,
+    'eventos_cliente_convidados' => null,
 ];

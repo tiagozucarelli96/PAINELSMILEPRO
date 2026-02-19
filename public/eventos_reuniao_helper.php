@@ -101,10 +101,23 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS content_html_snapshot TEXT");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_title VARCHAR(160)");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_visible BOOLEAN NOT NULL DEFAULT FALSE");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_editable BOOLEAN NOT NULL DEFAULT FALSE");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_configured BOOLEAN NOT NULL DEFAULT FALSE");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
         }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_links_publicos: ' . $e->getMessage());
+    }
+
+    // Tipo real do evento (manual, definido na organização).
+    try {
+        if (eventos_reuniao_has_table($pdo, 'eventos_reunioes')) {
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(24)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_reunioes_tipo_evento_real ON eventos_reunioes(tipo_evento_real)");
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tipo_evento_real em eventos_reunioes: ' . $e->getMessage());
     }
 
     // Observação opcional por arquivo enviado pelo cliente/equipe.
@@ -128,6 +141,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE,
                 visivel_dj BOOLEAN NOT NULL DEFAULT FALSE,
                 editavel_dj BOOLEAN NOT NULL DEFAULT FALSE,
+                visivel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -138,6 +153,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_dj BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_dj BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -145,6 +162,67 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_token ON eventos_cliente_portais(token)");
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_cliente_portais: ' . $e->getMessage());
+    }
+
+    // Lista de convidados (configuração por evento + convidados).
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_convidados_config (
+                id BIGSERIAL PRIMARY KEY,
+                meeting_id BIGINT NOT NULL UNIQUE,
+                tipo_evento VARCHAR(24) NOT NULL DEFAULT 'infantil',
+                updated_by_type VARCHAR(20) NOT NULL DEFAULT 'interno',
+                updated_by_user_id INTEGER NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS meeting_id BIGINT");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS tipo_evento VARCHAR(24) NOT NULL DEFAULT 'infantil'");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS updated_by_type VARCHAR(20) NOT NULL DEFAULT 'interno'");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS updated_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados_config ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_convidados_config_meeting ON eventos_convidados_config(meeting_id)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_convidados_config: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_convidados (
+                id BIGSERIAL PRIMARY KEY,
+                meeting_id BIGINT NOT NULL,
+                nome VARCHAR(180) NOT NULL,
+                faixa_etaria VARCHAR(40) NULL,
+                numero_mesa VARCHAR(20) NULL,
+                checkin_at TIMESTAMP NULL,
+                checkin_by_user_id INTEGER NULL,
+                created_by_type VARCHAR(20) NOT NULL DEFAULT 'cliente',
+                created_by_user_id INTEGER NULL,
+                updated_by_user_id INTEGER NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP NULL
+            )
+        ");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS meeting_id BIGINT");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS nome VARCHAR(180)");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS faixa_etaria VARCHAR(40) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS numero_mesa VARCHAR(20) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS checkin_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS checkin_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS created_by_type VARCHAR(20) NOT NULL DEFAULT 'cliente'");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS updated_by_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_convidados ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_meeting ON eventos_convidados(meeting_id, deleted_at)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_mesa ON eventos_convidados(meeting_id, numero_mesa)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_convidados_nome ON eventos_convidados(meeting_id, lower(nome))");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_convidados: ' . $e->getMessage());
     }
 
     $done = true;
@@ -155,6 +233,41 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
  */
 function eventos_form_template_allowed_categories(): array {
     return ['15anos', 'casamento', 'infantil', 'geral'];
+}
+
+/**
+ * Tipos reais de evento suportados na organização.
+ */
+function eventos_reuniao_tipos_evento_real_allowed(): array {
+    return ['casamento', '15anos', 'infantil'];
+}
+
+/**
+ * Normaliza tipo real do evento.
+ */
+function eventos_reuniao_normalizar_tipo_evento_real(?string $tipo_evento_real): string {
+    $tipo = strtolower(trim((string)$tipo_evento_real));
+    if (in_array($tipo, eventos_reuniao_tipos_evento_real_allowed(), true)) {
+        return $tipo;
+    }
+    return '';
+}
+
+/**
+ * Rótulo amigável do tipo real do evento.
+ */
+function eventos_reuniao_tipo_evento_real_label(string $tipo_evento_real): string {
+    $tipo = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
+    if ($tipo === 'casamento') {
+        return 'Casamento';
+    }
+    if ($tipo === '15anos') {
+        return '15 anos';
+    }
+    if ($tipo === 'infantil') {
+        return 'Infantil';
+    }
+    return 'Não definido';
 }
 
 /**
@@ -1738,6 +1851,9 @@ function eventos_reuniao_gerar_link_cliente(
     $has_content_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
     $has_form_title_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_title');
     $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $has_portal_visible_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_visible');
+    $has_portal_editable_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_editable');
+    $has_portal_configured_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_configured');
 
     // Verificar se já existe link ativo para esse slot.
     if ($has_slot_index_col) {
@@ -1848,6 +1964,15 @@ function eventos_reuniao_gerar_link_cliente(
                 $params[':form_title'] = null;
             }
         }
+        if ($has_portal_visible_col && !array_key_exists(':portal_visible', $params)) {
+            $set_parts[] = "portal_visible = COALESCE(portal_visible, FALSE)";
+        }
+        if ($has_portal_editable_col && !array_key_exists(':portal_editable', $params)) {
+            $set_parts[] = "portal_editable = COALESCE(portal_editable, FALSE)";
+        }
+        if ($has_portal_configured_col && !array_key_exists(':portal_configured', $params)) {
+            $set_parts[] = "portal_configured = COALESCE(portal_configured, FALSE)";
+        }
 
         $sql = "UPDATE eventos_links_publicos
                 SET " . implode(', ', $set_parts) . "
@@ -1897,6 +2022,18 @@ function eventos_reuniao_gerar_link_cliente(
             $params[':form_title'] = null;
         }
     }
+    if ($has_portal_visible_col) {
+        $columns[] = 'portal_visible';
+        $values[] = 'FALSE';
+    }
+    if ($has_portal_editable_col) {
+        $columns[] = 'portal_editable';
+        $values[] = 'FALSE';
+    }
+    if ($has_portal_configured_col) {
+        $columns[] = 'portal_configured';
+        $values[] = 'FALSE';
+    }
 
     $sql = "INSERT INTO eventos_links_publicos (" . implode(', ', $columns) . ")
             VALUES (" . implode(', ', $values) . ")
@@ -1940,10 +2077,151 @@ function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id, string 
     foreach ($rows as &$row) {
         $decoded = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
         $row['form_schema'] = is_array($decoded) ? $decoded : [];
+        $row['portal_visible'] = !empty($row['portal_visible']);
+        $row['portal_editable'] = !empty($row['portal_editable']);
+        $row['portal_configured'] = !empty($row['portal_configured']);
     }
     unset($row);
 
     return $rows;
+}
+
+/**
+ * Atualiza regras de visibilidade/edição do portal para um slot de link público.
+ * Se necessário, cria/reativa o link do slot automaticamente.
+ */
+function eventos_reuniao_atualizar_slot_portal_config(
+    PDO $pdo,
+    int $meeting_id,
+    int $slot_index,
+    string $link_type,
+    bool $portal_visible,
+    bool $portal_editable,
+    int $user_id = 0,
+    ?array $schema_snapshot = null,
+    ?string $content_html_snapshot = null,
+    ?string $form_title = null,
+    string $section = 'dj_protocolo'
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $slot_index = max(1, min(50, (int)$slot_index));
+    $link_type = trim((string)$link_type);
+    if ($link_type === '') {
+        $link_type = 'cliente_dj';
+    }
+    $section = trim((string)$section) !== '' ? trim((string)$section) : 'dj_protocolo';
+
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $has_portal_visible_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_visible');
+    $has_portal_editable_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_editable');
+    $has_portal_configured_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_configured');
+
+    if (!$has_portal_visible_col && !$has_portal_editable_col) {
+        return ['ok' => false, 'error' => 'Configuração de portal indisponível neste ambiente'];
+    }
+
+    if ($has_slot_index_col) {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = :link_type
+              AND COALESCE(slot_index, 1) = :slot_index
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type,
+            ':slot_index' => $slot_index
+        ]);
+    } else {
+        if ($slot_index !== 1) {
+            return ['ok' => false, 'error' => 'Este ambiente suporta apenas quadro 1'];
+        }
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = :link_type
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':link_type' => $link_type
+        ]);
+    }
+    $link = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    $needs_link = $portal_visible || $portal_editable || (is_array($schema_snapshot) && !empty($schema_snapshot));
+    if (!$link && $needs_link) {
+        $created = eventos_reuniao_gerar_link_cliente(
+            $pdo,
+            $meeting_id,
+            $user_id,
+            $schema_snapshot,
+            $content_html_snapshot,
+            $form_title,
+            $slot_index,
+            $section,
+            $link_type
+        );
+        if (empty($created['ok']) || empty($created['link']['id'])) {
+            return ['ok' => false, 'error' => $created['error'] ?? 'Não foi possível preparar o formulário do quadro'];
+        }
+        $link = $created['link'];
+    }
+
+    if (!$link) {
+        return ['ok' => true, 'slot_index' => $slot_index, 'link' => null];
+    }
+
+    $set_parts = [];
+    $params = [':id' => (int)$link['id']];
+
+    if ($has_portal_visible_col) {
+        $set_parts[] = "portal_visible = :portal_visible";
+        $params[':portal_visible'] = $portal_visible;
+    }
+    if ($has_portal_editable_col) {
+        $set_parts[] = "portal_editable = :portal_editable";
+        $params[':portal_editable'] = $portal_editable;
+    }
+    if ($has_portal_configured_col) {
+        $set_parts[] = "portal_configured = TRUE";
+    }
+    if ($portal_visible || $portal_editable) {
+        $set_parts[] = "is_active = TRUE";
+    }
+    if ($portal_editable && $has_submitted_at_col) {
+        $set_parts[] = "submitted_at = NULL";
+    }
+
+    if (!empty($set_parts)) {
+        $sql = "UPDATE eventos_links_publicos SET " . implode(', ', $set_parts) . " WHERE id = :id RETURNING *";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $updated = $stmt->fetch(PDO::FETCH_ASSOC) ?: $link;
+        $decoded = json_decode((string)($updated['form_schema_json'] ?? '[]'), true);
+        $updated['form_schema'] = is_array($decoded) ? $decoded : [];
+        $updated['portal_visible'] = !empty($updated['portal_visible']);
+        $updated['portal_editable'] = !empty($updated['portal_editable']);
+        $updated['portal_configured'] = !empty($updated['portal_configured']);
+        return ['ok' => true, 'slot_index' => $slot_index, 'link' => $updated];
+    }
+
+    $decoded = json_decode((string)($link['form_schema_json'] ?? '[]'), true);
+    $link['form_schema'] = is_array($decoded) ? $decoded : [];
+    $link['portal_visible'] = !empty($link['portal_visible']);
+    $link['portal_editable'] = !empty($link['portal_editable']);
+    $link['portal_configured'] = !empty($link['portal_configured']);
+    return ['ok' => true, 'slot_index' => $slot_index, 'link' => $link];
 }
 
 /**
@@ -1965,6 +2243,9 @@ function eventos_link_publico_get(PDO $pdo, string $token): ?array {
 
     $decoded = json_decode((string)($row['form_schema_json'] ?? '[]'), true);
     $row['form_schema'] = is_array($decoded) ? $decoded : [];
+    $row['portal_visible'] = !empty($row['portal_visible']);
+    $row['portal_editable'] = !empty($row['portal_editable']);
+    $row['portal_configured'] = !empty($row['portal_configured']);
     return $row;
 }
 
@@ -2096,6 +2377,8 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['editavel_reuniao'] = !empty($row['editavel_reuniao']);
     $row['visivel_dj'] = !empty($row['visivel_dj']);
     $row['editavel_dj'] = !empty($row['editavel_dj']);
+    $row['visivel_convidados'] = !empty($row['visivel_convidados']);
+    $row['editavel_convidados'] = !empty($row['editavel_convidados']);
     $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
     return $row;
 }
@@ -2108,14 +2391,19 @@ function eventos_cliente_portal_get(PDO $pdo, int $meeting_id): ?array {
     if ($meeting_id <= 0) {
         return null;
     }
-    $stmt = $pdo->prepare("
-        SELECT *
-        FROM eventos_cliente_portais
-        WHERE meeting_id = :meeting_id
-        LIMIT 1
-    ");
-    $stmt->execute([':meeting_id' => $meeting_id]);
-    return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM eventos_cliente_portais
+            WHERE meeting_id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_get: ' . $e->getMessage());
+        return null;
+    }
 }
 
 /**
@@ -2127,14 +2415,19 @@ function eventos_cliente_portal_get_by_token(PDO $pdo, string $token): ?array {
     if ($token === '') {
         return null;
     }
-    $stmt = $pdo->prepare("
-        SELECT *
-        FROM eventos_cliente_portais
-        WHERE token = :token
-        LIMIT 1
-    ");
-    $stmt->execute([':token' => $token]);
-    return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    try {
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM eventos_cliente_portais
+            WHERE token = :token
+            LIMIT 1
+        ");
+        $stmt->execute([':token' => $token]);
+        return eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_get_by_token: ' . $e->getMessage());
+        return null;
+    }
 }
 
 /**
@@ -2146,63 +2439,77 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
-    $existing = eventos_cliente_portal_get($pdo, $meeting_id);
-    if ($existing) {
-        if (empty($existing['is_active'])) {
-            $stmt = $pdo->prepare("
-                UPDATE eventos_cliente_portais
-                SET is_active = TRUE, updated_at = NOW()
-                WHERE id = :id
-                RETURNING *
-            ");
-            $stmt->execute([':id' => (int)$existing['id']]);
-            $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
+    try {
+        $existing = eventos_cliente_portal_get($pdo, $meeting_id);
+        if ($existing) {
+            if (empty($existing['is_active'])) {
+                $stmt = $pdo->prepare("
+                    UPDATE eventos_cliente_portais
+                    SET is_active = TRUE, updated_at = NOW()
+                    WHERE id = :id
+                    RETURNING *
+                ");
+                $stmt->execute([':id' => (int)$existing['id']]);
+                $existing = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: $existing);
+            }
+            return ['ok' => true, 'portal' => $existing, 'created' => false];
         }
-        return ['ok' => true, 'portal' => $existing, 'created' => false];
+
+        $token = bin2hex(random_bytes(24));
+    } catch (Throwable $e) {
+        try {
+            $token = bin2hex(random_bytes(16)) . substr(sha1(uniqid('portal_', true)), 0, 16);
+        } catch (Throwable $e2) {
+            $token = sha1(uniqid('portal_', true) . microtime(true));
+        }
     }
 
     try {
-        $token = bin2hex(random_bytes(24));
-    } catch (Throwable $e) {
-        $token = bin2hex(pack('H*', substr(sha1(uniqid('portal_', true)), 0, 48)));
-    }
-    $stmt = $pdo->prepare("
-        INSERT INTO eventos_cliente_portais (
-            meeting_id,
-            token,
-            is_active,
-            visivel_reuniao,
-            editavel_reuniao,
-            visivel_dj,
-            editavel_dj,
-            created_by_user_id,
-            created_at,
-            updated_at
-        ) VALUES (
-            :meeting_id,
-            :token,
-            TRUE,
-            FALSE,
-            FALSE,
-            FALSE,
-            FALSE,
-            :user_id,
-            NOW(),
-            NOW()
-        )
-        RETURNING *
-    ");
-    $stmt->execute([
-        ':meeting_id' => $meeting_id,
-        ':token' => $token,
-        ':user_id' => $user_id > 0 ? $user_id : null,
-    ]);
-    $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
-    if (!$portal) {
-        return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
-    }
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_cliente_portais (
+                meeting_id,
+                token,
+                is_active,
+                visivel_reuniao,
+                editavel_reuniao,
+                visivel_dj,
+                editavel_dj,
+                visivel_convidados,
+                editavel_convidados,
+                created_by_user_id,
+                created_at,
+                updated_at
+            ) VALUES (
+                :meeting_id,
+                :token,
+                TRUE,
+                FALSE,
+                FALSE,
+                FALSE,
+                FALSE,
+                FALSE,
+                FALSE,
+                :user_id,
+                NOW(),
+                NOW()
+            )
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':token' => $token,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+        ]);
+        $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        if (!$portal) {
+            return ['ok' => false, 'error' => 'Não foi possível criar o portal do cliente'];
+        }
 
-    return ['ok' => true, 'portal' => $portal, 'created' => true];
+        return ['ok' => true, 'portal' => $portal, 'created' => true];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_get_or_create: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao preparar portal do cliente.'];
+    }
 }
 
 /**
@@ -2223,28 +2530,646 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $editavel_reuniao = !empty($config['editavel_reuniao']);
     $visivel_dj = !empty($config['visivel_dj']);
     $editavel_dj = !empty($config['editavel_dj']);
+    $visivel_convidados = !empty($config['visivel_convidados']);
+    $editavel_convidados = !empty($config['editavel_convidados']);
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET visivel_reuniao = :visivel_reuniao,
+                editavel_reuniao = :editavel_reuniao,
+                visivel_dj = :visivel_dj,
+                editavel_dj = :editavel_dj,
+                visivel_convidados = :visivel_convidados,
+                editavel_convidados = :editavel_convidados,
+                updated_at = NOW()
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':visivel_reuniao' => $visivel_reuniao,
+            ':editavel_reuniao' => $editavel_reuniao,
+            ':visivel_dj' => $visivel_dj,
+            ':editavel_dj' => $editavel_dj,
+            ':visivel_convidados' => $visivel_convidados,
+            ':editavel_convidados' => $editavel_convidados,
+            ':id' => (int)$created['portal']['id'],
+        ]);
+        $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        if (!$portal) {
+            return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
+        }
+
+        return ['ok' => true, 'portal' => $portal];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_atualizar_config: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao salvar configurações do portal.'];
+    }
+}
+
+/**
+ * Tipo de evento para lista de convidados.
+ */
+function eventos_convidados_normalizar_tipo_evento(string $tipo_evento): string {
+    $tipo = strtolower(trim($tipo_evento));
+    if (in_array($tipo, ['mesa', '15anos_casamento', '15anos', 'casamento'], true)) {
+        return 'mesa';
+    }
+    return 'infantil';
+}
+
+/**
+ * Opções de faixa etária por tipo de evento.
+ */
+function eventos_convidados_opcoes_faixa_etaria(string $tipo_evento): array {
+    $tipo = eventos_convidados_normalizar_tipo_evento($tipo_evento);
+    if ($tipo === 'mesa') {
+        return ['0 a 8 anos', '9 anos em diante'];
+    }
+    return ['0 a 4 anos', '5 a 8 anos', '9 anos em diante'];
+}
+
+/**
+ * Retorna se o tipo atual usa número de mesa.
+ */
+function eventos_convidados_tipo_usa_mesa(string $tipo_evento): bool {
+    return eventos_convidados_normalizar_tipo_evento($tipo_evento) === 'mesa';
+}
+
+/**
+ * Sugere tipo de evento com base no snapshot da reunião.
+ */
+function eventos_convidados_sugerir_tipo_por_reuniao(PDO $pdo, int $meeting_id): string {
+    if ($meeting_id <= 0) {
+        return 'infantil';
+    }
+    $reuniao = eventos_reuniao_get($pdo, $meeting_id);
+    if (!$reuniao) {
+        return 'infantil';
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+    $tipo_raw = strtolower(trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? '')));
+    if ($tipo_raw !== '') {
+        if (str_contains($tipo_raw, '15') || str_contains($tipo_raw, 'casamento')) {
+            return 'mesa';
+        }
+    }
+    return 'infantil';
+}
+
+/**
+ * Normaliza payload de convidado.
+ */
+function eventos_convidados_normalizar_linha(array $row): array {
+    $row['id'] = (int)($row['id'] ?? 0);
+    $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
+    $row['nome'] = trim((string)($row['nome'] ?? ''));
+    $row['faixa_etaria'] = trim((string)($row['faixa_etaria'] ?? ''));
+    $row['numero_mesa'] = trim((string)($row['numero_mesa'] ?? ''));
+    $row['checkin_at'] = isset($row['checkin_at']) && $row['checkin_at'] !== null ? (string)$row['checkin_at'] : null;
+    $row['checkin_by_user_id'] = isset($row['checkin_by_user_id']) && $row['checkin_by_user_id'] !== null ? (int)$row['checkin_by_user_id'] : null;
+    $row['created_by_type'] = trim((string)($row['created_by_type'] ?? 'cliente'));
+    $row['is_checked_in'] = !empty($row['checkin_at']);
+    return $row;
+}
+
+/**
+ * Busca (ou cria) configuração da lista de convidados.
+ */
+function eventos_convidados_get_config(PDO $pdo, int $meeting_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [
+            'meeting_id' => 0,
+            'tipo_evento' => 'infantil',
+            'usa_mesa' => false,
+            'opcoes_faixa' => eventos_convidados_opcoes_faixa_etaria('infantil'),
+        ];
+    }
 
     $stmt = $pdo->prepare("
-        UPDATE eventos_cliente_portais
-        SET visivel_reuniao = :visivel_reuniao,
-            editavel_reuniao = :editavel_reuniao,
-            visivel_dj = :visivel_dj,
-            editavel_dj = :editavel_dj,
+        SELECT *
+        FROM eventos_convidados_config
+        WHERE meeting_id = :meeting_id
+        LIMIT 1
+    ");
+    $stmt->execute([':meeting_id' => $meeting_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if (!$row) {
+        $tipo_default = eventos_convidados_sugerir_tipo_por_reuniao($pdo, $meeting_id);
+        $ins = $pdo->prepare("
+            INSERT INTO eventos_convidados_config
+            (meeting_id, tipo_evento, updated_by_type, updated_by_user_id, created_at, updated_at)
+            VALUES
+            (:meeting_id, :tipo_evento, 'interno', NULL, NOW(), NOW())
+            ON CONFLICT (meeting_id) DO UPDATE
+            SET updated_at = eventos_convidados_config.updated_at
+            RETURNING *
+        ");
+        $ins->execute([
+            ':meeting_id' => $meeting_id,
+            ':tipo_evento' => $tipo_default,
+        ]);
+        $row = $ins->fetch(PDO::FETCH_ASSOC) ?: [
+            'meeting_id' => $meeting_id,
+            'tipo_evento' => $tipo_default,
+        ];
+    }
+
+    $tipo = eventos_convidados_normalizar_tipo_evento((string)($row['tipo_evento'] ?? 'infantil'));
+    return [
+        'meeting_id' => (int)($row['meeting_id'] ?? $meeting_id),
+        'tipo_evento' => $tipo,
+        'usa_mesa' => eventos_convidados_tipo_usa_mesa($tipo),
+        'opcoes_faixa' => eventos_convidados_opcoes_faixa_etaria($tipo),
+        'updated_at' => isset($row['updated_at']) && $row['updated_at'] !== null ? (string)$row['updated_at'] : null,
+    ];
+}
+
+/**
+ * Atualiza o tipo de evento da lista de convidados.
+ */
+function eventos_convidados_salvar_config(
+    PDO $pdo,
+    int $meeting_id,
+    string $tipo_evento,
+    string $updated_by_type = 'interno',
+    int $updated_by_user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $tipo = eventos_convidados_normalizar_tipo_evento($tipo_evento);
+    $author = trim($updated_by_type) !== '' ? trim($updated_by_type) : 'interno';
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_convidados_config
+        (meeting_id, tipo_evento, updated_by_type, updated_by_user_id, created_at, updated_at)
+        VALUES
+        (:meeting_id, :tipo_evento, :updated_by_type, :updated_by_user_id, NOW(), NOW())
+        ON CONFLICT (meeting_id) DO UPDATE
+        SET tipo_evento = EXCLUDED.tipo_evento,
+            updated_by_type = EXCLUDED.updated_by_type,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
             updated_at = NOW()
-        WHERE id = :id
         RETURNING *
     ");
     $stmt->execute([
-        ':visivel_reuniao' => $visivel_reuniao,
-        ':editavel_reuniao' => $editavel_reuniao,
-        ':visivel_dj' => $visivel_dj,
-        ':editavel_dj' => $editavel_dj,
-        ':id' => (int)$created['portal']['id'],
+        ':meeting_id' => $meeting_id,
+        ':tipo_evento' => $tipo,
+        ':updated_by_type' => $author,
+        ':updated_by_user_id' => $updated_by_user_id > 0 ? $updated_by_user_id : null,
     ]);
-    $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
-    if (!$portal) {
-        return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
+
+    $saved = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$saved) {
+        return ['ok' => false, 'error' => 'Não foi possível salvar o tipo do evento'];
     }
 
-    return ['ok' => true, 'portal' => $portal];
+    return ['ok' => true, 'config' => eventos_convidados_get_config($pdo, $meeting_id)];
+}
+
+/**
+ * Ordenação padrão da lista de convidados (mesa + alfabética).
+ */
+function eventos_convidados_order_sql(): string {
+    return "
+        CASE WHEN COALESCE(numero_mesa, '') = '' THEN 1 ELSE 0 END ASC,
+        CASE
+            WHEN COALESCE(numero_mesa, '') ~ '^[0-9]+$' THEN LPAD(numero_mesa, 10, '0')
+            ELSE LOWER(COALESCE(numero_mesa, ''))
+        END ASC,
+        LOWER(nome) ASC,
+        id ASC
+    ";
+}
+
+/**
+ * Lista convidados por reunião.
+ */
+function eventos_convidados_listar(PDO $pdo, int $meeting_id, string $search = ''): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [];
+    }
+
+    $search = trim($search);
+    $params = [':meeting_id' => $meeting_id];
+    $where_search = '';
+    if ($search !== '') {
+        $where_search = " AND nome ILIKE :search";
+        $params[':search'] = '%' . $search . '%';
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_convidados
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+          {$where_search}
+        ORDER BY " . eventos_convidados_order_sql()
+    );
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    return array_map('eventos_convidados_normalizar_linha', $rows);
+}
+
+/**
+ * Resumo de convidados.
+ */
+function eventos_convidados_resumo(PDO $pdo, int $meeting_id): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            COUNT(*)::int AS total,
+            COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin
+        FROM eventos_convidados
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $stmt->execute([':meeting_id' => $meeting_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total' => 0, 'checkin' => 0];
+    $total = (int)($row['total'] ?? 0);
+    $checkin = (int)($row['checkin'] ?? 0);
+    return [
+        'total' => $total,
+        'checkin' => $checkin,
+        'pendentes' => max(0, $total - $checkin),
+    ];
+}
+
+/**
+ * Sanitiza nome de convidado.
+ */
+function eventos_convidados_normalizar_nome(string $nome): string {
+    $nome = trim($nome);
+    $nome = preg_replace('/\s+/u', ' ', $nome);
+    $nome = trim((string)$nome);
+    if ($nome === '') {
+        return '';
+    }
+    $max = function_exists('mb_substr') ? mb_substr($nome, 0, 180) : substr($nome, 0, 180);
+    return trim((string)$max);
+}
+
+/**
+ * Sanitiza número da mesa.
+ */
+function eventos_convidados_normalizar_mesa(?string $numero_mesa): string {
+    $mesa = trim((string)$numero_mesa);
+    if ($mesa === '') {
+        return '';
+    }
+    $mesa = preg_replace('/\s+/u', ' ', $mesa);
+    $mesa = trim((string)$mesa);
+    $mesa = function_exists('mb_substr') ? mb_substr($mesa, 0, 20) : substr($mesa, 0, 20);
+    return trim((string)$mesa);
+}
+
+/**
+ * Valida faixa etária conforme tipo.
+ */
+function eventos_convidados_validar_faixa(?string $faixa_etaria, string $tipo_evento): bool {
+    $faixa = trim((string)$faixa_etaria);
+    if ($faixa === '') {
+        return true;
+    }
+    return in_array($faixa, eventos_convidados_opcoes_faixa_etaria($tipo_evento), true);
+}
+
+/**
+ * Cadastra convidado.
+ */
+function eventos_convidados_adicionar(
+    PDO $pdo,
+    int $meeting_id,
+    string $nome,
+    ?string $faixa_etaria = null,
+    ?string $numero_mesa = null,
+    string $created_by_type = 'cliente',
+    int $created_by_user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $nome_norm = eventos_convidados_normalizar_nome($nome);
+    if ($nome_norm === '') {
+        return ['ok' => false, 'error' => 'Informe o nome do convidado'];
+    }
+
+    $config = eventos_convidados_get_config($pdo, $meeting_id);
+    $tipo = (string)($config['tipo_evento'] ?? 'infantil');
+    $faixa = trim((string)$faixa_etaria);
+    if (!eventos_convidados_validar_faixa($faixa, $tipo)) {
+        return ['ok' => false, 'error' => 'Faixa etária inválida para o tipo de evento selecionado'];
+    }
+    $mesa = eventos_convidados_tipo_usa_mesa($tipo) ? eventos_convidados_normalizar_mesa($numero_mesa) : '';
+
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_convidados
+        (meeting_id, nome, faixa_etaria, numero_mesa, created_by_type, created_by_user_id, created_at, updated_at)
+        VALUES
+        (:meeting_id, :nome, :faixa_etaria, :numero_mesa, :created_by_type, :created_by_user_id, NOW(), NOW())
+        RETURNING *
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':nome' => $nome_norm,
+        ':faixa_etaria' => $faixa !== '' ? $faixa : null,
+        ':numero_mesa' => $mesa !== '' ? $mesa : null,
+        ':created_by_type' => trim($created_by_type) !== '' ? trim($created_by_type) : 'cliente',
+        ':created_by_user_id' => $created_by_user_id > 0 ? $created_by_user_id : null,
+    ]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Não foi possível adicionar convidado'];
+    }
+
+    return ['ok' => true, 'convidado' => eventos_convidados_normalizar_linha($row)];
+}
+
+/**
+ * Atualiza convidado existente.
+ */
+function eventos_convidados_atualizar(
+    PDO $pdo,
+    int $meeting_id,
+    int $guest_id,
+    string $nome,
+    ?string $faixa_etaria = null,
+    ?string $numero_mesa = null,
+    int $updated_by_user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0 || $guest_id <= 0) {
+        return ['ok' => false, 'error' => 'Convidado inválido'];
+    }
+
+    $nome_norm = eventos_convidados_normalizar_nome($nome);
+    if ($nome_norm === '') {
+        return ['ok' => false, 'error' => 'Informe o nome do convidado'];
+    }
+
+    $config = eventos_convidados_get_config($pdo, $meeting_id);
+    $tipo = (string)($config['tipo_evento'] ?? 'infantil');
+    $faixa = trim((string)$faixa_etaria);
+    if (!eventos_convidados_validar_faixa($faixa, $tipo)) {
+        return ['ok' => false, 'error' => 'Faixa etária inválida para o tipo de evento selecionado'];
+    }
+    $mesa = eventos_convidados_tipo_usa_mesa($tipo) ? eventos_convidados_normalizar_mesa($numero_mesa) : '';
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_convidados
+        SET nome = :nome,
+            faixa_etaria = :faixa_etaria,
+            numero_mesa = :numero_mesa,
+            updated_by_user_id = :updated_by_user_id,
+            updated_at = NOW()
+        WHERE id = :id
+          AND meeting_id = :meeting_id
+          AND deleted_at IS NULL
+        RETURNING *
+    ");
+    $stmt->execute([
+        ':id' => $guest_id,
+        ':meeting_id' => $meeting_id,
+        ':nome' => $nome_norm,
+        ':faixa_etaria' => $faixa !== '' ? $faixa : null,
+        ':numero_mesa' => $mesa !== '' ? $mesa : null,
+        ':updated_by_user_id' => $updated_by_user_id > 0 ? $updated_by_user_id : null,
+    ]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Convidado não encontrado'];
+    }
+
+    return ['ok' => true, 'convidado' => eventos_convidados_normalizar_linha($row)];
+}
+
+/**
+ * Remove convidado (soft delete).
+ */
+function eventos_convidados_excluir(PDO $pdo, int $meeting_id, int $guest_id, int $updated_by_user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0 || $guest_id <= 0) {
+        return ['ok' => false, 'error' => 'Convidado inválido'];
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_convidados
+        SET deleted_at = NOW(),
+            updated_by_user_id = :updated_by_user_id,
+            updated_at = NOW()
+        WHERE id = :id
+          AND meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $stmt->execute([
+        ':id' => $guest_id,
+        ':meeting_id' => $meeting_id,
+        ':updated_by_user_id' => $updated_by_user_id > 0 ? $updated_by_user_id : null,
+    ]);
+
+    if ($stmt->rowCount() <= 0) {
+        return ['ok' => false, 'error' => 'Convidado não encontrado'];
+    }
+
+    return ['ok' => true];
+}
+
+/**
+ * Atualiza status de check-in.
+ */
+function eventos_convidados_toggle_checkin(
+    PDO $pdo,
+    int $meeting_id,
+    int $guest_id,
+    bool $checked_in,
+    int $user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0 || $guest_id <= 0) {
+        return ['ok' => false, 'error' => 'Convidado inválido'];
+    }
+
+    if ($checked_in) {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_convidados
+            SET checkin_at = NOW(),
+                checkin_by_user_id = :user_id,
+                updated_by_user_id = :user_id,
+                updated_at = NOW()
+            WHERE id = :id
+              AND meeting_id = :meeting_id
+              AND deleted_at IS NULL
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':id' => $guest_id,
+            ':meeting_id' => $meeting_id,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+        ]);
+    } else {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_convidados
+            SET checkin_at = NULL,
+                checkin_by_user_id = NULL,
+                updated_by_user_id = :user_id,
+                updated_at = NOW()
+            WHERE id = :id
+              AND meeting_id = :meeting_id
+              AND deleted_at IS NULL
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':id' => $guest_id,
+            ':meeting_id' => $meeting_id,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+        ]);
+    }
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return ['ok' => false, 'error' => 'Convidado não encontrado'];
+    }
+
+    return ['ok' => true, 'convidado' => eventos_convidados_normalizar_linha($row)];
+}
+
+/**
+ * Parseia texto cru em nomes de convidados.
+ */
+function eventos_convidados_parse_texto_cru(string $texto): array {
+    $texto = html_entity_decode($texto, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $texto = str_replace("\r", "\n", $texto);
+
+    $linhas = preg_split('/\R+/u', $texto) ?: [];
+    if (count($linhas) === 1 && preg_match('/[,;]+/u', (string)$linhas[0])) {
+        $linhas = preg_split('/[,;]+/u', (string)$linhas[0]) ?: [];
+    }
+
+    $nomes = [];
+    $seen = [];
+
+    foreach ($linhas as $linha_raw) {
+        $linha = trim((string)$linha_raw);
+        if ($linha === '') {
+            continue;
+        }
+
+        $linha = preg_replace('/^[\-\*\+\•\·\–\—\s]+/u', '', $linha) ?? $linha;
+        $linha = preg_replace('/^\d{1,4}\s*[\.\)\-\:]\s*/u', '', $linha) ?? $linha;
+        $linha = trim($linha, " \t\n\r\0\x0B,;");
+        $linha = preg_replace('/\s+/u', ' ', $linha) ?? $linha;
+        $linha = trim((string)$linha);
+
+        if ($linha === '') {
+            continue;
+        }
+
+        $len = function_exists('mb_strlen') ? mb_strlen($linha, 'UTF-8') : strlen($linha);
+        if ($len < 2) {
+            continue;
+        }
+
+        if ($len > 180) {
+            $linha = function_exists('mb_substr') ? mb_substr($linha, 0, 180, 'UTF-8') : substr($linha, 0, 180);
+        }
+
+        $key = function_exists('mb_strtolower') ? mb_strtolower($linha, 'UTF-8') : strtolower($linha);
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $nomes[] = $linha;
+    }
+
+    return $nomes;
+}
+
+/**
+ * Importa lista de convidados via texto cru.
+ */
+function eventos_convidados_importar_texto_cru(
+    PDO $pdo,
+    int $meeting_id,
+    string $texto,
+    string $created_by_type = 'cliente',
+    int $created_by_user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $nomes = eventos_convidados_parse_texto_cru($texto);
+    if (empty($nomes)) {
+        return ['ok' => false, 'error' => 'Nenhum nome válido encontrado para importar'];
+    }
+
+    $existing_stmt = $pdo->prepare("
+        SELECT lower(nome) AS nome_key
+        FROM eventos_convidados
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $existing_stmt->execute([':meeting_id' => $meeting_id]);
+    $existing_rows = $existing_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $existing_map = [];
+    foreach ($existing_rows as $row) {
+        $key = trim((string)($row['nome_key'] ?? ''));
+        if ($key !== '') {
+            $existing_map[$key] = true;
+        }
+    }
+
+    $inserted = 0;
+    $skipped = 0;
+
+    $ins = $pdo->prepare("
+        INSERT INTO eventos_convidados
+        (meeting_id, nome, faixa_etaria, numero_mesa, created_by_type, created_by_user_id, created_at, updated_at)
+        VALUES
+        (:meeting_id, :nome, NULL, NULL, :created_by_type, :created_by_user_id, NOW(), NOW())
+    ");
+
+    foreach ($nomes as $nome) {
+        $key = function_exists('mb_strtolower') ? mb_strtolower($nome, 'UTF-8') : strtolower($nome);
+        if (isset($existing_map[$key])) {
+            $skipped++;
+            continue;
+        }
+
+        $ins->execute([
+            ':meeting_id' => $meeting_id,
+            ':nome' => $nome,
+            ':created_by_type' => trim($created_by_type) !== '' ? trim($created_by_type) : 'cliente',
+            ':created_by_user_id' => $created_by_user_id > 0 ? $created_by_user_id : null,
+        ]);
+        $existing_map[$key] = true;
+        $inserted++;
+    }
+
+    return [
+        'ok' => true,
+        'inserted' => $inserted,
+        'skipped' => $skipped,
+        'total_detected' => count($nomes),
+    ];
 }

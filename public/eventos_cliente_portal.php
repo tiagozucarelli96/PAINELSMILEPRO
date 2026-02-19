@@ -23,6 +23,8 @@ $secao_dj = null;
 $anexos_dj = [];
 $link_dj = null;
 $link_observacoes = null;
+$links_dj_portal = [];
+$convidados_resumo = ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
 
 if ($token === '') {
     $error = 'Link inválido.';
@@ -47,8 +49,36 @@ if ($token === '') {
 
             $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
             $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
-            $link_dj = !empty($links_dj) ? $links_dj[0] : null;
+
+            $dj_has_slot_rules = false;
+            foreach ($links_dj as $dj_link_item) {
+                if (!empty($dj_link_item['portal_configured'])) {
+                    $dj_has_slot_rules = true;
+                    break;
+                }
+            }
+
+            if ($dj_has_slot_rules) {
+                foreach ($links_dj as $dj_link_item) {
+                    if (empty($dj_link_item['is_active'])) {
+                        continue;
+                    }
+                    if (empty($dj_link_item['portal_visible'])) {
+                        continue;
+                    }
+                    $links_dj_portal[] = $dj_link_item;
+                }
+            } else {
+                foreach ($links_dj as $dj_link_item) {
+                    if (!empty($dj_link_item['is_active'])) {
+                        $links_dj_portal[] = $dj_link_item;
+                    }
+                }
+            }
+
+            $link_dj = !empty($links_dj_portal) ? $links_dj_portal[0] : null;
             $link_observacoes = !empty($links_observacoes) ? $links_observacoes[0] : null;
+            $convidados_resumo = eventos_convidados_resumo($pdo, (int)$reuniao['id']);
         }
     }
 }
@@ -69,6 +99,8 @@ $visivel_reuniao = !empty($portal['visivel_reuniao']);
 $editavel_reuniao = !empty($portal['editavel_reuniao']);
 $visivel_dj = !empty($portal['visivel_dj']);
 $editavel_dj = !empty($portal['editavel_dj']);
+$visivel_convidados = !empty($portal['visivel_convidados']);
+$editavel_convidados = !empty($portal['editavel_convidados']);
 
 $decoracao_content = trim((string)($secao_decoracao['content_html'] ?? ''));
 $observacoes_content = trim((string)($secao_observacoes['content_html'] ?? ''));
@@ -332,10 +364,21 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
                 <h3>🎧 DJ / Protocolos</h3>
                 <div class="card-subtitle">Formulários e materiais de apoio do DJ.</div>
                 <div class="card-actions">
-                    <?php if ($editavel_dj && !empty($link_dj['token'])): ?>
-                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_dj['token']) ?>">Abrir Formulário DJ</a>
+                    <?php if (!empty($links_dj_portal)): ?>
+                    <?php foreach ($links_dj_portal as $dj_link_portal): ?>
+                    <?php
+                        $dj_slot = max(1, (int)($dj_link_portal['slot_index'] ?? 1));
+                        $dj_title = trim((string)($dj_link_portal['form_title'] ?? ''));
+                        if ($dj_title === '') {
+                            $dj_title = 'Formulário DJ';
+                        }
+                    ?>
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$dj_link_portal['token']) ?>">
+                        <?= htmlspecialchars($dj_title) ?> (Quadro <?= $dj_slot ?>)
+                    </a>
+                    <?php endforeach; ?>
                     <?php else: ?>
-                    <span class="btn btn-secondary" style="cursor:default;">Somente visualização</span>
+                    <span class="btn btn-secondary" style="cursor:default;">Nenhum quadro disponível para o cliente</span>
                     <?php endif; ?>
                 </div>
 
@@ -367,7 +410,28 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             </section>
             <?php endif; ?>
 
-            <?php if (!$visivel_reuniao && !$visivel_dj): ?>
+            <?php if ($visivel_convidados): ?>
+            <section class="card">
+                <h3>📋 Lista de Convidados</h3>
+                <div class="card-subtitle">Cadastre convidados para facilitar a recepção no dia do evento.</div>
+                <div class="card-actions">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_convidados&token=<?= urlencode($token) ?>">
+                        <?= $editavel_convidados ? 'Gerenciar convidados' : 'Visualizar convidados' ?>
+                    </a>
+                </div>
+
+                <div class="section-block">
+                    <h4>Resumo atual</h4>
+                    <div class="section-content">
+                        <p><strong>Total:</strong> <?= (int)$convidados_resumo['total'] ?> convidados</p>
+                        <p><strong>Check-ins:</strong> <?= (int)$convidados_resumo['checkin'] ?></p>
+                        <p><strong>Pendentes:</strong> <?= (int)$convidados_resumo['pendentes'] ?></p>
+                    </div>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <?php if (!$visivel_reuniao && !$visivel_dj && !$visivel_convidados): ?>
             <section class="card">
                 <h3>Conteúdo indisponível</h3>
                 <div class="card-subtitle">Ainda não há cards habilitados para visualização neste portal.</div>
