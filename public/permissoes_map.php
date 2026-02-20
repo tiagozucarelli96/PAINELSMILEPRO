@@ -148,6 +148,7 @@ return [
     // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
     'eventos_organizacao' => 'perm_eventos',
+    'eventos_arquivos' => 'perm_eventos',
     'eventos_lista_convidados' => 'perm_eventos',
     'eventos_reuniao_final' => 'perm_eventos',
     'eventos_rascunhos' => 'perm_eventos',

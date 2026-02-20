@@ -507,9 +507,10 @@ body {
         }
 
         document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('btn-ver-arquivo')) {
-                const guiaId = e.target.getAttribute('data-guia-id');
-                const arquivoNome = e.target.getAttribute('data-arquivo-nome');
+            const botaoVer = e.target.closest('.btn-ver-arquivo');
+            if (botaoVer) {
+                const guiaId = botaoVer.getAttribute('data-guia-id');
+                const arquivoNome = botaoVer.getAttribute('data-arquivo-nome');
                 abrirModal(guiaId, arquivoNome);
             }
         });

@@ -10,9 +10,12 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
-$token = trim((string)($_GET['token'] ?? ''));
+$token = trim((string)($_GET['token'] ?? $_POST['token'] ?? ''));
 $error = '';
+$form_error = '';
+$success_message = '';
 
 $portal = null;
 $reuniao = null;
@@ -25,6 +28,39 @@ $link_dj = null;
 $link_observacoes = null;
 $links_dj_portal = [];
 $convidados_resumo = ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+$campos_arquivos = [];
+$arquivos_portal = [];
+$arquivos_campos_map = [];
+$arquivos_resumo = [
+    'campos_total' => 0,
+    'campos_obrigatorios' => 0,
+    'campos_pendentes' => 0,
+    'arquivos_total' => 0,
+    'arquivos_visiveis_cliente' => 0,
+    'arquivos_cliente' => 0,
+];
+
+function eventos_cliente_portal_upload_error_message(int $code): string {
+    switch ($code) {
+        case UPLOAD_ERR_OK:
+            return '';
+        case UPLOAD_ERR_INI_SIZE:
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'Arquivo excede o limite permitido pelo servidor.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'Upload incompleto. Tente novamente.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'Selecione um arquivo para enviar.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Servidor sem pasta temporária para upload.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Falha ao gravar arquivo temporário.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Upload bloqueado por extensão do servidor.';
+        default:
+            return 'Erro desconhecido de upload.';
+    }
+}
 
 if ($token === '') {
     $error = 'Link inválido.';
@@ -41,6 +77,9 @@ if ($token === '') {
             if (!is_array($snapshot)) {
                 $snapshot = [];
             }
+
+            $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
+            eventos_arquivos_seed_campos_por_tipo($pdo, (int)$reuniao['id'], $tipo_evento_real, 0);
 
             $secao_decoracao = eventos_reuniao_get_secao($pdo, (int)$reuniao['id'], 'decoracao');
             $secao_observacoes = eventos_reuniao_get_secao($pdo, (int)$reuniao['id'], 'observacoes_gerais');
@@ -79,6 +118,20 @@ if ($token === '') {
             $link_dj = !empty($links_dj_portal) ? $links_dj_portal[0] : null;
             $link_observacoes = !empty($links_observacoes) ? $links_observacoes[0] : null;
             $convidados_resumo = eventos_convidados_resumo($pdo, (int)$reuniao['id']);
+
+            $campos_arquivos = eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true);
+            $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true);
+            $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
+            foreach ($arquivos_portal as $arquivo_item) {
+                $campo_id = (int)($arquivo_item['campo_id'] ?? 0);
+                if ($campo_id <= 0) {
+                    continue;
+                }
+                if (!isset($arquivos_campos_map[$campo_id])) {
+                    $arquivos_campos_map[$campo_id] = [];
+                }
+                $arquivos_campos_map[$campo_id][] = $arquivo_item;
+            }
         }
     }
 }
@@ -101,6 +154,65 @@ $visivel_dj = !empty($portal['visivel_dj']);
 $editavel_dj = !empty($portal['editavel_dj']);
 $visivel_convidados = !empty($portal['visivel_convidados']);
 $editavel_convidados = !empty($portal['editavel_convidados']);
+$visivel_arquivos = !empty($portal['visivel_arquivos']);
+$editavel_arquivos = !empty($portal['editavel_arquivos']);
+
+if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'upload_arquivo_cliente') {
+    if (!$visivel_arquivos || !$editavel_arquivos) {
+        $form_error = 'Uploads de arquivos não estão habilitados para este portal.';
+    } else {
+        $file = $_FILES['arquivo'] ?? null;
+        if (!$file || !is_array($file)) {
+            $form_error = 'Selecione um arquivo para enviar.';
+        } else {
+            $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($upload_error !== UPLOAD_ERR_OK) {
+                $form_error = eventos_cliente_portal_upload_error_message($upload_error);
+            } elseif ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                $form_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+            } else {
+                $campo_id = (int)($_POST['campo_id'] ?? 0);
+                $descricao = trim((string)($_POST['descricao_arquivo'] ?? ''));
+                try {
+                    $uploader = new MagaluUpload(500);
+                    $upload_result = $uploader->upload($file, 'eventos/reunioes/' . (int)$reuniao['id'] . '/cliente_arquivos');
+                    $saved = eventos_arquivos_salvar_item(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $upload_result,
+                        $campo_id > 0 ? $campo_id : null,
+                        $descricao,
+                        true,
+                        'cliente',
+                        null
+                    );
+                    if (!empty($saved['ok'])) {
+                        $success_message = 'Arquivo enviado com sucesso.';
+                        $campos_arquivos = eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true);
+                        $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true);
+                        $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
+                        $arquivos_campos_map = [];
+                        foreach ($arquivos_portal as $arquivo_item) {
+                            $campo_id_row = (int)($arquivo_item['campo_id'] ?? 0);
+                            if ($campo_id_row <= 0) {
+                                continue;
+                            }
+                            if (!isset($arquivos_campos_map[$campo_id_row])) {
+                                $arquivos_campos_map[$campo_id_row] = [];
+                            }
+                            $arquivos_campos_map[$campo_id_row][] = $arquivo_item;
+                        }
+                    } else {
+                        $form_error = (string)($saved['error'] ?? 'Não foi possível salvar o arquivo.');
+                    }
+                } catch (Throwable $e) {
+                    error_log('eventos_cliente_portal upload arquivo: ' . $e->getMessage());
+                    $form_error = 'Falha ao enviar arquivo. Tente novamente.';
+                }
+            }
+        }
+    }
+}
 
 $decoracao_content = trim((string)($secao_decoracao['content_html'] ?? ''));
 $observacoes_content = trim((string)($secao_observacoes['content_html'] ?? ''));
@@ -165,6 +277,12 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             background: #fee2e2;
             border-color: #fca5a5;
             color: #991b1b;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            border-color: #86efac;
+            color: #166534;
         }
 
         .event-box {
@@ -305,6 +423,112 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
         .attachments-list a:hover {
             text-decoration: underline;
         }
+
+        .upload-form {
+            margin-top: 0.85rem;
+            border: 1px solid #dbe3ef;
+            border-radius: 10px;
+            background: #f8fafc;
+            padding: 0.85rem;
+            display: grid;
+            gap: 0.65rem;
+        }
+
+        .upload-form label {
+            font-size: 0.82rem;
+            color: #334155;
+            font-weight: 700;
+            display: grid;
+            gap: 0.3rem;
+        }
+
+        .upload-form input[type="file"],
+        .upload-form select,
+        .upload-form textarea {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 0.56rem 0.64rem;
+            font-size: 0.85rem;
+            background: #fff;
+            color: #1f2937;
+        }
+
+        .upload-form textarea {
+            min-height: 76px;
+            resize: vertical;
+        }
+
+        .upload-help {
+            color: #64748b;
+            font-size: 0.78rem;
+            margin-top: -0.25rem;
+        }
+
+        .arquivo-item {
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #fff;
+            padding: 0.6rem 0.65rem;
+            font-size: 0.84rem;
+        }
+
+        .arquivo-item + .arquivo-item {
+            margin-top: 0.5rem;
+        }
+
+        .arquivo-link {
+            color: #1d4ed8;
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .arquivo-link:hover {
+            text-decoration: underline;
+        }
+
+        .arquivo-meta {
+            color: #64748b;
+            margin-top: 0.25rem;
+            font-size: 0.78rem;
+            line-height: 1.4;
+        }
+
+        .campo-status {
+            margin-top: 0.8rem;
+            display: grid;
+            gap: 0.45rem;
+        }
+
+        .campo-status-item {
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #fff;
+            padding: 0.55rem 0.65rem;
+            font-size: 0.82rem;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.16rem 0.45rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+
+        .badge-ok {
+            color: #065f46;
+            background: #d1fae5;
+            border-color: #6ee7b7;
+        }
+
+        .badge-warn {
+            color: #92400e;
+            background: #fef3c7;
+            border-color: #fcd34d;
+        }
     </style>
 </head>
 <body>
@@ -320,6 +544,16 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             <strong>Erro:</strong> <?= htmlspecialchars($error) ?>
         </div>
         <?php else: ?>
+        <?php if ($success_message !== ''): ?>
+        <div class="alert alert-success">
+            <?= htmlspecialchars($success_message) ?>
+        </div>
+        <?php endif; ?>
+        <?php if ($form_error !== ''): ?>
+        <div class="alert alert-error">
+            <strong>Erro:</strong> <?= htmlspecialchars($form_error) ?>
+        </div>
+        <?php endif; ?>
         <div class="event-box">
             <h2><?= htmlspecialchars($evento_nome) ?></h2>
             <div class="event-meta">
@@ -431,7 +665,116 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             </section>
             <?php endif; ?>
 
-            <?php if (!$visivel_reuniao && !$visivel_dj && !$visivel_convidados): ?>
+            <?php if ($visivel_arquivos): ?>
+            <section class="card">
+                <h3>📁 Arquivos</h3>
+                <div class="card-subtitle">Envie arquivos do evento e acompanhe os materiais solicitados.</div>
+
+                <?php if ($editavel_arquivos): ?>
+                <form method="POST" enctype="multipart/form-data" class="upload-form">
+                    <input type="hidden" name="action" value="upload_arquivo_cliente">
+                    <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+
+                    <label>
+                        Arquivo
+                        <input type="file"
+                               name="arquivo"
+                               accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
+                               required>
+                    </label>
+
+                    <label>
+                        Tipo do arquivo (opcional)
+                        <select name="campo_id">
+                            <option value="">Selecionar...</option>
+                            <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                            <option value="<?= (int)($campo_arquivo['id'] ?? 0) ?>">
+                                <?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+
+                    <label>
+                        Descrição do arquivo
+                        <textarea name="descricao_arquivo" placeholder="Ex.: Imagem final aprovada do convite."></textarea>
+                    </label>
+
+                    <button type="submit" class="btn btn-primary">Enviar arquivo</button>
+                    <div class="upload-help">Limite de até 500MB por arquivo.</div>
+                </form>
+                <?php else: ?>
+                <div class="card-actions">
+                    <span class="btn btn-secondary" style="cursor:default;">Uploads desativados para este portal</span>
+                </div>
+                <?php endif; ?>
+
+                <div class="section-block">
+                    <h4>Campos solicitados</h4>
+                    <?php if (empty($campos_arquivos)): ?>
+                    <div class="empty-text">Nenhum campo solicitado no momento.</div>
+                    <?php else: ?>
+                    <div class="campo-status">
+                        <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                        <?php
+                            $campo_id = (int)($campo_arquivo['id'] ?? 0);
+                            $qtd_campo = isset($arquivos_campos_map[$campo_id]) ? count($arquivos_campos_map[$campo_id]) : 0;
+                        ?>
+                        <div class="campo-status-item">
+                            <strong><?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?></strong>
+                            <?php if (!empty($campo_arquivo['obrigatorio_cliente'])): ?>
+                            <span class="badge <?= $qtd_campo > 0 ? 'badge-ok' : 'badge-warn' ?>">
+                                <?= $qtd_campo > 0 ? 'Recebido' : 'Pendente' ?>
+                            </span>
+                            <?php endif; ?>
+                            <?php if (!empty($campo_arquivo['descricao'])): ?>
+                            <div class="arquivo-meta"><?= htmlspecialchars((string)$campo_arquivo['descricao']) ?></div>
+                            <?php endif; ?>
+                            <div class="arquivo-meta">
+                                <?= $qtd_campo > 0 ? $qtd_campo . ' arquivo(s) enviado(s)' : 'Aguardando envio' ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+
+                <div class="section-block">
+                    <h4>Arquivos disponíveis</h4>
+                    <?php if (empty($arquivos_portal)): ?>
+                    <div class="empty-text">Nenhum arquivo disponível ainda.</div>
+                    <?php else: ?>
+                    <?php foreach ($arquivos_portal as $arquivo_portal): ?>
+                    <?php
+                        $arquivo_nome = trim((string)($arquivo_portal['original_name'] ?? 'arquivo'));
+                        $arquivo_url = trim((string)($arquivo_portal['public_url'] ?? ''));
+                        $arquivo_desc = trim((string)($arquivo_portal['descricao'] ?? ''));
+                        $arquivo_campo = trim((string)($arquivo_portal['campo_titulo'] ?? ''));
+                        $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
+                        $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
+                        $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
+                    ?>
+                    <div class="arquivo-item">
+                        <?php if ($arquivo_url !== ''): ?>
+                        <a class="arquivo-link" href="<?= htmlspecialchars($arquivo_url) ?>" target="_blank" rel="noopener noreferrer">
+                            <?= htmlspecialchars($arquivo_nome) ?>
+                        </a>
+                        <?php else: ?>
+                        <strong><?= htmlspecialchars($arquivo_nome) ?></strong>
+                        <?php endif; ?>
+                        <div class="arquivo-meta">
+                            <?= $arquivo_campo !== '' ? 'Tipo: ' . htmlspecialchars($arquivo_campo) . ' • ' : '' ?>
+                            Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
+                            <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <?php if (!$visivel_reuniao && !$visivel_dj && !$visivel_convidados && !$visivel_arquivos): ?>
             <section class="card">
                 <h3>Conteúdo indisponível</h3>
                 <div class="card-subtitle">Ainda não há cards habilitados para visualização neste portal.</div>
