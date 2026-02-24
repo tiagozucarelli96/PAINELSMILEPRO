@@ -114,6 +114,7 @@ $anexos = [];
 $evento_me = null;
 $evento_me_id = 0;
 $meeting_id = 0;
+$aviso_evento_cancelado = '';
 
 // Prioridade: detalhe por me_event_id (mesmo se não existir reunião interna)
 if (!empty($_GET['me_event_id'])) {
@@ -124,14 +125,37 @@ if (!empty($_GET['me_event_id'])) {
             $evento_me = $me['event'];
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM eventos_reunioes WHERE me_event_id = :me LIMIT 1");
-        $stmt->execute([':me' => $evento_me_id]);
-        $meeting_id = (int)($stmt->fetchColumn() ?: 0);
+        $evento_cancelado = (is_array($evento_me) && eventos_me_evento_cancelado($evento_me))
+            || eventos_me_evento_cancelado_por_webhook($pdo, $evento_me_id);
 
-        if ($meeting_id > 0) {
-            $evento_selecionado = eventos_reuniao_get($pdo, $meeting_id);
-            $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
-            $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'decoracao');
+        if ($evento_cancelado) {
+            $aviso_evento_cancelado = 'Evento cancelado na ME. Ele foi ocultado do portal.';
+            $evento_me = null;
+            $evento_me_id = 0;
+        } else {
+            $stmt = $pdo->prepare("SELECT id FROM eventos_reunioes WHERE me_event_id = :me LIMIT 1");
+            $stmt->execute([':me' => $evento_me_id]);
+            $meeting_id = (int)($stmt->fetchColumn() ?: 0);
+
+            if ($meeting_id > 0) {
+                $evento_selecionado = eventos_reuniao_get($pdo, $meeting_id);
+                if ($evento_selecionado) {
+                    $snap = json_decode((string)($evento_selecionado['me_event_snapshot'] ?? '{}'), true);
+                    $snap = is_array($snap) ? $snap : [];
+                    $me_id_snapshot = (int)($evento_selecionado['me_event_id'] ?? $snap['id'] ?? 0);
+                    $evento_cancelado_snapshot = (!empty($snap) && eventos_me_evento_cancelado($snap))
+                        || ($me_id_snapshot > 0 && eventos_me_evento_cancelado_por_webhook($pdo, $me_id_snapshot));
+
+                    if ($evento_cancelado_snapshot) {
+                        $aviso_evento_cancelado = 'Evento cancelado na ME. Ele foi ocultado do portal.';
+                        $evento_selecionado = null;
+                        $meeting_id = 0;
+                    } else {
+                        $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
+                        $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'decoracao');
+                    }
+                }
+            }
         }
     }
 }
@@ -142,8 +166,20 @@ if (!$evento_me_id && !empty($_GET['evento'])) {
     if ($meeting_id > 0) {
         $evento_selecionado = eventos_reuniao_get($pdo, $meeting_id);
         if ($evento_selecionado) {
-            $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
-            $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'decoracao');
+            $snap = json_decode((string)($evento_selecionado['me_event_snapshot'] ?? '{}'), true);
+            $snap = is_array($snap) ? $snap : [];
+            $me_id_snapshot = (int)($evento_selecionado['me_event_id'] ?? $snap['id'] ?? 0);
+            $evento_cancelado_snapshot = (!empty($snap) && eventos_me_evento_cancelado($snap))
+                || ($me_id_snapshot > 0 && eventos_me_evento_cancelado_por_webhook($pdo, $me_id_snapshot));
+
+            if ($evento_cancelado_snapshot) {
+                $aviso_evento_cancelado = 'Evento cancelado na ME. Ele foi ocultado do portal.';
+                $evento_selecionado = null;
+                $meeting_id = 0;
+            } else {
+                $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
+                $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, 'decoracao');
+            }
         }
     }
 }
@@ -568,6 +604,11 @@ $detail_data_fmt = $detail_data !== '' ? date('d/m/Y', strtotime($detail_data)) 
 	    </div>
 	    
 	    <div class="container">
+        <?php if ($aviso_evento_cancelado !== ''): ?>
+        <div style="margin-bottom:1rem; padding:0.85rem 1rem; border:1px solid #facc15; background:#fef9c3; color:#854d0e; border-radius:8px;">
+            <?= htmlspecialchars($aviso_evento_cancelado) ?>
+        </div>
+        <?php endif; ?>
 	        <?php if ($evento_selecionado || $evento_me_id): ?>
 	        <a href="?page=portal_decoracao" class="btn btn-primary" style="margin-bottom: 1rem;">← Voltar ao calendário</a>
 	        

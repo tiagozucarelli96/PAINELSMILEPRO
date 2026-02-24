@@ -239,6 +239,162 @@ function eventos_me_cache_cleanup(PDO $pdo): void {
  */
 
 /**
+ * Interpreta valores comuns como boolean.
+ */
+function eventos_me_value_to_bool($value, ?bool $default = null): ?bool {
+    if (is_bool($value)) {
+        return $value;
+    }
+    if (is_int($value) || is_float($value)) {
+        return ((int)$value) !== 0;
+    }
+    if (is_string($value)) {
+        $v = mb_strtolower(trim($value));
+        if ($v === '') {
+            return $default;
+        }
+        if (in_array($v, ['1', 'true', 'sim', 'yes', 'ativo', 'active'], true)) {
+            return true;
+        }
+        if (in_array($v, ['0', 'false', 'nao', 'no', 'inativo', 'inactive'], true)) {
+            return false;
+        }
+    }
+    return $default;
+}
+
+/**
+ * Detecta se um evento da ME esta cancelado/excluido/inativo.
+ */
+function eventos_me_evento_cancelado(array $event): bool {
+    $status = mb_strtolower(trim(eventos_me_pick_text($event, [
+        'status',
+        'statusevento',
+        'statusEvento',
+        'status_evento',
+        'situacao',
+        'situacaoevento',
+        'situacaoEvento',
+        'situacao_evento',
+        'state'
+    ])));
+
+    if ($status !== '') {
+        if (in_array($status, ['cancelado', 'cancelada', 'canceled', 'cancelled', 'excluido', 'excluida', 'deleted', 'inativo', 'inactive', 'arquivado', 'archived'], true)) {
+            return true;
+        }
+
+        foreach (['cancel', 'exclu', 'delet', 'inativ', 'arquiv'] as $needle) {
+            if (strpos($status, $needle) !== false) {
+                return true;
+            }
+        }
+    }
+
+    $eventType = mb_strtolower(trim(eventos_me_pick_text($event, [
+        'event',
+        'action',
+        'acao',
+        'webhook_event'
+    ])));
+
+    if ($eventType !== '') {
+        if (in_array($eventType, ['event_canceled', 'event_cancelled', 'event_deleted', 'deleted', 'canceled', 'cancelled', 'cancelado', 'excluido'], true)) {
+            return true;
+        }
+        foreach (['cancel', 'delete', 'exclu'] as $needle) {
+            if (strpos($eventType, $needle) !== false) {
+                return true;
+            }
+        }
+    }
+
+    foreach (['cancelado', 'cancelada', 'canceled', 'deleted', 'excluido', 'excluida'] as $flagKey) {
+        $flag = eventos_me_get_path_value($event, $flagKey);
+        $asBool = eventos_me_value_to_bool($flag, null);
+        if ($asBool === true) {
+            return true;
+        }
+    }
+
+    foreach (['ativo', 'active', 'is_active', 'ativo_evento', 'ativoEvento'] as $activeKey) {
+        $active = eventos_me_get_path_value($event, $activeKey);
+        $asBool = eventos_me_value_to_bool($active, null);
+        if ($asBool === false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Mantem apenas eventos ativos da ME.
+ */
+function eventos_me_filtrar_ativos(array $events): array {
+    return array_values(array_filter($events, function($ev) {
+        return is_array($ev) && !eventos_me_evento_cancelado($ev);
+    }));
+}
+
+/**
+ * Verifica no ultimo webhook conhecido se o evento foi cancelado/excluido.
+ */
+function eventos_me_evento_cancelado_por_webhook(PDO $pdo, int $event_id): bool {
+    static $table_exists = null;
+    static $cache = [];
+
+    if ($event_id <= 0) {
+        return false;
+    }
+    if (array_key_exists($event_id, $cache)) {
+        return $cache[$event_id];
+    }
+
+    try {
+        if ($table_exists === null) {
+            $stmt_table = $pdo->prepare("
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = ANY (current_schemas(FALSE))
+                  AND table_name = 'me_eventos_webhook'
+                LIMIT 1
+            ");
+            $stmt_table->execute();
+            $table_exists = (bool)$stmt_table->fetchColumn();
+        }
+
+        if (!$table_exists) {
+            $cache[$event_id] = false;
+            return false;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT status, webhook_tipo
+            FROM me_eventos_webhook
+            WHERE evento_id = :event_id
+            ORDER BY recebido_em DESC NULLS LAST, id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':event_id' => (string)$event_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $cancelado = eventos_me_evento_cancelado([
+            'status' => (string)($row['status'] ?? ''),
+            'event' => (string)($row['webhook_tipo'] ?? ''),
+            'webhook_event' => (string)($row['webhook_tipo'] ?? ''),
+        ]);
+
+        $cache[$event_id] = $cancelado;
+        return $cancelado;
+    } catch (Throwable $e) {
+        error_log("eventos_me_evento_cancelado_por_webhook: " . $e->getMessage());
+        $cache[$event_id] = false;
+        return false;
+    }
+}
+
+/**
  * Buscar eventos futuros da ME (com cache)
  * 
  * @param PDO $pdo
@@ -258,13 +414,14 @@ function eventos_me_buscar_futuros(PDO $pdo, string $search = '', int $days_ahea
     if (!$force_refresh) {
         $cached = eventos_me_cache_get($pdo, $cache_key);
         if ($cached !== null) {
+            $cached_active = eventos_me_filtrar_ativos($cached);
             // Aplicar filtro de busca local
-            $filtered = eventos_me_filtrar_local($cached, $search);
+            $filtered = eventos_me_filtrar_local($cached_active, $search);
             return [
                 'ok' => true,
                 'events' => $filtered,
                 'from_cache' => true,
-                'total' => count($cached),
+                'total' => count($cached_active),
                 'filtered' => count($filtered)
             ];
         }
@@ -289,20 +446,20 @@ function eventos_me_buscar_futuros(PDO $pdo, string $search = '', int $days_ahea
     if (!is_array($events)) {
         $events = [];
     }
+
+    $events_active = eventos_me_filtrar_ativos($events);
     
     // Salvar no cache (10 minutos)
-    if (!empty($events)) {
-        eventos_me_cache_set($pdo, $cache_key, $events, 10);
-    }
+    eventos_me_cache_set($pdo, $cache_key, $events_active, 10);
     
     // Aplicar filtro de busca
-    $filtered = eventos_me_filtrar_local($events, $search);
+    $filtered = eventos_me_filtrar_local($events_active, $search);
     
     return [
         'ok' => true,
         'events' => $filtered,
         'from_cache' => false,
-        'total' => count($events),
+        'total' => count($events_active),
         'filtered' => count($filtered)
     ];
 }

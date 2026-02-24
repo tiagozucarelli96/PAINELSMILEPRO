@@ -217,6 +217,11 @@ if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (strin
 $decoracao_content = trim((string)($secao_decoracao['content_html'] ?? ''));
 $observacoes_content = trim((string)($secao_observacoes['content_html'] ?? ''));
 $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
+$cards_visiveis_total =
+    ($visivel_reuniao ? 1 : 0) +
+    ($visivel_dj ? 1 : 0) +
+    ($visivel_convidados ? 1 : 0) +
+    ($visivel_arquivos ? 1 : 0);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -261,9 +266,9 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
         }
 
         .container {
-            max-width: 960px;
+            max-width: 1160px;
             margin: 0 auto;
-            padding: 1.2rem;
+            padding: 1.3rem;
         }
 
         .alert {
@@ -291,6 +296,7 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             border: 1px solid #e2e8f0;
             padding: 1rem;
             margin-bottom: 1rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
         }
 
         .event-box h2 {
@@ -307,9 +313,37 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             font-size: 0.92rem;
         }
 
+        .portal-nav {
+            display: flex;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .portal-nav a {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid #dbe3ef;
+            background: #fff;
+            color: #1e3a8a;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .portal-nav a:hover {
+            border-color: #93c5fd;
+            background: #eff6ff;
+        }
+
         .cards-grid {
             display: grid;
             gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            align-items: start;
         }
 
         .card {
@@ -317,12 +351,42 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             padding: 1rem;
+            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+        }
+
+        .card-full {
+            grid-column: 1 / -1;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.8rem;
+        }
+
+        .card-title {
+            display: grid;
+            gap: 0.2rem;
+        }
+
+        .card-kpi {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 0.2rem 0.55rem;
+            white-space: nowrap;
         }
 
         .card h3 {
             color: #1f2937;
             font-size: 1.1rem;
-            margin-bottom: 0.35rem;
+            margin-bottom: 0;
         }
 
         .card-subtitle {
@@ -375,10 +439,64 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             color: #334155;
         }
 
+        .section-accordion {
+            margin-top: 0.95rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #f8fafc;
+            overflow: hidden;
+        }
+
+        .section-accordion summary {
+            list-style: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: #334155;
+            padding: 0.8rem 0.9rem;
+        }
+
+        .section-accordion summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .section-accordion summary::after {
+            content: '+';
+            display: inline-flex;
+            width: 1.1rem;
+            height: 1.1rem;
+            border-radius: 999px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            font-size: 0.84rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            background: #fff;
+        }
+
+        .section-accordion[open] summary::after {
+            content: '-';
+        }
+
         .section-content {
             color: #334155;
             font-size: 0.9rem;
             line-height: 1.55;
+            border-top: 1px solid #e2e8f0;
+            padding: 0.85rem 0.9rem 0.9rem;
+            max-height: 240px;
+            overflow: auto;
+        }
+
+        .section-content-auto {
+            max-height: none;
+            overflow: visible;
         }
 
         .section-content p:first-child {
@@ -396,7 +514,7 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
         }
 
         .attachments-list {
-            margin-top: 0.8rem;
+            margin-top: 0.95rem;
         }
 
         .attachments-list ul {
@@ -425,7 +543,7 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
         }
 
         .upload-form {
-            margin-top: 0.85rem;
+            margin-top: 0.5rem;
             border: 1px solid #dbe3ef;
             border-radius: 10px;
             background: #f8fafc;
@@ -529,6 +647,30 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             background: #fef3c7;
             border-color: #fcd34d;
         }
+
+        @media (max-width: 760px) {
+            .container {
+                padding: 1rem 0.8rem 1.2rem;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .card-full {
+                grid-column: auto;
+            }
+
+            .card-head {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .portal-nav a {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
     </style>
 </head>
 <body>
@@ -564,11 +706,33 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             </div>
         </div>
 
+        <?php if ($cards_visiveis_total > 0): ?>
+        <nav class="portal-nav" aria-label="Navegação por cards">
+            <?php if ($visivel_reuniao): ?>
+            <a href="#card-reuniao">📝 Reunião Final</a>
+            <?php endif; ?>
+            <?php if ($visivel_dj): ?>
+            <a href="#card-dj">🎧 DJ / Protocolos</a>
+            <?php endif; ?>
+            <?php if ($visivel_convidados): ?>
+            <a href="#card-convidados">📋 Convidados (<?= (int)$convidados_resumo['total'] ?>)</a>
+            <?php endif; ?>
+            <?php if ($visivel_arquivos): ?>
+            <a href="#card-arquivos">📁 Arquivos (<?= (int)$arquivos_resumo['arquivos_cliente'] ?>)</a>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
+
         <div class="cards-grid">
             <?php if ($visivel_reuniao): ?>
-            <section class="card">
-                <h3>📝 Reunião Final</h3>
-                <div class="card-subtitle">Decoração e observações gerais.</div>
+            <section class="card" id="card-reuniao">
+                <div class="card-head">
+                    <div class="card-title">
+                        <h3>📝 Reunião Final</h3>
+                        <div class="card-subtitle">Decoração e observações gerais.</div>
+                    </div>
+                    <span class="card-kpi"><?= $editavel_reuniao ? 'Editável' : 'Visualização' ?></span>
+                </div>
                 <div class="card-actions">
                     <?php if ($editavel_reuniao && !empty($link_observacoes['token'])): ?>
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_observacoes['token']) ?>">Editar Observações</a>
@@ -577,26 +741,31 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
                     <?php endif; ?>
                 </div>
 
-                <div class="section-block">
-                    <h4>🎨 Decoração</h4>
+                <details class="section-accordion" open>
+                    <summary>🎨 Decoração</summary>
                     <div class="section-content">
                         <?= $decoracao_content !== '' ? $decoracao_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
                     </div>
-                </div>
+                </details>
 
-                <div class="section-block">
-                    <h4>📝 Observações Gerais</h4>
+                <details class="section-accordion">
+                    <summary>📝 Observações Gerais</summary>
                     <div class="section-content">
                         <?= $observacoes_content !== '' ? $observacoes_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
                     </div>
-                </div>
+                </details>
             </section>
             <?php endif; ?>
 
             <?php if ($visivel_dj): ?>
-            <section class="card">
-                <h3>🎧 DJ / Protocolos</h3>
-                <div class="card-subtitle">Formulários e materiais de apoio do DJ.</div>
+            <section class="card" id="card-dj">
+                <div class="card-head">
+                    <div class="card-title">
+                        <h3>🎧 DJ / Protocolos</h3>
+                        <div class="card-subtitle">Formulários e materiais de apoio do DJ.</div>
+                    </div>
+                    <span class="card-kpi"><?= count($links_dj_portal) ?> quadro(s)</span>
+                </div>
                 <div class="card-actions">
                     <?php if (!empty($links_dj_portal)): ?>
                     <?php foreach ($links_dj_portal as $dj_link_portal): ?>
@@ -616,38 +785,45 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
                     <?php endif; ?>
                 </div>
 
-                <div class="section-block">
-                    <h4>Conteúdo atual</h4>
+                <details class="section-accordion" open>
+                    <summary>Conteúdo atual</summary>
                     <div class="section-content">
                         <?= $dj_content !== '' ? $dj_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
                     </div>
-                </div>
+                </details>
 
                 <?php if (!empty($anexos_dj)): ?>
-                <div class="section-block attachments-list">
-                    <h4>📎 Anexos</h4>
-                    <ul>
-                        <?php foreach ($anexos_dj as $anexo): ?>
-                        <li>
-                            <?php if (!empty($anexo['public_url'])): ?>
-                            <a href="<?= htmlspecialchars((string)$anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
-                                <?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?>
-                            </a>
-                            <?php else: ?>
-                            <span><?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?></span>
-                            <?php endif; ?>
-                        </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
+                <details class="section-accordion attachments-list">
+                    <summary>📎 Anexos (<?= count($anexos_dj) ?>)</summary>
+                    <div class="section-content section-content-auto">
+                        <ul>
+                            <?php foreach ($anexos_dj as $anexo): ?>
+                            <li>
+                                <?php if (!empty($anexo['public_url'])): ?>
+                                <a href="<?= htmlspecialchars((string)$anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                    <?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?>
+                                </a>
+                                <?php else: ?>
+                                <span><?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?></span>
+                                <?php endif; ?>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </details>
                 <?php endif; ?>
             </section>
             <?php endif; ?>
 
             <?php if ($visivel_convidados): ?>
-            <section class="card">
-                <h3>📋 Lista de Convidados</h3>
-                <div class="card-subtitle">Cadastre convidados para facilitar a recepção no dia do evento.</div>
+            <section class="card" id="card-convidados">
+                <div class="card-head">
+                    <div class="card-title">
+                        <h3>📋 Lista de Convidados</h3>
+                        <div class="card-subtitle">Cadastre convidados para facilitar a recepção no dia do evento.</div>
+                    </div>
+                    <span class="card-kpi"><?= (int)$convidados_resumo['total'] ?> convidados</span>
+                </div>
                 <div class="card-actions">
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_convidados&token=<?= urlencode($token) ?>">
                         <?= $editavel_convidados ? 'Gerenciar convidados' : 'Visualizar convidados' ?>
@@ -666,9 +842,14 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
             <?php endif; ?>
 
             <?php if ($visivel_arquivos): ?>
-            <section class="card">
-                <h3>📁 Arquivos</h3>
-                <div class="card-subtitle">Envie arquivos do evento e acompanhe os materiais solicitados.</div>
+            <section class="card card-full" id="card-arquivos">
+                <div class="card-head">
+                    <div class="card-title">
+                        <h3>📁 Arquivos</h3>
+                        <div class="card-subtitle">Envie arquivos do evento e acompanhe os materiais solicitados.</div>
+                    </div>
+                    <span class="card-kpi"><?= (int)$arquivos_resumo['arquivos_cliente'] ?> envio(s)</span>
+                </div>
 
                 <?php if ($editavel_arquivos): ?>
                 <form method="POST" enctype="multipart/form-data" class="upload-form">
@@ -709,68 +890,72 @@ $dj_content = trim((string)($secao_dj['content_html'] ?? ''));
                 </div>
                 <?php endif; ?>
 
-                <div class="section-block">
-                    <h4>Campos solicitados</h4>
-                    <?php if (empty($campos_arquivos)): ?>
-                    <div class="empty-text">Nenhum campo solicitado no momento.</div>
-                    <?php else: ?>
-                    <div class="campo-status">
-                        <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                <details class="section-accordion">
+                    <summary>Campos solicitados (<?= count($campos_arquivos) ?>)</summary>
+                    <div class="section-content section-content-auto">
+                        <?php if (empty($campos_arquivos)): ?>
+                        <div class="empty-text">Nenhum campo solicitado no momento.</div>
+                        <?php else: ?>
+                        <div class="campo-status">
+                            <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                            <?php
+                                $campo_id = (int)($campo_arquivo['id'] ?? 0);
+                                $qtd_campo = isset($arquivos_campos_map[$campo_id]) ? count($arquivos_campos_map[$campo_id]) : 0;
+                            ?>
+                            <div class="campo-status-item">
+                                <strong><?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?></strong>
+                                <?php if (!empty($campo_arquivo['obrigatorio_cliente'])): ?>
+                                <span class="badge <?= $qtd_campo > 0 ? 'badge-ok' : 'badge-warn' ?>">
+                                    <?= $qtd_campo > 0 ? 'Recebido' : 'Pendente' ?>
+                                </span>
+                                <?php endif; ?>
+                                <?php if (!empty($campo_arquivo['descricao'])): ?>
+                                <div class="arquivo-meta"><?= htmlspecialchars((string)$campo_arquivo['descricao']) ?></div>
+                                <?php endif; ?>
+                                <div class="arquivo-meta">
+                                    <?= $qtd_campo > 0 ? $qtd_campo . ' arquivo(s) enviado(s)' : 'Aguardando envio' ?>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </details>
+
+                <details class="section-accordion">
+                    <summary>Arquivos disponíveis (<?= count($arquivos_portal) ?>)</summary>
+                    <div class="section-content section-content-auto">
+                        <?php if (empty($arquivos_portal)): ?>
+                        <div class="empty-text">Nenhum arquivo disponível ainda.</div>
+                        <?php else: ?>
+                        <?php foreach ($arquivos_portal as $arquivo_portal): ?>
                         <?php
-                            $campo_id = (int)($campo_arquivo['id'] ?? 0);
-                            $qtd_campo = isset($arquivos_campos_map[$campo_id]) ? count($arquivos_campos_map[$campo_id]) : 0;
+                            $arquivo_nome = trim((string)($arquivo_portal['original_name'] ?? 'arquivo'));
+                            $arquivo_url = trim((string)($arquivo_portal['public_url'] ?? ''));
+                            $arquivo_desc = trim((string)($arquivo_portal['descricao'] ?? ''));
+                            $arquivo_campo = trim((string)($arquivo_portal['campo_titulo'] ?? ''));
+                            $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
+                            $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
+                            $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
                         ?>
-                        <div class="campo-status-item">
-                            <strong><?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?></strong>
-                            <?php if (!empty($campo_arquivo['obrigatorio_cliente'])): ?>
-                            <span class="badge <?= $qtd_campo > 0 ? 'badge-ok' : 'badge-warn' ?>">
-                                <?= $qtd_campo > 0 ? 'Recebido' : 'Pendente' ?>
-                            </span>
-                            <?php endif; ?>
-                            <?php if (!empty($campo_arquivo['descricao'])): ?>
-                            <div class="arquivo-meta"><?= htmlspecialchars((string)$campo_arquivo['descricao']) ?></div>
+                        <div class="arquivo-item">
+                            <?php if ($arquivo_url !== ''): ?>
+                            <a class="arquivo-link" href="<?= htmlspecialchars($arquivo_url) ?>" target="_blank" rel="noopener noreferrer">
+                                <?= htmlspecialchars($arquivo_nome) ?>
+                            </a>
+                            <?php else: ?>
+                            <strong><?= htmlspecialchars($arquivo_nome) ?></strong>
                             <?php endif; ?>
                             <div class="arquivo-meta">
-                                <?= $qtd_campo > 0 ? $qtd_campo . ' arquivo(s) enviado(s)' : 'Aguardando envio' ?>
+                                <?= $arquivo_campo !== '' ? 'Tipo: ' . htmlspecialchars($arquivo_campo) . ' • ' : '' ?>
+                                Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
+                                <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
                             </div>
                         </div>
                         <?php endforeach; ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <div class="section-block">
-                    <h4>Arquivos disponíveis</h4>
-                    <?php if (empty($arquivos_portal)): ?>
-                    <div class="empty-text">Nenhum arquivo disponível ainda.</div>
-                    <?php else: ?>
-                    <?php foreach ($arquivos_portal as $arquivo_portal): ?>
-                    <?php
-                        $arquivo_nome = trim((string)($arquivo_portal['original_name'] ?? 'arquivo'));
-                        $arquivo_url = trim((string)($arquivo_portal['public_url'] ?? ''));
-                        $arquivo_desc = trim((string)($arquivo_portal['descricao'] ?? ''));
-                        $arquivo_campo = trim((string)($arquivo_portal['campo_titulo'] ?? ''));
-                        $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
-                        $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
-                        $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
-                    ?>
-                    <div class="arquivo-item">
-                        <?php if ($arquivo_url !== ''): ?>
-                        <a class="arquivo-link" href="<?= htmlspecialchars($arquivo_url) ?>" target="_blank" rel="noopener noreferrer">
-                            <?= htmlspecialchars($arquivo_nome) ?>
-                        </a>
-                        <?php else: ?>
-                        <strong><?= htmlspecialchars($arquivo_nome) ?></strong>
                         <?php endif; ?>
-                        <div class="arquivo-meta">
-                            <?= $arquivo_campo !== '' ? 'Tipo: ' . htmlspecialchars($arquivo_campo) . ' • ' : '' ?>
-                            Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
-                            <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
-                        </div>
                     </div>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
+                </details>
             </section>
             <?php endif; ?>
 

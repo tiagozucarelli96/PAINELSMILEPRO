@@ -47,6 +47,7 @@ if (isset($_GET['logout'])) {
 $eventos = [];
 $eventos_por_data = [];
 $erro_eventos = '';
+$aviso_evento_cancelado = '';
 $start_date = date('Y-m-d');
 try {
     $start = new DateTime('today');
@@ -57,6 +58,7 @@ try {
         SELECT r.id,
                r.me_event_id,
                r.status,
+               r.me_event_snapshot,
                (r.me_event_snapshot->>'data')::date as data_evento,
                (r.me_event_snapshot->>'nome') as nome_evento,
                (r.me_event_snapshot->>'local') as local_evento,
@@ -64,13 +66,27 @@ try {
                (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome
         FROM eventos_reunioes r
         WHERE (r.me_event_snapshot->>'data')::date >= :start
-          AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
           AND {$tipo_real_expr} IN ('casamento', '15anos')
         ORDER BY (r.me_event_snapshot->>'data')::date ASC, (r.me_event_snapshot->>'hora_inicio') ASC, r.id ASC
         LIMIT 30
     ");
     $stmt->execute([':start' => $start_date]);
-    $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $eventos_raw = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($eventos_raw as $ev) {
+        $snapshot = json_decode((string)($ev['me_event_snapshot'] ?? '{}'), true);
+        $snapshot = is_array($snapshot) ? $snapshot : [];
+        $me_event_id = (int)($ev['me_event_id'] ?? ($snapshot['id'] ?? 0));
+        $cancelado = (!empty($snapshot) && eventos_me_evento_cancelado($snapshot))
+            || ($me_event_id > 0 && eventos_me_evento_cancelado_por_webhook($pdo, $me_event_id));
+
+        if ($cancelado) {
+            continue;
+        }
+
+        unset($ev['me_event_snapshot']);
+        $eventos[] = $ev;
+    }
 
     foreach ($eventos as $ev) {
         $data_evento = trim((string)($ev['data_evento'] ?? ''));
@@ -111,7 +127,6 @@ if (!empty($_GET['evento'])) {
             FROM eventos_reunioes r
             WHERE r.id = :id
               AND (r.me_event_snapshot->>'data')::date >= :start
-              AND COALESCE(r.me_event_snapshot->>'me_status', 'ativo') <> 'cancelado'
               AND {$tipo_real_expr} IN ('casamento', '15anos')
             LIMIT 1
         ");
@@ -119,8 +134,19 @@ if (!empty($_GET['evento'])) {
         $evento_selecionado = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if ($evento_selecionado) {
-            $secao_dj = eventos_reuniao_get_secao($pdo, $evento_id, 'dj_protocolo');
-            $anexos = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
+            $snapshot = json_decode((string)($evento_selecionado['me_event_snapshot'] ?? '{}'), true);
+            $snapshot = is_array($snapshot) ? $snapshot : [];
+            $me_event_id = (int)($evento_selecionado['me_event_id'] ?? ($snapshot['id'] ?? 0));
+            $cancelado = (!empty($snapshot) && eventos_me_evento_cancelado($snapshot))
+                || ($me_event_id > 0 && eventos_me_evento_cancelado_por_webhook($pdo, $me_event_id));
+
+            if ($cancelado) {
+                $aviso_evento_cancelado = 'Evento cancelado na ME. Ele foi ocultado do portal.';
+                $evento_selecionado = null;
+            } else {
+                $secao_dj = eventos_reuniao_get_secao($pdo, $evento_id, 'dj_protocolo');
+                $anexos = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
+            }
         }
     } catch (Exception $e) {
         error_log("Erro portal DJ (detalhe): " . $e->getMessage());
@@ -632,6 +658,11 @@ if (!empty($_GET['evento'])) {
     </div>
     
     <div class="container">
+        <?php if ($aviso_evento_cancelado !== ''): ?>
+        <div style="margin-bottom:1rem; padding:0.85rem 1rem; border:1px solid #facc15; background:#fef9c3; color:#854d0e; border-radius:8px;">
+            <?= htmlspecialchars($aviso_evento_cancelado) ?>
+        </div>
+        <?php endif; ?>
         <?php if ($evento_selecionado): ?>
         <!-- Detalhes do Evento -->
         <a href="?page=portal_dj" class="btn btn-primary" style="margin-bottom: 1rem;">← Voltar à lista</a>
