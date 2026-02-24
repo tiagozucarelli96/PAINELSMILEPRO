@@ -18,7 +18,29 @@ if (empty($_SESSION['perm_superadmin']) && empty($_SESSION['perm_logistico'])) {
 $unidades = $pdo->query("SELECT id, nome, codigo FROM logistica_unidades WHERE ativo IS TRUE ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $unidade_id = (int)($_GET['unidade_id'] ?? 0);
 if ($unidade_id === 0 && $unidades) {
-    $unidade_id = (int)$unidades[0]['id'];
+    $active_ids = array_map(static fn(array $u): int => (int)$u['id'], $unidades);
+    $session_unidade_id = (int)($_SESSION['unidade_id'] ?? 0);
+
+    if ($session_unidade_id > 0 && in_array($session_unidade_id, $active_ids, true)) {
+        $unidade_id = $session_unidade_id;
+    } else {
+        $preferida = $pdo->query("
+            SELECT s.unidade_id
+            FROM logistica_estoque_saldos s
+            JOIN logistica_unidades u ON u.id = s.unidade_id
+            WHERE u.ativo IS TRUE
+            GROUP BY s.unidade_id
+            HAVING SUM(CASE WHEN COALESCE(s.quantidade_atual, 0) > 0 THEN 1 ELSE 0 END) > 0
+            ORDER BY SUM(CASE WHEN COALESCE(s.quantidade_atual, 0) > 0 THEN s.quantidade_atual ELSE 0 END) DESC
+            LIMIT 1
+        ")->fetchColumn();
+
+        if ($preferida && in_array((int)$preferida, $active_ids, true)) {
+            $unidade_id = (int)$preferida;
+        } else {
+            $unidade_id = (int)$unidades[0]['id'];
+        }
+    }
 }
 $q = trim((string)($_GET['q'] ?? ''));
 
