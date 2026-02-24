@@ -20,11 +20,6 @@ $success_message = '';
 $portal = null;
 $reuniao = null;
 $snapshot = [];
-$secao_decoracao = null;
-$secao_observacoes = null;
-$secao_dj = null;
-$anexos_dj = [];
-$link_dj = null;
 $link_observacoes = null;
 $links_dj_portal = [];
 $convidados_resumo = ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
@@ -81,11 +76,6 @@ if ($token === '') {
             $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
             eventos_arquivos_seed_campos_por_tipo($pdo, (int)$reuniao['id'], $tipo_evento_real, 0);
 
-            $secao_decoracao = eventos_reuniao_get_secao($pdo, (int)$reuniao['id'], 'decoracao');
-            $secao_observacoes = eventos_reuniao_get_secao($pdo, (int)$reuniao['id'], 'observacoes_gerais');
-            $secao_dj = eventos_reuniao_get_secao($pdo, (int)$reuniao['id'], 'dj_protocolo');
-            $anexos_dj = eventos_reuniao_get_anexos($pdo, (int)$reuniao['id'], 'dj_protocolo');
-
             $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
             $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
 
@@ -115,7 +105,6 @@ if ($token === '') {
                 }
             }
 
-            $link_dj = !empty($links_dj_portal) ? $links_dj_portal[0] : null;
             $link_observacoes = !empty($links_observacoes) ? $links_observacoes[0] : null;
             $convidados_resumo = eventos_convidados_resumo($pdo, (int)$reuniao['id']);
 
@@ -214,14 +203,14 @@ if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (strin
     }
 }
 
-$decoracao_content = trim((string)($secao_decoracao['content_html'] ?? ''));
-$observacoes_content = trim((string)($secao_observacoes['content_html'] ?? ''));
-$dj_content = trim((string)($secao_dj['content_html'] ?? ''));
 $cards_visiveis_total =
     ($visivel_reuniao ? 1 : 0) +
     ($visivel_dj ? 1 : 0) +
     ($visivel_convidados ? 1 : 0) +
     ($visivel_arquivos ? 1 : 0);
+$view = trim((string)($_GET['view'] ?? $_POST['view'] ?? 'dashboard'));
+$view = $view === '' ? 'dashboard' : $view;
+$view_arquivos_ativo = ($view === 'arquivos' && $visivel_arquivos);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -266,9 +255,9 @@ $cards_visiveis_total =
         }
 
         .container {
-            max-width: 1160px;
+            max-width: 1320px;
             margin: 0 auto;
-            padding: 1.3rem;
+            padding: 1.4rem;
         }
 
         .alert {
@@ -292,11 +281,11 @@ $cards_visiveis_total =
 
         .event-box {
             background: #fff;
-            border-radius: 12px;
+            border-radius: 16px;
             border: 1px solid #e2e8f0;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+            padding: 1.1rem;
+            margin-bottom: 1.2rem;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
         }
 
         .event-box h2 {
@@ -313,92 +302,97 @@ $cards_visiveis_total =
             font-size: 0.92rem;
         }
 
-        .portal-nav {
-            display: flex;
-            gap: 0.55rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-
-        .portal-nav a {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.45rem 0.75rem;
-            border-radius: 999px;
-            border: 1px solid #dbe3ef;
-            background: #fff;
-            color: #1e3a8a;
-            font-size: 0.8rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-
-        .portal-nav a:hover {
-            border-color: #93c5fd;
-            background: #eff6ff;
-        }
-
         .cards-grid {
             display: grid;
-            gap: 1rem;
+            gap: 1.1rem;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             align-items: start;
         }
 
-        .card {
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            padding: 1rem;
-            box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
-        }
-
-        .card-full {
-            grid-column: 1 / -1;
-        }
-
-        .card-head {
+        .portal-card {
+            min-height: 250px;
+            border-radius: 22px;
+            padding: 1.55rem;
+            color: #fff;
+            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+            position: relative;
+            overflow: hidden;
             display: flex;
-            align-items: flex-start;
+            flex-direction: column;
             justify-content: space-between;
-            gap: 0.8rem;
+        }
+
+        .portal-card::before {
+            content: '';
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            border-radius: 999px;
+            top: -120px;
+            right: -90px;
+            background: rgba(255, 255, 255, 0.14);
+            pointer-events: none;
+        }
+
+        .portal-card-theme-reuniao {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
+        .portal-card-theme-dj {
+            background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+        }
+
+        .portal-card-theme-convidados {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .portal-card-theme-arquivos {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+        }
+
+        .card-icon {
+            font-size: 2.7rem;
+            line-height: 1;
+            margin-bottom: 1.25rem;
+            position: relative;
+            z-index: 1;
         }
 
         .card-title {
-            display: grid;
-            gap: 0.2rem;
+            position: relative;
+            z-index: 1;
         }
 
-        .card-kpi {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            border: 1px solid #cbd5e1;
-            background: #f8fafc;
-            color: #334155;
-            font-size: 0.72rem;
-            font-weight: 700;
-            padding: 0.2rem 0.55rem;
-            white-space: nowrap;
-        }
-
-        .card h3 {
-            color: #1f2937;
-            font-size: 1.1rem;
-            margin-bottom: 0;
+        .card-title h3 {
+            font-size: 2.2rem;
+            line-height: 1.1;
+            margin-bottom: 0.65rem;
+            font-weight: 800;
+            letter-spacing: -0.01em;
         }
 
         .card-subtitle {
-            color: #64748b;
-            font-size: 0.86rem;
+            font-size: 0.98rem;
+            line-height: 1.35;
+            opacity: 0.9;
+            max-width: 92%;
+        }
+
+        .card-meta {
+            margin-top: 0.7rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            opacity: 0.92;
         }
 
         .card-actions {
-            margin-top: 0.75rem;
+            margin-top: 1rem;
             display: flex;
-            gap: 0.55rem;
+            gap: 0.6rem;
             flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
         }
 
         .btn {
@@ -406,27 +400,93 @@ $cards_visiveis_total =
             align-items: center;
             justify-content: center;
             text-decoration: none;
-            padding: 0.58rem 0.95rem;
-            border-radius: 8px;
-            border: none;
-            font-size: 0.85rem;
+            padding: 0.6rem 0.95rem;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-size: 0.82rem;
             font-weight: 700;
             cursor: pointer;
         }
 
         .btn-primary {
-            background: #1e3a8a;
+            background: #1d4ed8;
             color: #fff;
         }
 
         .btn-secondary {
-            background: #f1f5f9;
+            background: rgba(255, 255, 255, 0.22);
+            border-color: rgba(255, 255, 255, 0.35);
+            color: #fff;
+        }
+
+        .empty-text {
+            color: #64748b;
+            font-style: italic;
+            font-size: 0.88rem;
+        }
+
+        .portal-card .btn-primary {
+            background: #fff;
+            color: #1e293b;
+            border-color: rgba(255, 255, 255, 0.65);
+        }
+
+        .portal-card .btn-secondary {
+            background: rgba(255, 255, 255, 0.18);
+            border-color: rgba(255, 255, 255, 0.45);
+            color: #fff;
+        }
+
+        .btn-disabled {
+            cursor: default;
+            opacity: 0.82;
+        }
+
+        .module-header {
+            margin-bottom: 0.9rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            background: #fff;
             border: 1px solid #dbe3ef;
-            color: #334155;
+            border-radius: 10px;
+            padding: 0.55rem 0.8rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
+
+        .module-panel {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 1rem;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+        }
+
+        .module-panel h3 {
+            color: #0f172a;
+            font-size: 1.1rem;
+            margin-bottom: 0.2rem;
+        }
+
+        .module-subtitle {
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-bottom: 0.9rem;
         }
 
         .section-block {
-            margin-top: 0.95rem;
+            margin-top: 0.85rem;
             border: 1px solid #e2e8f0;
             border-radius: 10px;
             padding: 0.85rem;
@@ -439,111 +499,8 @@ $cards_visiveis_total =
             color: #334155;
         }
 
-        .section-accordion {
-            margin-top: 0.95rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            background: #f8fafc;
-            overflow: hidden;
-        }
-
-        .section-accordion summary {
-            list-style: none;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 0.75rem;
-            font-size: 0.92rem;
-            font-weight: 700;
-            color: #334155;
-            padding: 0.8rem 0.9rem;
-        }
-
-        .section-accordion summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .section-accordion summary::after {
-            content: '+';
-            display: inline-flex;
-            width: 1.1rem;
-            height: 1.1rem;
-            border-radius: 999px;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #cbd5e1;
-            color: #334155;
-            font-size: 0.84rem;
-            font-weight: 700;
-            flex-shrink: 0;
-            background: #fff;
-        }
-
-        .section-accordion[open] summary::after {
-            content: '-';
-        }
-
-        .section-content {
-            color: #334155;
-            font-size: 0.9rem;
-            line-height: 1.55;
-            border-top: 1px solid #e2e8f0;
-            padding: 0.85rem 0.9rem 0.9rem;
-            max-height: 240px;
-            overflow: auto;
-        }
-
-        .section-content-auto {
-            max-height: none;
-            overflow: visible;
-        }
-
-        .section-content p:first-child {
-            margin-top: 0;
-        }
-
-        .section-content p:last-child {
-            margin-bottom: 0;
-        }
-
-        .empty-text {
-            color: #64748b;
-            font-style: italic;
-            font-size: 0.88rem;
-        }
-
-        .attachments-list {
-            margin-top: 0.95rem;
-        }
-
-        .attachments-list ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: grid;
-            gap: 0.55rem;
-        }
-
-        .attachments-list li {
-            border: 1px solid #dbe3ef;
-            border-radius: 8px;
-            background: #fff;
-            padding: 0.55rem 0.65rem;
-            font-size: 0.84rem;
-        }
-
-        .attachments-list a {
-            color: #1d4ed8;
-            text-decoration: none;
-        }
-
-        .attachments-list a:hover {
-            text-decoration: underline;
-        }
-
         .upload-form {
-            margin-top: 0.5rem;
+            margin-top: 0.25rem;
             border: 1px solid #dbe3ef;
             border-radius: 10px;
             background: #f8fafc;
@@ -581,6 +538,31 @@ $cards_visiveis_total =
             color: #64748b;
             font-size: 0.78rem;
             margin-top: -0.25rem;
+        }
+
+        .attachments-list ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 0.55rem;
+        }
+
+        .attachments-list li {
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #fff;
+            padding: 0.55rem 0.65rem;
+            font-size: 0.84rem;
+        }
+
+        .attachments-list a {
+            color: #1d4ed8;
+            text-decoration: none;
+        }
+
+        .attachments-list a:hover {
+            text-decoration: underline;
         }
 
         .arquivo-item {
@@ -657,18 +639,22 @@ $cards_visiveis_total =
                 grid-template-columns: 1fr;
             }
 
-            .card-full {
-                grid-column: auto;
+            .portal-card {
+                min-height: auto;
+                padding: 1.25rem;
             }
 
-            .card-head {
-                flex-direction: column;
+            .card-title h3 {
+                font-size: 1.85rem;
+            }
+
+            .card-subtitle {
+                max-width: 100%;
+            }
+
+            .module-header {
                 align-items: flex-start;
-            }
-
-            .portal-nav a {
-                width: 100%;
-                justify-content: flex-start;
+                flex-direction: column;
             }
         }
     </style>
@@ -706,65 +692,38 @@ $cards_visiveis_total =
             </div>
         </div>
 
-        <?php if ($cards_visiveis_total > 0): ?>
-        <nav class="portal-nav" aria-label="Navegação por cards">
-            <?php if ($visivel_reuniao): ?>
-            <a href="#card-reuniao">📝 Reunião Final</a>
-            <?php endif; ?>
-            <?php if ($visivel_dj): ?>
-            <a href="#card-dj">🎧 DJ / Protocolos</a>
-            <?php endif; ?>
-            <?php if ($visivel_convidados): ?>
-            <a href="#card-convidados">📋 Convidados (<?= (int)$convidados_resumo['total'] ?>)</a>
-            <?php endif; ?>
-            <?php if ($visivel_arquivos): ?>
-            <a href="#card-arquivos">📁 Arquivos (<?= (int)$arquivos_resumo['arquivos_cliente'] ?>)</a>
-            <?php endif; ?>
-        </nav>
-        <?php endif; ?>
-
         <div class="cards-grid">
             <?php if ($visivel_reuniao): ?>
-            <section class="card" id="card-reuniao">
-                <div class="card-head">
+            <section class="portal-card portal-card-theme-reuniao">
+                <div>
+                    <div class="card-icon">📝</div>
                     <div class="card-title">
-                        <h3>📝 Reunião Final</h3>
-                        <div class="card-subtitle">Decoração e observações gerais.</div>
+                        <h3>Reunião Final</h3>
+                        <div class="card-subtitle">Organize os detalhes finais do evento com praticidade.</div>
+                        <div class="card-meta"><?= $editavel_reuniao ? 'Editável pelo cliente' : 'Somente visualização' ?></div>
                     </div>
-                    <span class="card-kpi"><?= $editavel_reuniao ? 'Editável' : 'Visualização' ?></span>
                 </div>
                 <div class="card-actions">
-                    <?php if ($editavel_reuniao && !empty($link_observacoes['token'])): ?>
-                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_observacoes['token']) ?>">Editar Observações</a>
+                    <?php if (!empty($link_observacoes['token'])): ?>
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_observacoes['token']) ?>">
+                        <?= $editavel_reuniao ? 'Abrir reunião final' : 'Visualizar reunião final' ?>
+                    </a>
                     <?php else: ?>
-                    <span class="btn btn-secondary" style="cursor:default;">Somente visualização</span>
+                    <span class="btn btn-secondary btn-disabled">Sem link disponível</span>
                     <?php endif; ?>
                 </div>
-
-                <details class="section-accordion" open>
-                    <summary>🎨 Decoração</summary>
-                    <div class="section-content">
-                        <?= $decoracao_content !== '' ? $decoracao_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
-                    </div>
-                </details>
-
-                <details class="section-accordion">
-                    <summary>📝 Observações Gerais</summary>
-                    <div class="section-content">
-                        <?= $observacoes_content !== '' ? $observacoes_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
-                    </div>
-                </details>
             </section>
             <?php endif; ?>
 
             <?php if ($visivel_dj): ?>
-            <section class="card" id="card-dj">
-                <div class="card-head">
+            <section class="portal-card portal-card-theme-dj">
+                <div>
+                    <div class="card-icon">🎧</div>
                     <div class="card-title">
-                        <h3>🎧 DJ / Protocolos</h3>
-                        <div class="card-subtitle">Formulários e materiais de apoio do DJ.</div>
+                        <h3>DJ e Protocolos</h3>
+                        <div class="card-subtitle">Acesse os quadros do DJ e os materiais do protocolo.</div>
+                        <div class="card-meta"><?= count($links_dj_portal) ?> quadro(s) liberado(s)</div>
                     </div>
-                    <span class="card-kpi"><?= count($links_dj_portal) ?> quadro(s)</span>
                 </div>
                 <div class="card-actions">
                     <?php if (!empty($links_dj_portal)): ?>
@@ -777,195 +736,182 @@ $cards_visiveis_total =
                         }
                     ?>
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$dj_link_portal['token']) ?>">
-                        <?= htmlspecialchars($dj_title) ?> (Quadro <?= $dj_slot ?>)
+                        <?= htmlspecialchars($dj_title) ?> (<?= $dj_slot ?>)
                     </a>
                     <?php endforeach; ?>
                     <?php else: ?>
-                    <span class="btn btn-secondary" style="cursor:default;">Nenhum quadro disponível para o cliente</span>
+                    <span class="btn btn-secondary btn-disabled">Nenhum quadro disponível</span>
                     <?php endif; ?>
                 </div>
-
-                <details class="section-accordion" open>
-                    <summary>Conteúdo atual</summary>
-                    <div class="section-content">
-                        <?= $dj_content !== '' ? $dj_content : '<div class="empty-text">Sem conteúdo disponível.</div>' ?>
-                    </div>
-                </details>
-
-                <?php if (!empty($anexos_dj)): ?>
-                <details class="section-accordion attachments-list">
-                    <summary>📎 Anexos (<?= count($anexos_dj) ?>)</summary>
-                    <div class="section-content section-content-auto">
-                        <ul>
-                            <?php foreach ($anexos_dj as $anexo): ?>
-                            <li>
-                                <?php if (!empty($anexo['public_url'])): ?>
-                                <a href="<?= htmlspecialchars((string)$anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
-                                    <?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?>
-                                </a>
-                                <?php else: ?>
-                                <span><?= htmlspecialchars((string)($anexo['original_name'] ?? 'arquivo')) ?></span>
-                                <?php endif; ?>
-                            </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    </div>
-                </details>
-                <?php endif; ?>
             </section>
             <?php endif; ?>
 
             <?php if ($visivel_convidados): ?>
-            <section class="card" id="card-convidados">
-                <div class="card-head">
+            <section class="portal-card portal-card-theme-convidados">
+                <div>
+                    <div class="card-icon">👥</div>
                     <div class="card-title">
-                        <h3>📋 Lista de Convidados</h3>
-                        <div class="card-subtitle">Cadastre convidados para facilitar a recepção no dia do evento.</div>
+                        <h3>Convidados</h3>
+                        <div class="card-subtitle">Visualize e acompanhe lista de convidados e check-ins.</div>
+                        <div class="card-meta">
+                            <?= (int)$convidados_resumo['total'] ?> total • <?= (int)$convidados_resumo['checkin'] ?> check-ins
+                        </div>
                     </div>
-                    <span class="card-kpi"><?= (int)$convidados_resumo['total'] ?> convidados</span>
                 </div>
                 <div class="card-actions">
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_convidados&token=<?= urlencode($token) ?>">
                         <?= $editavel_convidados ? 'Gerenciar convidados' : 'Visualizar convidados' ?>
                     </a>
                 </div>
-
-                <div class="section-block">
-                    <h4>Resumo atual</h4>
-                    <div class="section-content">
-                        <p><strong>Total:</strong> <?= (int)$convidados_resumo['total'] ?> convidados</p>
-                        <p><strong>Check-ins:</strong> <?= (int)$convidados_resumo['checkin'] ?></p>
-                        <p><strong>Pendentes:</strong> <?= (int)$convidados_resumo['pendentes'] ?></p>
-                    </div>
-                </div>
             </section>
             <?php endif; ?>
 
             <?php if ($visivel_arquivos): ?>
-            <section class="card card-full" id="card-arquivos">
-                <div class="card-head">
+            <section class="portal-card portal-card-theme-arquivos">
+                <div>
+                    <div class="card-icon">📁</div>
                     <div class="card-title">
-                        <h3>📁 Arquivos</h3>
-                        <div class="card-subtitle">Envie arquivos do evento e acompanhe os materiais solicitados.</div>
+                        <h3>Arquivos</h3>
+                        <div class="card-subtitle">Entre na área de arquivos para enviar e acompanhar materiais.</div>
+                        <div class="card-meta">
+                            <?= (int)$arquivos_resumo['arquivos_cliente'] ?> enviados • <?= (int)$arquivos_resumo['campos_pendentes'] ?> pendente(s)
+                        </div>
                     </div>
-                    <span class="card-kpi"><?= (int)$arquivos_resumo['arquivos_cliente'] ?> envio(s)</span>
                 </div>
-
-                <?php if ($editavel_arquivos): ?>
-                <form method="POST" enctype="multipart/form-data" class="upload-form">
-                    <input type="hidden" name="action" value="upload_arquivo_cliente">
-                    <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-
-                    <label>
-                        Arquivo
-                        <input type="file"
-                               name="arquivo"
-                               accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
-                               required>
-                    </label>
-
-                    <label>
-                        Tipo do arquivo (opcional)
-                        <select name="campo_id">
-                            <option value="">Selecionar...</option>
-                            <?php foreach ($campos_arquivos as $campo_arquivo): ?>
-                            <option value="<?= (int)($campo_arquivo['id'] ?? 0) ?>">
-                                <?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-
-                    <label>
-                        Descrição do arquivo
-                        <textarea name="descricao_arquivo" placeholder="Ex.: Imagem final aprovada do convite."></textarea>
-                    </label>
-
-                    <button type="submit" class="btn btn-primary">Enviar arquivo</button>
-                    <div class="upload-help">Limite de até 500MB por arquivo.</div>
-                </form>
-                <?php else: ?>
                 <div class="card-actions">
-                    <span class="btn btn-secondary" style="cursor:default;">Uploads desativados para este portal</span>
+                    <?php if ($view_arquivos_ativo): ?>
+                    <span class="btn btn-secondary btn-disabled">Área de arquivos aberta abaixo</span>
+                    <?php else: ?>
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_portal&token=<?= urlencode($token) ?>&view=arquivos">Abrir área de arquivos</a>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
-
-                <details class="section-accordion">
-                    <summary>Campos solicitados (<?= count($campos_arquivos) ?>)</summary>
-                    <div class="section-content section-content-auto">
-                        <?php if (empty($campos_arquivos)): ?>
-                        <div class="empty-text">Nenhum campo solicitado no momento.</div>
-                        <?php else: ?>
-                        <div class="campo-status">
-                            <?php foreach ($campos_arquivos as $campo_arquivo): ?>
-                            <?php
-                                $campo_id = (int)($campo_arquivo['id'] ?? 0);
-                                $qtd_campo = isset($arquivos_campos_map[$campo_id]) ? count($arquivos_campos_map[$campo_id]) : 0;
-                            ?>
-                            <div class="campo-status-item">
-                                <strong><?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?></strong>
-                                <?php if (!empty($campo_arquivo['obrigatorio_cliente'])): ?>
-                                <span class="badge <?= $qtd_campo > 0 ? 'badge-ok' : 'badge-warn' ?>">
-                                    <?= $qtd_campo > 0 ? 'Recebido' : 'Pendente' ?>
-                                </span>
-                                <?php endif; ?>
-                                <?php if (!empty($campo_arquivo['descricao'])): ?>
-                                <div class="arquivo-meta"><?= htmlspecialchars((string)$campo_arquivo['descricao']) ?></div>
-                                <?php endif; ?>
-                                <div class="arquivo-meta">
-                                    <?= $qtd_campo > 0 ? $qtd_campo . ' arquivo(s) enviado(s)' : 'Aguardando envio' ?>
-                                </div>
-                            </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </details>
-
-                <details class="section-accordion">
-                    <summary>Arquivos disponíveis (<?= count($arquivos_portal) ?>)</summary>
-                    <div class="section-content section-content-auto">
-                        <?php if (empty($arquivos_portal)): ?>
-                        <div class="empty-text">Nenhum arquivo disponível ainda.</div>
-                        <?php else: ?>
-                        <?php foreach ($arquivos_portal as $arquivo_portal): ?>
-                        <?php
-                            $arquivo_nome = trim((string)($arquivo_portal['original_name'] ?? 'arquivo'));
-                            $arquivo_url = trim((string)($arquivo_portal['public_url'] ?? ''));
-                            $arquivo_desc = trim((string)($arquivo_portal['descricao'] ?? ''));
-                            $arquivo_campo = trim((string)($arquivo_portal['campo_titulo'] ?? ''));
-                            $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
-                            $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
-                            $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
-                        ?>
-                        <div class="arquivo-item">
-                            <?php if ($arquivo_url !== ''): ?>
-                            <a class="arquivo-link" href="<?= htmlspecialchars($arquivo_url) ?>" target="_blank" rel="noopener noreferrer">
-                                <?= htmlspecialchars($arquivo_nome) ?>
-                            </a>
-                            <?php else: ?>
-                            <strong><?= htmlspecialchars($arquivo_nome) ?></strong>
-                            <?php endif; ?>
-                            <div class="arquivo-meta">
-                                <?= $arquivo_campo !== '' ? 'Tipo: ' . htmlspecialchars($arquivo_campo) . ' • ' : '' ?>
-                                Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
-                                <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </details>
             </section>
             <?php endif; ?>
 
             <?php if (!$visivel_reuniao && !$visivel_dj && !$visivel_convidados && !$visivel_arquivos): ?>
-            <section class="card">
+            <section class="module-panel">
                 <h3>Conteúdo indisponível</h3>
-                <div class="card-subtitle">Ainda não há cards habilitados para visualização neste portal.</div>
+                <div class="module-subtitle">Ainda não há cards habilitados para visualização neste portal.</div>
             </section>
             <?php endif; ?>
         </div>
+
+        <?php if ($view_arquivos_ativo): ?>
+        <div class="module-header">
+            <div>
+                <strong>Área de Arquivos</strong>
+            </div>
+            <a class="back-link" href="index.php?page=eventos_cliente_portal&token=<?= urlencode($token) ?>">Voltar ao painel</a>
+        </div>
+
+        <section class="module-panel">
+            <h3>Envios e documentos do evento</h3>
+            <div class="module-subtitle">Painel completo de upload e acompanhamento de materiais.</div>
+
+            <?php if ($editavel_arquivos): ?>
+            <form method="POST" enctype="multipart/form-data" class="upload-form">
+                <input type="hidden" name="action" value="upload_arquivo_cliente">
+                <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+                <input type="hidden" name="view" value="arquivos">
+
+                <label>
+                    Arquivo
+                    <input type="file"
+                           name="arquivo"
+                           accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
+                           required>
+                </label>
+
+                <label>
+                    Tipo do arquivo (opcional)
+                    <select name="campo_id">
+                        <option value="">Selecionar...</option>
+                        <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                        <option value="<?= (int)($campo_arquivo['id'] ?? 0) ?>">
+                            <?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <label>
+                    Descrição do arquivo
+                    <textarea name="descricao_arquivo" placeholder="Ex.: Imagem final aprovada do convite."></textarea>
+                </label>
+
+                <button type="submit" class="btn btn-primary">Enviar arquivo</button>
+                <div class="upload-help">Limite de até 500MB por arquivo.</div>
+            </form>
+            <?php else: ?>
+            <div class="section-block">
+                <div class="empty-text">Uploads desativados para este portal.</div>
+            </div>
+            <?php endif; ?>
+
+            <div class="section-block">
+                <h4>Campos solicitados</h4>
+                <?php if (empty($campos_arquivos)): ?>
+                <div class="empty-text">Nenhum campo solicitado no momento.</div>
+                <?php else: ?>
+                <div class="campo-status">
+                    <?php foreach ($campos_arquivos as $campo_arquivo): ?>
+                    <?php
+                        $campo_id = (int)($campo_arquivo['id'] ?? 0);
+                        $qtd_campo = isset($arquivos_campos_map[$campo_id]) ? count($arquivos_campos_map[$campo_id]) : 0;
+                    ?>
+                    <div class="campo-status-item">
+                        <strong><?= htmlspecialchars((string)($campo_arquivo['titulo'] ?? 'Campo')) ?></strong>
+                        <?php if (!empty($campo_arquivo['obrigatorio_cliente'])): ?>
+                        <span class="badge <?= $qtd_campo > 0 ? 'badge-ok' : 'badge-warn' ?>">
+                            <?= $qtd_campo > 0 ? 'Recebido' : 'Pendente' ?>
+                        </span>
+                        <?php endif; ?>
+                        <?php if (!empty($campo_arquivo['descricao'])): ?>
+                        <div class="arquivo-meta"><?= htmlspecialchars((string)$campo_arquivo['descricao']) ?></div>
+                        <?php endif; ?>
+                        <div class="arquivo-meta">
+                            <?= $qtd_campo > 0 ? $qtd_campo . ' arquivo(s) enviado(s)' : 'Aguardando envio' ?>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="section-block">
+                <h4>Arquivos disponíveis</h4>
+                <?php if (empty($arquivos_portal)): ?>
+                <div class="empty-text">Nenhum arquivo disponível ainda.</div>
+                <?php else: ?>
+                <?php foreach ($arquivos_portal as $arquivo_portal): ?>
+                <?php
+                    $arquivo_nome = trim((string)($arquivo_portal['original_name'] ?? 'arquivo'));
+                    $arquivo_url = trim((string)($arquivo_portal['public_url'] ?? ''));
+                    $arquivo_desc = trim((string)($arquivo_portal['descricao'] ?? ''));
+                    $arquivo_campo = trim((string)($arquivo_portal['campo_titulo'] ?? ''));
+                    $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
+                    $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
+                    $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
+                ?>
+                <div class="arquivo-item">
+                    <?php if ($arquivo_url !== ''): ?>
+                    <a class="arquivo-link" href="<?= htmlspecialchars($arquivo_url) ?>" target="_blank" rel="noopener noreferrer">
+                        <?= htmlspecialchars($arquivo_nome) ?>
+                    </a>
+                    <?php else: ?>
+                    <strong><?= htmlspecialchars($arquivo_nome) ?></strong>
+                    <?php endif; ?>
+                    <div class="arquivo-meta">
+                        <?= $arquivo_campo !== '' ? 'Tipo: ' . htmlspecialchars($arquivo_campo) . ' • ' : '' ?>
+                        Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
+                        <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </section>
+        <?php endif; ?>
         <?php endif; ?>
     </div>
 </body>

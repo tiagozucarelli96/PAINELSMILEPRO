@@ -1903,7 +1903,7 @@ includeSidebar($sidebar_title);
             </div>
             <?php endif; ?>
             
-            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
+            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais' || $key === 'dj_protocolo'): ?>
             <div class="legacy-editor-toggle">
                 <div>
                     <strong>Texto livre (opcional)</strong>

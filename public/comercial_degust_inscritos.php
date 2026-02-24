@@ -1253,6 +1253,12 @@ ob_start();
             font-size: 14px;
             margin: 0;
         }
+
+        .participant-phone {
+            color: #6b7280;
+            font-size: 14px;
+            margin: 2px 0 0 0;
+        }
         
         .badge {
             padding: 4px 8px;
@@ -1528,9 +1534,13 @@ ob_start();
                 <?php foreach ($inscricoes as $inscricao): ?>
                         <tr class="table-row">
                             <td class="table-cell">
+                        <?php $telefone_inscricao = trim((string)($inscricao['telefone'] ?? $inscricao['celular'] ?? '')); ?>
                         <div class="participant-info">
                             <div class="participant-name"><?= h($inscricao['nome']) ?></div>
                             <div class="participant-email"><?= h($inscricao['email']) ?></div>
+                            <?php if ($telefone_inscricao !== ''): ?>
+                                <div class="participant-phone"><?= h($telefone_inscricao) ?></div>
+                            <?php endif; ?>
                         </div>
                             </td>
                             

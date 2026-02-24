@@ -1412,16 +1412,36 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                 
                 <!-- Quantidade de Pessoas -->
                 <div class="form-group">
-                    <label class="form-label">Quantidade de Pessoas Adicionais *</label>
-                    <input type="number" name="qtd_pessoas" id="qtdPessoasInput" class="form-input" min="0" value="0" required onchange="calcularPreco()">
-                    <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
-                        💡 Digite quantas pessoas adicionais além das incluídas no valor base
-                    </small>
+                    <label class="form-label">Pessoas no Evento *</label>
                     <div id="pessoasIncluidasInfo" style="margin-top: 8px; padding: 10px; background: #f0f9ff; border-left: 3px solid #0ea5e9; border-radius: 4px; display: none;">
-                        <span style="font-weight: 600; color: #0c4a6e;">ℹ️ Total incluído no valor base:</span>
+                        <span style="font-weight: 600; color: #0c4a6e;">ℹ️ Pessoas já incluídas no valor base:</span>
                         <span id="totalIncluido" style="color: #0369a1; font-weight: 600;"></span>
                         <span style="color: #0369a1;"> pessoas</span>
                     </div>
+                    <div id="avisoInclusaoExtras" style="margin-top: 10px; padding: 12px; background: #fff7ed; border: 1px solid #fdba74; border-left: 4px solid #f97316; border-radius: 8px; display: none;">
+                        <div style="color: #9a3412; font-weight: 600; margin-bottom: 10px;">
+                            Neste evento, você tem <span id="avisoIncluidosQtd">0</span> pessoa(s) incluída(s).<br>
+                            Deseja adicionar mais pessoas no valor de <span id="avisoPrecoExtra">R$ 0,00</span> por pessoa?
+                        </div>
+                        <div class="form-radio-group">
+                            <div class="form-radio">
+                                <input type="radio" name="adicionar_extras" id="adicionar_extras_sim" value="sim" onchange="toggleExtras(true)">
+                                <label for="adicionar_extras_sim">Sim</label>
+                            </div>
+                            <div class="form-radio">
+                                <input type="radio" name="adicionar_extras" id="adicionar_extras_nao" value="nao" onchange="toggleExtras(false)">
+                                <label for="adicionar_extras_nao">Não</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="extrasInputContainer" style="display: none; margin-top: 10px;">
+                        <label class="form-label">Quantas pessoas extras?</label>
+                        <input type="number" name="qtd_pessoas" id="qtdPessoasInput" class="form-input" min="0" value="0" onchange="calcularPreco()">
+                        <small id="ajudaExtrasTexto" style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
+                            💡 Digite somente pessoas extras (não inclua as pessoas já incluídas no pacote).
+                        </small>
+                    </div>
+                    <div id="resumoTotalPessoas" style="margin-top: 8px; padding: 10px; background: #eef2ff; border-left: 3px solid #4f46e5; border-radius: 4px; display: none; color: #312e81; font-weight: 600;"></div>
                 </div>
                 
                 <!-- Informações de Preço -->
@@ -1633,20 +1653,52 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
             if (!tipoFesta) {
                 document.getElementById('pessoasIncluidasInfo').style.display = 'none';
+                document.getElementById('resumoTotalPessoas').style.display = 'none';
+                document.getElementById('avisoInclusaoExtras').style.display = 'none';
+                document.getElementById('extrasInputContainer').style.display = 'none';
                 return;
             }
             
             const incluidos = tipoFesta.value === 'casamento' ? 
                 PRECOS.casamento.incluidos : 
                 PRECOS['15anos'].incluidos;
+            const tipoLabel = tipoFesta.value === 'casamento' ? 'casamento' : '15 anos';
             
             document.getElementById('totalIncluido').textContent = incluidos;
             document.getElementById('pessoasIncluidasInfo').style.display = 'block';
+            document.getElementById('avisoIncluidosQtd').textContent = incluidos;
+            document.getElementById('avisoPrecoExtra').textContent = 'R$ ' + PRECOS.extra.toFixed(2).replace('.', ',');
+            document.getElementById('avisoInclusaoExtras').style.display = 'block';
             
-            // Campo quantidade sempre começa em 0 (extras)
-            document.getElementById('qtdPessoasInput').value = 0;
+            const ajudaExtras = document.getElementById('ajudaExtrasTexto');
+            if (ajudaExtras) {
+                ajudaExtras.textContent = `💡 Em ${tipoLabel}, ${incluidos} pessoa(s) já estão incluídas. Digite apenas as extras.`;
+            }
             
-            // Calcular preço automaticamente
+            // Padrão: não adicionar extras
+            const radioNao = document.getElementById('adicionar_extras_nao');
+            const radioSim = document.getElementById('adicionar_extras_sim');
+            if (radioSim) radioSim.checked = false;
+            if (radioNao) radioNao.checked = true;
+            toggleExtras(false);
+        }
+        
+        function toggleExtras(mostrar) {
+            const extrasContainer = document.getElementById('extrasInputContainer');
+            const qtdInput = document.getElementById('qtdPessoasInput');
+            
+            if (!extrasContainer || !qtdInput) return;
+            
+            if (mostrar) {
+                extrasContainer.style.display = 'block';
+                if ((parseInt(qtdInput.value, 10) || 0) <= 0) {
+                    qtdInput.value = 1;
+                }
+            } else {
+                extrasContainer.style.display = 'none';
+                qtdInput.value = 0;
+            }
+            
             calcularPreco();
         }
         
@@ -1681,6 +1733,11 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             document.getElementById('valorTotal').textContent = 'R$ ' + valorTotal.toFixed(2).replace('.', ',');
             
             document.getElementById('priceInfo').style.display = 'block';
+            const resumoTotalPessoas = document.getElementById('resumoTotalPessoas');
+            if (resumoTotalPessoas) {
+                resumoTotalPessoas.innerHTML = `<strong>Total de convidados:</strong> ${totalPessoas} (${incluidos} incluídas + ${qtdExtras} extras)`;
+                resumoTotalPessoas.style.display = 'block';
+            }
             
             // Atualizar campos ocultos para o formulário (total de pessoas = incluídos + extras)
             document.getElementById('valorTotalHidden').value = valorTotal;
@@ -1700,8 +1757,38 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         
         // Ao submeter, garantir que qtd_pessoas seja o total (incluídos + extras)
         document.getElementById('inscricaoForm')?.addEventListener('submit', function(e) {
+            const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
+            const respostaExtras = document.querySelector('input[name="adicionar_extras"]:checked');
             const qtdPessoasInput = document.getElementById('qtdPessoasInput');
-            const totalPessoas = parseInt(qtdPessoasInput.getAttribute('data-total')) || parseInt(qtdPessoasInput.value) || 0;
+            const qtdExtras = parseInt(qtdPessoasInput.value) || 0;
+            
+            if (!tipoFesta) {
+                return;
+            }
+            
+            if (!respostaExtras) {
+                e.preventDefault();
+                alert('Selecione se deseja adicionar pessoas extras (Sim ou Não).');
+                return;
+            }
+            
+            if (respostaExtras.value === 'sim' && qtdExtras <= 0) {
+                e.preventDefault();
+                alert('Informe a quantidade de pessoas extras para continuar.');
+                return;
+            }
+            
+            const incluidos = tipoFesta.value === 'casamento' ? PRECOS.casamento.incluidos : PRECOS['15anos'].incluidos;
+            const totalPessoas = incluidos + qtdExtras;
+            
+            if (qtdExtras > 0) {
+                const confirmarExtras = window.confirm(`Confirma ${qtdExtras} pessoa(s) extra(s)? O total final ficará em ${totalPessoas} pessoa(s) (${incluidos} incluídas + ${qtdExtras} extras).`);
+                if (!confirmarExtras) {
+                    e.preventDefault();
+                    return;
+                }
+            }
+            
             qtdPessoasInput.value = totalPessoas;
         });
         

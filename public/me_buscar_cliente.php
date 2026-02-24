@@ -15,6 +15,114 @@ try {
     if (!$base || !$key) {
         throw new Exception('ME_BASE_URL/ME_API_KEY ausentes.');
     }
+
+    $isListArray = static function (array $value): bool {
+        if ($value === []) {
+            return true;
+        }
+        return array_keys($value) === range(0, count($value) - 1);
+    };
+
+    $normalizarPayloadMeCliente = static function ($payload) use ($isListArray): array {
+        if (!is_array($payload)) {
+            return [];
+        }
+
+        $current = $payload;
+        for ($i = 0; $i < 3; $i++) {
+            if (!isset($current['data']) || !is_array($current['data'])) {
+                break;
+            }
+
+            $data = $current['data'];
+            if ($data === []) {
+                return [];
+            }
+
+            if ($isListArray($data)) {
+                $first = $data[0] ?? [];
+                if (!is_array($first)) {
+                    return [];
+                }
+                $current = $first;
+                continue;
+            }
+
+            $current = $data;
+        }
+
+        if (isset($current['client']) && is_array($current['client'])) {
+            $current = $current['client'];
+        }
+
+        if ($isListArray($current)) {
+            $first = $current[0] ?? [];
+            return is_array($first) ? $first : [];
+        }
+
+        return $current;
+    };
+
+    $extrairEmailPayloadMe = static function ($payload) use ($normalizarPayloadMeCliente): string {
+        if (!is_array($payload)) {
+            return '';
+        }
+
+        $camposEmail = [
+            'email',
+            'emailCliente',
+            'cliente_email',
+            'clienteEmail',
+            'contato_email',
+            'contatoEmail',
+            'email_contato',
+            'emailContato',
+            'e_mail',
+            'e-mail',
+            'mail',
+            'correio',
+            'correio_eletronico'
+        ];
+
+        $fila = [$payload];
+        $normalizado = $normalizarPayloadMeCliente($payload);
+        if (!empty($normalizado)) {
+            $fila[] = $normalizado;
+        }
+
+        while (!empty($fila)) {
+            $atual = array_shift($fila);
+            if (!is_array($atual)) {
+                continue;
+            }
+
+            foreach ($camposEmail as $campo) {
+                if (!isset($atual[$campo]) || !is_string($atual[$campo])) {
+                    continue;
+                }
+                $valor = trim($atual[$campo]);
+                if ($valor !== '' && filter_var($valor, FILTER_VALIDATE_EMAIL)) {
+                    return $valor;
+                }
+            }
+
+            foreach ($atual as $valor) {
+                if (is_string($valor)) {
+                    $texto = trim($valor);
+                    if ($texto !== '' && filter_var($texto, FILTER_VALIDATE_EMAIL)) {
+                        return $texto;
+                    }
+                    continue;
+                }
+
+                if (is_array($valor)) {
+                    $fila[] = $valor;
+                }
+            }
+        }
+
+        return '';
+    };
     
     // Validar método HTTP
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -314,33 +422,13 @@ try {
                 error_log("ME Buscar Cliente - Código HTTP endpoint cliente completo: $code_cliente_completo");
                 
                 if ($code_cliente_completo === 200 && $resp_cliente_completo) {
-                    $dados_cliente_completo = json_decode($resp_cliente_completo, true);
-                    error_log("ME Buscar Cliente - ✅ Dados completos do cliente recebidos: " . json_encode($dados_cliente_completo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    $dados_cliente_completo_raw = json_decode($resp_cliente_completo, true);
+                    $dados_cliente_completo = $normalizarPayloadMeCliente($dados_cliente_completo_raw);
+                    error_log("ME Buscar Cliente - ✅ Dados completos do cliente recebidos (raw): " . json_encode($dados_cliente_completo_raw, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    error_log("ME Buscar Cliente - Dados completos do cliente (normalizados): " . json_encode($dados_cliente_completo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                     
-                    // Buscar EMAIL nos dados completos do cliente
-                    $email_cliente_completo = '';
-                    $campos_email = ['email', 'emailCliente', 'cliente_email', 'clienteEmail', 'contato_email', 
-                                   'contatoEmail', 'email_contato', 'emailContato', 'e_mail', 'e-mail', 
-                                   'e_mailCliente', 'e-mailCliente', 'mail', 'correio', 'correio_eletronico'];
-                    
-                    foreach ($campos_email as $campo) {
-                        if (isset($dados_cliente_completo[$campo]) && !empty($dados_cliente_completo[$campo]) && filter_var($dados_cliente_completo[$campo], FILTER_VALIDATE_EMAIL)) {
-                            $email_cliente_completo = trim($dados_cliente_completo[$campo]);
-                            error_log("ME Buscar Cliente - ✅ Email encontrado nos dados completos do cliente (campo '$campo'): " . substr($email_cliente_completo, 0, 3) . "***");
-                            break;
-                        }
-                    }
-                    
-                    // Se não encontrou, buscar em qualquer campo que contenha '@'
-                    if (empty($email_cliente_completo)) {
-                        foreach ($dados_cliente_completo as $key => $value) {
-                            if (is_string($value) && strpos($value, '@') !== false && filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                                $email_cliente_completo = trim($value);
-                                error_log("ME Buscar Cliente - ✅ Email encontrado nos dados completos (campo genérico '$key'): " . substr($email_cliente_completo, 0, 3) . "***");
-                                break;
-                            }
-                        }
-                    }
+                    // Buscar EMAIL inclusive em respostas aninhadas (ex.: data.email)
+                    $email_cliente_completo = $extrairEmailPayloadMe($dados_cliente_completo_raw);
                     
                     // Atualizar evento_encontrado com email do cliente completo
                     if (!empty($email_cliente_completo)) {
@@ -499,8 +587,10 @@ try {
                     curl_close($ch_cliente);
                     
                     if ($code_cliente === 200 && $resp_cliente) {
-                        $data_cliente = json_decode($resp_cliente, true);
-                        error_log("ME Buscar Cliente - Resposta endpoint cliente: " . json_encode($data_cliente, JSON_PRETTY_PRINT));
+                        $data_cliente_raw = json_decode($resp_cliente, true);
+                        $data_cliente = $normalizarPayloadMeCliente($data_cliente_raw);
+                        error_log("ME Buscar Cliente - Resposta endpoint cliente (raw): " . json_encode($data_cliente_raw, JSON_PRETTY_PRINT));
+                        error_log("ME Buscar Cliente - Resposta endpoint cliente (normalizada): " . json_encode($data_cliente, JSON_PRETTY_PRINT));
                         
                         // Tentar encontrar CPF nos dados do cliente
                         $cpf_api_encontrado = $data_cliente['cpf'] ?? $data_cliente['cpfCliente'] ?? 
@@ -512,45 +602,7 @@ try {
                         }
                         
                         // IMPORTANTE: Buscar EMAIL no endpoint específico do cliente também!
-                        $email_cliente = '';
-                        
-                        // Lista de TODOS os campos possíveis para email
-                        $campos_email_cliente = [
-                            'email',
-                            'emailCliente',
-                            'cliente_email',
-                            'clienteEmail',
-                            'contato_email',
-                            'contatoEmail',
-                            'email_contato',
-                            'emailContato',
-                            'e_mail',
-                            'e-mail',
-                            'e_mailCliente',
-                            'e-mailCliente',
-                            'mail',
-                            'correio',
-                            'correio_eletronico'
-                        ];
-                        
-                        foreach ($campos_email_cliente as $campo) {
-                            if (isset($data_cliente[$campo]) && !empty($data_cliente[$campo]) && filter_var($data_cliente[$campo], FILTER_VALIDATE_EMAIL)) {
-                                $email_cliente = trim($data_cliente[$campo]);
-                                error_log("ME Buscar Cliente - ✅ Email encontrado no endpoint cliente (campo '$campo'): " . substr($email_cliente, 0, 3) . "***");
-                                break;
-                            }
-                        }
-                        
-                        // Se não encontrou em campos específicos, buscar em qualquer campo que contenha '@'
-                        if (empty($email_cliente)) {
-                            foreach ($data_cliente as $key => $value) {
-                                if (is_string($value) && strpos($value, '@') !== false && filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                                    $email_cliente = trim($value);
-                                    error_log("ME Buscar Cliente - ✅ Email encontrado no endpoint cliente (campo genérico '$key'): " . substr($email_cliente, 0, 3) . "***");
-                                    break;
-                                }
-                            }
-                        }
+                        $email_cliente = $extrairEmailPayloadMe($data_cliente_raw);
                         
                         // Se encontrou email no endpoint do cliente, atualizar evento_encontrado
                         if (!empty($email_cliente)) {
@@ -729,4 +781,3 @@ try {
         'error' => $e->getMessage()
     ], JSON_UNESCAPED_UNICODE);
 }
-
