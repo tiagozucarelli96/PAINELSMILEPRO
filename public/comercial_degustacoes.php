@@ -89,6 +89,43 @@ if ($action === 'encerrar' && $degustacao_id > 0) {
     }
 }
 
+if ($action === 'liberar' && $degustacao_id > 0) {
+    try {
+        $stmt = $pdo->prepare("SELECT id, token_publico FROM comercial_degustacoes WHERE id = :id");
+        $stmt->execute([':id' => $degustacao_id]);
+        $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$degustacao) {
+            $error_message = "Degustação não encontrada!";
+        } else {
+            // Garantir token público para reabrir inscrições
+            $token_publico = trim((string)($degustacao['token_publico'] ?? ''));
+            if ($token_publico === '') {
+                try {
+                    $stmt_token = $pdo->query("SELECT lc_gerar_token_publico()");
+                    $token_publico = $stmt_token->fetchColumn();
+                } catch (Exception $e) {
+                    $token_publico = bin2hex(random_bytes(32));
+                    error_log("Função lc_gerar_token_publico() não encontrada, usando token manual: " . $token_publico);
+                }
+            }
+
+            $stmt = $pdo->prepare("UPDATE comercial_degustacoes SET status = 'publicado', token_publico = :token WHERE id = :id");
+            $stmt->execute([
+                ':token' => $token_publico,
+                ':id' => $degustacao_id
+            ]);
+
+            $success_message = "Inscrições liberadas novamente com sucesso!";
+            header('Location: index.php?page=comercial_degustacoes&success=' . urlencode($success_message));
+            exit;
+        }
+    } catch (Exception $e) {
+        $error_message = "Erro ao liberar novamente: " . $e->getMessage();
+        error_log("Erro ao liberar novamente degustação: " . $e->getMessage());
+    }
+}
+
 if ($action === 'duplicar' && $degustacao_id > 0) {
     try {
         // Buscar dados da degustação original
@@ -648,6 +685,12 @@ ob_start();
                                     <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
                                     <button type="submit" class="btn-sm btn-warning">🔒 Encerrar</button>
                                 </form>
+                                <?php elseif ($degustacao['status'] === 'encerrado'): ?>
+                                <form method="POST" style="display: inline;" onsubmit="return confirmarLiberacao(event)">
+                                    <input type="hidden" name="action" value="liberar">
+                                    <input type="hidden" name="degustacao_id" value="<?= $degustacao['id'] ?>">
+                                    <button type="submit" class="btn-sm btn-success">🔓 Liberar Novamente</button>
+                                </form>
                                 <?php endif; ?>
                                 
                                 <form method="POST" style="display: inline;">
@@ -674,6 +717,16 @@ ob_start();
             event.preventDefault();
             const form = event.target;
             const confirmado = await customConfirm('Tem certeza que deseja apagar esta degustação?', '⚠️ Confirmar Exclusão');
+            if (confirmado) {
+                form.submit();
+            }
+            return false;
+        }
+
+        async function confirmarLiberacao(event) {
+            event.preventDefault();
+            const form = event.target;
+            const confirmado = await customConfirm('Deseja liberar novamente as inscrições desta degustação?', '🔓 Liberar Inscrições');
             if (confirmado) {
                 form.submit();
             }

@@ -107,7 +107,9 @@ try {
 // Ver detalhes de um evento
 $evento_selecionado = null;
 $secao_dj = null;
-$anexos = [];
+$secao_observacoes = null;
+$anexos_dj = [];
+$anexos_observacoes = [];
 
 if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
@@ -145,7 +147,9 @@ if (!empty($_GET['evento'])) {
                 $evento_selecionado = null;
             } else {
                 $secao_dj = eventos_reuniao_get_secao($pdo, $evento_id, 'dj_protocolo');
-                $anexos = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
+                $secao_observacoes = eventos_reuniao_get_secao($pdo, $evento_id, 'observacoes_gerais');
+                $anexos_dj = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
+                $anexos_observacoes = eventos_reuniao_get_anexos($pdo, $evento_id, 'observacoes_gerais');
             }
         }
     } catch (Exception $e) {
@@ -687,11 +691,81 @@ if (!empty($_GET['evento'])) {
                 <p style="color: #64748b; font-style: italic;">Nenhuma informação cadastrada ainda.</p>
                 <?php endif; ?>
             </div>
+
+            <div class="content-box" style="margin-top: 1rem;">
+                <h3>📝 Observações Gerais</h3>
+                <?php if ($secao_observacoes && $secao_observacoes['content_html']): ?>
+                <div><?= $secao_observacoes['content_html'] ?></div>
+                <?php else: ?>
+                <p style="color: #64748b; font-style: italic;">Nenhuma observação geral cadastrada ainda.</p>
+                <?php endif; ?>
+            </div>
             
-            <?php if (!empty($anexos)): ?>
+            <?php if (!empty($anexos_dj)): ?>
             <div class="anexos-list">
-                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos</h3>
-                <?php foreach ($anexos as $a): ?>
+                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos (DJ / Protocolos)</h3>
+                <?php foreach ($anexos_dj as $a): ?>
+                <?php
+                    $anexo_url = trim((string)($a['public_url'] ?? ''));
+                    $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
+                    $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
+                    $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
+                    $anexo_size = (int)($a['size_bytes'] ?? 0);
+                    $anexo_note = trim((string)($a['note'] ?? ''));
+                    $anexo_icon = '📎';
+                    if ($anexo_kind === 'imagem') {
+                        $anexo_icon = '🖼️';
+                    } elseif ($anexo_kind === 'video') {
+                        $anexo_icon = '🎬';
+                    } elseif ($anexo_kind === 'audio') {
+                        $anexo_icon = '🎵';
+                    } elseif ($anexo_kind === 'pdf') {
+                        $anexo_icon = '📄';
+                    }
+                ?>
+                <div class="anexo-item">
+                    <div class="anexo-main">
+                        <span class="anexo-icon"><?= $anexo_icon ?></span>
+                        <div class="anexo-info">
+                            <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
+                            <div class="anexo-meta">
+                                <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
+                                • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
+                            </div>
+                            <?php if ($anexo_note !== ''): ?>
+                            <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <div class="anexo-actions">
+                        <?php if ($anexo_url !== ''): ?>
+                        <button type="button"
+                                class="btn btn-secondary btn-small"
+                                data-open-anexo-modal="1"
+                                data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
+                                data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
+                                data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
+                                data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
+                            Visualizar
+                        </button>
+                        <a href="<?= htmlspecialchars($anexo_url) ?>"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           download
+                           class="btn btn-primary btn-small">Download</a>
+                        <?php else: ?>
+                        <span class="anexo-meta">Arquivo sem URL pública.</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if (!empty($anexos_observacoes)): ?>
+            <div class="anexos-list">
+                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos (Observações Gerais)</h3>
+                <?php foreach ($anexos_observacoes as $a): ?>
                 <?php
                     $anexo_url = trim((string)($a['public_url'] ?? ''));
                     $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));

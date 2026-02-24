@@ -1930,7 +1930,7 @@ includeSidebar($sidebar_title);
             </div>
             
             <div class="section-actions">
-                <?php if (!$is_locked && $key !== 'dj_protocolo'): ?>
+                <?php if (!$is_locked): ?>
                 <button type="button" class="btn btn-primary" onclick="salvarSecao('<?= $key ?>')">💾 Salvar</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary" onclick="verVersoes('<?= $key ?>')">📋 Histórico de Versões</button>

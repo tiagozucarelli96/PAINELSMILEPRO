@@ -18,8 +18,11 @@ $portal = null;
 $reuniao = null;
 $snapshot = [];
 $links_dj_portal = [];
+$links_observacoes_portal = [];
 $visivel_dj = false;
 $editavel_dj = false;
+$visivel_reuniao = false;
+$editavel_reuniao = false;
 
 if ($token === '') {
     $error = 'Link inválido.';
@@ -39,6 +42,8 @@ if ($token === '') {
 
             $visivel_dj = !empty($portal['visivel_dj']);
             $editavel_dj = !empty($portal['editavel_dj']);
+            $visivel_reuniao = !empty($portal['visivel_reuniao']);
+            $editavel_reuniao = !empty($portal['editavel_reuniao']);
 
             if (!$visivel_dj) {
                 $error = 'A área de DJ/protocolos ainda não está habilitada para este evento.';
@@ -63,6 +68,32 @@ if ($token === '') {
                     foreach ($links_dj as $dj_link_item) {
                         if (!empty($dj_link_item['is_active'])) {
                             $links_dj_portal[] = $dj_link_item;
+                        }
+                    }
+                }
+
+                if ($visivel_reuniao) {
+                    $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
+                    $observacoes_has_slot_rules = false;
+                    foreach ($links_observacoes as $obs_link_item) {
+                        if (!empty($obs_link_item['portal_configured'])) {
+                            $observacoes_has_slot_rules = true;
+                            break;
+                        }
+                    }
+
+                    if ($observacoes_has_slot_rules) {
+                        foreach ($links_observacoes as $obs_link_item) {
+                            if (empty($obs_link_item['is_active']) || empty($obs_link_item['portal_visible'])) {
+                                continue;
+                            }
+                            $links_observacoes_portal[] = $obs_link_item;
+                        }
+                    } else {
+                        foreach ($links_observacoes as $obs_link_item) {
+                            if (!empty($obs_link_item['is_active'])) {
+                                $links_observacoes_portal[] = $obs_link_item;
+                            }
                         }
                     }
                 }
@@ -253,7 +284,7 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
     <div class="header">
         <img src="logo.png" alt="Grupo Smile" onerror="this.style.display='none'">
         <h1>🎧 DJ e Protocolos</h1>
-        <p>Área exclusiva dos formulários de DJ</p>
+        <p>Área de formulários de DJ e observações gerais</p>
     </div>
 
     <div class="container">
@@ -280,11 +311,14 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                         <?= $editavel_dj ? 'Editável' : 'Somente visualização' ?>
                     </span>
                 </h3>
-                <div class="card-subtitle">Selecione abaixo o quadro que deseja preencher ou consultar.</div>
+                <div class="card-subtitle">Selecione abaixo os formulários que deseja preencher ou consultar.</div>
 
-                <?php if (empty($links_dj_portal)): ?>
-                <div class="empty-text">Nenhum quadro de DJ disponível para este portal no momento.</div>
-                <?php else: ?>
+                <?php if (empty($links_dj_portal) && empty($links_observacoes_portal)): ?>
+                <div class="empty-text">Nenhum formulário disponível para este portal no momento.</div>
+                <?php endif; ?>
+
+                <?php if (!empty($links_dj_portal)): ?>
+                <div class="card-subtitle" style="margin-bottom: 0.55rem;"><strong>DJ / Protocolos</strong></div>
                 <div class="dj-grid">
                     <?php foreach ($links_dj_portal as $dj_link_portal): ?>
                     <?php
@@ -301,6 +335,35 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                         </div>
                         <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$dj_link_portal['token']) ?>">
                             <?= $editavel_dj ? 'Abrir formulário' : 'Visualizar formulário' ?>
+                        </a>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($links_observacoes_portal)): ?>
+                <div class="card-subtitle" style="margin-top: 0.95rem; margin-bottom: 0.55rem;">
+                    <strong>Observações Gerais</strong>
+                    <span class="status-badge <?= $editavel_reuniao ? 'status-editavel' : 'status-visualizacao' ?>" style="margin-left: 0.45rem;">
+                        <?= $editavel_reuniao ? 'Editável' : 'Somente visualização' ?>
+                    </span>
+                </div>
+                <div class="dj-grid">
+                    <?php foreach ($links_observacoes_portal as $obs_link_portal): ?>
+                    <?php
+                        $obs_slot = max(1, (int)($obs_link_portal['slot_index'] ?? 1));
+                        $obs_title = trim((string)($obs_link_portal['form_title'] ?? ''));
+                        if ($obs_title === '') {
+                            $obs_title = 'Formulário de Observações Gerais';
+                        }
+                    ?>
+                    <div class="dj-item">
+                        <div>
+                            <div class="dj-item-title"><?= htmlspecialchars($obs_title) ?></div>
+                            <div class="dj-item-subtitle">Quadro <?= $obs_slot ?></div>
+                        </div>
+                        <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$obs_link_portal['token']) ?>">
+                            <?= $editavel_reuniao ? 'Abrir formulário' : 'Visualizar formulário' ?>
                         </a>
                     </div>
                     <?php endforeach; ?>

@@ -4,7 +4,7 @@
  */
 
 // CRÍTICO: Verificar se é PDF ANTES de qualquer output
-$is_pdf_request = isset($_GET['pdf']) && $_GET['pdf'] === '1';
+$is_pdf_request = (string)($_GET['pdf'] ?? $_POST['pdf'] ?? '') === '1';
 
 // Se for PDF, garantir que não há output anterior
 if ($is_pdf_request) {
@@ -17,6 +17,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 
 // Parsear QUERY_STRING manualmente para garantir parâmetros
@@ -58,8 +59,325 @@ if (isset($_GET['degustacao_id']) && $_GET['degustacao_id'] !== '') {
 $pdo = $GLOBALS['pdo'];
 $degustacao = null;
 $inscritos = [];
+$mesas = [];
+$resumo_mesas = [
+    'total_inscricoes' => 0,
+    'mesas_com_inscritos' => 0,
+    'total_pessoas' => 0,
+];
 $degustacoes = [];
 $error_message = '';
+$layout_json = trim((string)($_POST['layout_json'] ?? $_GET['layout_json'] ?? ''));
+
+function dr_normalizar_inscritos(array $inscritos): array
+{
+    $normalizados = [];
+    foreach ($inscritos as $inscrito) {
+        $id = (int)($inscrito['id'] ?? 0);
+        if ($id <= 0) {
+            continue;
+        }
+
+        $qtd_pessoas = (int)($inscrito['qtd_pessoas'] ?? 1);
+        if ($qtd_pessoas < 1) {
+            $qtd_pessoas = 1;
+        }
+
+        $fechou_contrato = strtolower(trim((string)($inscrito['fechou_contrato'] ?? 'nao')));
+        $inscrito['id'] = $id;
+        $inscrito['qtd_pessoas'] = $qtd_pessoas;
+        $inscrito['fechou_contrato'] = $fechou_contrato === 'sim' ? 'sim' : 'nao';
+        $normalizados[] = $inscrito;
+    }
+    return $normalizados;
+}
+
+function dr_mesas_padrao(array $inscritos): array
+{
+    $mesas = [];
+    foreach (dr_normalizar_inscritos($inscritos) as $inscrito) {
+        $mesas[] = ['inscritos' => [$inscrito]];
+    }
+    return $mesas;
+}
+
+function dr_is_list(array $value): bool
+{
+    $expected = 0;
+    foreach ($value as $key => $_) {
+        if ($key !== $expected) {
+            return false;
+        }
+        $expected++;
+    }
+    return true;
+}
+
+function dr_finalizar_mesas(array $mesas): array
+{
+    $final = [];
+    $numero = 1;
+    foreach ($mesas as $mesa) {
+        $inscritos_mesa = [];
+        if (isset($mesa['inscritos']) && is_array($mesa['inscritos'])) {
+            $inscritos_mesa = dr_normalizar_inscritos($mesa['inscritos']);
+        }
+        $total_pessoas = array_sum(array_map(
+            fn($i) => (int)($i['qtd_pessoas'] ?? 1),
+            $inscritos_mesa
+        ));
+        $final[] = [
+            'numero' => $numero++,
+            'inscritos' => $inscritos_mesa,
+            'total_inscricoes' => count($inscritos_mesa),
+            'total_pessoas' => $total_pessoas,
+        ];
+    }
+    return $final;
+}
+
+function dr_construir_mesas(array $inscritos, string $layout_json = ''): array
+{
+    $inscritos_norm = dr_normalizar_inscritos($inscritos);
+    if (empty($inscritos_norm)) {
+        return [];
+    }
+
+    if ($layout_json === '') {
+        return dr_finalizar_mesas(dr_mesas_padrao($inscritos_norm));
+    }
+
+    $layout = json_decode($layout_json, true);
+    if (!is_array($layout)) {
+        return dr_finalizar_mesas(dr_mesas_padrao($inscritos_norm));
+    }
+
+    if (isset($layout['mesas']) && is_array($layout['mesas'])) {
+        $layout = $layout['mesas'];
+    }
+
+    if (!dr_is_list($layout)) {
+        return dr_finalizar_mesas(dr_mesas_padrao($inscritos_norm));
+    }
+
+    $inscritos_por_id = [];
+    foreach ($inscritos_norm as $inscrito) {
+        $inscritos_por_id[(int)$inscrito['id']] = $inscrito;
+    }
+
+    $utilizados = [];
+    $mesas = [];
+
+    foreach ($layout as $mesa_layout) {
+        if (!is_array($mesa_layout)) {
+            continue;
+        }
+
+        $ids = $mesa_layout['inscrito_ids'] ?? $mesa_layout['inscritos'] ?? [];
+        if (!is_array($ids)) {
+            continue;
+        }
+
+        $inscritos_mesa = [];
+        foreach ($ids as $id_raw) {
+            $id = (int)$id_raw;
+            if ($id <= 0 || isset($utilizados[$id]) || !isset($inscritos_por_id[$id])) {
+                continue;
+            }
+            $inscritos_mesa[] = $inscritos_por_id[$id];
+            $utilizados[$id] = true;
+        }
+        $mesas[] = ['inscritos' => $inscritos_mesa];
+    }
+
+    // Garantir que nenhum inscrito seja perdido por layout inválido/incompleto
+    foreach ($inscritos_norm as $inscrito) {
+        $id = (int)$inscrito['id'];
+        if (!isset($utilizados[$id])) {
+            $mesas[] = ['inscritos' => [$inscrito]];
+        }
+    }
+
+    if (empty($mesas)) {
+        $mesas = dr_mesas_padrao($inscritos_norm);
+    }
+
+    return dr_finalizar_mesas($mesas);
+}
+
+function dr_resumo_mesas(array $mesas): array
+{
+    $total_inscricoes = 0;
+    $total_pessoas = 0;
+    $mesas_com_inscritos = 0;
+
+    foreach ($mesas as $mesa) {
+        $qtd_inscricoes = (int)($mesa['total_inscricoes'] ?? 0);
+        $qtd_pessoas = (int)($mesa['total_pessoas'] ?? 0);
+        if ($qtd_inscricoes > 0) {
+            $mesas_com_inscritos++;
+        }
+        $total_inscricoes += $qtd_inscricoes;
+        $total_pessoas += $qtd_pessoas;
+    }
+
+    return [
+        'total_inscricoes' => $total_inscricoes,
+        'mesas_com_inscritos' => $mesas_com_inscritos,
+        'total_pessoas' => $total_pessoas,
+    ];
+}
+
+function dr_json_response(array $payload, int $status = 200): void
+{
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function dr_layout_table_ensure(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS comercial_degustacao_layout_mesas (
+            id BIGSERIAL PRIMARY KEY,
+            degustacao_id INTEGER NOT NULL UNIQUE,
+            layout_json TEXT NOT NULL,
+            criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+            atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    ");
+    $pdo->exec("
+        CREATE INDEX IF NOT EXISTS idx_comercial_degustacao_layout_mesas_degustacao
+        ON comercial_degustacao_layout_mesas(degustacao_id)
+    ");
+
+    $ready = true;
+}
+
+function dr_validar_layout_json(string $layout_json): string
+{
+    $decoded = json_decode($layout_json, true);
+    if (!is_array($decoded)) {
+        throw new InvalidArgumentException('Layout inválido.');
+    }
+
+    $mesas = $decoded['mesas'] ?? $decoded;
+    if (!is_array($mesas) || !dr_is_list($mesas)) {
+        throw new InvalidArgumentException('Layout inválido.');
+    }
+
+    $layout_normalizado = ['mesas' => []];
+    foreach ($mesas as $mesa) {
+        if (!is_array($mesa)) {
+            continue;
+        }
+        $ids = $mesa['inscrito_ids'] ?? $mesa['inscritos'] ?? [];
+        if (!is_array($ids)) {
+            $ids = [];
+        }
+        $ids_normalizados = [];
+        foreach ($ids as $id_raw) {
+            $id = (int)$id_raw;
+            if ($id > 0) {
+                $ids_normalizados[] = $id;
+            }
+        }
+        $layout_normalizado['mesas'][] = ['inscrito_ids' => $ids_normalizados];
+    }
+
+    $json = json_encode($layout_normalizado, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        throw new InvalidArgumentException('Layout inválido.');
+    }
+    return $json;
+}
+
+function dr_buscar_layout_salvo(PDO $pdo, int $degustacao_id): string
+{
+    if ($degustacao_id <= 0) {
+        return '';
+    }
+
+    dr_layout_table_ensure($pdo);
+    $stmt = $pdo->prepare("
+        SELECT layout_json
+        FROM comercial_degustacao_layout_mesas
+        WHERE degustacao_id = :degustacao_id
+        LIMIT 1
+    ");
+    $stmt->execute([':degustacao_id' => $degustacao_id]);
+    $layout = (string)($stmt->fetchColumn() ?: '');
+    return trim($layout);
+}
+
+function dr_salvar_layout(PDO $pdo, int $degustacao_id, string $layout_json): string
+{
+    if ($degustacao_id <= 0) {
+        throw new InvalidArgumentException('Degustação inválida.');
+    }
+
+    $layout_validado = dr_validar_layout_json($layout_json);
+    dr_layout_table_ensure($pdo);
+
+    $stmt = $pdo->prepare("
+        INSERT INTO comercial_degustacao_layout_mesas (degustacao_id, layout_json, criado_em, atualizado_em)
+        VALUES (:degustacao_id, :layout_json, NOW(), NOW())
+        ON CONFLICT (degustacao_id)
+        DO UPDATE SET layout_json = EXCLUDED.layout_json, atualizado_em = NOW()
+    ");
+    $stmt->execute([
+        ':degustacao_id' => $degustacao_id,
+        ':layout_json' => $layout_validado,
+    ]);
+
+    return $layout_validado;
+}
+
+$action = trim((string)($_POST['action'] ?? $_GET['action'] ?? ''));
+if ($action === 'salvar_layout_mesas') {
+    if ($degustacao_id <= 0) {
+        dr_json_response([
+            'success' => false,
+            'message' => 'Degustação inválida.',
+        ], 400);
+    }
+
+    try {
+        $layout_recebido = trim((string)($_POST['layout_json'] ?? ''));
+        if ($layout_recebido === '') {
+            throw new InvalidArgumentException('Layout não enviado.');
+        }
+
+        dr_salvar_layout($pdo, $degustacao_id, $layout_recebido);
+
+        dr_json_response([
+            'success' => true,
+            'message' => 'Layout salvo com sucesso.',
+            'updated_at' => date('c'),
+        ]);
+    } catch (InvalidArgumentException $e) {
+        dr_json_response([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 400);
+    } catch (Throwable $e) {
+        error_log('Erro ao salvar layout de mesas: ' . $e->getMessage());
+        dr_json_response([
+            'success' => false,
+            'message' => 'Erro ao salvar layout.',
+        ], 500);
+    }
+}
 
 // Buscar lista de degustações
 try {
@@ -101,6 +419,11 @@ if ($degustacao_id > 0) {
             ");
             $stmt->execute([':deg_id' => $degustacao_id]);
             $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($layout_json === '') {
+                $layout_json = dr_buscar_layout_salvo($pdo, $degustacao_id);
+            }
+            $mesas = dr_construir_mesas($inscritos, $layout_json);
+            $resumo_mesas = dr_resumo_mesas($mesas);
         }
     } catch (Exception $e) {
         $error_message = "Erro ao buscar dados: " . $e->getMessage();
@@ -142,6 +465,11 @@ if ($is_pdf_request && $degustacao_id > 0) {
             ");
             $stmt->execute([':deg_id' => $degustacao_id]);
             $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($layout_json === '') {
+                $layout_json = dr_buscar_layout_salvo($pdo, $degustacao_id);
+            }
+            $mesas = dr_construir_mesas($inscritos, $layout_json);
+            $resumo_mesas = dr_resumo_mesas($mesas);
             error_log("✅ Inscritos encontrados: " . count($inscritos));
         } else {
             error_log("⚠️ Degustação não encontrada para ID: $degustacao_id");
@@ -227,8 +555,13 @@ if ($is_pdf_request && $degustacao_id > 0) {
                         error_log("⚠️ Logo não encontrado em: $logo_path");
                     }
                     
-                    $total_mesas = count($inscritos);
-                    $total_pessoas = array_sum(array_column($inscritos, 'qtd_pessoas'));
+                    $mesas_pdf = array_values(array_filter($mesas, fn($mesa) => ((int)($mesa['total_inscricoes'] ?? 0)) > 0));
+                    if (empty($mesas_pdf) && !empty($inscritos)) {
+                        $mesas_pdf = dr_finalizar_mesas(dr_mesas_padrao($inscritos));
+                    }
+                    $total_mesas = count($mesas_pdf);
+                    $total_inscricoes_pdf = array_sum(array_map(fn($mesa) => (int)($mesa['total_inscricoes'] ?? 0), $mesas_pdf));
+                    $total_pessoas = array_sum(array_map(fn($mesa) => (int)($mesa['total_pessoas'] ?? 0), $mesas_pdf));
                     ?>
                 <!DOCTYPE html>
                 <html lang="pt-BR">
@@ -292,25 +625,30 @@ if ($is_pdf_request && $degustacao_id > 0) {
                             border: 1px solid #2563eb;
                         }
                         th:nth-child(2),
-                        th:nth-child(3),
-                        th:nth-child(5) {
+                        th:nth-child(4) {
                             text-align: center;
-                            width: 80px;
+                            width: 90px;
                         }
                         tbody tr {
                             border-bottom: 1px solid #e5e7eb;
-                        }
-                        tbody tr:hover {
-                            background: #f8fafc;
                         }
                         td {
                             padding: 0.75rem;
                             font-size: 0.9rem;
                         }
                         td:nth-child(2),
-                        td:nth-child(3),
-                        td:nth-child(5) {
+                        td:nth-child(4) {
                             text-align: center;
+                        }
+                        .mesa-group {
+                            background: #eff6ff;
+                            color: #1e3a8a;
+                            font-weight: 700;
+                        }
+                        .mesa-group td {
+                            border-top: 1px solid #bfdbfe;
+                            border-bottom: 1px solid #bfdbfe;
+                            padding: 0.6rem 0.75rem;
                         }
                         .fechou-sim {
                             color: #10b981;
@@ -359,39 +697,48 @@ if ($is_pdf_request && $degustacao_id > 0) {
                         <thead>
                             <tr>
                                 <th>Nome do Inscrito</th>
-                                <th>Mesa</th>
                                 <th>Pessoas</th>
                                 <th>Tipo de Evento</th>
                                 <th>Fechou Contrato</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($inscritos as $index => $inscrito): ?>
-                                <?php 
-                                $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1);
-                                $fechou = strtolower($inscrito['fechou_contrato'] ?? 'nao');
-                                ?>
-                                <tr>
-                                    <td><?= h($inscrito['nome']) ?></td>
-                                    <td><?= $index + 1 ?></td>
-                                    <td><?= $qtdPessoas ?></td>
-                                    <td><?= !empty($inscrito['tipo_festa']) ? h(ucfirst($inscrito['tipo_festa'])) : '-' ?></td>
-                                    <td>
-                                        <span class="<?= $fechou === 'sim' ? 'fechou-sim' : 'fechou-nao' ?>">
-                                            <?= $fechou === 'sim' ? 'Sim' : 'Não' ?>
-                                        </span>
+                            <?php foreach ($mesas_pdf as $mesa): ?>
+                                <tr class="mesa-group">
+                                    <td colspan="4">
+                                        Mesa <?= (int)$mesa['numero'] ?> • <?= (int)$mesa['total_inscricoes'] ?> inscriç<?= (int)$mesa['total_inscricoes'] === 1 ? 'ão' : 'ões' ?> • <?= (int)$mesa['total_pessoas'] ?> pessoa<?= (int)$mesa['total_pessoas'] === 1 ? '' : 's' ?>
                                     </td>
                                 </tr>
+                                <?php foreach (($mesa['inscritos'] ?? []) as $inscrito): ?>
+                                    <?php
+                                    $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1);
+                                    $fechou = strtolower((string)($inscrito['fechou_contrato'] ?? 'nao')) === 'sim' ? 'sim' : 'nao';
+                                    ?>
+                                    <tr>
+                                        <td><?= h($inscrito['nome']) ?></td>
+                                        <td><?= $qtdPessoas ?></td>
+                                        <td><?= !empty($inscrito['tipo_festa']) ? h(ucfirst((string)$inscrito['tipo_festa'])) : '-' ?></td>
+                                        <td>
+                                            <span class="<?= $fechou === 'sim' ? 'fechou-sim' : 'fechou-nao' ?>">
+                                                <?= $fechou === 'sim' ? 'Sim' : 'Não' ?>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
                             <tr class="tfooter">
                                 <td colspan="2"><strong>Total de Mesas:</strong></td>
-                                <td colspan="3"><strong><?= $total_mesas ?></strong></td>
+                                <td colspan="2"><strong><?= $total_mesas ?></strong></td>
+                            </tr>
+                            <tr class="tfooter">
+                                <td colspan="2"><strong>Total de Inscrições:</strong></td>
+                                <td colspan="2"><strong><?= $total_inscricoes_pdf ?></strong></td>
                             </tr>
                             <tr class="tfooter">
                                 <td colspan="2"><strong>Total de Pessoas:</strong></td>
-                                <td colspan="3"><strong><?= $total_pessoas ?></strong></td>
+                                <td colspan="2"><strong><?= $total_pessoas ?></strong></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -498,15 +845,23 @@ if ($is_pdf_request && $degustacao_id > 0) {
     header('Location: ' . $redirect_url);
     exit;
 }
+
+if ($degustacao_id > 0 && !empty($degustacao) && empty($mesas) && !empty($inscritos)) {
+    $mesas = dr_construir_mesas($inscritos, $layout_json);
+}
+$resumo_mesas = dr_resumo_mesas($mesas);
+$mesas_json = json_encode(
+    $mesas,
+    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
+if ($mesas_json === false) {
+    $mesas_json = '[]';
+}
 ?>
 
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realizar Degustação - <?= $degustacao ? h($degustacao['nome']) : 'Relatório' ?></title>
-    <style>
+<?php includeSidebar('Realizar Degustação'); ?>
+
+<style>
         * {
             box-sizing: border-box;
             margin: 0;
@@ -685,9 +1040,43 @@ if ($is_pdf_request && $degustacao_id > 0) {
 
         .mesas-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 1rem;
             margin-bottom: 2rem;
+        }
+
+        .mesas-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-hint {
+            color: #64748b;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .layout-save-status {
+            margin-top: 0.35rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #64748b;
+        }
+
+        .layout-save-status.is-saving {
+            color: #1d4ed8;
+        }
+
+        .layout-save-status.is-saved {
+            color: #166534;
+        }
+
+        .layout-save-status.is-error {
+            color: #b91c1c;
         }
 
         .mesa-card {
@@ -696,12 +1085,12 @@ if ($is_pdf_request && $degustacao_id > 0) {
             border-radius: 10px;
             padding: 1.25rem;
             transition: all 0.2s;
+            min-height: 220px;
         }
 
         .mesa-card:hover {
             border-color: #3b82f6;
             box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-            transform: translateY(-2px);
         }
 
         .mesa-header {
@@ -728,11 +1117,71 @@ if ($is_pdf_request && $degustacao_id > 0) {
             font-weight: 500;
         }
 
+        .mesa-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 0.6rem;
+        }
+
+        .btn-link-danger {
+            border: none;
+            background: transparent;
+            color: #ef4444;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0.1rem 0.2rem;
+        }
+
+        .mesa-inscritos {
+            min-height: 110px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 0.6rem;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .mesa-inscritos.drag-over {
+            border-color: #2563eb;
+            background: #eff6ff;
+        }
+
+        .mesa-vazia {
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.85rem;
+            padding: 0.6rem;
+        }
+
+        .inscrito-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 0.55rem 0.65rem;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .inscrito-card:active {
+            cursor: grabbing;
+        }
+
+        .inscrito-card.dragging {
+            opacity: 0.45;
+        }
+
         .inscrito-nome {
             font-size: 1rem;
             font-weight: 600;
             color: #1e293b;
             margin-bottom: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
         }
 
         .inscrito-tipo {
@@ -742,6 +1191,29 @@ if ($is_pdf_request && $degustacao_id > 0) {
             padding: 0.25rem 0.5rem;
             border-radius: 6px;
             display: inline-block;
+        }
+
+        .status-contrato {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.15rem 0.45rem;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            flex-shrink: 0;
+        }
+
+        .status-sim {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .status-nao {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
         }
 
         .actions-bar {
@@ -807,6 +1279,8 @@ if ($is_pdf_request && $degustacao_id > 0) {
 
             .selection-card,
             .actions-bar,
+            .mesas-toolbar,
+            .mesa-actions,
             .btn {
                 display: none !important;
             }
@@ -818,7 +1292,7 @@ if ($is_pdf_request && $degustacao_id > 0) {
             }
 
             .mesas-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, 1fr);
                 gap: 0.75rem;
             }
 
@@ -827,11 +1301,29 @@ if ($is_pdf_request && $degustacao_id > 0) {
                 page-break-inside: avoid;
                 border: 1px solid #e2e8f0;
                 box-shadow: none;
+                min-height: auto;
             }
 
             .mesa-card:hover {
                 transform: none;
                 box-shadow: none;
+            }
+
+            .mesa-inscritos {
+                border: none;
+                background: transparent;
+                padding: 0;
+                min-height: auto;
+            }
+
+            .inscrito-card {
+                border: none;
+                background: transparent;
+                padding: 0.15rem 0;
+            }
+
+            .mesa-vazia {
+                display: none;
             }
 
             .stats-grid {
@@ -845,9 +1337,8 @@ if ($is_pdf_request && $degustacao_id > 0) {
                 size: A4;
             }
         }
-    </style>
-</head>
-<body>
+</style>
+
     <div class="container">
         <div class="page-header">
             <h1 class="page-title">🍽️ Realizar Degustação</h1>
@@ -884,7 +1375,7 @@ if ($is_pdf_request && $degustacao_id > 0) {
             <?php if ($degustacao_id > 0): ?>
                 <div class="info-badge">
                     <strong>✅ Degustação selecionada (ID: <?= $degustacao_id ?>)</strong>
-                    <?php if (isset($degustacao)): ?>
+                    <?php if (!empty($degustacao)): ?>
                         <p style="margin: 0.5rem 0 0 0;"><?= h($degustacao['nome']) ?></p>
                     <?php else: ?>
                         <p style="margin: 0.5rem 0 0 0; color: #dc2626;">⚠️ Degustação não encontrada no banco de dados</p>
@@ -893,18 +1384,18 @@ if ($is_pdf_request && $degustacao_id > 0) {
             <?php endif; ?>
         </div>
 
-        <?php if ($degustacao_id > 0 && isset($degustacao)): ?>
+        <?php if ($degustacao_id > 0 && !empty($degustacao)): ?>
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-value"><?= count($inscritos) ?></div>
+                    <div class="stat-value" id="statTotalInscricoes"><?= (int)$resumo_mesas['total_inscricoes'] ?></div>
                     <div class="stat-label">Inscrições Confirmadas</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value"><?= count($inscritos) ?></div>
+                    <div class="stat-value" id="statTotalMesas"><?= (int)$resumo_mesas['mesas_com_inscritos'] ?></div>
                     <div class="stat-label">Total de Mesas</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value"><?= array_sum(array_column($inscritos, 'qtd_pessoas')) ?></div>
+                    <div class="stat-value" id="statTotalPessoas"><?= (int)$resumo_mesas['total_pessoas'] ?></div>
                     <div class="stat-label">Total de Pessoas</div>
                 </div>
             </div>
@@ -930,24 +1421,54 @@ if ($is_pdf_request && $degustacao_id > 0) {
                     </div>
                 </div>
 
-                <div class="mesas-grid">
-                    <?php if (empty($inscritos)): ?>
+                <div class="mesas-toolbar no-print">
+                    <div>
+                        <div class="toolbar-hint">Arraste os inscritos entre as mesas para organizar o relatório.</div>
+                        <div id="layoutSaveStatus" class="layout-save-status">Layout carregado.</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="adicionarMesa()">➕ Nova Mesa</button>
+                </div>
+
+                <div class="mesas-grid" id="mesasGrid">
+                    <?php if (empty($mesas)): ?>
                         <div class="empty-state" style="grid-column: 1 / -1;">
                             <div class="empty-state-icon">📋</div>
                             <p style="font-size: 1.125rem;">Nenhum inscrito confirmado encontrado para esta degustação.</p>
                         </div>
                     <?php else: ?>
-                        <?php foreach ($inscritos as $index => $inscrito): ?>
-                            <?php $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1); ?>
-                            <div class="mesa-card">
+                        <?php foreach ($mesas as $mesa): ?>
+                            <div class="mesa-card" data-mesa-card>
                                 <div class="mesa-header">
-                                    <span class="mesa-numero">Mesa <?= $index + 1 ?></span>
-                                    <span class="mesa-pessoas"><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+                                    <span class="mesa-numero">Mesa <?= (int)$mesa['numero'] ?></span>
+                                    <span class="mesa-pessoas"><?= (int)$mesa['total_pessoas'] ?> <?= (int)$mesa['total_pessoas'] === 1 ? 'pessoa' : 'pessoas' ?></span>
                                 </div>
-                                <div class="inscrito-info">
-                                    <div class="inscrito-nome"><?= h($inscrito['nome']) ?></div>
-                                    <?php if (!empty($inscrito['tipo_festa'])): ?>
-                                        <span class="inscrito-tipo"><?= h(ucfirst($inscrito['tipo_festa'])) ?></span>
+                                <div class="mesa-actions no-print">
+                                    <button type="button" class="btn-link-danger" onclick="removerMesaVazia(this)">Remover mesa</button>
+                                </div>
+                                <div class="mesa-inscritos" data-dropzone>
+                                    <?php if (empty($mesa['inscritos'])): ?>
+                                        <div class="mesa-vazia">Arraste inscritos para esta mesa</div>
+                                    <?php else: ?>
+                                        <?php foreach (($mesa['inscritos'] ?? []) as $inscrito): ?>
+                                            <?php
+                                            $qtdPessoas = (int)($inscrito['qtd_pessoas'] ?? 1);
+                                            $fechou = strtolower((string)($inscrito['fechou_contrato'] ?? 'nao')) === 'sim' ? 'sim' : 'nao';
+                                            ?>
+                                            <div class="inscrito-card"
+                                                draggable="true"
+                                                data-inscrito-id="<?= (int)$inscrito['id'] ?>"
+                                                data-qtd-pessoas="<?= $qtdPessoas ?>">
+                                                <div class="inscrito-nome">
+                                                    <span class="status-contrato <?= $fechou === 'sim' ? 'status-sim' : 'status-nao' ?>">
+                                                        <?= $fechou === 'sim' ? '✅ Fechou' : '❌ Não fechou' ?>
+                                                    </span>
+                                                    <span><?= h($inscrito['nome']) ?></span>
+                                                </div>
+                                                <?php if (!empty($inscrito['tipo_festa'])): ?>
+                                                    <span class="inscrito-tipo"><?= h(ucfirst((string)$inscrito['tipo_festa'])) ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endforeach; ?>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -957,11 +1478,21 @@ if ($is_pdf_request && $degustacao_id > 0) {
 
                 <div class="actions-bar no-print">
                     <button type="button" class="btn btn-secondary" onclick="gerarPDF()">
-                        📄 Gerar PDF
+                        📄 Gerar PDF Agrupado por Mesa
                     </button>
                 </div>
+
+                <form method="POST"
+                    action="<?= $is_via_router ? 'index.php?page=comercial_realizar_degustacao' : 'comercial_realizar_degustacao.php' ?>"
+                    id="pdfLayoutForm"
+                    target="_blank"
+                    style="display: none;">
+                    <input type="hidden" name="degustacao_id" value="<?= (int)$degustacao_id ?>">
+                    <input type="hidden" name="pdf" value="1">
+                    <input type="hidden" name="layout_json" id="layoutJsonInput" value="">
+                </form>
             </div>
-        <?php elseif ($degustacao_id > 0 && !isset($degustacao)): ?>
+        <?php elseif ($degustacao_id > 0 && empty($degustacao)): ?>
             <div class="error-message">
                 ⚠️ <strong>Atenção:</strong> Degustação selecionada (ID: <?= $degustacao_id ?>) mas dados não encontrados no banco de dados.
             </div>
@@ -975,13 +1506,270 @@ if ($is_pdf_request && $degustacao_id > 0) {
     </div>
 
     <script>
-        function gerarPDF() {
-            // Adicionar parâmetro pdf=1 à URL atual e recarregar na mesma aba
-            // O servidor vai detectar e gerar o PDF automaticamente
-            const url = new URL(window.location.href);
-            url.searchParams.set('pdf', '1');
-            window.location.href = url.toString();
+        const initialMesas = <?= $mesas_json ?>;
+        const isViaRouter = <?= $is_via_router ? 'true' : 'false' ?>;
+        const degustacaoId = <?= (int)$degustacao_id ?>;
+        let draggedInscritoCard = null;
+        let saveLayoutTimer = null;
+        let ultimoLayoutSalvo = '';
+
+        function endpointAtual() {
+            return isViaRouter
+                ? 'index.php?page=comercial_realizar_degustacao'
+                : 'comercial_realizar_degustacao.php';
         }
+
+        function atualizarStatusPersistencia(texto, classe = '') {
+            const statusEl = document.getElementById('layoutSaveStatus');
+            if (!statusEl) return;
+
+            statusEl.textContent = texto;
+            statusEl.classList.remove('is-saving', 'is-saved', 'is-error');
+            if (classe) {
+                statusEl.classList.add(classe);
+            }
+        }
+
+        async function persistirLayoutNoBanco() {
+            if (!degustacaoId) return;
+
+            const layoutInput = document.getElementById('layoutJsonInput');
+            const layoutAtual = (layoutInput?.value || '').trim();
+            if (!layoutAtual) return;
+            if (layoutAtual === ultimoLayoutSalvo) {
+                atualizarStatusPersistencia('Layout salvo.', 'is-saved');
+                return;
+            }
+
+            atualizarStatusPersistencia('Salvando layout...', 'is-saving');
+
+            try {
+                const body = new URLSearchParams();
+                body.set('action', 'salvar_layout_mesas');
+                body.set('degustacao_id', String(degustacaoId));
+                body.set('layout_json', layoutAtual);
+
+                const response = await fetch(endpointAtual(), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString(),
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data?.success) {
+                    throw new Error(data?.message || 'Não foi possível salvar o layout.');
+                }
+
+                ultimoLayoutSalvo = layoutAtual;
+                atualizarStatusPersistencia('Layout salvo.', 'is-saved');
+            } catch (error) {
+                atualizarStatusPersistencia('Erro ao salvar. Tentaremos novamente.', 'is-error');
+            }
+        }
+
+        function agendarPersistenciaLayout() {
+            if (!degustacaoId) return;
+            if (saveLayoutTimer) {
+                clearTimeout(saveLayoutTimer);
+            }
+            saveLayoutTimer = setTimeout(() => {
+                persistirLayoutNoBanco();
+            }, 500);
+        }
+
+        function attachInscritoDragEvents(card) {
+            if (!card) return;
+            card.addEventListener('dragstart', function () {
+                draggedInscritoCard = card;
+                card.classList.add('dragging');
+            });
+            card.addEventListener('dragend', function () {
+                card.classList.remove('dragging');
+                draggedInscritoCard = null;
+                document.querySelectorAll('.mesa-inscritos').forEach((zone) => zone.classList.remove('drag-over'));
+                atualizarLayoutMesas();
+            });
+        }
+
+        function attachDropzoneEvents(zone) {
+            if (!zone) return;
+            zone.addEventListener('dragover', function (event) {
+                event.preventDefault();
+                zone.classList.add('drag-over');
+            });
+            zone.addEventListener('dragleave', function (event) {
+                const related = event.relatedTarget;
+                if (!related || !zone.contains(related)) {
+                    zone.classList.remove('drag-over');
+                }
+            });
+            zone.addEventListener('drop', function (event) {
+                event.preventDefault();
+                zone.classList.remove('drag-over');
+                if (!draggedInscritoCard) return;
+                zone.appendChild(draggedInscritoCard);
+                atualizarLayoutMesas();
+            });
+        }
+
+        function aplicarEventosDnD() {
+            document.querySelectorAll('.inscrito-card').forEach(attachInscritoDragEvents);
+            document.querySelectorAll('.mesa-inscritos').forEach(attachDropzoneEvents);
+        }
+
+        function garantirPlaceholderVazio(zone) {
+            if (!zone) return;
+            const hasInscrito = zone.querySelector('.inscrito-card');
+            let placeholder = zone.querySelector('.mesa-vazia');
+            if (!hasInscrito) {
+                if (!placeholder) {
+                    placeholder = document.createElement('div');
+                    placeholder.className = 'mesa-vazia';
+                    placeholder.textContent = 'Arraste inscritos para esta mesa';
+                    zone.appendChild(placeholder);
+                }
+            } else if (placeholder) {
+                placeholder.remove();
+            }
+        }
+
+        function serializarLayout() {
+            const mesas = [];
+            document.querySelectorAll('#mesasGrid .mesa-card').forEach((mesaCard) => {
+                const ids = Array.from(mesaCard.querySelectorAll('.inscrito-card')).map((card) => Number(card.dataset.inscritoId || 0)).filter((id) => id > 0);
+                mesas.push({ inscrito_ids: ids });
+            });
+            return { mesas };
+        }
+
+        function atualizarLayoutMesas(persistir = true) {
+            const mesaCards = document.querySelectorAll('#mesasGrid .mesa-card');
+            let totalMesasComInscritos = 0;
+            let totalInscricoes = 0;
+            let totalPessoas = 0;
+
+            mesaCards.forEach((mesaCard, index) => {
+                const numeroEl = mesaCard.querySelector('.mesa-numero');
+                const pessoasEl = mesaCard.querySelector('.mesa-pessoas');
+                const zone = mesaCard.querySelector('.mesa-inscritos');
+                if (!zone) return;
+
+                const cards = Array.from(zone.querySelectorAll('.inscrito-card'));
+                const qtdInscricoesMesa = cards.length;
+                const qtdPessoasMesa = cards.reduce((acc, card) => acc + Number(card.dataset.qtdPessoas || 1), 0);
+
+                if (numeroEl) {
+                    numeroEl.textContent = `Mesa ${index + 1}`;
+                }
+                if (pessoasEl) {
+                    pessoasEl.textContent = `${qtdPessoasMesa} ${qtdPessoasMesa === 1 ? 'pessoa' : 'pessoas'}`;
+                }
+
+                if (qtdInscricoesMesa > 0) {
+                    totalMesasComInscritos += 1;
+                }
+                totalInscricoes += qtdInscricoesMesa;
+                totalPessoas += qtdPessoasMesa;
+
+                garantirPlaceholderVazio(zone);
+            });
+
+            const statMesas = document.getElementById('statTotalMesas');
+            const statInscricoes = document.getElementById('statTotalInscricoes');
+            const statPessoas = document.getElementById('statTotalPessoas');
+            if (statMesas) statMesas.textContent = String(totalMesasComInscritos);
+            if (statInscricoes) statInscricoes.textContent = String(totalInscricoes);
+            if (statPessoas) statPessoas.textContent = String(totalPessoas);
+
+            const layoutInput = document.getElementById('layoutJsonInput');
+            if (layoutInput) {
+                layoutInput.value = JSON.stringify(serializarLayout());
+            }
+
+            if (persistir) {
+                agendarPersistenciaLayout();
+            }
+        }
+
+        function adicionarMesa() {
+            const mesasGrid = document.getElementById('mesasGrid');
+            if (!mesasGrid) return;
+            const emptyState = mesasGrid.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const mesaCard = document.createElement('div');
+            mesaCard.className = 'mesa-card';
+            mesaCard.setAttribute('data-mesa-card', '');
+            mesaCard.innerHTML = `
+                <div class="mesa-header">
+                    <span class="mesa-numero">Mesa</span>
+                    <span class="mesa-pessoas">0 pessoas</span>
+                </div>
+                <div class="mesa-actions no-print">
+                    <button type="button" class="btn-link-danger" onclick="removerMesaVazia(this)">Remover mesa</button>
+                </div>
+                <div class="mesa-inscritos" data-dropzone>
+                    <div class="mesa-vazia">Arraste inscritos para esta mesa</div>
+                </div>
+            `;
+            mesasGrid.appendChild(mesaCard);
+
+            const zone = mesaCard.querySelector('.mesa-inscritos');
+            attachDropzoneEvents(zone);
+            atualizarLayoutMesas();
+        }
+
+        function removerMesaVazia(buttonEl) {
+            const mesaCard = buttonEl?.closest('.mesa-card');
+            if (!mesaCard) return;
+
+            const cards = mesaCard.querySelectorAll('.inscrito-card');
+            if (cards.length > 0) {
+                alert('Esta mesa possui inscritos. Mova-os para outra mesa antes de remover.');
+                return;
+            }
+
+            mesaCard.remove();
+            atualizarLayoutMesas();
+        }
+
+        async function gerarPDF() {
+            const layoutInput = document.getElementById('layoutJsonInput');
+            const pdfForm = document.getElementById('pdfLayoutForm');
+            if (!layoutInput || !pdfForm) {
+                return;
+            }
+
+            atualizarLayoutMesas(false);
+            await persistirLayoutNoBanco();
+            const layout = JSON.parse(layoutInput.value || '{"mesas": []}');
+            const totalInscritos = Array.isArray(layout.mesas)
+                ? layout.mesas.reduce((acc, mesa) => acc + ((mesa.inscrito_ids || []).length), 0)
+                : 0;
+
+            if (totalInscritos === 0) {
+                alert('Não há inscritos para gerar o PDF.');
+                return;
+            }
+
+            pdfForm.submit();
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (Array.isArray(initialMesas) && initialMesas.length > 0) {
+                aplicarEventosDnD();
+                atualizarLayoutMesas(false);
+                const layoutInput = document.getElementById('layoutJsonInput');
+                ultimoLayoutSalvo = (layoutInput?.value || '').trim();
+                atualizarStatusPersistencia('Layout salvo.', 'is-saved');
+            }
+        });
     </script>
-</body>
-</html>
+
+<?php endSidebar(); ?>

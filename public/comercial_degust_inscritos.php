@@ -1047,6 +1047,12 @@ if (count($inscricoes) > 0) {
 // Estatísticas
 $stats = [
     'total' => count($inscricoes),
+    'total_pessoas' => array_reduce($inscricoes, function ($carry, $inscricao) {
+        $qtdPessoas = isset($inscricao['qtd_pessoas']) && $inscricao['qtd_pessoas'] !== ''
+            ? (int)$inscricao['qtd_pessoas']
+            : 1;
+        return $carry + max(1, $qtdPessoas);
+    }, 0),
     'confirmados' => count(array_filter($inscricoes, fn($i) => $i['status'] === 'confirmado')),
     'lista_espera' => count(array_filter($inscricoes, fn($i) => $i['status'] === 'lista_espera')),
     'fechou_contrato' => count(array_filter($inscricoes, fn($i) => $i['fechou_contrato'] === 'sim')),
@@ -1484,6 +1490,10 @@ ob_start();
                 <div class="stat-card">
                     <div class="stat-value"><?= $stats['total'] ?></div>
                     <div class="stat-label">Total de Inscrições</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value"><?= $stats['total_pessoas'] ?></div>
+                    <div class="stat-label">Total de Pessoas</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value"><?= $stats['confirmados'] ?></div>

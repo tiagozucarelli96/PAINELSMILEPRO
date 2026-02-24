@@ -1923,7 +1923,8 @@ if ($current_page === 'dashboard') {
                 'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
                 'agenda', 'demandas', 'demandas_quadro',
                 'comercial', 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
-                'comercial_degust_public', 'comercial_pagamento', 'pagamento_degustacao', 'testar_identificacao_pagamento',
+                'comercial_degust_public', 'comercial_pagamento', 'comercial_realizar_degustacao',
+                'pagamento_degustacao', 'testar_identificacao_pagamento',
                 // Vendas (páginas com JS próprio — não carregar via AJAX)
                 'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
                 'vendas_kanban', 'vendas_links_publicos',
