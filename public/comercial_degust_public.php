@@ -129,6 +129,7 @@ if ($_POST && !$inscricoes_encerradas) {
         $tipo_festa = $_POST['tipo_festa'] ?? '';
         $qtd_pessoas = (int)($_POST['qtd_pessoas'] ?? 1);
         $fechou_contrato = $_POST['fechou_contrato'] ?? 'nao';
+        $fechou_contrato = $fechou_contrato === 'sim' ? 'sim' : 'nao';
         $nome_titular_contrato = trim($_POST['nome_titular_contrato'] ?? '');
         $cpf_3_digitos = trim($_POST['cpf_3_digitos'] ?? '');
         
@@ -148,17 +149,17 @@ if ($_POST && !$inscricoes_encerradas) {
             throw new Exception("Preencha todos os campos obrigatórios");
         }
         
-        // Usar valores calculados pelo JavaScript ou calcular no servidor
-        $valor_total = (float)($_POST['valor_total'] ?? 0);
-        $extras = (int)($_POST['extras'] ?? 0);
+        // Calcular no servidor para evitar divergências com o JavaScript
+        $incluidos = $tipo_festa === 'casamento' ? (int)$degustacao['incluidos_casamento'] : (int)$degustacao['incluidos_15anos'];
+        $preco_base = $tipo_festa === 'casamento' ? (float)$degustacao['preco_casamento'] : (float)$degustacao['preco_15anos'];
+        $preco_extra = (float)$degustacao['preco_extra'];
+        $extras = max(0, $qtd_pessoas - $incluidos);
         
-        if ($valor_total <= 0) {
-            // Fallback: calcular no servidor se não veio do JavaScript
-            $incluidos = $tipo_festa === 'casamento' ? $degustacao['incluidos_casamento'] : $degustacao['incluidos_15anos'];
-            $extras = max(0, $qtd_pessoas - $incluidos);
-            $preco_base = $tipo_festa === 'casamento' ? $degustacao['preco_casamento'] : $degustacao['preco_15anos'];
-            $valor_total = $preco_base + ($extras * $degustacao['preco_extra']);
-        }
+        // Regra:
+        // - Não fechou contrato: cobra base + extras
+        // - Já fechou contrato: cobra apenas extras
+        $valor_total = ($fechou_contrato === 'sim' ? 0.0 : $preco_base) + ($extras * $preco_extra);
+        $deve_gerar_pagamento = $valor_total > 0;
         
         // Determinar status baseado na capacidade (verificar novamente ANTES de inserir para evitar condições de corrida)
         // IMPORTANTE: Re-verificar capacidade aqui porque pode ter mudado entre a primeira verificação e o INSERT
@@ -260,13 +261,13 @@ if ($_POST && !$inscricoes_encerradas) {
         if (in_array('pagamento_status', $existing_columns)) {
             $campos[] = 'pagamento_status';
             $valores[] = ':pagamento_status';
-            $params[':pagamento_status'] = $fechou_contrato === 'sim' ? 'nao_aplicavel' : 'aguardando';
+            $params[':pagamento_status'] = $deve_gerar_pagamento ? 'aguardando' : 'nao_aplicavel';
         }
         
         if (in_array('valor_pago', $existing_columns)) {
             $campos[] = 'valor_pago';
             $valores[] = ':valor_pago';
-            $params[':valor_pago'] = $fechou_contrato === 'sim' ? 0 : $valor_total;
+            $params[':valor_pago'] = $deve_gerar_pagamento ? $valor_total : 0;
         }
         
         if (in_array('ip_origem', $existing_columns)) {
@@ -333,8 +334,8 @@ if ($_POST && !$inscricoes_encerradas) {
             error_log("Degustação: falha ao enviar e-mail de confirmação (inscrição #{$inscricao_id}): " . $e->getMessage());
         }
         
-        // Se não fechou contrato, processar pagamento via Asaas Checkout
-        if ($fechou_contrato === 'nao' && $valor_total > 0) {
+        // Gerar pagamento quando houver valor devido (base e/ou extras)
+        if ($deve_gerar_pagamento) {
             try {
                 $asaasHelper = new AsaasHelper();
                 
@@ -343,9 +344,6 @@ if ($_POST && !$inscricoes_encerradas) {
                 $current_url = $base_url . $_SERVER['REQUEST_URI'];
                 
                 // Descrição detalhada do item (máximo 37 caracteres conforme API Asaas)
-                $incluidos = $tipo_festa === 'casamento' ? $degustacao['incluidos_casamento'] : $degustacao['incluidos_15anos'];
-                $extras = max(0, $qtd_pessoas - $incluidos);
-                
                 // Montar descrição curta (API Asaas limita a 37 caracteres)
                 $descricao_base = "Degustação: {$degustacao['nome']}";
                 // Se a descrição for muito longa, encurtar
@@ -1705,6 +1703,7 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
         function calcularPreco() {
             const tipoFesta = document.querySelector('input[name="tipo_festa"]:checked');
             const qtdExtras = parseInt(document.getElementById('qtdPessoasInput').value) || 0;
+            const fechouContrato = document.getElementById('fechou_sim')?.checked;
             
             if (!tipoFesta) {
                 document.getElementById('priceInfo').style.display = 'none';
@@ -1715,14 +1714,21 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             const precoBase = precoInfo.base;
             const incluidos = precoInfo.incluidos;
             const precoExtra = PRECOS.extra;
+            const valorBaseAplicado = fechouContrato ? 0 : precoBase;
             
             // Total de pessoas = incluídos + extras
             const totalPessoas = incluidos + qtdExtras;
             
-            // Valor total = base + (extras * preço extra)
-            const valorTotal = precoBase + (qtdExtras * precoExtra);
+            // Regra:
+            // - Não fechou contrato: base + extras
+            // - Já fechou contrato: apenas extras
+            const valorTotal = valorBaseAplicado + (qtdExtras * precoExtra);
             
-            document.getElementById('precoBase').textContent = 'R$ ' + precoBase.toFixed(2).replace('.', ',');
+            if (fechouContrato) {
+                document.getElementById('precoBase').textContent = 'R$ 0,00 (contrato já fechado)';
+            } else {
+                document.getElementById('precoBase').textContent = 'R$ ' + precoBase.toFixed(2).replace('.', ',');
+            }
             
             if (qtdExtras > 0) {
                 document.getElementById('extrasInfo').textContent = qtdExtras + ' pessoa(s) extra(s) x R$ ' + precoExtra.toFixed(2).replace('.', ',') + ' = R$ ' + (qtdExtras * precoExtra).toFixed(2).replace('.', ',');
@@ -1733,6 +1739,16 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
             document.getElementById('valorTotal').textContent = 'R$ ' + valorTotal.toFixed(2).replace('.', ',');
             
             document.getElementById('priceInfo').style.display = 'block';
+            const btnSubmit = document.getElementById('btnSubmitInscricao');
+            if (btnSubmit) {
+                if (valorTotal > 0) {
+                    btnSubmit.innerHTML = '💳 Realizar Pagamento';
+                    btnSubmit.style.background = 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)';
+                } else {
+                    btnSubmit.innerHTML = '✅ Inscrever-se';
+                    btnSubmit.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                }
+            }
             const resumoTotalPessoas = document.getElementById('resumoTotalPessoas');
             if (resumoTotalPessoas) {
                 resumoTotalPessoas.innerHTML = `<strong>Total de convidados:</strong> ${totalPessoas} (${incluidos} incluídas + ${qtdExtras} extras)`;
@@ -1851,6 +1867,8 @@ $mostrar_tela_confirmacao = !empty($success_message) && !($show_qr_code && $qr_i
                     btnSubmit.style.background = 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)';
                 }
             }
+            
+            calcularPreco();
         }
         
         function fecharModalBuscaME() {
