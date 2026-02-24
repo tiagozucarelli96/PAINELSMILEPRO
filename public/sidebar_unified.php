@@ -1582,6 +1582,10 @@ if ($current_page === 'dashboard') {
                     <span class="nav-item-icon">🎉</span>
                     Eventos
                 </a>
+                <a href="index.php?page=eventos_realizar" class="nav-item <?= isActiveUnified('eventos_realizar') ?>">
+                    <span class="nav-item-icon">✅</span>
+                    Realizar evento
+                </a>
                 <?php endif; ?>
                 
                 <?php
@@ -1919,7 +1923,7 @@ if ($current_page === 'dashboard') {
                 'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
                 'agenda', 'demandas', 'demandas_quadro',
                 'comercial', 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
-                'comercial_degust_public', 'comercial_pagamento',
+                'comercial_degust_public', 'comercial_pagamento', 'pagamento_degustacao', 'testar_identificacao_pagamento',
                 // Vendas (páginas com JS próprio — não carregar via AJAX)
                 'vendas_pre_contratos', 'vendas_administracao', 'vendas_lancamento_presencial',
                 'vendas_kanban', 'vendas_links_publicos',

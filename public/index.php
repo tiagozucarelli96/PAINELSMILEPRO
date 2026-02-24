@@ -299,6 +299,7 @@ $routes = [
 
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
   'eventos' => 'eventos_landing.php',
+  'eventos_realizar' => 'eventos_realizar.php',
   'eventos_organizacao' => 'eventos_organizacao.php',
   'eventos_arquivos' => 'eventos_arquivos.php',
   'eventos_lista_convidados' => 'eventos_lista_convidados.php',
@@ -322,6 +323,9 @@ $routes = [
   'eventos_cliente_dj' => 'eventos_cliente_dj.php',
   'eventos_cliente_portal' => 'eventos_cliente_portal.php',
   'eventos_cliente_convidados' => 'eventos_cliente_convidados.php',
+  'eventos_cliente_reuniao' => 'eventos_cliente_reuniao.php',
+  'eventos_cliente_dj_portal' => 'eventos_cliente_dj_portal.php',
+  'eventos_cliente_arquivos' => 'eventos_cliente_arquivos.php',
 
   // Outros
   'ver' => 'ver.php',
@@ -346,6 +350,7 @@ $routes = [
   'verificar_webhook_qrcode' => 'verificar_webhook_qrcode.php',
   'verificar_pagamento_1real' => 'verificar_pagamento_1real.php',
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
+  'pagamento_degustacao' => 'testar_identificacao_pagamento.php',
   'testar_identificacao_pagamento' => 'testar_identificacao_pagamento.php',
   'login' => 'login.php', // Rota de login
   'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
@@ -381,6 +386,9 @@ $public_pages = [
   'eventos_cliente_dj',
   'eventos_cliente_portal',
   'eventos_cliente_convidados',
+  'eventos_cliente_reuniao',
+  'eventos_cliente_dj_portal',
+  'eventos_cliente_arquivos',
   // Galeria pública para clientes
   'eventos_galeria_public',
 ];

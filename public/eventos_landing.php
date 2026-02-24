@@ -2,7 +2,7 @@
 /**
  * eventos_landing.php
  * Página inicial do módulo Eventos
- * Acesso: Reunião Final, Calendário e Fornecedores
+ * Acesso: Organização, Rascunhos, Eventos Organizados e Fornecedores
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -251,11 +251,11 @@ includeSidebar('Eventos');
         </a>
         
         <a href="index.php?page=eventos_calendario" class="module-card">
-            <div class="module-icon purple">📅</div>
-            <div class="module-title">Calendário de Reuniões</div>
+            <div class="module-icon purple">📚</div>
+            <div class="module-title">Eventos Organizados</div>
             <div class="module-desc">
-                Visualize todas as reuniões em um calendário mensal. 
-                Gere PDFs e crie links públicos de visualização.
+                Acompanhe os eventos que já foram organizados, filtre por status
+                e abra rapidamente a organização de cada um.
             </div>
             <span class="module-badge internal">Interno</span>
         </a>

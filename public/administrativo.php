@@ -175,6 +175,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Pagamento Degustação -->
+        <a href="index.php?page=pagamento_degustacao" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0891b2, #0e7490);">
+                <span class="funcionalidade-card-icon">🍽️</span>
+                <div class="funcionalidade-card-title">Pagamento Degustação</div>
+                <div class="funcionalidade-card-subtitle">Baixa manual e validação de pagamentos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Gestão de Documentos -->
         <a href="index.php?page=administrativo_gestao_documentos" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #0ea5e9);">

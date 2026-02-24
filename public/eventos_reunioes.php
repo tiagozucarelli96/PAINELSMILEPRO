@@ -281,7 +281,7 @@ $reunioes = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <h1 class="page-title">📋 Reuniões</h1>
         <div class="header-actions">
             <a href="index.php?page=eventos_organizacao" class="btn btn-primary">+ Nova Organização</a>
-            <a href="index.php?page=eventos_calendario" class="btn btn-secondary">📅 Calendário</a>
+            <a href="index.php?page=eventos_calendario" class="btn btn-secondary">📚 Eventos Organizados</a>
             <a href="index.php?page=eventos" class="btn btn-secondary">← Voltar</a>
         </div>
     </div>

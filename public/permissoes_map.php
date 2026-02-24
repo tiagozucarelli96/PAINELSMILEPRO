@@ -132,6 +132,8 @@ return [
     'verificacao_completa_erros' => 'perm_administrativo',
     'sistema_unificado' => 'perm_administrativo',
     'historico' => 'perm_administrativo',
+    'pagamento_degustacao' => 'perm_administrativo',
+    'testar_identificacao_pagamento' => 'perm_administrativo',
     'notas_fiscais' => 'perm_notas_fiscais',
     
     // RH (transferido para Administrativo)
@@ -147,6 +149,7 @@ return [
     
     // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
+    'eventos_realizar' => 'perm_eventos',
     'eventos_organizacao' => 'perm_eventos',
     'eventos_arquivos' => 'perm_eventos',
     'eventos_lista_convidados' => 'perm_eventos',
