@@ -611,16 +611,6 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
             
-            <div class="dashboard-card">
-                <div class="card-header">
-                    <h3>🚪 Portão</h3>
-                    <span class="card-icon">🚪</span>
-                </div>
-                <div class="card-content">
-                    <p>Controle de acesso</p>
-                    <a href="index.php?page=portao" class="btn-primary">Acessar</a>
-                </div>
-            </div>
         </div>
     </div>';
 } else {

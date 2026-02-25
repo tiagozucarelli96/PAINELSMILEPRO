@@ -89,8 +89,9 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
 // Processar ações POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
-    
-    switch ($action) {
+
+    try {
+        switch ($action) {
         case 'criar_reuniao':
             if ($me_event_id <= 0) {
                 echo json_encode(['ok' => false, 'error' => 'Selecione um evento']);
@@ -534,6 +535,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['location' => '', 'error' => $e->getMessage()]);
             }
             exit;
+
+        default:
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Ação inválida']);
+            exit;
+    }
+    } catch (Throwable $e) {
+        http_response_code(500);
+        error_log('eventos_reuniao_final POST [' . (string)$action . ']: ' . $e->getMessage());
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Falha interna ao processar a solicitação. Tente novamente.'
+        ]);
+        exit;
     }
 }
 
@@ -2235,6 +2250,22 @@ function renderEventsList(events, query = '') {
     list.style.display = 'block';
 }
 
+async function parseJsonResponse(resp, context = 'a requisição') {
+    const status = Number(resp && resp.status ? resp.status : 0);
+    const bodyText = await resp.text();
+    if (bodyText.trim() === '') {
+        if (status === 401 || status === 403) {
+            throw new Error('Sessão expirada. Recarregue a página e faça login novamente.');
+        }
+        throw new Error(`Falha ao processar ${context}: resposta vazia do servidor (HTTP ${status}).`);
+    }
+    try {
+        return JSON.parse(bodyText);
+    } catch (err) {
+        throw new Error(`Falha ao processar ${context}: resposta inválida do servidor (HTTP ${status}).`);
+    }
+}
+
 async function fetchRemoteEvents(query = '', forceRefresh = false) {
     const key = `${query}::${forceRefresh ? '1' : '0'}`;
     if (!forceRefresh && eventsQueryCache.has(key)) {
@@ -2248,7 +2279,7 @@ async function fetchRemoteEvents(query = '', forceRefresh = false) {
 
     const url = `index.php?page=eventos_me_proxy&action=list&search=${encodeURIComponent(query)}&days=120${forceRefresh ? '&refresh=1' : ''}`;
     const resp = await fetch(url, { signal: searchAbortController.signal });
-    const data = await resp.json();
+    const data = await parseJsonResponse(resp, 'a busca de eventos');
     if (!data.ok) {
         throw new Error(data.error || 'Erro ao buscar eventos');
     }
@@ -2352,7 +2383,7 @@ async function criarReuniao() {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a criação da reunião');
         
         if (data.ok && data.reuniao) {
             window.location.href = `index.php?page=eventos_reuniao_final&id=${data.reuniao.id}`;
@@ -2606,7 +2637,7 @@ async function excluirDjSlot(slot = 1) {
                 method: 'POST',
                 body: formData
             });
-            const data = await resp.json();
+            const data = await parseJsonResponse(resp, 'a exclusão do quadro');
             if (!data.ok) {
                 alert(data.error || 'Erro ao excluir quadro');
                 return;
@@ -2930,7 +2961,7 @@ async function uploadDjAnexos(cardId) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'o upload de anexos');
 
         if (!data.ok) {
             setDjAnexosStatus(data.error || 'Falha ao enviar anexos.', 'error');
@@ -2985,7 +3016,7 @@ async function excluirDjAnexo(anexoId) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a exclusão do anexo');
 
         if (!data.ok) {
             setDjAnexosStatus(data.error || 'Falha ao excluir anexo.', 'error');
@@ -3358,7 +3389,7 @@ async function excluirObservacoesSlot(slot = 1) {
         formData.append('meeting_id', String(meetingId));
         formData.append('slot_index', String(slotIndex));
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a exclusão do quadro');
         if (!data.ok) {
             alert(data.error || 'Erro ao excluir quadro');
             return;
@@ -3410,7 +3441,7 @@ async function gerarLinkClienteObservacoes(slot = 1) {
         formData.append('form_title', formTitle);
 
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a geração do link');
         if (data.ok && data.url) {
             setObservacoesLinkOutput(slotIndex, data.url);
             observacoesLinksBySlot[slotIndex] = {
@@ -3472,7 +3503,7 @@ async function destravarObservacoesSlot(slot = 1) {
         formData.append('meeting_id', String(meetingId));
         formData.append('slot_index', String(slotIndex));
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'o destravamento do quadro');
         if (data.ok) {
             location.reload();
         } else {
@@ -3945,7 +3976,7 @@ async function fetchTemplates() {
         method: 'POST',
         body: formData
     });
-    const data = await resp.json();
+    const data = await parseJsonResponse(resp, 'a listagem de modelos');
     if (!data.ok) {
         throw new Error(data.error || 'Erro ao listar modelos');
     }
@@ -4090,7 +4121,7 @@ async function salvarSecao(section) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'o salvamento da seção');
         
         if (data.ok) {
             alert('Salvo com sucesso! Versão #' + data.version);
@@ -4170,7 +4201,7 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
                 method: 'POST',
                 body: formData
             });
-            const data = await resp.json();
+            const data = await parseJsonResponse(resp, 'a configuração do portal');
 
             if (data.ok) {
                 const link = data.link && typeof data.link === 'object' ? data.link : null;
@@ -4229,7 +4260,7 @@ async function verVersoes(section) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a consulta de versões');
         
         if (data.ok) {
             const container = document.getElementById('versoesContent');
@@ -4332,7 +4363,7 @@ async function restaurarVersao(versionId) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a restauração da versão');
         
         if (data.ok) {
             alert('Versão restaurada!');
@@ -4359,7 +4390,7 @@ async function destravarSecao(section) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'o destravamento da seção');
         
         if (data.ok) {
             location.reload();
@@ -4390,7 +4421,7 @@ async function destravarDjSlot(slot = 1) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'o destravamento do quadro');
 
         if (data.ok) {
             location.reload();
@@ -4424,7 +4455,7 @@ async function atualizarStatus(status) {
             method: 'POST',
             body: formData
         });
-        const data = await resp.json();
+        const data = await parseJsonResponse(resp, 'a atualização de status');
         
         if (data.ok) {
             location.reload();

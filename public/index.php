@@ -329,7 +329,6 @@ $routes = [
 
   // Outros
   'ver' => 'ver.php',
-  'portao' => 'portao.php',
   'banco_smile' => 'banco_smile_landing.php',
   'banco_smile_main' => 'banco_smile.php',
   'banco_smile_admin' => 'banco_smile_admin.php',

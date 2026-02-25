@@ -1383,6 +1383,22 @@ includeSidebar('Galeria de Imagens - Comercial');
         document.getElementById('modalDeleteConfirm').classList.add('show');
     }
 
+    async function parseJsonResponse(response, context = 'a requisição') {
+        const status = Number(response && response.status ? response.status : 0);
+        const bodyText = await response.text();
+        if (bodyText.trim() === '') {
+            if (status === 401 || status === 403) {
+                throw new Error('Sessão expirada. Recarregue a página e faça login novamente.');
+            }
+            throw new Error(`Falha ao processar ${context}: resposta vazia do servidor (HTTP ${status}).`);
+        }
+        try {
+            return JSON.parse(bodyText);
+        } catch (err) {
+            throw new Error(`Falha ao processar ${context}: resposta inválida do servidor (HTTP ${status}).`);
+        }
+    }
+
     async function rotacionarImagem(id) {
         const formData = new FormData();
         formData.append('action', 'rotacionar');
@@ -1397,7 +1413,7 @@ includeSidebar('Galeria de Imagens - Comercial');
                     'X-Requested-With': 'XMLHttpRequest'
                 }
             });
-            const data = await response.json();
+            const data = await parseJsonResponse(response, 'a rotação da imagem');
             if (data && data.ok) {
                 window.location.reload();
                 return;
@@ -1535,13 +1551,13 @@ includeSidebar('Galeria de Imagens - Comercial');
 	                        signal: currentUploadAbortController.signal
 	                    });
 	                    const contentType = response.headers.get('content-type') || '';
-	                    if (!contentType.includes('application/json')) {
-	                        throw new Error(`Resposta inesperada (HTTP ${response.status}). Talvez sessao expirada.`);
-	                    }
-	                    const data = await response.json();
-	                    if (data && data.ok) {
-	                        successCount += 1;
-	                    } else {
+                    if (!contentType.includes('application/json')) {
+                        throw new Error(`Resposta inesperada (HTTP ${response.status}). Talvez sessao expirada.`);
+                    }
+                    const data = await parseJsonResponse(response, 'o upload da imagem');
+                    if (data && data.ok) {
+                        successCount += 1;
+                    } else {
 	                        errorCount += 1;
 	                        const msg = (data && data.message) ? String(data.message) : 'Erro no upload.';
 	                        failures.push(`${files[i].name}: ${msg}`);

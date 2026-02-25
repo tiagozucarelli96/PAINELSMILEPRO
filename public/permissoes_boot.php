@@ -25,7 +25,7 @@ try {
   $permKeys = [
     // Permissões existentes (ainda em uso)
     'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios',
-    'perm_portao','perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
+    'perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
     'perm_dados_contrato','perm_uso_fiorino',
     // Logística (novo módulo)
     'perm_superadmin','perm_logistico','perm_logistico_divergencias','perm_logistico_financeiro',
