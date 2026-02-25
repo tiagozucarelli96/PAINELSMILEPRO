@@ -1368,7 +1368,7 @@ if ($mesas_json === false) {
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-primary">📊 Gerar Relatório</button>
+                    <button type="submit" class="btn btn-primary">🧩 Organizar</button>
                 </div>
             </form>
 
@@ -1500,7 +1500,7 @@ if ($mesas_json === false) {
             <div class="empty-state">
                 <div class="empty-state-icon">📋</div>
                 <p style="font-size: 1.125rem; margin-bottom: 0.5rem; font-weight: 600;">Instruções</p>
-                <p>Selecione uma degustação no dropdown acima e clique em <strong>"📊 Gerar Relatório"</strong> para visualizar os dados.</p>
+                <p>Selecione uma degustação no dropdown acima e clique em <strong>"🧩 Organizar"</strong> para visualizar os dados.</p>
             </div>
         <?php endif; ?>
     </div>

@@ -21,6 +21,29 @@ $link_observacoes = null;
 $visivel_reuniao = false;
 $editavel_reuniao = false;
 
+function eventos_cliente_reuniao_selecionar_link_observacoes(array $links_observacoes): ?array
+{
+    $has_rules = false;
+    foreach ($links_observacoes as $link_item) {
+        if (!empty($link_item['portal_configured'])) {
+            $has_rules = true;
+            break;
+        }
+    }
+
+    foreach ($links_observacoes as $link_item) {
+        if (empty($link_item['is_active'])) {
+            continue;
+        }
+        if ($has_rules && empty($link_item['portal_visible'])) {
+            continue;
+        }
+        return $link_item;
+    }
+
+    return null;
+}
+
 if ($token === '') {
     $error = 'Link inválido.';
 } else {
@@ -43,23 +66,23 @@ if ($token === '') {
                 $error = 'A área de reunião final ainda não está habilitada para este evento.';
             } else {
                 $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
-                $has_rules = false;
-                foreach ($links_observacoes as $link_item) {
-                    if (!empty($link_item['portal_configured'])) {
-                        $has_rules = true;
-                        break;
-                    }
-                }
+                $link_observacoes = eventos_cliente_reuniao_selecionar_link_observacoes($links_observacoes);
 
-                foreach ($links_observacoes as $link_item) {
-                    if (empty($link_item['is_active'])) {
-                        continue;
+                // Auto-correção: se reunião está visível mas ainda não existe link, tenta criar/sincronizar.
+                if (!$link_observacoes) {
+                    $sync_result = eventos_cliente_portal_sincronizar_link_reuniao(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $visivel_reuniao,
+                        $editavel_reuniao,
+                        0
+                    );
+                    if (!empty($sync_result['ok'])) {
+                        $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
+                        $link_observacoes = eventos_cliente_reuniao_selecionar_link_observacoes($links_observacoes);
+                    } else {
+                        error_log('eventos_cliente_reuniao sync reuniao: ' . (string)($sync_result['error'] ?? 'erro desconhecido'));
                     }
-                    if ($has_rules && empty($link_item['portal_visible'])) {
-                        continue;
-                    }
-                    $link_observacoes = $link_item;
-                    break;
                 }
             }
         }

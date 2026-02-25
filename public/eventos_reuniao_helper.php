@@ -2781,6 +2781,86 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
 }
 
 /**
+ * Sincroniza o link público de Reunião Final (Observações Gerais) com a configuração do portal.
+ * Garante que, ao habilitar visibilidade/edição da reunião, exista ao menos um link disponível.
+ */
+function eventos_cliente_portal_sincronizar_link_reuniao(
+    PDO $pdo,
+    int $meeting_id,
+    bool $visivel_reuniao,
+    bool $editavel_reuniao,
+    int $user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $schema_snapshot = null;
+    $content_snapshot = null;
+    $form_title = 'Reunião Final';
+
+    $secao_observacoes = eventos_reuniao_get_secao($pdo, $meeting_id, 'observacoes_gerais');
+    if (is_array($secao_observacoes) && !empty($secao_observacoes)) {
+        $schema_raw = json_decode((string)($secao_observacoes['form_schema_json'] ?? '[]'), true);
+        if (is_array($schema_raw) && !empty($schema_raw)) {
+            $schema_snapshot = $schema_raw;
+        }
+        $content_raw = trim((string)($secao_observacoes['content_html'] ?? ''));
+        if ($content_raw !== '') {
+            $content_snapshot = $content_raw;
+        }
+        if ($schema_snapshot !== null || $content_snapshot !== null) {
+            $form_title = 'Reunião Final - Observações Gerais';
+        }
+    }
+
+    // Fallback: se Observações Gerais estiver vazio, reaproveita o conteúdo de Decoração.
+    if ($schema_snapshot === null && $content_snapshot === null) {
+        $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
+        if (is_array($secao_decoracao) && !empty($secao_decoracao)) {
+            $schema_raw = json_decode((string)($secao_decoracao['form_schema_json'] ?? '[]'), true);
+            if (is_array($schema_raw) && !empty($schema_raw)) {
+                $schema_snapshot = $schema_raw;
+            }
+            $content_raw = trim((string)($secao_decoracao['content_html'] ?? ''));
+            if ($content_raw !== '') {
+                $content_snapshot = $content_raw;
+            }
+            if ($schema_snapshot !== null || $content_snapshot !== null) {
+                $form_title = 'Reunião Final - Decoração';
+            }
+        }
+    }
+
+    $result = eventos_reuniao_atualizar_slot_portal_config(
+        $pdo,
+        $meeting_id,
+        1,
+        'cliente_observacoes',
+        $visivel_reuniao,
+        $editavel_reuniao,
+        $user_id,
+        $schema_snapshot,
+        $content_snapshot,
+        $form_title,
+        'observacoes_gerais'
+    );
+
+    if (empty($result['ok'])) {
+        // Não interromper o fluxo de configuração do portal em caso de seção ainda vazia.
+        $error_text = (string)($result['error'] ?? '');
+        $is_empty_section = stripos($error_text, 'Salve o formulário da seção') !== false;
+        if ($is_empty_section) {
+            return ['ok' => true, 'link' => null, 'warning' => $error_text];
+        }
+        return ['ok' => false, 'error' => $error_text !== '' ? $error_text : 'Falha ao sincronizar link da reunião'];
+    }
+
+    return ['ok' => true, 'link' => $result['link'] ?? null];
+}
+
+/**
  * Atualiza configurações do portal do cliente por reunião.
  */
 function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, array $config, int $user_id = 0): array {
@@ -2881,6 +2961,17 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
 
         if (!$portal) {
             return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
+        }
+
+        $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
+            $pdo,
+            $meeting_id,
+            $visivel_reuniao,
+            $editavel_reuniao,
+            $user_id
+        );
+        if (empty($sync_reuniao['ok'])) {
+            error_log('eventos_cliente_portal_atualizar_config sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
         }
 
         return ['ok' => true, 'portal' => $portal];
