@@ -30,7 +30,8 @@ function testarSidebar($permissoes_sessao) {
         'Cadastros' => 'perm_cadastros',
         'Financeiro' => 'perm_financeiro',
         'Administrativo' => 'perm_administrativo',
-        'Banco Smile' => 'perm_banco_smile'
+        'Banco Smile' => 'perm_banco_smile',
+        'Portao' => 'perm_portao'
     ];
     
     $resultado = [];
@@ -65,7 +66,7 @@ $permissoes_atual = [];
 $permissoes_sidebar = [
     'perm_agenda', 'perm_demandas', 'perm_comercial', // 'perm_logistico', // REMOVIDO: Módulo desativado
     'perm_configuracoes', 'perm_cadastros', 'perm_financeiro',
-    'perm_administrativo', 'perm_banco_smile'
+    'perm_administrativo', 'perm_banco_smile', 'perm_portao'
 ];
 
 foreach ($permissoes_sidebar as $perm) {
@@ -284,4 +285,3 @@ $resultado_teste = testarSidebar($permissoes_atual);
     </div>
 </body>
 </html>
-

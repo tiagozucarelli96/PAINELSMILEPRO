@@ -974,7 +974,8 @@ ob_start();
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
             'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_logistico',
-            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile'
+            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile',
+            'perm_portao'
         ];
         
         foreach ($usuarios as $user): 
@@ -1176,11 +1177,20 @@ ob_start();
                         error_log("Erro ao adicionar perm_superadmin: " . $e->getMessage());
                     }
                 }
+
+                if (!isset($existing_perms['perm_portao'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_portao BOOLEAN DEFAULT FALSE");
+                        $existing_perms['perm_portao'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_portao: " . $e->getMessage());
+                    }
+                }
                 
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
                     // Módulos principais da sidebar (conforme solicitado)
-                    // 11 permissões da sidebar (exceto dashboard que todos têm)
+                    // Permissões da sidebar (exceto dashboard que todos têm)
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
@@ -1191,9 +1201,10 @@ ob_start();
                     'perm_financeiro' => '💰 Financeiro',
                     'perm_administrativo' => '👥 Administrativo',
                     'perm_banco_smile' => '🏦 Banco Smile',
+                    'perm_portao' => '🔓 Portao',
                 ];
                 
-                // Lista fixa das 11 permissões da sidebar
+                // Lista fixa das permissões da sidebar
                 $sidebar_perms = [
                     'perm_agenda',
                     'perm_demandas',
@@ -1204,7 +1215,8 @@ ob_start();
                     'perm_cadastros',
                     'perm_financeiro',
                     'perm_administrativo',
-                    'perm_banco_smile'
+                    'perm_banco_smile',
+                    'perm_portao'
                 ];
                 
                 // Filtrar apenas permissões da sidebar que existem no banco

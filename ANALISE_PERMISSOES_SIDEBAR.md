@@ -134,7 +134,6 @@ O sistema possui outras permissões que **NÃO** controlam botões da sidebar, m
 - `perm_pagamentos` - Usada dentro de outros módulos
 - `perm_tarefas` - Usada em funcionalidades específicas
 - `perm_lista` - Usada no módulo Logístico
-- `perm_portao` - Funcionalidade específica
 - `perm_notas_fiscais` - Usada em módulos financeiros
 - `perm_estoque_logistico` - Usada no módulo Logístico
 - `perm_dados_contrato` - Usada em módulos comerciais
@@ -203,4 +202,3 @@ O sistema de permissões da sidebar está **funcionando corretamente**. Cada bot
 - `public/permissoes_boot.php`
 - `public/usuarios_new.php`
 - `sql/fix_usuarios_table_completo.sql`
-

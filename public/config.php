@@ -25,7 +25,7 @@ function refreshPermissoes(PDO $pdo) {
     $id = usuarioId(); if (!$id) return;
 
     $sql = "SELECT id, nome, status,
-                   perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios,
+                   perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios, perm_portao,
                    perm_banco_smile, perm_banco_smile_admin, perm_notas_fiscais,
                    perm_dados_contrato, perm_uso_fiorino // REMOVIDO: perm_estoque_logistico
             FROM usuarios
@@ -39,7 +39,7 @@ function refreshPermissoes(PDO $pdo) {
 
         // lista completa de chaves que o dashboard usa
         $keys = [
-            'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios',
+            'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios','perm_portao',
             'perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
             'perm_dados_contrato','perm_uso_fiorino' // REMOVIDO: 'perm_estoque_logistico'
         ];

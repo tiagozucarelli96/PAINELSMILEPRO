@@ -143,6 +143,7 @@ return [
     'rh_holerite_upload' => 'perm_administrativo',
     
     // Outros (usando permissões existentes)
+    'portao' => 'perm_portao',
     'dados_contrato' => 'perm_dados_contrato',
     'uso_fiorino' => 'perm_uso_fiorino',
     

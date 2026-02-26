@@ -24,6 +24,7 @@ $form_permissions = [
     'perm_pagamentos',
     'perm_tarefas',
     'perm_demandas',
+    'perm_portao',
     'perm_notas_fiscais',
     // 'perm_estoque_logistico', // REMOVIDO: Módulo desativado
     'perm_dados_contrato',

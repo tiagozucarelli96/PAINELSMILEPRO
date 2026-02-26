@@ -51,6 +51,7 @@ $permissoes_sistema = [
     'perm_demandas' => 'Solicitar Pagamento',
     'perm_pagamentos' => 'Pagamentos',
     'perm_usuarios' => 'Usuários',
+    'perm_portao' => 'Portao',
     'perm_banco_smile' => 'Banco Smile',
     'perm_banco_smile_admin' => 'Banco Smile Admin',
     'perm_notas_fiscais' => 'Notas Fiscais',

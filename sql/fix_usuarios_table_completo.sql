@@ -64,4 +64,3 @@ SELECT
 FROM information_schema.columns 
 WHERE table_name = 'usuarios' 
 ORDER BY ordinal_position;
-

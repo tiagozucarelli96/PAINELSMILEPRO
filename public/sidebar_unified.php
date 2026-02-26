@@ -797,6 +797,20 @@ if ($current_page === 'dashboard') {
             border-left-color: #ef4444;
             color: white;
         }
+
+        .nav-item-gate {
+            margin-top: 6px;
+            padding: 10px 20px;
+            font-size: 13px;
+            background: rgba(16, 185, 129, 0.12);
+            border-left-color: rgba(16, 185, 129, 0.6);
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .nav-item-gate:hover {
+            background: rgba(16, 185, 129, 0.2);
+            border-left-color: #10b981;
+        }
         
         /* Main Content - Sobrescrever estilo.css */
         .main-content {
@@ -1629,6 +1643,13 @@ if ($current_page === 'dashboard') {
                 <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
                     <span class="nav-item-icon">🏦</span>
                     Banco Smile
+                </a>
+                <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_portao']) || !empty($_SESSION['perm_superadmin'])): ?>
+                <a href="index.php?page=portao" class="nav-item nav-item-gate <?= isActiveUnified('portao') ?>">
+                    <span class="nav-item-icon">🔓</span>
+                    Portao
                 </a>
                 <?php endif; ?>
                 

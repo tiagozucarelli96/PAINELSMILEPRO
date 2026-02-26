@@ -174,7 +174,8 @@ require_once __DIR__ . '/permissoes_boot.php';
             'perm_cadastros' => 'Cadastros',
             'perm_financeiro' => 'Financeiro',
             'perm_administrativo' => 'Administrativo',
-            'perm_banco_smile' => 'Banco Smile'
+            'perm_banco_smile' => 'Banco Smile',
+            'perm_portao' => 'Portao'
         ];
         
         $colunas_existentes = [];
@@ -323,7 +324,7 @@ require_once __DIR__ . '/permissoes_boot.php';
         echo "</div>";
         echo "<div class='summary-card'>";
         echo "<h3>Total de Módulos</h3>";
-        echo "<div class='value'>{$permissoes_ativas + $permissoes_inativas}</div>";
+        echo "<div class='value'>" . ($permissoes_ativas + $permissoes_inativas) . "</div>";
         echo "</div>";
         echo "</div>";
         
@@ -358,7 +359,8 @@ require_once __DIR__ . '/permissoes_boot.php';
                     'perm_cadastros' => '📝',
                     'perm_financeiro' => '💰',
                     'perm_administrativo' => '👥',
-                    'perm_banco_smile' => '🏦'
+                    'perm_banco_smile' => '🏦',
+                    'perm_portao' => '🔓'
                 ][$perm] ?? '📌';
                 
                 echo "<div style='padding: 0.5rem; margin: 0.25rem 0; background: rgba(16,185,129,0.2); border-left: 3px solid #10b981; border-radius: 4px;'>";
@@ -455,4 +457,3 @@ require_once __DIR__ . '/permissoes_boot.php';
     </div>
 </body>
 </html>
-

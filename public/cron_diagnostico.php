@@ -54,6 +54,11 @@ $crons_info = [
         'descricao' => 'Processa e envia notificações pendentes',
         'frequencia' => 'A cada 5 minutos'
     ],
+    'portao_auto_close' => [
+        'nome' => 'Portão - Auto Close',
+        'descricao' => 'Processa fechamento automatico do portao quando vencer o timer',
+        'frequencia' => 'A cada 1 minuto'
+    ],
     'google_calendar_daily' => [
         'nome' => 'Google Calendar - Sync Diário',
         'descricao' => 'Sincronização completa dos calendários Google',

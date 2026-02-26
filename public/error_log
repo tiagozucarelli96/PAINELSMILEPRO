@@ -190,7 +190,6 @@ Stack trace:
 [11-Aug-2025 17:38:38 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/pagamentos.php on line 3
 [11-Aug-2025 17:39:47 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/pagamentos.php on line 3
 [11-Aug-2025 17:44:20 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/pagamentos.php on line 3
-[12-Aug-2025 07:16:33 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/portao.php on line 2
 [12-Aug-2025 07:33:37 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/dashboard-2.php on line 3
 [12-Aug-2025 07:33:37 America/Fortaleza] PHP Fatal error:  Cannot redeclare active() (previously declared in /home3/smilee12/public_html/painel/sidebar.php:2) in /home3/smilee12/public_html/painel/sidebar.php on line 2
 [12-Aug-2025 07:33:44 America/Fortaleza] PHP Notice:  session_start(): Ignoring session_start() because a session is already active in /home3/smilee12/public_html/painel/dashboard-2.php on line 3

@@ -36,7 +36,7 @@ function lc_can_access_module(string $module): bool {
     
     // Mapeamento de módulos por perfil
     $module_permissions = [
-        'ADM' => ['usuarios', 'pagamentos', 'tarefas', 'demandas', 'portao', 'banco_smile', 'banco_smile_admin', 'notas_fiscais', 'estoque_logistico', 'dados_contrato', 'uso_fiorino', 'rh', 'contabilidade', 'estoque', 'configuracoes', 'comercial'],
+        'ADM' => ['usuarios', 'pagamentos', 'tarefas', 'demandas', 'banco_smile', 'banco_smile_admin', 'notas_fiscais', 'estoque_logistico', 'dados_contrato', 'uso_fiorino', 'rh', 'contabilidade', 'estoque', 'configuracoes', 'comercial'],
         'FINANCEIRO' => ['pagamentos', 'rh', 'contabilidade', 'banco_smile', 'notas_fiscais', 'comercial'],
         'GERENTE' => ['tarefas', 'demandas', 'pagamentos', 'rh', 'comercial'],
         'OPER' => ['tarefas', 'demandas', 'estoque', 'comercial'],
