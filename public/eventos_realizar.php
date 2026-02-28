@@ -80,12 +80,19 @@ if (!$reuniao) {
     $evento_data_sql = "NULLIF(TRIM(r.me_event_snapshot->>'data'), '')";
     $evento_hora_sql = "COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'hora_inicio'), ''), NULLIF(TRIM(r.me_event_snapshot->>'hora'), ''), '00:00')";
     $evento_data_hora_sql = "(($evento_data_sql)::date + ($evento_hora_sql)::time)";
+    $janela_pos_meia_noite_horas = 6;
 
     $where = [
         'r.me_event_id IS NOT NULL',
         'r.me_event_id > 0',
         "{$evento_data_sql} IS NOT NULL",
-        "{$evento_data_hora_sql} >= NOW()",
+        "(
+            ({$evento_data_sql})::date >= CURRENT_DATE
+            OR (
+                ({$evento_data_sql})::date = (CURRENT_DATE - INTERVAL '1 day')::date
+                AND NOW() < date_trunc('day', NOW()) + INTERVAL '{$janela_pos_meia_noite_horas} hours'
+            )
+        )",
     ];
     $params = [];
     if ($busca !== '') {
@@ -390,7 +397,7 @@ includeSidebar('Realizar evento');
     <div class="page-header">
         <div>
             <h1 class="page-title">✅ Realizar evento</h1>
-            <div class="page-subtitle">Selecione um evento organizado. A lista exibe os próximos 7 eventos e este modo é somente leitura (visualização modal + download), com check-in de convidados para recepção.</div>
+            <div class="page-subtitle">Selecione um evento organizado. A lista exibe os eventos de hoje e os próximos 7; na madrugada (até 06h), também mantém eventos de ontem para check-in tardio.</div>
         </div>
         <?php if ($reuniao): ?>
         <a href="index.php?page=eventos_realizar" class="btn btn-secondary">Trocar evento</a>
@@ -413,7 +420,7 @@ includeSidebar('Realizar evento');
         </form>
 
         <?php if (empty($eventos_disponiveis)): ?>
-        <div class="empty-state">Nenhum dos próximos eventos organizados foi encontrado para a busca atual.</div>
+        <div class="empty-state">Nenhum evento de hoje/próximo (ou de ontem na madrugada) foi encontrado para a busca atual.</div>
         <?php else: ?>
         <div class="event-list">
             <?php foreach ($eventos_disponiveis as $evento_item): ?>
