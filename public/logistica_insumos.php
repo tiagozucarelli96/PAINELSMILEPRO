@@ -65,19 +65,51 @@ function ensure_unidades_medida(PDO $pdo): array {
     return $pdo->query("SELECT id, nome FROM logistica_unidades_medida WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function parse_decimal_input(string $value): ?float {
+function parse_decimal_input(string $value, ?int $maxDecimals = null): ?float {
     $raw = trim($value);
     if ($raw === '') {
         return null;
     }
-    $normalized = preg_replace('/[^0-9,\\.]/', '', $raw);
+
+    $normalized = preg_replace('/[^0-9,\\.\\-]/', '', $raw);
+    if ($normalized === '' || $normalized === '-') {
+        return null;
+    }
+
     if (strpos($normalized, ',') !== false && strpos($normalized, '.') !== false) {
         $normalized = str_replace('.', '', $normalized);
         $normalized = str_replace(',', '.', $normalized);
-    } else {
+    } elseif (strpos($normalized, ',') !== false) {
+        $normalized = str_replace('.', '', $normalized);
         $normalized = str_replace(',', '.', $normalized);
+    } else {
+        if (substr_count($normalized, '.') > 1) {
+            $normalized = str_replace('.', '', $normalized);
+        } elseif (strpos($normalized, '.') !== false) {
+            [$intPart, $fracPart] = explode('.', $normalized, 2);
+            if (strlen($fracPart) === 3 && $intPart !== '' && $intPart !== '-') {
+                $normalized = $intPart . $fracPart;
+            }
+        }
     }
-    return $normalized === '' ? null : (float)$normalized;
+
+    if ($normalized === '' || $normalized === '-' || $normalized === '.') {
+        return null;
+    }
+
+    $number = (float)$normalized;
+    if ($maxDecimals !== null) {
+        $number = round($number, $maxDecimals);
+    }
+    return $number;
+}
+
+function format_decimal_input(?float $value, int $maxDecimals): string {
+    if ($value === null) {
+        return '';
+    }
+    $formatted = number_format((float)$value, $maxDecimals, ',', '.');
+    return rtrim(rtrim($formatted, '0'), ',');
 }
 
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
@@ -197,14 +229,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
                 ':fracionavel' => $fracionavel,
-                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? '')),
+                ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null
             ];
 
             if ($can_see_cost) {
                 $custo_raw = (string)($_POST['custo_padrao'] ?? '');
-                $dados[':custo_padrao'] = parse_decimal_input($custo_raw);
+                    $dados[':custo_padrao'] = parse_decimal_input($custo_raw, 2);
             }
 
             if ($id > 0) {
@@ -800,7 +832,7 @@ body {
                 <?php endif; ?>
                 <div>
                     <label class="field-label">Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" value="<?= isset($edit_item['tamanho_embalagem']) && $edit_item['tamanho_embalagem'] !== null ? number_format((float)$edit_item['tamanho_embalagem'], 4, ',', '.') : '' ?>">
+                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1.500 ou 0,5100" value="<?= isset($edit_item['tamanho_embalagem']) ? format_decimal_input($edit_item['tamanho_embalagem'] !== null ? (float)$edit_item['tamanho_embalagem'] : null, 4) : '' ?>">
                 </div>
                 <div>
                     <label class="field-label">Unidade embalagem</label>
@@ -1144,66 +1176,115 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-function parseLocaleDecimal(value) {
+function parseLocaleDecimal(value, options = {}) {
+    const {
+        maxDecimals = null,
+        preferPtBrSeparators = true
+    } = options;
+
     const raw = (value || '').trim();
     if (!raw) return null;
 
-    const cleaned = raw.replace(/[^0-9,.\-]/g, '');
-    if (!cleaned) return null;
+    let normalized = raw.replace(/[^0-9,.\-]/g, '');
+    if (!normalized || normalized === '-') return null;
 
-    let normalized = cleaned;
     if (normalized.includes(',') && normalized.includes('.')) {
         normalized = normalized.replace(/\./g, '').replace(',', '.');
-    } else {
-        normalized = normalized.replace(',', '.');
+    } else if (normalized.includes(',')) {
+        normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else if (normalized.includes('.')) {
+        const dotCount = (normalized.match(/\./g) || []).length;
+        if (dotCount > 1) {
+            normalized = normalized.replace(/\./g, '');
+        } else if (preferPtBrSeparators) {
+            const [intPart, fracPart = ''] = normalized.split('.');
+            if (fracPart.length === 3 && intPart !== '' && intPart !== '-') {
+                normalized = `${intPart}${fracPart}`;
+            }
+        }
     }
 
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
+    let parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return null;
+
+    if (typeof maxDecimals === 'number') {
+        const factor = Math.pow(10, maxDecimals);
+        parsed = Math.round(parsed * factor) / factor;
+    }
+
+    return parsed;
 }
 
-function formatPtBrDecimal(value, decimals) {
+function formatPtBrDecimal(value, minimumFractionDigits, maximumFractionDigits) {
     return value.toLocaleString('pt-BR', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
+        minimumFractionDigits,
+        maximumFractionDigits
     });
 }
 
-function attachSmartDecimalMask(input, decimals) {
+function attachSmartDecimalMask(input, options = {}) {
     if (!input) return;
 
-    const formatFromDigits = (rawValue) => {
-        const digits = rawValue.replace(/\D/g, '');
-        if (!digits) {
-            input.value = '';
-            return;
-        }
-        const scaled = Number(digits) / Math.pow(10, decimals);
-        input.value = formatPtBrDecimal(scaled, decimals);
-    };
+    const {
+        minimumFractionDigits = 0,
+        maximumFractionDigits = 4,
+        scaleFromDigits = false,
+        preferPtBrSeparators = true
+    } = options;
 
     input.addEventListener('input', () => {
-        formatFromDigits(input.value);
+        if (scaleFromDigits) {
+            const digits = input.value.replace(/\D/g, '');
+            if (!digits) {
+                input.value = '';
+                return;
+            }
+            const scaled = Number(digits) / Math.pow(10, maximumFractionDigits);
+            input.value = formatPtBrDecimal(scaled, minimumFractionDigits, maximumFractionDigits);
+            return;
+        }
+
+        const sanitized = input.value.replace(/[^0-9,.\-]/g, '');
+        if (sanitized !== input.value) {
+            input.value = sanitized;
+        }
     });
 
     input.addEventListener('blur', () => {
-        const parsed = parseLocaleDecimal(input.value);
+        const parsed = parseLocaleDecimal(input.value, {
+            maxDecimals: maximumFractionDigits,
+            preferPtBrSeparators
+        });
         if (parsed === null) {
             input.value = '';
             return;
         }
-        input.value = formatPtBrDecimal(parsed, decimals);
+        input.value = formatPtBrDecimal(parsed, minimumFractionDigits, maximumFractionDigits);
     });
 
     // Garante consistência quando o formulário abre em modo de edição.
-    const parsedInitial = parseLocaleDecimal(input.value);
+    const parsedInitial = parseLocaleDecimal(input.value, {
+        maxDecimals: maximumFractionDigits,
+        preferPtBrSeparators
+    });
     if (parsedInitial !== null) {
-        input.value = formatPtBrDecimal(parsedInitial, decimals);
+        input.value = formatPtBrDecimal(parsedInitial, minimumFractionDigits, maximumFractionDigits);
     }
 }
 
-attachSmartDecimalMask(document.getElementById('custo_padrao'), 2);
-attachSmartDecimalMask(document.getElementById('tamanho_embalagem'), 4);
+attachSmartDecimalMask(document.getElementById('custo_padrao'), {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    scaleFromDigits: true,
+    preferPtBrSeparators: false
+});
+
+attachSmartDecimalMask(document.getElementById('tamanho_embalagem'), {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+    scaleFromDigits: false,
+    preferPtBrSeparators: true
+});
 
 </script>
 

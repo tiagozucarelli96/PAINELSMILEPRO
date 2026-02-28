@@ -48,9 +48,7 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
                i.ativo,
                t.nome AS tipologia,
                u.nome AS unidade,
-               i.custo_padrao,
-               i.tamanho_embalagem,
-               i.unidade_embalagem
+               i.custo_padrao
         FROM logistica_insumos i
         LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
         LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
@@ -74,13 +72,6 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
     $stmt->execute($params);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $valores = [];
-        if ($row['tamanho_embalagem'] !== null && $row['tamanho_embalagem'] !== '') {
-            $embalagem = number_format((float)$row['tamanho_embalagem'], 4, ',', '.');
-            if (!empty($row['unidade_embalagem'])) {
-                $embalagem .= ' ' . trim((string)$row['unidade_embalagem']);
-            }
-            $valores[] = 'Emb.: ' . $embalagem;
-        }
         if ($can_see_cost && $row['custo_padrao'] !== null && $row['custo_padrao'] !== '') {
             $valores[] = 'Custo: R$ ' . number_format((float)$row['custo_padrao'], 2, ',', '.');
         }
