@@ -5105,10 +5105,9 @@ function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
     if ($shared_raw !== '') {
         $shared_xml = @simplexml_load_string($shared_raw);
         if ($shared_xml instanceof SimpleXMLElement) {
-            $shared_xml->registerXPathNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
-            $si_nodes = $shared_xml->xpath('//x:si') ?: [];
+            $si_nodes = $shared_xml->xpath('//*[local-name()="si"]') ?: [];
             foreach ($si_nodes as $si_node) {
-                $text_parts = $si_node->xpath('.//x:t') ?: [];
+                $text_parts = $si_node->xpath('.//*[local-name()="t"]') ?: [];
                 $value = '';
                 foreach ($text_parts as $part) {
                     $value .= (string)$part;
@@ -5127,12 +5126,11 @@ function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
         return ['ok' => false, 'error' => 'Conteúdo da planilha .xlsx inválido.'];
     }
 
-    $sheet_xml->registerXPathNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
-    $row_nodes = $sheet_xml->xpath('//x:sheetData/x:row') ?: [];
+    $row_nodes = $sheet_xml->xpath('//*[local-name()="sheetData"]/*[local-name()="row"]') ?: [];
 
     $rows = [];
     foreach ($row_nodes as $row_node) {
-        $cells = $row_node->xpath('./x:c') ?: [];
+        $cells = $row_node->xpath('./*[local-name()="c"]') ?: [];
         if (empty($cells)) {
             continue;
         }
@@ -5149,12 +5147,12 @@ function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
             $value = '';
 
             if ($type === 'inlineStr') {
-                $text_parts = $cell_node->xpath('.//x:t') ?: [];
+                $text_parts = $cell_node->xpath('.//*[local-name()="t"]') ?: [];
                 foreach ($text_parts as $part) {
                     $value .= (string)$part;
                 }
             } else {
-                $v_nodes = $cell_node->xpath('./x:v') ?: [];
+                $v_nodes = $cell_node->xpath('./*[local-name()="v"]') ?: [];
                 $raw = isset($v_nodes[0]) ? trim((string)$v_nodes[0]) : '';
                 if ($type === 's') {
                     $shared_index = (int)$raw;
