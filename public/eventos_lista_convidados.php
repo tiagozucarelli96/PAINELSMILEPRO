@@ -47,6 +47,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
+            case 'importar_excel':
+                $arquivo_excel = $_FILES['arquivo_excel'] ?? null;
+                if (!$arquivo_excel || !is_array($arquivo_excel)) {
+                    echo json_encode(['ok' => false, 'error' => 'Selecione uma planilha para importar.'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
+
+                $result = eventos_convidados_importar_planilha($pdo, $meeting_id, $arquivo_excel, 'interno', $user_id);
+                if (empty($result['ok'])) {
+                    echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
+                echo json_encode([
+                    'ok' => true,
+                    'inserted' => (int)($result['inserted'] ?? 0),
+                    'skipped' => (int)($result['skipped'] ?? 0),
+                    'convidados' => eventos_convidados_listar($pdo, $meeting_id),
+                    'resumo' => eventos_convidados_resumo($pdo, $meeting_id),
+                    'config' => eventos_convidados_get_config($pdo, $meeting_id),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
             case 'toggle_checkin':
                 $guest_id = (int)($_POST['guest_id'] ?? 0);
                 $checked = ((string)($_POST['checked'] ?? '0') === '1');
@@ -277,22 +299,113 @@ includeSidebar('Lista de convidados');
         font-size: 0.84rem;
     }
 
-    .import-box textarea {
-        width: 100%;
-        min-height: 110px;
+    .import-buttons {
+        margin-top: 0.55rem;
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
+    .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 1200;
+    }
+
+    .modal-backdrop.open {
+        display: flex;
+    }
+
+    .modal-card {
+        width: min(100%, 720px);
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #dbe3ef;
+        padding: 1rem;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.8rem;
+        margin-bottom: 0.7rem;
+    }
+
+    .modal-title {
+        margin: 0;
+        font-size: 1rem;
+        color: #0f172a;
+    }
+
+    .modal-description {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.84rem;
+    }
+
+    .modal-close {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #475569;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        font-size: 1.05rem;
+        cursor: pointer;
+    }
+
+    .modal-field {
+        display: grid;
+        gap: 0.32rem;
+        margin-top: 0.75rem;
+    }
+
+    .modal-field label {
+        font-size: 0.79rem;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .modal-field textarea,
+    .modal-field input[type="file"] {
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 0.62rem 0.7rem;
-        resize: vertical;
         font-size: 0.86rem;
         color: #1f2937;
         background: #fff;
+        width: 100%;
     }
 
-    .import-actions {
-        margin-top: 0.55rem;
+    .modal-field textarea {
+        min-height: 140px;
+        resize: vertical;
+    }
+
+    .modal-hint {
+        color: #64748b;
+        font-size: 0.78rem;
+    }
+
+    .modal-actions {
+        margin-top: 0.9rem;
         display: flex;
         justify-content: flex-end;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
+    body.modal-open {
+        overflow: hidden;
     }
 
     .filters label {
@@ -467,14 +580,12 @@ includeSidebar('Lista de convidados');
     </div>
 
     <div class="import-box">
-        <h3>Importar texto cru (interno)</h3>
-        <p>Cole lista recebida por WhatsApp. O sistema cria nomes sem faixa e sem mesa.</p>
-        <form id="importTextoForm">
-            <textarea id="importTextoRaw" placeholder="Cole aqui um nome por linha, ou separados por virgula." required></textarea>
-            <div class="import-actions">
-                <button type="submit" class="btn btn-secondary" id="btnImportTexto">Importar lista</button>
-            </div>
-        </form>
+        <h3>Importar convidados (interno)</h3>
+        <p>Use os botões abaixo para importar por texto cru ou por planilha do Excel.</p>
+        <div class="import-buttons">
+            <button type="button" class="btn btn-secondary" id="btnOpenImportTexto">Importar texto cru</button>
+            <button type="button" class="btn btn-secondary" id="btnOpenImportExcel">Importar Excel</button>
+        </div>
     </div>
 
     <div class="filters">
@@ -500,6 +611,51 @@ includeSidebar('Lista de convidados');
 
     <div id="statusNote" class="status-note"></div>
     <div id="groupsWrap" class="groups-wrap"></div>
+</div>
+
+<div class="modal-backdrop" id="modalImportTexto" hidden>
+    <div class="modal-card">
+        <div class="modal-header">
+            <div>
+                <h3 class="modal-title">Importar texto cru</h3>
+                <p class="modal-description">Cole a lista (um nome por linha ou separados por vírgula).</p>
+            </div>
+            <button type="button" class="modal-close" data-modal-close="modalImportTexto" aria-label="Fechar">×</button>
+        </div>
+        <form id="importTextoForm">
+            <div class="modal-field">
+                <label for="importTextoRaw">Lista de convidados</label>
+                <textarea id="importTextoRaw" placeholder="Ex.: João da Silva&#10;Maria Souza&#10;Pedro Lima" required></textarea>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="modalImportTexto">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btnImportTexto">Importar texto</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal-backdrop" id="modalImportExcel" hidden>
+    <div class="modal-card">
+        <div class="modal-header">
+            <div>
+                <h3 class="modal-title">Importar Excel</h3>
+                <p class="modal-description">Envie .xlsx ou .csv com colunas: nome, mesa e idade.</p>
+            </div>
+            <button type="button" class="modal-close" data-modal-close="modalImportExcel" aria-label="Fechar">×</button>
+        </div>
+        <form id="importExcelForm">
+            <div class="modal-field">
+                <label for="importExcelFile">Planilha</label>
+                <input type="file" id="importExcelFile" accept=".xlsx,.csv" required>
+                <div class="modal-hint">Regra: idade vazia = 9 anos em diante; idade entre 0 e 8 = faixa infantil da lista.</div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="modalImportExcel">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btnImportExcel">Importar planilha</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <script>
@@ -728,6 +884,64 @@ document.addEventListener('DOMContentLoaded', () => {
     preencherFiltroMesas();
     renderGrupos();
 
+    const modalTexto = document.getElementById('modalImportTexto');
+    const modalExcel = document.getElementById('modalImportExcel');
+    const btnOpenTexto = document.getElementById('btnOpenImportTexto');
+    const btnOpenExcel = document.getElementById('btnOpenImportExcel');
+
+    function updateBodyModalState() {
+        const hasOpenModal = document.querySelector('.modal-backdrop.open') !== null;
+        document.body.classList.toggle('modal-open', hasOpenModal);
+    }
+
+    function openModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.hidden = false;
+        modalEl.classList.add('open');
+        updateBodyModalState();
+    }
+
+    function closeModal(modalEl) {
+        if (!modalEl) return;
+        modalEl.classList.remove('open');
+        modalEl.hidden = true;
+        updateBodyModalState();
+    }
+
+    if (btnOpenTexto) {
+        btnOpenTexto.addEventListener('click', () => openModal(modalTexto));
+    }
+    if (btnOpenExcel) {
+        btnOpenExcel.addEventListener('click', () => openModal(modalExcel));
+    }
+
+    document.querySelectorAll('[data-modal-close]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const modalId = String(button.getAttribute('data-modal-close') || '').trim();
+            if (!modalId) return;
+            closeModal(document.getElementById(modalId));
+        });
+    });
+
+    [modalTexto, modalExcel].forEach((modalEl) => {
+        if (!modalEl) return;
+        modalEl.addEventListener('click', (event) => {
+            if (event.target === modalEl) {
+                closeModal(modalEl);
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (modalTexto && modalTexto.classList.contains('open')) {
+            closeModal(modalTexto);
+        }
+        if (modalExcel && modalExcel.classList.contains('open')) {
+            closeModal(modalExcel);
+        }
+    });
+
     const busca = document.getElementById('filtroBusca');
     const status = document.getElementById('filtroStatus');
     const mesa = document.getElementById('filtroMesa');
@@ -742,19 +956,26 @@ document.addEventListener('DOMContentLoaded', () => {
         mesa.addEventListener('change', renderGrupos);
     }
 
-    const importForm = document.getElementById('importTextoForm');
-    const importRaw = document.getElementById('importTextoRaw');
-    const btnImport = document.getElementById('btnImportTexto');
-    if (importForm && importRaw) {
-        importForm.addEventListener('submit', async (event) => {
+    function applyImportResponse(data) {
+        replaceConvidados(data.convidados || []);
+        updateResumo(data.resumo || null);
+        preencherFiltroMesas();
+        renderGrupos();
+    }
+
+    const importTextoForm = document.getElementById('importTextoForm');
+    const importTextoRaw = document.getElementById('importTextoRaw');
+    const btnImportTexto = document.getElementById('btnImportTexto');
+    if (importTextoForm && importTextoRaw) {
+        importTextoForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const texto = String(importRaw.value || '').trim();
+            const texto = String(importTextoRaw.value || '').trim();
             if (!texto) {
                 showStatus('Cole algum conteudo para importar.', true);
                 return;
             }
 
-            if (btnImport) btnImport.disabled = true;
+            if (btnImportTexto) btnImportTexto.disabled = true;
             showStatus('Importando lista...');
             try {
                 const formData = new FormData();
@@ -769,16 +990,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error((data && data.error) ? data.error : 'Falha ao importar lista');
                 }
 
-                replaceConvidados(data.convidados || []);
-                updateResumo(data.resumo || null);
-                preencherFiltroMesas();
-                renderGrupos();
-                importRaw.value = '';
+                applyImportResponse(data);
+                importTextoRaw.value = '';
+                closeModal(modalTexto);
                 showStatus(`Importacao concluida: ${Number(data.inserted || 0)} adicionados, ${Number(data.skipped || 0)} ignorados.`);
             } catch (err) {
                 showStatus('Erro: ' + (err?.message || 'nao foi possivel importar.'), true);
             } finally {
-                if (btnImport) btnImport.disabled = false;
+                if (btnImportTexto) btnImportTexto.disabled = false;
+            }
+        });
+    }
+
+    const importExcelForm = document.getElementById('importExcelForm');
+    const importExcelFile = document.getElementById('importExcelFile');
+    const btnImportExcel = document.getElementById('btnImportExcel');
+    if (importExcelForm && importExcelFile) {
+        importExcelForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const file = importExcelFile.files && importExcelFile.files[0] ? importExcelFile.files[0] : null;
+            if (!file) {
+                showStatus('Selecione uma planilha para importar.', true);
+                return;
+            }
+
+            if (btnImportExcel) btnImportExcel.disabled = true;
+            showStatus('Importando planilha...');
+            try {
+                const formData = new FormData();
+                formData.append('action', 'importar_excel');
+                formData.append('meeting_id', String(meetingId));
+                formData.append('arquivo_excel', file);
+
+                const response = await fetch(window.location.href, { method: 'POST', body: formData });
+                const raw = await response.text();
+                const data = parseJsonSafe(raw);
+                if (!data || !data.ok) {
+                    throw new Error((data && data.error) ? data.error : 'Falha ao importar planilha');
+                }
+
+                applyImportResponse(data);
+                importExcelForm.reset();
+                closeModal(modalExcel);
+                showStatus(`Importacao concluida: ${Number(data.inserted || 0)} adicionados, ${Number(data.skipped || 0)} ignorados.`);
+            } catch (err) {
+                showStatus('Erro: ' + (err?.message || 'nao foi possivel importar planilha.'), true);
+            } finally {
+                if (btnImportExcel) btnImportExcel.disabled = false;
             }
         });
     }

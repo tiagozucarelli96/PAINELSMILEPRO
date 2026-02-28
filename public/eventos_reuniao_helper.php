@@ -4958,3 +4958,500 @@ function eventos_convidados_importar_texto_cru(
         'total_detected' => count($nomes),
     ];
 }
+
+/**
+ * Mensagem amigável para erros de upload.
+ */
+function eventos_convidados_upload_error_message(int $code): string {
+    switch ($code) {
+        case UPLOAD_ERR_OK:
+            return '';
+        case UPLOAD_ERR_INI_SIZE:
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'Arquivo excede o limite permitido pelo servidor.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'Upload incompleto. Tente novamente.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'Selecione um arquivo para importar.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Servidor sem pasta temporária para upload.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Falha ao gravar arquivo temporário.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Upload bloqueado por extensão do servidor.';
+        default:
+            return 'Erro desconhecido de upload.';
+    }
+}
+
+/**
+ * Normaliza texto para comparação de cabeçalhos de planilha.
+ */
+function eventos_convidados_texto_chave_normalizar(string $value): string {
+    $text = trim($value);
+    if ($text === '') {
+        return '';
+    }
+    if (function_exists('mb_strtolower')) {
+        $text = mb_strtolower($text, 'UTF-8');
+    } else {
+        $text = strtolower($text);
+    }
+    if (function_exists('iconv')) {
+        $converted = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text);
+        if ($converted !== false) {
+            $text = $converted;
+        }
+    }
+    $text = preg_replace('/[^a-z0-9]+/i', ' ', $text) ?? $text;
+    $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+    return trim((string)$text);
+}
+
+/**
+ * Converte referência de célula (ex.: C12) para índice da coluna (base 0).
+ */
+function eventos_convidados_planilha_coluna_indice(string $cell_ref): int {
+    $ref = strtoupper(trim($cell_ref));
+    if ($ref === '') {
+        return -1;
+    }
+
+    if (!preg_match('/^([A-Z]+)/', $ref, $match)) {
+        return -1;
+    }
+    $letters = (string)($match[1] ?? '');
+    if ($letters === '') {
+        return -1;
+    }
+
+    $index = 0;
+    $len = strlen($letters);
+    for ($i = 0; $i < $len; $i++) {
+        $code = ord($letters[$i]);
+        if ($code < 65 || $code > 90) {
+            return -1;
+        }
+        $index = ($index * 26) + ($code - 64);
+    }
+    return max(-1, $index - 1);
+}
+
+/**
+ * Lê arquivo .xlsx e retorna linhas como arrays.
+ */
+function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
+    if (!class_exists('ZipArchive')) {
+        return ['ok' => false, 'error' => 'Extensão ZIP não disponível para ler .xlsx no servidor.'];
+    }
+    if (!function_exists('simplexml_load_string')) {
+        return ['ok' => false, 'error' => 'SimpleXML indisponível para ler .xlsx no servidor.'];
+    }
+
+    $zip = new ZipArchive();
+    if ($zip->open($file_path) !== true) {
+        return ['ok' => false, 'error' => 'Não foi possível abrir o arquivo .xlsx enviado.'];
+    }
+
+    $shared_strings = [];
+    $shared_raw = $zip->getFromName('xl/sharedStrings.xml');
+    if (is_string($shared_raw) && $shared_raw !== '') {
+        $shared_xml = @simplexml_load_string($shared_raw);
+        if ($shared_xml instanceof SimpleXMLElement) {
+            $shared_xml->registerXPathNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+            $si_nodes = $shared_xml->xpath('//x:si') ?: [];
+            foreach ($si_nodes as $si_node) {
+                $text_parts = $si_node->xpath('.//x:t') ?: [];
+                $value = '';
+                foreach ($text_parts as $part) {
+                    $value .= (string)$part;
+                }
+                $shared_strings[] = trim((string)$value);
+            }
+        }
+    }
+
+    $sheet_raw = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    if (!is_string($sheet_raw) || $sheet_raw === '') {
+        return ['ok' => false, 'error' => 'Planilha sem aba principal (sheet1). Salve novamente e tente importar.'];
+    }
+
+    $sheet_xml = @simplexml_load_string($sheet_raw);
+    if (!($sheet_xml instanceof SimpleXMLElement)) {
+        return ['ok' => false, 'error' => 'Conteúdo da planilha .xlsx inválido.'];
+    }
+
+    $sheet_xml->registerXPathNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
+    $row_nodes = $sheet_xml->xpath('//x:sheetData/x:row') ?: [];
+
+    $rows = [];
+    foreach ($row_nodes as $row_node) {
+        $cells = $row_node->xpath('./x:c') ?: [];
+        if (empty($cells)) {
+            continue;
+        }
+
+        $indexed = [];
+        foreach ($cells as $cell_node) {
+            $cell_ref = (string)($cell_node['r'] ?? '');
+            $col_index = eventos_convidados_planilha_coluna_indice($cell_ref);
+            if ($col_index < 0) {
+                continue;
+            }
+
+            $type = trim((string)($cell_node['t'] ?? ''));
+            $value = '';
+
+            if ($type === 'inlineStr') {
+                $text_parts = $cell_node->xpath('.//x:t') ?: [];
+                foreach ($text_parts as $part) {
+                    $value .= (string)$part;
+                }
+            } else {
+                $v_nodes = $cell_node->xpath('./x:v') ?: [];
+                $raw = isset($v_nodes[0]) ? trim((string)$v_nodes[0]) : '';
+                if ($type === 's') {
+                    $shared_index = (int)$raw;
+                    $value = (string)($shared_strings[$shared_index] ?? '');
+                } elseif ($type === 'b') {
+                    $value = $raw === '1' ? '1' : '0';
+                } else {
+                    $value = $raw;
+                }
+            }
+
+            if ($col_index === 0) {
+                $value = preg_replace('/^\xEF\xBB\xBF/', '', (string)$value) ?? (string)$value;
+            }
+            $indexed[$col_index] = trim((string)$value);
+        }
+
+        if (empty($indexed)) {
+            continue;
+        }
+
+        ksort($indexed);
+        $max_col = (int)max(array_keys($indexed));
+        $row = array_fill(0, $max_col + 1, '');
+        foreach ($indexed as $index => $val) {
+            $row[(int)$index] = trim((string)$val);
+        }
+
+        $has_content = false;
+        foreach ($row as $cell_val) {
+            if (trim((string)$cell_val) !== '') {
+                $has_content = true;
+                break;
+            }
+        }
+        if ($has_content) {
+            $rows[] = $row;
+        }
+    }
+
+    return ['ok' => true, 'rows' => $rows];
+}
+
+/**
+ * Lê arquivo CSV (incluindo exportações comuns do Excel).
+ */
+function eventos_convidados_planilha_ler_csv(string $file_path): array {
+    $handle = @fopen($file_path, 'rb');
+    if (!$handle) {
+        return ['ok' => false, 'error' => 'Não foi possível abrir o arquivo CSV enviado.'];
+    }
+
+    $first_line = fgets($handle);
+    if ($first_line === false) {
+        fclose($handle);
+        return ['ok' => true, 'rows' => []];
+    }
+
+    $delimiters = [
+        ';' => substr_count($first_line, ';'),
+        ',' => substr_count($first_line, ','),
+        "\t" => substr_count($first_line, "\t"),
+    ];
+    arsort($delimiters);
+    $delimiter = ';';
+    foreach ($delimiters as $candidate => $count) {
+        if ((int)$count > 0) {
+            $delimiter = (string)$candidate;
+            break;
+        }
+    }
+
+    rewind($handle);
+    $rows = [];
+    while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+        if (!is_array($data)) {
+            continue;
+        }
+
+        $row = [];
+        foreach ($data as $idx => $cell) {
+            $value = trim((string)$cell);
+            if ((int)$idx === 0) {
+                $value = preg_replace('/^\xEF\xBB\xBF/', '', $value) ?? $value;
+            }
+            $row[] = $value;
+        }
+
+        $has_content = false;
+        foreach ($row as $cell_val) {
+            if ($cell_val !== '') {
+                $has_content = true;
+                break;
+            }
+        }
+        if ($has_content) {
+            $rows[] = $row;
+        }
+    }
+    fclose($handle);
+
+    return ['ok' => true, 'rows' => $rows];
+}
+
+/**
+ * Mapeia colunas esperadas em um cabeçalho de planilha.
+ */
+function eventos_convidados_planilha_mapear_colunas(array $header_row): array {
+    $map = [
+        'nome' => -1,
+        'mesa' => -1,
+        'idade' => -1,
+    ];
+
+    foreach ($header_row as $idx => $header_raw) {
+        $header = eventos_convidados_texto_chave_normalizar((string)$header_raw);
+        if ($header === '') {
+            continue;
+        }
+
+        if ($map['nome'] < 0 && (str_contains($header, 'nome') || str_contains($header, 'convidado'))) {
+            $map['nome'] = (int)$idx;
+            continue;
+        }
+        if ($map['mesa'] < 0 && (str_contains($header, 'mesa') || $header === 'n mesa' || $header === 'numero mesa')) {
+            $map['mesa'] = (int)$idx;
+            continue;
+        }
+        if ($map['idade'] < 0 && (str_contains($header, 'idade') || str_contains($header, 'anos') || str_contains($header, 'faixa etaria'))) {
+            $map['idade'] = (int)$idx;
+        }
+    }
+
+    return $map;
+}
+
+/**
+ * Converte idade numérica da planilha na faixa etária do select atual.
+ */
+function eventos_convidados_faixa_por_idade_importacao(?string $idade_raw, string $tipo_evento): string {
+    $opcoes = eventos_convidados_opcoes_faixa_etaria($tipo_evento);
+    $faixa_9_mais = in_array('9 anos em diante', $opcoes, true)
+        ? '9 anos em diante'
+        : (!empty($opcoes) ? (string)$opcoes[count($opcoes) - 1] : '');
+
+    $idade_txt = trim((string)$idade_raw);
+    if ($idade_txt === '') {
+        return $faixa_9_mais;
+    }
+
+    if (!preg_match('/-?\d+(?:[.,]\d+)?/', $idade_txt, $matches)) {
+        return $faixa_9_mais;
+    }
+    $idade_num = (float)str_replace(',', '.', (string)($matches[0] ?? ''));
+    if ($idade_num < 0 || $idade_num > 8) {
+        return $faixa_9_mais;
+    }
+
+    if (in_array('0 a 8 anos', $opcoes, true)) {
+        return '0 a 8 anos';
+    }
+    if (in_array('0 a 4 anos', $opcoes, true) && in_array('5 a 8 anos', $opcoes, true)) {
+        return $idade_num <= 4 ? '0 a 4 anos' : '5 a 8 anos';
+    }
+
+    foreach ($opcoes as $opcao) {
+        $key = eventos_convidados_texto_chave_normalizar((string)$opcao);
+        if ($key !== '' && $key !== '9 anos em diante') {
+            return (string)$opcao;
+        }
+    }
+    return $faixa_9_mais;
+}
+
+/**
+ * Importa convidados via planilha (XLSX/CSV).
+ * Colunas esperadas: nome, mesa, idade.
+ */
+function eventos_convidados_importar_planilha(
+    PDO $pdo,
+    int $meeting_id,
+    array $upload_file,
+    string $created_by_type = 'cliente',
+    int $created_by_user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    if (empty($upload_file) || !is_array($upload_file)) {
+        return ['ok' => false, 'error' => 'Selecione uma planilha para importar.'];
+    }
+
+    $upload_error = (int)($upload_file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($upload_error !== UPLOAD_ERR_OK) {
+        return ['ok' => false, 'error' => eventos_convidados_upload_error_message($upload_error)];
+    }
+
+    $tmp_name = trim((string)($upload_file['tmp_name'] ?? ''));
+    if ($tmp_name === '' || !is_file($tmp_name)) {
+        return ['ok' => false, 'error' => 'Arquivo temporário da importação não encontrado.'];
+    }
+
+    $file_size = (int)($upload_file['size'] ?? 0);
+    if ($file_size > 10 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'Planilha muito grande. Limite máximo: 10MB.'];
+    }
+
+    $original_name = trim((string)($upload_file['name'] ?? ''));
+    $ext = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+    if ($ext === '') {
+        return ['ok' => false, 'error' => 'Arquivo sem extensão. Use .xlsx ou .csv.'];
+    }
+
+    if ($ext === 'xlsx') {
+        $parsed = eventos_convidados_planilha_ler_xlsx($tmp_name);
+    } elseif ($ext === 'csv') {
+        $parsed = eventos_convidados_planilha_ler_csv($tmp_name);
+    } elseif ($ext === 'xls') {
+        return ['ok' => false, 'error' => 'Formato .xls não suportado. Salve como .xlsx e tente novamente.'];
+    } else {
+        return ['ok' => false, 'error' => 'Formato não suportado. Envie .xlsx ou .csv.'];
+    }
+
+    if (empty($parsed['ok'])) {
+        return ['ok' => false, 'error' => (string)($parsed['error'] ?? 'Falha ao ler planilha enviada.')];
+    }
+
+    $rows = is_array($parsed['rows'] ?? null) ? $parsed['rows'] : [];
+    if (empty($rows)) {
+        return ['ok' => false, 'error' => 'Planilha vazia.'];
+    }
+
+    $header_index = -1;
+    $column_map = ['nome' => -1, 'mesa' => -1, 'idade' => -1];
+    $scan_limit = min(6, count($rows));
+    for ($i = 0; $i < $scan_limit; $i++) {
+        $candidate = eventos_convidados_planilha_mapear_colunas((array)$rows[$i]);
+        if ((int)($candidate['nome'] ?? -1) >= 0) {
+            $header_index = $i;
+            $column_map = $candidate;
+            break;
+        }
+    }
+    if ($header_index < 0 || (int)($column_map['nome'] ?? -1) < 0) {
+        return ['ok' => false, 'error' => 'Não encontrei a coluna de nome na planilha.'];
+    }
+
+    $config = eventos_convidados_get_config($pdo, $meeting_id);
+    $tipo_evento = (string)($config['tipo_evento'] ?? 'infantil');
+    $usa_mesa = eventos_convidados_tipo_usa_mesa($tipo_evento);
+    $author_type = trim($created_by_type) !== '' ? trim($created_by_type) : 'cliente';
+
+    $existing_stmt = $pdo->prepare("
+        SELECT lower(nome) AS nome_key
+        FROM eventos_convidados
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $existing_stmt->execute([':meeting_id' => $meeting_id]);
+    $existing_rows = $existing_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $existing_map = [];
+    foreach ($existing_rows as $row) {
+        $key = trim((string)($row['nome_key'] ?? ''));
+        if ($key !== '') {
+            $existing_map[$key] = true;
+        }
+    }
+
+    $insert_stmt = $pdo->prepare("
+        INSERT INTO eventos_convidados
+        (meeting_id, nome, faixa_etaria, numero_mesa, created_by_type, created_by_user_id, created_at, updated_at)
+        VALUES
+        (:meeting_id, :nome, :faixa_etaria, :numero_mesa, :created_by_type, :created_by_user_id, NOW(), NOW())
+    ");
+
+    $inserted = 0;
+    $skipped = 0;
+    $total_detected = 0;
+
+    for ($row_index = $header_index + 1; $row_index < count($rows); $row_index++) {
+        $row = (array)$rows[$row_index];
+        if (empty($row)) {
+            continue;
+        }
+
+        $has_any_value = false;
+        foreach ($row as $cell_raw) {
+            if (trim((string)$cell_raw) !== '') {
+                $has_any_value = true;
+                break;
+            }
+        }
+        if (!$has_any_value) {
+            continue;
+        }
+
+        $nome_raw = (string)($row[(int)$column_map['nome']] ?? '');
+        $nome = eventos_convidados_normalizar_nome($nome_raw);
+        if ($nome === '') {
+            $skipped++;
+            continue;
+        }
+        $total_detected++;
+
+        $nome_key = function_exists('mb_strtolower') ? mb_strtolower($nome, 'UTF-8') : strtolower($nome);
+        if (isset($existing_map[$nome_key])) {
+            $skipped++;
+            continue;
+        }
+
+        $mesa_raw = (int)($column_map['mesa'] ?? -1) >= 0 ? (string)($row[(int)$column_map['mesa']] ?? '') : '';
+        $mesa = $usa_mesa ? eventos_convidados_normalizar_mesa($mesa_raw) : '';
+
+        $idade_raw = (int)($column_map['idade'] ?? -1) >= 0 ? (string)($row[(int)$column_map['idade']] ?? '') : '';
+        $faixa = eventos_convidados_faixa_por_idade_importacao($idade_raw, $tipo_evento);
+        if (!eventos_convidados_validar_faixa($faixa, $tipo_evento)) {
+            $faixa = '';
+        }
+
+        $insert_stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':nome' => $nome,
+            ':faixa_etaria' => $faixa !== '' ? $faixa : null,
+            ':numero_mesa' => $mesa !== '' ? $mesa : null,
+            ':created_by_type' => $author_type,
+            ':created_by_user_id' => $created_by_user_id > 0 ? $created_by_user_id : null,
+        ]);
+
+        $existing_map[$nome_key] = true;
+        $inserted++;
+    }
+
+    if ($inserted <= 0 && $skipped <= 0) {
+        return ['ok' => false, 'error' => 'Nenhum convidado válido encontrado para importar.'];
+    }
+
+    return [
+        'ok' => true,
+        'inserted' => $inserted,
+        'skipped' => $skipped,
+        'total_detected' => $total_detected,
+    ];
+}
