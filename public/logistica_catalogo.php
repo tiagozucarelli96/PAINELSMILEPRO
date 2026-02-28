@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
+$can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
 
 if (!$can_manage) {
     http_response_code(403);
@@ -46,7 +47,10 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
                i.nome_oficial AS nome,
                i.ativo,
                t.nome AS tipologia,
-               u.nome AS unidade
+               u.nome AS unidade,
+               i.custo_padrao,
+               i.tamanho_embalagem,
+               i.unidade_embalagem
         FROM logistica_insumos i
         LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
         LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
@@ -69,11 +73,24 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $valores = [];
+        if ($row['tamanho_embalagem'] !== null && $row['tamanho_embalagem'] !== '') {
+            $embalagem = number_format((float)$row['tamanho_embalagem'], 4, ',', '.');
+            if (!empty($row['unidade_embalagem'])) {
+                $embalagem .= ' ' . trim((string)$row['unidade_embalagem']);
+            }
+            $valores[] = 'Emb.: ' . $embalagem;
+        }
+        if ($can_see_cost && $row['custo_padrao'] !== null && $row['custo_padrao'] !== '') {
+            $valores[] = 'Custo: R$ ' . number_format((float)$row['custo_padrao'], 2, ',', '.');
+        }
+
         $itens[] = [
             'tipo' => 'Insumo',
             'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
             'extra' => $row['unidade'] ?? '',
+            'valores' => $valores ? implode(' | ', $valores) : '-',
             'ativo' => !empty($row['ativo']),
             'id' => (int)$row['id'],
             'page' => 'logistica_insumos'
@@ -115,6 +132,7 @@ if ($tipo === 'todos' || $tipo === 'receitas') {
             'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
             'extra' => $rendimento > 0 ? ('Rendimento: ' . $rendimento) : '',
+            'valores' => '-',
             'ativo' => !empty($row['ativo']),
             'id' => (int)$row['id'],
             'page' => 'logistica_receitas'
@@ -307,6 +325,7 @@ includeSidebar('Catálogo Logístico');
                     <th>Nome</th>
                     <th>Tipologia</th>
                     <th>Unidade / Rendimento</th>
+                    <th>Valores</th>
                     <th>Status</th>
                     <th>Ações</th>
                 </tr>
@@ -318,6 +337,7 @@ includeSidebar('Catálogo Logístico');
                         <td><?= htmlspecialchars($item['nome'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars($item['tipologia'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars($item['extra'], ENT_QUOTES, 'UTF-8') ?></td>
+                        <td><?= htmlspecialchars($item['valores'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td>
                             <span class="status-pill <?= $item['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
                                 <?= $item['ativo'] ? 'Ativo' : 'Inativo' ?>
@@ -334,7 +354,7 @@ includeSidebar('Catálogo Logístico');
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($itens)): ?>
-                    <tr><td colspan="6">Nenhum item encontrado.</td></tr>
+                    <tr><td colspan="7">Nenhum item encontrado.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>

@@ -800,7 +800,7 @@ body {
                 <?php endif; ?>
                 <div>
                     <label class="field-label">Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="number" step="0.001" value="<?= h($edit_item['tamanho_embalagem'] ?? '') ?>">
+                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" value="<?= isset($edit_item['tamanho_embalagem']) && $edit_item['tamanho_embalagem'] !== null ? number_format((float)$edit_item['tamanho_embalagem'], 4, ',', '.') : '' ?>">
                 </div>
                 <div>
                     <label class="field-label">Unidade embalagem</label>
@@ -1144,14 +1144,66 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-document.getElementById('tamanho_embalagem')?.addEventListener('blur', (e) => {
-    const val = e.target.value;
-    if (val === '') return;
-    const num = Number(val);
-    if (!Number.isNaN(num)) {
-        e.target.value = num.toFixed(3);
+function parseLocaleDecimal(value) {
+    const raw = (value || '').trim();
+    if (!raw) return null;
+
+    const cleaned = raw.replace(/[^0-9,.\-]/g, '');
+    if (!cleaned) return null;
+
+    let normalized = cleaned;
+    if (normalized.includes(',') && normalized.includes('.')) {
+        normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else {
+        normalized = normalized.replace(',', '.');
     }
-});
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatPtBrDecimal(value, decimals) {
+    return value.toLocaleString('pt-BR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    });
+}
+
+function attachSmartDecimalMask(input, decimals) {
+    if (!input) return;
+
+    const formatFromDigits = (rawValue) => {
+        const digits = rawValue.replace(/\D/g, '');
+        if (!digits) {
+            input.value = '';
+            return;
+        }
+        const scaled = Number(digits) / Math.pow(10, decimals);
+        input.value = formatPtBrDecimal(scaled, decimals);
+    };
+
+    input.addEventListener('input', () => {
+        formatFromDigits(input.value);
+    });
+
+    input.addEventListener('blur', () => {
+        const parsed = parseLocaleDecimal(input.value);
+        if (parsed === null) {
+            input.value = '';
+            return;
+        }
+        input.value = formatPtBrDecimal(parsed, decimals);
+    });
+
+    // Garante consistência quando o formulário abre em modo de edição.
+    const parsedInitial = parseLocaleDecimal(input.value);
+    if (parsedInitial !== null) {
+        input.value = formatPtBrDecimal(parsedInitial, decimals);
+    }
+}
+
+attachSmartDecimalMask(document.getElementById('custo_padrao'), 2);
+attachSmartDecimalMask(document.getElementById('tamanho_embalagem'), 4);
 
 </script>
 
