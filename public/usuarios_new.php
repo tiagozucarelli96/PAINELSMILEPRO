@@ -1248,6 +1248,7 @@ ob_start();
                     <h3 class="permissions-title">Permissões Especiais</h3>
                     <div class="permissions-grid">
                         <div class="permission-item">
+                            <input type="hidden" name="perm_superadmin" value="0">
                             <input type="checkbox" name="perm_superadmin" id="perm_perm_superadmin" value="1">
                             <label for="perm_perm_superadmin">⭐ Superadmin (bypass total)</label>
                         </div>
@@ -1260,6 +1261,7 @@ ob_start();
                     <div class="permissions-grid">
                         <?php foreach ($available_perms as $perm => $label): ?>
                         <div class="permission-item">
+                            <input type="hidden" name="<?= htmlspecialchars($perm) ?>" value="0">
                             <input type="checkbox" name="<?= htmlspecialchars($perm) ?>" id="perm_<?= htmlspecialchars($perm) ?>" value="1">
                             <label for="perm_<?= htmlspecialchars($perm) ?>"><?= htmlspecialchars($label) ?></label>
                         </div>

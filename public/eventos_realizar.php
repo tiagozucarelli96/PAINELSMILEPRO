@@ -77,9 +77,15 @@ if ($meeting_id > 0) {
 }
 
 if (!$reuniao) {
+    $evento_data_sql = "NULLIF(TRIM(r.me_event_snapshot->>'data'), '')";
+    $evento_hora_sql = "COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'hora_inicio'), ''), NULLIF(TRIM(r.me_event_snapshot->>'hora'), ''), '00:00')";
+    $evento_data_hora_sql = "(($evento_data_sql)::date + ($evento_hora_sql)::time)";
+
     $where = [
         'r.me_event_id IS NOT NULL',
         'r.me_event_id > 0',
+        "{$evento_data_sql} IS NOT NULL",
+        "{$evento_data_hora_sql} >= NOW()",
     ];
     $params = [];
     if ($busca !== '') {
@@ -100,18 +106,19 @@ if (!$reuniao) {
             r.status,
             r.updated_at,
             (r.me_event_snapshot->>'data') AS data_evento,
-            (r.me_event_snapshot->>'hora_inicio') AS hora_inicio,
+            COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'hora_inicio'), ''), NULLIF(TRIM(r.me_event_snapshot->>'hora'), '')) AS hora_inicio,
             (r.me_event_snapshot->>'hora_fim') AS hora_fim,
+            {$evento_data_hora_sql} AS data_hora_evento,
             COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'nome'), ''), 'Evento sem nome') AS nome_evento,
             COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'local'), ''), 'Local não informado') AS local_evento,
             COALESCE(NULLIF(TRIM(r.me_event_snapshot->'cliente'->>'nome'), ''), 'Cliente não informado') AS cliente_nome
         FROM eventos_reunioes r
         {$where_sql}
         ORDER BY
-            (r.me_event_snapshot->>'data')::date ASC NULLS LAST,
+            data_hora_evento ASC NULLS LAST,
             r.updated_at DESC NULLS LAST,
             r.id DESC
-        LIMIT 100
+        LIMIT 7
     ");
     $stmt->execute($params);
     $eventos_disponiveis = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -383,7 +390,7 @@ includeSidebar('Realizar evento');
     <div class="page-header">
         <div>
             <h1 class="page-title">✅ Realizar evento</h1>
-            <div class="page-subtitle">Selecione um evento organizado. Este modo é somente leitura (visualização modal + download), com check-in de convidados para recepção.</div>
+            <div class="page-subtitle">Selecione um evento organizado. A lista exibe os próximos 7 eventos e este modo é somente leitura (visualização modal + download), com check-in de convidados para recepção.</div>
         </div>
         <?php if ($reuniao): ?>
         <a href="index.php?page=eventos_realizar" class="btn btn-secondary">Trocar evento</a>
@@ -406,7 +413,7 @@ includeSidebar('Realizar evento');
         </form>
 
         <?php if (empty($eventos_disponiveis)): ?>
-        <div class="empty-state">Nenhum evento organizado encontrado para a busca atual.</div>
+        <div class="empty-state">Nenhum dos próximos eventos organizados foi encontrado para a busca atual.</div>
         <?php else: ?>
         <div class="event-list">
             <?php foreach ($eventos_disponiveis as $evento_item): ?>

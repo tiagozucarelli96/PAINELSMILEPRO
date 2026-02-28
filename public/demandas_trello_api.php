@@ -292,6 +292,36 @@ function obterBoardIdDoAnexo($pdo, $anexo_id) {
     }
 }
 
+function usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin) {
+    if ($is_admin) {
+        return true;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM demandas_cards dc
+            LEFT JOIN demandas_cards_usuarios dcu
+                   ON dcu.card_id = dc.id
+                  AND dcu.usuario_id = :usuario_id
+            WHERE dc.id = :card_id
+              AND (
+                    dc.criador_id = :usuario_id
+                    OR dcu.usuario_id IS NOT NULL
+                  )
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':card_id' => $card_id,
+            ':usuario_id' => $usuario_id
+        ]);
+        return (bool)$stmt->fetchColumn();
+    } catch (PDOException $e) {
+        error_log("Erro ao validar acesso ao card {$card_id}: " . $e->getMessage());
+        return false;
+    }
+}
+
 /**
  * Listar todos os quadros disponíveis ao usuário
  */
@@ -368,16 +398,44 @@ function listarListas($pdo, $board_id, $usuario_id, $is_admin) {
             exit;
         }
 
-        $stmt = $pdo->prepare("
-            SELECT dl.*, 
-                   COUNT(dc.id) as total_cards
-            FROM demandas_listas dl
-            LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
-            WHERE dl.board_id = :board_id
-            GROUP BY dl.id
-            ORDER BY dl.posicao ASC, dl.id ASC
-        ");
-        $stmt->execute([':board_id' => $board_id]);
+        if ($is_admin) {
+            $stmt = $pdo->prepare("
+                SELECT dl.*,
+                       COUNT(dc.id) as total_cards
+                FROM demandas_listas dl
+                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+                WHERE dl.board_id = :board_id
+                GROUP BY dl.id
+                ORDER BY dl.posicao ASC, dl.id ASC
+            ");
+            $stmt->execute([':board_id' => $board_id]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT dl.*,
+                       COUNT(
+                           DISTINCT CASE
+                               WHEN dc.criador_id = :usuario_id
+                                    OR EXISTS (
+                                        SELECT 1
+                                        FROM demandas_cards_usuarios dcu_vis
+                                        WHERE dcu_vis.card_id = dc.id
+                                          AND dcu_vis.usuario_id = :usuario_id
+                                    )
+                               THEN dc.id
+                               ELSE NULL
+                           END
+                       ) as total_cards
+                FROM demandas_listas dl
+                LEFT JOIN demandas_cards dc ON dc.lista_id = dl.id
+                WHERE dl.board_id = :board_id
+                GROUP BY dl.id
+                ORDER BY dl.posicao ASC, dl.id ASC
+            ");
+            $stmt->execute([
+                ':board_id' => $board_id,
+                ':usuario_id' => $usuario_id
+            ]);
+        }
         
         $listas = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -415,15 +473,39 @@ function listarCards($pdo, $lista_id, $usuario_id, $is_admin) {
             exit;
         }
 
-        $stmt = $pdo->prepare("
-            SELECT dc.*,
-                   u_criador.nome as criador_nome
-            FROM demandas_cards dc
-            LEFT JOIN usuarios u_criador ON u_criador.id = dc.criador_id
-            WHERE dc.lista_id = :lista_id
-            ORDER BY dc.posicao ASC, dc.id ASC
-        ");
-        $stmt->execute([':lista_id' => $lista_id]);
+        if ($is_admin) {
+            $stmt = $pdo->prepare("
+                SELECT dc.*,
+                       u_criador.nome as criador_nome
+                FROM demandas_cards dc
+                LEFT JOIN usuarios u_criador ON u_criador.id = dc.criador_id
+                WHERE dc.lista_id = :lista_id
+                ORDER BY dc.posicao ASC, dc.id ASC
+            ");
+            $stmt->execute([':lista_id' => $lista_id]);
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT dc.*,
+                       u_criador.nome as criador_nome
+                FROM demandas_cards dc
+                LEFT JOIN usuarios u_criador ON u_criador.id = dc.criador_id
+                WHERE dc.lista_id = :lista_id
+                  AND (
+                        dc.criador_id = :usuario_id
+                        OR EXISTS (
+                            SELECT 1
+                            FROM demandas_cards_usuarios dcu_vis
+                            WHERE dcu_vis.card_id = dc.id
+                              AND dcu_vis.usuario_id = :usuario_id
+                        )
+                  )
+                ORDER BY dc.posicao ASC, dc.id ASC
+            ");
+            $stmt->execute([
+                ':lista_id' => $lista_id,
+                ':usuario_id' => $usuario_id
+            ]);
+        }
         
         $cards = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -632,6 +714,12 @@ function moverCard($pdo, $card_id, $nova_lista_id, $nova_posicao, $usuario_id, $
     try {
         $board_atual = obterBoardIdDoCard($pdo, $card_id);
         if ($board_atual <= 0 || !usuarioPodeAcessarBoard($pdo, $board_atual, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
+        if (!usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
             exit;
@@ -848,6 +936,12 @@ function concluirCard($pdo, $card_id, $usuario_id, $is_admin) {
             exit;
         }
 
+        if (!usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             UPDATE demandas_cards 
             SET status = 'concluido', atualizado_em = NOW()
@@ -879,6 +973,12 @@ function reabrirCard($pdo, $card_id, $usuario_id, $is_admin) {
             exit;
         }
 
+        if (!usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
         $stmt = $pdo->prepare("
             UPDATE demandas_cards 
             SET status = 'pendente', atualizado_em = NOW()
@@ -905,6 +1005,12 @@ function adicionarComentario($pdo, $usuario_id, $card_id, $mensagem, $is_admin) 
     try {
         $board_id = obterBoardIdDoCard($pdo, $card_id);
         if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
+        if (!usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
             exit;
@@ -965,6 +1071,12 @@ function adicionarAnexo($pdo, $usuario_id, $card_id, $arquivo, $is_admin) {
     try {
         $board_id = obterBoardIdDoCard($pdo, $card_id);
         if ($board_id <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
+            exit;
+        }
+
+        if (!usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
             http_response_code(403);
             echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
             exit;
@@ -1665,6 +1777,15 @@ function downloadAnexo($pdo, $anexo_id, $usuario_id, $is_admin) {
             echo json_encode(['success' => false, 'error' => 'Anexo não encontrado']);
             exit;
         }
+
+        $card_id = (int)($anexo['card_id'] ?? 0);
+        if ($card_id <= 0 || !usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            header('Content-Type: application/json');
+            ob_clean();
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este anexo']);
+            exit;
+        }
         
         // Se tiver chave de storage, baixar do Magalu Cloud usando AWS SDK
         if (!empty($anexo['chave_storage'])) {
@@ -1774,13 +1895,20 @@ function deletarAnexo($pdo, $anexo_id, $usuario_id, $is_admin) {
         }
 
         // Buscar info do anexo antes de deletar (para limpar do Magalu)
-        $stmt_info = $pdo->prepare("SELECT chave_storage FROM demandas_arquivos_trello WHERE id = :id");
+        $stmt_info = $pdo->prepare("SELECT card_id, chave_storage FROM demandas_arquivos_trello WHERE id = :id");
         $stmt_info->execute([':id' => $anexo_id]);
         $anexo = $stmt_info->fetch(PDO::FETCH_ASSOC);
         
         if (!$anexo) {
             http_response_code(404);
             echo json_encode(['success' => false, 'error' => 'Anexo não encontrado']);
+            exit;
+        }
+
+        $card_id = (int)($anexo['card_id'] ?? 0);
+        if ($card_id <= 0 || !usuarioPodeAcessarCard($pdo, $card_id, $usuario_id, $is_admin)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este anexo']);
             exit;
         }
         
@@ -1978,6 +2106,12 @@ try {
             if ($board_id_card <= 0 || !usuarioPodeAcessarBoard($pdo, $board_id_card, $usuario_id, $is_admin)) {
                 http_response_code(403);
                 echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este quadro']);
+                exit;
+            }
+
+            if (!usuarioPodeAcessarCard($pdo, (int)$id, $usuario_id, $is_admin)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'error' => 'Você não tem acesso a este card']);
                 exit;
             }
             
