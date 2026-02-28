@@ -191,7 +191,6 @@ $config_convidados = ($meeting_id > 0 && $error === '') ? eventos_convidados_get
     'usa_mesa' => false,
     'opcoes_faixa' => eventos_convidados_opcoes_faixa_etaria('infantil'),
 ];
-$tipo_evento = (string)($config_convidados['tipo_evento'] ?? 'infantil');
 $usa_mesa = !empty($config_convidados['usa_mesa']);
 $opcoes_faixa = is_array($config_convidados['opcoes_faixa'] ?? null) ? $config_convidados['opcoes_faixa'] : [];
 $convidados = ($meeting_id > 0 && $error === '') ? eventos_convidados_listar($pdo, $meeting_id) : [];
@@ -208,11 +207,6 @@ $opcoes_faixa_json = json_encode(array_values($opcoes_faixa), JSON_UNESCAPED_UNI
 if ($opcoes_faixa_json === false) {
     $opcoes_faixa_json = '[]';
 }
-$tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
-$tipo_evento_label = $tipo_evento_real !== ''
-    ? eventos_reuniao_tipo_evento_real_label($tipo_evento_real)
-    : ($tipo_evento === 'mesa' ? '15 anos / Casamento' : 'Infantil');
-
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
@@ -417,25 +411,6 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             color: #1f2937;
         }
 
-        .tipo-wrap {
-            display: flex;
-            gap: 0.9rem;
-            flex-wrap: wrap;
-            margin-top: 0.65rem;
-        }
-
-        .tipo-item {
-            display: flex;
-            align-items: center;
-            gap: 0.45rem;
-            font-size: 0.9rem;
-            color: #334155;
-            border: 1px solid #dbe3ef;
-            border-radius: 8px;
-            padding: 0.45rem 0.65rem;
-            background: #f8fafc;
-        }
-
         .guest-table {
             border: 1px solid #e2e8f0;
             border-radius: 10px;
@@ -610,14 +585,6 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                 <strong>Informacao importante:</strong> Para o mapeamento de mesa funcionar o cliente devera trazer a plaquinha com numero de mesa.
                 Nao levamos seus convidados ate a mesa, o numero da mesa e informado no momento da entrada.
             </div>
-
-            <section class="card">
-                <h3>Tipo do evento</h3>
-                <div class="card-subtitle">Definido pela equipe na organizacao do evento. Esse tipo controla faixa etaria e uso de mesa.</div>
-                <div class="tipo-wrap">
-                    <div class="tipo-item"><strong>Tipo selecionado:</strong> <?= htmlspecialchars($tipo_evento_label) ?></div>
-                </div>
-            </section>
 
             <section class="card">
                 <h3>Resumo da lista</h3>

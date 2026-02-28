@@ -5041,21 +5041,68 @@ function eventos_convidados_planilha_coluna_indice(string $cell_ref): int {
  * Lê arquivo .xlsx e retorna linhas como arrays.
  */
 function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
-    if (!class_exists('ZipArchive')) {
-        return ['ok' => false, 'error' => 'Extensão ZIP não disponível para ler .xlsx no servidor.'];
-    }
     if (!function_exists('simplexml_load_string')) {
         return ['ok' => false, 'error' => 'SimpleXML indisponível para ler .xlsx no servidor.'];
     }
 
-    $zip = new ZipArchive();
-    if ($zip->open($file_path) !== true) {
-        return ['ok' => false, 'error' => 'Não foi possível abrir o arquivo .xlsx enviado.'];
+    $shared_raw = '';
+    $sheet_raw = '';
+    if (class_exists('ZipArchive')) {
+        $zip = new ZipArchive();
+        if ($zip->open($file_path) !== true) {
+            return ['ok' => false, 'error' => 'Não foi possível abrir o arquivo .xlsx enviado.'];
+        }
+
+        $shared_raw = (string)($zip->getFromName('xl/sharedStrings.xml') ?: '');
+        $sheet_raw = (string)($zip->getFromName('xl/worksheets/sheet1.xml') ?: '');
+        $zip->close();
+    } else {
+        if (!function_exists('shell_exec')) {
+            return ['ok' => false, 'error' => 'Leitura de .xlsx indisponível no servidor. Envie CSV ou habilite a extensão zip do PHP.'];
+        }
+
+        static $unzip_binary = null;
+        static $unzip_checked = false;
+        if (!$unzip_checked) {
+            $unzip_checked = true;
+            $binary = @shell_exec('command -v unzip 2>/dev/null');
+            if (is_string($binary)) {
+                $binary = trim($binary);
+                if ($binary !== '') {
+                    $unzip_binary = $binary;
+                }
+            }
+        }
+
+        if (!is_string($unzip_binary) || $unzip_binary === '') {
+            return ['ok' => false, 'error' => 'Leitura de .xlsx indisponível no servidor. Envie CSV ou habilite a extensão zip do PHP.'];
+        }
+
+        $shared_cmd = escapeshellarg($unzip_binary)
+            . ' -p '
+            . escapeshellarg($file_path)
+            . ' '
+            . escapeshellarg('xl/sharedStrings.xml')
+            . ' 2>/dev/null';
+        $sheet_cmd = escapeshellarg($unzip_binary)
+            . ' -p '
+            . escapeshellarg($file_path)
+            . ' '
+            . escapeshellarg('xl/worksheets/sheet1.xml')
+            . ' 2>/dev/null';
+
+        $shared_out = @shell_exec($shared_cmd);
+        $sheet_out = @shell_exec($sheet_cmd);
+        if (is_string($shared_out)) {
+            $shared_raw = $shared_out;
+        }
+        if (is_string($sheet_out)) {
+            $sheet_raw = $sheet_out;
+        }
     }
 
     $shared_strings = [];
-    $shared_raw = $zip->getFromName('xl/sharedStrings.xml');
-    if (is_string($shared_raw) && $shared_raw !== '') {
+    if ($shared_raw !== '') {
         $shared_xml = @simplexml_load_string($shared_raw);
         if ($shared_xml instanceof SimpleXMLElement) {
             $shared_xml->registerXPathNamespace('x', 'http://schemas.openxmlformats.org/spreadsheetml/2006/main');
@@ -5071,9 +5118,7 @@ function eventos_convidados_planilha_ler_xlsx(string $file_path): array {
         }
     }
 
-    $sheet_raw = $zip->getFromName('xl/worksheets/sheet1.xml');
-    $zip->close();
-    if (!is_string($sheet_raw) || $sheet_raw === '') {
+    if ($sheet_raw === '') {
         return ['ok' => false, 'error' => 'Planilha sem aba principal (sheet1). Salve novamente e tente importar.'];
     }
 

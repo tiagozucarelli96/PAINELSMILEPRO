@@ -1,7 +1,7 @@
 <?php
 /**
  * eventos_arquivos.php
- * Gestão interna de upload de PDF do evento.
+ * Gestão interna de arquivos da organização do evento.
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -65,9 +65,14 @@ if (!is_array($snapshot)) {
 $nome_evento = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
+$hora_evento = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+$local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
+$cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
+$tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
+$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
 
-// Mantém campos de sistema para garantir existência do campo de PDF.
-eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
+$seed_result = eventos_arquivos_seed_campos_por_tipo($pdo, $meeting_id, $tipo_evento_real, $user_id);
+$seed_campos_sistema_result = eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
 
 $feedback_ok = '';
 $feedback_error = '';
@@ -76,48 +81,146 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string)($_POST['action'] ?? ''));
 
     try {
-        if ($action !== 'upload_resumo_evento') {
-            $feedback_error = 'Ação não permitida nesta página.';
-        } else {
-            $descricao = trim((string)($_POST['descricao_resumo_evento'] ?? ''));
-            $file = $_FILES['arquivo_resumo_evento'] ?? null;
-            if (!$file || !is_array($file)) {
-                $feedback_error = 'Selecione um arquivo PDF para envio.';
-            } else {
+        switch ($action) {
+            case 'adicionar_campo':
+                $titulo = trim((string)($_POST['titulo'] ?? ''));
+                $descricao = trim((string)($_POST['descricao'] ?? ''));
+                $obrigatorio_cliente = ((string)($_POST['obrigatorio_cliente'] ?? '0') === '1');
+
+                $result = eventos_arquivos_salvar_campo($pdo, $meeting_id, $titulo, $descricao, $obrigatorio_cliente, $user_id);
+                if (!empty($result['ok'])) {
+                    $feedback_ok = !empty($result['mode']) && $result['mode'] === 'updated'
+                        ? 'Campo solicitado atualizado com sucesso.'
+                        : 'Campo solicitado criado com sucesso.';
+                } else {
+                    $feedback_error = (string)($result['error'] ?? 'Não foi possível salvar o campo solicitado.');
+                }
+                break;
+
+            case 'upload_arquivo':
+                $campo_id = (int)($_POST['campo_id'] ?? 0);
+                $descricao = trim((string)($_POST['descricao_arquivo'] ?? ''));
+                $visivel_cliente = ((string)($_POST['visivel_cliente'] ?? '0') === '1');
+                $file = $_FILES['arquivo'] ?? null;
+
+                if (!$file || !is_array($file)) {
+                    $feedback_error = 'Selecione um arquivo para upload.';
+                    break;
+                }
+
                 $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
                 if ($upload_error !== UPLOAD_ERR_OK) {
                     $feedback_error = eventos_arquivos_upload_error_message($upload_error);
-                } elseif ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
-                    $feedback_error = 'Arquivo muito grande. Limite máximo: 500MB.';
-                } else {
-                    $campo_resumo = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
-                    if (!$campo_resumo || (int)($campo_resumo['id'] ?? 0) <= 0) {
-                        $feedback_error = 'Campo de upload PDF não encontrado.';
-                    } else {
-                        $uploader = new MagaluUpload(500);
-                        $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos/resumo_evento');
-                        $saved = eventos_arquivos_salvar_item(
-                            $pdo,
-                            $meeting_id,
-                            $upload_result,
-                            (int)$campo_resumo['id'],
-                            $descricao,
-                            false,
-                            'interno',
-                            $user_id > 0 ? $user_id : null
-                        );
-
-                        if (!empty($saved['ok'])) {
-                            $replaced_count = (int)($saved['replaced_count'] ?? 0);
-                            $feedback_ok = $replaced_count > 0
-                                ? 'PDF atualizado com sucesso (versão anterior substituída).'
-                                : 'PDF anexado com sucesso.';
-                        } else {
-                            $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar o PDF.');
-                        }
-                    }
+                    break;
                 }
-            }
+
+                if ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                    $feedback_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+                    break;
+                }
+
+                $uploader = new MagaluUpload(500);
+                $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos');
+                $saved = eventos_arquivos_salvar_item(
+                    $pdo,
+                    $meeting_id,
+                    $upload_result,
+                    $campo_id > 0 ? $campo_id : null,
+                    $descricao,
+                    $visivel_cliente,
+                    'interno',
+                    $user_id > 0 ? $user_id : null
+                );
+
+                if (!empty($saved['ok'])) {
+                    $replaced_count = (int)($saved['replaced_count'] ?? 0);
+                    $feedback_ok = $replaced_count > 0
+                        ? 'Arquivo enviado e versão anterior substituída com sucesso.'
+                        : 'Arquivo enviado com sucesso.';
+                } else {
+                    $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar o arquivo.');
+                }
+                break;
+
+            case 'upload_resumo_evento':
+                $descricao = trim((string)($_POST['descricao_resumo_evento'] ?? ''));
+                $file = $_FILES['arquivo_resumo_evento'] ?? null;
+                if (!$file || !is_array($file)) {
+                    $feedback_error = 'Selecione um PDF para o Resumo do evento.';
+                    break;
+                }
+
+                $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($upload_error !== UPLOAD_ERR_OK) {
+                    $feedback_error = eventos_arquivos_upload_error_message($upload_error);
+                    break;
+                }
+
+                if ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                    $feedback_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+                    break;
+                }
+
+                $campo_resumo = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
+                if (!$campo_resumo || (int)($campo_resumo['id'] ?? 0) <= 0) {
+                    $feedback_error = 'Campo "Resumo do evento" não encontrado.';
+                    break;
+                }
+
+                $uploader = new MagaluUpload(500);
+                $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos/resumo_evento');
+                $saved = eventos_arquivos_salvar_item(
+                    $pdo,
+                    $meeting_id,
+                    $upload_result,
+                    (int)$campo_resumo['id'],
+                    $descricao,
+                    false,
+                    'interno',
+                    $user_id > 0 ? $user_id : null
+                );
+
+                if (!empty($saved['ok'])) {
+                    $replaced_count = (int)($saved['replaced_count'] ?? 0);
+                    $feedback_ok = $replaced_count > 0
+                        ? 'Resumo do evento atualizado com sucesso (versão anterior substituída).'
+                        : 'Resumo do evento anexado com sucesso.';
+                } else {
+                    $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar o Resumo do evento.');
+                }
+                break;
+
+            case 'toggle_visibilidade_arquivo':
+                $arquivo_id = (int)($_POST['arquivo_id'] ?? 0);
+                $visivel_cliente = ((string)($_POST['visivel_cliente'] ?? '0') === '1');
+                $updated = eventos_arquivos_atualizar_visibilidade($pdo, $meeting_id, $arquivo_id, $visivel_cliente, $user_id);
+                if (!empty($updated['ok'])) {
+                    $feedback_ok = $visivel_cliente ? 'Arquivo marcado como visível no portal do cliente.' : 'Arquivo ocultado do portal do cliente.';
+                } else {
+                    $feedback_error = (string)($updated['error'] ?? 'Falha ao atualizar visibilidade.');
+                }
+                break;
+
+            case 'toggle_campo_ativo':
+                $campo_id = (int)($_POST['campo_id'] ?? 0);
+                $ativo = ((string)($_POST['ativo'] ?? '0') === '1');
+                $updated = eventos_arquivos_atualizar_campo_ativo($pdo, $meeting_id, $campo_id, $ativo);
+                if (!empty($updated['ok'])) {
+                    $feedback_ok = $ativo ? 'Campo reativado com sucesso.' : 'Campo desativado com sucesso.';
+                } else {
+                    $feedback_error = (string)($updated['error'] ?? 'Falha ao atualizar campo.');
+                }
+                break;
+
+            case 'excluir_arquivo':
+                $arquivo_id = (int)($_POST['arquivo_id'] ?? 0);
+                $deleted = eventos_arquivos_excluir_item($pdo, $meeting_id, $arquivo_id, $user_id);
+                if (!empty($deleted['ok'])) {
+                    $feedback_ok = 'Arquivo removido com sucesso.';
+                } else {
+                    $feedback_error = (string)($deleted['error'] ?? 'Falha ao remover arquivo.');
+                }
+                break;
         }
     } catch (Throwable $e) {
         error_log('eventos_arquivos.php POST: ' . $e->getMessage());
@@ -125,24 +228,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$campo_resumo_evento = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
-$campo_resumo_evento_id = (int)($campo_resumo_evento['id'] ?? 0);
-$resumo_evento_arquivo_atual = null;
+$campos = eventos_arquivos_listar_campos($pdo, $meeting_id, false, true);
+$campos_cliente = array_values(array_filter($campos, static function ($campo): bool {
+    return empty($campo['interno_only']) && trim((string)($campo['chave_sistema'] ?? '')) === '';
+}));
+$campos_ativos = array_values(array_filter($campos_cliente, static function ($campo): bool {
+    return !empty($campo['ativo']);
+}));
+$arquivos = eventos_arquivos_listar($pdo, $meeting_id, false);
+$resumo = eventos_arquivos_resumo($pdo, $meeting_id);
+$logs_arquivos = eventos_arquivos_logs_listar($pdo, $meeting_id, null, 200);
 
-if ($campo_resumo_evento_id > 0) {
-    $resumo_evento_arquivos = eventos_arquivos_listar($pdo, $meeting_id, false, $campo_resumo_evento_id, true);
-    $resumo_evento_arquivo_atual = $resumo_evento_arquivos[0] ?? null;
-} elseif ($feedback_error === '') {
-    $feedback_error = 'Campo de upload PDF não está disponível para este evento.';
+$campo_resumo_evento = null;
+foreach ($campos as $campo_item) {
+    $chave_sistema = (string)($campo_item['chave_sistema'] ?? '');
+    if ($chave_sistema === 'resumo_evento' && !$campo_resumo_evento) {
+        $campo_resumo_evento = $campo_item;
+    }
 }
 
-includeSidebar('Upload de PDF');
+$resumo_evento_arquivos = [];
+$campo_resumo_evento_id = (int)($campo_resumo_evento['id'] ?? 0);
+foreach ($arquivos as $arquivo_item) {
+    $arquivo_campo_id = (int)($arquivo_item['campo_id'] ?? 0);
+    if ($campo_resumo_evento_id > 0 && $arquivo_campo_id === $campo_resumo_evento_id) {
+        $resumo_evento_arquivos[] = $arquivo_item;
+    }
+}
+$resumo_evento_arquivo_atual = !empty($resumo_evento_arquivos) ? $resumo_evento_arquivos[0] : null;
+
+includeSidebar('Arquivos do Evento');
 ?>
 
 <style>
     .arquivos-container {
         padding: 2rem;
-        max-width: 820px;
+        max-width: 1240px;
         margin: 0 auto;
         background: #f8fafc;
     }
@@ -194,6 +315,62 @@ includeSidebar('Upload de PDF');
         border: 1px solid #dbe3ef;
     }
 
+    .btn-danger {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    .event-summary {
+        background: #fff;
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .event-summary h2 {
+        margin: 0 0 0.4rem 0;
+        color: #0f172a;
+        font-size: 1.22rem;
+    }
+
+    .event-meta {
+        display: grid;
+        gap: 0.45rem;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        font-size: 0.9rem;
+        color: #334155;
+    }
+
+    .resumo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 1rem;
+    }
+
+    .resumo-card {
+        background: #fff;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        padding: 0.7rem 0.8rem;
+    }
+
+    .resumo-card .valor {
+        display: block;
+        color: #1e3a8a;
+        font-weight: 800;
+        font-size: 1.2rem;
+        line-height: 1;
+    }
+
+    .resumo-card .label {
+        display: block;
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
+    }
+
     .alert {
         border-radius: 10px;
         border: 1px solid transparent;
@@ -214,6 +391,13 @@ includeSidebar('Upload de PDF');
         color: #991b1b;
     }
 
+    .grid-two {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+        margin-bottom: 1rem;
+    }
+
     .panel {
         background: #fff;
         border: 1px solid #dbe3ef;
@@ -221,7 +405,7 @@ includeSidebar('Upload de PDF');
         padding: 1rem;
     }
 
-    .panel h2 {
+    .panel h3 {
         margin: 0;
         color: #0f172a;
         font-size: 1.04rem;
@@ -231,16 +415,6 @@ includeSidebar('Upload de PDF');
         margin-top: 0.35rem;
         color: #64748b;
         font-size: 0.84rem;
-    }
-
-    .event-chip {
-        margin-top: 0.85rem;
-        padding: 0.55rem 0.7rem;
-        border-radius: 8px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        font-size: 0.84rem;
-        color: #334155;
     }
 
     .form-grid {
@@ -260,8 +434,10 @@ includeSidebar('Upload de PDF');
         font-weight: 700;
     }
 
+    .field input[type="text"],
     .field input[type="file"],
-    .field textarea {
+    .field textarea,
+    .field select {
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 0.58rem 0.7rem;
@@ -276,21 +452,25 @@ includeSidebar('Upload de PDF');
         resize: vertical;
     }
 
+    .check-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.84rem;
+        color: #334155;
+    }
+
     .hint {
         color: #64748b;
         font-size: 0.76rem;
         margin-top: 0.1rem;
     }
 
-    .arquivo-atual {
-        margin-top: 0.95rem;
-    }
-
-    .empty {
-        color: #64748b;
-        font-size: 0.86rem;
-        font-style: italic;
-        padding: 0.6rem 0;
+    .campos-list,
+    .arquivos-list {
+        margin-top: 0.9rem;
+        display: grid;
+        gap: 0.7rem;
     }
 
     .item-card {
@@ -321,13 +501,6 @@ includeSidebar('Upload de PDF');
         line-height: 1.45;
     }
 
-    .item-actions {
-        margin-top: 0.6rem;
-        display: flex;
-        gap: 0.45rem;
-        flex-wrap: wrap;
-    }
-
     .badge {
         display: inline-flex;
         align-items: center;
@@ -339,10 +512,54 @@ includeSidebar('Upload de PDF');
         white-space: nowrap;
     }
 
+    .badge-required {
+        color: #7c2d12;
+        background: #ffedd5;
+        border-color: #fdba74;
+    }
+
+    .badge-optional {
+        color: #334155;
+        background: #e2e8f0;
+        border-color: #cbd5e1;
+    }
+
+    .badge-active {
+        color: #065f46;
+        background: #d1fae5;
+        border-color: #6ee7b7;
+    }
+
+    .badge-inactive {
+        color: #991b1b;
+        background: #fee2e2;
+        border-color: #fca5a5;
+    }
+
+    .badge-visible {
+        color: #1d4ed8;
+        background: #dbeafe;
+        border-color: #93c5fd;
+    }
+
     .badge-hidden {
         color: #6b7280;
         background: #f3f4f6;
         border-color: #d1d5db;
+    }
+
+    .item-actions {
+        margin-top: 0.6rem;
+        display: flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+
+    .empty {
+        color: #64748b;
+        font-size: 0.86rem;
+        font-style: italic;
+        padding: 0.6rem 0;
     }
 
     @media (max-width: 768px) {
@@ -355,10 +572,10 @@ includeSidebar('Upload de PDF');
 <div class="arquivos-container">
     <div class="page-header">
         <div>
-            <h1 class="page-title">Upload de PDF</h1>
-            <div class="page-subtitle">Esta página mantém somente o envio de PDF do evento.</div>
+            <h1 class="page-title">📁 Arquivos do Evento</h1>
+            <div class="page-subtitle">Uploads até 500MB por arquivo, com descrição e controle de visibilidade para o cliente.</div>
         </div>
-        <a href="index.php?page=eventos_organizacao&id=<?= (int)$meeting_id ?>" class="btn btn-secondary">Voltar à organização</a>
+        <a href="index.php?page=eventos_organizacao&id=<?= (int)$meeting_id ?>" class="btn btn-secondary">← Voltar à organização</a>
     </div>
 
     <?php if (!empty($feedback_ok)): ?>
@@ -369,62 +586,343 @@ includeSidebar('Upload de PDF');
     <div class="alert alert-error"><?= eventos_arquivos_e($feedback_error) ?></div>
     <?php endif; ?>
 
-    <section class="panel" id="resumo-evento">
-        <h2>Upload de PDF</h2>
-        <div class="panel-subtitle">Somente PDF, com substituição automática da versão anterior.</div>
+    <?php if (!empty($seed_result['ok']) && (int)($seed_result['inserted'] ?? 0) > 0): ?>
+    <div class="alert alert-success">
+        Campos padrão aplicados automaticamente para o tipo <strong><?= eventos_arquivos_e($tipo_evento_real_label) ?></strong>.
+    </div>
+    <?php endif; ?>
 
-        <div class="event-chip">
-            Evento: <strong><?= eventos_arquivos_e($nome_evento) ?></strong> | Data: <strong><?= eventos_arquivos_e($data_evento_fmt) ?></strong>
+    <?php if (!empty($seed_campos_sistema_result['ok']) && (int)($seed_campos_sistema_result['inserted'] ?? 0) > 0): ?>
+    <div class="alert alert-success">
+        Estrutura de anexos atualizada: campo fixo de <strong>Resumo do evento</strong> pronto para uso.
+    </div>
+    <?php endif; ?>
+
+    <section class="event-summary">
+        <h2><?= eventos_arquivos_e($nome_evento) ?></h2>
+        <div class="event-meta">
+            <div><strong>📅 Data:</strong> <?= eventos_arquivos_e($data_evento_fmt) ?></div>
+            <div><strong>⏰ Horário:</strong> <?= eventos_arquivos_e($hora_evento !== '' ? $hora_evento : '-') ?></div>
+            <div><strong>📍 Local:</strong> <?= eventos_arquivos_e($local_evento) ?></div>
+            <div><strong>👤 Cliente:</strong> <?= eventos_arquivos_e($cliente_nome) ?></div>
+            <div><strong>🏷️ Tipo:</strong> <?= eventos_arquivos_e($tipo_evento_real_label) ?></div>
+        </div>
+    </section>
+
+    <section class="resumo-grid">
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['arquivos_total'] ?></span>
+            <span class="label">Arquivos enviados</span>
+        </div>
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['arquivos_visiveis_cliente'] ?></span>
+            <span class="label">Visíveis no portal</span>
+        </div>
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['arquivos_cliente'] ?></span>
+            <span class="label">Enviados pelo cliente</span>
+        </div>
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['campos_total'] ?></span>
+            <span class="label">Campos solicitados</span>
+        </div>
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['campos_obrigatorios'] ?></span>
+            <span class="label">Campos obrigatórios</span>
+        </div>
+        <div class="resumo-card">
+            <span class="valor"><?= (int)$resumo['campos_pendentes'] ?></span>
+            <span class="label">Pendências obrigatórias</span>
+        </div>
+    </section>
+
+    <section class="grid-two">
+        <div class="panel" id="resumo-evento">
+            <h3>📄 Resumo do evento (Contrato cliente)</h3>
+            <div class="panel-subtitle">Upload exclusivo em PDF. Sempre interno, sem opção de exibição no portal do cliente.</div>
+
+            <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="upload_resumo_evento">
+
+                <div class="field">
+                    <label for="arquivoResumoEvento">Arquivo PDF</label>
+                    <input type="file" id="arquivoResumoEvento" name="arquivo_resumo_evento" accept=".pdf,application/pdf" required>
+                    <div class="hint">Ao anexar novo arquivo, o anterior é substituído automaticamente e fica registrado no log.</div>
+                </div>
+
+                <div class="field">
+                    <label for="descricaoResumoEvento">Descrição (opcional)</label>
+                    <textarea id="descricaoResumoEvento" name="descricao_resumo_evento" placeholder="Ex.: Contrato assinado atualizado em 28/02/2026."></textarea>
+                </div>
+
+                <div>
+                    <button type="submit" class="btn btn-primary">Salvar resumo do evento</button>
+                </div>
+            </form>
+
+            <div class="campos-list">
+                <?php if (!$resumo_evento_arquivo_atual): ?>
+                <div class="empty">Nenhum resumo de evento anexado ainda.</div>
+                <?php else: ?>
+                <?php
+                    $resumo_nome = trim((string)($resumo_evento_arquivo_atual['original_name'] ?? 'arquivo.pdf'));
+                    $resumo_url = trim((string)($resumo_evento_arquivo_atual['public_url'] ?? ''));
+                    $resumo_desc = trim((string)($resumo_evento_arquivo_atual['descricao'] ?? ''));
+                    $resumo_uploaded_at = trim((string)($resumo_evento_arquivo_atual['uploaded_at'] ?? ''));
+                    $resumo_uploaded_at_fmt = $resumo_uploaded_at !== '' ? date('d/m/Y H:i', strtotime($resumo_uploaded_at)) : '-';
+                ?>
+                <article class="item-card">
+                    <div class="item-head">
+                        <div>
+                            <div class="item-title">Atual: <?= eventos_arquivos_e($resumo_nome) ?></div>
+                            <div class="item-meta">
+                                Última atualização: <?= eventos_arquivos_e($resumo_uploaded_at_fmt) ?>
+                                <?php if ($resumo_desc !== ''): ?><br><?= eventos_arquivos_e($resumo_desc) ?><?php endif; ?>
+                            </div>
+                        </div>
+                        <span class="badge badge-hidden">Uso interno</span>
+                    </div>
+                    <div class="item-actions">
+                        <?php if ($resumo_url !== ''): ?>
+                        <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+                        <?php endif; ?>
+                    </div>
+                </article>
+                <?php endif; ?>
+            </div>
         </div>
 
-        <form method="POST" enctype="multipart/form-data" class="form-grid">
-            <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
-            <input type="hidden" name="action" value="upload_resumo_evento">
+    </section>
 
-            <div class="field">
-                <label for="arquivoResumoEvento">Arquivo</label>
-                <input type="file" id="arquivoResumoEvento" name="arquivo_resumo_evento" accept=".pdf,application/pdf" required>
-                <div class="hint">Ao anexar novo arquivo, o anterior é substituído automaticamente e fica registrado no log.</div>
+    <section class="grid-two">
+        <div class="panel">
+            <h3>📌 Campos Solicitados do Cliente</h3>
+            <div class="panel-subtitle">Cadastre os arquivos que você quer receber neste evento.</div>
+
+            <form method="POST" class="form-grid">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="adicionar_campo">
+
+                <div class="field">
+                    <label for="campoTitulo">Nome do arquivo solicitado</label>
+                    <input type="text" id="campoTitulo" name="titulo" maxlength="180" placeholder="Ex.: Imagem do convite" required>
+                </div>
+
+                <div class="field">
+                    <label for="campoDescricao">Descrição/instrução</label>
+                    <textarea id="campoDescricao" name="descricao" placeholder="Ex.: Preferencialmente em alta resolução."></textarea>
+                </div>
+
+                <label class="check-row">
+                    <input type="checkbox" name="obrigatorio_cliente" value="1">
+                    <span>Campo obrigatório para o cliente</span>
+                </label>
+
+                <div>
+                    <button type="submit" class="btn btn-primary">Salvar campo solicitado</button>
+                </div>
+            </form>
+
+            <div class="campos-list">
+                <?php if (empty($campos_cliente)): ?>
+                <div class="empty">Nenhum campo solicitado cadastrado ainda.</div>
+                <?php else: ?>
+                <?php foreach ($campos_cliente as $campo): ?>
+                <?php
+                    $campo_id = (int)($campo['id'] ?? 0);
+                    $campo_ativo = !empty($campo['ativo']);
+                    $campo_obrigatorio = !empty($campo['obrigatorio_cliente']);
+                ?>
+                <article class="item-card">
+                    <div class="item-head">
+                        <div>
+                            <div class="item-title"><?= eventos_arquivos_e((string)($campo['titulo'] ?? 'Campo')) ?></div>
+                            <div class="item-meta">
+                                <?= eventos_arquivos_e((string)($campo['descricao'] ?? 'Sem descrição')) ?><br>
+                                Arquivos recebidos: <strong><?= (int)($campo['total_arquivos'] ?? 0) ?></strong> •
+                                do cliente: <strong><?= (int)($campo['total_upload_cliente'] ?? 0) ?></strong>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+                            <span class="badge <?= $campo_obrigatorio ? 'badge-required' : 'badge-optional' ?>">
+                                <?= $campo_obrigatorio ? 'Obrigatório' : 'Opcional' ?>
+                            </span>
+                            <span class="badge <?= $campo_ativo ? 'badge-active' : 'badge-inactive' ?>">
+                                <?= $campo_ativo ? 'Ativo' : 'Inativo' ?>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="item-actions">
+                        <form method="POST" style="display:inline-flex;">
+                            <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                            <input type="hidden" name="action" value="toggle_campo_ativo">
+                            <input type="hidden" name="campo_id" value="<?= $campo_id ?>">
+                            <input type="hidden" name="ativo" value="<?= $campo_ativo ? '0' : '1' ?>">
+                            <button type="submit" class="btn btn-secondary"><?= $campo_ativo ? 'Desativar campo' : 'Reativar campo' ?></button>
+                        </form>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
+        </div>
 
-            <div class="field">
-                <label for="descricaoResumoEvento">Descrição (opcional)</label>
-                <textarea id="descricaoResumoEvento" name="descricao_resumo_evento" placeholder="Ex.: Contrato assinado atualizado em 28/02/2026."></textarea>
-            </div>
+        <div class="panel">
+            <h3>⬆️ Enviar Arquivo (Equipe)</h3>
+            <div class="panel-subtitle">Suporte a vários tipos de arquivo, com limite de 500MB por envio.</div>
 
-            <div>
-                <button type="submit" class="btn btn-primary">Salvar PDF</button>
-            </div>
-        </form>
+            <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="upload_arquivo">
 
-        <div class="arquivo-atual">
-            <?php if (!$resumo_evento_arquivo_atual): ?>
-            <div class="empty">Nenhum PDF anexado ainda.</div>
+                <div class="field">
+                    <label for="arquivoInput">Arquivo</label>
+                    <input type="file"
+                           id="arquivoInput"
+                           name="arquivo"
+                           accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
+                           required>
+                    <div class="hint">Tipos comuns de imagem, documento, áudio, vídeo e compactados.</div>
+                </div>
+
+                <div class="field">
+                    <label for="campoId">Vincular a um campo solicitado (opcional)</label>
+                    <select id="campoId" name="campo_id">
+                        <option value="">Nenhum campo específico</option>
+                        <?php foreach ($campos_ativos as $campo): ?>
+                        <option value="<?= (int)$campo['id'] ?>"><?= eventos_arquivos_e((string)($campo['titulo'] ?? 'Campo')) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="descricaoArquivo">Descrição do arquivo</label>
+                    <textarea id="descricaoArquivo" name="descricao_arquivo" placeholder="Ex.: Convite final aprovado em alta resolução."></textarea>
+                </div>
+
+                <label class="check-row">
+                    <input type="checkbox" name="visivel_cliente" value="1">
+                    <span>Cliente pode visualizar no portal</span>
+                </label>
+
+                <div>
+                    <button type="submit" class="btn btn-primary">Enviar arquivo</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h3>🗂️ Arquivos Enviados</h3>
+        <div class="panel-subtitle">Controle de visibilidade e remoção dos arquivos do evento.</div>
+
+        <div class="arquivos-list">
+            <?php if (empty($arquivos)): ?>
+            <div class="empty">Nenhum arquivo enviado para este evento.</div>
             <?php else: ?>
+            <?php foreach ($arquivos as $arquivo): ?>
             <?php
-                $resumo_nome = trim((string)($resumo_evento_arquivo_atual['original_name'] ?? 'arquivo.pdf'));
-                $resumo_url = trim((string)($resumo_evento_arquivo_atual['public_url'] ?? ''));
-                $resumo_desc = trim((string)($resumo_evento_arquivo_atual['descricao'] ?? ''));
-                $resumo_uploaded_at = trim((string)($resumo_evento_arquivo_atual['uploaded_at'] ?? ''));
-                $resumo_uploaded_at_fmt = $resumo_uploaded_at !== '' ? date('d/m/Y H:i', strtotime($resumo_uploaded_at)) : '-';
+                $arquivo_id = (int)($arquivo['id'] ?? 0);
+                $visivel = !empty($arquivo['visivel_cliente']);
+                $campo_interno = !empty($arquivo['campo_interno_only']);
+                $nome = trim((string)($arquivo['original_name'] ?? 'arquivo'));
+                $descricao = trim((string)($arquivo['descricao'] ?? ''));
+                $campo_titulo = trim((string)($arquivo['campo_titulo'] ?? ''));
+                $uploaded_by = trim((string)($arquivo['uploaded_by_type'] ?? 'interno'));
+                $uploaded_at = trim((string)($arquivo['uploaded_at'] ?? ''));
+                $uploaded_at_fmt = $uploaded_at !== '' ? date('d/m/Y H:i', strtotime($uploaded_at)) : '-';
+                $size_bytes = max(0, (int)($arquivo['size_bytes'] ?? 0));
+                $size_mb = $size_bytes > 0 ? number_format($size_bytes / 1024 / 1024, 2, ',', '.') . ' MB' : '0 MB';
+                $public_url = trim((string)($arquivo['public_url'] ?? ''));
             ?>
             <article class="item-card">
                 <div class="item-head">
                     <div>
-                        <div class="item-title">Atual: <?= eventos_arquivos_e($resumo_nome) ?></div>
+                        <div class="item-title">📎 <?= eventos_arquivos_e($nome) ?></div>
                         <div class="item-meta">
-                            Última atualização: <?= eventos_arquivos_e($resumo_uploaded_at_fmt) ?>
-                            <?php if ($resumo_desc !== ''): ?><br><?= eventos_arquivos_e($resumo_desc) ?><?php endif; ?>
+                            <?= $campo_titulo !== '' ? 'Campo: <strong>' . eventos_arquivos_e($campo_titulo) . '</strong><br>' : '' ?>
+                            Enviado por: <strong><?= eventos_arquivos_e($uploaded_by) ?></strong> • <?= eventos_arquivos_e($uploaded_at_fmt) ?><br>
+                            Tamanho: <?= eventos_arquivos_e($size_mb) ?>
+                            <?php if ($descricao !== ''): ?><br>Descrição: <?= eventos_arquivos_e($descricao) ?><?php endif; ?>
                         </div>
                     </div>
-                    <span class="badge badge-hidden">Uso interno</span>
+                    <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
+                        <span class="badge <?= ($visivel && !$campo_interno) ? 'badge-visible' : 'badge-hidden' ?>">
+                            <?= ($visivel && !$campo_interno) ? 'Visível ao cliente' : 'Oculto do cliente' ?>
+                        </span>
+                        <?php if ($campo_interno): ?>
+                        <span class="badge badge-hidden">Uso interno</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <div class="item-actions">
-                    <?php if ($resumo_url !== ''): ?>
-                    <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+                    <?php if ($public_url !== ''): ?>
+                    <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
                     <?php endif; ?>
+
+                    <?php if (!$campo_interno): ?>
+                    <form method="POST" style="display:inline-flex;">
+                        <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                        <input type="hidden" name="action" value="toggle_visibilidade_arquivo">
+                        <input type="hidden" name="arquivo_id" value="<?= $arquivo_id ?>">
+                        <input type="hidden" name="visivel_cliente" value="<?= $visivel ? '0' : '1' ?>">
+                        <button type="submit" class="btn btn-secondary">
+                            <?= $visivel ? 'Ocultar do cliente' : 'Exibir para cliente' ?>
+                        </button>
+                    </form>
+                    <?php endif; ?>
+
+                    <form method="POST" style="display:inline-flex;" onsubmit="return confirm('Deseja remover este arquivo?');">
+                        <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                        <input type="hidden" name="action" value="excluir_arquivo">
+                        <input type="hidden" name="arquivo_id" value="<?= $arquivo_id ?>">
+                        <button type="submit" class="btn btn-danger">Excluir</button>
+                    </form>
                 </div>
             </article>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h3>🧾 Log de anexos</h3>
+        <div class="panel-subtitle">Histórico de uploads, substituições, exclusões e mudanças de visibilidade.</div>
+
+        <div class="arquivos-list">
+            <?php if (empty($logs_arquivos)): ?>
+            <div class="empty">Sem registros de log até o momento.</div>
+            <?php else: ?>
+            <?php foreach ($logs_arquivos as $log): ?>
+            <?php
+                $log_data = trim((string)($log['created_at'] ?? ''));
+                $log_data_fmt = $log_data !== '' ? date('d/m/Y H:i:s', strtotime($log_data)) : '-';
+                $log_label = trim((string)($log['action_label'] ?? $log['action_type'] ?? 'Ação'));
+                $log_note = trim((string)($log['action_note'] ?? ''));
+                $log_campo = trim((string)($log['campo_titulo'] ?? ''));
+                $log_arquivo = trim((string)($log['arquivo_nome'] ?? ''));
+                $log_actor = trim((string)($log['actor_user_nome'] ?? ''));
+                $log_actor_type = trim((string)($log['actor_type'] ?? 'interno'));
+                if ($log_actor === '') {
+                    $log_actor = $log_actor_type;
+                }
+            ?>
+            <article class="item-card">
+                <div class="item-head">
+                    <div>
+                        <div class="item-title"><?= eventos_arquivos_e($log_label) ?></div>
+                        <div class="item-meta">
+                            Data/hora: <strong><?= eventos_arquivos_e($log_data_fmt) ?></strong> • Responsável: <strong><?= eventos_arquivos_e($log_actor) ?></strong><br>
+                            <?php if ($log_campo !== ''): ?>Campo: <?= eventos_arquivos_e($log_campo) ?><?php endif; ?>
+                            <?php if ($log_campo !== '' && $log_arquivo !== ''): ?> • <?php endif; ?>
+                            <?php if ($log_arquivo !== ''): ?>Arquivo: <?= eventos_arquivos_e($log_arquivo) ?><?php endif; ?>
+                            <?php if ($log_note !== ''): ?><br><?= eventos_arquivos_e($log_note) ?><?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </article>
+            <?php endforeach; ?>
             <?php endif; ?>
         </div>
     </section>
