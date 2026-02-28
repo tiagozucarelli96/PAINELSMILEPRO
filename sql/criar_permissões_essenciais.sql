@@ -4,6 +4,8 @@
 -- Permissões principais (módulos)
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_comercial BOOLEAN DEFAULT FALSE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos BOOLEAN DEFAULT FALSE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_logistico BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_configuracoes BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_cadastros BOOLEAN DEFAULT FALSE;
@@ -16,6 +18,8 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_usuarios BOOLEAN DEFAULT FALS
 -- Criar índices para melhor performance
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda ON usuarios(perm_agenda);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_comercial ON usuarios(perm_comercial);
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos ON usuarios(perm_eventos);
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos_realizar ON usuarios(perm_eventos_realizar);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_logistico ON usuarios(perm_logistico);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_configuracoes ON usuarios(perm_configuracoes);
 
@@ -26,4 +30,3 @@ WHERE table_schema = 'public'
 AND table_name = 'usuarios' 
 AND column_name LIKE 'perm_%'
 ORDER BY column_name;
-

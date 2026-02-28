@@ -15,7 +15,12 @@ require_once __DIR__ . '/eventos_me_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 // Verificar permissão
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+$can_eventos = !empty($_SESSION['perm_eventos']);
+$can_realizar_evento = !empty($_SESSION['perm_eventos_realizar']);
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+$somente_realizar = (!$is_superadmin && !$can_eventos && $can_realizar_evento);
+
+if (!$is_superadmin && !$can_eventos && !$can_realizar_evento) {
     header('Location: index.php?page=dashboard');
     exit;
 }
@@ -24,6 +29,13 @@ $user_id = $_SESSION['id'] ?? $_SESSION['user_id'] ?? 0;
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $me_event_id = (int)($_GET['me_event_id'] ?? $_POST['me_event_id'] ?? 0);
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+$origin = strtolower(trim((string)($_GET['origin'] ?? $_POST['origin'] ?? '')));
+if ($somente_realizar) {
+    $origin = 'realizar';
+}
+$readonly_mode = $somente_realizar
+    || ($origin === 'realizar')
+    || ((string)($_GET['readonly'] ?? $_POST['readonly'] ?? '0') === '1');
 
 $reuniao = null;
 $secoes = [];
@@ -89,6 +101,14 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
 // Processar ações POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
+
+    if ($readonly_mode) {
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Modo realização: tela em somente leitura.'
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 
     try {
         switch ($action) {
@@ -570,12 +590,15 @@ $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_clie
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $scope = strtolower(trim((string)($_GET['scope'] ?? '')));
-$origin = strtolower(trim((string)($_GET['origin'] ?? '')));
 $back_href = 'index.php?page=eventos';
 if ($origin === 'organizacao') {
     $back_href = $meeting_id > 0
         ? 'index.php?page=eventos_organizacao&id=' . (int)$meeting_id
         : 'index.php?page=eventos_organizacao';
+} elseif ($origin === 'realizar') {
+    $back_href = $meeting_id > 0
+        ? 'index.php?page=eventos_realizar&id=' . (int)$meeting_id
+        : 'index.php?page=eventos_realizar';
 }
 $decoracao_schema_raw = $secoes['decoracao']['form_schema_json'] ?? '[]';
 $decoracao_schema_decoded = json_decode((string)$decoracao_schema_raw, true);
@@ -1694,10 +1717,17 @@ includeSidebar($sidebar_title);
             Carregando eventos...
         </div>
         <div id="selectedEventSummary" class="selected-event-summary"></div>
-        <div id="selectedEvent" style="display: none; margin-top: 1rem;">
+    <div id="selectedEvent" style="display: none; margin-top: 1rem;">
+            <?php if (!$readonly_mode): ?>
             <button type="button" class="btn btn-success" onclick="criarReuniao()">
                 <?= $origin === 'organizacao' ? 'Organizar este Evento' : '✓ Criar Reunião para este Evento' ?>
             </button>
+            <?php else: ?>
+            <div class="locked-notice" style="margin:0;">
+                <span style="font-size: 1.2rem;">🔒</span>
+                <div style="font-size:0.85rem;">Modo realização em somente leitura: criação/edição bloqueada.</div>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
     
@@ -1738,13 +1768,18 @@ includeSidebar($sidebar_title);
                 <strong style="color: <?= $reuniao['status'] === 'concluida' ? '#059669' : '#f59e0b' ?>">
                     <?= $reuniao['status'] === 'concluida' ? 'Concluída' : 'Rascunho' ?>
                 </strong>
+                <?php if ($readonly_mode): ?>
+                <span style="display:inline-block; margin-left:0.55rem; background:#dbeafe; color:#1e40af; font-weight:700; font-size:0.76rem; padding:0.2rem 0.5rem; border-radius:999px; border:1px solid #93c5fd;">Somente leitura</span>
+                <?php endif; ?>
             </p>
         </div>
         <div class="header-actions">
+            <?php if (!$readonly_mode): ?>
             <?php if ($reuniao['status'] === 'rascunho'): ?>
             <button type="button" class="btn btn-success" onclick="concluirReuniao()">✓ Marcar como Concluída</button>
             <?php else: ?>
             <button type="button" class="btn btn-secondary" onclick="reabrirReuniao()">↺ Reabrir</button>
+            <?php endif; ?>
             <?php endif; ?>
             <button type="button" class="btn btn-secondary btn-mini" onclick="abrirModalImpressao()" title="Imprimir / PDF" aria-label="Imprimir / PDF">🖨️</button>
             <a href="<?= htmlspecialchars($back_href) ?>" class="btn btn-secondary">← Voltar</a>
@@ -1842,8 +1877,10 @@ includeSidebar($sidebar_title);
                         <p>Comece sem quadros. Ao selecionar o formulário, defina se o cliente verá e poderá editar no portal.</p>
                     </div>
                     <div class="dj-slots-actions">
+                        <?php if (!$readonly_mode): ?>
                         <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
                         <button type="button" class="btn btn-secondary" onclick="addDjUploadCard()">+ Adicionar arquivo</button>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div id="djSlotsEmptyState" class="dj-builder-empty-state" style="display:none;">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
@@ -1869,17 +1906,19 @@ includeSidebar($sidebar_title);
                         <?php endif; ?>
                     </div>
                     <div class="dj-top-actions">
+                        <?php if (!$readonly_mode): ?>
                         <?php if ($key === 'decoracao'): ?>
                         <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Carregar formulário</button>
                         <?php endif; ?>
                         <?php if ($key === 'observacoes_gerais'): ?>
                         <button type="button" class="btn btn-primary" onclick="addObservacoesClientSlot()">+ Adicionar formulário (cliente)</button>
                         <?php endif; ?>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="prefill-field" style="margin-top: 0.5rem;">
                     <label for="sectionTemplateSelect-<?= $key ?>">Formulário salvo (opcional)</label>
-                    <select id="sectionTemplateSelect-<?= $key ?>" onchange="onChangeSectionTemplateSelect('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>
+                    <select id="sectionTemplateSelect-<?= $key ?>" onchange="onChangeSectionTemplateSelect('<?= $key ?>')" <?= ($is_locked || $readonly_mode) ? 'disabled' : '' ?>>
                         <option value="">Nenhum formulário</option>
                         <?php foreach ($form_templates as $template): ?>
                         <option value="<?= (int)($template['id'] ?? 0) ?>">
@@ -1912,9 +1951,11 @@ includeSidebar($sidebar_title);
                     <strong>Seção travada</strong>
                     <p style="margin: 0.25rem 0 0 0; font-size: 0.875rem;">O cliente já enviou as informações. Clique em "Destravar" para permitir edições.</p>
                 </div>
+                <?php if (!$readonly_mode): ?>
                 <button type="button" class="btn btn-secondary" onclick="destravarSecao('<?= $key ?>')" style="margin-left: auto;">
                     🔓 Destravar
                 </button>
+                <?php endif; ?>
             </div>
             <?php endif; ?>
             
@@ -1940,12 +1981,12 @@ includeSidebar($sidebar_title);
                 ?>
                 <textarea id="editor-<?= $key ?>" 
                           data-section="<?= $key ?>"
-                          <?= $is_locked ? 'readonly' : '' ?>
+                          <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
                           style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
             
             <div class="section-actions">
-                <?php if (!$is_locked): ?>
+                <?php if (!$is_locked && !$readonly_mode): ?>
                 <button type="button" class="btn btn-primary" onclick="salvarSecao('<?= $key ?>')">💾 Salvar</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary" onclick="verVersoes('<?= $key ?>')">📋 Histórico de Versões</button>
@@ -2075,6 +2116,7 @@ const sectionLockedState = <?= json_encode([
     'observacoes_gerais' => !empty($secoes['observacoes_gerais']['is_locked']),
     'dj_protocolo' => !empty($secoes['dj_protocolo']['is_locked']),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
 let sectionFormDraftValues = {
     decoracao: {},
     observacoes_gerais: {},
@@ -2535,6 +2577,10 @@ function buildDjSlotCardHtml(slot) {
     const link = djLinksBySlot[slot] || null;
     const portalVisibleChecked = link && link.portal_visible ? ' checked' : '';
     const portalEditableChecked = link && link.portal_editable ? ' checked' : '';
+    const disabledAttr = pageReadonly ? ' disabled' : '';
+    const removeBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir quadro</button>`;
     return `
         <div class="dj-builder-shell" data-dj-slot="${slot}">
             <div class="dj-builder-head">
@@ -2543,23 +2589,23 @@ function buildDjSlotCardHtml(slot) {
                     <div class="dj-builder-subtitle">Selecione o formulário e configure a visibilidade/edição deste quadro no Portal do Cliente.</div>
                 </div>
                 <div class="dj-top-actions">
-                    <button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir quadro</button>
+                    ${removeBtnHtml}
                 </div>
             </div>
             <div class="prefill-field" style="margin-top: 0.5rem;">
                 <label for="djTemplateSelect-${slot}">Formulário salvo</label>
-                <select id="djTemplateSelect-${slot}" onchange="onChangeDjTemplateSelect(${slot})">
+                <select id="djTemplateSelect-${slot}" onchange="onChangeDjTemplateSelect(${slot})"${disabledAttr}>
                     <option value="">Selecione um formulário...</option>
                 </select>
             </div>
             <div class="builder-field-meta" id="selectedDjTemplateMeta-${slot}" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
             <div class="portal-settings">
                 <label class="portal-settings-label" for="djPortalVisible-${slot}">
-                    <input type="checkbox" id="djPortalVisible-${slot}" onchange="onChangeDjPortalVisibility(${slot})"${portalVisibleChecked}>
+                    <input type="checkbox" id="djPortalVisible-${slot}" onchange="onChangeDjPortalVisibility(${slot})"${portalVisibleChecked}${disabledAttr}>
                     Exibir este quadro no Portal do Cliente
                 </label>
                 <label class="portal-settings-label" for="djPortalEditable-${slot}">
-                    <input type="checkbox" id="djPortalEditable-${slot}" onchange="onChangeDjPortalEditable(${slot})"${portalEditableChecked}>
+                    <input type="checkbox" id="djPortalEditable-${slot}" onchange="onChangeDjPortalEditable(${slot})"${portalEditableChecked}${disabledAttr}>
                     Permitir edição/preenchimento do cliente
                 </label>
             </div>
@@ -2592,6 +2638,10 @@ function renderDjSlots() {
 }
 
 function addDjSlot(preferredSlot = null) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return null;
+    }
     const slot = preferredSlot !== null ? normalizeSlotIndex(preferredSlot) : findNextDjSlotIndex();
     if (slot === null) {
         alert('Limite de quadros atingido (máximo de 50).');
@@ -2612,6 +2662,10 @@ function addDjSlot(preferredSlot = null) {
 }
 
 async function excluirDjSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
         return;
@@ -2693,6 +2747,7 @@ function syncDjPortalToggles(slot = 1) {
 }
 
 function onChangeDjPortalVisibility(slot = 1) {
+    if (pageReadonly) return;
     const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
     const editableInput = document.getElementById(`djPortalEditable-${slot}`);
     if (visibleInput && editableInput && editableInput.checked && !visibleInput.checked) {
@@ -2703,12 +2758,14 @@ function onChangeDjPortalVisibility(slot = 1) {
 }
 
 function onChangeDjPortalEditable(slot = 1) {
+    if (pageReadonly) return;
     syncDjPortalToggles(slot);
     updateShareAvailability(slot);
     requestDjSlotPortalAutoSave(slot);
 }
 
 function requestDjSlotPortalAutoSave(slot = 1) {
+    if (pageReadonly) return;
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
         return;
@@ -2724,6 +2781,14 @@ function updateShareAvailability(slot = 1) {
     const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
     const editableInput = document.getElementById(`djPortalEditable-${slot}`);
     const select = document.getElementById(`djTemplateSelect-${slot}`);
+
+    if (pageReadonly) {
+        if (select) select.disabled = true;
+        if (visibleInput) visibleInput.disabled = true;
+        if (editableInput) editableInput.disabled = true;
+        if (hint) hint.textContent = 'Modo somente leitura.';
+        return;
+    }
 
     let disabled = false;
     let hintText = 'Selecione um formulário para configurar este quadro no portal.';
@@ -2850,6 +2915,10 @@ function renderDjUploadCards() {
 }
 
 function addDjUploadCard() {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return null;
+    }
     const cardId = nextDjUploadCardId();
     djUploadCardOrder.push(cardId);
     renderDjUploadCards();
@@ -2889,7 +2958,7 @@ function renderDjAnexosList() {
         const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
         const urlEsc = escapeHtmlForField(url);
         const icon = getDjAnexoIcon(anexo);
-        const deleteBtnHtml = anexoId > 0
+        const deleteBtnHtml = (!pageReadonly && anexoId > 0)
             ? `<button type="button" class="btn btn-secondary btn-mini btn-anexo-delete" onclick="excluirDjAnexo(${anexoId})">Excluir</button>`
             : '';
         const actionsHtml = url !== ''
@@ -2920,6 +2989,10 @@ function renderDjAnexosList() {
 }
 
 async function uploadDjAnexos(cardId) {
+    if (pageReadonly) {
+        setDjAnexosStatus('Modo somente leitura.', 'error');
+        return;
+    }
     if (!meetingId) {
         alert('Reunião inválida.');
         return;
@@ -2989,6 +3062,10 @@ async function uploadDjAnexos(cardId) {
 }
 
 async function excluirDjAnexo(anexoId) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     if (!meetingId) {
         alert('Reunião inválida.');
         return;
@@ -3128,6 +3205,7 @@ function renderDjTemplateSelect(slot = 1) {
         options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
     });
     select.innerHTML = options.join('');
+    select.disabled = !!pageReadonly;
     updateSelectedDjTemplateMeta(slot);
 }
 
@@ -3152,6 +3230,7 @@ function updateSelectedDjTemplateMeta(slot = 1) {
 }
 
 function onChangeDjTemplateSelect(slot = 1) {
+    if (pageReadonly) return;
     const select = document.getElementById(`djTemplateSelect-${slot}`);
     selectedDjTemplateIds[slot] = select && select.value ? Number(select.value) : null;
     updateSelectedDjTemplateMeta(slot);
@@ -3229,6 +3308,14 @@ function updateObservacoesShareAvailability(slot) {
     const select = document.getElementById(`obsTemplateSelect-${slot}`);
     if (!shareBtn) return;
 
+    if (pageReadonly) {
+        shareBtn.disabled = true;
+        if (hint) hint.textContent = 'Modo somente leitura.';
+        if (unlockBtn) unlockBtn.style.display = 'none';
+        if (select) select.disabled = true;
+        return;
+    }
+
     let disabled = false;
     let hintText = 'Selecione um formulário para habilitar o compartilhamento.';
 
@@ -3257,6 +3344,16 @@ function updateObservacoesShareAvailability(slot) {
 }
 
 function buildObservacoesSlotCardHtml(slot) {
+    const disabledAttr = pageReadonly ? ' disabled' : '';
+    const gerarBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-primary" onclick="gerarLinkClienteObservacoes(${slot})" id="obsBtnGerarLink-${slot}">Gerar link</button>`;
+    const destravarBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary" onclick="destravarObservacoesSlot(${slot})" id="obsBtnDestravar-${slot}" style="display:none;">🔓 Destravar</button>`;
+    const excluirBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirObservacoesSlot(${slot})">🗑 Excluir quadro</button>`;
     return `
         <div class="dj-builder-shell" data-obs-slot="${slot}">
             <div class="dj-builder-head">
@@ -3265,14 +3362,14 @@ function buildObservacoesSlotCardHtml(slot) {
                     <div class="dj-builder-subtitle">Selecione um formulário e gere o link público para o cliente preencher.</div>
                 </div>
                 <div class="dj-top-actions">
-                    <button type="button" class="btn btn-primary" onclick="gerarLinkClienteObservacoes(${slot})" id="obsBtnGerarLink-${slot}">Gerar link</button>
-                    <button type="button" class="btn btn-secondary" onclick="destravarObservacoesSlot(${slot})" id="obsBtnDestravar-${slot}" style="display:none;">🔓 Destravar</button>
-                    <button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirObservacoesSlot(${slot})">🗑 Excluir quadro</button>
+                    ${gerarBtnHtml}
+                    ${destravarBtnHtml}
+                    ${excluirBtnHtml}
                 </div>
             </div>
             <div class="prefill-field" style="margin-top: 0.5rem;">
                 <label for="obsTemplateSelect-${slot}">Formulário salvo</label>
-                <select id="obsTemplateSelect-${slot}" onchange="onChangeObservacoesTemplateSelect(${slot})">
+                <select id="obsTemplateSelect-${slot}" onchange="onChangeObservacoesTemplateSelect(${slot})"${disabledAttr}>
                     <option value="">Selecione um formulário...</option>
                 </select>
             </div>
@@ -3299,6 +3396,7 @@ function renderObservacoesTemplateSelect(slot) {
         options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
     });
     select.innerHTML = options.join('');
+    select.disabled = !!pageReadonly;
     updateSelectedObservacoesTemplateMeta(slot);
 }
 
@@ -3320,6 +3418,7 @@ function updateSelectedObservacoesTemplateMeta(slot) {
 }
 
 function onChangeObservacoesTemplateSelect(slot) {
+    if (pageReadonly) return;
     const select = document.getElementById(`obsTemplateSelect-${slot}`);
     selectedObservacoesTemplateIds[slot] = select && select.value ? Number(select.value) : null;
     updateSelectedObservacoesTemplateMeta(slot);
@@ -3353,6 +3452,10 @@ function renderObservacoesClientSlots() {
 }
 
 function addObservacoesClientSlot(preferredSlot = null) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return null;
+    }
     if (!meetingId) {
         alert('Crie a reunião antes de adicionar links públicos.');
         return null;
@@ -3374,6 +3477,10 @@ function addObservacoesClientSlot(preferredSlot = null) {
 }
 
 async function excluirObservacoesSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !observacoesSlotExists(slotIndex)) return;
     const link = observacoesLinksBySlot[slotIndex] || null;
@@ -3406,6 +3513,10 @@ async function excluirObservacoesSlot(slot = 1) {
 }
 
 async function gerarLinkClienteObservacoes(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !observacoesSlotExists(slotIndex)) {
         alert('Quadro inválido.');
@@ -3491,6 +3602,10 @@ function copiarLinkObservacoes(slot = 1) {
 }
 
 async function destravarObservacoesSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !observacoesSlotExists(slotIndex)) {
         alert('Quadro inválido.');
@@ -3647,7 +3762,7 @@ function renderSectionTemplateForm(section) {
     }
 
     box.style.display = 'block';
-    const disabledAttr = sectionLockedState[section] ? ' disabled' : '';
+    const disabledAttr = (sectionLockedState[section] || pageReadonly) ? ' disabled' : '';
     fieldsWrap.innerHTML = schema.map((field) => {
         const type = String(field.type || 'text');
         const label = escapeHtmlForField(String(field.label || 'Campo'));
@@ -3735,8 +3850,8 @@ function renderSectionTemplateForm(section) {
     });
 
     if (hint) {
-        hint.textContent = sectionLockedState[section]
-            ? 'Seção travada. Os campos aparecem apenas para consulta.'
+        hint.textContent = (sectionLockedState[section] || pageReadonly)
+            ? 'Seção em modo consulta. Edição desabilitada.'
             : 'Preencha os campos e clique em Salvar para registrar uma nova versão.';
     }
 }
@@ -3797,6 +3912,7 @@ function updateSectionTemplateMeta(section) {
 }
 
 function onChangeSectionTemplateSelect(section) {
+    if (pageReadonly) return;
     const select = document.getElementById(`sectionTemplateSelect-${section}`);
     const previousTemplateId = selectedSectionTemplateIds[section] || null;
     const nextTemplateId = select && select.value ? Number(select.value) : null;
@@ -4084,6 +4200,10 @@ function initSectionTemplateSelection() {
 
 // Salvar seção (conteúdo vem do TinyMCE)
 async function salvarSecao(section) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     let content = getEditorContent(section);
     let formSchemaJson = null;
 
@@ -4135,6 +4255,9 @@ async function salvarSecao(section) {
 
 // Salvar visibilidade/edição do quadro DJ no portal do cliente
 async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
+    if (pageReadonly) {
+        return false;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     const silentSuccess = !!(options && options.silentSuccess);
     const suppressValidationAlert = !!(options && options.suppressValidationAlert);
@@ -4378,6 +4501,10 @@ async function restaurarVersao(versionId) {
 
 // Destravar seção
 async function destravarSecao(section) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     if (!confirm('Destravar esta seção permitirá edições. Continuar?')) return;
     
     try {
@@ -4404,6 +4531,10 @@ async function destravarSecao(section) {
 
 // Destravar quadro do DJ (slot)
 async function destravarDjSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !djSlotExists(slotIndex)) {
         alert('Quadro inválido.');
@@ -4435,11 +4566,19 @@ async function destravarDjSlot(slot = 1) {
 
 // Atualizar status
 async function concluirReuniao() {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     if (!confirm('Marcar reunião como concluída?')) return;
     await atualizarStatus('concluida');
 }
 
 async function reabrirReuniao() {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
     if (!confirm('Reabrir reunião para edição?')) return;
     await atualizarStatus('rascunho');
 }

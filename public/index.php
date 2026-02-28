@@ -301,6 +301,7 @@ $routes = [
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
   'eventos' => 'eventos_landing.php',
   'eventos_realizar' => 'eventos_realizar.php',
+  'eventos_checklist' => 'eventos_checklist.php',
   'eventos_organizacao' => 'eventos_organizacao.php',
   'eventos_arquivos' => 'eventos_arquivos.php',
   'eventos_lista_convidados' => 'eventos_lista_convidados.php',
@@ -429,7 +430,23 @@ $permissoes_map = require __DIR__ . '/permissoes_map.php';
 $required_permission = $permissoes_map[$page] ?? null;
 
 $is_superadmin = !empty($_SESSION['perm_superadmin']);
-if ($required_permission !== null && !$is_superadmin && (empty($_SESSION[$required_permission]) || !$_SESSION[$required_permission])) {
+$has_required_permission = true;
+if ($required_permission !== null && !$is_superadmin) {
+    if (is_array($required_permission)) {
+        $has_required_permission = false;
+        foreach ($required_permission as $perm_key) {
+            if (is_string($perm_key) && $perm_key !== '' && !empty($_SESSION[$perm_key])) {
+                $has_required_permission = true;
+                break;
+            }
+        }
+    } else {
+        $perm_key = (string)$required_permission;
+        $has_required_permission = ($perm_key !== '' && !empty($_SESSION[$perm_key]));
+    }
+}
+
+if (!$has_required_permission) {
     // Usuário não tem permissão - exibir mensagem
     http_response_code(403);
     

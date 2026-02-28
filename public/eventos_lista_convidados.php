@@ -12,7 +12,12 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+$can_eventos = !empty($_SESSION['perm_eventos']);
+$can_realizar_evento = !empty($_SESSION['perm_eventos_realizar']);
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+$somente_realizar = (!$is_superadmin && !$can_eventos && $can_realizar_evento);
+
+if (!$is_superadmin && !$can_eventos && !$can_realizar_evento) {
     header('Location: index.php?page=dashboard');
     exit;
 }
@@ -20,6 +25,16 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
+$view_mode = trim((string)($_GET['mode'] ?? $_POST['mode'] ?? 'completo'));
+$origin = trim((string)($_GET['origin'] ?? $_POST['origin'] ?? 'organizacao'));
+if ($origin !== 'realizar' && $origin !== 'organizacao') {
+    $origin = 'organizacao';
+}
+if ($somente_realizar) {
+    $origin = 'realizar';
+    $view_mode = 'recepcao';
+}
+$is_recepcao_mode = ($view_mode === 'recepcao');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -31,6 +46,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     try {
         switch ($action) {
             case 'importar_texto_cru':
+                if ($is_recepcao_mode) {
+                    echo json_encode(['ok' => false, 'error' => 'Importacao bloqueada no modo recepcao.'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
                 $texto_cru = trim((string)($_POST['texto_cru'] ?? ''));
                 $result = eventos_convidados_importar_texto_cru($pdo, $meeting_id, $texto_cru, 'interno', $user_id);
                 if (empty($result['ok'])) {
@@ -48,6 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 exit;
 
             case 'importar_excel':
+                if ($is_recepcao_mode) {
+                    echo json_encode(['ok' => false, 'error' => 'Importacao bloqueada no modo recepcao.'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
                 $arquivo_excel = $_FILES['arquivo_excel'] ?? null;
                 if (!$arquivo_excel || !is_array($arquivo_excel)) {
                     echo json_encode(['ok' => false, 'error' => 'Selecione uma planilha para importar.'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -104,7 +127,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
 }
 
 if ($meeting_id <= 0) {
-    header('Location: index.php?page=eventos_organizacao');
+    $fallback_page = $origin === 'realizar' ? 'eventos_realizar' : 'eventos_organizacao';
+    header('Location: index.php?page=' . $fallback_page);
     exit;
 }
 
@@ -153,6 +177,9 @@ if ($hora_inicio !== '' && $hora_fim !== '') {
 $local_evento = trim((string)($snapshot['local'] ?? 'Local nao informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $usa_mesa = !empty($config_convidados['usa_mesa']);
+$return_page = $origin === 'realizar' ? 'eventos_realizar' : 'eventos_organizacao';
+$return_url = 'index.php?page=' . $return_page . '&id=' . $meeting_id;
+$return_label = $origin === 'realizar' ? 'Voltar realizar evento' : 'Voltar organizacao';
 
 includeSidebar('Lista de convidados');
 ?>
@@ -487,6 +514,11 @@ includeSidebar('Lista de convidados');
         font-size: 0.84rem;
     }
 
+    .guest-meta strong {
+        color: #334155;
+        font-weight: 700;
+    }
+
     .check-cell {
         display: flex;
         justify-content: center;
@@ -523,9 +555,45 @@ includeSidebar('Lista de convidados');
             grid-template-columns: 1fr;
         }
 
+        .filters input,
+        .filters select {
+            min-height: 44px;
+            font-size: 0.95rem;
+        }
+
         .guest-row.with-mesa,
         .guest-row.without-mesa {
             grid-template-columns: 42px 1fr;
+            align-items: flex-start;
+            row-gap: 0.3rem;
+            padding: 0.72rem 0.75rem;
+        }
+
+        .check-cell {
+            justify-content: flex-start;
+            padding-top: 0.2rem;
+            grid-row: 1 / span 4;
+        }
+
+        .check-cell input {
+            width: 26px;
+            height: 26px;
+        }
+
+        .guest-row .guest-name,
+        .guest-row .guest-meta,
+        .guest-row .check-time {
+            grid-column: 2 / 3;
+        }
+
+        .guest-name {
+            font-size: 0.95rem;
+        }
+
+        .mesa-header {
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
     }
 </style>
@@ -534,10 +602,14 @@ includeSidebar('Lista de convidados');
     <div class="top-header">
         <div>
             <h1 class="title">📋 Lista de convidados</h1>
-            <div class="subtitle">Filtro por mesa, busca por nome e check-in em tempo real na recepcao.</div>
+            <div class="subtitle">
+                <?= $is_recepcao_mode
+                    ? 'Modo recepcao ativo: busca, filtros e check-in em tempo real.'
+                    : 'Filtro por mesa, busca por nome e check-in em tempo real na recepcao.' ?>
+            </div>
         </div>
         <div style="display:flex;gap:0.55rem;flex-wrap:wrap;">
-            <a href="index.php?page=eventos_organizacao&id=<?= (int)$meeting_id ?>" class="btn btn-secondary">← Voltar organizacao</a>
+            <a href="<?= htmlspecialchars($return_url) ?>" class="btn btn-secondary">← <?= htmlspecialchars($return_label) ?></a>
             <?php if ($portal_url !== ''): ?>
             <a href="<?= htmlspecialchars($portal_url) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Abrir portal cliente</a>
             <?php endif; ?>
@@ -579,6 +651,7 @@ includeSidebar('Lista de convidados');
         Nao levamos os convidados ate a mesa; o numero e informado no momento da entrada.
     </div>
 
+    <?php if (!$is_recepcao_mode): ?>
     <div class="import-box">
         <h3>Importar convidados (interno)</h3>
         <p>Use os botões abaixo para importar por texto cru ou por planilha do Excel.</p>
@@ -587,6 +660,7 @@ includeSidebar('Lista de convidados');
             <button type="button" class="btn btn-secondary" id="btnOpenImportExcel">Importar Excel</button>
         </div>
     </div>
+    <?php endif; ?>
 
     <div class="filters">
         <div>
@@ -613,6 +687,7 @@ includeSidebar('Lista de convidados');
     <div id="groupsWrap" class="groups-wrap"></div>
 </div>
 
+<?php if (!$is_recepcao_mode): ?>
 <div class="modal-backdrop" id="modalImportTexto" hidden>
     <div class="modal-card">
         <div class="modal-header">
@@ -657,10 +732,12 @@ includeSidebar('Lista de convidados');
         </form>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 const meetingId = <?= (int)$meeting_id ?>;
 const usaMesa = <?= $usa_mesa ? 'true' : 'false' ?>;
+const recepcaoMode = <?= $is_recepcao_mode ? 'true' : 'false' ?>;
 const convidadosState = <?= $convidados_json ?>;
 
 function escapeHtml(value) {
@@ -828,9 +905,9 @@ function renderGrupos() {
                         <div class="guest-name">${escapeHtml(g.nome || 'Convidado')}</div>
                         <div class="guest-meta">${origem}${isDraft ? ' • Rascunho' : ''}</div>
                     </div>
-                    <div class="guest-meta">${faixa !== '' ? escapeHtml(faixa) : '-'}</div>
-                    ${usaMesa ? `<div class="guest-meta">${mesa !== '' ? escapeHtml(mesa) : '-'}</div>` : ''}
-                    <div class="check-time">${isDraft ? 'Rascunho' : (checkinDate !== '' ? `Check-in: ${escapeHtml(checkinDate)}` : 'Sem check-in')}</div>
+                    <div class="guest-meta guest-faixa"><strong>Faixa:</strong> ${faixa !== '' ? escapeHtml(faixa) : '-'}</div>
+                    ${usaMesa ? `<div class="guest-meta guest-mesa"><strong>Mesa:</strong> ${mesa !== '' ? escapeHtml(mesa) : '-'}</div>` : ''}
+                    <div class="check-time guest-check-time">${isDraft ? 'Rascunho' : (checkinDate !== '' ? `Check-in: ${escapeHtml(checkinDate)}` : 'Sem check-in')}</div>
                 </div>
             `;
         }).join('');

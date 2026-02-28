@@ -13,23 +13,43 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+$can_eventos = !empty($_SESSION['perm_eventos']);
+$can_realizar_evento = !empty($_SESSION['perm_eventos_realizar']);
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+$somente_realizar = (!$is_superadmin && !$can_eventos && $can_realizar_evento);
+
+if (!$is_superadmin && !$can_eventos && !$can_realizar_evento) {
     header('Location: index.php?page=dashboard');
     exit;
 }
 
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
+$origin = strtolower(trim((string)($_GET['origin'] ?? $_POST['origin'] ?? 'organizacao')));
+if ($origin !== 'realizar' && $origin !== 'organizacao') {
+    $origin = 'organizacao';
+}
+if ($somente_realizar) {
+    $origin = 'realizar';
+}
+$readonly_mode = $somente_realizar
+    || ($origin === 'realizar')
+    || ((string)($_GET['readonly'] ?? $_POST['readonly'] ?? '0') === '1');
+$back_page = $origin === 'realizar' ? 'eventos_realizar' : 'eventos_organizacao';
+
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 if ($meeting_id <= 0) {
-    header('Location: index.php?page=eventos_organizacao');
+    header('Location: index.php?page=' . $back_page);
     exit;
 }
 
 $reuniao = eventos_reuniao_get($pdo, $meeting_id);
 if (!$reuniao) {
-    header('Location: index.php?page=eventos_organizacao');
+    header('Location: index.php?page=' . $back_page);
     exit;
 }
+
+$back_href = 'index.php?page=' . $back_page . '&id=' . $meeting_id;
+$back_label = $origin === 'realizar' ? '← Voltar ao realizar evento' : '← Voltar à organização';
 
 function eventos_arquivos_e(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -71,8 +91,12 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
 $tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
 
-$seed_result = eventos_arquivos_seed_campos_por_tipo($pdo, $meeting_id, $tipo_evento_real, $user_id);
-$seed_campos_sistema_result = eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
+$seed_result = ['ok' => false, 'inserted' => 0];
+$seed_campos_sistema_result = ['ok' => false, 'inserted' => 0];
+if (!$readonly_mode) {
+    $seed_result = eventos_arquivos_seed_campos_por_tipo($pdo, $meeting_id, $tipo_evento_real, $user_id);
+    $seed_campos_sistema_result = eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
+}
 
 $feedback_ok = '';
 $feedback_error = '';
@@ -80,8 +104,11 @@ $feedback_error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string)($_POST['action'] ?? ''));
 
-    try {
-        switch ($action) {
+    if ($readonly_mode) {
+        $feedback_error = 'Modo realização: somente visualização e download. Edição bloqueada.';
+    } else {
+        try {
+            switch ($action) {
             case 'adicionar_campo':
                 $titulo = trim((string)($_POST['titulo'] ?? ''));
                 $descricao = trim((string)($_POST['descricao'] ?? ''));
@@ -221,10 +248,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $feedback_error = (string)($deleted['error'] ?? 'Falha ao remover arquivo.');
                 }
                 break;
+            }
+        } catch (Throwable $e) {
+            error_log('eventos_arquivos.php POST: ' . $e->getMessage());
+            $feedback_error = 'Erro interno ao processar a solicitação.';
         }
-    } catch (Throwable $e) {
-        error_log('eventos_arquivos.php POST: ' . $e->getMessage());
-        $feedback_error = 'Erro interno ao processar a solicitação.';
     }
 }
 
@@ -562,6 +590,93 @@ includeSidebar('Arquivos do Evento');
         padding: 0.6rem 0;
     }
 
+    .preview-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 70;
+        padding: 1rem;
+    }
+
+    .preview-modal.open {
+        display: flex;
+    }
+
+    .preview-modal-card {
+        width: min(1080px, 100%);
+        height: min(86vh, 860px);
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #dbe3ef;
+        box-shadow: 0 18px 38px rgba(15, 23, 42, 0.22);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+    }
+
+    .preview-modal-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        align-items: center;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 0.7rem 0.9rem;
+    }
+
+    .preview-modal-title {
+        margin: 0;
+        color: #1f2937;
+        font-size: 0.95rem;
+        font-weight: 700;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .preview-modal-close {
+        border: 1px solid #dbe3ef;
+        background: #fff;
+        color: #334155;
+        border-radius: 8px;
+        width: 34px;
+        height: 34px;
+        font-size: 1.25rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .preview-modal-body {
+        background: #f8fafc;
+        overflow: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem;
+    }
+
+    .preview-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .preview-image {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 8px;
+        object-fit: contain;
+        background: #fff;
+    }
+
+    body.modal-open {
+        overflow: hidden;
+    }
+
     @media (max-width: 768px) {
         .arquivos-container {
             padding: 1rem;
@@ -575,7 +690,7 @@ includeSidebar('Arquivos do Evento');
             <h1 class="page-title">📁 Arquivos do Evento</h1>
             <div class="page-subtitle">Uploads até 500MB por arquivo, com descrição e controle de visibilidade para o cliente.</div>
         </div>
-        <a href="index.php?page=eventos_organizacao&id=<?= (int)$meeting_id ?>" class="btn btn-secondary">← Voltar à organização</a>
+        <a href="<?= eventos_arquivos_e($back_href) ?>" class="btn btn-secondary"><?= eventos_arquivos_e($back_label) ?></a>
     </div>
 
     <?php if (!empty($feedback_ok)): ?>
@@ -584,6 +699,12 @@ includeSidebar('Arquivos do Evento');
 
     <?php if (!empty($feedback_error)): ?>
     <div class="alert alert-error"><?= eventos_arquivos_e($feedback_error) ?></div>
+    <?php endif; ?>
+
+    <?php if ($readonly_mode): ?>
+    <div class="alert alert-success">
+        Modo realização ativo: somente visualização em modal e download. Edição desabilitada.
+    </div>
     <?php endif; ?>
 
     <?php if (!empty($seed_result['ok']) && (int)($seed_result['inserted'] ?? 0) > 0): ?>
@@ -641,6 +762,7 @@ includeSidebar('Arquivos do Evento');
             <h3>📄 Resumo do evento (Contrato cliente)</h3>
             <div class="panel-subtitle">Upload exclusivo em PDF. Sempre interno, sem opção de exibição no portal do cliente.</div>
 
+            <?php if (!$readonly_mode): ?>
             <form method="POST" enctype="multipart/form-data" class="form-grid">
                 <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                 <input type="hidden" name="action" value="upload_resumo_evento">
@@ -660,6 +782,7 @@ includeSidebar('Arquivos do Evento');
                     <button type="submit" class="btn btn-primary">Salvar resumo do evento</button>
                 </div>
             </form>
+            <?php endif; ?>
 
             <div class="campos-list">
                 <?php if (!$resumo_evento_arquivo_atual): ?>
@@ -685,7 +808,12 @@ includeSidebar('Arquivos do Evento');
                     </div>
                     <div class="item-actions">
                         <?php if ($resumo_url !== ''): ?>
+                        <?php if ($readonly_mode): ?>
+                        <button type="button" class="btn btn-secondary js-preview-file" data-file-url="<?= eventos_arquivos_e($resumo_url) ?>" data-file-name="<?= eventos_arquivos_e($resumo_nome) ?>">Visualizar</button>
+                        <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer" download>Download</a>
+                        <?php else: ?>
                         <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+                        <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </article>
@@ -700,6 +828,7 @@ includeSidebar('Arquivos do Evento');
             <h3>📌 Campos Solicitados do Cliente</h3>
             <div class="panel-subtitle">Cadastre os arquivos que você quer receber neste evento.</div>
 
+            <?php if (!$readonly_mode): ?>
             <form method="POST" class="form-grid">
                 <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                 <input type="hidden" name="action" value="adicionar_campo">
@@ -723,6 +852,7 @@ includeSidebar('Arquivos do Evento');
                     <button type="submit" class="btn btn-primary">Salvar campo solicitado</button>
                 </div>
             </form>
+            <?php endif; ?>
 
             <div class="campos-list">
                 <?php if (empty($campos_cliente)): ?>
@@ -754,6 +884,7 @@ includeSidebar('Arquivos do Evento');
                         </div>
                     </div>
                     <div class="item-actions">
+                        <?php if (!$readonly_mode): ?>
                         <form method="POST" style="display:inline-flex;">
                             <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                             <input type="hidden" name="action" value="toggle_campo_ativo">
@@ -761,6 +892,7 @@ includeSidebar('Arquivos do Evento');
                             <input type="hidden" name="ativo" value="<?= $campo_ativo ? '0' : '1' ?>">
                             <button type="submit" class="btn btn-secondary"><?= $campo_ativo ? 'Desativar campo' : 'Reativar campo' ?></button>
                         </form>
+                        <?php endif; ?>
                     </div>
                 </article>
                 <?php endforeach; ?>
@@ -768,6 +900,7 @@ includeSidebar('Arquivos do Evento');
             </div>
         </div>
 
+        <?php if (!$readonly_mode): ?>
         <div class="panel">
             <h3>⬆️ Enviar Arquivo (Equipe)</h3>
             <div class="panel-subtitle">Suporte a vários tipos de arquivo, com limite de 500MB por envio.</div>
@@ -811,11 +944,16 @@ includeSidebar('Arquivos do Evento');
                 </div>
             </form>
         </div>
+        <?php endif; ?>
     </section>
 
     <section class="panel">
         <h3>🗂️ Arquivos Enviados</h3>
-        <div class="panel-subtitle">Controle de visibilidade e remoção dos arquivos do evento.</div>
+        <div class="panel-subtitle">
+            <?= $readonly_mode
+                ? 'Visualização em modal e download dos arquivos do evento.'
+                : 'Controle de visibilidade e remoção dos arquivos do evento.' ?>
+        </div>
 
         <div class="arquivos-list">
             <?php if (empty($arquivos)): ?>
@@ -858,10 +996,15 @@ includeSidebar('Arquivos do Evento');
                 </div>
                 <div class="item-actions">
                     <?php if ($public_url !== ''): ?>
+                    <?php if ($readonly_mode): ?>
+                    <button type="button" class="btn btn-secondary js-preview-file" data-file-url="<?= eventos_arquivos_e($public_url) ?>" data-file-name="<?= eventos_arquivos_e($nome) ?>">Visualizar</button>
+                    <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer" download>Download</a>
+                    <?php else: ?>
                     <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
                     <?php endif; ?>
+                    <?php endif; ?>
 
-                    <?php if (!$campo_interno): ?>
+                    <?php if (!$readonly_mode && !$campo_interno): ?>
                     <form method="POST" style="display:inline-flex;">
                         <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                         <input type="hidden" name="action" value="toggle_visibilidade_arquivo">
@@ -873,12 +1016,14 @@ includeSidebar('Arquivos do Evento');
                     </form>
                     <?php endif; ?>
 
+                    <?php if (!$readonly_mode): ?>
                     <form method="POST" style="display:inline-flex;" onsubmit="return confirm('Deseja remover este arquivo?');">
                         <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                         <input type="hidden" name="action" value="excluir_arquivo">
                         <input type="hidden" name="arquivo_id" value="<?= $arquivo_id ?>">
                         <button type="submit" class="btn btn-danger">Excluir</button>
                     </form>
+                    <?php endif; ?>
                 </div>
             </article>
             <?php endforeach; ?>
@@ -927,5 +1072,92 @@ includeSidebar('Arquivos do Evento');
         </div>
     </section>
 </div>
+
+<?php if ($readonly_mode): ?>
+<div class="preview-modal" id="previewModalArquivos" hidden>
+    <div class="preview-modal-card">
+        <div class="preview-modal-head">
+            <p class="preview-modal-title" id="previewModalTitle">Visualização de arquivo</p>
+            <button type="button" class="preview-modal-close" id="previewModalClose" aria-label="Fechar">×</button>
+        </div>
+        <div class="preview-modal-body" id="previewModalBody"></div>
+    </div>
+</div>
+<script>
+(() => {
+    const modal = document.getElementById('previewModalArquivos');
+    const modalBody = document.getElementById('previewModalBody');
+    const modalTitle = document.getElementById('previewModalTitle');
+    const btnClose = document.getElementById('previewModalClose');
+    if (!modal || !modalBody || !modalTitle) return;
+
+    function guessIsImage(url = '') {
+        const u = (url || '').toLowerCase();
+        return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('.gif') || u.includes('.bmp') || u.includes('.svg');
+    }
+
+    function clearModal() {
+        modalBody.innerHTML = '';
+    }
+
+    function closeModal() {
+        modal.classList.remove('open');
+        modal.hidden = true;
+        document.body.classList.remove('modal-open');
+        clearModal();
+    }
+
+    function openModal(url, name) {
+        clearModal();
+        modalTitle.textContent = name || 'Visualização de arquivo';
+
+        const safeUrl = String(url || '').trim();
+        if (!safeUrl) {
+            modalBody.innerHTML = '<div style="color:#64748b;">Arquivo inválido para visualização.</div>';
+        } else if (guessIsImage(safeUrl)) {
+            const img = document.createElement('img');
+            img.className = 'preview-image';
+            img.alt = name || 'arquivo';
+            img.src = safeUrl;
+            modalBody.appendChild(img);
+        } else {
+            const frame = document.createElement('iframe');
+            frame.className = 'preview-frame';
+            frame.src = safeUrl;
+            frame.loading = 'lazy';
+            modalBody.appendChild(frame);
+        }
+
+        modal.hidden = false;
+        modal.classList.add('open');
+        document.body.classList.add('modal-open');
+    }
+
+    document.querySelectorAll('.js-preview-file').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const url = btn.getAttribute('data-file-url') || '';
+            const name = btn.getAttribute('data-file-name') || 'Arquivo';
+            openModal(url, name);
+        });
+    });
+
+    if (btnClose) {
+        btnClose.addEventListener('click', closeModal);
+    }
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('open')) {
+            closeModal();
+        }
+    });
+})();
+</script>
+<?php endif; ?>
 
 <?php endSidebar(); ?>

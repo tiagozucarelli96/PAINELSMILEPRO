@@ -169,6 +169,8 @@ require_once __DIR__ . '/permissoes_boot.php';
             'perm_agenda' => 'Agenda',
             'perm_demandas' => 'Demandas',
             'perm_comercial' => 'Comercial',
+            'perm_eventos' => 'Eventos',
+            'perm_eventos_realizar' => 'Realizar evento',
             // 'perm_logistico' => 'Logístico', // REMOVIDO: Módulo desativado
             'perm_configuracoes' => 'Configurações',
             'perm_cadastros' => 'Cadastros',
@@ -354,6 +356,8 @@ require_once __DIR__ . '/permissoes_boot.php';
                     'perm_agenda' => '📅',
                     'perm_demandas' => '📝',
                     'perm_comercial' => '📋',
+                    'perm_eventos' => '🎉',
+                    'perm_eventos_realizar' => '✅',
                     // 'perm_logistico' => '📦', // REMOVIDO: Módulo desativado
                     'perm_configuracoes' => '⚙️',
                     'perm_cadastros' => '📝',

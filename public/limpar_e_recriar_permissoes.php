@@ -73,6 +73,8 @@ header('Content-Type: text/html; charset=utf-8');
                 $essentials = [
                     'perm_agenda',
                     'perm_comercial',
+                    'perm_eventos',
+                    'perm_eventos_realizar',
                     // 'perm_logistico', // REMOVIDO: Módulo desativado
                     'perm_configuracoes',
                     'perm_cadastros',
@@ -154,4 +156,3 @@ header('Content-Type: text/html; charset=utf-8');
     </div>
 </body>
 </html>
-

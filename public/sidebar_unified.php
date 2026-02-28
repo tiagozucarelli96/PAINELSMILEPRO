@@ -1586,6 +1586,9 @@ if ($current_page === 'dashboard') {
                     <span class="nav-item-icon">🎉</span>
                     Eventos
                 </a>
+                <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_eventos_realizar'])): ?>
                 <a href="index.php?page=eventos_realizar" class="nav-item <?= isActiveUnified('eventos_realizar') ?>">
                     <span class="nav-item-icon">✅</span>
                     Realizar evento

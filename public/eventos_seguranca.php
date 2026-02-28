@@ -168,8 +168,8 @@ function eventos_usuario_pode_acessar_reuniao(PDO $pdo, int $user_id, int $meeti
         return true;
     }
     
-    // Verificar se tem permissão de eventos
-    if (empty($_SESSION['perm_eventos'])) {
+    // Verificar se tem permissão de eventos (organização ou realização)
+    if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_eventos_realizar'])) {
         return false;
     }
     

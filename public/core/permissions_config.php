@@ -3,11 +3,13 @@
  * permissions_config.php
  * Definição centralizada das permissões do sistema
  * 
- * O sistema possui apenas 10 permissões da sidebar + superadmin:
+ * O sistema possui permissões da sidebar + superadmin:
  * - Dashboard: todos têm acesso (sem permissão específica)
  * - Agenda: perm_agenda
  * - Demandas: perm_demandas
  * - Comercial: perm_comercial
+ * - Eventos: perm_eventos
+ * - Realizar evento: perm_eventos_realizar
  * - Logística: perm_logistico
  * - Configurações: perm_configuracoes
  * - Cadastros: perm_cadastros
@@ -33,6 +35,16 @@ define('SYSTEM_PERMISSIONS', [
         'label' => 'Comercial',
         'icon' => '📋',
         'description' => 'Acesso ao módulo comercial (degustações, vendas, etc)'
+    ],
+    'perm_eventos' => [
+        'label' => 'Eventos',
+        'icon' => '🎉',
+        'description' => 'Acesso ao módulo de organização de eventos'
+    ],
+    'perm_eventos_realizar' => [
+        'label' => 'Realizar evento',
+        'icon' => '✅',
+        'description' => 'Acesso ao módulo de execução/realização de eventos'
     ],
     'perm_logistico' => [
         'label' => 'Logística',
@@ -120,6 +132,8 @@ function user_can_access(string $module): bool {
         'agenda' => 'perm_agenda',
         'demandas' => 'perm_demandas',
         'comercial' => 'perm_comercial',
+        'eventos' => 'perm_eventos',
+        'eventos_realizar' => 'perm_eventos_realizar',
         'logistica' => 'perm_logistico',
         'logistico' => 'perm_logistico',
         'configuracoes' => 'perm_configuracoes',

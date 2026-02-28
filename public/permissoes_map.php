@@ -150,11 +150,13 @@ return [
     
     // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
-    'eventos_realizar' => 'perm_eventos',
+    'eventos_realizar' => 'perm_eventos_realizar',
+    // Páginas compartilhadas entre Organização e Realização: aceita uma das permissões.
+    'eventos_checklist' => ['perm_eventos', 'perm_eventos_realizar'],
     'eventos_organizacao' => 'perm_eventos',
-    'eventos_arquivos' => 'perm_eventos',
-    'eventos_lista_convidados' => 'perm_eventos',
-    'eventos_reuniao_final' => 'perm_eventos',
+    'eventos_arquivos' => ['perm_eventos', 'perm_eventos_realizar'],
+    'eventos_lista_convidados' => ['perm_eventos', 'perm_eventos_realizar'],
+    'eventos_reuniao_final' => ['perm_eventos', 'perm_eventos_realizar'],
     'eventos_rascunhos' => 'perm_eventos',
     'eventos_reunioes' => 'perm_eventos',
     'eventos_calendario' => 'perm_eventos',

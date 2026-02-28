@@ -3,16 +3,27 @@
 -- Reunião Final, Portais DJ/Decoração, Galeria
 -- ============================================
 
--- Adicionar permissão perm_eventos na tabela usuarios (se não existir)
+-- Adicionar permissões de Eventos na tabela usuarios (se não existirem)
 DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
-        WHERE table_schema = 'smilee12_painel_smile' 
+        WHERE table_schema = current_schema()
         AND table_name = 'usuarios' 
         AND column_name = 'perm_eventos'
     ) THEN
         ALTER TABLE usuarios ADD COLUMN perm_eventos BOOLEAN DEFAULT FALSE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema()
+        AND table_name = 'usuarios'
+        AND column_name = 'perm_eventos_realizar'
+    ) THEN
+        ALTER TABLE usuarios ADD COLUMN perm_eventos_realizar BOOLEAN DEFAULT FALSE;
+        -- Compatibilidade: mantém comportamento anterior ao separar a permissão.
+        UPDATE usuarios SET perm_eventos_realizar = COALESCE(perm_eventos, FALSE);
     END IF;
 END $$;
 

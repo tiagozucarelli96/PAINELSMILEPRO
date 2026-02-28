@@ -32,8 +32,10 @@ try {
     // Módulos principais da sidebar
     'perm_agenda','perm_comercial','perm_configuracoes',
     'perm_cadastros','perm_financeiro','perm_administrativo',
-    // Eventos (Reunião Final, Portais DJ/Decoração)
+    // Eventos (Organização)
     'perm_eventos',
+    // Eventos (Realizar evento)
+    'perm_eventos_realizar',
     // Permissões específicas de Agenda (usadas em agenda_helper.php)
     'perm_agenda_ver','perm_agenda_meus','perm_agenda_relatorios',
     'perm_forcar_conflito','perm_gerir_eventos_outros'
@@ -44,6 +46,11 @@ try {
   foreach ($permKeys as $k) {
     $_SESSION[$k] = array_key_exists($k,$u) ? truthy($u[$k]) : false;
     $any = $any || $_SESSION[$k];
+  }
+
+  // Compatibilidade: em bases antigas sem coluna própria, Realizar evento segue Eventos.
+  if (!array_key_exists('perm_eventos_realizar', $u)) {
+    $_SESSION['perm_eventos_realizar'] = $_SESSION['perm_eventos'];
   }
 
   // Unificação Agenda: trata perm_agenda e perm_agenda_ver como equivalentes.

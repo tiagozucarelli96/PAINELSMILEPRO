@@ -973,7 +973,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_logistico',
+            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile',
             'perm_portao'
         ];
@@ -1186,6 +1186,17 @@ ob_start();
                         error_log("Erro ao adicionar perm_portao: " . $e->getMessage());
                     }
                 }
+
+                if (!isset($existing_perms['perm_eventos_realizar'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE");
+                        // Compatibilidade: ao criar a coluna, replica perm_eventos para evitar perda de acesso.
+                        $pdo->exec("UPDATE usuarios SET perm_eventos_realizar = COALESCE(perm_eventos, FALSE)");
+                        $existing_perms['perm_eventos_realizar'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_eventos_realizar: " . $e->getMessage());
+                    }
+                }
                 
                 // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
                 $perm_labels = [
@@ -1195,6 +1206,7 @@ ob_start();
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
                     'perm_eventos' => '🎉 Eventos',
+                    'perm_eventos_realizar' => '✅ Realizar evento',
                     'perm_logistico' => '📦 Logística',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
@@ -1210,6 +1222,7 @@ ob_start();
                     'perm_demandas',
                     'perm_comercial',
                     'perm_eventos',
+                    'perm_eventos_realizar',
                     'perm_logistico',
                     'perm_configuracoes',
                     'perm_cadastros',
