@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -20,6 +21,7 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
+pacotes_evento_ensure_schema($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -82,6 +84,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     exit;
                 }
                 $updated = eventos_reuniao_atualizar_tipo_evento_real($pdo, $meeting_id, $tipo_evento_real, $user_id);
+                echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
+            case 'atualizar_pacote_evento':
+                if ($meeting_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
+                    exit;
+                }
+
+                $pacote_evento_raw = trim((string)($_POST['pacote_evento_id'] ?? ''));
+                $pacote_evento_id = null;
+                if ($pacote_evento_raw !== '') {
+                    if (!ctype_digit($pacote_evento_raw)) {
+                        echo json_encode(['ok' => false, 'error' => 'Pacote do evento inválido.']);
+                        exit;
+                    }
+                    $pacote_evento_id = (int)$pacote_evento_raw;
+                    if ($pacote_evento_id <= 0) {
+                        echo json_encode(['ok' => false, 'error' => 'Pacote do evento inválido.']);
+                        exit;
+                    }
+                }
+
+                $updated = eventos_reuniao_atualizar_pacote_evento($pdo, $meeting_id, $pacote_evento_id);
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
@@ -181,6 +207,20 @@ $tipos_evento_real_options = [
     '15anos' => '15 anos',
     'infantil' => 'Infantil',
 ];
+$pacote_evento_id = (int)($reuniao['pacote_evento_id'] ?? 0);
+$pacotes_evento_raw = pacotes_evento_listar($pdo, true);
+$pacotes_evento_options = [];
+foreach ($pacotes_evento_raw as $pacote_item) {
+    $pacote_item_id = (int)($pacote_item['id'] ?? 0);
+    if ($pacote_item_id <= 0) {
+        continue;
+    }
+    $is_oculto = !empty($pacote_item['oculto']);
+    if ($is_oculto && $pacote_item_id !== $pacote_evento_id) {
+        continue;
+    }
+    $pacotes_evento_options[] = $pacote_item;
+}
 
 $has_dj_link = !empty($links_cliente_dj);
 $has_obs_link = !empty($links_cliente_observacoes);
@@ -527,31 +567,32 @@ includeSidebar('Organização eventos');
         margin-top: 0.85rem;
         border-top: 1px solid #e2e8f0;
         padding-top: 0.8rem;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.6rem;
-        align-items: center;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        align-items: end;
     }
 
-    .tipo-real-config label {
+    .tipo-real-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.38rem;
+    }
+
+    .tipo-real-field label {
         font-size: 0.84rem;
         font-weight: 700;
         color: #334155;
     }
 
     .tipo-real-select {
-        min-width: 190px;
+        width: 100%;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         padding: 0.5rem 0.65rem;
         font-size: 0.85rem;
         background: #fff;
         color: #1f2937;
-    }
-
-    .tipo-real-note {
-        font-size: 0.8rem;
-        color: #64748b;
     }
 
     .tipo-evento-modal {
@@ -684,16 +725,35 @@ includeSidebar('Organização eventos');
             <a href="<?= htmlspecialchars($portal_url) ?>" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Abrir</a>
         </div>
         <div class="tipo-real-config">
-            <label for="tipoEventoRealSelect">Tipo real do evento</label>
-            <select id="tipoEventoRealSelect" class="tipo-real-select">
-                <option value="">Selecione...</option>
-                <?php foreach ($tipos_evento_real_options as $tipo_key => $tipo_label): ?>
-                <option value="<?= htmlspecialchars($tipo_key) ?>" <?= $tipo_evento_real === $tipo_key ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($tipo_label) ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-            <span class="tipo-real-note">A alteração é salva automaticamente.</span>
+            <div class="tipo-real-field">
+                <label for="tipoEventoRealSelect">Tipo de evento</label>
+                <select id="tipoEventoRealSelect" class="tipo-real-select">
+                    <option value="">Selecione...</option>
+                    <?php foreach ($tipos_evento_real_options as $tipo_key => $tipo_label): ?>
+                    <option value="<?= htmlspecialchars($tipo_key) ?>" <?= $tipo_evento_real === $tipo_key ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($tipo_label) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="tipo-real-field">
+                <label for="pacoteEventoSelect">Pacote do evento</label>
+                <select id="pacoteEventoSelect" class="tipo-real-select">
+                    <option value="">Sem pacote selecionado</option>
+                    <?php foreach ($pacotes_evento_options as $pacote_item): ?>
+                    <?php
+                    $pacote_item_id = (int)($pacote_item['id'] ?? 0);
+                    $pacote_label = trim((string)($pacote_item['nome'] ?? 'Pacote'));
+                    if (!empty($pacote_item['oculto'])) {
+                        $pacote_label .= ' (oculto)';
+                    }
+                    ?>
+                    <option value="<?= $pacote_item_id ?>" <?= $pacote_evento_id === $pacote_item_id ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($pacote_label) ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -781,6 +841,28 @@ includeSidebar('Organização eventos');
                 <?= (int)$arquivos_resumo['arquivos_total'] ?> arquivos • <?= (int)$arquivos_resumo['campos_total'] ?> campos solicitados • <?= (int)$arquivos_resumo['campos_pendentes'] ?> pendências obrigatórias
             </div>
         </div>
+
+        <div class="module-card">
+            <h3>📄 Resumo do Evento</h3>
+            <p>Contrato do cliente em PDF com tudo que foi contratado. Uso interno, com histórico de substituições no log de anexos.</p>
+            <div class="card-actions">
+                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>#resumo-evento" class="btn btn-primary">Abrir Resumo do Evento</a>
+            </div>
+            <div class="helper-note">
+                Sem opção de exibição no portal do cliente.
+            </div>
+        </div>
+
+        <div class="module-card">
+            <h3>🍽️ Cardápio</h3>
+            <p>Área dedicada para anexar e atualizar os arquivos de cardápio do evento.</p>
+            <div class="card-actions">
+                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>#cardapio" class="btn btn-primary">Abrir Cardápio</a>
+            </div>
+            <div class="helper-note">
+                Gerenciado na tela de anexos do evento.
+            </div>
+        </div>
     </div>
 
     <div id="cfgStatus" class="status-note"></div>
@@ -800,6 +882,8 @@ let portalConfigSaveInFlight = false;
 let portalConfigSaveQueued = false;
 let tipoEventoSaveInFlight = false;
 let tipoEventoSaveQueuedValue = null;
+let pacoteEventoSaveInFlight = false;
+let pacoteEventoSaveQueuedValue = null;
 let pendingOrganizarEventId = null;
 let organizarEventoInFlight = false;
 
@@ -1195,6 +1279,62 @@ async function salvarTipoEventoReal(tipoEventoReal) {
     }
 }
 
+async function salvarPacoteEvento(pacoteEventoIdRaw) {
+    if (!meetingId) return;
+    const select = document.getElementById('pacoteEventoSelect');
+    if (!select) return;
+
+    const nextValue = String(pacoteEventoIdRaw || '').trim();
+    const lastValue = String(select.dataset.lastValue || '').trim();
+    if (nextValue === lastValue) return;
+
+    if (pacoteEventoSaveInFlight) {
+        pacoteEventoSaveQueuedValue = nextValue;
+        return;
+    }
+
+    if (nextValue !== '' && !/^\d+$/.test(nextValue)) {
+        select.value = lastValue;
+        mostrarStatusConfig('Selecione um pacote válido.', true);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'atualizar_pacote_evento');
+    formData.append('meeting_id', String(meetingId));
+    formData.append('pacote_evento_id', nextValue);
+
+    pacoteEventoSaveInFlight = true;
+    select.disabled = true;
+    mostrarStatusConfig('Salvando pacote do evento...');
+
+    try {
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp);
+        if (!data.ok) {
+            select.value = lastValue;
+            mostrarStatusConfig(data.error || 'Erro ao salvar pacote do evento.', true);
+            return;
+        }
+        select.dataset.lastValue = nextValue;
+        mostrarStatusConfig('Pacote do evento salvo automaticamente.');
+    } catch (err) {
+        select.value = lastValue;
+        mostrarStatusConfig('Erro: ' + err.message, true);
+    } finally {
+        pacoteEventoSaveInFlight = false;
+        select.disabled = false;
+        if (pacoteEventoSaveQueuedValue !== null) {
+            const queuedValue = String(pacoteEventoSaveQueuedValue || '').trim();
+            pacoteEventoSaveQueuedValue = null;
+            if (queuedValue !== String(select.dataset.lastValue || '').trim()) {
+                select.value = queuedValue;
+                salvarPacoteEvento(queuedValue);
+            }
+        }
+    }
+}
+
 async function salvarConfigPortal() {
     if (!meetingId) return;
 
@@ -1287,6 +1427,15 @@ function bindTipoEventoRealAutoSave() {
     });
 }
 
+function bindPacoteEventoAutoSave() {
+    const select = document.getElementById('pacoteEventoSelect');
+    if (!select) return;
+    select.dataset.lastValue = String(select.value || '').trim();
+    select.addEventListener('change', () => {
+        salvarPacoteEvento(select.value);
+    });
+}
+
 function bindTipoEventoModal() {
     document.addEventListener('keydown', (event) => {
         const modal = document.getElementById('tipoEventoModal');
@@ -1329,6 +1478,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindSearchEvents();
     bindPortalConfigAutoSave();
     bindTipoEventoRealAutoSave();
+    bindPacoteEventoAutoSave();
     bindTipoEventoModal();
 });
 </script>

@@ -86,9 +86,13 @@ if ($token === '') {
 if ($error === '' && $reuniao) {
     $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
     eventos_arquivos_seed_campos_por_tipo($pdo, (int)$reuniao['id'], $tipo_evento_real, 0);
+    eventos_arquivos_seed_campos_sistema($pdo, (int)$reuniao['id'], 0);
 
-    $campos_arquivos = eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true);
-    $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true);
+    $campos_arquivos = array_values(array_filter(
+        eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true, false),
+        static fn(array $campo): bool => trim((string)($campo['chave_sistema'] ?? '')) === ''
+    ));
+    $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true, null, false);
     $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
 
     foreach ($arquivos_portal as $arquivo_item) {
@@ -136,8 +140,11 @@ if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (strin
 
                     if (!empty($saved['ok'])) {
                         $success_message = 'Arquivo enviado com sucesso.';
-                        $campos_arquivos = eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true);
-                        $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true);
+                        $campos_arquivos = array_values(array_filter(
+                            eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true, false),
+                            static fn(array $campo): bool => trim((string)($campo['chave_sistema'] ?? '')) === ''
+                        ));
+                        $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true, null, false);
                         $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
                         $arquivos_campos_map = [];
                         foreach ($arquivos_portal as $arquivo_item) {

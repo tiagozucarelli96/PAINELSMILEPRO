@@ -178,6 +178,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 meeting_id BIGINT NOT NULL REFERENCES eventos_reunioes(id) ON DELETE CASCADE,
                 titulo VARCHAR(180) NOT NULL,
                 descricao TEXT NULL,
+                chave_sistema VARCHAR(80) NULL,
+                interno_only BOOLEAN NOT NULL DEFAULT FALSE,
                 obrigatorio_cliente BOOLEAN NOT NULL DEFAULT FALSE,
                 ativo BOOLEAN NOT NULL DEFAULT TRUE,
                 sort_order INTEGER NOT NULL DEFAULT 0,
@@ -190,6 +192,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS meeting_id BIGINT");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS titulo VARCHAR(180)");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS descricao TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS chave_sistema VARCHAR(80) NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS interno_only BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS obrigatorio_cliente BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0");
@@ -199,6 +203,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_campos ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_campos_meeting ON eventos_arquivos_campos(meeting_id, ativo)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_campos_sort ON eventos_arquivos_campos(meeting_id, sort_order, id)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_campos_chave ON eventos_arquivos_campos(meeting_id, chave_sistema)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_campos_interno ON eventos_arquivos_campos(meeting_id, interno_only)");
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_arquivos_campos: ' . $e->getMessage());
     }
@@ -242,6 +248,36 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_itens_visivel_cliente ON eventos_arquivos_itens(meeting_id, visivel_cliente, deleted_at)");
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_arquivos_itens: ' . $e->getMessage());
+    }
+
+    // Log interno de anexos do módulo de arquivos.
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS eventos_arquivos_logs (
+                id BIGSERIAL PRIMARY KEY,
+                meeting_id BIGINT NOT NULL REFERENCES eventos_reunioes(id) ON DELETE CASCADE,
+                campo_id BIGINT NULL REFERENCES eventos_arquivos_campos(id) ON DELETE SET NULL,
+                arquivo_id BIGINT NULL REFERENCES eventos_arquivos_itens(id) ON DELETE SET NULL,
+                action_type VARCHAR(40) NOT NULL,
+                action_note TEXT NULL,
+                actor_type VARCHAR(20) NOT NULL DEFAULT 'interno',
+                actor_user_id INTEGER NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS meeting_id BIGINT");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS campo_id BIGINT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS arquivo_id BIGINT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS action_type VARCHAR(40)");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS action_note TEXT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS actor_type VARCHAR(20) NOT NULL DEFAULT 'interno'");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS actor_user_id INTEGER NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_arquivos_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_logs_meeting ON eventos_arquivos_logs(meeting_id, created_at DESC, id DESC)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_logs_campo ON eventos_arquivos_logs(campo_id, created_at DESC)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_arquivos_logs_arquivo ON eventos_arquivos_logs(arquivo_id, created_at DESC)");
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_arquivos_logs: ' . $e->getMessage());
     }
 
     // Lista de convidados (configuração por evento + convidados).
@@ -3005,6 +3041,292 @@ function eventos_arquivos_campo_chave(string $titulo): string {
 }
 
 /**
+ * Normaliza chave de campo do sistema.
+ */
+function eventos_arquivos_chave_sistema_normalizar(?string $chave): string {
+    $key = strtolower(trim((string)$chave));
+    if ($key === '') {
+        return '';
+    }
+    $key = preg_replace('/[^a-z0-9_]+/', '_', $key) ?? $key;
+    $key = trim((string)$key, '_');
+    return trim((string)$key);
+}
+
+/**
+ * Definições fixas de campos internos do módulo de arquivos.
+ */
+function eventos_arquivos_campos_sistema_definicoes(): array {
+    return [
+        'resumo_evento' => [
+            'chave_sistema' => 'resumo_evento',
+            'titulo' => 'Resumo do evento (Contrato cliente)',
+            'descricao' => 'Anexe o PDF do contrato com tudo que foi contratado. Uso interno (não aparece no portal).',
+            'obrigatorio_cliente' => false,
+            'interno_only' => true,
+            'sort_order' => 5,
+            'pdf_only' => true,
+            'single_active_file' => true,
+        ],
+        'cardapio' => [
+            'chave_sistema' => 'cardapio',
+            'titulo' => 'Cardápio',
+            'descricao' => 'Anexe a versão atual do cardápio do evento.',
+            'obrigatorio_cliente' => false,
+            'interno_only' => false,
+            'sort_order' => 15,
+            'pdf_only' => false,
+            'single_active_file' => false,
+        ],
+    ];
+}
+
+/**
+ * Regras de comportamento de campo com base na chave de sistema.
+ */
+function eventos_arquivos_regra_por_chave_sistema(?string $chave_sistema): array {
+    $key = eventos_arquivos_chave_sistema_normalizar($chave_sistema);
+    $defs = eventos_arquivos_campos_sistema_definicoes();
+    $defaults = [
+        'chave_sistema' => $key,
+        'interno_only' => false,
+        'pdf_only' => false,
+        'single_active_file' => false,
+    ];
+    if ($key !== '' && isset($defs[$key])) {
+        return array_merge($defaults, $defs[$key]);
+    }
+    return $defaults;
+}
+
+/**
+ * Retorna se o campo é interno (não deve aparecer no portal do cliente).
+ */
+function eventos_arquivos_campo_e_interno(array $campo): bool {
+    if (!empty($campo['interno_only'])) {
+        return true;
+    }
+    $rule = eventos_arquivos_regra_por_chave_sistema((string)($campo['chave_sistema'] ?? ''));
+    return !empty($rule['interno_only']);
+}
+
+/**
+ * Validação simples para PDFs.
+ */
+function eventos_arquivos_arquivo_e_pdf(string $original_name, string $mime_type): bool {
+    $name = strtolower(trim($original_name));
+    $mime = strtolower(trim($mime_type));
+    if ($name !== '' && strlen($name) >= 4 && substr($name, -4) === '.pdf') {
+        return true;
+    }
+    if ($mime === 'application/pdf' || str_contains($mime, '/pdf')) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Busca um campo por chave de sistema na reunião.
+ */
+function eventos_arquivos_buscar_campo_por_chave(PDO $pdo, int $meeting_id, string $chave_sistema, bool $somente_ativo = true): ?array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return null;
+    }
+    $key = eventos_arquivos_chave_sistema_normalizar($chave_sistema);
+    if ($key === '') {
+        return null;
+    }
+
+    $where_ativo = $somente_ativo ? "AND ativo = TRUE" : '';
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_arquivos_campos
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+          AND chave_sistema = :chave_sistema
+          {$where_ativo}
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':chave_sistema' => $key,
+    ]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return null;
+    }
+    $row['id'] = (int)($row['id'] ?? 0);
+    $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
+    $row['obrigatorio_cliente'] = !empty($row['obrigatorio_cliente']);
+    $row['ativo'] = !empty($row['ativo']);
+    $row['interno_only'] = !empty($row['interno_only']);
+    $row['sort_order'] = (int)($row['sort_order'] ?? 0);
+    $row['titulo'] = trim((string)($row['titulo'] ?? ''));
+    $row['descricao'] = trim((string)($row['descricao'] ?? ''));
+    $row['chave_sistema'] = eventos_arquivos_chave_sistema_normalizar((string)($row['chave_sistema'] ?? ''));
+    return $row;
+}
+
+/**
+ * Garante campos fixos do módulo de arquivos (Resumo do evento e Cardápio).
+ */
+function eventos_arquivos_seed_campos_sistema(PDO $pdo, int $meeting_id, int $user_id = 0): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $defs = eventos_arquivos_campos_sistema_definicoes();
+    if (empty($defs)) {
+        return ['ok' => true, 'inserted' => 0, 'updated' => 0];
+    }
+
+    try {
+        $stmt_existing = $pdo->prepare("
+            SELECT id, titulo, descricao, chave_sistema, interno_only, obrigatorio_cliente, ativo, sort_order
+            FROM eventos_arquivos_campos
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+            ORDER BY id DESC
+        ");
+        $stmt_existing->execute([':meeting_id' => $meeting_id]);
+        $existing_rows = $stmt_existing->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $existing_by_key = [];
+        $existing_by_title = [];
+        $existing_by_id = [];
+        foreach ($existing_rows as $row) {
+            $id = (int)($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $existing_by_id[$id] = $row;
+            $key = eventos_arquivos_chave_sistema_normalizar((string)($row['chave_sistema'] ?? ''));
+            if ($key !== '' && !isset($existing_by_key[$key])) {
+                $existing_by_key[$key] = $id;
+            }
+            $title_key = eventos_arquivos_campo_chave((string)($row['titulo'] ?? ''));
+            if ($title_key !== '' && !isset($existing_by_title[$title_key])) {
+                $existing_by_title[$title_key] = $id;
+            }
+        }
+
+        $stmt_sort = $pdo->prepare("
+            SELECT COALESCE(MAX(sort_order), 0)
+            FROM eventos_arquivos_campos
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+        ");
+        $stmt_sort->execute([':meeting_id' => $meeting_id]);
+        $next_sort = (int)($stmt_sort->fetchColumn() ?: 0);
+
+        $inserted = 0;
+        $updated = 0;
+        foreach ($defs as $def) {
+            $key = eventos_arquivos_chave_sistema_normalizar((string)($def['chave_sistema'] ?? ''));
+            $title = trim((string)($def['titulo'] ?? ''));
+            if ($key === '' || $title === '') {
+                continue;
+            }
+
+            $target_id = 0;
+            if (isset($existing_by_key[$key])) {
+                $target_id = (int)$existing_by_key[$key];
+            } else {
+                $title_key = eventos_arquivos_campo_chave($title);
+                if ($title_key !== '' && isset($existing_by_title[$title_key])) {
+                    $target_id = (int)$existing_by_title[$title_key];
+                }
+            }
+
+            $sort_order = (int)($def['sort_order'] ?? 0);
+            if ($sort_order <= 0) {
+                $next_sort += 10;
+                $sort_order = $next_sort;
+            } elseif ($sort_order > $next_sort) {
+                $next_sort = $sort_order;
+            }
+
+            $next_descricao = trim((string)($def['descricao'] ?? ''));
+            if ($target_id > 0) {
+                $current = $existing_by_id[$target_id] ?? null;
+                $needs_update = true;
+                if (is_array($current)) {
+                    $current_title = trim((string)($current['titulo'] ?? ''));
+                    $current_desc = trim((string)($current['descricao'] ?? ''));
+                    $current_key = eventos_arquivos_chave_sistema_normalizar((string)($current['chave_sistema'] ?? ''));
+                    $current_interno = !empty($current['interno_only']);
+                    $current_obrigatorio = !empty($current['obrigatorio_cliente']);
+                    $current_ativo = !empty($current['ativo']);
+                    $current_sort = (int)($current['sort_order'] ?? 0);
+
+                    $needs_update =
+                        $current_title !== $title
+                        || $current_desc !== $next_descricao
+                        || $current_key !== $key
+                        || $current_interno !== !empty($def['interno_only'])
+                        || $current_obrigatorio !== !empty($def['obrigatorio_cliente'])
+                        || !$current_ativo
+                        || $current_sort !== $sort_order;
+                }
+
+                if (!$needs_update) {
+                    continue;
+                }
+
+                $stmt_update = $pdo->prepare("
+                    UPDATE eventos_arquivos_campos
+                    SET titulo = :titulo,
+                        descricao = :descricao,
+                        chave_sistema = :chave_sistema,
+                        interno_only = :interno_only,
+                        obrigatorio_cliente = :obrigatorio_cliente,
+                        ativo = TRUE,
+                        sort_order = :sort_order,
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmt_update->execute([
+                    ':titulo' => $title,
+                    ':descricao' => $next_descricao !== '' ? $next_descricao : null,
+                    ':chave_sistema' => $key,
+                    ':interno_only' => !empty($def['interno_only']) ? 1 : 0,
+                    ':obrigatorio_cliente' => !empty($def['obrigatorio_cliente']) ? 1 : 0,
+                    ':sort_order' => $sort_order,
+                    ':id' => $target_id,
+                ]);
+                $updated += (int)$stmt_update->rowCount() > 0 ? 1 : 0;
+            } else {
+                $stmt_insert = $pdo->prepare("
+                    INSERT INTO eventos_arquivos_campos
+                        (meeting_id, titulo, descricao, chave_sistema, interno_only, obrigatorio_cliente, ativo, sort_order, created_by_user_id, created_at, updated_at)
+                    VALUES
+                        (:meeting_id, :titulo, :descricao, :chave_sistema, :interno_only, :obrigatorio_cliente, TRUE, :sort_order, :user_id, NOW(), NOW())
+                ");
+                $stmt_insert->execute([
+                    ':meeting_id' => $meeting_id,
+                    ':titulo' => $title,
+                    ':descricao' => $next_descricao !== '' ? $next_descricao : null,
+                    ':chave_sistema' => $key,
+                    ':interno_only' => !empty($def['interno_only']) ? 1 : 0,
+                    ':obrigatorio_cliente' => !empty($def['obrigatorio_cliente']) ? 1 : 0,
+                    ':sort_order' => $sort_order,
+                    ':user_id' => $user_id > 0 ? $user_id : null,
+                ]);
+                $inserted++;
+            }
+        }
+
+        return ['ok' => true, 'inserted' => $inserted, 'updated' => $updated];
+    } catch (Throwable $e) {
+        error_log('eventos_arquivos_seed_campos_sistema: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao preparar campos fixos de arquivos.'];
+    }
+}
+
+/**
  * Campos sugeridos de arquivos por tipo real do evento.
  */
 function eventos_arquivos_template_campos_por_tipo_evento(string $tipo_evento_real): array {
@@ -3118,13 +3440,14 @@ function eventos_arquivos_seed_campos_por_tipo(PDO $pdo, int $meeting_id, string
 /**
  * Lista campos solicitados de arquivos por reunião.
  */
-function eventos_arquivos_listar_campos(PDO $pdo, int $meeting_id, bool $somente_ativos = false): array {
+function eventos_arquivos_listar_campos(PDO $pdo, int $meeting_id, bool $somente_ativos = false, bool $incluir_internos = true): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
         return [];
     }
 
     $where_ativo = $somente_ativos ? "AND c.ativo = TRUE" : '';
+    $where_interno = $incluir_internos ? '' : "AND COALESCE(c.interno_only, FALSE) = FALSE";
 
     $stmt = $pdo->prepare("
         SELECT
@@ -3147,6 +3470,7 @@ function eventos_arquivos_listar_campos(PDO $pdo, int $meeting_id, bool $somente
         WHERE c.meeting_id = :meeting_id
           AND c.deleted_at IS NULL
           {$where_ativo}
+          {$where_interno}
         ORDER BY c.sort_order ASC, c.id ASC
     ");
     $stmt->execute([
@@ -3160,12 +3484,14 @@ function eventos_arquivos_listar_campos(PDO $pdo, int $meeting_id, bool $somente
         $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
         $row['obrigatorio_cliente'] = !empty($row['obrigatorio_cliente']);
         $row['ativo'] = !empty($row['ativo']);
+        $row['interno_only'] = !empty($row['interno_only']);
         $row['sort_order'] = (int)($row['sort_order'] ?? 0);
         $row['total_arquivos'] = (int)($row['total_arquivos'] ?? 0);
         $row['total_visiveis_cliente'] = (int)($row['total_visiveis_cliente'] ?? 0);
         $row['total_upload_cliente'] = (int)($row['total_upload_cliente'] ?? 0);
         $row['titulo'] = trim((string)($row['titulo'] ?? ''));
         $row['descricao'] = trim((string)($row['descricao'] ?? ''));
+        $row['chave_sistema'] = eventos_arquivos_chave_sistema_normalizar((string)($row['chave_sistema'] ?? ''));
     }
     unset($row);
 
@@ -3246,9 +3572,9 @@ function eventos_arquivos_salvar_campo(
 
         $stmt_insert = $pdo->prepare("
             INSERT INTO eventos_arquivos_campos
-                (meeting_id, titulo, descricao, obrigatorio_cliente, ativo, sort_order, created_by_user_id, created_at, updated_at)
+                (meeting_id, titulo, descricao, chave_sistema, interno_only, obrigatorio_cliente, ativo, sort_order, created_by_user_id, created_at, updated_at)
             VALUES
-                (:meeting_id, :titulo, :descricao, :obrigatorio_cliente, TRUE, :sort_order, :user_id, NOW(), NOW())
+                (:meeting_id, :titulo, :descricao, NULL, FALSE, :obrigatorio_cliente, TRUE, :sort_order, :user_id, NOW(), NOW())
             RETURNING *
         ");
         $stmt_insert->execute([
@@ -3305,7 +3631,13 @@ function eventos_arquivos_atualizar_campo_ativo(PDO $pdo, int $meeting_id, int $
 /**
  * Lista arquivos do módulo por reunião.
  */
-function eventos_arquivos_listar(PDO $pdo, int $meeting_id, bool $somente_visiveis_cliente = false, ?int $campo_id = null): array {
+function eventos_arquivos_listar(
+    PDO $pdo,
+    int $meeting_id,
+    bool $somente_visiveis_cliente = false,
+    ?int $campo_id = null,
+    bool $incluir_campos_internos = true
+): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
         return [];
@@ -3313,12 +3645,15 @@ function eventos_arquivos_listar(PDO $pdo, int $meeting_id, bool $somente_visive
 
     $where_visivel = $somente_visiveis_cliente ? "AND i.visivel_cliente = TRUE" : '';
     $where_campo = ($campo_id !== null && $campo_id > 0) ? "AND i.campo_id = :campo_id" : '';
+    $where_interno = $incluir_campos_internos ? '' : "AND COALESCE(c.interno_only, FALSE) = FALSE";
 
     $sql = "
         SELECT
             i.*,
             c.titulo AS campo_titulo,
-            c.obrigatorio_cliente AS campo_obrigatorio_cliente
+            c.obrigatorio_cliente AS campo_obrigatorio_cliente,
+            c.chave_sistema AS campo_chave_sistema,
+            COALESCE(c.interno_only, FALSE) AS campo_interno_only
         FROM eventos_arquivos_itens i
         LEFT JOIN eventos_arquivos_campos c
           ON c.id = i.campo_id
@@ -3327,6 +3662,7 @@ function eventos_arquivos_listar(PDO $pdo, int $meeting_id, bool $somente_visive
           AND i.deleted_at IS NULL
           {$where_visivel}
           {$where_campo}
+          {$where_interno}
         ORDER BY i.uploaded_at DESC, i.id DESC
     ";
     $stmt = $pdo->prepare($sql);
@@ -3348,6 +3684,8 @@ function eventos_arquivos_listar(PDO $pdo, int $meeting_id, bool $somente_visive
         $row['descricao'] = trim((string)($row['descricao'] ?? ''));
         $row['campo_titulo'] = trim((string)($row['campo_titulo'] ?? ''));
         $row['campo_obrigatorio_cliente'] = !empty($row['campo_obrigatorio_cliente']);
+        $row['campo_chave_sistema'] = eventos_arquivos_chave_sistema_normalizar((string)($row['campo_chave_sistema'] ?? ''));
+        $row['campo_interno_only'] = !empty($row['campo_interno_only']);
     }
     unset($row);
 
@@ -3382,9 +3720,10 @@ function eventos_arquivos_salvar_item(
     }
 
     $campo_id_val = ($campo_id !== null && $campo_id > 0) ? (int)$campo_id : null;
+    $campo_row = null;
     if ($campo_id_val !== null) {
         $stmt_campo = $pdo->prepare("
-            SELECT id
+            SELECT id, titulo, chave_sistema, COALESCE(interno_only, FALSE) AS interno_only
             FROM eventos_arquivos_campos
             WHERE id = :id
               AND meeting_id = :meeting_id
@@ -3395,8 +3734,14 @@ function eventos_arquivos_salvar_item(
             ':id' => $campo_id_val,
             ':meeting_id' => $meeting_id,
         ]);
-        if (!$stmt_campo->fetch(PDO::FETCH_ASSOC)) {
+        $campo_row = $stmt_campo->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$campo_row) {
             $campo_id_val = null;
+        } else {
+            $campo_row['id'] = (int)($campo_row['id'] ?? 0);
+            $campo_row['titulo'] = trim((string)($campo_row['titulo'] ?? ''));
+            $campo_row['chave_sistema'] = eventos_arquivos_chave_sistema_normalizar((string)($campo_row['chave_sistema'] ?? ''));
+            $campo_row['interno_only'] = !empty($campo_row['interno_only']);
         }
     }
 
@@ -3404,7 +3749,20 @@ function eventos_arquivos_salvar_item(
     if (!in_array($uploaded_by_type, ['interno', 'cliente', 'fornecedor'], true)) {
         $uploaded_by_type = 'interno';
     }
-    if ($uploaded_by_type === 'cliente') {
+
+    $campo_rule = eventos_arquivos_regra_por_chave_sistema((string)($campo_row['chave_sistema'] ?? ''));
+    if ($uploaded_by_type === 'cliente' && $campo_row && trim((string)($campo_row['chave_sistema'] ?? '')) !== '') {
+        return ['ok' => false, 'error' => 'Este campo não está disponível para envio pelo portal do cliente.'];
+    }
+    if ($campo_row && eventos_arquivos_campo_e_interno($campo_row) && $uploaded_by_type === 'cliente') {
+        return ['ok' => false, 'error' => 'Este tipo de arquivo é interno e não pode ser enviado pelo portal do cliente.'];
+    }
+    if (!empty($campo_rule['pdf_only']) && !eventos_arquivos_arquivo_e_pdf($original_name, $mime_type)) {
+        return ['ok' => false, 'error' => 'Este campo aceita apenas arquivo PDF.'];
+    }
+    if (!empty($campo_rule['interno_only']) || ($campo_row && eventos_arquivos_campo_e_interno($campo_row))) {
+        $visivel_cliente = false;
+    } elseif ($uploaded_by_type === 'cliente') {
         $visivel_cliente = true;
     }
 
@@ -3413,7 +3771,14 @@ function eventos_arquivos_salvar_item(
         $descricao_limpa = mb_substr($descricao_limpa, 0, 2000, 'UTF-8');
     }
 
+    $replaced_count = 0;
+    $started_transaction = false;
     try {
+        if (!$pdo->inTransaction()) {
+            $pdo->beginTransaction();
+            $started_transaction = true;
+        }
+
         $stmt = $pdo->prepare("
             INSERT INTO eventos_arquivos_itens
                 (meeting_id, campo_id, original_name, mime_type, size_bytes, storage_key, public_url, descricao, visivel_cliente, uploaded_by_type, uploaded_by_user_id, uploaded_at)
@@ -3435,8 +3800,91 @@ function eventos_arquivos_salvar_item(
             ':uploaded_by_user_id' => $uploaded_by_user_id,
         ]);
         $item = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        return ['ok' => true, 'arquivo' => $item];
+        if (!$item) {
+            throw new RuntimeException('Falha ao inserir metadados do arquivo.');
+        }
+
+        $item_id = (int)($item['id'] ?? 0);
+        $single_active_file = !empty($campo_rule['single_active_file']);
+        if ($single_active_file && $campo_id_val !== null && $item_id > 0) {
+            $stmt_prev = $pdo->prepare("
+                SELECT id, original_name
+                FROM eventos_arquivos_itens
+                WHERE meeting_id = :meeting_id
+                  AND campo_id = :campo_id
+                  AND id <> :arquivo_id
+                  AND deleted_at IS NULL
+                ORDER BY uploaded_at DESC, id DESC
+            ");
+            $stmt_prev->execute([
+                ':meeting_id' => $meeting_id,
+                ':campo_id' => $campo_id_val,
+                ':arquivo_id' => $item_id,
+            ]);
+            $prev_rows = $stmt_prev->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            if (!empty($prev_rows)) {
+                $stmt_hide = $pdo->prepare("
+                    UPDATE eventos_arquivos_itens
+                    SET deleted_at = NOW(),
+                        deleted_by_user_id = :user_id
+                    WHERE id = :id
+                      AND meeting_id = :meeting_id
+                      AND deleted_at IS NULL
+                ");
+                foreach ($prev_rows as $prev) {
+                    $prev_id = (int)($prev['id'] ?? 0);
+                    if ($prev_id <= 0) {
+                        continue;
+                    }
+                    $stmt_hide->execute([
+                        ':user_id' => $uploaded_by_user_id,
+                        ':id' => $prev_id,
+                        ':meeting_id' => $meeting_id,
+                    ]);
+                    if ($stmt_hide->rowCount() > 0) {
+                        $replaced_count++;
+                        $prev_name = trim((string)($prev['original_name'] ?? 'arquivo'));
+                        eventos_arquivos_log_registrar(
+                            $pdo,
+                            $meeting_id,
+                            $campo_id_val,
+                            $prev_id,
+                            'arquivo_substituido',
+                            'Arquivo "' . $prev_name . '" substituído por "' . ($item['original_name'] ?? 'arquivo') . '".',
+                            $uploaded_by_type,
+                            $uploaded_by_user_id
+                        );
+                    }
+                }
+            }
+        }
+
+        eventos_arquivos_log_registrar(
+            $pdo,
+            $meeting_id,
+            $campo_id_val,
+            $item_id > 0 ? $item_id : null,
+            'arquivo_enviado',
+            'Arquivo "' . ($item['original_name'] ?? 'arquivo') . '" anexado.',
+            $uploaded_by_type,
+            $uploaded_by_user_id
+        );
+
+        if ($started_transaction) {
+            $pdo->commit();
+        }
+
+        return [
+            'ok' => true,
+            'arquivo' => $item,
+            'replaced_count' => $replaced_count,
+            'field_rule' => $campo_rule,
+        ];
     } catch (Throwable $e) {
+        if ($started_transaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log('eventos_arquivos_salvar_item: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao salvar arquivo.'];
     }
@@ -3445,13 +3893,46 @@ function eventos_arquivos_salvar_item(
 /**
  * Atualiza visibilidade de um arquivo para o cliente.
  */
-function eventos_arquivos_atualizar_visibilidade(PDO $pdo, int $meeting_id, int $arquivo_id, bool $visivel_cliente): array {
+function eventos_arquivos_atualizar_visibilidade(PDO $pdo, int $meeting_id, int $arquivo_id, bool $visivel_cliente, int $user_id = 0): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0 || $arquivo_id <= 0) {
         return ['ok' => false, 'error' => 'Dados inválidos.'];
     }
 
     try {
+        $stmt_file = $pdo->prepare("
+            SELECT
+                i.id,
+                i.campo_id,
+                i.original_name,
+                c.chave_sistema,
+                COALESCE(c.interno_only, FALSE) AS interno_only
+            FROM eventos_arquivos_itens i
+            LEFT JOIN eventos_arquivos_campos c
+              ON c.id = i.campo_id
+             AND c.deleted_at IS NULL
+            WHERE i.id = :id
+              AND i.meeting_id = :meeting_id
+              AND i.deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmt_file->execute([
+            ':id' => $arquivo_id,
+            ':meeting_id' => $meeting_id,
+        ]);
+        $file_row = $stmt_file->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$file_row) {
+            return ['ok' => false, 'error' => 'Arquivo não encontrado.'];
+        }
+
+        $campo_ref = [
+            'chave_sistema' => eventos_arquivos_chave_sistema_normalizar((string)($file_row['chave_sistema'] ?? '')),
+            'interno_only' => !empty($file_row['interno_only']),
+        ];
+        if (eventos_arquivos_campo_e_interno($campo_ref) && $visivel_cliente) {
+            return ['ok' => false, 'error' => 'Este arquivo é interno e não pode ficar visível no portal do cliente.'];
+        }
+
         $stmt = $pdo->prepare("
             UPDATE eventos_arquivos_itens
             SET visivel_cliente = :visivel_cliente
@@ -3469,6 +3950,21 @@ function eventos_arquivos_atualizar_visibilidade(PDO $pdo, int $meeting_id, int 
         if (!$arquivo) {
             return ['ok' => false, 'error' => 'Arquivo não encontrado.'];
         }
+
+        $nome = trim((string)($file_row['original_name'] ?? 'arquivo'));
+        eventos_arquivos_log_registrar(
+            $pdo,
+            $meeting_id,
+            isset($file_row['campo_id']) ? (int)$file_row['campo_id'] : null,
+            $arquivo_id,
+            'visibilidade_alterada',
+            $visivel_cliente
+                ? 'Arquivo "' . $nome . '" marcado como visível no portal do cliente.'
+                : 'Arquivo "' . $nome . '" ocultado do portal do cliente.',
+            'interno',
+            $user_id > 0 ? $user_id : null
+        );
+
         return ['ok' => true, 'arquivo' => $arquivo];
     } catch (Throwable $e) {
         error_log('eventos_arquivos_atualizar_visibilidade: ' . $e->getMessage());
@@ -3486,6 +3982,23 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
     }
 
     try {
+        $stmt_file = $pdo->prepare("
+            SELECT id, campo_id, original_name
+            FROM eventos_arquivos_itens
+            WHERE id = :id
+              AND meeting_id = :meeting_id
+              AND deleted_at IS NULL
+            LIMIT 1
+        ");
+        $stmt_file->execute([
+            ':id' => $arquivo_id,
+            ':meeting_id' => $meeting_id,
+        ]);
+        $file_row = $stmt_file->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$file_row) {
+            return ['ok' => false, 'error' => 'Arquivo não encontrado.'];
+        }
+
         $stmt = $pdo->prepare("
             UPDATE eventos_arquivos_itens
             SET deleted_at = NOW(),
@@ -3504,10 +4017,155 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
         if (!$arquivo) {
             return ['ok' => false, 'error' => 'Arquivo não encontrado.'];
         }
+
+        $nome = trim((string)($file_row['original_name'] ?? 'arquivo'));
+        eventos_arquivos_log_registrar(
+            $pdo,
+            $meeting_id,
+            isset($file_row['campo_id']) ? (int)$file_row['campo_id'] : null,
+            $arquivo_id,
+            'arquivo_excluido',
+            'Arquivo "' . $nome . '" removido.',
+            'interno',
+            $user_id > 0 ? $user_id : null
+        );
+
         return ['ok' => true, 'arquivo' => $arquivo];
     } catch (Throwable $e) {
         error_log('eventos_arquivos_excluir_item: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao excluir arquivo.'];
+    }
+}
+
+/**
+ * Registra log do módulo de arquivos (best effort).
+ */
+function eventos_arquivos_log_registrar(
+    PDO $pdo,
+    int $meeting_id,
+    ?int $campo_id,
+    ?int $arquivo_id,
+    string $action_type,
+    ?string $action_note = null,
+    string $actor_type = 'interno',
+    ?int $actor_user_id = null
+): void {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return;
+    }
+    $action = trim($action_type);
+    if ($action === '') {
+        return;
+    }
+    $actor = strtolower(trim($actor_type));
+    if (!in_array($actor, ['interno', 'cliente', 'fornecedor', 'sistema'], true)) {
+        $actor = 'interno';
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO eventos_arquivos_logs
+                (meeting_id, campo_id, arquivo_id, action_type, action_note, actor_type, actor_user_id, created_at)
+            VALUES
+                (:meeting_id, :campo_id, :arquivo_id, :action_type, :action_note, :actor_type, :actor_user_id, NOW())
+        ");
+        $stmt->execute([
+            ':meeting_id' => $meeting_id,
+            ':campo_id' => ($campo_id !== null && $campo_id > 0) ? $campo_id : null,
+            ':arquivo_id' => ($arquivo_id !== null && $arquivo_id > 0) ? $arquivo_id : null,
+            ':action_type' => $action,
+            ':action_note' => trim((string)($action_note ?? '')) ?: null,
+            ':actor_type' => $actor,
+            ':actor_user_id' => ($actor_user_id !== null && $actor_user_id > 0) ? $actor_user_id : null,
+        ]);
+    } catch (Throwable $e) {
+        error_log('eventos_arquivos_log_registrar: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Rótulo amigável para ação de log de anexos.
+ */
+function eventos_arquivos_log_label(string $action_type): string {
+    $type = strtolower(trim($action_type));
+    switch ($type) {
+        case 'arquivo_enviado':
+            return 'Arquivo anexado';
+        case 'arquivo_substituido':
+            return 'Arquivo substituído';
+        case 'arquivo_excluido':
+            return 'Arquivo removido';
+        case 'visibilidade_alterada':
+            return 'Visibilidade alterada';
+        default:
+            return ucfirst(str_replace('_', ' ', $type));
+    }
+}
+
+/**
+ * Lista logs do módulo de arquivos por reunião.
+ */
+function eventos_arquivos_logs_listar(PDO $pdo, int $meeting_id, ?int $campo_id = null, int $limit = 150): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [];
+    }
+
+    $limit = max(1, min(500, (int)$limit));
+    $where_campo = ($campo_id !== null && $campo_id > 0) ? "AND l.campo_id = :campo_id" : '';
+
+    $sql = "
+        SELECT
+            l.*,
+            c.titulo AS campo_titulo,
+            c.chave_sistema AS campo_chave_sistema,
+            a.original_name AS arquivo_nome,
+            u.nome AS actor_user_nome
+        FROM eventos_arquivos_logs l
+        LEFT JOIN eventos_arquivos_campos c
+          ON c.id = l.campo_id
+        LEFT JOIN eventos_arquivos_itens a
+          ON a.id = l.arquivo_id
+        LEFT JOIN usuarios u
+          ON u.id = l.actor_user_id
+        WHERE l.meeting_id = :meeting_id
+          {$where_campo}
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT :limit_rows
+    ";
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':meeting_id', $meeting_id, PDO::PARAM_INT);
+        if ($campo_id !== null && $campo_id > 0) {
+            $stmt->bindValue(':campo_id', (int)$campo_id, PDO::PARAM_INT);
+        }
+        $stmt->bindValue(':limit_rows', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($rows as &$row) {
+            $row['id'] = (int)($row['id'] ?? 0);
+            $row['meeting_id'] = (int)($row['meeting_id'] ?? 0);
+            $row['campo_id'] = isset($row['campo_id']) ? (int)$row['campo_id'] : null;
+            $row['arquivo_id'] = isset($row['arquivo_id']) ? (int)$row['arquivo_id'] : null;
+            $row['actor_user_id'] = isset($row['actor_user_id']) ? (int)$row['actor_user_id'] : null;
+            $row['action_type'] = trim((string)($row['action_type'] ?? ''));
+            $row['action_label'] = eventos_arquivos_log_label((string)($row['action_type'] ?? ''));
+            $row['action_note'] = trim((string)($row['action_note'] ?? ''));
+            $row['campo_titulo'] = trim((string)($row['campo_titulo'] ?? ''));
+            $row['campo_chave_sistema'] = eventos_arquivos_chave_sistema_normalizar((string)($row['campo_chave_sistema'] ?? ''));
+            $row['arquivo_nome'] = trim((string)($row['arquivo_nome'] ?? ''));
+            $row['actor_type'] = trim((string)($row['actor_type'] ?? 'interno'));
+            $row['actor_user_nome'] = trim((string)($row['actor_user_nome'] ?? ''));
+        }
+        unset($row);
+
+        return $rows;
+    } catch (Throwable $e) {
+        error_log('eventos_arquivos_logs_listar: ' . $e->getMessage());
+        return [];
     }
 }
 
@@ -3536,6 +4194,8 @@ function eventos_arquivos_resumo(PDO $pdo, int $meeting_id): array {
             FROM eventos_arquivos_campos
             WHERE meeting_id = :meeting_id
               AND deleted_at IS NULL
+              AND COALESCE(interno_only, FALSE) = FALSE
+              AND COALESCE(chave_sistema, '') = ''
               AND ativo = TRUE
         ");
         $stmt_campos->execute([':meeting_id' => $meeting_id]);
@@ -3546,6 +4206,8 @@ function eventos_arquivos_resumo(PDO $pdo, int $meeting_id): array {
             FROM eventos_arquivos_campos c
             WHERE c.meeting_id = :meeting_id
               AND c.deleted_at IS NULL
+              AND COALESCE(c.interno_only, FALSE) = FALSE
+              AND COALESCE(c.chave_sistema, '') = ''
               AND c.ativo = TRUE
               AND c.obrigatorio_cliente = TRUE
               AND NOT EXISTS (

@@ -185,6 +185,7 @@ $routes = [
   'config_logistica' => 'config_logistica.php',
   'logistica_catalogo' => 'logistica_catalogo.php',
   'logistica_conexao' => 'logistica_conexao.php',
+  'logistica_pacotes_evento' => 'logistica_pacotes_evento.php',
   'logistica_diagnostico' => 'logistica_diagnostico.php',
   'logistica_unidades_medida' => 'logistica_unidades_medida.php',
   'logistica_tipologias' => 'logistica_tipologias.php',

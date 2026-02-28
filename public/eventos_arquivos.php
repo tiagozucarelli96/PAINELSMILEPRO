@@ -72,6 +72,7 @@ $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reunia
 $tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
 
 $seed_result = eventos_arquivos_seed_campos_por_tipo($pdo, $meeting_id, $tipo_evento_real, $user_id);
+$seed_campos_sistema_result = eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
 
 $feedback_ok = '';
 $feedback_error = '';
@@ -132,16 +133,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 if (!empty($saved['ok'])) {
-                    $feedback_ok = 'Arquivo enviado com sucesso.';
+                    $replaced_count = (int)($saved['replaced_count'] ?? 0);
+                    $feedback_ok = $replaced_count > 0
+                        ? 'Arquivo enviado e versão anterior substituída com sucesso.'
+                        : 'Arquivo enviado com sucesso.';
                 } else {
                     $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar o arquivo.');
+                }
+                break;
+
+            case 'upload_resumo_evento':
+                $descricao = trim((string)($_POST['descricao_resumo_evento'] ?? ''));
+                $file = $_FILES['arquivo_resumo_evento'] ?? null;
+                if (!$file || !is_array($file)) {
+                    $feedback_error = 'Selecione um PDF para o Resumo do evento.';
+                    break;
+                }
+
+                $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($upload_error !== UPLOAD_ERR_OK) {
+                    $feedback_error = eventos_arquivos_upload_error_message($upload_error);
+                    break;
+                }
+
+                if ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                    $feedback_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+                    break;
+                }
+
+                $campo_resumo = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
+                if (!$campo_resumo || (int)($campo_resumo['id'] ?? 0) <= 0) {
+                    $feedback_error = 'Campo "Resumo do evento" não encontrado.';
+                    break;
+                }
+
+                $uploader = new MagaluUpload(500);
+                $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos/resumo_evento');
+                $saved = eventos_arquivos_salvar_item(
+                    $pdo,
+                    $meeting_id,
+                    $upload_result,
+                    (int)$campo_resumo['id'],
+                    $descricao,
+                    false,
+                    'interno',
+                    $user_id > 0 ? $user_id : null
+                );
+
+                if (!empty($saved['ok'])) {
+                    $replaced_count = (int)($saved['replaced_count'] ?? 0);
+                    $feedback_ok = $replaced_count > 0
+                        ? 'Resumo do evento atualizado com sucesso (versão anterior substituída).'
+                        : 'Resumo do evento anexado com sucesso.';
+                } else {
+                    $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar o Resumo do evento.');
+                }
+                break;
+
+            case 'upload_cardapio':
+                $descricao = trim((string)($_POST['descricao_cardapio'] ?? ''));
+                $visivel_cliente = ((string)($_POST['visivel_cliente_cardapio'] ?? '0') === '1');
+                $file = $_FILES['arquivo_cardapio'] ?? null;
+                if (!$file || !is_array($file)) {
+                    $feedback_error = 'Selecione um arquivo para o cardápio.';
+                    break;
+                }
+
+                $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($upload_error !== UPLOAD_ERR_OK) {
+                    $feedback_error = eventos_arquivos_upload_error_message($upload_error);
+                    break;
+                }
+
+                if ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                    $feedback_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+                    break;
+                }
+
+                $campo_cardapio = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'cardapio', true);
+                if (!$campo_cardapio || (int)($campo_cardapio['id'] ?? 0) <= 0) {
+                    $feedback_error = 'Campo "Cardápio" não encontrado.';
+                    break;
+                }
+
+                $uploader = new MagaluUpload(500);
+                $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos/cardapio');
+                $saved = eventos_arquivos_salvar_item(
+                    $pdo,
+                    $meeting_id,
+                    $upload_result,
+                    (int)$campo_cardapio['id'],
+                    $descricao,
+                    $visivel_cliente,
+                    'interno',
+                    $user_id > 0 ? $user_id : null
+                );
+
+                if (!empty($saved['ok'])) {
+                    $feedback_ok = 'Arquivo de cardápio anexado com sucesso.';
+                } else {
+                    $feedback_error = (string)($saved['error'] ?? 'Falha ao salvar arquivo de cardápio.');
                 }
                 break;
 
             case 'toggle_visibilidade_arquivo':
                 $arquivo_id = (int)($_POST['arquivo_id'] ?? 0);
                 $visivel_cliente = ((string)($_POST['visivel_cliente'] ?? '0') === '1');
-                $updated = eventos_arquivos_atualizar_visibilidade($pdo, $meeting_id, $arquivo_id, $visivel_cliente);
+                $updated = eventos_arquivos_atualizar_visibilidade($pdo, $meeting_id, $arquivo_id, $visivel_cliente, $user_id);
                 if (!empty($updated['ok'])) {
                     $feedback_ok = $visivel_cliente ? 'Arquivo marcado como visível no portal do cliente.' : 'Arquivo ocultado do portal do cliente.';
                 } else {
@@ -176,12 +274,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$campos = eventos_arquivos_listar_campos($pdo, $meeting_id, false);
-$campos_ativos = array_values(array_filter($campos, static function ($campo): bool {
+$campos = eventos_arquivos_listar_campos($pdo, $meeting_id, false, true);
+$campos_cliente = array_values(array_filter($campos, static function ($campo): bool {
+    return empty($campo['interno_only']) && trim((string)($campo['chave_sistema'] ?? '')) === '';
+}));
+$campos_ativos = array_values(array_filter($campos_cliente, static function ($campo): bool {
     return !empty($campo['ativo']);
 }));
 $arquivos = eventos_arquivos_listar($pdo, $meeting_id, false);
 $resumo = eventos_arquivos_resumo($pdo, $meeting_id);
+$logs_arquivos = eventos_arquivos_logs_listar($pdo, $meeting_id, null, 200);
+
+$campo_resumo_evento = null;
+$campo_cardapio = null;
+foreach ($campos as $campo_item) {
+    $chave_sistema = (string)($campo_item['chave_sistema'] ?? '');
+    if ($chave_sistema === 'resumo_evento' && !$campo_resumo_evento) {
+        $campo_resumo_evento = $campo_item;
+    } elseif ($chave_sistema === 'cardapio' && !$campo_cardapio) {
+        $campo_cardapio = $campo_item;
+    }
+}
+
+$resumo_evento_arquivos = [];
+$cardapio_arquivos = [];
+$campo_resumo_evento_id = (int)($campo_resumo_evento['id'] ?? 0);
+$campo_cardapio_id = (int)($campo_cardapio['id'] ?? 0);
+foreach ($arquivos as $arquivo_item) {
+    $arquivo_campo_id = (int)($arquivo_item['campo_id'] ?? 0);
+    if ($campo_resumo_evento_id > 0 && $arquivo_campo_id === $campo_resumo_evento_id) {
+        $resumo_evento_arquivos[] = $arquivo_item;
+    }
+    if ($campo_cardapio_id > 0 && $arquivo_campo_id === $campo_cardapio_id) {
+        $cardapio_arquivos[] = $arquivo_item;
+    }
+}
+$resumo_evento_arquivo_atual = !empty($resumo_evento_arquivos) ? $resumo_evento_arquivos[0] : null;
 
 includeSidebar('Arquivos do Evento');
 ?>
@@ -518,6 +646,12 @@ includeSidebar('Arquivos do Evento');
     </div>
     <?php endif; ?>
 
+    <?php if (!empty($seed_campos_sistema_result['ok']) && (int)($seed_campos_sistema_result['inserted'] ?? 0) > 0): ?>
+    <div class="alert alert-success">
+        Estrutura de anexos atualizada: campos fixos de <strong>Resumo do evento</strong> e <strong>Cardápio</strong> prontos para uso.
+    </div>
+    <?php endif; ?>
+
     <section class="event-summary">
         <h2><?= eventos_arquivos_e($nome_evento) ?></h2>
         <div class="event-meta">
@@ -557,6 +691,129 @@ includeSidebar('Arquivos do Evento');
     </section>
 
     <section class="grid-two">
+        <div class="panel" id="resumo-evento">
+            <h3>📄 Resumo do evento (Contrato cliente)</h3>
+            <div class="panel-subtitle">Upload exclusivo em PDF. Sempre interno, sem opção de exibição no portal do cliente.</div>
+
+            <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="upload_resumo_evento">
+
+                <div class="field">
+                    <label for="arquivoResumoEvento">Arquivo PDF</label>
+                    <input type="file" id="arquivoResumoEvento" name="arquivo_resumo_evento" accept=".pdf,application/pdf" required>
+                    <div class="hint">Ao anexar novo arquivo, o anterior é substituído automaticamente e fica registrado no log.</div>
+                </div>
+
+                <div class="field">
+                    <label for="descricaoResumoEvento">Descrição (opcional)</label>
+                    <textarea id="descricaoResumoEvento" name="descricao_resumo_evento" placeholder="Ex.: Contrato assinado atualizado em 28/02/2026."></textarea>
+                </div>
+
+                <div>
+                    <button type="submit" class="btn btn-primary">Salvar resumo do evento</button>
+                </div>
+            </form>
+
+            <div class="campos-list">
+                <?php if (!$resumo_evento_arquivo_atual): ?>
+                <div class="empty">Nenhum resumo de evento anexado ainda.</div>
+                <?php else: ?>
+                <?php
+                    $resumo_nome = trim((string)($resumo_evento_arquivo_atual['original_name'] ?? 'arquivo.pdf'));
+                    $resumo_url = trim((string)($resumo_evento_arquivo_atual['public_url'] ?? ''));
+                    $resumo_desc = trim((string)($resumo_evento_arquivo_atual['descricao'] ?? ''));
+                    $resumo_uploaded_at = trim((string)($resumo_evento_arquivo_atual['uploaded_at'] ?? ''));
+                    $resumo_uploaded_at_fmt = $resumo_uploaded_at !== '' ? date('d/m/Y H:i', strtotime($resumo_uploaded_at)) : '-';
+                ?>
+                <article class="item-card">
+                    <div class="item-head">
+                        <div>
+                            <div class="item-title">Atual: <?= eventos_arquivos_e($resumo_nome) ?></div>
+                            <div class="item-meta">
+                                Última atualização: <?= eventos_arquivos_e($resumo_uploaded_at_fmt) ?>
+                                <?php if ($resumo_desc !== ''): ?><br><?= eventos_arquivos_e($resumo_desc) ?><?php endif; ?>
+                            </div>
+                        </div>
+                        <span class="badge badge-hidden">Uso interno</span>
+                    </div>
+                    <div class="item-actions">
+                        <?php if ($resumo_url !== ''): ?>
+                        <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+                        <?php endif; ?>
+                    </div>
+                </article>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="panel" id="cardapio">
+            <h3>🍽️ Cardápio</h3>
+            <div class="panel-subtitle">Anexe os arquivos de cardápio do evento e decida se ficam visíveis no portal.</div>
+
+            <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="upload_cardapio">
+
+                <div class="field">
+                    <label for="arquivoCardapio">Arquivo do cardápio</label>
+                    <input type="file"
+                           id="arquivoCardapio"
+                           name="arquivo_cardapio"
+                           accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.zip,.rar,.7z"
+                           required>
+                </div>
+
+                <div class="field">
+                    <label for="descricaoCardapio">Descrição (opcional)</label>
+                    <textarea id="descricaoCardapio" name="descricao_cardapio" placeholder="Ex.: Cardápio final validado pela cozinha."></textarea>
+                </div>
+
+                <label class="check-row">
+                    <input type="checkbox" name="visivel_cliente_cardapio" value="1">
+                    <span>Cliente pode visualizar no portal</span>
+                </label>
+
+                <div>
+                    <button type="submit" class="btn btn-primary">Anexar cardápio</button>
+                </div>
+            </form>
+
+            <div class="campos-list">
+                <?php if (empty($cardapio_arquivos)): ?>
+                <div class="empty">Nenhum arquivo de cardápio anexado ainda.</div>
+                <?php else: ?>
+                <?php foreach ($cardapio_arquivos as $cardapio_item): ?>
+                <?php
+                    $cardapio_nome = trim((string)($cardapio_item['original_name'] ?? 'arquivo'));
+                    $cardapio_url = trim((string)($cardapio_item['public_url'] ?? ''));
+                    $cardapio_visivel = !empty($cardapio_item['visivel_cliente']);
+                    $cardapio_data = trim((string)($cardapio_item['uploaded_at'] ?? ''));
+                    $cardapio_data_fmt = $cardapio_data !== '' ? date('d/m/Y H:i', strtotime($cardapio_data)) : '-';
+                ?>
+                <article class="item-card">
+                    <div class="item-head">
+                        <div>
+                            <div class="item-title"><?= eventos_arquivos_e($cardapio_nome) ?></div>
+                            <div class="item-meta">Enviado em <?= eventos_arquivos_e($cardapio_data_fmt) ?></div>
+                        </div>
+                        <span class="badge <?= $cardapio_visivel ? 'badge-visible' : 'badge-hidden' ?>">
+                            <?= $cardapio_visivel ? 'Visível ao cliente' : 'Oculto do cliente' ?>
+                        </span>
+                    </div>
+                    <div class="item-actions">
+                        <?php if ($cardapio_url !== ''): ?>
+                        <a class="btn btn-primary" href="<?= eventos_arquivos_e($cardapio_url) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
+                        <?php endif; ?>
+                    </div>
+                </article>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid-two">
         <div class="panel">
             <h3>📌 Campos Solicitados do Cliente</h3>
             <div class="panel-subtitle">Cadastre os arquivos que você quer receber neste evento.</div>
@@ -586,10 +843,10 @@ includeSidebar('Arquivos do Evento');
             </form>
 
             <div class="campos-list">
-                <?php if (empty($campos)): ?>
+                <?php if (empty($campos_cliente)): ?>
                 <div class="empty">Nenhum campo solicitado cadastrado ainda.</div>
                 <?php else: ?>
-                <?php foreach ($campos as $campo): ?>
+                <?php foreach ($campos_cliente as $campo): ?>
                 <?php
                     $campo_id = (int)($campo['id'] ?? 0);
                     $campo_ativo = !empty($campo['ativo']);
@@ -686,6 +943,7 @@ includeSidebar('Arquivos do Evento');
             <?php
                 $arquivo_id = (int)($arquivo['id'] ?? 0);
                 $visivel = !empty($arquivo['visivel_cliente']);
+                $campo_interno = !empty($arquivo['campo_interno_only']);
                 $nome = trim((string)($arquivo['original_name'] ?? 'arquivo'));
                 $descricao = trim((string)($arquivo['descricao'] ?? ''));
                 $campo_titulo = trim((string)($arquivo['campo_titulo'] ?? ''));
@@ -708,9 +966,12 @@ includeSidebar('Arquivos do Evento');
                         </div>
                     </div>
                     <div style="display:flex; gap:0.3rem; flex-wrap:wrap;">
-                        <span class="badge <?= $visivel ? 'badge-visible' : 'badge-hidden' ?>">
-                            <?= $visivel ? 'Visível ao cliente' : 'Oculto do cliente' ?>
+                        <span class="badge <?= ($visivel && !$campo_interno) ? 'badge-visible' : 'badge-hidden' ?>">
+                            <?= ($visivel && !$campo_interno) ? 'Visível ao cliente' : 'Oculto do cliente' ?>
                         </span>
+                        <?php if ($campo_interno): ?>
+                        <span class="badge badge-hidden">Uso interno</span>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="item-actions">
@@ -718,6 +979,7 @@ includeSidebar('Arquivos do Evento');
                     <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
                     <?php endif; ?>
 
+                    <?php if (!$campo_interno): ?>
                     <form method="POST" style="display:inline-flex;">
                         <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
                         <input type="hidden" name="action" value="toggle_visibilidade_arquivo">
@@ -727,6 +989,7 @@ includeSidebar('Arquivos do Evento');
                             <?= $visivel ? 'Ocultar do cliente' : 'Exibir para cliente' ?>
                         </button>
                     </form>
+                    <?php endif; ?>
 
                     <form method="POST" style="display:inline-flex;" onsubmit="return confirm('Deseja remover este arquivo?');">
                         <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
@@ -734,6 +997,47 @@ includeSidebar('Arquivos do Evento');
                         <input type="hidden" name="arquivo_id" value="<?= $arquivo_id ?>">
                         <button type="submit" class="btn btn-danger">Excluir</button>
                     </form>
+                </div>
+            </article>
+            <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h3>🧾 Log de anexos</h3>
+        <div class="panel-subtitle">Histórico de uploads, substituições, exclusões e mudanças de visibilidade.</div>
+
+        <div class="arquivos-list">
+            <?php if (empty($logs_arquivos)): ?>
+            <div class="empty">Sem registros de log até o momento.</div>
+            <?php else: ?>
+            <?php foreach ($logs_arquivos as $log): ?>
+            <?php
+                $log_data = trim((string)($log['created_at'] ?? ''));
+                $log_data_fmt = $log_data !== '' ? date('d/m/Y H:i:s', strtotime($log_data)) : '-';
+                $log_label = trim((string)($log['action_label'] ?? $log['action_type'] ?? 'Ação'));
+                $log_note = trim((string)($log['action_note'] ?? ''));
+                $log_campo = trim((string)($log['campo_titulo'] ?? ''));
+                $log_arquivo = trim((string)($log['arquivo_nome'] ?? ''));
+                $log_actor = trim((string)($log['actor_user_nome'] ?? ''));
+                $log_actor_type = trim((string)($log['actor_type'] ?? 'interno'));
+                if ($log_actor === '') {
+                    $log_actor = $log_actor_type;
+                }
+            ?>
+            <article class="item-card">
+                <div class="item-head">
+                    <div>
+                        <div class="item-title"><?= eventos_arquivos_e($log_label) ?></div>
+                        <div class="item-meta">
+                            Data/hora: <strong><?= eventos_arquivos_e($log_data_fmt) ?></strong> • Responsável: <strong><?= eventos_arquivos_e($log_actor) ?></strong><br>
+                            <?php if ($log_campo !== ''): ?>Campo: <?= eventos_arquivos_e($log_campo) ?><?php endif; ?>
+                            <?php if ($log_campo !== '' && $log_arquivo !== ''): ?> • <?php endif; ?>
+                            <?php if ($log_arquivo !== ''): ?>Arquivo: <?= eventos_arquivos_e($log_arquivo) ?><?php endif; ?>
+                            <?php if ($log_note !== ''): ?><br><?= eventos_arquivos_e($log_note) ?><?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </article>
             <?php endforeach; ?>
