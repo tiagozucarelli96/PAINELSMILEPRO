@@ -2405,12 +2405,10 @@ function eventos_reuniao_atualizar_slot_portal_config(
     $params = [':id' => (int)$link['id']];
 
     if ($has_portal_visible_col) {
-        $set_parts[] = "portal_visible = :portal_visible";
-        $params[':portal_visible'] = $portal_visible;
+        $set_parts[] = "portal_visible = " . ($portal_visible ? 'TRUE' : 'FALSE');
     }
     if ($has_portal_editable_col) {
-        $set_parts[] = "portal_editable = :portal_editable";
-        $params[':portal_editable'] = $portal_editable;
+        $set_parts[] = "portal_editable = " . ($portal_editable ? 'TRUE' : 'FALSE');
     }
     if ($has_portal_configured_col) {
         $set_parts[] = "portal_configured = TRUE";
