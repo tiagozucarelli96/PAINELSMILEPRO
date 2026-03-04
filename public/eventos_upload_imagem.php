@@ -42,11 +42,11 @@ try {
         echo json_encode(['location' => '', 'error' => 'Falha no upload']);
         exit;
     }
-    $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '');
     $script = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     if ($script === '' || $script === '\\') $script = '';
     $keyB64 = strtr(base64_encode($chave), '+/', '-_');
-    $url = $base . $script . '/index.php?page=eventos_ver_imagem&key=' . rawurlencode($keyB64);
+    // URL relativa evita acoplamento com domínio específico (Railway x domínio próprio).
+    $url = $script . '/index.php?page=eventos_ver_imagem&key=' . rawurlencode($keyB64);
     echo json_encode(['location' => $url]);
 } catch (Exception $e) {
     echo json_encode(['location' => '', 'error' => $e->getMessage()]);

@@ -1069,7 +1069,7 @@ ob_start();
                         </td>
                         <td>
                             <?php
-                                $abrir_aprovacao = ($admin_context && $is_admin && ($pc['status'] ?? '') === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
+                                $abrir_aprovacao = ($is_admin && ($pc['status'] ?? '') === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
                             ?>
                             <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
                                 Editar
@@ -1215,7 +1215,7 @@ ob_start();
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
                         <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
                         
-                        <?php if ($is_admin && $admin_context && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
+                        <?php if ($is_admin && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
                             <button type="button" class="btn btn-primary" onclick="abrirModalAprovacao()">Aprovar e Criar na ME</button>
                         <?php endif; ?>
                     </div>
@@ -1227,7 +1227,7 @@ ob_start();
         <?php
             $aprovacao_result = $_SESSION['vendas_aprovacao_result'] ?? null;
             if ($aprovacao_result !== null) { unset($_SESSION['vendas_aprovacao_result']); }
-            $show_aprovacao_modal = ($is_admin && $admin_context && ($pre_contrato_editar['status'] === 'pronto_aprovacao' || is_array($aprovacao_result)));
+            $show_aprovacao_modal = ($is_admin && ($pre_contrato_editar['status'] === 'pronto_aprovacao' || is_array($aprovacao_result)));
         ?>
         <?php if ($show_aprovacao_modal): ?>
         <div class="vendas-modal" id="modalAprovacao">

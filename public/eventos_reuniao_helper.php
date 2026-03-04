@@ -72,6 +72,7 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
     try {
         if (eventos_reuniao_has_table($pdo, 'eventos_reunioes_secoes')) {
             $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
+            $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS legacy_text_portal_visible BOOLEAN NOT NULL DEFAULT TRUE");
         }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao criar coluna form_schema_json: ' . $e->getMessage());
@@ -106,6 +107,53 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_visible BOOLEAN NOT NULL DEFAULT FALSE");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_editable BOOLEAN NOT NULL DEFAULT FALSE");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_configured BOOLEAN NOT NULL DEFAULT FALSE");
+            $link_type_constraints = [];
+            $constraint_stmt = $pdo->query("
+                SELECT c.conname, pg_get_constraintdef(c.oid) AS definition
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE c.contype = 'c'
+                  AND t.relname = 'eventos_links_publicos'
+                  AND n.nspname = ANY (current_schemas(FALSE))
+            ");
+            if ($constraint_stmt) {
+                $link_type_constraints = $constraint_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+
+            $link_type_constraint_ok = false;
+            foreach ($link_type_constraints as $constraint_row) {
+                $definition = strtolower((string)($constraint_row['definition'] ?? ''));
+                if (strpos($definition, 'link_type') === false) {
+                    continue;
+                }
+                if (strpos($definition, 'cliente_observacoes') !== false) {
+                    $link_type_constraint_ok = true;
+                    break;
+                }
+            }
+
+            if (!$link_type_constraint_ok) {
+                foreach ($link_type_constraints as $constraint_row) {
+                    $definition = strtolower((string)($constraint_row['definition'] ?? ''));
+                    if (strpos($definition, 'link_type') === false) {
+                        continue;
+                    }
+
+                    $constraint_name = (string)($constraint_row['conname'] ?? '');
+                    if ($constraint_name === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $constraint_name)) {
+                        continue;
+                    }
+                    $quoted_constraint_name = '"' . str_replace('"', '""', $constraint_name) . '"';
+                    $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos DROP CONSTRAINT IF EXISTS " . $quoted_constraint_name);
+                }
+
+                $pdo->exec("
+                    ALTER TABLE IF EXISTS eventos_links_publicos
+                    ADD CONSTRAINT eventos_links_publicos_link_type_check
+                    CHECK (link_type IN ('cliente_dj', 'cliente_observacoes', 'link_publico_visualizacao'))
+                ");
+            }
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
         }
     } catch (Throwable $e) {
@@ -1438,11 +1486,14 @@ function eventos_reuniao_salvar_secao(
     int $user_id,
     string $note = '',
     string $author_type = 'interno',
-    ?string $form_schema_json = null
+    ?string $form_schema_json = null,
+    ?bool $legacy_text_portal_visible = null
 ): array {
     try {
         $prev_html = '';
         $prev_schema = null;
+        $has_form_schema_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'form_schema_json');
+        $has_legacy_visibility_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'legacy_text_portal_visible');
 
         $pdo->beginTransaction();
         
@@ -1457,6 +1508,8 @@ function eventos_reuniao_salvar_secao(
         
         if (!$secao) {
             // Criar seção se não existir
+            $insert_columns = ['meeting_id', 'section', 'content_html', 'content_text'];
+            $insert_values = [':meeting_id', ':section', ':html', ':text'];
             $params = [
                 ':meeting_id' => $meeting_id,
                 ':section' => $section,
@@ -1464,22 +1517,31 @@ function eventos_reuniao_salvar_secao(
                 ':text' => strip_tags($content_html),
                 ':user_id' => $user_id,
             ];
-            if ($form_schema_json !== null && eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'form_schema_json')) {
-                $stmt = $pdo->prepare("
-                    INSERT INTO eventos_reunioes_secoes
-                    (meeting_id, section, content_html, content_text, form_schema_json, created_at, updated_at, updated_by)
-                    VALUES (:meeting_id, :section, :html, :text, CAST(:form_schema_json AS jsonb), NOW(), NOW(), :user_id)
-                    RETURNING *
-                ");
+
+            if ($form_schema_json !== null && $has_form_schema_col) {
+                $insert_columns[] = 'form_schema_json';
+                $insert_values[] = 'CAST(:form_schema_json AS jsonb)';
                 $params[':form_schema_json'] = $form_schema_json;
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO eventos_reunioes_secoes
-                    (meeting_id, section, content_html, content_text, created_at, updated_at, updated_by)
-                    VALUES (:meeting_id, :section, :html, :text, NOW(), NOW(), :user_id)
-                    RETURNING *
-                ");
             }
+            if ($legacy_text_portal_visible !== null && $has_legacy_visibility_col) {
+                $insert_columns[] = 'legacy_text_portal_visible';
+                $insert_values[] = ':legacy_text_portal_visible';
+                $params[':legacy_text_portal_visible'] = $legacy_text_portal_visible ? 1 : 0;
+            }
+
+            $insert_columns[] = 'created_at';
+            $insert_columns[] = 'updated_at';
+            $insert_columns[] = 'updated_by';
+            $insert_values[] = 'NOW()';
+            $insert_values[] = 'NOW()';
+            $insert_values[] = ':user_id';
+
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_reunioes_secoes
+                (" . implode(', ', $insert_columns) . ")
+                VALUES (" . implode(', ', $insert_values) . ")
+                RETURNING *
+            ");
             $stmt->execute($params);
             $secao = $stmt->fetch(PDO::FETCH_ASSOC);
         } else {
@@ -1494,9 +1556,13 @@ function eventos_reuniao_salvar_secao(
                 ':text' => strip_tags($content_html),
                 ':user_id' => $user_id,
             ];
-            if ($form_schema_json !== null && eventos_reuniao_has_column($pdo, 'eventos_reunioes_secoes', 'form_schema_json')) {
+            if ($form_schema_json !== null && $has_form_schema_col) {
                 $sql .= ", form_schema_json = CAST(:form_schema_json AS jsonb)";
                 $params[':form_schema_json'] = $form_schema_json;
+            }
+            if ($legacy_text_portal_visible !== null && $has_legacy_visibility_col) {
+                $sql .= ", legacy_text_portal_visible = :legacy_text_portal_visible";
+                $params[':legacy_text_portal_visible'] = $legacy_text_portal_visible ? 1 : 0;
             }
             $sql .= " WHERE id = :id";
             $stmt = $pdo->prepare($sql);

@@ -393,6 +393,8 @@ $public_pages = [
   'eventos_cliente_arquivos',
   // Galeria pública para clientes
   'eventos_galeria_public',
+  // Proxy público de imagem da reunião final (usado em portais externos)
+  'eventos_ver_imagem',
 ];
 $is_public_page = in_array($page, $public_pages);
 

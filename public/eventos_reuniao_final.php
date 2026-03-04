@@ -126,13 +126,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $content = $_POST['content_html'] ?? '';
             $note = $_POST['note'] ?? '';
             $form_schema_json = $_POST['form_schema_json'] ?? null;
+            $legacy_text_portal_visible = null;
+            if (array_key_exists('legacy_text_portal_visible', $_POST)) {
+                $legacy_text_portal_visible = ((string)($_POST['legacy_text_portal_visible'] ?? '0') === '1');
+            }
             
             if ($meeting_id <= 0 || !$section) {
                 echo json_encode(['ok' => false, 'error' => 'Dados inválidos']);
                 exit;
             }
             
-            $result = eventos_reuniao_salvar_secao($pdo, $meeting_id, $section, $content, $user_id, $note, 'interno', $form_schema_json);
+            $result = eventos_reuniao_salvar_secao(
+                $pdo,
+                $meeting_id,
+                $section,
+                $content,
+                $user_id,
+                $note,
+                'interno',
+                $form_schema_json,
+                $legacy_text_portal_visible
+            );
             echo json_encode($result);
             exit;
 
@@ -1386,6 +1400,23 @@ includeSidebar($sidebar_title);
         margin-top: 0.75rem;
     }
 
+    .legacy-portal-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .legacy-portal-option label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: #334155;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
     .section-form-fields {
         display: flex;
         flex-direction: column;
@@ -1863,6 +1894,10 @@ includeSidebar($sidebar_title);
             $secao = $secoes[$key] ?? null;
             $content = $secao['content_html'] ?? '';
             $is_locked = $secao && !empty($secao['is_locked']);
+            $legacy_text_portal_visible = true;
+            if (is_array($secao) && array_key_exists('legacy_text_portal_visible', $secao)) {
+                $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
+            }
             if ($key === 'dj_protocolo') {
                 $is_locked = false;
             }
@@ -1964,6 +1999,17 @@ includeSidebar($sidebar_title);
                 <div>
                     <strong>Texto livre (opcional)</strong>
                     <div class="builder-field-meta">Mantido para observações extras. Clique para abrir/fechar.</div>
+                </div>
+                <div class="legacy-portal-option">
+                    <label for="legacyPortalVisible-<?= $key ?>">
+                        <input
+                            type="checkbox"
+                            id="legacyPortalVisible-<?= $key ?>"
+                            <?= $legacy_text_portal_visible ? 'checked' : '' ?>
+                            <?= ($is_locked || $readonly_mode) ? 'disabled' : '' ?>
+                        >
+                        Mostrar no portal do cliente
+                    </label>
                 </div>
                 <button type="button" class="btn btn-secondary" id="btnToggleEditor-<?= $key ?>" onclick="toggleLegacyEditor('<?= $key ?>')">Abrir texto</button>
             </div>
@@ -3147,6 +3193,50 @@ function getFieldNoteHtml(field) {
     return fallback !== '' ? `<em>${fallback}</em>` : '';
 }
 
+function isLegacyPortalVisible(section) {
+    const input = document.getElementById(`legacyPortalVisible-${section}`);
+    if (!input) return true;
+    return !!input.checked;
+}
+
+function buildPortalSchemaWithLegacyText(section, schema) {
+    const normalized = normalizeFormSchema(Array.isArray(schema) ? schema : []);
+    if (!isLegacyPortalVisible(section)) {
+        return normalized;
+    }
+
+    const legacyRaw = getEditorContent(section);
+    const legacyHtml = sanitizeRichHtmlForField(String(legacyRaw || '')).trim();
+    if (stripHtmlToText(legacyHtml) === '') {
+        return normalized;
+    }
+
+    const noteId = `legacy_portal_text_${section}`;
+    const dividerId = `${noteId}_divider`;
+    const filtered = normalized.filter((field) => {
+        const fieldId = String(field && field.id ? field.id : '').trim();
+        return fieldId !== noteId && fieldId !== dividerId;
+    });
+
+    filtered.push({
+        id: dividerId,
+        type: 'divider',
+        label: '',
+        required: false,
+        options: [],
+        content_html: ''
+    });
+    filtered.push({
+        id: noteId,
+        type: 'note',
+        label: 'Texto livre',
+        required: false,
+        options: [],
+        content_html: legacyHtml
+    });
+    return filtered;
+}
+
 function buildSchemaHtmlForStorage(schema, title = 'Formulário DJ / Protocolos') {
     if (!Array.isArray(schema) || schema.length === 0) return '';
     let html = `<h2>${escapeHtmlForField(title)}</h2>`;
@@ -3542,12 +3632,13 @@ async function gerarLinkClienteObservacoes(slot = 1) {
         }
 
         const formTitle = String(selected.template.nome || `Observações Gerais - Quadro ${slotIndex}`);
-        const contentHtml = buildSchemaHtmlForStorage(selected.schema, formTitle);
+        const schemaForPortal = buildPortalSchemaWithLegacyText('observacoes_gerais', selected.schema);
+        const contentHtml = buildSchemaHtmlForStorage(schemaForPortal, formTitle);
         const formData = new FormData();
         formData.append('action', 'gerar_link_cliente_observacoes');
         formData.append('meeting_id', String(meetingId));
         formData.append('slot_index', String(slotIndex));
-        formData.append('form_schema_json', JSON.stringify(selected.schema));
+        formData.append('form_schema_json', JSON.stringify(schemaForPortal));
         formData.append('content_html', contentHtml);
         formData.append('form_title', formTitle);
 
@@ -3560,7 +3651,7 @@ async function gerarLinkClienteObservacoes(slot = 1) {
                 token: String(data.link && data.link.token ? data.link.token : ''),
                 slot_index: slotIndex,
                 form_title: formTitle,
-                form_schema: selected.schema,
+                form_schema: schemaForPortal,
                 submitted_at: data.link && data.link.submitted_at ? String(data.link.submitted_at) : null
             };
             if (!data.created) {
@@ -4236,6 +4327,10 @@ async function salvarSecao(section) {
         if (formSchemaJson !== null) {
             formData.append('form_schema_json', formSchemaJson);
         }
+        const legacyPortalInput = document.getElementById(`legacyPortalVisible-${section}`);
+        if (legacyPortalInput) {
+            formData.append('legacy_text_portal_visible', legacyPortalInput.checked ? '1' : '0');
+        }
         
         const resp = await fetch(window.location.href, {
             method: 'POST',
@@ -4306,7 +4401,8 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
         }
 
         const formTitle = String(selected.template.nome || `Formulário DJ / Protocolos - Quadro ${slotIndex}`);
-        const contentHtml = buildSchemaHtmlForStorage(selected.schema, formTitle);
+        const schemaForPortal = buildPortalSchemaWithLegacyText('dj_protocolo', selected.schema);
+        const contentHtml = buildSchemaHtmlForStorage(schemaForPortal, formTitle);
 
         const formData = new FormData();
         formData.append('action', 'atualizar_dj_slot_portal_config');
@@ -4314,7 +4410,7 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
         formData.append('slot_index', String(slotIndex));
         formData.append('portal_visible', portalVisible ? '1' : '0');
         formData.append('portal_editable', portalEditable ? '1' : '0');
-        formData.append('form_schema_json', JSON.stringify(selected.schema));
+        formData.append('form_schema_json', JSON.stringify(schemaForPortal));
         formData.append('content_html', contentHtml);
         formData.append('form_title', formTitle);
         djPortalSaveInFlight[slotIndex] = true;
@@ -4335,7 +4431,7 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
                         is_active: !('is_active' in link) ? true : !!link.is_active,
                         slot_index: Number(link.slot_index || slotIndex),
                         form_title: String(link.form_title || formTitle),
-                        form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : selected.schema,
+                        form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : schemaForPortal,
                         submitted_at: link.submitted_at ? String(link.submitted_at) : null,
                         portal_visible: !!link.portal_visible,
                         portal_editable: !!link.portal_editable,

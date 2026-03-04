@@ -585,6 +585,19 @@ if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
     $decoded = json_decode((string)$secao['form_schema_json'], true);
     $form_schema = eventos_cliente_normalizar_schema($decoded);
 }
+$legacy_text_portal_visible = true;
+if (is_array($secao) && array_key_exists('legacy_text_portal_visible', $secao)) {
+    $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
+}
+if (!empty($form_schema) && !$legacy_text_portal_visible) {
+    $form_schema = array_values(array_filter($form_schema, static function ($field): bool {
+        $field_id = trim((string)($field['id'] ?? ''));
+        return strpos($field_id, 'legacy_portal_text_') !== 0;
+    }));
+}
+if (empty($form_schema) && !$legacy_text_portal_visible) {
+    $content = '';
+}
 $form_values = eventos_cliente_extract_payload_from_html($content);
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));

@@ -162,7 +162,8 @@ return [
     'eventos_calendario' => 'perm_eventos',
     'eventos_fornecedores' => 'perm_eventos',
     'eventos_pdf' => 'perm_eventos',
-    'eventos_ver_imagem' => 'perm_eventos',
+    // Endpoint de imagem também usado por portais públicos.
+    'eventos_ver_imagem' => null,
     // Portais públicos de fornecedores não precisam de permissão interna
     'portal_dj_login' => null,
     'portal_dj' => null,

@@ -2,19 +2,8 @@
 /**
  * Proxy: exibir imagem do Magalu (Reunião Final). Uso: ?page=eventos_ver_imagem&key=<base64(key)>
  */
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
-
-if (empty($_SESSION['logado']) || (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin']))) {
-    http_response_code(403);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Acesso negado';
-    exit;
-}
 
 $keyB64 = $_GET['key'] ?? '';
 if ($keyB64 === '') {
