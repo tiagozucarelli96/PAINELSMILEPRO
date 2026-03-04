@@ -368,18 +368,24 @@ try {
 
         $stmt = $pdo->prepare("
             UPDATE vendas_kanban_cards
-            SET concluido = (:concluido = 1),
-                concluido_em = CASE WHEN :concluido = 1 THEN NOW() ELSE NULL END,
-                concluido_por = CASE WHEN :concluido = 1 THEN :usuario_id ELSE NULL END,
+            SET concluido = (CAST(:concluido AS INTEGER) = 1),
+                concluido_em = CASE WHEN CAST(:concluido AS INTEGER) = 1 THEN NOW() ELSE NULL END,
+                concluido_por = CASE
+                    WHEN CAST(:concluido AS INTEGER) = 1 THEN CAST(:usuario_id AS INTEGER)
+                    ELSE NULL::INTEGER
+                END,
                 atualizado_em = NOW()
             WHERE id = :id
             RETURNING id, concluido, concluido_em, concluido_por
         ");
-        $stmt->execute([
-            ':id' => $card_id,
-            ':concluido' => $concluidoInt,
-            ':usuario_id' => $usuario_id > 0 ? $usuario_id : null,
-        ]);
+        $stmt->bindValue(':id', $card_id, PDO::PARAM_INT);
+        $stmt->bindValue(':concluido', $concluidoInt, PDO::PARAM_INT);
+        if ($usuario_id > 0) {
+            $stmt->bindValue(':usuario_id', $usuario_id, PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue(':usuario_id', null, PDO::PARAM_NULL);
+        }
+        $stmt->execute();
         $updated = $stmt->fetch(PDO::FETCH_ASSOC);
 
         echo json_encode([
