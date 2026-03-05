@@ -163,6 +163,24 @@ if ($meeting_id > 0) {
         $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
         if (!empty($portal_result['ok']) && !empty($portal_result['portal'])) {
             $portal = $portal_result['portal'];
+            if (!empty($portal['visivel_reuniao']) || !empty($portal['editavel_reuniao'])) {
+                eventos_cliente_portal_sincronizar_link_reuniao(
+                    $pdo,
+                    $meeting_id,
+                    !empty($portal['visivel_reuniao']),
+                    !empty($portal['editavel_reuniao']),
+                    (int)$user_id
+                );
+            }
+            if (!empty($portal['visivel_dj']) || !empty($portal['editavel_dj'])) {
+                eventos_cliente_portal_sincronizar_link_dj(
+                    $pdo,
+                    $meeting_id,
+                    !empty($portal['visivel_dj']),
+                    !empty($portal['editavel_dj']),
+                    (int)$user_id
+                );
+            }
         }
 
         $links_cliente_dj = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj');

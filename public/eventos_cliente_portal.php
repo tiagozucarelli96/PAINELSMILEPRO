@@ -68,6 +68,40 @@ if ($token === '') {
             $visivel_arquivos = !empty($portal['visivel_arquivos']);
             $editavel_arquivos = !empty($portal['editavel_arquivos']);
 
+            if ($visivel_reuniao || $editavel_reuniao) {
+                try {
+                    $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $visivel_reuniao,
+                        $editavel_reuniao,
+                        0
+                    );
+                    if (empty($sync_reuniao['ok'])) {
+                        error_log('eventos_cliente_portal sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
+                    }
+                } catch (Throwable $e) {
+                    error_log('eventos_cliente_portal sync reuniao exception: ' . $e->getMessage());
+                }
+            }
+
+            if ($visivel_dj || $editavel_dj) {
+                try {
+                    $sync_dj = eventos_cliente_portal_sincronizar_link_dj(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $visivel_dj,
+                        $editavel_dj,
+                        0
+                    );
+                    if (empty($sync_dj['ok'])) {
+                        error_log('eventos_cliente_portal sync dj: ' . (string)($sync_dj['error'] ?? 'erro desconhecido'));
+                    }
+                } catch (Throwable $e) {
+                    error_log('eventos_cliente_portal sync dj exception: ' . $e->getMessage());
+                }
+            }
+
             if ($visivel_dj) {
                 $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
                 $dj_has_slot_rules = false;

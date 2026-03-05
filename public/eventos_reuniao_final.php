@@ -163,6 +163,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
             }
+            if (!empty($result['ok']) && $section === 'dj_protocolo') {
+                $portal_cfg = eventos_cliente_portal_get($pdo, $meeting_id);
+                if (is_array($portal_cfg) && !empty($portal_cfg)) {
+                    $sync_dj = eventos_cliente_portal_sincronizar_link_dj(
+                        $pdo,
+                        $meeting_id,
+                        !empty($portal_cfg['visivel_dj']),
+                        !empty($portal_cfg['editavel_dj']),
+                        (int)$user_id
+                    );
+                    if (empty($sync_dj['ok'])) {
+                        error_log('eventos_reuniao_final salvar_secao sync dj: ' . (string)($sync_dj['error'] ?? 'erro desconhecido'));
+                    }
+                }
+            }
             echo json_encode($result);
             exit;
 

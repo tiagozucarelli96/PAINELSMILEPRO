@@ -43,6 +43,21 @@ if ($token === '') {
             if (!$visivel_dj) {
                 $error = 'A área de DJ/protocolos ainda não está habilitada para este evento.';
             } else {
+                try {
+                    $sync_result = eventos_cliente_portal_sincronizar_link_dj(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $visivel_dj,
+                        $editavel_dj,
+                        0
+                    );
+                    if (empty($sync_result['ok'])) {
+                        error_log('eventos_cliente_dj_portal sync dj: ' . (string)($sync_result['error'] ?? 'erro desconhecido'));
+                    }
+                } catch (Throwable $e) {
+                    error_log('eventos_cliente_dj_portal sync dj exception: ' . $e->getMessage());
+                }
+
                 $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
                 $dj_has_slot_rules = false;
                 foreach ($links_dj as $dj_link_item) {

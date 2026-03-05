@@ -2939,6 +2939,24 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
         }
     }
 
+    // Compatibilidade: se Decoração ainda estiver vazia, reaproveita o que já existir em Observações Gerais.
+    if ($schema_snapshot === null && $content_snapshot === null) {
+        $secao_observacoes = eventos_reuniao_get_secao($pdo, $meeting_id, 'observacoes_gerais');
+        if (is_array($secao_observacoes) && !empty($secao_observacoes)) {
+            $schema_raw = json_decode((string)($secao_observacoes['form_schema_json'] ?? '[]'), true);
+            if (is_array($schema_raw) && !empty($schema_raw)) {
+                $schema_snapshot = $schema_raw;
+            }
+            $content_raw = trim((string)($secao_observacoes['content_html'] ?? ''));
+            if ($content_raw !== '') {
+                $content_snapshot = $content_raw;
+            }
+            if ($schema_snapshot !== null || $content_snapshot !== null) {
+                $form_title = 'Reunião Final - Observações Gerais';
+            }
+        }
+    }
+
     $result = eventos_reuniao_atualizar_slot_portal_config(
         $pdo,
         $meeting_id,
@@ -2961,6 +2979,64 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
             return ['ok' => true, 'link' => null, 'warning' => $error_text];
         }
         return ['ok' => false, 'error' => $error_text !== '' ? $error_text : 'Falha ao sincronizar link da reunião'];
+    }
+
+    return ['ok' => true, 'link' => $result['link'] ?? null];
+}
+
+/**
+ * Sincroniza o link público de DJ/Protocolos com a configuração do portal.
+ * Gera/atualiza um link base (quadro 1) para cobrir o caso de texto livre sem quadros.
+ */
+function eventos_cliente_portal_sincronizar_link_dj(
+    PDO $pdo,
+    int $meeting_id,
+    bool $visivel_dj,
+    bool $editavel_dj,
+    int $user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $schema_snapshot = null;
+    $content_snapshot = null;
+    $form_title = 'DJ / Protocolos';
+
+    $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+    if (is_array($secao_dj) && !empty($secao_dj)) {
+        $schema_raw = json_decode((string)($secao_dj['form_schema_json'] ?? '[]'), true);
+        if (is_array($schema_raw) && !empty($schema_raw)) {
+            $schema_snapshot = $schema_raw;
+        }
+        $content_raw = trim((string)($secao_dj['content_html'] ?? ''));
+        if ($content_raw !== '') {
+            $content_snapshot = $content_raw;
+        }
+    }
+
+    $result = eventos_reuniao_atualizar_slot_portal_config(
+        $pdo,
+        $meeting_id,
+        1,
+        'cliente_dj',
+        $visivel_dj,
+        $editavel_dj,
+        $user_id,
+        $schema_snapshot,
+        $content_snapshot,
+        $form_title,
+        'dj_protocolo'
+    );
+
+    if (empty($result['ok'])) {
+        $error_text = (string)($result['error'] ?? '');
+        $is_empty_section = stripos($error_text, 'Salve o formulário da seção') !== false;
+        if ($is_empty_section) {
+            return ['ok' => true, 'link' => null, 'warning' => $error_text];
+        }
+        return ['ok' => false, 'error' => $error_text !== '' ? $error_text : 'Falha ao sincronizar link de DJ'];
     }
 
     return ['ok' => true, 'link' => $result['link'] ?? null];
@@ -3078,6 +3154,17 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
         );
         if (empty($sync_reuniao['ok'])) {
             error_log('eventos_cliente_portal_atualizar_config sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
+        }
+
+        $sync_dj = eventos_cliente_portal_sincronizar_link_dj(
+            $pdo,
+            $meeting_id,
+            $visivel_dj,
+            $editavel_dj,
+            $user_id
+        );
+        if (empty($sync_dj['ok'])) {
+            error_log('eventos_cliente_portal_atualizar_config sync dj: ' . (string)($sync_dj['error'] ?? 'erro desconhecido'));
         }
 
         return ['ok' => true, 'portal' => $portal];
