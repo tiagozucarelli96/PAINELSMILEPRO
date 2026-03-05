@@ -30,6 +30,7 @@ function aj_format_bytes(?int $bytes): string
     $units = ['B', 'KB', 'MB', 'GB', 'TB'];
     $size = (float)$bytes;
     $index = 0;
+
     while ($size >= 1024 && $index < count($units) - 1) {
         $size /= 1024;
         $index++;
@@ -120,9 +121,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $stmtInsert = $pdo->prepare(
                 'INSERT INTO administrativo_juridico_arquivos
-                (pasta_id, titulo, descricao, arquivo_nome, arquivo_url, chave_storage, mime_type, tamanho_bytes, criado_por_usuario_id)
-                VALUES
-                (:pasta_id, :titulo, :descricao, :arquivo_nome, :arquivo_url, :chave_storage, :mime_type, :tamanho_bytes, :criado_por)'
+                 (pasta_id, titulo, descricao, arquivo_nome, arquivo_url, chave_storage, mime_type, tamanho_bytes, criado_por_usuario_id)
+                 VALUES
+                 (:pasta_id, :titulo, :descricao, :arquivo_nome, :arquivo_url, :chave_storage, :mime_type, :tamanho_bytes, :criado_por)'
             );
 
             $stmtInsert->execute([
@@ -137,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':criado_por' => aj_usuario_logado_id() ?: null,
             ]);
 
-            $mensagem = 'Arquivo adicionado com sucesso na pasta "' . ($pasta['nome'] ?? '') . '".';
+            $mensagem = 'Arquivo adicionado com sucesso na pasta "' . ((string)($pasta['nome'] ?? '')) . '".';
         }
 
         if ($acao === 'cadastrar_usuario') {
@@ -185,6 +186,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $mensagem = 'Usuário jurídico cadastrado com sucesso.';
+        }
+
+        if ($acao === 'atualizar_usuario') {
+            $usuarioId = (int)($_POST['usuario_id'] ?? 0);
+            $nomeUsuario = trim((string)($_POST['nome_usuario'] ?? ''));
+            $emailUsuario = trim((string)($_POST['email_usuario'] ?? ''));
+            $senhaNova = (string)($_POST['senha_usuario_nova'] ?? '');
+            $senhaNovaConfirmacao = (string)($_POST['senha_usuario_nova_confirmacao'] ?? '');
+
+            if ($usuarioId <= 0) {
+                throw new Exception('Usuário jurídico inválido para atualização.');
+            }
+
+            if ($nomeUsuario === '') {
+                throw new Exception('Informe o nome do usuário jurídico.');
+            }
+
+            if ($emailUsuario !== '' && !filter_var($emailUsuario, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('Informe um e-mail válido ou deixe em branco.');
+            }
+
+            $stmtAtual = $pdo->prepare('SELECT id FROM administrativo_juridico_usuarios WHERE id = :id LIMIT 1');
+            $stmtAtual->execute([':id' => $usuarioId]);
+            if (!$stmtAtual->fetchColumn()) {
+                throw new Exception('Usuário jurídico não encontrado.');
+            }
+
+            $stmtNome = $pdo->prepare('SELECT id FROM administrativo_juridico_usuarios WHERE LOWER(nome) = LOWER(:nome) AND id <> :id LIMIT 1');
+            $stmtNome->execute([
+                ':nome' => $nomeUsuario,
+                ':id' => $usuarioId,
+            ]);
+            if ($stmtNome->fetchColumn()) {
+                throw new Exception('Já existe outro usuário jurídico com esse nome.');
+            }
+
+            $params = [
+                ':id' => $usuarioId,
+                ':nome' => $nomeUsuario,
+                ':email' => $emailUsuario !== '' ? $emailUsuario : null,
+            ];
+
+            $sqlUpdate = 'UPDATE administrativo_juridico_usuarios
+                          SET nome = :nome,
+                              email = :email,
+                              atualizado_em = NOW()';
+
+            if ($senhaNova !== '') {
+                if (strlen($senhaNova) < 6) {
+                    throw new Exception('A nova senha precisa ter no mínimo 6 caracteres.');
+                }
+                if ($senhaNova !== $senhaNovaConfirmacao) {
+                    throw new Exception('A confirmação da nova senha não confere.');
+                }
+
+                $senhaHash = password_hash($senhaNova, PASSWORD_DEFAULT);
+                if ($senhaHash === false) {
+                    throw new Exception('Não foi possível gerar a nova senha segura.');
+                }
+
+                $sqlUpdate .= ', senha_hash = :senha_hash';
+                $params[':senha_hash'] = $senhaHash;
+            }
+
+            $sqlUpdate .= ' WHERE id = :id';
+
+            $stmtUpdate = $pdo->prepare($sqlUpdate);
+            $stmtUpdate->execute($params);
+
+            $mensagem = 'Usuário jurídico atualizado com sucesso.';
         }
     } catch (Exception $e) {
         $erro = $e->getMessage();
@@ -247,81 +318,292 @@ if ($baseUrl === '') {
     $juridicoLoginLink = 'index.php?page=juridico_login';
 }
 
+$totalPastas = count($pastas);
+$totalArquivos = count($arquivos);
+$totalUsuarios = count($usuariosJuridico);
+
 ob_start();
 ?>
 <style>
-    .aj-container { max-width: 1320px; margin: 0 auto; padding: 1.5rem; }
+    .aj-container { max-width: 1380px; margin: 0 auto; padding: 1.35rem; }
     .aj-title { margin: 0; font-size: 2rem; color: #1e3a8a; font-weight: 800; }
-    .aj-subtitle { margin: .45rem 0 1.25rem; color: #64748b; }
-    .aj-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; margin-bottom: 1.1rem; }
+    .aj-subtitle { margin: .4rem 0 1.1rem; color: #64748b; }
+
+    .aj-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; margin-bottom: .95rem; }
     .aj-btn {
-        border: 0; border-radius: 10px; padding: .64rem 1rem; font-weight: 700; cursor: pointer;
-        background: #1d4ed8; color: #fff; text-decoration: none; display: inline-flex; align-items: center; gap: .45rem;
+        border: 0;
+        border-radius: 10px;
+        padding: .64rem 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        background: #1d4ed8;
+        color: #fff;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
     }
     .aj-btn:hover { background: #1e40af; }
     .aj-btn.secondary { background: #0f766e; }
     .aj-btn.secondary:hover { background: #115e59; }
     .aj-btn.dark { background: #334155; }
     .aj-btn.dark:hover { background: #1e293b; }
-    .aj-alert { border-radius: 10px; padding: .85rem 1rem; margin-bottom: 1rem; font-weight: 600; }
+
+    .aj-alert { border-radius: 10px; padding: .84rem 1rem; margin-bottom: .95rem; font-weight: 600; }
     .aj-alert.ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
     .aj-alert.err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-    .aj-folder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: .95rem; }
+
+    .aj-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: .7rem;
+        margin-bottom: .95rem;
+    }
+    .aj-stat {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: .78rem .85rem;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+    }
+    .aj-stat-label { color: #64748b; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
+    .aj-stat-value { margin-top: .22rem; color: #0f172a; font-size: 1.25rem; font-weight: 800; }
+
+    .aj-section {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        box-shadow: 0 3px 12px rgba(15, 23, 42, .06);
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .aj-section h2 { margin: 0 0 .8rem; color: #0f172a; font-size: 1.12rem; }
+
+    .aj-folder-grid {
+        display: flex;
+        flex-direction: column;
+        gap: .8rem;
+    }
     .aj-folder-card {
-        background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 3px 12px rgba(15, 23, 42, .06);
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        background: #fcfdff;
+        padding: .9rem;
+    }
+    .aj-folder-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: .7rem;
+        margin-bottom: .48rem;
+    }
+    .aj-folder-title { margin: 0; color: #0f172a; font-size: 1.06rem; }
+    .aj-folder-count {
+        background: #dbeafe;
+        color: #1d4ed8;
+        border-radius: 999px;
+        font-size: .74rem;
+        font-weight: 700;
+        padding: .24rem .56rem;
+        white-space: nowrap;
+    }
+    .aj-folder-desc {
+        color: #475569;
+        font-size: .88rem;
+        margin-bottom: .72rem;
+        line-height: 1.38;
+    }
+
+    .aj-file-list {
+        display: flex;
+        flex-direction: column;
+        gap: .55rem;
+    }
+    .aj-file-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: #fff;
+        padding: .72rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: .7rem;
+        align-items: center;
+    }
+    .aj-file-main { min-width: 0; }
+    .aj-file-title {
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: .18rem;
+        line-height: 1.3;
+        word-break: break-word;
+    }
+    .aj-file-meta {
+        color: #64748b;
+        font-size: .82rem;
+        line-height: 1.3;
+        word-break: break-word;
+    }
+    .aj-file-desc {
+        margin-top: .3rem;
+        color: #334155;
+        font-size: .84rem;
+        line-height: 1.35;
+        word-break: break-word;
+    }
+    .aj-file-side {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: .42rem;
+        text-align: right;
+    }
+    .aj-file-date {
+        font-size: .78rem;
+        color: #64748b;
+        line-height: 1.3;
+    }
+    .aj-link-btn {
+        border-radius: 8px;
+        background: #e8efff;
+        color: #1d4ed8;
+        text-decoration: none;
+        font-size: .8rem;
+        font-weight: 800;
+        padding: .38rem .62rem;
+    }
+    .aj-link-btn:hover { background: #dbeafe; }
+
+    .aj-empty {
+        background: #f8fafc;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        padding: .9rem;
+        color: #64748b;
+        font-size: .9rem;
+    }
+
+    .aj-users-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+        gap: .68rem;
+    }
+    .aj-user-item {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: .75rem;
+        background: #f8fafc;
+    }
+    .aj-user-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: .6rem;
+        margin-bottom: .35rem;
+    }
+    .aj-user-name { font-weight: 800; color: #0f172a; line-height: 1.2; }
+    .aj-user-meta { font-size: .8rem; color: #475569; line-height: 1.3; }
+    .aj-user-edit {
+        border: 0;
+        border-radius: 7px;
+        background: #e2e8f0;
+        color: #0f172a;
+        font-size: .75rem;
+        font-weight: 800;
+        padding: .32rem .55rem;
+        cursor: pointer;
+    }
+    .aj-user-edit:hover { background: #cbd5e1; }
+
+    .aj-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 4200;
+        background: rgba(2, 6, 23, .58);
         padding: 1rem;
     }
-    .aj-folder-head { display: flex; justify-content: space-between; gap: .65rem; align-items: flex-start; margin-bottom: .55rem; }
-    .aj-folder-title { margin: 0; color: #0f172a; font-size: 1.06rem; }
-    .aj-folder-count { background: #e0e7ff; color: #1d4ed8; border-radius: 999px; font-size: .74rem; font-weight: 700; padding: .25rem .55rem; }
-    .aj-folder-desc { color: #475569; font-size: .88rem; margin-bottom: .7rem; }
-    .aj-files-table-wrap { overflow-x: auto; }
-    .aj-files-table { width: 100%; border-collapse: collapse; min-width: 460px; }
-    .aj-files-table th, .aj-files-table td { border-bottom: 1px solid #e2e8f0; text-align: left; padding: .55rem .45rem; vertical-align: top; }
-    .aj-files-table th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: #334155; background: #f8fafc; }
-    .aj-file-title { font-weight: 700; color: #0f172a; }
-    .aj-file-meta { color: #64748b; font-size: .78rem; margin-top: .2rem; }
-    .aj-link { color: #1d4ed8; text-decoration: none; font-weight: 700; }
-    .aj-link:hover { text-decoration: underline; }
-    .aj-empty {
-        background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: .9rem;
-        color: #64748b; font-size: .9rem;
-    }
-
-    .aj-users-card { margin-top: 1.1rem; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem; }
-    .aj-users-card h2 { margin: 0 0 .75rem 0; font-size: 1.05rem; color: #0f172a; }
-    .aj-users-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: .65rem; }
-    .aj-user-item { border: 1px solid #e2e8f0; border-radius: 10px; padding: .7rem; background: #f8fafc; }
-    .aj-user-name { font-weight: 700; color: #0f172a; margin-bottom: .2rem; }
-    .aj-user-meta { font-size: .8rem; color: #475569; }
-
-    .aj-modal { display: none; position: fixed; inset: 0; z-index: 4200; background: rgba(2, 6, 23, .58); padding: 1rem; }
     .aj-modal.open { display: flex; align-items: center; justify-content: center; }
-    .aj-modal-dialog { width: 100%; max-width: 640px; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 40px rgba(2, 6, 23, .35); }
-    .aj-modal-header { background: #1d4ed8; color: #fff; padding: .95rem 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .aj-modal-dialog {
+        width: 100%;
+        max-width: 640px;
+        background: #fff;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(2, 6, 23, .35);
+    }
+    .aj-modal-header {
+        background: #1d4ed8;
+        color: #fff;
+        padding: .95rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
     .aj-modal-header h3 { margin: 0; font-size: 1rem; }
-    .aj-modal-close { background: transparent; border: 0; color: #fff; font-size: 1.25rem; cursor: pointer; }
+    .aj-modal-close {
+        background: transparent;
+        border: 0;
+        color: #fff;
+        font-size: 1.25rem;
+        cursor: pointer;
+    }
     .aj-modal-body { padding: 1rem; }
     .aj-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
     .aj-field { display: flex; flex-direction: column; }
-    .aj-field label { margin-bottom: .34rem; font-weight: 600; color: #334155; font-size: .88rem; }
-    .aj-field input, .aj-field textarea, .aj-field select {
-        width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: .62rem .7rem; font-size: .92rem;
+    .aj-field label {
+        margin-bottom: .34rem;
+        font-weight: 600;
+        color: #334155;
+        font-size: .88rem;
+    }
+    .aj-field input,
+    .aj-field textarea,
+    .aj-field select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: .62rem .7rem;
+        font-size: .92rem;
     }
     .aj-field textarea { min-height: 92px; resize: vertical; }
+    .aj-help {
+        margin-top: .3rem;
+        color: #64748b;
+        font-size: .76rem;
+        line-height: 1.3;
+    }
     .aj-modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: .9rem; }
     .aj-btn-outline {
-        border: 1px solid #cbd5e1; border-radius: 9px; padding: .6rem .9rem; background: #fff;
-        color: #0f172a; font-weight: 700; cursor: pointer;
+        border: 1px solid #cbd5e1;
+        border-radius: 9px;
+        padding: .6rem .9rem;
+        background: #fff;
+        color: #0f172a;
+        font-weight: 700;
+        cursor: pointer;
     }
 
-    .aj-link-box { margin-top: .9rem; padding: .75rem; border: 1px solid #dbeafe; background: #eff6ff; border-radius: 10px; }
+    .aj-link-box {
+        margin-top: .9rem;
+        padding: .75rem;
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+        border-radius: 10px;
+    }
     .aj-copy-row { display: flex; gap: .45rem; margin-top: .45rem; }
-    .aj-copy-row input { flex: 1; border: 1px solid #bfdbfe; border-radius: 8px; padding: .58rem .62rem; font-size: .88rem; }
+    .aj-copy-row input {
+        flex: 1;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        padding: .58rem .62rem;
+        font-size: .88rem;
+    }
 
-    @media (max-width: 820px) {
+    @media (max-width: 880px) {
         .aj-grid { grid-template-columns: 1fr; }
-        .aj-title { font-size: 1.6rem; }
+        .aj-title { font-size: 1.62rem; }
+        .aj-file-item { grid-template-columns: 1fr; }
+        .aj-file-side { align-items: flex-start; text-align: left; }
     }
 </style>
 
@@ -343,78 +625,101 @@ ob_start();
         <button type="button" class="aj-btn dark" onclick="openAjModal('modalUsuario')">👤 Usuário</button>
     </div>
 
-    <?php if (empty($pastas)): ?>
-        <div class="aj-empty">Nenhuma pasta criada ainda. Clique em <strong>Criar pasta</strong> para começar a organizar os arquivos.</div>
-    <?php else: ?>
-        <div class="aj-folder-grid">
-            <?php foreach ($pastas as $pasta): ?>
-                <?php $pastaId = (int)($pasta['id'] ?? 0); ?>
-                <?php $arquivosDaPasta = $arquivosPorPasta[$pastaId] ?? []; ?>
-                <div class="aj-folder-card">
-                    <div class="aj-folder-head">
-                        <h2 class="aj-folder-title">📁 <?= htmlspecialchars((string)($pasta['nome'] ?? 'Pasta')) ?></h2>
-                        <span class="aj-folder-count"><?= count($arquivosDaPasta) ?> arquivo(s)</span>
-                    </div>
-
-                    <?php if (!empty($pasta['descricao'])): ?>
-                        <div class="aj-folder-desc"><?= nl2br(htmlspecialchars((string)$pasta['descricao'])) ?></div>
-                    <?php endif; ?>
-
-                    <?php if (empty($arquivosDaPasta)): ?>
-                        <div class="aj-empty">Sem arquivos nesta pasta.</div>
-                    <?php else: ?>
-                        <div class="aj-files-table-wrap">
-                            <table class="aj-files-table">
-                                <thead>
-                                    <tr>
-                                        <th>Arquivo</th>
-                                        <th>Descrição</th>
-                                        <th>Data</th>
-                                        <th>Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($arquivosDaPasta as $arquivo): ?>
-                                        <tr>
-                                            <td>
-                                                <div class="aj-file-title"><?= htmlspecialchars((string)($arquivo['titulo'] ?? 'Documento')) ?></div>
-                                                <div class="aj-file-meta"><?= htmlspecialchars((string)($arquivo['arquivo_nome'] ?? '')) ?> • <?= htmlspecialchars(aj_format_bytes(isset($arquivo['tamanho_bytes']) ? (int)$arquivo['tamanho_bytes'] : null)) ?></div>
-                                            </td>
-                                            <td>
-                                                <?php if (!empty($arquivo['descricao'])): ?>
-                                                    <?= nl2br(htmlspecialchars((string)$arquivo['descricao'])) ?>
-                                                <?php else: ?>
-                                                    <span class="aj-file-meta">Sem descrição</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <?= !empty($arquivo['criado_em']) ? date('d/m/Y H:i', strtotime((string)$arquivo['criado_em'])) : '-' ?><br>
-                                                <span class="aj-file-meta">por <?= htmlspecialchars((string)($arquivo['criado_por_nome'] ?? 'sistema')) ?></span>
-                                            </td>
-                                            <td>
-                                                <a class="aj-link" href="juridico_download.php?id=<?= (int)($arquivo['id'] ?? 0) ?>" target="_blank" rel="noopener">Abrir</a>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            <?php endforeach; ?>
+    <div class="aj-stats">
+        <div class="aj-stat">
+            <div class="aj-stat-label">Pastas</div>
+            <div class="aj-stat-value"><?= (int)$totalPastas ?></div>
         </div>
-    <?php endif; ?>
+        <div class="aj-stat">
+            <div class="aj-stat-label">Arquivos</div>
+            <div class="aj-stat-value"><?= (int)$totalArquivos ?></div>
+        </div>
+        <div class="aj-stat">
+            <div class="aj-stat-label">Usuários Jurídicos</div>
+            <div class="aj-stat-value"><?= (int)$totalUsuarios ?></div>
+        </div>
+    </div>
 
-    <div class="aj-users-card">
+    <div class="aj-section">
+        <h2>Pastas e arquivos</h2>
+
+        <?php if (empty($pastas)): ?>
+            <div class="aj-empty">Nenhuma pasta criada ainda. Clique em <strong>Criar pasta</strong> para começar a organizar os arquivos.</div>
+        <?php else: ?>
+            <div class="aj-folder-grid">
+                <?php foreach ($pastas as $pasta): ?>
+                    <?php $pastaId = (int)($pasta['id'] ?? 0); ?>
+                    <?php $arquivosDaPasta = $arquivosPorPasta[$pastaId] ?? []; ?>
+                    <div class="aj-folder-card">
+                        <div class="aj-folder-head">
+                            <h3 class="aj-folder-title">📁 <?= htmlspecialchars((string)($pasta['nome'] ?? 'Pasta')) ?></h3>
+                            <span class="aj-folder-count"><?= count($arquivosDaPasta) ?> arquivo(s)</span>
+                        </div>
+
+                        <?php if (!empty($pasta['descricao'])): ?>
+                            <div class="aj-folder-desc"><?= nl2br(htmlspecialchars((string)$pasta['descricao'])) ?></div>
+                        <?php endif; ?>
+
+                        <?php if (empty($arquivosDaPasta)): ?>
+                            <div class="aj-empty">Sem arquivos nesta pasta.</div>
+                        <?php else: ?>
+                            <div class="aj-file-list">
+                                <?php foreach ($arquivosDaPasta as $arquivo): ?>
+                                    <div class="aj-file-item">
+                                        <div class="aj-file-main">
+                                            <div class="aj-file-title"><?= htmlspecialchars((string)($arquivo['titulo'] ?? 'Documento')) ?></div>
+                                            <div class="aj-file-meta">
+                                                <?= htmlspecialchars((string)($arquivo['arquivo_nome'] ?? '')) ?>
+                                                • <?= htmlspecialchars(aj_format_bytes(isset($arquivo['tamanho_bytes']) ? (int)$arquivo['tamanho_bytes'] : null)) ?>
+                                            </div>
+
+                                            <?php if (!empty($arquivo['descricao'])): ?>
+                                                <div class="aj-file-desc"><?= nl2br(htmlspecialchars((string)$arquivo['descricao'])) ?></div>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <div class="aj-file-side">
+                                            <div class="aj-file-date">
+                                                <?= !empty($arquivo['criado_em']) ? date('d/m/Y H:i', strtotime((string)$arquivo['criado_em'])) : '-' ?><br>
+                                                por <?= htmlspecialchars((string)($arquivo['criado_por_nome'] ?? 'sistema')) ?>
+                                            </div>
+                                            <a class="aj-link-btn" href="juridico_download.php?id=<?= (int)($arquivo['id'] ?? 0) ?>" target="_blank" rel="noopener">Abrir arquivo</a>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <div class="aj-section">
         <h2>Usuários jurídicos cadastrados</h2>
         <?php if (empty($usuariosJuridico)): ?>
             <div class="aj-empty">Nenhum usuário jurídico cadastrado.</div>
         <?php else: ?>
             <div class="aj-users-list">
                 <?php foreach ($usuariosJuridico as $user): ?>
+                    <?php
+                    $userId = (int)($user['id'] ?? 0);
+                    $userNome = (string)($user['nome'] ?? '');
+                    $userEmail = (string)($user['email'] ?? '');
+                    ?>
                     <div class="aj-user-item">
-                        <div class="aj-user-name"><?= htmlspecialchars((string)($user['nome'] ?? '')) ?></div>
-                        <div class="aj-user-meta"><?= !empty($user['email']) ? htmlspecialchars((string)$user['email']) : 'Sem e-mail' ?></div>
+                        <div class="aj-user-top">
+                            <div>
+                                <div class="aj-user-name"><?= htmlspecialchars($userNome) ?></div>
+                                <div class="aj-user-meta"><?= $userEmail !== '' ? htmlspecialchars($userEmail) : 'Sem e-mail' ?></div>
+                            </div>
+                            <button
+                                type="button"
+                                class="aj-user-edit"
+                                onclick='openEditUserModal(<?= $userId ?>, <?= json_encode($userNome, JSON_UNESCAPED_UNICODE) ?>, <?= json_encode($userEmail, JSON_UNESCAPED_UNICODE) ?>)'>
+                                Editar
+                            </button>
+                        </div>
                         <div class="aj-user-meta">Criado em: <?= !empty($user['criado_em']) ? date('d/m/Y H:i', strtotime((string)$user['criado_em'])) : '-' ?></div>
                     </div>
                 <?php endforeach; ?>
@@ -548,6 +853,49 @@ ob_start();
     </div>
 </div>
 
+<div class="aj-modal" id="modalEditarUsuario" aria-hidden="true">
+    <div class="aj-modal-dialog">
+        <div class="aj-modal-header" style="background:#334155;">
+            <h3>Editar usuário jurídico</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalEditarUsuario')">×</button>
+        </div>
+        <div class="aj-modal-body">
+            <form method="POST">
+                <input type="hidden" name="acao" value="atualizar_usuario">
+                <input type="hidden" name="usuario_id" id="editUsuarioId" value="">
+
+                <div class="aj-grid">
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Nome do usuário *</label>
+                        <input type="text" name="nome_usuario" id="editNomeUsuario" maxlength="120" required>
+                    </div>
+
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>E-mail (opcional)</label>
+                        <input type="email" name="email_usuario" id="editEmailUsuario" maxlength="180" placeholder="Opcional">
+                    </div>
+
+                    <div class="aj-field">
+                        <label>Nova senha (opcional)</label>
+                        <input type="password" name="senha_usuario_nova" minlength="6">
+                        <div class="aj-help">Deixe em branco para manter a senha atual.</div>
+                    </div>
+
+                    <div class="aj-field">
+                        <label>Confirmar nova senha</label>
+                        <input type="password" name="senha_usuario_nova_confirmacao" minlength="6">
+                    </div>
+                </div>
+
+                <div class="aj-modal-actions">
+                    <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalEditarUsuario')">Cancelar</button>
+                    <button type="submit" class="aj-btn dark">Atualizar usuário</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     function openAjModal(id) {
         var modal = document.getElementById(id);
@@ -580,6 +928,18 @@ ob_start();
         });
     });
 
+    function openEditUserModal(id, nome, email) {
+        var inputId = document.getElementById('editUsuarioId');
+        var inputNome = document.getElementById('editNomeUsuario');
+        var inputEmail = document.getElementById('editEmailUsuario');
+
+        if (inputId) inputId.value = id || '';
+        if (inputNome) inputNome.value = nome || '';
+        if (inputEmail) inputEmail.value = email || '';
+
+        openAjModal('modalEditarUsuario');
+    }
+
     function copyJuridicoLink() {
         var input = document.getElementById('juridicoLoginLink');
         if (!input) return;
@@ -589,6 +949,8 @@ ob_start();
             navigator.clipboard.writeText(value).then(function() {
                 if (typeof customAlert === 'function') {
                     customAlert('Link copiado para a área de transferência.', 'Sucesso');
+                } else {
+                    alert('Link copiado com sucesso.');
                 }
             }).catch(function() {
                 input.select();
