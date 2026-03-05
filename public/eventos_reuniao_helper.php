@@ -2154,6 +2154,7 @@ function eventos_reuniao_gerar_link_cliente(
 
     $section = trim(strtolower($section));
     $section_map = [
+        'decoracao' => ['label' => 'Decoração', 'default_link_type' => 'cliente_observacoes'],
         'dj_protocolo' => ['label' => 'DJ/Protocolos', 'default_link_type' => 'cliente_dj'],
         'observacoes_gerais' => ['label' => 'Observações Gerais', 'default_link_type' => 'cliente_observacoes'],
     ];
@@ -2438,6 +2439,10 @@ function eventos_reuniao_atualizar_slot_portal_config(
 
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
     $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $has_allowed_sections_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'allowed_sections');
+    $has_schema_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_schema_json');
+    $has_content_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    $has_form_title_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_title');
     $has_portal_visible_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_visible');
     $has_portal_editable_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_editable');
     $has_portal_configured_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_configured');
@@ -2520,6 +2525,28 @@ function eventos_reuniao_atualizar_slot_portal_config(
     }
     if ($portal_editable && $has_submitted_at_col) {
         $set_parts[] = "submitted_at = NULL";
+    }
+    if ($has_allowed_sections_col && $section !== '') {
+        $set_parts[] = "allowed_sections = CAST(:allowed_sections AS jsonb)";
+        $params[':allowed_sections'] = json_encode([$section], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+    if ($has_schema_col && is_array($schema_snapshot)) {
+        $normalized_schema = eventos_form_template_normalizar_schema($schema_snapshot);
+        $set_parts[] = "form_schema_json = CAST(:form_schema_json AS jsonb)";
+        $params[':form_schema_json'] = json_encode($normalized_schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+    if ($has_content_snapshot_col && $content_html_snapshot !== null) {
+        $set_parts[] = "content_html_snapshot = :content_html_snapshot";
+        $params[':content_html_snapshot'] = trim((string)$content_html_snapshot) !== '' ? (string)$content_html_snapshot : null;
+    }
+    if ($has_form_title_col && $form_title !== null) {
+        $set_parts[] = "form_title = :form_title";
+        $title = trim((string)$form_title);
+        if ($title !== '') {
+            $params[':form_title'] = function_exists('mb_substr') ? mb_substr($title, 0, 160) : substr($title, 0, 160);
+        } else {
+            $params[':form_title'] = null;
+        }
     }
 
     if (!empty($set_parts)) {
@@ -2881,7 +2908,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
 }
 
 /**
- * Sincroniza o link público de Reunião Final (Observações Gerais) com a configuração do portal.
+ * Sincroniza o link público de Reunião Final (Decoração) com a configuração do portal.
  * Garante que, ao habilitar visibilidade/edição da reunião, exista ao menos um link disponível.
  */
 function eventos_cliente_portal_sincronizar_link_reuniao(
@@ -2898,38 +2925,17 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
 
     $schema_snapshot = null;
     $content_snapshot = null;
-    $form_title = 'Reunião Final';
+    $form_title = 'Reunião Final - Decoração';
 
-    $secao_observacoes = eventos_reuniao_get_secao($pdo, $meeting_id, 'observacoes_gerais');
-    if (is_array($secao_observacoes) && !empty($secao_observacoes)) {
-        $schema_raw = json_decode((string)($secao_observacoes['form_schema_json'] ?? '[]'), true);
+    $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
+    if (is_array($secao_decoracao) && !empty($secao_decoracao)) {
+        $schema_raw = json_decode((string)($secao_decoracao['form_schema_json'] ?? '[]'), true);
         if (is_array($schema_raw) && !empty($schema_raw)) {
             $schema_snapshot = $schema_raw;
         }
-        $content_raw = trim((string)($secao_observacoes['content_html'] ?? ''));
+        $content_raw = trim((string)($secao_decoracao['content_html'] ?? ''));
         if ($content_raw !== '') {
             $content_snapshot = $content_raw;
-        }
-        if ($schema_snapshot !== null || $content_snapshot !== null) {
-            $form_title = 'Reunião Final - Observações Gerais';
-        }
-    }
-
-    // Fallback: se Observações Gerais estiver vazio, reaproveita o conteúdo de Decoração.
-    if ($schema_snapshot === null && $content_snapshot === null) {
-        $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
-        if (is_array($secao_decoracao) && !empty($secao_decoracao)) {
-            $schema_raw = json_decode((string)($secao_decoracao['form_schema_json'] ?? '[]'), true);
-            if (is_array($schema_raw) && !empty($schema_raw)) {
-                $schema_snapshot = $schema_raw;
-            }
-            $content_raw = trim((string)($secao_decoracao['content_html'] ?? ''));
-            if ($content_raw !== '') {
-                $content_snapshot = $content_raw;
-            }
-            if ($schema_snapshot !== null || $content_snapshot !== null) {
-                $form_title = 'Reunião Final - Decoração';
-            }
         }
     }
 
@@ -2944,7 +2950,7 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
         $schema_snapshot,
         $content_snapshot,
         $form_title,
-        'observacoes_gerais'
+        'decoracao'
     );
 
     if (empty($result['ok'])) {

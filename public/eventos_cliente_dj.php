@@ -149,7 +149,7 @@ function eventos_cliente_parse_allowed_sections($raw): array {
     $allowed = [];
     foreach ($sections as $section) {
         $normalized = strtolower(trim((string)$section));
-        if (in_array($normalized, ['dj_protocolo', 'observacoes_gerais'], true)) {
+        if (in_array($normalized, ['decoracao', 'dj_protocolo', 'observacoes_gerais'], true)) {
             $allowed[] = $normalized;
         }
     }
@@ -164,14 +164,23 @@ function eventos_cliente_parse_allowed_sections($raw): array {
  */
 function eventos_cliente_resolver_secao_link(array $link): string {
     $link_type = strtolower(trim((string)($link['link_type'] ?? '')));
+    $allowed = eventos_cliente_parse_allowed_sections($link['allowed_sections'] ?? null);
     if ($link_type === 'cliente_observacoes') {
-        return 'observacoes_gerais';
+        if (in_array('decoracao', $allowed, true)) {
+            return 'decoracao';
+        }
+        if (in_array('observacoes_gerais', $allowed, true)) {
+            return 'observacoes_gerais';
+        }
+        return 'decoracao';
     }
     if ($link_type === 'cliente_dj') {
         return 'dj_protocolo';
     }
 
-    $allowed = eventos_cliente_parse_allowed_sections($link['allowed_sections'] ?? null);
+    if (in_array('decoracao', $allowed, true)) {
+        return 'decoracao';
+    }
     if (in_array('observacoes_gerais', $allowed, true)) {
         return 'observacoes_gerais';
     }
@@ -183,6 +192,14 @@ function eventos_cliente_resolver_secao_link(array $link): string {
  */
 function eventos_cliente_get_section_meta(string $section): array {
     $map = [
+        'decoracao' => [
+            'page_title' => 'Reunião Final - Portal do Cliente',
+            'header_title' => '📝 Reunião Final',
+            'form_heading' => '📝 Reunião Final',
+            'default_form_title_prefix' => 'Formulário da Reunião Final - Quadro ',
+            'upload_prefix' => 'cliente_reuniao',
+            'notify_dj' => false,
+        ],
         'dj_protocolo' => [
             'page_title' => 'Organização do Evento - DJ/Músicas',
             'header_title' => '🎧 Organização - DJ / Músicas',
@@ -392,7 +409,7 @@ if (empty($token)) {
         }
 
         if (is_array($portal_config) && !empty($portal_config)) {
-            if ($link_section === 'observacoes_gerais') {
+            if ($link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
                 $link_visivel = !empty($portal_config['visivel_reuniao']);
                 $link_editavel = !empty($portal_config['editavel_reuniao']);
             } else {
@@ -1304,7 +1321,11 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                 <div class="instructions">
                     <strong>Instruções:</strong>
                     <ul>
-                        <?php if ($link_section === 'observacoes_gerais'): ?>
+                        <?php if ($link_section === 'decoracao'): ?>
+                        <li>Preencha os pontos da reunião final com o máximo de clareza.</li>
+                        <li>Use os anexos para enviar referências, documentos ou listas complementares.</li>
+                        <li>Campos obrigatórios devem ser preenchidos antes do envio.</li>
+                        <?php elseif ($link_section === 'observacoes_gerais'): ?>
                         <li>Preencha os pontos e observações gerais com o máximo de clareza.</li>
                         <li>Use os anexos para enviar referências, documentos ou listas complementares.</li>
                         <li>Campos obrigatórios devem ser preenchidos antes do envio.</li>

@@ -147,6 +147,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $form_schema_json,
                 $legacy_text_portal_visible
             );
+
+            if (!empty($result['ok']) && $section === 'decoracao') {
+                $portal_cfg = eventos_cliente_portal_get($pdo, $meeting_id);
+                if (is_array($portal_cfg) && !empty($portal_cfg)) {
+                    $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
+                        $pdo,
+                        $meeting_id,
+                        !empty($portal_cfg['visivel_reuniao']),
+                        !empty($portal_cfg['editavel_reuniao']),
+                        (int)$user_id
+                    );
+                    if (empty($sync_reuniao['ok'])) {
+                        error_log('eventos_reuniao_final salvar_secao sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
+                    }
+                }
+            }
             echo json_encode($result);
             exit;
 
@@ -1929,25 +1945,16 @@ includeSidebar($sidebar_title);
             </div>
             <?php endif; ?>
 
-            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais'): ?>
+            <?php if ($key === 'decoracao'): ?>
             <div class="dj-builder-shell">
                 <div class="dj-builder-head">
                     <div>
                         <h4 class="dj-builder-title">🧩 Formulário interno</h4>
-                        <?php if ($key === 'observacoes_gerais'): ?>
-                        <div class="dj-builder-subtitle">Ao selecionar um formulário, ele aparece abaixo para preenchimento da equipe.</div>
-                        <?php else: ?>
                         <div class="dj-builder-subtitle">Selecione um formulário e preencha os campos diretamente nesta aba.</div>
-                        <?php endif; ?>
                     </div>
                     <div class="dj-top-actions">
                         <?php if (!$readonly_mode): ?>
-                        <?php if ($key === 'decoracao'): ?>
                         <button type="button" class="btn btn-secondary" onclick="aplicarTemplateNaSecao('<?= $key ?>')" <?= $is_locked ? 'disabled' : '' ?>>Carregar formulário</button>
-                        <?php endif; ?>
-                        <?php if ($key === 'observacoes_gerais'): ?>
-                        <button type="button" class="btn btn-primary" onclick="addObservacoesClientSlot()">+ Adicionar formulário (cliente)</button>
-                        <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -1963,13 +1970,6 @@ includeSidebar($sidebar_title);
                     </select>
                 </div>
                 <div class="builder-field-meta" id="sectionTemplateMeta-<?= $key ?>" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
-
-                <?php if ($key === 'observacoes_gerais'): ?>
-                <div style="margin-top:0.85rem;">
-                    <div id="obsSlotsEmptyState" class="dj-builder-empty-state">Nenhum link público criado para o cliente nesta seção.</div>
-                    <div id="obsSlotsContainer" class="dj-slots-stack"></div>
-                </div>
-                <?php endif; ?>
 
                 <div class="builder-preview-box" id="sectionFormBox-<?= $key ?>" style="display:none; margin-top:0.85rem;">
                     <div class="builder-preview-title">Preenchimento interno por formulário</div>
@@ -1994,7 +1994,7 @@ includeSidebar($sidebar_title);
             </div>
             <?php endif; ?>
             
-            <?php if ($key === 'decoracao' || $key === 'observacoes_gerais' || $key === 'dj_protocolo'): ?>
+            <?php if ($key === 'decoracao' || $key === 'dj_protocolo'): ?>
             <div class="legacy-editor-toggle">
                 <div>
                     <strong>Texto livre (opcional)</strong>
@@ -2013,11 +2013,18 @@ includeSidebar($sidebar_title);
                 </div>
                 <button type="button" class="btn btn-secondary" id="btnToggleEditor-<?= $key ?>" onclick="toggleLegacyEditor('<?= $key ?>')">Abrir texto</button>
             </div>
+            <?php elseif ($key === 'observacoes_gerais'): ?>
+            <div class="legacy-editor-toggle">
+                <div>
+                    <strong>Texto livre (opcional)</strong>
+                    <div class="builder-field-meta">Área aberta para observações complementares.</div>
+                </div>
+            </div>
             <?php endif; ?>
 
             <?php
             $editor_wrap_attrs = '';
-            if ($key === 'dj_protocolo' || $key === 'decoracao' || $key === 'observacoes_gerais') {
+            if ($key === 'dj_protocolo' || $key === 'decoracao') {
                 $editor_wrap_attrs = ' style="display:none;"';
             }
             ?>
@@ -4298,7 +4305,7 @@ async function salvarSecao(section) {
     let content = getEditorContent(section);
     let formSchemaJson = null;
 
-    if (section === 'decoracao' || section === 'observacoes_gerais') {
+    if (section === 'decoracao') {
         const normalizedSchema = getSelectedSectionSchema(section);
         if (normalizedSchema.length > 0) {
             syncSectionFormDraft(section);
@@ -4316,6 +4323,9 @@ async function salvarSecao(section) {
             formSchemaJson = JSON.stringify(normalizedSchema);
             lastSavedSectionSchemaSignatures[section] = getSchemaSignature(normalizedSchema);
         }
+    }
+    if (section === 'observacoes_gerais') {
+        formSchemaJson = JSON.stringify([]);
     }
     
     try {
@@ -4339,6 +4349,15 @@ async function salvarSecao(section) {
         const data = await parseJsonResponse(resp, 'o salvamento da seção');
         
         if (data.ok) {
+            if (section === 'dj_protocolo') {
+                const slots = getSortedDjSlots();
+                for (const slot of slots) {
+                    await salvarDjSlotPortalConfig(slot, {
+                        silentSuccess: true,
+                        suppressValidationAlert: true,
+                    });
+                }
+            }
             alert('Salvo com sucesso! Versão #' + data.version);
         } else {
             alert(data.error || 'Erro ao salvar');

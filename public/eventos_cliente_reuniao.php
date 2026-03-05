@@ -66,25 +66,19 @@ if ($token === '') {
                 $error = 'A área de reunião final ainda não está habilitada para este evento.';
             } else {
                 try {
+                    $sync_result = eventos_cliente_portal_sincronizar_link_reuniao(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $visivel_reuniao,
+                        $editavel_reuniao,
+                        0
+                    );
+                    if (empty($sync_result['ok'])) {
+                        error_log('eventos_cliente_reuniao sync reuniao: ' . (string)($sync_result['error'] ?? 'erro desconhecido'));
+                    }
+
                     $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
                     $link_observacoes = eventos_cliente_reuniao_selecionar_link_observacoes($links_observacoes);
-
-                    // Auto-correção: se reunião está visível mas ainda não existe link, tenta criar/sincronizar.
-                    if (!$link_observacoes) {
-                        $sync_result = eventos_cliente_portal_sincronizar_link_reuniao(
-                            $pdo,
-                            (int)$reuniao['id'],
-                            $visivel_reuniao,
-                            $editavel_reuniao,
-                            0
-                        );
-                        if (!empty($sync_result['ok'])) {
-                            $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
-                            $link_observacoes = eventos_cliente_reuniao_selecionar_link_observacoes($links_observacoes);
-                        } else {
-                            error_log('eventos_cliente_reuniao sync reuniao: ' . (string)($sync_result['error'] ?? 'erro desconhecido'));
-                        }
-                    }
                 } catch (Throwable $e) {
                     error_log('eventos_cliente_reuniao load/sync: ' . $e->getMessage());
                     $error = 'Não foi possível carregar o formulário da reunião final neste momento.';

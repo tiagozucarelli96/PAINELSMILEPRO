@@ -760,7 +760,7 @@ includeSidebar('Organização eventos');
     <div class="cards-grid">
         <div class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Mantém as funções atuais com foco em Decoração e Observações Gerais.</p>
+            <p>Área da reunião final com conteúdo principal de Decoração.</p>
             <div class="module-options">
                 <label class="check-row">
                     <input type="checkbox" id="cfgVisivelReuniao" <?= $visivel_reuniao ? 'checked' : '' ?>>
@@ -775,7 +775,7 @@ includeSidebar('Organização eventos');
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=reuniao&origin=organizacao" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
             <div class="helper-note">
-                <?= $has_obs_link ? 'Há link público ativo para Observações Gerais.' : 'Sem link público ativo de Observações Gerais.' ?>
+                <?= $has_obs_link ? 'Há link público ativo para Reunião Final.' : 'Sem link público ativo de Reunião Final.' ?>
             </div>
         </div>
 
