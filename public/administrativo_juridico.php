@@ -318,10 +318,6 @@ if ($baseUrl === '') {
     $juridicoLoginLink = 'index.php?page=juridico_login';
 }
 
-$totalPastas = count($pastas);
-$totalArquivos = count($arquivos);
-$totalUsuarios = count($usuariosJuridico);
-
 ob_start();
 ?>
 <style>
@@ -353,22 +349,6 @@ ob_start();
     .aj-alert.ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
     .aj-alert.err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
-    .aj-stats {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-        gap: .7rem;
-        margin-bottom: .95rem;
-    }
-    .aj-stat {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: .78rem .85rem;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
-    }
-    .aj-stat-label { color: #64748b; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
-    .aj-stat-value { margin-top: .22rem; color: #0f172a; font-size: 1.25rem; font-weight: 800; }
-
     .aj-section {
         background: #fff;
         border: 1px solid #e2e8f0;
@@ -388,14 +368,40 @@ ob_start();
         border: 1px solid #dbe3ef;
         border-radius: 12px;
         background: #fcfdff;
-        padding: .9rem;
+        overflow: hidden;
     }
     .aj-folder-head {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
         gap: .7rem;
-        margin-bottom: .48rem;
+        padding: .78rem .9rem;
+        cursor: pointer;
+        user-select: none;
+        list-style: none;
+    }
+    .aj-folder-head::-webkit-details-marker {
+        display: none;
+    }
+    .aj-folder-left {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        min-width: 0;
+    }
+    .aj-folder-toggle {
+        color: #334155;
+        font-size: .86rem;
+        transition: transform .2s ease;
+        transform-origin: center;
+        line-height: 1;
+    }
+    .aj-folder-card[open] .aj-folder-toggle {
+        transform: rotate(90deg);
+    }
+    .aj-folder-body {
+        padding: 0 .9rem .9rem .9rem;
+        border-top: 1px solid #e2e8f0;
     }
     .aj-folder-title { margin: 0; color: #0f172a; font-size: 1.06rem; }
     .aj-folder-count {
@@ -463,13 +469,17 @@ ob_start();
         line-height: 1.3;
     }
     .aj-link-btn {
+        border: 0;
         border-radius: 8px;
         background: #e8efff;
         color: #1d4ed8;
-        text-decoration: none;
         font-size: .8rem;
         font-weight: 800;
         padding: .38rem .62rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
     }
     .aj-link-btn:hover { background: #dbeafe; }
 
@@ -531,6 +541,9 @@ ob_start();
         overflow: hidden;
         box-shadow: 0 20px 40px rgba(2, 6, 23, .35);
     }
+    .aj-modal-dialog.aj-preview-dialog {
+        max-width: 1100px;
+    }
     .aj-modal-header {
         background: #1d4ed8;
         color: #fff;
@@ -548,6 +561,16 @@ ob_start();
         cursor: pointer;
     }
     .aj-modal-body { padding: 1rem; }
+    .aj-preview-body {
+        padding: 0;
+        background: #0b1220;
+    }
+    .aj-preview-frame {
+        width: 100%;
+        height: min(78vh, 860px);
+        border: 0;
+        background: #fff;
+    }
     .aj-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
     .aj-field { display: flex; flex-direction: column; }
     .aj-field label {
@@ -625,21 +648,6 @@ ob_start();
         <button type="button" class="aj-btn dark" onclick="openAjModal('modalUsuario')">👤 Usuário</button>
     </div>
 
-    <div class="aj-stats">
-        <div class="aj-stat">
-            <div class="aj-stat-label">Pastas</div>
-            <div class="aj-stat-value"><?= (int)$totalPastas ?></div>
-        </div>
-        <div class="aj-stat">
-            <div class="aj-stat-label">Arquivos</div>
-            <div class="aj-stat-value"><?= (int)$totalArquivos ?></div>
-        </div>
-        <div class="aj-stat">
-            <div class="aj-stat-label">Usuários Jurídicos</div>
-            <div class="aj-stat-value"><?= (int)$totalUsuarios ?></div>
-        </div>
-    </div>
-
     <div class="aj-section">
         <h2>Pastas e arquivos</h2>
 
@@ -650,46 +658,56 @@ ob_start();
                 <?php foreach ($pastas as $pasta): ?>
                     <?php $pastaId = (int)($pasta['id'] ?? 0); ?>
                     <?php $arquivosDaPasta = $arquivosPorPasta[$pastaId] ?? []; ?>
-                    <div class="aj-folder-card">
-                        <div class="aj-folder-head">
-                            <h3 class="aj-folder-title">📁 <?= htmlspecialchars((string)($pasta['nome'] ?? 'Pasta')) ?></h3>
-                            <span class="aj-folder-count"><?= count($arquivosDaPasta) ?> arquivo(s)</span>
-                        </div>
-
-                        <?php if (!empty($pasta['descricao'])): ?>
-                            <div class="aj-folder-desc"><?= nl2br(htmlspecialchars((string)$pasta['descricao'])) ?></div>
-                        <?php endif; ?>
-
-                        <?php if (empty($arquivosDaPasta)): ?>
-                            <div class="aj-empty">Sem arquivos nesta pasta.</div>
-                        <?php else: ?>
-                            <div class="aj-file-list">
-                                <?php foreach ($arquivosDaPasta as $arquivo): ?>
-                                    <div class="aj-file-item">
-                                        <div class="aj-file-main">
-                                            <div class="aj-file-title"><?= htmlspecialchars((string)($arquivo['titulo'] ?? 'Documento')) ?></div>
-                                            <div class="aj-file-meta">
-                                                <?= htmlspecialchars((string)($arquivo['arquivo_nome'] ?? '')) ?>
-                                                • <?= htmlspecialchars(aj_format_bytes(isset($arquivo['tamanho_bytes']) ? (int)$arquivo['tamanho_bytes'] : null)) ?>
-                                            </div>
-
-                                            <?php if (!empty($arquivo['descricao'])): ?>
-                                                <div class="aj-file-desc"><?= nl2br(htmlspecialchars((string)$arquivo['descricao'])) ?></div>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <div class="aj-file-side">
-                                            <div class="aj-file-date">
-                                                <?= !empty($arquivo['criado_em']) ? date('d/m/Y H:i', strtotime((string)$arquivo['criado_em'])) : '-' ?><br>
-                                                por <?= htmlspecialchars((string)($arquivo['criado_por_nome'] ?? 'sistema')) ?>
-                                            </div>
-                                            <a class="aj-link-btn" href="juridico_download.php?id=<?= (int)($arquivo['id'] ?? 0) ?>" target="_blank" rel="noopener">Abrir arquivo</a>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
+                    <details class="aj-folder-card">
+                        <summary class="aj-folder-head">
+                            <div class="aj-folder-left">
+                                <span class="aj-folder-toggle">▸</span>
+                                <h3 class="aj-folder-title">📁 <?= htmlspecialchars((string)($pasta['nome'] ?? 'Pasta')) ?></h3>
                             </div>
-                        <?php endif; ?>
-                    </div>
+                            <span class="aj-folder-count"><?= count($arquivosDaPasta) ?> arquivo(s)</span>
+                        </summary>
+
+                        <div class="aj-folder-body">
+                            <?php if (!empty($pasta['descricao'])): ?>
+                                <div class="aj-folder-desc"><?= nl2br(htmlspecialchars((string)$pasta['descricao'])) ?></div>
+                            <?php endif; ?>
+
+                            <?php if (empty($arquivosDaPasta)): ?>
+                                <div class="aj-empty">Sem arquivos nesta pasta.</div>
+                            <?php else: ?>
+                                <div class="aj-file-list">
+                                    <?php foreach ($arquivosDaPasta as $arquivo): ?>
+                                        <div class="aj-file-item">
+                                            <div class="aj-file-main">
+                                                <div class="aj-file-title"><?= htmlspecialchars((string)($arquivo['titulo'] ?? 'Documento')) ?></div>
+                                                <div class="aj-file-meta">
+                                                    <?= htmlspecialchars((string)($arquivo['arquivo_nome'] ?? '')) ?>
+                                                    • <?= htmlspecialchars(aj_format_bytes(isset($arquivo['tamanho_bytes']) ? (int)$arquivo['tamanho_bytes'] : null)) ?>
+                                                </div>
+
+                                                <?php if (!empty($arquivo['descricao'])): ?>
+                                                    <div class="aj-file-desc"><?= nl2br(htmlspecialchars((string)$arquivo['descricao'])) ?></div>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <div class="aj-file-side">
+                                                <div class="aj-file-date">
+                                                    <?= !empty($arquivo['criado_em']) ? date('d/m/Y H:i', strtotime((string)$arquivo['criado_em'])) : '-' ?><br>
+                                                    por <?= htmlspecialchars((string)($arquivo['criado_por_nome'] ?? 'sistema')) ?>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    class="aj-link-btn"
+                                                    onclick='openAjPreview(<?= json_encode("juridico_download.php?id=" . (int)($arquivo["id"] ?? 0)) ?>, <?= json_encode((string)($arquivo["titulo"] ?? "Arquivo"), JSON_UNESCAPED_UNICODE) ?>)'>
+                                                    Visualizar arquivo
+                                                </button>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </details>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -896,6 +914,18 @@ ob_start();
     </div>
 </div>
 
+<div class="aj-modal" id="modalVisualizarArquivo" aria-hidden="true">
+    <div class="aj-modal-dialog aj-preview-dialog">
+        <div class="aj-modal-header">
+            <h3 id="ajPreviewTitle">Visualizar arquivo</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjPreview()">×</button>
+        </div>
+        <div class="aj-modal-body aj-preview-body">
+            <iframe id="ajPreviewFrame" class="aj-preview-frame" src="about:blank"></iframe>
+        </div>
+    </div>
+</div>
+
 <script>
     function openAjModal(id) {
         var modal = document.getElementById(id);
@@ -914,6 +944,10 @@ ob_start();
     document.querySelectorAll('.aj-modal').forEach(function(modal) {
         modal.addEventListener('click', function(event) {
             if (event.target === modal) {
+                if (modal.id === 'modalVisualizarArquivo') {
+                    closeAjPreview();
+                    return;
+                }
                 modal.classList.remove('open');
                 modal.setAttribute('aria-hidden', 'true');
             }
@@ -923,6 +957,10 @@ ob_start();
     document.addEventListener('keydown', function(event) {
         if (event.key !== 'Escape') return;
         document.querySelectorAll('.aj-modal.open').forEach(function(modal) {
+            if (modal.id === 'modalVisualizarArquivo') {
+                closeAjPreview();
+                return;
+            }
             modal.classList.remove('open');
             modal.setAttribute('aria-hidden', 'true');
         });
@@ -938,6 +976,33 @@ ob_start();
         if (inputEmail) inputEmail.value = email || '';
 
         openAjModal('modalEditarUsuario');
+    }
+
+    function openAjPreview(url, title) {
+        var modal = document.getElementById('modalVisualizarArquivo');
+        var frame = document.getElementById('ajPreviewFrame');
+        var titleNode = document.getElementById('ajPreviewTitle');
+        if (!modal || !frame) return;
+
+        frame.src = url || 'about:blank';
+        if (titleNode) {
+            titleNode.textContent = title ? ('Visualizar: ' + title) : 'Visualizar arquivo';
+        }
+
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeAjPreview() {
+        var modal = document.getElementById('modalVisualizarArquivo');
+        var frame = document.getElementById('ajPreviewFrame');
+        if (!modal) return;
+
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+        if (frame) {
+            frame.src = 'about:blank';
+        }
     }
 
     function copyJuridicoLink() {
