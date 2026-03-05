@@ -21,6 +21,27 @@ $links_dj_portal = [];
 $visivel_dj = false;
 $editavel_dj = false;
 
+function eventos_cliente_dj_portal_tem_campos_formulario($schema): bool
+{
+    if (!is_array($schema)) {
+        return false;
+    }
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        if (strpos($field_id, 'legacy_portal_text_') === 0) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        if (in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 if ($token === '') {
     $error = 'Link inválido.';
 } else {
@@ -72,11 +93,13 @@ if ($token === '') {
                         if (empty($dj_link_item['is_active']) || empty($dj_link_item['portal_visible'])) {
                             continue;
                         }
+                        $dj_link_item['_direct_text_mode'] = !eventos_cliente_dj_portal_tem_campos_formulario($dj_link_item['form_schema'] ?? null);
                         $links_dj_portal[] = $dj_link_item;
                     }
                 } else {
                     foreach ($links_dj as $dj_link_item) {
                         if (!empty($dj_link_item['is_active'])) {
+                            $dj_link_item['_direct_text_mode'] = !eventos_cliente_dj_portal_tem_campos_formulario($dj_link_item['form_schema'] ?? null);
                             $links_dj_portal[] = $dj_link_item;
                         }
                     }
@@ -98,6 +121,18 @@ if ($hora_inicio !== '' && $hora_fim !== '') {
 }
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
+
+$links_dj_formularios = [];
+$link_dj_texto_direto = null;
+foreach ($links_dj_portal as $dj_link_item) {
+    if (!empty($dj_link_item['_direct_text_mode'])) {
+        if ($link_dj_texto_direto === null) {
+            $link_dj_texto_direto = $dj_link_item;
+        }
+        continue;
+    }
+    $links_dj_formularios[] = $dj_link_item;
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -291,21 +326,25 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
             <section class="card">
                 <h3>
-                    Formulários disponíveis
+                    <?= !empty($links_dj_formularios) ? 'Formulários disponíveis' : 'DJ / Protocolos' ?>
                     <span class="status-badge <?= $editavel_dj ? 'status-editavel' : 'status-visualizacao' ?>">
                         <?= $editavel_dj ? 'Editável' : 'Somente visualização' ?>
                     </span>
                 </h3>
-                <div class="card-subtitle">Selecione abaixo os formulários que deseja preencher ou consultar.</div>
+                <div class="card-subtitle">
+                    <?= !empty($links_dj_formularios)
+                        ? 'Selecione abaixo os formulários que deseja preencher ou consultar.'
+                        : 'Acesse diretamente o conteúdo de DJ / Protocolos.' ?>
+                </div>
 
-                <?php if (empty($links_dj_portal)): ?>
+                <?php if (empty($links_dj_formularios) && empty($link_dj_texto_direto)): ?>
                 <div class="empty-text">Nenhum formulário disponível para este portal no momento.</div>
                 <?php endif; ?>
 
-                <?php if (!empty($links_dj_portal)): ?>
+                <?php if (!empty($links_dj_formularios)): ?>
                 <div class="card-subtitle" style="margin-bottom: 0.55rem;"><strong>DJ / Protocolos</strong></div>
                 <div class="dj-grid">
-                    <?php foreach ($links_dj_portal as $dj_link_portal): ?>
+                    <?php foreach ($links_dj_formularios as $dj_link_portal): ?>
                     <?php
                         $dj_slot = max(1, (int)($dj_link_portal['slot_index'] ?? 1));
                         $dj_title = trim((string)($dj_link_portal['form_title'] ?? ''));
@@ -323,6 +362,14 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                         </a>
                     </div>
                     <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($link_dj_texto_direto['token'])): ?>
+                <div class="actions-row">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_dj_texto_direto['token']) ?>">
+                        <?= $editavel_dj ? 'Abrir DJ / Protocolos' : 'Visualizar DJ / Protocolos' ?>
+                    </a>
                 </div>
                 <?php endif; ?>
 

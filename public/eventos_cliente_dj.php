@@ -104,32 +104,91 @@ function eventos_cliente_encode_payload(array $payload): string {
 }
 
 /**
- * Extrai payload salvo no HTML da resposta do cliente.
+ * Converte HTML rico para texto simples (com quebras de linha).
  */
-function eventos_cliente_extract_payload_from_html(string $html): array {
+function eventos_cliente_html_to_text(string $html): string {
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $html) ?? $html;
+    $text = preg_replace('/<\/p\s*>/i', "\n", $text) ?? $text;
+    $text = preg_replace('/<\/div\s*>/i', "\n", $text) ?? $text;
+    $text = strip_tags($text);
+    $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+    return trim($text);
+}
+
+/**
+ * Extrai payload salvo no HTML da resposta (cliente/interno).
+ */
+function eventos_cliente_extract_payload_from_html(string $html, string $section = ''): array {
     if ($html === '') {
         return [];
     }
-    if (!preg_match('/data-smile-client-payload="([^"]+)"/', $html, $matches)) {
-        return [];
+
+    $encoded = '';
+    $decoded_html = html_entity_decode($html, ENT_QUOTES, 'UTF-8');
+    $attributes = ['data-smile-client-payload', 'data-smile-form-payload'];
+    foreach ($attributes as $attribute) {
+        $pattern = '/' . preg_quote($attribute, '/') . '\s*=\s*(["\'])(.*?)\1/i';
+        if (!preg_match($pattern, $decoded_html, $matches)) {
+            continue;
+        }
+        $encoded = trim((string)($matches[2] ?? ''));
+        if ($encoded !== '') {
+            break;
+        }
     }
-    $encoded = html_entity_decode((string)($matches[1] ?? ''), ENT_QUOTES, 'UTF-8');
     if ($encoded === '') {
         return [];
     }
+
     $decoded = base64_decode($encoded, true);
     if ($decoded === false || $decoded === '') {
         return [];
     }
+
     $payload = json_decode($decoded, true);
-    if (!is_array($payload) || !isset($payload['values']) || !is_array($payload['values'])) {
+    if (!is_array($payload)) {
         return [];
     }
+
     $values = [];
-    foreach ($payload['values'] as $key => $value) {
-        $values[(string)$key] = (string)$value;
+    if (isset($payload['values']) && is_array($payload['values'])) {
+        foreach ($payload['values'] as $key => $value) {
+            $values[(string)$key] = (string)$value;
+        }
     }
+
+    $payload_section = trim((string)($payload['section'] ?? $section));
+    if ($payload_section !== '' && isset($payload['legacy_html'])) {
+        $legacy_text = eventos_cliente_html_to_text((string)$payload['legacy_html']);
+        if ($legacy_text !== '') {
+            $values['legacy_portal_text_' . $payload_section] = $legacy_text;
+        }
+    }
+
     return $values;
+}
+
+/**
+ * Mescla valores de payload, preservando o principal e completando campos vazios.
+ */
+function eventos_cliente_merge_payload_values(array $primary, array $fallback): array {
+    if (empty($fallback)) {
+        return $primary;
+    }
+    $merged = $primary;
+    foreach ($fallback as $key => $value) {
+        $field = (string)$key;
+        if ($field === '') {
+            continue;
+        }
+        $next = (string)$value;
+        if (!array_key_exists($field, $merged) || trim((string)$merged[$field]) === '') {
+            $merged[$field] = $next;
+        }
+    }
+    return $merged;
 }
 
 /**
@@ -275,6 +334,7 @@ function eventos_cliente_normalizar_schema($raw): array {
         }
         $label = trim((string)($item['label'] ?? ''));
         $content_html = $type === 'note' ? eventos_cliente_sanitizar_note_html((string)($item['content_html'] ?? '')) : '';
+        $default_value = trim((string)($item['default_value'] ?? ''));
         if ($label === '' && $type !== 'divider' && !($type === 'note' && $content_html !== '')) {
             continue;
         }
@@ -291,6 +351,13 @@ function eventos_cliente_normalizar_schema($raw): array {
         if ($id === '') {
             $id = 'f_' . bin2hex(random_bytes(4));
         }
+        if ($type === 'note' && strpos($id, 'legacy_portal_text_') === 0) {
+            $type = 'textarea';
+            if ($default_value === '' && $content_html !== '') {
+                $default_value = eventos_cliente_html_to_text($content_html);
+            }
+            $content_html = '';
+        }
         $schema[] = [
             'id' => $id,
             'type' => $type,
@@ -298,8 +365,52 @@ function eventos_cliente_normalizar_schema($raw): array {
             'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider' && $type !== 'note',
             'options' => $options,
             'content_html' => $type === 'note' ? $content_html : '',
+            'default_value' => $default_value,
         ];
     }
+    return $schema;
+}
+
+/**
+ * Garante a presença do campo de texto livre quando visível no portal.
+ */
+function eventos_cliente_schema_garantir_texto_livre(array $schema, string $section, string $default_value = ''): array {
+    $field_id = 'legacy_portal_text_' . trim($section);
+    foreach ($schema as &$field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $current_id = trim((string)($field['id'] ?? ''));
+        if ($current_id !== $field_id) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        if ($type === 'note') {
+            $field['type'] = 'textarea';
+            $field['content_html'] = '';
+        }
+        if (trim((string)($field['label'] ?? '')) === '') {
+            $field['label'] = 'Texto livre (opcional)';
+        }
+        $existing_default = trim((string)($field['default_value'] ?? ''));
+        if ($existing_default === '' && trim($default_value) !== '') {
+            $field['default_value'] = trim($default_value);
+        }
+        unset($field);
+        return $schema;
+    }
+    unset($field);
+
+    $schema[] = [
+        'id' => $field_id,
+        'type' => 'textarea',
+        'label' => 'Texto livre (opcional)',
+        'required' => false,
+        'options' => [],
+        'content_html' => '',
+        'default_value' => trim($default_value),
+    ];
+
     return $schema;
 }
 
@@ -591,10 +702,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 // Dados do evento
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
 $is_locked = !empty($link['submitted_at']) || !$link_editavel;
-$content = trim((string)($link['content_html_snapshot'] ?? ''));
-if ($content === '') {
-    $content = $secao['content_html'] ?? '';
-}
+$content_from_link_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
+$content_from_secao = trim((string)($secao['content_html'] ?? ''));
+$content = $content_from_link_snapshot !== '' ? $content_from_link_snapshot : $content_from_secao;
 $form_schema = [];
 if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
     $form_schema = eventos_cliente_normalizar_schema($link['form_schema']);
@@ -615,7 +725,17 @@ if (!empty($form_schema) && !$legacy_text_portal_visible) {
 if (empty($form_schema) && !$legacy_text_portal_visible) {
     $content = '';
 }
-$form_values = eventos_cliente_extract_payload_from_html($content);
+$form_values = eventos_cliente_extract_payload_from_html($content, $link_section);
+if ($content_from_link_snapshot !== '' && $content_from_secao !== '' && $content_from_link_snapshot !== $content_from_secao) {
+    $fallback_values = eventos_cliente_extract_payload_from_html($content_from_secao, $link_section);
+    $form_values = eventos_cliente_merge_payload_values($form_values, $fallback_values);
+}
+
+if ($legacy_text_portal_visible) {
+    $legacy_field_id = 'legacy_portal_text_' . $link_section;
+    $legacy_default = trim((string)($form_values[$legacy_field_id] ?? ''));
+    $form_schema = eventos_cliente_schema_garantir_texto_livre($form_schema, $link_section, $legacy_default);
+}
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -1265,7 +1385,8 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                         $required = !empty($field['required']);
                         $required_attr = $required ? ' required' : '';
                         $file_required_attr = ($required && empty($anexos)) ? ' required' : '';
-                        $field_value = isset($form_values[$field_raw_id]) ? (string)$form_values[$field_raw_id] : '';
+                        $field_default_value = isset($field['default_value']) ? (string)$field['default_value'] : '';
+                        $field_value = isset($form_values[$field_raw_id]) ? (string)$form_values[$field_raw_id] : $field_default_value;
                     ?>
                     <?php if (($field['type'] ?? '') === 'divider'): ?>
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">

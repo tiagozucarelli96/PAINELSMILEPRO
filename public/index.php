@@ -170,6 +170,7 @@ $routes = [
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
   'administrativo_gestao_documentos' => 'administrativo_gestao_documentos.php',
+  'administrativo_juridico' => 'administrativo_juridico.php',
   'cartao_ofx_me' => 'cartao_ofx_me.php',
   'cartao_ofx_me_cartoes' => 'cartao_ofx_me_cartoes.php',
   'cartao_ofx_me_historico' => 'cartao_ofx_me_historico.php',
@@ -354,6 +355,8 @@ $routes = [
   'test_qrcode_asaas' => 'test_qrcode_asaas.php',
   'pagamento_degustacao' => 'testar_identificacao_pagamento.php',
   'testar_identificacao_pagamento' => 'testar_identificacao_pagamento.php',
+  'juridico_login' => 'juridico_login.php',
+  'juridico_portal' => 'juridico_portal.php',
   'login' => 'login.php', // Rota de login
   'push_block_screen' => 'push_block_screen.php', // Tela de bloqueio push
   'debug_email_send' => 'debug_email_send.php', // Diagnóstico de e-mail
@@ -393,6 +396,9 @@ $public_pages = [
   'eventos_cliente_arquivos',
   // Galeria pública para clientes
   'eventos_galeria_public',
+  // Portal Jurídico (acesso externo por usuário/senha próprios)
+  'juridico_login',
+  'juridico_portal',
   // Proxy público de imagem da reunião final (usado em portais externos)
   'eventos_ver_imagem',
 ];

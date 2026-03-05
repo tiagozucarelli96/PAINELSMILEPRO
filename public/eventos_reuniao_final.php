@@ -3234,27 +3234,19 @@ function buildPortalSchemaWithLegacyText(section, schema) {
     }
 
     const noteId = `legacy_portal_text_${section}`;
-    const dividerId = `${noteId}_divider`;
     const filtered = normalized.filter((field) => {
         const fieldId = String(field && field.id ? field.id : '').trim();
-        return fieldId !== noteId && fieldId !== dividerId;
+        return fieldId !== noteId;
     });
 
     filtered.push({
-        id: dividerId,
-        type: 'divider',
-        label: '',
-        required: false,
-        options: [],
-        content_html: ''
-    });
-    filtered.push({
         id: noteId,
-        type: 'note',
-        label: 'Texto livre',
+        type: 'textarea',
+        label: 'Texto livre (opcional)',
         required: false,
         options: [],
-        content_html: legacyHtml
+        content_html: '',
+        default_value: stripHtmlToText(legacyHtml)
     });
     return filtered;
 }
@@ -4271,13 +4263,36 @@ function initDjTemplateSelection() {
             if (!link || !link.token) return;
             if (djSlotExists(slot) && djLinksBySlot[slot]) return;
 
+            const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
+            const formTitle = String(link.form_title || '').trim().toLowerCase();
+            const hasUsefulNonLegacyFields = schema.some((field) => {
+                const type = String(field && field.type ? field.type : '').toLowerCase();
+                const label = String(field && field.label ? field.label : '').trim();
+                const fieldId = String(field && field.id ? field.id : '').trim();
+                if (!['text', 'textarea', 'yesno', 'select', 'file'].includes(type)) {
+                    return false;
+                }
+                if (label === '') {
+                    return false;
+                }
+                if (fieldId.startsWith('legacy_portal_text_')) {
+                    return false;
+                }
+                return true;
+            });
+            const isDirectTextFallback = !hasUsefulNonLegacyFields
+                && slot === 1
+                && formTitle === 'dj / protocolos';
+            if (isDirectTextFallback) {
+                return;
+            }
+
             if (!djSlotExists(slot)) {
                 djSlotOrder.push(slot);
             }
             ensureDjSlotState(slot);
             djLinksBySlot[slot] = link;
 
-            const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
             if (hasUsefulSchemaFields(schema)) {
                 const signature = getSchemaSignature(schema);
                 lastSavedDjSchemaSignatures[slot] = signature;

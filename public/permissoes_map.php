@@ -10,6 +10,8 @@ return [
     // Scripts de setup - sempre permitido para usuários logados
     'apply_permissoes_sidebar_columns' => null,
     'habilitar_todas_permissoes' => null,
+    'juridico_login' => null,
+    'juridico_portal' => null,
     
     // Módulos principais da sidebar
     'agenda' => 'perm_agenda',
@@ -26,6 +28,7 @@ return [
     'financeiro' => 'perm_financeiro',
     'administrativo' => 'perm_administrativo',
     'administrativo_gestao_documentos' => 'perm_administrativo',
+    'administrativo_juridico' => 'perm_administrativo',
     'cartao_ofx_me' => 'perm_administrativo',
     'cartao_ofx_me_cartoes' => 'perm_administrativo',
     'cartao_ofx_me_historico' => 'perm_administrativo',

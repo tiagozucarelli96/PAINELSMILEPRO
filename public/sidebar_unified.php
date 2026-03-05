@@ -1947,7 +1947,7 @@ if ($current_page === 'dashboard') {
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
                 // Minha conta e gestão de documentos (includeSidebar)
-                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos',
+                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos', 'administrativo_juridico',
                 // Contabilidade (páginas com modal/JS próprio)
                 'contabilidade_admin_guias'
             ];

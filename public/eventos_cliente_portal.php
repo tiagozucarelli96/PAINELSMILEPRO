@@ -43,6 +43,27 @@ $editavel_convidados = false;
 $visivel_arquivos = false;
 $editavel_arquivos = false;
 
+function eventos_cliente_portal_dj_tem_campos_formulario($schema): bool
+{
+    if (!is_array($schema)) {
+        return false;
+    }
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        if (strpos($field_id, 'legacy_portal_text_') === 0) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        if (in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 if ($token === '') {
     $error = 'Link inválido.';
 } else {
@@ -158,6 +179,16 @@ if ($hora_inicio !== '' && $hora_fim !== '') {
 }
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
+
+$links_dj_formularios = [];
+$has_dj_texto_direto = false;
+foreach ($links_dj_portal as $dj_link_item) {
+    if (eventos_cliente_portal_dj_tem_campos_formulario($dj_link_item['form_schema'] ?? null)) {
+        $links_dj_formularios[] = $dj_link_item;
+    } else {
+        $has_dj_texto_direto = true;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -448,7 +479,11 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                     <div class="card-title">
                         <h3>DJ e Protocolos</h3>
                         <div class="card-subtitle">Acesse os formulários de DJ em uma página dedicada.</div>
-                        <div class="card-meta"><?= count($links_dj_portal) ?> quadro(s) liberado(s)</div>
+                        <div class="card-meta">
+                            <?= !empty($links_dj_formularios)
+                                ? count($links_dj_formularios) . ' quadro(s) liberado(s)'
+                                : ($has_dj_texto_direto ? 'Texto livre liberado' : 'Sem quadro liberado') ?>
+                        </div>
                     </div>
                 </div>
                 <div class="card-actions">

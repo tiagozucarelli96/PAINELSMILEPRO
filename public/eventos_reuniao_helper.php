@@ -1009,6 +1009,7 @@ function eventos_form_template_normalizar_schema(array $schema): array {
                 $content_html = trim($content_html);
             }
         }
+        $default_value = trim((string)($item['default_value'] ?? ''));
 
         if ($type !== 'divider' && $label === '' && !($type === 'note' && $content_html !== '')) {
             continue;
@@ -1018,6 +1019,13 @@ function eventos_form_template_normalizar_schema(array $schema): array {
         if ($id === '') {
             $id = eventos_form_template_field_id($type === 'section' ? 's' : 'f');
         }
+        if ($type === 'note' && strpos($id, 'legacy_portal_text_') === 0) {
+            $type = 'textarea';
+            if ($default_value === '') {
+                $default_value = trim(strip_tags($content_html));
+            }
+            $content_html = '';
+        }
 
         $normalized[] = [
             'id' => $id,
@@ -1026,6 +1034,7 @@ function eventos_form_template_normalizar_schema(array $schema): array {
             'required' => $required,
             'options' => $options,
             'content_html' => $type === 'note' ? $content_html : '',
+            'default_value' => $default_value,
         ];
     }
     return $normalized;
@@ -2908,6 +2917,119 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
 }
 
 /**
+ * Extrai payload interno do HTML salvo na seção da reunião.
+ */
+function eventos_reuniao_extrair_payload_formulario(string $content_html): array {
+    $html = trim($content_html);
+    if ($html === '') {
+        return [];
+    }
+
+    $decoded_html = html_entity_decode($html, ENT_QUOTES, 'UTF-8');
+    $attributes = ['data-smile-form-payload', 'data-smile-client-payload'];
+    $encoded = '';
+
+    foreach ($attributes as $attribute) {
+        $pattern = '/' . preg_quote($attribute, '/') . '\s*=\s*(["\'])(.*?)\1/i';
+        if (preg_match($pattern, $decoded_html, $matches)) {
+            $encoded = trim((string)($matches[2] ?? ''));
+            if ($encoded !== '') {
+                break;
+            }
+        }
+    }
+
+    if ($encoded === '') {
+        return [];
+    }
+
+    $payload_json = base64_decode($encoded, true);
+    if ($payload_json === false || $payload_json === '') {
+        return [];
+    }
+
+    $payload = json_decode($payload_json, true);
+    return is_array($payload) ? $payload : [];
+}
+
+/**
+ * Converte HTML rico em texto simples.
+ */
+function eventos_reuniao_html_para_texto(string $html): string {
+    $text = preg_replace('/<br\s*\/?>/i', "\n", $html) ?? $html;
+    $text = preg_replace('/<\/p\s*>/i', "\n", $text) ?? $text;
+    $text = preg_replace('/<\/div\s*>/i', "\n", $text) ?? $text;
+    $text = strip_tags($text);
+    $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+    return trim($text);
+}
+
+/**
+ * Injeta campo de texto livre editável no schema do portal.
+ */
+function eventos_reuniao_schema_adicionar_texto_livre(array $schema, string $section, string $legacy_text = ''): array {
+    $normalized = eventos_form_template_normalizar_schema($schema);
+    $field_id = 'legacy_portal_text_' . trim($section);
+    $filtered = [];
+    foreach ($normalized as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $current_id = trim((string)($field['id'] ?? ''));
+        if ($current_id === $field_id) {
+            continue;
+        }
+        $filtered[] = $field;
+    }
+
+    $filtered[] = [
+        'id' => $field_id,
+        'type' => 'textarea',
+        'label' => 'Texto livre (opcional)',
+        'required' => false,
+        'options' => [],
+        'content_html' => '',
+        'default_value' => trim($legacy_text),
+    ];
+
+    return eventos_form_template_normalizar_schema($filtered);
+}
+
+/**
+ * Aplica valores do payload como default no schema para garantir pré-preenchimento.
+ */
+function eventos_reuniao_schema_aplicar_valores_payload(array $schema, array $payload_values): array {
+    $normalized = eventos_form_template_normalizar_schema($schema);
+    if (empty($normalized) || empty($payload_values)) {
+        return $normalized;
+    }
+
+    $fillable_types = ['text', 'textarea', 'yesno', 'select'];
+    foreach ($normalized as &$field) {
+        if (!is_array($field)) {
+            continue;
+        }
+
+        $field_id = trim((string)($field['id'] ?? ''));
+        if ($field_id === '' || !array_key_exists($field_id, $payload_values)) {
+            continue;
+        }
+
+        $field_type = strtolower(trim((string)($field['type'] ?? '')));
+        if (!in_array($field_type, $fillable_types, true)) {
+            continue;
+        }
+
+        $field['default_value'] = trim((string)$payload_values[$field_id]);
+    }
+    unset($field);
+
+    return eventos_form_template_normalizar_schema($normalized);
+}
+
+/**
  * Sincroniza o link público de Reunião Final (Decoração) com a configuração do portal.
  * Garante que, ao habilitar visibilidade/edição da reunião, exista ao menos um link disponível.
  */
@@ -2926,9 +3048,14 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
     $schema_snapshot = null;
     $content_snapshot = null;
     $form_title = 'Reunião Final - Decoração';
+    $legacy_text_portal_visible = true;
+    $legacy_text = '';
 
     $secao_decoracao = eventos_reuniao_get_secao($pdo, $meeting_id, 'decoracao');
     if (is_array($secao_decoracao) && !empty($secao_decoracao)) {
+        if (array_key_exists('legacy_text_portal_visible', $secao_decoracao)) {
+            $legacy_text_portal_visible = !empty($secao_decoracao['legacy_text_portal_visible']);
+        }
         $schema_raw = json_decode((string)($secao_decoracao['form_schema_json'] ?? '[]'), true);
         if (is_array($schema_raw) && !empty($schema_raw)) {
             $schema_snapshot = $schema_raw;
@@ -2936,6 +3063,21 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
         $content_raw = trim((string)($secao_decoracao['content_html'] ?? ''));
         if ($content_raw !== '') {
             $content_snapshot = $content_raw;
+            $payload = eventos_reuniao_extrair_payload_formulario($content_raw);
+            if (is_array($payload) && !empty($payload)) {
+                if (is_array($schema_snapshot) && isset($payload['values']) && is_array($payload['values'])) {
+                    $schema_snapshot = eventos_reuniao_schema_aplicar_valores_payload($schema_snapshot, $payload['values']);
+                }
+                if (isset($payload['legacy_html'])) {
+                    $legacy_text = eventos_reuniao_html_para_texto((string)$payload['legacy_html']);
+                }
+                if ($legacy_text === '' && isset($payload['values']) && is_array($payload['values'])) {
+                    $legacy_key = 'legacy_portal_text_decoracao';
+                    if (array_key_exists($legacy_key, $payload['values'])) {
+                        $legacy_text = trim((string)$payload['values'][$legacy_key]);
+                    }
+                }
+            }
         }
     }
 
@@ -2950,11 +3092,34 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
             $content_raw = trim((string)($secao_observacoes['content_html'] ?? ''));
             if ($content_raw !== '') {
                 $content_snapshot = $content_raw;
+                $payload = eventos_reuniao_extrair_payload_formulario($content_raw);
+                if (is_array($payload) && !empty($payload)) {
+                    if (is_array($schema_snapshot) && isset($payload['values']) && is_array($payload['values'])) {
+                        $schema_snapshot = eventos_reuniao_schema_aplicar_valores_payload($schema_snapshot, $payload['values']);
+                    }
+                    if ($legacy_text === '' && isset($payload['legacy_html'])) {
+                        $legacy_text = eventos_reuniao_html_para_texto((string)$payload['legacy_html']);
+                    }
+                    if ($legacy_text === '' && isset($payload['values']) && is_array($payload['values'])) {
+                        $legacy_key = 'legacy_portal_text_observacoes_gerais';
+                        if (array_key_exists($legacy_key, $payload['values'])) {
+                            $legacy_text = trim((string)$payload['values'][$legacy_key]);
+                        }
+                    }
+                }
             }
             if ($schema_snapshot !== null || $content_snapshot !== null) {
                 $form_title = 'Reunião Final - Observações Gerais';
             }
         }
+    }
+
+    if ($legacy_text_portal_visible) {
+        $schema_snapshot = eventos_reuniao_schema_adicionar_texto_livre(
+            is_array($schema_snapshot) ? $schema_snapshot : [],
+            'decoracao',
+            $legacy_text
+        );
     }
 
     $result = eventos_reuniao_atualizar_slot_portal_config(
@@ -3003,9 +3168,14 @@ function eventos_cliente_portal_sincronizar_link_dj(
     $schema_snapshot = null;
     $content_snapshot = null;
     $form_title = 'DJ / Protocolos';
+    $legacy_text_portal_visible = true;
+    $legacy_text = '';
 
     $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
     if (is_array($secao_dj) && !empty($secao_dj)) {
+        if (array_key_exists('legacy_text_portal_visible', $secao_dj)) {
+            $legacy_text_portal_visible = !empty($secao_dj['legacy_text_portal_visible']);
+        }
         $schema_raw = json_decode((string)($secao_dj['form_schema_json'] ?? '[]'), true);
         if (is_array($schema_raw) && !empty($schema_raw)) {
             $schema_snapshot = $schema_raw;
@@ -3013,6 +3183,39 @@ function eventos_cliente_portal_sincronizar_link_dj(
         $content_raw = trim((string)($secao_dj['content_html'] ?? ''));
         if ($content_raw !== '') {
             $content_snapshot = $content_raw;
+            $payload = eventos_reuniao_extrair_payload_formulario($content_raw);
+            if (is_array($payload) && !empty($payload)) {
+                if (is_array($schema_snapshot) && isset($payload['values']) && is_array($payload['values'])) {
+                    $schema_snapshot = eventos_reuniao_schema_aplicar_valores_payload($schema_snapshot, $payload['values']);
+                }
+                if (isset($payload['legacy_html'])) {
+                    $legacy_text = eventos_reuniao_html_para_texto((string)$payload['legacy_html']);
+                }
+                if ($legacy_text === '' && isset($payload['values']) && is_array($payload['values'])) {
+                    $legacy_key = 'legacy_portal_text_dj_protocolo';
+                    if (array_key_exists($legacy_key, $payload['values'])) {
+                        $legacy_text = trim((string)$payload['values'][$legacy_key]);
+                    }
+                }
+            }
+        }
+    }
+
+    if ($legacy_text_portal_visible) {
+        $schema_snapshot = eventos_reuniao_schema_adicionar_texto_livre(
+            is_array($schema_snapshot) ? $schema_snapshot : [],
+            'dj_protocolo',
+            $legacy_text
+        );
+    } else {
+        if ($content_snapshot !== null && trim($content_snapshot) !== '') {
+            $payload = eventos_reuniao_extrair_payload_formulario($content_snapshot);
+            if (is_array($payload) && isset($payload['legacy_html'])) {
+                $legacy_raw = trim((string)$payload['legacy_html']);
+                if ($legacy_raw !== '') {
+                    $content_snapshot = str_replace($legacy_raw, '', (string)$content_snapshot);
+                }
+            }
         }
     }
 

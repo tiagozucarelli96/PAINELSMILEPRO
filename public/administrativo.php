@@ -195,6 +195,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Jurídico -->
+        <a href="index.php?page=administrativo_juridico" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <span class="funcionalidade-card-icon">⚖️</span>
+                <div class="funcionalidade-card-title">Jurídico</div>
+                <div class="funcionalidade-card-subtitle">Gestão de pastas, arquivos e acesso externo</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Cartao OFX -->
         <a href="index.php?page=cartao_ofx_me" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0ea5e9, #0284c7);">
