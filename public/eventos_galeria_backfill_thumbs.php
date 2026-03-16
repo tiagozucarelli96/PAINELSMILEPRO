@@ -15,12 +15,6 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
 require_once __DIR__ . '/eventos_galeria_helper.php';
 
-function eventos_galeria_backfill_expected_token(): string
-{
-    $dbUrl = (string)(getenv('DATABASE_URL') ?: ($_ENV['DATABASE_URL'] ?? ''));
-    return hash('sha256', $dbUrl . '|eventos_galeria_backfill');
-}
-
 /**
  * @param mixed $value
  */
@@ -223,9 +217,7 @@ if (!$isCli) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-    $token = trim((string)($_GET['token'] ?? ''));
-    $tokenValido = ($token !== '' && hash_equals(eventos_galeria_backfill_expected_token(), $token));
-    if (empty($_SESSION['perm_superadmin']) && !$tokenValido) {
+    if (empty($_SESSION['perm_superadmin'])) {
         http_response_code(403);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['ok' => false, 'error' => 'Acesso negado'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
