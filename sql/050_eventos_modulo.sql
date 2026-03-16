@@ -320,6 +320,8 @@ CREATE TABLE IF NOT EXISTS eventos_galeria (
     -- Arquivo no Magalu
     storage_key VARCHAR(500) NOT NULL,
     public_url TEXT,
+    thumb_storage_key VARCHAR(500),
+    thumb_public_url TEXT,
     mime_type VARCHAR(100) NOT NULL,
     size_bytes BIGINT NOT NULL DEFAULT 0,
     
@@ -339,6 +341,12 @@ ON eventos_galeria(categoria) WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_eventos_galeria_nome 
 ON eventos_galeria(nome) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_eventos_galeria_uploaded_at
+ON eventos_galeria(uploaded_at DESC) WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_eventos_galeria_categoria_uploaded_at
+ON eventos_galeria(categoria, uploaded_at DESC) WHERE deleted_at IS NULL;
 
 -- ============================================
 -- 10) CACHE DE EVENTOS ME (para evitar rate limit)

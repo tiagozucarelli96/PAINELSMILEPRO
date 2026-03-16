@@ -4,10 +4,6 @@
  * Servidor de imagem para a galeria pública.
  */
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/conexao.php';
 
 $id = (int)($_GET['id'] ?? 0);

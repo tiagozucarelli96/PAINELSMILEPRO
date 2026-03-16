@@ -4,11 +4,10 @@
  * Galeria pública (somente visualização) para clientes.
  */
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/eventos_galeria_helper.php';
+
+header('Cache-Control: public, max-age=300, stale-while-revalidate=600');
 
 $categorias = [
     'infantil' => ['symbol' => 'IN', 'label' => 'Infantil'],
@@ -24,6 +23,9 @@ $categorias_filtro = [
 
 $categoria_filter = $_GET['categoria'] ?? '';
 $search = trim((string)($_GET['search'] ?? ''));
+$paginaAtual = max(1, (int)($_GET['pagina'] ?? 1));
+$itensPorPagina = 36;
+$thumbColumns = eventosGaleriaThumbColumns($pdo);
 
 $where = ["deleted_at IS NULL"];
 $params = [];
@@ -39,15 +41,36 @@ if ($search !== '') {
 }
 
 $where_sql = implode(' AND ', $where);
+$thumbSelect = $thumbColumns['thumb_public_url']
+    ? ', thumb_public_url'
+    : ", NULL::text AS thumb_public_url";
 
 $stmt = $pdo->prepare("
-    SELECT id, categoria, nome, descricao, tags, transform_css, public_url
+    SELECT COUNT(*)
+    FROM eventos_galeria
+    WHERE {$where_sql}
+");
+$stmt->execute($params);
+$totalImagens = (int)$stmt->fetchColumn();
+$totalPaginas = max(1, (int)ceil($totalImagens / $itensPorPagina));
+if ($paginaAtual > $totalPaginas) {
+    $paginaAtual = $totalPaginas;
+}
+$offset = max(0, ($paginaAtual - 1) * $itensPorPagina);
+
+$stmt = $pdo->prepare("
+    SELECT id, categoria, nome, descricao, tags, transform_css, public_url{$thumbSelect}
     FROM eventos_galeria
     WHERE {$where_sql}
     ORDER BY uploaded_at DESC
-    LIMIT 300
+    LIMIT :limit OFFSET :offset
 ");
-$stmt->execute($params);
+$stmt->bindValue(':limit', $itensPorPagina, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+foreach ($params as $paramKey => $paramValue) {
+    $stmt->bindValue($paramKey, $paramValue, PDO::PARAM_STR);
+}
+$stmt->execute();
 $imagens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $contadores = [];
@@ -59,6 +82,25 @@ $stmt = $pdo->query("
 ");
 foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     $contadores[$row['categoria']] = (int)$row['total'];
+}
+
+$itemInicial = $totalImagens > 0 ? ($offset + 1) : 0;
+$itemFinal = $totalImagens > 0 ? min($offset + count($imagens), $totalImagens) : 0;
+
+function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, string $search): string
+{
+    $query = ['page' => 'eventos_galeria_public'];
+    if ($categoriaFilter !== '') {
+        $query['categoria'] = $categoriaFilter;
+    }
+    if ($search !== '') {
+        $query['search'] = $search;
+    }
+    if ($pagina > 1) {
+        $query['pagina'] = $pagina;
+    }
+
+    return '?' . http_build_query($query);
 }
 ?>
 <!DOCTYPE html>
@@ -246,6 +288,16 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             cursor: pointer;
         }
 
+        .results-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+
         .grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -409,6 +461,42 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             font-size: 0.92rem;
         }
 
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 18px;
+        }
+
+        .pagination a,
+        .pagination span {
+            min-width: 40px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.84rem;
+            border: 1px solid #c6d6ec;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        .pagination .active {
+            background: var(--brand-blue-2);
+            border-color: var(--brand-blue-2);
+            color: #fff;
+        }
+
+        .pagination .disabled {
+            opacity: 0.45;
+        }
+
         @media (max-width: 768px) {
             .hero {
                 padding-top: 14px;
@@ -426,6 +514,10 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             }
             .brand-text h1 {
                 font-size: 1.55rem;
+            }
+            .results-bar {
+                flex-direction: column;
+                align-items: flex-start;
             }
         }
     </style>
@@ -446,12 +538,12 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
     <main class="shell">
         <div class="toolbar">
             <div class="cats">
-                <a href="?page=eventos_galeria_public" class="cat <?= $categoria_filter === '' ? 'active' : '' ?>">
+                <a href="<?= htmlspecialchars(eventosGaleriaPublicPageUrl(1, '', $search)) ?>" class="cat <?= $categoria_filter === '' ? 'active' : '' ?>">
                     <span class="cat-icon">TD</span>
                     Todas (<?= array_sum($contadores) ?>)
                 </a>
                 <?php foreach ($categorias_filtro as $key => $cat): ?>
-                    <a href="?page=eventos_galeria_public&categoria=<?= urlencode($key) ?>" class="cat <?= $categoria_filter === $key ? 'active' : '' ?>">
+                    <a href="<?= htmlspecialchars(eventosGaleriaPublicPageUrl(1, $key, $search)) ?>" class="cat <?= $categoria_filter === $key ? 'active' : '' ?>">
                         <span class="cat-icon"><?= htmlspecialchars($cat['symbol']) ?></span>
                         <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
                     </a>
@@ -466,6 +558,15 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Buscar por tema, nome ou descrição...">
                 <button type="submit">Buscar</button>
             </form>
+        </div>
+
+        <div class="results-bar">
+            <div>
+                Exibindo <?= $itemInicial ?> a <?= $itemFinal ?> de <?= $totalImagens ?> imagens
+            </div>
+            <div>
+                Página <?= $paginaAtual ?> de <?= $totalPaginas ?>
+            </div>
         </div>
 
         <?php if (empty($imagens)): ?>
@@ -494,6 +595,8 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     $img_fallback_src = 'eventos_galeria_public_imagem.php?id=' . $img_id;
                     $img_public_url = trim((string)($img['public_url'] ?? ''));
                     $img_src = $img_public_url !== '' ? $img_public_url : $img_fallback_src;
+                    $img_thumb_src = trim((string)($img['thumb_public_url'] ?? ''));
+                    $img_card_src = $img_thumb_src !== '' ? $img_thumb_src : $img_src;
                     $img_transform = (string)($img['transform_css'] ?? '');
                     ?>
                     <article class="card"
@@ -501,7 +604,7 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                              data-name="<?= htmlspecialchars($img_name) ?>"
                              data-desc="<?= htmlspecialchars($img_desc) ?>">
                         <div class="thumb">
-                            <img src="<?= htmlspecialchars($img_src) ?>"
+                            <img src="<?= htmlspecialchars($img_card_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
                                  loading="lazy"
                                  decoding="async"
@@ -519,6 +622,34 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     </article>
                 <?php endforeach; ?>
             </div>
+
+            <?php if ($totalPaginas > 1): ?>
+                <nav class="pagination" aria-label="Paginação da galeria">
+                    <?php if ($paginaAtual > 1): ?>
+                        <a href="<?= htmlspecialchars(eventosGaleriaPublicPageUrl($paginaAtual - 1, $categoria_filter, $search)) ?>">Anterior</a>
+                    <?php else: ?>
+                        <span class="disabled">Anterior</span>
+                    <?php endif; ?>
+
+                    <?php
+                    $paginaInicio = max(1, $paginaAtual - 2);
+                    $paginaFim = min($totalPaginas, $paginaAtual + 2);
+                    for ($pagina = $paginaInicio; $pagina <= $paginaFim; $pagina++):
+                    ?>
+                        <?php if ($pagina === $paginaAtual): ?>
+                            <span class="active"><?= $pagina ?></span>
+                        <?php else: ?>
+                            <a href="<?= htmlspecialchars(eventosGaleriaPublicPageUrl($pagina, $categoria_filter, $search)) ?>"><?= $pagina ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($paginaAtual < $totalPaginas): ?>
+                        <a href="<?= htmlspecialchars(eventosGaleriaPublicPageUrl($paginaAtual + 1, $categoria_filter, $search)) ?>">Próxima</a>
+                    <?php else: ?>
+                        <span class="disabled">Próxima</span>
+                    <?php endif; ?>
+                </nav>
+            <?php endif; ?>
         <?php endif; ?>
     </main>
 

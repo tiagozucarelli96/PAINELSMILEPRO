@@ -15,6 +15,7 @@
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/eventos_galeria_helper.php';
 
 /**
  * @param mixed $value
@@ -58,6 +59,8 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
 {
     $limit = max(1, min($limit, 5000));
     $categoria = trim($categoria);
+    $thumbColumns = eventosGaleriaThumbColumns($pdo);
+    $hasThumbColumns = !empty($thumbColumns['ready']);
 
     $resultado = [
         'dry_run' => $dryRun,
@@ -75,7 +78,11 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
 
     // Só pega registros soft-deleted que ainda têm chave no storage.
     // Após limpeza bem-sucedida, a chave é esvaziada para evitar reprocessamento.
-    $where = "deleted_at IS NOT NULL AND COALESCE(storage_key, '') <> ''";
+    $where = "deleted_at IS NOT NULL AND (COALESCE(storage_key, '') <> ''";
+    if ($hasThumbColumns) {
+        $where .= " OR COALESCE(thumb_storage_key, '') <> ''";
+    }
+    $where .= ")";
     $params = [];
 
     if ($categoria !== '') {
@@ -96,7 +103,8 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
     }
 
     $selectSql = "
-        SELECT id, categoria, nome, storage_key, deleted_at
+        SELECT id, categoria, nome, storage_key, public_url, deleted_at"
+        . ($hasThumbColumns ? ", thumb_storage_key, thumb_public_url" : ", NULL::text AS thumb_storage_key, NULL::text AS thumb_public_url") . "
         FROM eventos_galeria
         WHERE {$where}
         ORDER BY deleted_at ASC, id ASC
@@ -118,6 +126,7 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
             'categoria' => (string)($row['categoria'] ?? ''),
             'nome' => (string)($row['nome'] ?? ''),
             'storage_key' => (string)($row['storage_key'] ?? ''),
+            'thumb_storage_key' => (string)($row['thumb_storage_key'] ?? ''),
             'deleted_at' => (string)($row['deleted_at'] ?? '')
         ];
     }
@@ -147,47 +156,82 @@ function eventos_galeria_limpar_storage_soft_deleted(PDO $pdo, bool $dryRun = tr
 
     $stmtMarkClean = $pdo->prepare("
         UPDATE eventos_galeria
-        SET storage_key = '',
-            public_url = NULL
+        SET storage_key = :storage_key,
+            public_url = :public_url"
+            . ($hasThumbColumns ? ",
+            thumb_storage_key = :thumb_storage_key,
+            thumb_public_url = :thumb_public_url" : "") . "
         WHERE id = :id
           AND deleted_at IS NOT NULL
     ");
 
     foreach ($rows as $row) {
         $id = (int)($row['id'] ?? 0);
-        $key = trim((string)($row['storage_key'] ?? ''));
-        if ($id <= 0 || $key === '') {
+        $originalKey = trim((string)($row['storage_key'] ?? ''));
+        $thumbKey = trim((string)($row['thumb_storage_key'] ?? ''));
+        if ($id <= 0 || ($originalKey === '' && $thumbKey === '')) {
             continue;
         }
 
-        try {
-            $ok = $uploader->delete($key);
-            if ($ok) {
-                $stmtMarkClean->execute([':id' => $id]);
-                $resultado['total_removidos_storage']++;
-                $resultado['removidos'][] = [
-                    'id' => $id,
-                    'storage_key' => $key
-                ];
-                error_log('[EVENTOS_GALERIA_CLEANUP] Arquivo removido do storage. id=' . $id . ' key=' . $key);
-            } else {
+        $remainingOriginalKey = $originalKey;
+        $remainingThumbKey = $thumbKey;
+        $targets = [
+            ['type' => 'original', 'key' => $originalKey],
+        ];
+        if ($thumbKey !== '') {
+            $targets[] = ['type' => 'thumb', 'key' => $thumbKey];
+        }
+
+        foreach ($targets as $target) {
+            $key = trim((string)($target['key'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            try {
+                $ok = $uploader->delete($key);
+                if ($ok) {
+                    if ($target['type'] === 'thumb') {
+                        $remainingThumbKey = '';
+                    } else {
+                        $remainingOriginalKey = '';
+                    }
+                    $resultado['total_removidos_storage']++;
+                    $resultado['removidos'][] = [
+                        'id' => $id,
+                        'storage_key' => $key
+                    ];
+                    error_log('[EVENTOS_GALERIA_CLEANUP] Arquivo removido do storage. id=' . $id . ' key=' . $key);
+                } else {
+                    $resultado['total_falhas_storage']++;
+                    $resultado['falhas'][] = [
+                        'id' => $id,
+                        'storage_key' => $key,
+                        'erro' => 'delete retornou false'
+                    ];
+                    error_log('[EVENTOS_GALERIA_CLEANUP] Falha ao remover arquivo. id=' . $id . ' key=' . $key);
+                }
+            } catch (Throwable $e) {
                 $resultado['total_falhas_storage']++;
                 $resultado['falhas'][] = [
                     'id' => $id,
                     'storage_key' => $key,
-                    'erro' => 'delete retornou false'
+                    'erro' => $e->getMessage()
                 ];
-                error_log('[EVENTOS_GALERIA_CLEANUP] Falha ao remover arquivo. id=' . $id . ' key=' . $key);
+                error_log('[EVENTOS_GALERIA_CLEANUP] Excecao ao remover arquivo. id=' . $id . ' key=' . $key . ' erro=' . $e->getMessage());
             }
-        } catch (Throwable $e) {
-            $resultado['total_falhas_storage']++;
-            $resultado['falhas'][] = [
-                'id' => $id,
-                'storage_key' => $key,
-                'erro' => $e->getMessage()
-            ];
-            error_log('[EVENTOS_GALERIA_CLEANUP] Excecao ao remover arquivo. id=' . $id . ' key=' . $key . ' erro=' . $e->getMessage());
         }
+
+        $updateParams = [
+            ':storage_key' => $remainingOriginalKey,
+            ':public_url' => $remainingOriginalKey === '' ? null : ($row['public_url'] ?? null),
+            ':id' => $id,
+        ];
+        if ($hasThumbColumns) {
+            $updateParams[':thumb_storage_key'] = $remainingThumbKey;
+            $updateParams[':thumb_public_url'] = $remainingThumbKey === '' ? null : ($row['thumb_public_url'] ?? null);
+        }
+        $stmtMarkClean->execute($updateParams);
     }
 
     if ($resultado['total_pendentes'] > $resultado['total_considerados']) {

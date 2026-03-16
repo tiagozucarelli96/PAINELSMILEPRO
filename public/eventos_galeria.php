@@ -14,6 +14,7 @@ $is_ajax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xm
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/eventos_galeria_helper.php';
 
 if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     if ($is_ajax) {
@@ -38,6 +39,9 @@ $error = '';
 $success = '';
 $galeria_max_upload_mb = 100;
 $galeria_max_upload_bytes = $galeria_max_upload_mb * 1024 * 1024;
+$thumbColumns = eventosGaleriaThumbColumns($pdo);
+$itensPorPagina = 48;
+$paginaAtual = max(1, (int)($_GET['pagina'] ?? 1));
 
 $categorias = [
     'infantil' => ['icon' => '🎈', 'label' => 'Infantil'],
@@ -291,13 +295,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         continue;
                     }
 
-                    $stmt = $pdo->prepare("
-                        INSERT INTO eventos_galeria
-                            (categoria, nome, descricao, tags, storage_key, public_url, mime_type, size_bytes, uploaded_by, uploaded_at)
-                        VALUES
-                            (:categoria, :nome, :descricao, :tags, :storage_key, :public_url, :mime_type, :size_bytes, :uploaded_by, NOW())
-                    ");
-                    $stmt->execute([
+                    $thumbResult = [
+                        'storage_key' => null,
+                        'public_url' => null,
+                    ];
+                    if (!empty($thumbColumns['ready'])) {
+                        try {
+                            $thumbResult = eventosGaleriaUploadThumbnail(
+                                $uploader,
+                                (string)$file['tmp_name'],
+                                (string)($file['name'] ?? ($nome_final . '.jpg'))
+                            );
+                        } catch (Throwable $e) {
+                            error_log('[EVENTOS_GALERIA] Falha ao gerar/upload thumbnail: ' . $e->getMessage());
+                        }
+                    }
+
+                    $insertColumns = [
+                        'categoria',
+                        'nome',
+                        'descricao',
+                        'tags',
+                        'storage_key',
+                        'public_url',
+                        'mime_type',
+                        'size_bytes',
+                        'uploaded_by',
+                        'uploaded_at',
+                    ];
+                    $insertValues = [
+                        ':categoria',
+                        ':nome',
+                        ':descricao',
+                        ':tags',
+                        ':storage_key',
+                        ':public_url',
+                        ':mime_type',
+                        ':size_bytes',
+                        ':uploaded_by',
+                        'NOW()',
+                    ];
+                    $insertParams = [
                         ':categoria' => $categoria,
                         ':nome' => $nome_final,
                         ':descricao' => $descricao !== '' ? $descricao : null,
@@ -307,7 +345,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'upload') {
                         ':mime_type' => $result['mime_type'] ?? ($file['type'] ?? null),
                         ':size_bytes' => $result['tamanho_bytes'] ?? ($file['size'] ?? null),
                         ':uploaded_by' => $user_id > 0 ? $user_id : null
-                    ]);
+                    ];
+
+                    if (!empty($thumbColumns['ready'])) {
+                        $insertColumns[] = 'thumb_storage_key';
+                        $insertColumns[] = 'thumb_public_url';
+                        $insertValues[] = ':thumb_storage_key';
+                        $insertValues[] = ':thumb_public_url';
+                        $insertParams[':thumb_storage_key'] = $thumbResult['storage_key'] ?: null;
+                        $insertParams[':thumb_public_url'] = $thumbResult['public_url'] ?: null;
+                    }
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO eventos_galeria
+                            (" . implode(', ', $insertColumns) . ")
+                        VALUES
+                            (" . implode(', ', $insertValues) . ")
+                    ");
+                    $stmt->execute($insertParams);
                     $upload_success_count++;
 
                     if (!empty($tmpConverted) && file_exists($tmpConverted)) {
@@ -383,13 +438,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
         try {
-            $stmt = $pdo->prepare("SELECT storage_key FROM eventos_galeria WHERE id = :id AND deleted_at IS NULL");
+            $thumbKeySelect = !empty($thumbColumns['thumb_storage_key'])
+                ? ', thumb_storage_key'
+                : ", NULL::text AS thumb_storage_key";
+            $stmt = $pdo->prepare("SELECT storage_key{$thumbKeySelect} FROM eventos_galeria WHERE id = :id AND deleted_at IS NULL");
             $stmt->execute([':id' => $id]);
-            $storageKey = $stmt->fetchColumn();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($storageKey === false) {
+            if (!$row) {
                 $error = 'Imagem nao encontrada ou ja removida.';
             } else {
+                $storageKeys = [
+                    (string)($row['storage_key'] ?? ''),
+                    (string)($row['thumb_storage_key'] ?? ''),
+                ];
                 error_log('[EVENTOS_GALERIA] Exclusao individual solicitada. ID: ' . $id);
 
                 $stmt = $pdo->prepare("UPDATE eventos_galeria SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
@@ -397,7 +459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir') {
                 $removed = (int)$stmt->rowCount();
 
                 if ($removed > 0) {
-                    $storageResult = removerArquivosGaleriaStorage([(string)$storageKey]);
+                    $storageResult = removerArquivosGaleriaStorage($storageKeys);
                     $success = 'Imagem removida.';
                     if (!empty($storageResult['failed'])) {
                         $success .= ' Aviso: arquivo nao removido do storage.';
@@ -442,7 +504,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir_lote') {
     } else {
         try {
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $select = $pdo->prepare("SELECT id, storage_key FROM eventos_galeria WHERE deleted_at IS NULL AND id IN ({$placeholders})");
+            $thumbKeySelect = !empty($thumbColumns['thumb_storage_key'])
+                ? ', thumb_storage_key'
+                : ", NULL::text AS thumb_storage_key";
+            $select = $pdo->prepare("SELECT id, storage_key{$thumbKeySelect} FROM eventos_galeria WHERE deleted_at IS NULL AND id IN ({$placeholders})");
             $select->execute($ids);
             $rows = $select->fetchAll(PDO::FETCH_ASSOC);
 
@@ -457,6 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'excluir_lote') {
                         $activeIds[$activeId] = $activeId;
                     }
                     $storageKeys[] = (string)($row['storage_key'] ?? '');
+                    $storageKeys[] = (string)($row['thumb_storage_key'] ?? '');
                 }
                 $activeIds = array_values($activeIds);
 
@@ -542,15 +608,36 @@ if ($search !== '') {
 }
 
 $where_sql = implode(' AND ', $where);
+$thumbSelect = !empty($thumbColumns['thumb_public_url'])
+    ? ', thumb_public_url'
+    : ", NULL::text AS thumb_public_url";
 
 $stmt = $pdo->prepare("
-    SELECT id, categoria, nome, descricao, tags, transform_css, size_bytes, uploaded_at, public_url
+    SELECT COUNT(*)
+    FROM eventos_galeria
+    WHERE {$where_sql}
+");
+$stmt->execute($params);
+$totalImagens = (int)$stmt->fetchColumn();
+$totalPaginas = max(1, (int)ceil($totalImagens / $itensPorPagina));
+if ($paginaAtual > $totalPaginas) {
+    $paginaAtual = $totalPaginas;
+}
+$offset = max(0, ($paginaAtual - 1) * $itensPorPagina);
+
+$stmt = $pdo->prepare("
+    SELECT id, categoria, nome, descricao, tags, transform_css, size_bytes, uploaded_at, public_url{$thumbSelect}
     FROM eventos_galeria
     WHERE {$where_sql}
     ORDER BY uploaded_at DESC
-    LIMIT 200
+    LIMIT :limit OFFSET :offset
 ");
-$stmt->execute($params);
+$stmt->bindValue(':limit', $itensPorPagina, PDO::PARAM_INT);
+$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+foreach ($params as $paramKey => $paramValue) {
+    $stmt->bindValue($paramKey, $paramValue, PDO::PARAM_STR);
+}
+$stmt->execute();
 $imagens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $contadores = [];
@@ -565,6 +652,24 @@ foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
 }
 
 $public_path = 'index.php?page=eventos_galeria_public';
+$itemInicial = $totalImagens > 0 ? ($offset + 1) : 0;
+$itemFinal = $totalImagens > 0 ? min($offset + count($imagens), $totalImagens) : 0;
+
+function eventosGaleriaAdminPageUrl(int $pagina, string $categoriaFilter, string $search): string
+{
+    $query = ['page' => 'eventos_galeria'];
+    if ($categoriaFilter !== '') {
+        $query['categoria'] = $categoriaFilter;
+    }
+    if ($search !== '') {
+        $query['search'] = $search;
+    }
+    if ($pagina > 1) {
+        $query['pagina'] = $pagina;
+    }
+
+    return '?' . http_build_query($query);
+}
 
 includeSidebar('Galeria de Imagens - Comercial');
 ?>
@@ -703,6 +808,16 @@ includeSidebar('Galeria de Imagens - Comercial');
         gap: 10px;
         margin-bottom: 18px;
         flex-wrap: wrap;
+    }
+
+    .results-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+        color: #64748b;
+        font-size: 0.84rem;
     }
 
     .bulk-toolbar {
@@ -855,6 +970,42 @@ includeSidebar('Galeria de Imagens - Comercial');
         color: #64748b;
     }
 
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 18px;
+    }
+
+    .pagination a,
+    .pagination span {
+        min-width: 40px;
+        height: 40px;
+        padding: 0 12px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 0.84rem;
+        border: 1px solid #dbe3ef;
+        background: #fff;
+        color: #0f172a;
+    }
+
+    .pagination .active {
+        background: #1e3a8a;
+        border-color: #1e3a8a;
+        color: #fff;
+    }
+
+    .pagination .disabled {
+        opacity: 0.45;
+    }
+
     .modal-overlay {
         position: fixed;
         inset: 0;
@@ -979,6 +1130,11 @@ includeSidebar('Galeria de Imagens - Comercial');
         .galeria-shell {
             padding: 14px;
         }
+
+        .results-bar {
+            flex-direction: column;
+            align-items: flex-start;
+        }
     }
 </style>
 
@@ -1002,11 +1158,11 @@ includeSidebar('Galeria de Imagens - Comercial');
         <?php endif; ?>
 
         <div class="categorias-bar">
-            <a href="?page=eventos_galeria" class="categoria-btn <?= $categoria_filter === '' ? 'active' : '' ?>">
+            <a href="<?= htmlspecialchars(eventosGaleriaAdminPageUrl(1, '', $search)) ?>" class="categoria-btn <?= $categoria_filter === '' ? 'active' : '' ?>">
                 📷 Todas (<?= array_sum($contadores) ?>)
             </a>
             <?php foreach ($categorias_filtro as $key => $cat): ?>
-                <a href="?page=eventos_galeria&categoria=<?= urlencode($key) ?>" class="categoria-btn <?= $categoria_filter === $key ? 'active' : '' ?>">
+                <a href="<?= htmlspecialchars(eventosGaleriaAdminPageUrl(1, $key, $search)) ?>" class="categoria-btn <?= $categoria_filter === $key ? 'active' : '' ?>">
                     <?= $cat['icon'] ?> <?= htmlspecialchars($cat['label']) ?> (<?= (int)($contadores[$key] ?? 0) ?>)
                 </a>
             <?php endforeach; ?>
@@ -1020,6 +1176,11 @@ includeSidebar('Galeria de Imagens - Comercial');
             <input class="filter-input" type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Buscar por nome, descrição ou tags...">
             <button type="submit" class="btn btn-primary">Buscar</button>
         </form>
+
+        <div class="results-bar">
+            <div>Exibindo <?= $itemInicial ?> a <?= $itemFinal ?> de <?= $totalImagens ?> imagens</div>
+            <div>Página <?= $paginaAtual ?> de <?= $totalPaginas ?></div>
+        </div>
 
         <?php if (empty($imagens)): ?>
             <div class="empty-state">
@@ -1050,6 +1211,8 @@ includeSidebar('Galeria de Imagens - Comercial');
                     $img_fallback_src = 'eventos_galeria_imagem.php?id=' . $img_id;
                     $img_public_url = trim((string)($img['public_url'] ?? ''));
                     $img_src = $img_public_url !== '' ? $img_public_url : $img_fallback_src;
+                    $img_thumb_src = trim((string)($img['thumb_public_url'] ?? ''));
+                    $img_card_src = $img_thumb_src !== '' ? $img_thumb_src : $img_src;
                     ?>
                     <div class="image-card"
                          data-image-id="<?= $img_id ?>"
@@ -1063,7 +1226,7 @@ includeSidebar('Galeria de Imagens - Comercial');
                                    value="<?= $img_id ?>"
                                    aria-label="Selecionar imagem <?= htmlspecialchars($img_name) ?>"
                                    onclick="event.stopPropagation(); atualizarSelecaoLote();">
-                            <img src="<?= htmlspecialchars($img_src) ?>"
+                            <img src="<?= htmlspecialchars($img_card_src) ?>"
                                  alt="<?= htmlspecialchars($img_name) ?>"
                                  loading="lazy"
                                  decoding="async"
@@ -1094,6 +1257,34 @@ includeSidebar('Galeria de Imagens - Comercial');
                     </div>
                 <?php endforeach; ?>
             </div>
+
+            <?php if ($totalPaginas > 1): ?>
+                <nav class="pagination" aria-label="Paginação da galeria interna">
+                    <?php if ($paginaAtual > 1): ?>
+                        <a href="<?= htmlspecialchars(eventosGaleriaAdminPageUrl($paginaAtual - 1, $categoria_filter, $search)) ?>">Anterior</a>
+                    <?php else: ?>
+                        <span class="disabled">Anterior</span>
+                    <?php endif; ?>
+
+                    <?php
+                    $paginaInicio = max(1, $paginaAtual - 2);
+                    $paginaFim = min($totalPaginas, $paginaAtual + 2);
+                    for ($pagina = $paginaInicio; $pagina <= $paginaFim; $pagina++):
+                    ?>
+                        <?php if ($pagina === $paginaAtual): ?>
+                            <span class="active"><?= $pagina ?></span>
+                        <?php else: ?>
+                            <a href="<?= htmlspecialchars(eventosGaleriaAdminPageUrl($pagina, $categoria_filter, $search)) ?>"><?= $pagina ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ($paginaAtual < $totalPaginas): ?>
+                        <a href="<?= htmlspecialchars(eventosGaleriaAdminPageUrl($paginaAtual + 1, $categoria_filter, $search)) ?>">Próxima</a>
+                    <?php else: ?>
+                        <span class="disabled">Próxima</span>
+                    <?php endif; ?>
+                </nav>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 </div>

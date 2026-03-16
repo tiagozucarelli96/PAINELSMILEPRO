@@ -16,6 +16,13 @@ if (strpos($request_uri, 'asaas_webhook.php') !== false ||
     exit;
 }
 
+// Galeria pública: responder sem sessão para permitir cache HTTP do HTML.
+$earlyPage = $_GET['page'] ?? '';
+if ($earlyPage === 'eventos_galeria_public') {
+    require_once __DIR__ . '/eventos_galeria_public.php';
+    exit;
+}
+
 session_start();
 
 /* ===== ATALHO TEMPORÁRIO (REMOVER APÓS O TESTE) ===== */

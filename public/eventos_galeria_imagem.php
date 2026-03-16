@@ -19,6 +19,8 @@ if (empty($_SESSION['perm_comercial']) && empty($_SESSION['perm_superadmin'])) {
     exit;
 }
 
+session_write_close();
+
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
     http_response_code(400);
