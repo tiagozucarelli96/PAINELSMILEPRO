@@ -102,12 +102,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-align: center;
             margin-bottom: 1.4rem;
         }
+        .brand-logo {
+            width: 190px;
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto .75rem;
+            display: block;
+        }
         .header h1 {
             color: #1e3a8a;
             margin-bottom: .4rem;
-            font-size: 1.7rem;
+            font-size: 1.45rem;
         }
         .header p { color: #64748b; font-size: .92rem; }
+        .header .company {
+            margin-bottom: .3rem;
+            color: #1e3a8a;
+            font-weight: 700;
+            font-size: .92rem;
+        }
         .field { margin-bottom: 1rem; }
         .field label {
             display: block;
@@ -164,7 +177,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <div class="card">
         <div class="header">
-            <h1>⚖️ Jurídico</h1>
+            <img src="/logo-smile.png" alt="Grupo Smile Eventos" class="brand-logo">
+            <h1>Portal Jurídico</h1>
+            <p class="company">Grupo Smile Eventos</p>
             <p>Selecione o usuário e informe a senha para acessar os arquivos.</p>
         </div>
 

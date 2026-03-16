@@ -78,6 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'salvar_comercial') {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
         $pacote = trim($_POST['pacote_contratado'] ?? '');
+        $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
+        $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
         $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
         $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
         
@@ -106,12 +108,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Atualizar pré-contrato
             $stmt = $pdo->prepare("
                 UPDATE vendas_pre_contratos 
-                SET pacote_contratado = ?, valor_negociado = ?, desconto = ?, valor_total = ?,
+                SET pacote_contratado = ?, forma_pagamento = ?, observacoes_internas = ?,
+                    valor_negociado = ?, desconto = ?, valor_total = ?,
                     atualizado_em = NOW(), atualizado_por = ?, status = 'pronto_aprovacao',
                     responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
                 WHERE id = ?
             ");
-            $stmt->execute([$pacote, $valor_negociado, $desconto, $valor_total, $usuario_id, $usuario_id, $pre_contrato_id]);
+            $stmt->execute([
+                $pacote,
+                $forma_pagamento_detalhada !== '' ? $forma_pagamento_detalhada : null,
+                $observacoes_internas !== '' ? $observacoes_internas : null,
+                $valor_negociado,
+                $desconto,
+                $valor_total,
+                $usuario_id,
+                $usuario_id,
+                $pre_contrato_id
+            ]);
             
             // Remover adicionais antigos
             $stmt_del = $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?");
@@ -438,7 +451,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 }
                                 return $v;
                             })(),
-                            'observacao' => (string)($pre_contrato['observacoes'] ?? '')
+                            // Observação deve ficar apenas interna no Painel.
+                            'enviar_observacao' => false
                         ];
 
                         $evento_me = vendas_me_criar_evento($dados_evento);
@@ -1090,6 +1104,12 @@ ob_start();
     </div>
     
     <?php if ($pre_contrato_editar): ?>
+        <?php
+            $observacoes_internas_valor = trim((string)($pre_contrato_editar['observacoes_internas'] ?? ''));
+            if ($observacoes_internas_valor === '') {
+                $observacoes_internas_valor = trim((string)($pre_contrato_editar['observacoes'] ?? ''));
+            }
+        ?>
         <!-- Modal de Edição -->
         <div class="vendas-modal active" id="modalEditar">
             <div class="vendas-modal-content">
@@ -1113,6 +1133,16 @@ ob_start();
                         <label for="pacote_contratado">Pacote Contratado:</label>
                         <input type="text" id="pacote_contratado" name="pacote_contratado" 
                                value="<?php echo htmlspecialchars($pre_contrato_editar['pacote_contratado'] ?? ''); ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="forma_pagamento_detalhada">Forma de pagamento detalhada (interno):</label>
+                        <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($pre_contrato_editar['forma_pagamento'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="observacoes_internas">Observação (interno):</label>
+                        <textarea id="observacoes_internas" name="observacoes_internas" rows="3" placeholder="Observações internas da equipe comercial"><?php echo htmlspecialchars($observacoes_internas_valor); ?></textarea>
                     </div>
                     
                     <div class="form-group">

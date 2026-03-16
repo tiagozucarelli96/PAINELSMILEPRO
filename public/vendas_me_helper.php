@@ -630,6 +630,8 @@ function vendas_me_criar_evento(array $dados_evento): array {
         'localevento' => $unidade_nome,
     ];
 
+    $enviar_observacao = !array_key_exists('enviar_observacao', $dados_evento) || (bool)$dados_evento['enviar_observacao'];
+
     if (!empty($dados_evento['nconvidados'])) {
         $payload['nconvidados'] = (int)$dados_evento['nconvidados'];
     }
@@ -639,14 +641,16 @@ function vendas_me_criar_evento(array $dados_evento): array {
             // ME exige ID numérico
             $payload['comoconheceu'] = (int)$cc_id;
         } else {
-            // Não bloquear criação do evento (campo é opcional na doc), mas registrar no texto.
-            $cc_txt = trim((string)$dados_evento['comoconheceu']);
-            if ($cc_txt !== '') {
-                $payload['observacao'] = trim(((string)($payload['observacao'] ?? '')) . "\nComo conheceu (Painel): " . $cc_txt);
+            if ($enviar_observacao) {
+                // Não bloquear criação do evento (campo é opcional na doc), mas registrar no texto.
+                $cc_txt = trim((string)$dados_evento['comoconheceu']);
+                if ($cc_txt !== '') {
+                    $payload['observacao'] = trim(((string)($payload['observacao'] ?? '')) . "\nComo conheceu (Painel): " . $cc_txt);
+                }
             }
         }
     }
-    if (!empty($dados_evento['observacao'])) {
+    if ($enviar_observacao && !empty($dados_evento['observacao'])) {
         $obs_in = trim((string)$dados_evento['observacao']);
         if ($obs_in !== '') {
             $obs_cur = trim((string)($payload['observacao'] ?? ''));

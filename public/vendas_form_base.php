@@ -75,6 +75,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         $unidade = $_POST['unidade'] ?? '';
         $horario_inicio = $_POST['horario_inicio'] ?? '';
         $horario_termino = $_POST['horario_termino'] ?? '';
+        $faixa_horario = trim((string)($_POST['faixa_horario'] ?? ''));
+        if ($tipo_evento === 'infantil') {
+            if ($faixa_horario === '13_17') {
+                $horario_inicio = '13:00';
+                $horario_termino = '17:00';
+            } elseif ($faixa_horario === '19_23') {
+                $horario_inicio = '19:00';
+                $horario_termino = '23:00';
+            }
+        }
         $nome_evento = trim($_POST['nome_evento'] ?? '');
         $num_convidados = (int)($_POST['num_convidados'] ?? 0);
         $como_conheceu = trim($_POST['como_conheceu'] ?? '');
@@ -82,10 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
 
         // Texto livre (público)
         $pacote_plano = trim($_POST['pacote_plano'] ?? '');
+        $observacoes_publicas = trim((string)($_POST['observacoes'] ?? ''));
+        $observacoes_para_salvar = $tipo_evento === 'pj'
+            ? ($observacoes_publicas !== '' ? $observacoes_publicas : null)
+            : null;
 
-        // Observações (público)
-        $observacoes = trim($_POST['observacoes'] ?? '');
-        
         // Validações
         if (empty($nome_completo) || strlen($nome_completo) < 3) {
             throw new Exception('Nome completo é obrigatório (mínimo 3 caracteres)');
@@ -169,6 +180,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         if ($termino_ts === $inicio_ts) {
             throw new Exception('Horário de término deve ser diferente do horário de início');
         }
+        if ($tipo_evento === 'infantil') {
+            $inicio_hm = date('H:i', $inicio_ts);
+            $termino_hm = date('H:i', $termino_ts);
+            $faixa_valida = (
+                ($inicio_hm === '13:00' && $termino_hm === '17:00') ||
+                ($inicio_hm === '19:00' && $termino_hm === '23:00')
+            );
+            if (!$faixa_valida) {
+                throw new Exception('Para eventos infantis, escolha um dos horários: 13h às 17h ou 19h às 23h.');
+            }
+        }
 
         if (empty($nome_evento)) {
             if ($tipo_evento === 'infantil') {
@@ -232,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             $como_conheceu,
             $como_conheceu === 'outro' ? $como_conheceu_outro : null,
             $pacote_plano,
-            $observacoes,
+            $observacoes_para_salvar,
             $ip
         ]);
         
@@ -590,16 +612,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                         </div>
                     </div>
 
-                    <div class="form-row">
+                    <?php if ($tipo_evento === 'infantil'): ?>
+                        <?php
+                            $faixa_horario_form = trim((string)($_POST['faixa_horario'] ?? ''));
+                            $horario_inicio_form = trim((string)($_POST['horario_inicio'] ?? ''));
+                            $horario_termino_form = trim((string)($_POST['horario_termino'] ?? ''));
+                            if ($faixa_horario_form === '13_17') {
+                                $horario_inicio_form = '13:00';
+                                $horario_termino_form = '17:00';
+                            } elseif ($faixa_horario_form === '19_23') {
+                                $horario_inicio_form = '19:00';
+                                $horario_termino_form = '23:00';
+                            } else {
+                                $inicio_tmp = strtotime($horario_inicio_form);
+                                $termino_tmp = strtotime($horario_termino_form);
+                                $inicio_tmp_hm = $inicio_tmp !== false ? date('H:i', $inicio_tmp) : '';
+                                $termino_tmp_hm = $termino_tmp !== false ? date('H:i', $termino_tmp) : '';
+                                if ($inicio_tmp_hm === '13:00' && $termino_tmp_hm === '17:00') {
+                                    $faixa_horario_form = '13_17';
+                                    $horario_inicio_form = '13:00';
+                                    $horario_termino_form = '17:00';
+                                } elseif ($inicio_tmp_hm === '19:00' && $termino_tmp_hm === '23:00') {
+                                    $faixa_horario_form = '19_23';
+                                    $horario_inicio_form = '19:00';
+                                    $horario_termino_form = '23:00';
+                                }
+                            }
+                        ?>
                         <div class="form-group">
-                            <label for="horario_inicio">Horário de Início <span class="required">*</span></label>
-                            <input type="time" id="horario_inicio" name="horario_inicio" required value="<?php echo htmlspecialchars($_POST['horario_inicio'] ?? ''); ?>">
+                            <label for="faixa_horario">Horário do Evento <span class="required">*</span></label>
+                            <select id="faixa_horario" name="faixa_horario" required>
+                                <option value="">Selecione...</option>
+                                <option value="13_17" <?php echo $faixa_horario_form === '13_17' ? 'selected' : ''; ?>>13h às 17h</option>
+                                <option value="19_23" <?php echo $faixa_horario_form === '19_23' ? 'selected' : ''; ?>>19h às 23h</option>
+                            </select>
+                            <small style="color:#64748b;display:block;margin-top:.35rem;">Para eventos infantis, só estão disponíveis essas duas faixas.</small>
+                            <input type="hidden" id="horario_inicio" name="horario_inicio" value="<?php echo htmlspecialchars($horario_inicio_form); ?>">
+                            <input type="hidden" id="horario_termino" name="horario_termino" value="<?php echo htmlspecialchars($horario_termino_form); ?>">
                         </div>
-                        <div class="form-group">
-                            <label for="horario_termino">Horário de Término <span class="required">*</span></label>
-                            <input type="time" id="horario_termino" name="horario_termino" required value="<?php echo htmlspecialchars($_POST['horario_termino'] ?? ''); ?>">
+                    <?php else: ?>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="horario_inicio">Horário de Início <span class="required">*</span></label>
+                                <input type="time" id="horario_inicio" name="horario_inicio" required value="<?php echo htmlspecialchars($_POST['horario_inicio'] ?? ''); ?>">
+                            </div>
+                            <div class="form-group">
+                                <label for="horario_termino">Horário de Término <span class="required">*</span></label>
+                                <input type="time" id="horario_termino" name="horario_termino" required value="<?php echo htmlspecialchars($_POST['horario_termino'] ?? ''); ?>">
+                            </div>
                         </div>
-                    </div>
+                    <?php endif; ?>
 
                     <div class="form-group">
                         <label for="nome_evento"><?php echo htmlspecialchars($label_nome_evento); ?> <span class="required">*</span></label>
@@ -639,15 +701,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     </div>
                 </div>
 
-                <!-- Observações -->
-                <div class="form-section">
-                    <div class="form-section-title">Observações</div>
-                    <div class="form-group">
-                        <label for="observacoes">Observações (opcional)</label>
-                        <textarea id="observacoes" name="observacoes" placeholder="Informações adicionais..."><?php echo htmlspecialchars($_POST['observacoes'] ?? ''); ?></textarea>
+                <?php if ($tipo_evento === 'pj'): ?>
+                    <div class="form-section">
+                        <div class="form-section-title">Observações</div>
+                        <div class="form-group">
+                            <label for="observacoes">Observações (opcional)</label>
+                            <textarea id="observacoes" name="observacoes" placeholder="Informações adicionais..."><?php echo htmlspecialchars($_POST['observacoes'] ?? ''); ?></textarea>
+                        </div>
                     </div>
-                </div>
-                
+                <?php endif; ?>
+
                 <button type="submit" class="btn" <?php echo $rate_limit_excedido ? 'disabled' : ''; ?>>
                     Enviar
                 </button>
@@ -745,6 +808,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             clearTimeout(cepTimeout);
             cepTimeout = setTimeout(handleCepAuto, 350);
         });
+
+        const faixaHorarioEl = document.getElementById('faixa_horario');
+        if (faixaHorarioEl) {
+            const horarioInicioEl = document.getElementById('horario_inicio');
+            const horarioTerminoEl = document.getElementById('horario_termino');
+            const syncFaixaHorario = () => {
+                if (!horarioInicioEl || !horarioTerminoEl) return;
+                if (faixaHorarioEl.value === '13_17') {
+                    horarioInicioEl.value = '13:00';
+                    horarioTerminoEl.value = '17:00';
+                } else if (faixaHorarioEl.value === '19_23') {
+                    horarioInicioEl.value = '19:00';
+                    horarioTerminoEl.value = '23:00';
+                } else {
+                    horarioInicioEl.value = '';
+                    horarioTerminoEl.value = '';
+                }
+            };
+            faixaHorarioEl.addEventListener('change', syncFaixaHorario);
+            syncFaixaHorario();
+        }
 
         // Mostrar/ocultar campo "como conheceu outro"
         document.getElementById('como_conheceu')?.addEventListener('change', function() {

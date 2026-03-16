@@ -205,8 +205,36 @@ try {
             flex-wrap: wrap;
         }
 
-        .header h1 { font-size: 1.45rem; }
-        .header small { opacity: .9; display: block; margin-top: .2rem; }
+        .header-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: .75rem;
+        }
+        .header-logo {
+            width: 120px;
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .12);
+            padding: .35rem .45rem;
+        }
+        .header-text h1 {
+            margin: 0;
+            font-size: 1.45rem;
+            line-height: 1.1;
+        }
+        .header-company {
+            opacity: .94;
+            font-size: .85rem;
+            margin-top: .2rem;
+            display: block;
+        }
+        .header-user {
+            opacity: .9;
+            display: block;
+            margin-top: .1rem;
+            font-size: .84rem;
+        }
 
         .header-actions {
             display: inline-flex;
@@ -239,6 +267,35 @@ try {
             margin-bottom: .95rem;
             color: #475569;
             font-size: .94rem;
+        }
+
+        .jp-company-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: .7rem .85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: .7rem;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+            margin-bottom: .9rem;
+        }
+        .jp-company-logo {
+            width: 86px;
+            max-width: 100%;
+            height: auto;
+        }
+        .jp-company-text strong {
+            display: block;
+            color: #1e3a8a;
+            font-size: .92rem;
+            line-height: 1.1;
+        }
+        .jp-company-text span {
+            display: block;
+            margin-top: .14rem;
+            color: #64748b;
+            font-size: .8rem;
         }
 
         .alert {
@@ -560,9 +617,13 @@ try {
 </head>
 <body>
     <header class="header">
-        <div>
-            <h1>⚖️ Portal Jurídico</h1>
-            <small>Arquivos compartilhados para <?= htmlspecialchars($usuarioNome) ?></small>
+        <div class="header-brand">
+            <img src="/logo-smile.png" alt="Grupo Smile Eventos" class="header-logo">
+            <div class="header-text">
+                <h1>Portal Jurídico</h1>
+                <span class="header-company">Grupo Smile Eventos</span>
+                <span class="header-user">Arquivos compartilhados para <?= htmlspecialchars($usuarioNome) ?></span>
+            </div>
         </div>
         <div class="header-actions">
             <a href="index.php?page=juridico_portal&logout=1" class="btn btn-light">Sair</a>
@@ -570,6 +631,13 @@ try {
     </header>
 
     <main class="container">
+        <div class="jp-company-card">
+            <img src="/logo-smile.png" alt="Grupo Smile Eventos" class="jp-company-logo">
+            <div class="jp-company-text">
+                <strong>Grupo Smile Eventos</strong>
+                <span>Ambiente oficial de documentos jurídicos</span>
+            </div>
+        </div>
         <p class="intro">Aqui você também pode criar pastas e adicionar arquivos jurídicos com descrição.</p>
 
         <?php if ($mensagem !== ''): ?>
