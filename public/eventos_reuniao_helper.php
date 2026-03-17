@@ -3146,6 +3146,28 @@ function eventos_cliente_portal_sincronizar_link_reuniao(
         return ['ok' => false, 'error' => $error_text !== '' ? $error_text : 'Falha ao sincronizar link da reunião'];
     }
 
+    if (!empty($result['link']['id']) && eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'allowed_sections')) {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_links_publicos
+            SET allowed_sections = CAST(:allowed_sections AS jsonb)
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':id' => (int)$result['link']['id'],
+            ':allowed_sections' => json_encode(['decoracao', 'observacoes_gerais'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+        $updated_link = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (is_array($updated_link)) {
+            $decoded = json_decode((string)($updated_link['form_schema_json'] ?? '[]'), true);
+            $updated_link['form_schema'] = is_array($decoded) ? $decoded : [];
+            $updated_link['portal_visible'] = !empty($updated_link['portal_visible']);
+            $updated_link['portal_editable'] = !empty($updated_link['portal_editable']);
+            $updated_link['portal_configured'] = !empty($updated_link['portal_configured']);
+            $result['link'] = $updated_link;
+        }
+    }
+
     return ['ok' => true, 'link' => $result['link'] ?? null];
 }
 

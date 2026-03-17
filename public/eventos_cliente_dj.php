@@ -20,6 +20,9 @@ $link = null;
 $reuniao = null;
 $secao = null;
 $anexos = [];
+$section_views = [];
+$link_sections = ['dj_protocolo'];
+$is_combined_reuniao = false;
 $portal_config = null;
 $link_section = 'dj_protocolo';
 $link_visivel = true;
@@ -192,6 +195,69 @@ function eventos_cliente_merge_payload_values(array $primary, array $fallback): 
 }
 
 /**
+ * Normaliza identificadores usados em ids/nomes de campos.
+ */
+function eventos_cliente_normalizar_identificador(string $value, string $fallback = 'campo'): string {
+    $normalized = preg_replace('/[^a-zA-Z0-9_\-]/', '_', trim($value)) ?? '';
+    $normalized = trim($normalized, '_');
+    if ($normalized === '') {
+        return $fallback;
+    }
+    return $normalized;
+}
+
+/**
+ * Monta nome de input com prefixo opcional da seção para evitar colisões.
+ */
+function eventos_cliente_input_name(string $prefix, string $field_id, string $section = ''): string {
+    $safe_field = eventos_cliente_normalizar_identificador($field_id);
+    $safe_section = trim($section) !== '' ? eventos_cliente_normalizar_identificador($section, '') : '';
+    return $prefix . '_' . ($safe_section !== '' ? $safe_section . '_' : '') . $safe_field;
+}
+
+/**
+ * Nome do input principal de um campo do schema.
+ */
+function eventos_cliente_field_input_name(string $field_id, string $section = ''): string {
+    return eventos_cliente_input_name('field', $field_id, $section);
+}
+
+/**
+ * Nome do input de upload de um campo do schema.
+ */
+function eventos_cliente_file_input_name(string $field_id, string $section = ''): string {
+    return eventos_cliente_input_name('file', $field_id, $section);
+}
+
+/**
+ * Nome do input de observações dos uploads de um campo do schema.
+ */
+function eventos_cliente_file_note_input_name(string $field_id, string $section = ''): string {
+    return eventos_cliente_input_name('file_note', $field_id, $section);
+}
+
+/**
+ * Nome do input de conteúdo do editor livre por seção.
+ */
+function eventos_cliente_content_input_name(string $section): string {
+    return 'content_html_' . eventos_cliente_normalizar_identificador($section, 'geral');
+}
+
+/**
+ * Nome do input de upload genérico por seção.
+ */
+function eventos_cliente_legacy_upload_input_name(string $section): string {
+    return 'anexos_' . eventos_cliente_normalizar_identificador($section, 'geral');
+}
+
+/**
+ * Nome do input de observações dos uploads genéricos por seção.
+ */
+function eventos_cliente_legacy_upload_note_name(string $section): string {
+    return 'anexos_note_' . eventos_cliente_normalizar_identificador($section, 'geral');
+}
+
+/**
  * Lista de seções permitidas para link público.
  */
 function eventos_cliente_parse_allowed_sections($raw): array {
@@ -219,31 +285,49 @@ function eventos_cliente_parse_allowed_sections($raw): array {
 }
 
 /**
+ * Resolve todas as seções permitidas pelo token público.
+ */
+function eventos_cliente_resolver_secoes_link(array $link): array {
+    $link_type = strtolower(trim((string)($link['link_type'] ?? '')));
+    $allowed = eventos_cliente_parse_allowed_sections($link['allowed_sections'] ?? null);
+
+    if ($link_type === 'cliente_observacoes') {
+        $sections = [];
+        foreach (['decoracao', 'observacoes_gerais'] as $section) {
+            if (in_array($section, $allowed, true)) {
+                $sections[] = $section;
+            }
+        }
+        if (empty($sections)) {
+            $sections[] = 'decoracao';
+        }
+        return $sections;
+    }
+
+    if ($link_type === 'cliente_dj') {
+        return ['dj_protocolo'];
+    }
+
+    $sections = [];
+    foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $section) {
+        if (in_array($section, $allowed, true)) {
+            $sections[] = $section;
+        }
+    }
+
+    if (empty($sections)) {
+        $sections[] = 'dj_protocolo';
+    }
+
+    return $sections;
+}
+
+/**
  * Resolve a seção principal atendida pelo token público.
  */
 function eventos_cliente_resolver_secao_link(array $link): string {
-    $link_type = strtolower(trim((string)($link['link_type'] ?? '')));
-    $allowed = eventos_cliente_parse_allowed_sections($link['allowed_sections'] ?? null);
-    if ($link_type === 'cliente_observacoes') {
-        if (in_array('decoracao', $allowed, true)) {
-            return 'decoracao';
-        }
-        if (in_array('observacoes_gerais', $allowed, true)) {
-            return 'observacoes_gerais';
-        }
-        return 'decoracao';
-    }
-    if ($link_type === 'cliente_dj') {
-        return 'dj_protocolo';
-    }
-
-    if (in_array('decoracao', $allowed, true)) {
-        return 'decoracao';
-    }
-    if (in_array('observacoes_gerais', $allowed, true)) {
-        return 'observacoes_gerais';
-    }
-    return 'dj_protocolo';
+    $sections = eventos_cliente_resolver_secoes_link($link);
+    return (string)($sections[0] ?? 'dj_protocolo');
 }
 
 /**
@@ -277,6 +361,44 @@ function eventos_cliente_get_section_meta(string $section): array {
         ],
     ];
     return $map[$section] ?? $map['dj_protocolo'];
+}
+
+/**
+ * Rótulo amigável da seção.
+ */
+function eventos_cliente_section_label(string $section): string {
+    $labels = [
+        'decoracao' => 'Decoração',
+        'observacoes_gerais' => 'Observações Gerais',
+        'dj_protocolo' => 'DJ / Protocolos',
+    ];
+    return $labels[$section] ?? 'Formulário';
+}
+
+/**
+ * Instruções padrão por seção pública.
+ */
+function eventos_cliente_section_instructions(string $section): array {
+    if ($section === 'decoracao') {
+        return [
+            'Preencha os pontos da reunião final com o máximo de clareza.',
+            'Use os anexos para enviar referências, documentos ou listas complementares.',
+            'Campos obrigatórios devem ser preenchidos antes do envio.',
+        ];
+    }
+    if ($section === 'observacoes_gerais') {
+        return [
+            'Preencha os pontos e observações gerais com o máximo de clareza.',
+            'Use os anexos para enviar referências, documentos ou listas complementares.',
+            'Campos obrigatórios devem ser preenchidos antes do envio.',
+        ];
+    }
+    return [
+        'Para cada música, informe o link do YouTube e o tempo de início.',
+        'Exemplo: Valsa 0:20 - https://youtube.com/...',
+        'Inclua músicas para entrada, valsas, momentos especiais e abertura de pista.',
+        'Informe também seu gosto musical e ritmos preferidos.',
+    ];
 }
 
 /**
@@ -417,7 +539,7 @@ function eventos_cliente_schema_garantir_texto_livre(array $schema, string $sect
 /**
  * Monta HTML de resposta do cliente a partir do schema.
  */
-function eventos_cliente_montar_resposta_schema(array $schema, array $post): array {
+function eventos_cliente_montar_resposta_schema(array $schema, array $post, string $section = ''): array {
     $errors = [];
     $parts = [];
     $values = [];
@@ -427,7 +549,7 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
         $field_type = (string)($field['type'] ?? 'text');
         $label = trim((string)($field['label'] ?? 'Campo'));
         $required = !empty($field['required']);
-        $input_name = 'field_' . preg_replace('/[^a-zA-Z0-9_\-]/', '_', $field_id);
+        $input_name = eventos_cliente_field_input_name($field_id, $section);
 
         if ($field_type === 'divider') {
             $parts[] = '<hr>';
@@ -487,6 +609,83 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post): arr
     ];
 }
 
+/**
+ * Prepara dados de uma seção pública para renderização/submit.
+ */
+function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, string $section, ?array $link = null, bool $prefer_link_snapshot = false): array {
+    $secao = eventos_reuniao_get_secao($pdo, $meeting_id, $section);
+    $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, $section);
+
+    $content_from_link_snapshot = $prefer_link_snapshot ? trim((string)($link['content_html_snapshot'] ?? '')) : '';
+    $content_from_secao = trim((string)($secao['content_html'] ?? ''));
+    $content = $content_from_link_snapshot !== '' ? $content_from_link_snapshot : $content_from_secao;
+
+    $form_schema = [];
+    if ($prefer_link_snapshot && !empty($link['form_schema']) && is_array($link['form_schema'])) {
+        $form_schema = eventos_cliente_normalizar_schema($link['form_schema']);
+    } elseif (!empty($secao['form_schema_json'])) {
+        $decoded = json_decode((string)$secao['form_schema_json'], true);
+        $form_schema = eventos_cliente_normalizar_schema($decoded);
+    }
+
+    $legacy_text_portal_visible = true;
+    if (is_array($secao) && array_key_exists('legacy_text_portal_visible', $secao)) {
+        $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
+    }
+
+    if (!empty($form_schema) && !$legacy_text_portal_visible) {
+        $form_schema = array_values(array_filter($form_schema, static function ($field): bool {
+            $field_id = trim((string)($field['id'] ?? ''));
+            return strpos($field_id, 'legacy_portal_text_') !== 0;
+        }));
+    }
+    if (empty($form_schema) && !$legacy_text_portal_visible) {
+        $content = '';
+    }
+
+    $form_values = eventos_cliente_extract_payload_from_html($content, $section);
+    if ($prefer_link_snapshot && $content_from_link_snapshot !== '' && $content_from_secao !== '' && $content_from_link_snapshot !== $content_from_secao) {
+        $fallback_values = eventos_cliente_extract_payload_from_html($content_from_secao, $section);
+        $form_values = eventos_cliente_merge_payload_values($form_values, $fallback_values);
+    }
+
+    if ($legacy_text_portal_visible) {
+        $legacy_field_id = 'legacy_portal_text_' . $section;
+        $legacy_default = trim((string)($form_values[$legacy_field_id] ?? ''));
+        $form_schema = eventos_cliente_schema_garantir_texto_livre($form_schema, $section, $legacy_default);
+    }
+
+    return [
+        'section' => $section,
+        'label' => eventos_cliente_section_label($section),
+        'meta' => eventos_cliente_get_section_meta($section),
+        'secao' => $secao,
+        'anexos' => $anexos,
+        'content' => $content,
+        'form_schema' => $form_schema,
+        'form_values' => $form_values,
+        'legacy_text_portal_visible' => $legacy_text_portal_visible,
+        'uses_link_snapshot' => $prefer_link_snapshot,
+    ];
+}
+
+/**
+ * Monta um snapshot agregado das seções exibidas no token.
+ */
+function eventos_cliente_compor_snapshot_sections(array $section_contents): string {
+    $parts = [];
+    foreach ($section_contents as $section => $content) {
+        $content_html = trim((string)$content);
+        if ($content_html === '') {
+            continue;
+        }
+        $parts[] = '<section data-smile-public-section="' . eventos_cliente_e((string)$section) . '">' . "\n"
+            . $content_html . "\n"
+            . '</section>';
+    }
+    return implode("\n", $parts);
+}
+
 // Validar token
 if (empty($token)) {
     $error = 'Link inválido';
@@ -503,15 +702,55 @@ if (empty($token)) {
         // Registrar acesso
         eventos_link_publico_registrar_acesso($pdo, $link['id']);
 
-        // Resolver seção permitida pelo token e carregar dados.
-        $link_section = eventos_cliente_resolver_secao_link($link);
-        $section_meta = eventos_cliente_get_section_meta($link_section);
+        $link_sections = eventos_cliente_resolver_secoes_link($link);
+        $is_combined_reuniao = strtolower(trim((string)($link['link_type'] ?? ''))) === 'cliente_observacoes'
+            && in_array('decoracao', $link_sections, true)
+            && in_array('observacoes_gerais', $link_sections, true);
+        $link_section = (string)($link_sections[0] ?? 'dj_protocolo');
+        $section_meta = $is_combined_reuniao
+            ? [
+                'page_title' => 'Reunião Final - Portal do Cliente',
+                'header_title' => '📝 Reunião Final',
+                'form_heading' => '📝 Reunião Final',
+                'default_form_title_prefix' => 'Reunião Final - ',
+                'upload_prefix' => 'cliente_reuniao',
+                'notify_dj' => false,
+            ]
+            : eventos_cliente_get_section_meta($link_section);
 
-        // Buscar reunião e seção
         $reuniao = eventos_reuniao_get($pdo, $link['meeting_id']);
-        $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], $link_section);
-        $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
         $portal_config = eventos_cliente_portal_get($pdo, (int)$link['meeting_id']);
+
+        if (is_array($portal_config) && !empty($portal_config)
+            && strtolower(trim((string)($link['link_type'] ?? ''))) === 'cliente_observacoes'
+            && (!empty($portal_config['visivel_reuniao']) || !empty($portal_config['editavel_reuniao']))
+        ) {
+            foreach (['decoracao', 'observacoes_gerais'] as $portal_section) {
+                if (!in_array($portal_section, $link_sections, true)) {
+                    $link_sections[] = $portal_section;
+                }
+            }
+            $ordered_sections = [];
+            foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $candidate_section) {
+                if (in_array($candidate_section, $link_sections, true)) {
+                    $ordered_sections[] = $candidate_section;
+                }
+            }
+            $link_sections = array_values(array_unique($ordered_sections));
+            $link_section = (string)($link_sections[0] ?? 'decoracao');
+            $is_combined_reuniao = in_array('decoracao', $link_sections, true)
+                && in_array('observacoes_gerais', $link_sections, true);
+            if ($is_combined_reuniao) {
+                $section_meta = [
+                    'page_title' => 'Reunião Final - Portal do Cliente',
+                    'header_title' => '📝 Reunião Final',
+                    'form_heading' => '📝 Reunião Final',
+                    'default_form_title_prefix' => 'Reunião Final - ',
+                    'upload_prefix' => 'cliente_reuniao',
+                    'notify_dj' => false,
+                ];
+            }
+        }
 
         $link_has_slot_rules = ($link_section === 'dj_protocolo') && !empty($link['portal_configured']);
         if ($link_has_slot_rules) {
@@ -520,7 +759,7 @@ if (empty($token)) {
         }
 
         if (is_array($portal_config) && !empty($portal_config)) {
-            if ($link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
+            if ($is_combined_reuniao || $link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
                 $link_visivel = !empty($portal_config['visivel_reuniao']);
                 $link_editavel = !empty($portal_config['editavel_reuniao']);
             } else {
@@ -536,6 +775,18 @@ if (empty($token)) {
 
         if (!$link_visivel) {
             $error = 'Este conteúdo não está disponível no portal do cliente no momento.';
+        } else {
+            foreach ($link_sections as $section_key) {
+                $section_views[$section_key] = eventos_cliente_preparar_secao_publica(
+                    $pdo,
+                    (int)$link['meeting_id'],
+                    $section_key,
+                    $link,
+                    !$is_combined_reuniao && $section_key === $link_section
+                );
+            }
+            $secao = $section_views[$link_section]['secao'] ?? null;
+            $anexos = $section_views[$link_section]['anexos'] ?? [];
         }
     }
 }
@@ -550,92 +801,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
         } elseif (!empty($link['submitted_at'])) {
             $error = 'Este formulário já foi enviado e está travado. Aguarde o desbloqueio da equipe para editar novamente.';
         } else {
-            $uploads = [];
+            $slot_index = max(1, (int)($link['slot_index'] ?? 1));
+            $pending_sections = [];
 
-            $schema_submit = [];
-            if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
-                $schema_submit = eventos_cliente_normalizar_schema($link['form_schema']);
-            } elseif (!empty($secao['form_schema_json'])) {
-                $decoded_schema = json_decode((string)$secao['form_schema_json'], true);
-                $schema_submit = eventos_cliente_normalizar_schema($decoded_schema);
-            }
+            foreach ($link_sections as $section_key) {
+                $section_view = $section_views[$section_key] ?? eventos_cliente_preparar_secao_publica(
+                    $pdo,
+                    (int)$link['meeting_id'],
+                    $section_key,
+                    $link,
+                    !$is_combined_reuniao && $section_key === $link_section
+                );
+                $schema_submit = (array)($section_view['form_schema'] ?? []);
+                $section_uploads = [];
+                $section_content = '';
 
-            if (!empty($schema_submit)) {
-                $compiled = eventos_cliente_montar_resposta_schema($schema_submit, $_POST);
-                if (empty($compiled['ok'])) {
-                    $error = implode(' | ', array_slice((array)($compiled['errors'] ?? []), 0, 2));
-                } else {
-                    $content = (string)($compiled['content_html'] ?? '');
-                    $slot_index = max(1, (int)($link['slot_index'] ?? 1));
-                    $form_title = trim((string)($link['form_title'] ?? ''));
-                    if ($form_title === '') {
-                        $form_title = (string)($section_meta['default_form_title_prefix'] ?? 'Formulário - Quadro ') . $slot_index;
+                if (!empty($schema_submit)) {
+                    $compiled = eventos_cliente_montar_resposta_schema($schema_submit, $_POST, $section_key);
+                    if (empty($compiled['ok'])) {
+                        $error = implode(' | ', array_slice((array)($compiled['errors'] ?? []), 0, 2));
+                        break;
                     }
-                    $content = '<h2>' . eventos_cliente_e($form_title) . '</h2>' . "\n" . $content;
 
+                    $form_title = $is_combined_reuniao
+                        ? eventos_cliente_section_label($section_key)
+                        : trim((string)($link['form_title'] ?? ''));
+                    if ($form_title === '') {
+                        $default_prefix = (string)($section_view['meta']['default_form_title_prefix'] ?? $section_meta['default_form_title_prefix'] ?? 'Formulário - Quadro ');
+                        $form_title = $default_prefix . $slot_index;
+                    }
+
+                    $section_content = '<h2>' . eventos_cliente_e($form_title) . '</h2>' . "\n" . (string)($compiled['content_html'] ?? '');
                     $payload = eventos_cliente_encode_payload([
                         'slot_index' => $slot_index,
+                        'section' => $section_key,
                         'values' => (array)($compiled['values'] ?? []),
                     ]);
                     if ($payload !== '') {
-                        $content .= "\n" . '<div data-smile-client-payload="' . eventos_cliente_e($payload) . '" style="display:none;"></div>';
+                        $section_content .= "\n" . '<div data-smile-client-payload="' . eventos_cliente_e($payload) . '" style="display:none;"></div>';
                     }
 
-                    // Campos de upload dentro do schema
                     foreach ($schema_submit as $field) {
                         if (($field['type'] ?? '') !== 'file') {
                             continue;
                         }
-                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string)($field['id'] ?? ''));
-                        $field_input = 'file_' . $field_id;
+                        $field_raw_id = (string)($field['id'] ?? '');
+                        $field_input = eventos_cliente_file_input_name($field_raw_id, $section_key);
                         $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
-                        $has_existing_attachments = !empty($anexos);
+                        $has_existing_attachments = !empty($section_view['anexos']);
                         if (!empty($field['required']) && empty($field_uploads) && !$has_existing_attachments) {
                             $error = 'Campo obrigatório sem anexo: ' . (string)($field['label'] ?? 'Arquivo');
-                            break;
+                            break 2;
                         }
                         if (!empty($field_uploads)) {
-                            $field_notes = eventos_cliente_normalizar_notas_upload($_POST['file_note_' . $field_id] ?? []);
+                            $field_notes = eventos_cliente_normalizar_notas_upload($_POST[eventos_cliente_file_note_input_name($field_raw_id, $section_key)] ?? []);
                             foreach ($field_uploads as $upload_index => $field_file) {
-                                $uploads[] = [
+                                $section_uploads[] = [
                                     'file' => $field_file,
                                     'note' => (string)($field_notes[$upload_index] ?? ''),
                                 ];
                             }
                         }
                     }
+                } else {
+                    $section_content = (string)($_POST[eventos_cliente_content_input_name($section_key)] ?? '');
+                    if (trim(strip_tags($section_content)) === '') {
+                        $error = 'Por favor, preencha as informações de ' . eventos_cliente_section_label($section_key) . ' antes de enviar.';
+                        break;
+                    }
+                    $legacy_uploads = eventos_cliente_normalizar_uploads($_FILES, eventos_cliente_legacy_upload_input_name($section_key));
+                    $legacy_notes = eventos_cliente_normalizar_notas_upload($_POST[eventos_cliente_legacy_upload_note_name($section_key)] ?? []);
+                    foreach ($legacy_uploads as $upload_index => $legacy_file) {
+                        $section_uploads[] = [
+                            'file' => $legacy_file,
+                            'note' => (string)($legacy_notes[$upload_index] ?? ''),
+                        ];
+                    }
                 }
-            } else {
-                $content = (string)($_POST['content_html'] ?? '');
-                // Modo legado (editor livre): mantém upload genérico opcional.
-                $legacy_uploads = eventos_cliente_normalizar_uploads($_FILES, 'anexos');
-                $legacy_notes = eventos_cliente_normalizar_notas_upload($_POST['anexos_note'] ?? []);
-                foreach ($legacy_uploads as $upload_index => $legacy_file) {
-                    $uploads[] = [
-                        'file' => $legacy_file,
-                        'note' => (string)($legacy_notes[$upload_index] ?? ''),
-                    ];
-                }
+
+                $pending_sections[$section_key] = [
+                    'content' => $section_content,
+                    'schema_submit' => $schema_submit,
+                    'uploads' => $section_uploads,
+                    'meta' => $section_view['meta'] ?? eventos_cliente_get_section_meta($section_key),
+                ];
             }
 
             if ($error === '') {
-                // Salvar conteúdo (como cliente)
-                $result = eventos_reuniao_salvar_secao(
-                    $pdo,
-                    $link['meeting_id'],
-                    $link_section,
-                    $content,
-                    0, // user_id = 0 para cliente
-                    'Envio do cliente',
-                    'cliente',
-                    !empty($schema_submit) ? json_encode($schema_submit, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
-                );
-                
-                if ($result['ok']) {
-                    $upload_errors = [];
-                    if (!empty($uploads)) {
-                        $uploader = new MagaluUpload(100);
-                        foreach ($uploads as $upload_item) {
+                $saved_contents = [];
+                $upload_errors = [];
+                $uploader = null;
+
+                foreach ($pending_sections as $section_key => $pending) {
+                    $result = eventos_reuniao_salvar_secao(
+                        $pdo,
+                        (int)$link['meeting_id'],
+                        $section_key,
+                        (string)$pending['content'],
+                        0,
+                        'Envio do cliente',
+                        'cliente',
+                        !empty($pending['schema_submit']) ? json_encode($pending['schema_submit'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
+                    );
+
+                    if (empty($result['ok'])) {
+                        $error = $result['error'] ?? 'Erro ao salvar';
+                        break;
+                    }
+
+                    $saved_contents[$section_key] = (string)$pending['content'];
+
+                    if (!empty($pending['uploads'])) {
+                        if (!$uploader) {
+                            $uploader = new MagaluUpload(100);
+                        }
+                        foreach ($pending['uploads'] as $upload_item) {
                             $file = is_array($upload_item['file'] ?? null) ? $upload_item['file'] : [];
                             $file_note = trim((string)($upload_item['note'] ?? ''));
                             if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
@@ -644,12 +924,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             }
 
                             try {
-                                $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/' . (string)($section_meta['upload_prefix'] ?? 'cliente_dj');
+                                $prefix = 'eventos/reunioes/' . (int)$link['meeting_id'] . '/' . (string)(($pending['meta']['upload_prefix'] ?? 'cliente_reuniao'));
                                 $upload_result = $uploader->upload($file, $prefix);
                                 $save_result = eventos_reuniao_salvar_anexo(
                                     $pdo,
                                     (int)$link['meeting_id'],
-                                    $link_section,
+                                    $section_key,
                                     $upload_result,
                                     'cliente',
                                     null,
@@ -663,20 +943,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             }
                         }
                     }
+                }
 
+                $snapshot_content = eventos_cliente_compor_snapshot_sections($saved_contents);
+                if ($snapshot_content === '' && !empty($saved_contents[$link_section])) {
+                    $snapshot_content = (string)$saved_contents[$link_section];
+                }
+
+                if ($error === '') {
                     if (!empty($upload_errors)) {
                         $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
-                        // Mantém snapshot atualizado para permitir reenvio após corrigir anexos.
-                        eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
+                        eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $snapshot_content);
                     } else {
-                        $saved_link = eventos_link_publico_registrar_envio($pdo, (int)$link['id'], $content);
+                        $saved_link = eventos_link_publico_registrar_envio($pdo, (int)$link['id'], $snapshot_content);
                         if (empty($saved_link)) {
                             $error = 'Conteúdo salvo, mas não foi possível finalizar o envio. Tente novamente.';
-                            eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $content);
+                            eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $snapshot_content);
                         } else {
                             $success = true;
                             if (!empty($section_meta['notify_dj'])) {
-                                // Notifica o DJ por e-mail (assunto padrão exigido pelo negócio).
                                 try {
                                     if (function_exists('eventos_notificar_cliente_enviou_dj')) {
                                         eventos_notificar_cliente_enviou_dj($pdo, (int)$link['meeting_id']);
@@ -687,12 +972,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                             }
                         }
                     }
+                }
 
-                    // Recarregar seção e anexos
-                    $secao = eventos_reuniao_get_secao($pdo, $link['meeting_id'], $link_section);
-                    $anexos = eventos_reuniao_get_anexos($pdo, $link['meeting_id'], $link_section);
-                } else {
-                    $error = $result['error'] ?? 'Erro ao salvar';
+                if ($error !== '' || $success) {
+                    $section_views = [];
+                    foreach ($link_sections as $section_key) {
+                        $section_views[$section_key] = eventos_cliente_preparar_secao_publica(
+                            $pdo,
+                            (int)$link['meeting_id'],
+                            $section_key,
+                            $link,
+                            !$is_combined_reuniao && $section_key === $link_section
+                        );
+                    }
+                    $secao = $section_views[$link_section]['secao'] ?? null;
+                    $anexos = $section_views[$link_section]['anexos'] ?? [];
                 }
             }
         }
@@ -702,40 +996,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
 // Dados do evento
 $snapshot = $reuniao ? json_decode($reuniao['me_event_snapshot'], true) : [];
 $is_locked = !empty($link['submitted_at']) || !$link_editavel;
-$content_from_link_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
-$content_from_secao = trim((string)($secao['content_html'] ?? ''));
-$content = $content_from_link_snapshot !== '' ? $content_from_link_snapshot : $content_from_secao;
-$form_schema = [];
-if (!empty($link['form_schema']) && is_array($link['form_schema'])) {
-    $form_schema = eventos_cliente_normalizar_schema($link['form_schema']);
-} elseif (!empty($secao['form_schema_json'])) {
-    $decoded = json_decode((string)$secao['form_schema_json'], true);
-    $form_schema = eventos_cliente_normalizar_schema($decoded);
-}
-$legacy_text_portal_visible = true;
-if (is_array($secao) && array_key_exists('legacy_text_portal_visible', $secao)) {
-    $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
-}
-if (!empty($form_schema) && !$legacy_text_portal_visible) {
-    $form_schema = array_values(array_filter($form_schema, static function ($field): bool {
-        $field_id = trim((string)($field['id'] ?? ''));
-        return strpos($field_id, 'legacy_portal_text_') !== 0;
-    }));
-}
-if (empty($form_schema) && !$legacy_text_portal_visible) {
-    $content = '';
-}
-$form_values = eventos_cliente_extract_payload_from_html($content, $link_section);
-if ($content_from_link_snapshot !== '' && $content_from_secao !== '' && $content_from_link_snapshot !== $content_from_secao) {
-    $fallback_values = eventos_cliente_extract_payload_from_html($content_from_secao, $link_section);
-    $form_values = eventos_cliente_merge_payload_values($form_values, $fallback_values);
-}
-
-if ($legacy_text_portal_visible) {
-    $legacy_field_id = 'legacy_portal_text_' . $link_section;
-    $legacy_default = trim((string)($form_values[$legacy_field_id] ?? ''));
-    $form_schema = eventos_cliente_schema_garantir_texto_livre($form_schema, $link_section, $legacy_default);
-}
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -753,6 +1013,8 @@ $cliente_telefone = trim((string)($snapshot['cliente']['telefone'] ?? $snapshot[
 $cliente_email = trim((string)($snapshot['cliente']['email'] ?? $snapshot['emailcliente'] ?? ''));
 $tipo_evento = trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? ''));
 $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
+$section_view_items = array_values($section_views);
+$section_views_total = count($section_view_items);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1250,16 +1512,26 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             </p>
         </div>
         
+        <?php foreach ($section_view_items as $section_view): ?>
+        <?php
+            $section_key = (string)($section_view['section'] ?? $link_section);
+            $section_label = (string)($section_view['label'] ?? eventos_cliente_section_label($section_key));
+            $section_content = (string)($section_view['content'] ?? '');
+            $section_anexos = (array)($section_view['anexos'] ?? []);
+            $read_only_heading = ($is_combined_reuniao || $section_views_total > 1)
+                ? $section_label
+                : 'Suas informações enviadas:';
+        ?>
         <div class="form-section">
-            <h3>Suas informações enviadas:</h3>
+            <h3><?= eventos_cliente_e($read_only_heading) ?></h3>
             <div style="padding: 1rem; background: #f8fafc; border-radius: 8px; margin-top: 1rem;">
-                <?= $content ?: '<em>Sem conteúdo</em>' ?>
+                <?= $section_content ?: '<em>Sem conteúdo</em>' ?>
             </div>
-            <?php if (!empty($anexos)): ?>
+            <?php if (!empty($section_anexos)): ?>
             <div class="attachments-list">
                 <h4>Anexos enviados</h4>
                 <ul>
-                    <?php foreach ($anexos as $anexo): ?>
+                    <?php foreach ($section_anexos as $anexo): ?>
                     <li>
                         <div class="attachment-item-head">
                             <span>📎</span>
@@ -1280,6 +1552,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             </div>
             <?php endif; ?>
         </div>
+        <?php endforeach; ?>
         <?php else: ?>
         <!-- Formulário editável -->
         <div class="event-info">
@@ -1363,10 +1636,27 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             <input type="hidden" name="action" value="salvar">
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
             
+            <?php foreach ($section_view_items as $section_view): ?>
+            <?php
+                $section_key = (string)($section_view['section'] ?? $link_section);
+                $section_label = (string)($section_view['label'] ?? eventos_cliente_section_label($section_key));
+                $section_schema = (array)($section_view['form_schema'] ?? []);
+                $section_values = (array)($section_view['form_values'] ?? []);
+                $section_content = (string)($section_view['content'] ?? '');
+                $section_anexos = (array)($section_view['anexos'] ?? []);
+                $section_heading = ($is_combined_reuniao || $section_views_total > 1)
+                    ? $section_label
+                    : (string)($section_meta['form_heading'] ?? 'Formulário');
+                $section_editor_id = 'editor_' . eventos_cliente_normalizar_identificador($section_key, 'geral');
+                $section_content_input_id = 'content_input_' . eventos_cliente_normalizar_identificador($section_key, 'geral');
+                $legacy_upload_input = eventos_cliente_legacy_upload_input_name($section_key);
+                $legacy_note_name = eventos_cliente_legacy_upload_note_name($section_key);
+                $legacy_note_target = $legacy_upload_input . '_notes';
+            ?>
             <div class="form-section">
-                <h3><?= eventos_cliente_e((string)($section_meta['form_heading'] ?? 'Formulário')) ?></h3>
+                <h3><?= eventos_cliente_e($section_heading) ?></h3>
                 
-                <?php if (!empty($form_schema)): ?>
+                <?php if (!empty($section_schema)): ?>
                 <div class="instructions">
                     <strong>Preencha os campos abaixo:</strong>
                     <ul>
@@ -1375,18 +1665,19 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                     </ul>
                 </div>
 
-                <?php foreach ($form_schema as $field): ?>
+                <?php foreach ($section_schema as $field): ?>
                     <?php
                         $field_raw_id = (string)($field['id'] ?? '');
-                        $field_id = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $field_raw_id);
-                        $field_name = 'field_' . $field_id;
-                        $file_name = 'file_' . $field_id;
+                        $field_name = eventos_cliente_field_input_name($field_raw_id, $section_key);
+                        $file_name = eventos_cliente_file_input_name($field_raw_id, $section_key);
+                        $file_note_name = eventos_cliente_file_note_input_name($field_raw_id, $section_key);
+                        $file_note_target = $file_name . 'Notes';
                         $label = (string)($field['label'] ?? '');
                         $required = !empty($field['required']);
                         $required_attr = $required ? ' required' : '';
-                        $file_required_attr = ($required && empty($anexos)) ? ' required' : '';
+                        $file_required_attr = ($required && empty($section_anexos)) ? ' required' : '';
                         $field_default_value = isset($field['default_value']) ? (string)$field['default_value'] : '';
-                        $field_value = isset($form_values[$field_raw_id]) ? (string)$form_values[$field_raw_id] : $field_default_value;
+                        $field_value = isset($section_values[$field_raw_id]) ? (string)$section_values[$field_raw_id] : $field_default_value;
                     ?>
                     <?php if (($field['type'] ?? '') === 'divider'): ?>
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
@@ -1428,10 +1719,10 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                                        multiple
                                        accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
                                        style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.55rem;"
-                                       data-note-target="<?= eventos_cliente_e($file_name) ?>Notes"
-                                       data-note-name="file_note_<?= eventos_cliente_e($field_id) ?>[]"
+                                       data-note-target="<?= eventos_cliente_e($file_note_target) ?>"
+                                       data-note-name="<?= eventos_cliente_e($file_note_name) ?>[]"
                                        <?= $file_required_attr ?>>
-                                <div class="file-note-wrap" id="<?= eventos_cliente_e($file_name) ?>Notes"></div>
+                                <div class="file-note-wrap" id="<?= eventos_cliente_e($file_note_target) ?>"></div>
                             <?php else: ?>
                                 <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                             <?php endif; ?>
@@ -1439,58 +1730,51 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                     <?php endif; ?>
                 <?php endforeach; ?>
                 <?php else: ?>
+                <?php $instructions = eventos_cliente_section_instructions($section_key); ?>
                 <div class="instructions">
                     <strong>Instruções:</strong>
                     <ul>
-                        <?php if ($link_section === 'decoracao'): ?>
-                        <li>Preencha os pontos da reunião final com o máximo de clareza.</li>
-                        <li>Use os anexos para enviar referências, documentos ou listas complementares.</li>
-                        <li>Campos obrigatórios devem ser preenchidos antes do envio.</li>
-                        <?php elseif ($link_section === 'observacoes_gerais'): ?>
-                        <li>Preencha os pontos e observações gerais com o máximo de clareza.</li>
-                        <li>Use os anexos para enviar referências, documentos ou listas complementares.</li>
-                        <li>Campos obrigatórios devem ser preenchidos antes do envio.</li>
-                        <?php else: ?>
-                        <li>Para cada música, informe o <strong>link do YouTube</strong> e o <strong>tempo de início</strong></li>
-                        <li>Exemplo: <em>Valsa 0:20 - https://youtube.com/...</em></li>
-                        <li>Inclua músicas para: entrada, valsas, momentos especiais, abertura de pista</li>
-                        <li>Informe também seu gosto musical e ritmos preferidos</li>
-                        <?php endif; ?>
+                        <?php foreach ($instructions as $instruction): ?>
+                        <li><?= eventos_cliente_e($instruction) ?></li>
+                        <?php endforeach; ?>
                     </ul>
                 </div>
                 
                 <div class="editor-wrapper">
                     <div class="editor-toolbar">
-                        <button type="button" onclick="execCmd('bold')"><b>B</b></button>
-                        <button type="button" onclick="execCmd('italic')"><i>I</i></button>
-                        <button type="button" onclick="execCmd('underline')"><u>U</u></button>
-                        <button type="button" onclick="execCmd('insertUnorderedList')">• Lista</button>
+                        <button type="button" onclick="execCmd('bold', '<?= eventos_cliente_e($section_editor_id) ?>')"><b>B</b></button>
+                        <button type="button" onclick="execCmd('italic', '<?= eventos_cliente_e($section_editor_id) ?>')"><i>I</i></button>
+                        <button type="button" onclick="execCmd('underline', '<?= eventos_cliente_e($section_editor_id) ?>')"><u>U</u></button>
+                        <button type="button" onclick="execCmd('insertUnorderedList', '<?= eventos_cliente_e($section_editor_id) ?>')">• Lista</button>
                     </div>
-                    <div class="editor-content" 
-                         id="editor" 
-                         contenteditable="true"><?= $content ?></div>
+                    <div class="editor-content"
+                         id="<?= eventos_cliente_e($section_editor_id) ?>"
+                         contenteditable="true"
+                         data-client-editor="legacy"
+                         data-content-input="<?= eventos_cliente_e($section_content_input_id) ?>"
+                         data-section-label="<?= eventos_cliente_e($section_label) ?>"><?= $section_content ?></div>
                 </div>
-                <input type="hidden" name="content_html" id="contentInput">
+                <input type="hidden" name="<?= eventos_cliente_e(eventos_cliente_content_input_name($section_key)) ?>" id="<?= eventos_cliente_e($section_content_input_id) ?>">
 
                 <div class="attachments-box">
-                    <label for="anexosInput">Anexos (opcional)</label>
+                    <label for="<?= eventos_cliente_e($legacy_upload_input) ?>">Anexos (opcional)</label>
                     <input type="file"
-                           id="anexosInput"
-                           name="anexos[]"
+                           id="<?= eventos_cliente_e($legacy_upload_input) ?>"
+                           name="<?= eventos_cliente_e($legacy_upload_input) ?>[]"
                            multiple
                            accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
-                           data-note-target="legacyAnexosNotes"
-                           data-note-name="anexos_note[]">
-                    <div class="file-note-wrap" id="legacyAnexosNotes"></div>
+                           data-note-target="<?= eventos_cliente_e($legacy_note_target) ?>"
+                           data-note-name="<?= eventos_cliente_e($legacy_note_name) ?>[]">
+                    <div class="file-note-wrap" id="<?= eventos_cliente_e($legacy_note_target) ?>"></div>
                     <p class="attachments-help">Envie vários arquivos de uma vez (até 100MB por arquivo): playlist, roteiro, arte do convite e materiais de referência.</p>
                 </div>
                 <?php endif; ?>
 
-                <?php if (!empty($anexos)): ?>
+                <?php if (!empty($section_anexos)): ?>
                 <div class="attachments-list">
                     <h4>Arquivos já enviados</h4>
                     <ul>
-                        <?php foreach ($anexos as $anexo): ?>
+                        <?php foreach ($section_anexos as $anexo): ?>
                         <li>
                             <div class="attachment-item-head">
                                 <span>📎</span>
@@ -1511,6 +1795,7 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
                 </div>
                 <?php endif; ?>
             </div>
+            <?php endforeach; ?>
             
             <button type="submit" class="btn btn-primary" id="submitBtn">
                 ✓ Enviar Informações
@@ -1522,7 +1807,10 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
         </form>
         
         <script>
-            function execCmd(cmd) {
+            function execCmd(cmd, editorId = '') {
+                const editor = editorId ? document.getElementById(editorId) : document.querySelector('[data-client-editor="legacy"]');
+                if (!editor) return;
+                editor.focus();
                 document.execCommand(cmd, false, null);
             }
 
@@ -1567,15 +1855,20 @@ $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
             }
             
             document.getElementById('djForm').addEventListener('submit', function(e) {
-                const editor = document.getElementById('editor');
-                const contentInput = document.getElementById('contentInput');
-                if (editor && contentInput) {
+                let emptyLegacySection = '';
+                document.querySelectorAll('[data-client-editor="legacy"]').forEach((editor) => {
+                    const inputId = editor.getAttribute('data-content-input') || '';
+                    const contentInput = inputId ? document.getElementById(inputId) : null;
+                    if (!contentInput) return;
                     contentInput.value = editor.innerHTML;
-                    if (!editor.innerText.trim()) {
-                        e.preventDefault();
-                        alert('Por favor, preencha as informações antes de enviar.');
-                        return false;
+                    if (!emptyLegacySection && !editor.innerText.trim()) {
+                        emptyLegacySection = editor.getAttribute('data-section-label') || 'o formulário';
                     }
+                });
+                if (emptyLegacySection !== '') {
+                    e.preventDefault();
+                    alert(`Por favor, preencha as informações de ${emptyLegacySection} antes de enviar.`);
+                    return false;
                 }
                 
                 if (!confirm('Confirma o envio das informações? Após enviar, não será possível alterar.')) {
