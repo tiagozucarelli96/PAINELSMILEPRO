@@ -1113,6 +1113,8 @@ $section_views_total = count($section_view_items);
             padding: 1.5rem;
             margin-bottom: 2rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            overflow: hidden;
         }
         
         .form-section h3 {
@@ -1218,6 +1220,91 @@ $section_views_total = count($section_view_items);
             text-decoration: underline;
         }
 
+        .client-content-frame {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+
+        .client-content-view {
+            width: 100%;
+            max-width: 100%;
+            color: #1e293b;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .client-content-view > *:first-child {
+            margin-top: 0 !important;
+        }
+
+        .client-content-view > *:last-child {
+            margin-bottom: 0 !important;
+        }
+
+        .client-content-view h1,
+        .client-content-view h2,
+        .client-content-view h3,
+        .client-content-view h4,
+        .client-content-view h5,
+        .client-content-view h6,
+        .client-content-view p,
+        .client-content-view div,
+        .client-content-view blockquote,
+        .client-content-view ul,
+        .client-content-view ol,
+        .client-content-view li,
+        .client-content-view table,
+        .client-content-view thead,
+        .client-content-view tbody,
+        .client-content-view tr,
+        .client-content-view th,
+        .client-content-view td {
+            max-width: 100%;
+        }
+
+        .client-content-view table {
+            display: block;
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow-x: auto;
+            border-collapse: collapse;
+        }
+
+        .client-content-view th,
+        .client-content-view td {
+            white-space: normal;
+            word-break: break-word;
+            vertical-align: top;
+        }
+
+        .client-content-view img,
+        .client-content-view video,
+        .client-content-view iframe,
+        .client-content-view object,
+        .client-content-view embed,
+        .client-content-view canvas,
+        .client-content-view svg {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+
+        .client-content-view hr {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 1rem 0;
+        }
+
+        .client-content-view a {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
         .file-note-wrap {
             display: none;
             margin-top: 0.5rem;
@@ -1292,6 +1379,11 @@ $section_views_total = count($section_view_items);
             padding: 1rem;
             min-height: 250px;
             outline: none;
+            width: 100%;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            overflow-x: auto;
         }
         
         .editor-content:focus {
@@ -1399,6 +1491,16 @@ $section_views_total = count($section_view_items);
             .editor-toolbar button {
                 padding: 0.375rem 0.5rem;
                 font-size: 0.75rem;
+            }
+
+            .form-section,
+            .event-info,
+            .locked-notice {
+                padding: 1rem;
+            }
+
+            .client-content-frame {
+                padding: 0.85rem;
             }
         }
     </style>
@@ -1524,8 +1626,10 @@ $section_views_total = count($section_view_items);
         ?>
         <div class="form-section">
             <h3><?= eventos_cliente_e($read_only_heading) ?></h3>
-            <div style="padding: 1rem; background: #f8fafc; border-radius: 8px; margin-top: 1rem;">
-                <?= $section_content ?: '<em>Sem conteúdo</em>' ?>
+            <div class="client-content-frame">
+                <div class="client-content-view">
+                    <?= $section_content ?: '<em>Sem conteúdo</em>' ?>
+                </div>
             </div>
             <?php if (!empty($section_anexos)): ?>
             <div class="attachments-list">
