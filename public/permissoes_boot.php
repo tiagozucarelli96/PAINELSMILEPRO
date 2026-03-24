@@ -32,6 +32,7 @@ try {
     // Módulos principais da sidebar
     'perm_agenda','perm_comercial','perm_configuracoes',
     'perm_cadastros','perm_financeiro','perm_administrativo',
+    'perm_vendas_administracao',
     // Eventos (Organização)
     'perm_eventos',
     // Eventos (Realizar evento)

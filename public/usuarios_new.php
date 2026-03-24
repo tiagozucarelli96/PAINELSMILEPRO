@@ -974,7 +974,7 @@ ob_start();
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
             'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
-            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_banco_smile',
+            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao', 'perm_banco_smile',
             'perm_portao'
         ];
         
@@ -1197,11 +1197,18 @@ ob_start();
                         error_log("Erro ao adicionar perm_eventos_realizar: " . $e->getMessage());
                     }
                 }
+
+                if (!isset($existing_perms['perm_vendas_administracao'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE");
+                        $existing_perms['perm_vendas_administracao'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_vendas_administracao: " . $e->getMessage());
+                    }
+                }
                 
-                // Mapeamento de permissões - APENAS PERMISSÕES DA SIDEBAR (resumido)
+                // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [
-                    // Módulos principais da sidebar (conforme solicitado)
-                    // Permissões da sidebar (exceto dashboard que todos têm)
                     'perm_agenda' => '📅 Agenda',
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
@@ -1212,12 +1219,12 @@ ob_start();
                     'perm_cadastros' => '📝 Cadastros',
                     'perm_financeiro' => '💰 Financeiro',
                     'perm_administrativo' => '👥 Administrativo',
+                    'perm_vendas_administracao' => '🛡️ Administrativo / Vendas',
                     'perm_banco_smile' => '🏦 Banco Smile',
                     'perm_portao' => '🔓 Portao',
                 ];
                 
-                // Lista fixa das permissões da sidebar
-                $sidebar_perms = [
+                $system_perms = [
                     'perm_agenda',
                     'perm_demandas',
                     'perm_comercial',
@@ -1228,15 +1235,15 @@ ob_start();
                     'perm_cadastros',
                     'perm_financeiro',
                     'perm_administrativo',
+                    'perm_vendas_administracao',
                     'perm_banco_smile',
                     'perm_portao'
                 ];
                 
-                // Filtrar apenas permissões da sidebar que existem no banco
+                // Filtrar apenas permissões existentes no banco.
                 $available_perms = [];
                 if (!empty($existing_perms) && is_array($existing_perms)) {
-                    foreach ($sidebar_perms as $perm) {
-                        // Verificar se a permissão existe no banco E está no nosso mapeamento
+                    foreach ($system_perms as $perm) {
                         if (isset($existing_perms[$perm]) && isset($perm_labels[$perm])) {
                             $available_perms[$perm] = $perm_labels[$perm];
                         }

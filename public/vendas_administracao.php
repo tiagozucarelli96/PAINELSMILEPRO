@@ -9,11 +9,10 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 require_once __DIR__ . '/vendas_helper.php';
 
-if (!vendas_is_admin()) {
+if (!vendas_can_access_administracao()) {
     header('Location: index.php?page=vendas_pre_contratos&error=admin_only');
     exit;
 }
 
 $_GET['admin'] = '1';
 require __DIR__ . '/vendas_pre_contratos.php';
-

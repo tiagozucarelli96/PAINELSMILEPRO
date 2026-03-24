@@ -1628,7 +1628,7 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_administrativo'])): ?>
+                <?php if (!empty($_SESSION['perm_administrativo']) || !empty($_SESSION['perm_vendas_administracao']) || !empty($_SESSION['perm_superadmin'])): ?>
                 <a href="index.php?page=administrativo" class="nav-item <?= isActiveUnified('administrativo') ?>">
                     <span class="nav-item-icon">👥</span>
                     Administrativo

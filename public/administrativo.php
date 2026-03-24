@@ -12,6 +12,9 @@ require_once __DIR__ . '/vendas_helper.php';
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 @ini_set('display_errors', 0);
 
+$can_access_admin = !empty($_SESSION['perm_administrativo']) || !empty($_SESSION['perm_superadmin']);
+$can_access_vendas_admin = vendas_can_access_administracao();
+
 // Criar conteúdo da página usando output buffering
 ob_start();
 ?>
@@ -125,6 +128,7 @@ ob_start();
     
     <!-- Funcionalidades Principais -->
     <div class="funcionalidades-grid">
+        <?php if ($can_access_admin): ?>
         <!-- Relatórios -->
         <a href="index.php?page=administrativo_relatorios" class="funcionalidade-card">
             <div class="funcionalidade-card-header">
@@ -214,8 +218,9 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+        <?php endif; ?>
 
-        <?php if (function_exists('vendas_is_admin') && vendas_is_admin()): ?>
+        <?php if ($can_access_vendas_admin): ?>
             <!-- Vendas (Administração) -->
             <a href="index.php?page=vendas_administracao" class="funcionalidade-card">
                 <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #1e3a8a, #2563eb);">

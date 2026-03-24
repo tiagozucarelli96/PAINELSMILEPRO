@@ -71,6 +71,11 @@ define('SYSTEM_PERMISSIONS', [
         'icon' => '👥',
         'description' => 'Acesso ao módulo administrativo, contabilidade e RH'
     ],
+    'perm_vendas_administracao' => [
+        'label' => 'Administrativo / Vendas',
+        'icon' => '🛡️',
+        'description' => 'Acesso à aprovação de pré-contratos e criação de eventos na ME'
+    ],
     'perm_banco_smile' => [
         'label' => 'Banco Smile',
         'icon' => '🏦',
@@ -141,6 +146,7 @@ function user_can_access(string $module): bool {
         'cadastros' => 'perm_cadastros',
         'financeiro' => 'perm_financeiro',
         'administrativo' => 'perm_administrativo',
+        'vendas_administracao' => 'perm_vendas_administracao',
         'contabilidade' => 'perm_administrativo',
         'rh' => 'perm_administrativo',
         'banco_smile' => 'perm_banco_smile',

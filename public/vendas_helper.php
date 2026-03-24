@@ -7,20 +7,26 @@
 require_once __DIR__ . '/conexao.php';
 
 /**
- * Verifica se o usuário é admin/Tiago
- * Usa o mesmo padrão do sistema (permissoes_boot.php)
+ * Verifica se o usuário pode acessar Vendas > Administração.
+ * Mantém compatibilidade com o perfil administrativo já existente.
  */
-function vendas_is_admin(): bool {
+function vendas_can_access_administracao(): bool {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
     
-    // Verificar permissão administrativa
+    if (!empty($_SESSION['perm_superadmin'])) {
+        return true;
+    }
+
+    if (!empty($_SESSION['perm_vendas_administracao'])) {
+        return true;
+    }
+
     if (!empty($_SESSION['perm_administrativo'])) {
         return true;
     }
     
-    // Verificar se é admin por ID, login ou flag
     $usuario_id = (int)($_SESSION['id'] ?? 0);
     $login = $_SESSION['login'] ?? $_SESSION['usuario'] ?? '';
     
@@ -34,6 +40,13 @@ function vendas_is_admin(): bool {
     }
     
     return false;
+}
+
+/**
+ * Compatibilidade com o nome antigo usado nas telas de vendas.
+ */
+function vendas_is_admin(): bool {
+    return vendas_can_access_administracao();
 }
 
 /**

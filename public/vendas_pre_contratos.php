@@ -13,17 +13,23 @@ require_once __DIR__ . '/vendas_me_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
-// Verificar permissões
-if (empty($_SESSION['logado']) || empty($_SESSION['perm_comercial'])) {
+if (empty($_SESSION['logado'])) {
     header('Location: index.php?page=login');
     exit;
 }
 
 $pdo = $GLOBALS['pdo'];
 $usuario_id = (int)($_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? 0);
-$is_admin = vendas_is_admin(); // Usar função centralizada
-$perm_comercial = !empty($_SESSION['perm_comercial']);
 $admin_context = !empty($_GET['admin']) || (!empty($_POST['admin_context']) && $_POST['admin_context'] === '1');
+$perm_comercial = !empty($_SESSION['perm_comercial']);
+$can_access_vendas_admin = vendas_can_access_administracao();
+
+if (!$perm_comercial && !($admin_context && $can_access_vendas_admin)) {
+    header('Location: index.php?page=dashboard');
+    exit;
+}
+
+$is_admin = $can_access_vendas_admin;
 
 $mensagens = [];
 $erros = [];
@@ -44,7 +50,7 @@ if (is_array($vendas_flash)) {
 
 // Garantir schema do módulo (evita fatal quando SQL ainda não foi aplicado no ambiente)
 if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
-    includeSidebar('Comercial');
+    includeSidebar($admin_context ? 'Administrativo' : 'Comercial');
     echo '<div style="padding:2rem;max-width:1100px;margin:0 auto;">';
     foreach ($erros as $e) {
         echo '<div class="alert alert-error">' . htmlspecialchars((string)$e) . '</div>';
@@ -213,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($action === 'aprovar_criar_me') {
         // Verificar se é admin usando função centralizada
-        if (!vendas_is_admin()) {
+        if (!$can_access_vendas_admin) {
             $erros[] = 'Apenas administradores podem aprovar e criar na ME';
         } elseif (!$admin_context) {
             $erros[] = 'Aprovação disponível apenas em Vendas > Administração.';
