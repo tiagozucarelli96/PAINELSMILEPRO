@@ -77,6 +77,44 @@ function vendas_format_money_brl($value): string {
     return number_format((float)$value, 2, ',', '.');
 }
 
+function vendas_format_phone_display(?string $raw): string {
+    $digits = preg_replace('/\D/', '', (string)$raw);
+    if ($digits === '') {
+        return '';
+    }
+
+    if (strlen($digits) >= 12 && substr($digits, 0, 2) === '55') {
+        $digits = substr($digits, 2);
+    }
+
+    if (strlen($digits) === 11) {
+        return sprintf('(%s) %s-%s', substr($digits, 0, 2), substr($digits, 2, 5), substr($digits, 7, 4));
+    }
+
+    if (strlen($digits) === 10) {
+        return sprintf('(%s) %s-%s', substr($digits, 0, 2), substr($digits, 2, 4), substr($digits, 6, 4));
+    }
+
+    return trim((string)$raw);
+}
+
+function vendas_build_whatsapp_url(?string $raw): ?string {
+    $digits = preg_replace('/\D/', '', (string)$raw);
+    if ($digits === '') {
+        return null;
+    }
+
+    if (strlen($digits) >= 12 && substr($digits, 0, 2) === '55') {
+        return 'https://wa.me/' . $digits;
+    }
+
+    if (strlen($digits) === 10 || strlen($digits) === 11) {
+        return 'https://wa.me/55' . $digits;
+    }
+
+    return null;
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -666,6 +704,8 @@ $editar_id = (int)($_GET['editar'] ?? 0);
 $pre_contrato_editar = null;
 $adicionais_editar = [];
 $anexos_editar = [];
+$pre_contrato_telefone_exibicao = '';
+$pre_contrato_whatsapp_url = null;
 
 if ($editar_id) {
     $stmt = $pdo->prepare("SELECT * FROM vendas_pre_contratos WHERE id = ?");
@@ -685,6 +725,9 @@ if ($editar_id) {
     }
     
     if ($pre_contrato_editar) {
+        $pre_contrato_telefone_exibicao = vendas_format_phone_display($pre_contrato_editar['telefone'] ?? '');
+        $pre_contrato_whatsapp_url = vendas_build_whatsapp_url($pre_contrato_editar['telefone'] ?? '');
+
         $stmt = $pdo->prepare("SELECT * FROM vendas_adicionais WHERE pre_contrato_id = ? ORDER BY id");
         $stmt->execute([$editar_id]);
         $adicionais_editar = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -905,6 +948,20 @@ ob_start();
     margin-bottom: 1.5rem;
 }
 
+.vendas-container .cliente-contato-texto {
+    color: #475569;
+    display: block;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.vendas-container .cliente-contato-acoes {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+}
+
 .vendas-container .form-group label {
     display: block;
     margin-bottom: 0.5rem;
@@ -1047,8 +1104,13 @@ ob_start();
                     <tr>
                         <td><?php echo $pc['id']; ?></td>
                         <td>
+                            <?php $cliente_telefone_lista = vendas_format_phone_display($pc['telefone'] ?? ''); ?>
                             <strong><?php echo htmlspecialchars($pc['nome_completo']); ?></strong><br>
                             <small style="color: #6b7280;"><?php echo htmlspecialchars($pc['email']); ?></small>
+                            <?php if ($cliente_telefone_lista !== ''): ?>
+                                <br>
+                                <small style="color: #6b7280;"><?php echo htmlspecialchars($cliente_telefone_lista); ?></small>
+                            <?php endif; ?>
                         </td>
                         <td>
                             <?php
@@ -1128,6 +1190,16 @@ ob_start();
                     <div class="form-group">
                         <label>Cliente:</label>
                         <input type="text" value="<?php echo htmlspecialchars($pre_contrato_editar['nome_completo']); ?>" disabled>
+                        <?php if ($pre_contrato_telefone_exibicao !== ''): ?>
+                            <span class="cliente-contato-texto">Telefone: <?php echo htmlspecialchars($pre_contrato_telefone_exibicao); ?></span>
+                        <?php else: ?>
+                            <span class="cliente-contato-texto">Telefone: não informado</span>
+                        <?php endif; ?>
+                        <?php if ($pre_contrato_whatsapp_url): ?>
+                            <div class="cliente-contato-acoes">
+                                <a class="btn btn-success" href="<?php echo htmlspecialchars($pre_contrato_whatsapp_url); ?>" target="_blank" rel="noopener noreferrer">Abrir WhatsApp</a>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     
                     <div class="form-group">

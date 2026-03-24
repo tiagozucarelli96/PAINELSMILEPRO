@@ -210,6 +210,98 @@ function vendas_validar_cpf(string $cpf): bool {
     return true;
 }
 
+function vendas_normalizar_cpf(?string $cpf): string {
+    return preg_replace('/\D/', '', (string)$cpf);
+}
+
+function vendas_memoria_pre_contrato_dias(): int {
+    return 30;
+}
+
+/**
+ * Busca o pré-contrato público mais recente do mesmo cliente/tipo dentro da janela de memória.
+ * A consulta é feita por CPF normalizado para evitar duplicatas com máscara diferente.
+ */
+function vendas_buscar_pre_contrato_publico_recente(string $cpf, string $tipoEvento, ?int $preContratoId = null, ?int $dias = null): ?array {
+    $pdo = $GLOBALS['pdo'] ?? null;
+    if (!$pdo) {
+        return null;
+    }
+
+    $cpf = vendas_normalizar_cpf($cpf);
+    $tipoEvento = trim($tipoEvento);
+    $dias = $dias ?? vendas_memoria_pre_contrato_dias();
+
+    if ($cpf === '' || strlen($cpf) !== 11 || $tipoEvento === '' || $dias < 1) {
+        return null;
+    }
+
+    try {
+        $limite = (new DateTimeImmutable('now'))->modify('-' . $dias . ' days')->format('Y-m-d H:i:s');
+
+        $sql = "
+            SELECT
+                id,
+                tipo_evento,
+                status,
+                origem,
+                nome_completo,
+                cpf,
+                rg,
+                telefone,
+                email,
+                cep,
+                endereco_completo,
+                numero,
+                complemento,
+                bairro,
+                cidade,
+                estado,
+                pais,
+                instagram,
+                data_evento,
+                unidade,
+                horario_inicio,
+                horario_termino,
+                nome_noivos,
+                num_convidados,
+                como_conheceu,
+                como_conheceu_outro,
+                pacote_contratado,
+                observacoes,
+                criado_em,
+                atualizado_em
+            FROM vendas_pre_contratos
+            WHERE origem = 'publico'
+              AND tipo_evento = :tipo_evento
+              AND regexp_replace(COALESCE(cpf, ''), '[^0-9]', '', 'g') = :cpf
+              AND criado_em >= :limite
+        ";
+
+        $params = [
+            ':tipo_evento' => $tipoEvento,
+            ':cpf' => $cpf,
+            ':limite' => $limite,
+        ];
+
+        if ($preContratoId !== null && $preContratoId > 0) {
+            $sql .= " AND id = :id";
+            $params[':id'] = $preContratoId;
+        }
+
+        $sql .= " ORDER BY criado_em DESC, id DESC LIMIT 1";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $registro = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($registro) ? $registro : null;
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao buscar pré-contrato público recente: ' . $e->getMessage());
+        return null;
+    }
+}
+
 /**
  * Helpers de schema (evitar fatals quando o SQL não foi aplicado).
  */

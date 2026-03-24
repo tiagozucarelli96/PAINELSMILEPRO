@@ -44,6 +44,9 @@ $rate_limit_excedido = $envios_ultima_hora >= $limite_por_hora;
 // Processar formulário
 $success = false;
 $error = '';
+$success_title = 'Enviado com sucesso!';
+$success_message = 'Recebemos seus dados. Nossa equipe entrará em contato em breve para dar andamento ao contrato.';
+$memoria_pre_contrato_dias = vendas_memoria_pre_contrato_dias();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
     try {
@@ -75,6 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         
         // Texto livre (público)
         $pacote_plano = trim($_POST['pacote_plano'] ?? '');
+        $registro_existente_id = (int)($_POST['registro_existente_id'] ?? 0);
+        $alterar_registro_existente = ($_POST['alterar_registro_existente'] ?? '') === '1';
         
         // Validações obrigatórias
         if (empty($nome_completo) || strlen($nome_completo) < 3) {
@@ -180,53 +185,132 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         if (empty($pacote_plano)) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
         }
-        
-        // Inserir pré-contrato
-        $stmt = $pdo->prepare("
-            INSERT INTO vendas_pre_contratos 
-            (tipo_evento, origem, nome_completo, cpf, rg, telefone, email, 
-             cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
-             data_evento, unidade, horario_inicio, horario_termino, 
-             nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
-             pacote_contratado, status, criado_por_ip)
-            VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
-        ");
-        
-        $stmt->execute([
-            $tipo_evento,
-            $nome_completo,
-            $cpf,
-            $rg,
-            $telefone,
-            $email,
-            $cep,
-            $endereco_completo,
-            $numero,
-            $complemento,
-            $bairro,
-            $cidade,
-            $estado,
-            $pais,
-            $instagram,
-            $data_evento,
-            $unidade,
-            $horario_inicio,
-            $horario_termino,
-            $nome_noivos,
-            $num_convidados,
-            $como_conheceu,
-            $como_conheceu === 'outro' ? $como_conheceu_outro : null,
-            $pacote_plano,
-            $ip
-        ]);
-        
-        // Log
-        $pre_contrato_id = $pdo->lastInsertId();
-        $stmt_log = $pdo->prepare("
-            INSERT INTO vendas_logs (pre_contrato_id, acao, detalhes)
-            VALUES (?, 'criado', ?)
-        ");
-        $stmt_log->execute([$pre_contrato_id, json_encode(['ip' => $ip, 'tipo' => $tipo_evento, 'origem' => 'publico'])]);
+
+        $registro_existente = null;
+        if ($registro_existente_id > 0 && $alterar_registro_existente) {
+            $registro_existente = vendas_buscar_pre_contrato_publico_recente($cpf, $tipo_evento, $registro_existente_id, $memoria_pre_contrato_dias);
+        }
+        if (!$registro_existente) {
+            $registro_existente = vendas_buscar_pre_contrato_publico_recente($cpf, $tipo_evento, null, $memoria_pre_contrato_dias);
+        }
+
+        if ($registro_existente) {
+            $pre_contrato_id = (int)$registro_existente['id'];
+            $stmt = $pdo->prepare("
+                UPDATE vendas_pre_contratos
+                SET nome_completo = ?,
+                    cpf = ?,
+                    rg = ?,
+                    telefone = ?,
+                    email = ?,
+                    cep = ?,
+                    endereco_completo = ?,
+                    numero = ?,
+                    complemento = ?,
+                    bairro = ?,
+                    cidade = ?,
+                    estado = ?,
+                    pais = ?,
+                    instagram = ?,
+                    data_evento = ?,
+                    unidade = ?,
+                    horario_inicio = ?,
+                    horario_termino = ?,
+                    nome_noivos = ?,
+                    num_convidados = ?,
+                    como_conheceu = ?,
+                    como_conheceu_outro = ?,
+                    pacote_contratado = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ");
+
+            $stmt->execute([
+                $nome_completo,
+                $cpf,
+                $rg,
+                $telefone,
+                $email,
+                $cep,
+                $endereco_completo,
+                $numero,
+                $complemento,
+                $bairro,
+                $cidade,
+                $estado,
+                $pais,
+                $instagram,
+                $data_evento,
+                $unidade,
+                $horario_inicio,
+                $horario_termino,
+                $nome_noivos,
+                $num_convidados,
+                $como_conheceu,
+                $como_conheceu === 'outro' ? $como_conheceu_outro : null,
+                $pacote_plano,
+                $pre_contrato_id
+            ]);
+
+            $stmt_log = $pdo->prepare("
+                INSERT INTO vendas_logs (pre_contrato_id, acao, detalhes)
+                VALUES (?, 'dados_publicos_atualizados', ?)
+            ");
+            $stmt_log->execute([$pre_contrato_id, json_encode([
+                'ip' => $ip,
+                'tipo' => $tipo_evento,
+                'origem' => 'publico',
+                'memoria_dias' => $memoria_pre_contrato_dias,
+            ])]);
+
+            $success_title = 'Dados atualizados com sucesso!';
+            $success_message = 'Recebemos sua atualização. Nossa equipe entrará em contato em breve para dar andamento ao contrato.';
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO vendas_pre_contratos
+                (tipo_evento, origem, nome_completo, cpf, rg, telefone, email,
+                 cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
+                 data_evento, unidade, horario_inicio, horario_termino,
+                 nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
+                 pacote_contratado, status, criado_por_ip)
+                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
+            ");
+
+            $stmt->execute([
+                $tipo_evento,
+                $nome_completo,
+                $cpf,
+                $rg,
+                $telefone,
+                $email,
+                $cep,
+                $endereco_completo,
+                $numero,
+                $complemento,
+                $bairro,
+                $cidade,
+                $estado,
+                $pais,
+                $instagram,
+                $data_evento,
+                $unidade,
+                $horario_inicio,
+                $horario_termino,
+                $nome_noivos,
+                $num_convidados,
+                $como_conheceu,
+                $como_conheceu === 'outro' ? $como_conheceu_outro : null,
+                $pacote_plano,
+                $ip
+            ]);
+
+            $pre_contrato_id = $pdo->lastInsertId();
+            $stmt_log = $pdo->prepare("
+                INSERT INTO vendas_logs (pre_contrato_id, acao, detalhes)
+                VALUES (?, 'criado', ?)
+            ");
+            $stmt_log->execute([$pre_contrato_id, json_encode(['ip' => $ip, 'tipo' => $tipo_evento, 'origem' => 'publico'])]);
+        }
         
         $success = true;
         
@@ -385,6 +469,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             color: #92400e;
             border: 1px solid #fde68a;
         }
+
+        .alert strong {
+            display: block;
+            margin-bottom: 0.35rem;
+            letter-spacing: 0.02em;
+        }
+
+        .alert-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .lookup-status {
+            display: block;
+            margin-top: 0.5rem;
+            color: #64748b;
+        }
         
         .form-section {
             margin-bottom: 2rem;
@@ -485,6 +588,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             cursor: not-allowed;
             box-shadow: none;
             transform: none;
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 120px;
+            padding: 0.8rem 1rem;
+            background: #fff;
+            color: var(--primary-color);
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            font-size: 0.96rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #eff6ff;
+            border-color: #93c5fd;
         }
         
         .success-message {
@@ -588,8 +712,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         <?php if ($success): ?>
             <div class="success-message">
                 <div class="success-icon">✓</div>
-                <h2>Enviado com sucesso!</h2>
-                <p>Recebemos seus dados. Nossa equipe entrará em contato em breve para dar andamento ao contrato.</p>
+                <h2><?php echo htmlspecialchars($success_title); ?></h2>
+                <p><?php echo htmlspecialchars($success_message); ?></p>
             </div>
         <?php else: ?>
             
@@ -604,8 +728,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     <?php echo htmlspecialchars($error); ?>
                 </div>
             <?php endif; ?>
+
+            <div class="success-message" id="registro_existente_agradecimento" style="display:none;">
+                <div class="success-icon">✓</div>
+                <h2>Obrigado!</h2>
+                <p>Recebemos sua confirmação. Se precisar atualizar esses dados depois, é só abrir o link novamente.</p>
+            </div>
             
-            <form method="POST" action="" <?php echo $rate_limit_excedido ? 'onsubmit="return false;"' : ''; ?>>
+            <form id="form_pre_contrato_publico" method="POST" action="" <?php echo $rate_limit_excedido ? 'onsubmit="return false;"' : ''; ?>>
+                <input type="hidden" id="registro_existente_id" name="registro_existente_id" value="<?php echo (int)($_POST['registro_existente_id'] ?? 0); ?>">
+                <input type="hidden" id="alterar_registro_existente" name="alterar_registro_existente" value="<?php echo (($_POST['alterar_registro_existente'] ?? '') === '1') ? '1' : '0'; ?>">
                 <!-- Seção: Cliente -->
                 <div class="form-section">
                     <div class="form-section-title">Dados do Cliente</div>
@@ -631,6 +763,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                                    value="<?php echo htmlspecialchars($_POST['rg'] ?? ''); ?>">
                         </div>
                     </div>
+
+                    <div class="alert alert-warning" id="registro_existente_alerta" style="display:none;">
+                        <strong>VOCÊ JÁ TEM DADOS ENVIADOS, DESEJA ALTERAR?</strong>
+                        <span id="registro_existente_resumo"></span>
+                        <div class="alert-actions">
+                            <button type="button" class="btn-secondary" id="registro_existente_sim">Sim, alterar</button>
+                            <button type="button" class="btn-secondary" id="registro_existente_nao">Não</button>
+                        </div>
+                    </div>
+                    <small class="lookup-status" id="registro_existente_status"></small>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -928,6 +1070,254 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             document.getElementById('div_como_conheceu_outro').style.display = 'block';
             document.getElementById('como_conheceu_outro').required = true;
         }
+
+        const tipoEventoConsulta = <?php echo json_encode($tipo_evento); ?>;
+        const memoriaPreContratoDias = <?php echo (int)$memoria_pre_contrato_dias; ?>;
+        const formPreContratoEl = document.getElementById('form_pre_contrato_publico');
+        const cpfConsultaEl = document.getElementById('cpf');
+        const alertaRegistroExistenteEl = document.getElementById('registro_existente_alerta');
+        const resumoRegistroExistenteEl = document.getElementById('registro_existente_resumo');
+        const statusRegistroExistenteEl = document.getElementById('registro_existente_status');
+        const btnRegistroExistenteSimEl = document.getElementById('registro_existente_sim');
+        const btnRegistroExistenteNaoEl = document.getElementById('registro_existente_nao');
+        const agradecimentoRegistroExistenteEl = document.getElementById('registro_existente_agradecimento');
+        const registroExistenteIdEl = document.getElementById('registro_existente_id');
+        const alterarRegistroExistenteEl = document.getElementById('alterar_registro_existente');
+
+        let consultaRegistroTimeout = null;
+        let consultaRegistroController = null;
+        let ultimoCpfConsultado = '';
+        let registroEncontrado = null;
+
+        function somenteDigitos(valor) {
+            return String(valor || '').replace(/\D/g, '');
+        }
+
+        function formatarCpf(valor) {
+            let digits = somenteDigitos(valor).slice(0, 11);
+            digits = digits.replace(/(\d{3})(\d)/, '$1.$2');
+            digits = digits.replace(/(\d{3})(\d)/, '$1.$2');
+            digits = digits.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+            return digits;
+        }
+
+        function formatarTelefone(valor) {
+            let digits = somenteDigitos(valor).slice(0, 11);
+            if (digits.length <= 10) {
+                digits = digits.replace(/(\d{2})(\d)/, '($1) $2');
+                digits = digits.replace(/(\d{4})(\d)/, '$1-$2');
+                return digits;
+            }
+            digits = digits.replace(/(\d{2})(\d)/, '($1) $2');
+            digits = digits.replace(/(\d{5})(\d)/, '$1-$2');
+            return digits;
+        }
+
+        function formatarCep(valor) {
+            return somenteDigitos(valor).slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2');
+        }
+
+        function atualizarStatusRegistroExistente(mensagem, isError = false) {
+            if (!statusRegistroExistenteEl) return;
+            statusRegistroExistenteEl.textContent = mensagem || '';
+            statusRegistroExistenteEl.style.color = isError ? '#b45309' : '#64748b';
+        }
+
+        function esconderAlertaRegistroExistente() {
+            if (alertaRegistroExistenteEl) {
+                alertaRegistroExistenteEl.style.display = 'none';
+            }
+            if (resumoRegistroExistenteEl) {
+                resumoRegistroExistenteEl.textContent = '';
+            }
+        }
+
+        function limparRegistroExistente() {
+            registroEncontrado = null;
+            if (registroExistenteIdEl) {
+                registroExistenteIdEl.value = '0';
+            }
+            if (alterarRegistroExistenteEl) {
+                alterarRegistroExistenteEl.value = '0';
+            }
+            esconderAlertaRegistroExistente();
+        }
+
+        function reabrirFormulario() {
+            if (formPreContratoEl) {
+                formPreContratoEl.style.display = '';
+            }
+            if (agradecimentoRegistroExistenteEl) {
+                agradecimentoRegistroExistenteEl.style.display = 'none';
+            }
+        }
+
+        function preencherCampo(id, valor) {
+            const el = document.getElementById(id);
+            if (!el || valor == null) return;
+            el.value = String(valor);
+        }
+
+        function preencherFormularioRegistroExistente(registro) {
+            if (!registro) return;
+
+            reabrirFormulario();
+
+            preencherCampo('nome_completo', registro.nome_completo || '');
+            preencherCampo('cpf', formatarCpf(registro.cpf || ''));
+            preencherCampo('rg', registro.rg || '');
+            preencherCampo('telefone', formatarTelefone(registro.telefone || ''));
+            preencherCampo('email', registro.email || '');
+            preencherCampo('instagram', registro.instagram || '');
+            preencherCampo('cep', formatarCep(registro.cep || ''));
+            preencherCampo('endereco_completo', registro.endereco_completo || '');
+            preencherCampo('numero', registro.numero || '');
+            preencherCampo('complemento', registro.complemento || '');
+            preencherCampo('bairro', registro.bairro || '');
+            preencherCampo('cidade', registro.cidade || '');
+            preencherCampo('estado', registro.estado || '');
+            preencherCampo('pais', registro.pais || 'Brasil');
+            preencherCampo('data_evento', registro.data_evento || '');
+            preencherCampo('unidade', registro.unidade || '');
+            preencherCampo('horario_inicio', registro.horario_inicio || '');
+            preencherCampo('horario_termino', registro.horario_termino || '');
+            preencherCampo('nome_noivos', registro.nome_noivos || '');
+            preencherCampo('num_convidados', registro.num_convidados || '');
+            preencherCampo('pacote_plano', registro.pacote_contratado || '');
+
+            const comoConheceuEl = document.getElementById('como_conheceu');
+            if (comoConheceuEl) {
+                comoConheceuEl.value = registro.como_conheceu || '';
+                comoConheceuEl.dispatchEvent(new Event('change'));
+            }
+            preencherCampo('como_conheceu_outro', registro.como_conheceu_outro || '');
+
+            if (registroExistenteIdEl) {
+                registroExistenteIdEl.value = String(registro.id || 0);
+            }
+            if (alterarRegistroExistenteEl) {
+                alterarRegistroExistenteEl.value = '1';
+            }
+
+            esconderAlertaRegistroExistente();
+            atualizarStatusRegistroExistente('Dados carregados para alteração.');
+        }
+
+        async function consultarRegistroExistente(force = false) {
+            if (!cpfConsultaEl) return;
+
+            const cpfDigits = somenteDigitos(cpfConsultaEl.value);
+            if (cpfDigits.length !== 11) {
+                ultimoCpfConsultado = '';
+                limparRegistroExistente();
+                atualizarStatusRegistroExistente('');
+                return;
+            }
+
+            if (!force && cpfDigits === ultimoCpfConsultado) {
+                return;
+            }
+
+            ultimoCpfConsultado = cpfDigits;
+            reabrirFormulario();
+
+            if (consultaRegistroController) {
+                consultaRegistroController.abort();
+            }
+            consultaRegistroController = new AbortController();
+
+            atualizarStatusRegistroExistente('Consultando dados já enviados...');
+
+            try {
+                const resp = await fetch(`vendas_pre_contrato_consulta.php?cpf=${encodeURIComponent(cpfDigits)}&tipo_evento=${encodeURIComponent(tipoEventoConsulta)}`, {
+                    signal: consultaRegistroController.signal,
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await resp.json();
+
+                if (!resp.ok || !data?.success) {
+                    throw new Error(data?.message || 'Não foi possível consultar seus dados agora.');
+                }
+
+                if (!data.found || !data.registro) {
+                    limparRegistroExistente();
+                    atualizarStatusRegistroExistente('');
+                    return;
+                }
+
+                registroEncontrado = data.registro;
+                if (registroExistenteIdEl) {
+                    registroExistenteIdEl.value = String(data.registro.id || 0);
+                }
+                if (alterarRegistroExistenteEl) {
+                    alterarRegistroExistenteEl.value = '0';
+                }
+                if (resumoRegistroExistenteEl) {
+                    resumoRegistroExistenteEl.textContent = data?.resumo?.criado_em
+                        ? `Encontramos um cadastro enviado em ${data.resumo.criado_em}.`
+                        : `Encontramos um cadastro enviado nos últimos ${data.memoria_dias || memoriaPreContratoDias} dias.`;
+                }
+                if (alertaRegistroExistenteEl) {
+                    alertaRegistroExistenteEl.style.display = 'block';
+                }
+                atualizarStatusRegistroExistente(`Cadastro localizado nos últimos ${data.memoria_dias || memoriaPreContratoDias} dias.`);
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    return;
+                }
+                limparRegistroExistente();
+                atualizarStatusRegistroExistente(error?.message || 'Não foi possível consultar seus dados agora.', true);
+            }
+        }
+
+        cpfConsultaEl?.addEventListener('blur', function() {
+            consultarRegistroExistente();
+        });
+
+        cpfConsultaEl?.addEventListener('input', function() {
+            clearTimeout(consultaRegistroTimeout);
+
+            const cpfDigits = somenteDigitos(this.value);
+            if (registroEncontrado && cpfDigits !== somenteDigitos(registroEncontrado.cpf || '')) {
+                limparRegistroExistente();
+            }
+            if (cpfDigits.length !== 11) {
+                ultimoCpfConsultado = '';
+                atualizarStatusRegistroExistente('');
+                return;
+            }
+
+            consultaRegistroTimeout = setTimeout(function() {
+                consultarRegistroExistente();
+            }, 350);
+        });
+
+        btnRegistroExistenteSimEl?.addEventListener('click', function() {
+            preencherFormularioRegistroExistente(registroEncontrado);
+        });
+
+        btnRegistroExistenteNaoEl?.addEventListener('click', function() {
+            if (alertaRegistroExistenteEl) {
+                alertaRegistroExistenteEl.style.display = 'none';
+            }
+            if (formPreContratoEl) {
+                formPreContratoEl.style.display = 'none';
+            }
+            if (agradecimentoRegistroExistenteEl) {
+                agradecimentoRegistroExistenteEl.style.display = 'block';
+            }
+            atualizarStatusRegistroExistente('');
+        });
+
+        formPreContratoEl?.addEventListener('submit', function(e) {
+            if (registroEncontrado && alterarRegistroExistenteEl?.value !== '1') {
+                e.preventDefault();
+                if (alertaRegistroExistenteEl) {
+                    alertaRegistroExistenteEl.style.display = 'block';
+                }
+                atualizarStatusRegistroExistente('Escolha se deseja alterar o cadastro encontrado antes de continuar.', true);
+            }
+        });
     </script>
 </body>
 </html>
