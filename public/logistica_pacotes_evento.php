@@ -520,7 +520,7 @@ includeSidebar('Pacotes de Evento');
                                 ?>
                                 <tr class="sortable-row" draggable="true">
                                     <td class="drag-cell">
-                                        <div class="drag-handle" title="Arraste para ordenar">↕ Arrastar</div>
+                                        <div class="drag-handle" title="Arraste para ordenar">↕</div>
                                         <div class="drag-index">Posição <span class="drag-index-value"><?= $index + 1 ?></span></div>
                                         <input type="hidden" class="ordem-input"
                                                name="regras[<?= $index ?>][ordem]"
