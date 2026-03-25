@@ -254,6 +254,7 @@ includeSidebar('Catálogo Logístico');
     background: #cbd5e1;
 }
 .modal-body {
+    position: relative;
     flex: 1;
     background: #f8fafc;
 }
@@ -262,6 +263,39 @@ includeSidebar('Catálogo Logístico');
     height: 100%;
     border: none;
     background: #f8fafc;
+    transition: opacity 0.18s ease;
+}
+.modal-body.is-loading .modal-iframe {
+    opacity: 0;
+}
+.modal-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.96));
+    color: #475569;
+    font-size: 0.95rem;
+    transition: opacity 0.18s ease;
+}
+.modal-body:not(.is-loading) .modal-loader {
+    opacity: 0;
+    pointer-events: none;
+}
+.modal-loader-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 999px;
+    animation: modalSpin 0.8s linear infinite;
+}
+@keyframes modalSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 @media (max-width: 768px) {
     .modal-overlay {
@@ -361,12 +395,23 @@ includeSidebar('Catálogo Logístico');
             <button class="modal-close" type="button" onclick="closeCatalogModal()">X</button>
         </div>
         <div class="modal-body">
+            <div class="modal-loader" aria-hidden="true">
+                <span class="modal-loader-spinner"></span>
+                <span>Carregando cadastro...</span>
+            </div>
             <iframe class="modal-iframe" id="modal-catalogo-iframe" src="about:blank"></iframe>
         </div>
     </div>
 </div>
 
 <script>
+function setCatalogModalLoading(isLoading) {
+    const body = document.querySelector('#modal-catalogo .modal-body');
+    if (body) {
+        body.classList.toggle('is-loading', !!isLoading);
+    }
+}
+
 function openCatalogModal(tipo, id) {
     const iframe = document.getElementById('modal-catalogo-iframe');
     const modal = document.getElementById('modal-catalogo');
@@ -380,6 +425,8 @@ function openCatalogModal(tipo, id) {
         title.textContent = tipo === 'insumo' ? 'Cadastro de Insumo' : 'Cadastro de Receita';
     }
     if (iframe) {
+        setCatalogModalLoading(true);
+        iframe.onload = () => setCatalogModalLoading(false);
         iframe.src = url;
     }
     if (modal) {
@@ -391,8 +438,10 @@ function closeCatalogModal() {
     const modal = document.getElementById('modal-catalogo');
     const iframe = document.getElementById('modal-catalogo-iframe');
     if (iframe) {
+        iframe.onload = null;
         iframe.src = 'about:blank';
     }
+    setCatalogModalLoading(true);
     if (modal) {
         modal.style.display = 'none';
     }

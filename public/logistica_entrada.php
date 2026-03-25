@@ -675,8 +675,10 @@ includeSidebar('Entrada de Mercadoria - Logística');
 }
 
 .modal-cadastro-body {
+    position: relative;
     flex: 1;
     min-height: 0;
+    background: #f8fafc;
 }
 
 .modal-cadastro-iframe {
@@ -684,6 +686,44 @@ includeSidebar('Entrada de Mercadoria - Logística');
     height: 100%;
     border: none;
     background: #fff;
+    transition: opacity 0.18s ease;
+}
+
+.modal-cadastro-body.is-loading .modal-cadastro-iframe {
+    opacity: 0;
+}
+
+.modal-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.96));
+    color: #475569;
+    font-size: 0.95rem;
+    transition: opacity 0.18s ease;
+}
+
+.modal-cadastro-body:not(.is-loading) .modal-loader {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.modal-loader-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 999px;
+    animation: modalSpin 0.8s linear infinite;
+}
+
+@keyframes modalSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .barcode-indicator {
@@ -939,6 +979,10 @@ includeSidebar('Entrada de Mercadoria - Logística');
             </button>
         </div>
         <div class="modal-cadastro-body">
+            <div class="modal-loader" aria-hidden="true">
+                <span class="modal-loader-spinner"></span>
+                <span>Carregando cadastro...</span>
+            </div>
             <iframe id="cadastro-insumo-iframe" class="modal-cadastro-iframe" src="about:blank"></iframe>
         </div>
     </div>
@@ -992,6 +1036,13 @@ function openCadastroInsumoFromBarcode() {
     openCadastroInsumoModal(barcode);
 }
 
+function setCadastroInsumoLoading(isLoading) {
+    const body = document.querySelector('#modal-cadastro-insumo .modal-cadastro-body');
+    if (body) {
+        body.classList.toggle('is-loading', !!isLoading);
+    }
+}
+
 function openCadastroInsumoModal(barcode = '') {
     const modal = document.getElementById('modal-cadastro-insumo');
     const iframe = document.getElementById('cadastro-insumo-iframe');
@@ -999,6 +1050,8 @@ function openCadastroInsumoModal(barcode = '') {
     if (barcode) {
         url += `&barcode=${encodeURIComponent(barcode)}`;
     }
+    setCadastroInsumoLoading(true);
+    iframe.onload = () => setCadastroInsumoLoading(false);
     iframe.src = url;
     modal.style.display = 'flex';
 }
@@ -1007,8 +1060,10 @@ function closeCadastroInsumoModal() {
     const modal = document.getElementById('modal-cadastro-insumo');
     const iframe = document.getElementById('cadastro-insumo-iframe');
     if (iframe) {
+        iframe.onload = null;
         iframe.src = 'about:blank';
     }
+    setCadastroInsumoLoading(true);
     if (modal) {
         modal.style.display = 'none';
     }

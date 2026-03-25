@@ -13,6 +13,7 @@ require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
 $no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
+$is_quick_modal = $is_modal && $no_checks;
 
 $can_manage = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico']);
 $can_see_cost = !empty($_SESSION['perm_superadmin']) || !empty($_SESSION['perm_logistico_financeiro']);
@@ -23,7 +24,9 @@ if (!$can_manage) {
     exit;
 }
 
-logistica_cardapio_ensure_schema($pdo);
+if (!$is_quick_modal) {
+    logistica_cardapio_ensure_schema($pdo);
+}
 
 $errors = [];
 $messages = [];
@@ -211,8 +214,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $visivel = $no_checks ? true : !empty($_POST['visivel_na_lista']);
             $ativo = $no_checks ? true : !empty($_POST['ativo']);
             $fracionavel = $no_checks ? true : !empty($_POST['fracionavel']);
-            $cardapio_pacote_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
-            $cardapio_secao_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
+            $cardapio_pacote_ids = $is_quick_modal ? [] : logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
+            $cardapio_secao_ids = $is_quick_modal ? [] : logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
 
             $unidade_id = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
             $unidade_nome = null;
@@ -303,9 +306,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $messages[] = 'Insumo criado.';
                 }
 
-                $relacoes = logistica_cardapio_item_salvar_relacoes($pdo, 'insumo', $target_id, $cardapio_pacote_ids, $cardapio_secao_ids);
-                if (empty($relacoes['ok'])) {
-                    throw new RuntimeException((string)($relacoes['error'] ?? 'Falha ao salvar vínculos do cardápio.'));
+                if (!$is_quick_modal) {
+                    $relacoes = logistica_cardapio_item_salvar_relacoes($pdo, 'insumo', $target_id, $cardapio_pacote_ids, $cardapio_secao_ids);
+                    if (empty($relacoes['ok'])) {
+                        throw new RuntimeException((string)($relacoes['error'] ?? 'Falha ao salvar vínculos do cardápio.'));
+                    }
                 }
 
                 $pdo->commit();
@@ -366,21 +371,28 @@ if ($search !== '') {
     $params[':q'] = '%' . $search . '%';
 }
 
-$stmt = $pdo->prepare("
-    SELECT i.*, t.nome AS tipologia_nome, u.nome AS unidade_nome
-    FROM logistica_insumos i
-    LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
-    LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
-    {$where}
-    ORDER BY i.nome_oficial
-");
-$stmt->execute($params);
-$insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$insumos = [];
+if (!$is_modal) {
+    $stmt = $pdo->prepare("
+        SELECT i.*, t.nome AS tipologia_nome, u.nome AS unidade_nome
+        FROM logistica_insumos i
+        LEFT JOIN logistica_tipologias_insumo t ON t.id = i.tipologia_insumo_id
+        LEFT JOIN logistica_unidades_medida u ON u.id = i.unidade_medida_padrao_id
+        {$where}
+        ORDER BY i.nome_oficial
+    ");
+    $stmt->execute($params);
+    $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_insumo WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $unidades_medida = ensure_unidades_medida($pdo);
-$pacotes_cardapio = pacotes_evento_listar($pdo, true);
-$secoes_cardapio = logistica_cardapio_listar_secoes($pdo, true);
+$pacotes_cardapio = [];
+$secoes_cardapio = [];
+if (!$is_quick_modal) {
+    $pacotes_cardapio = pacotes_evento_listar($pdo, true);
+    $secoes_cardapio = logistica_cardapio_listar_secoes($pdo, true);
+}
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
@@ -389,7 +401,7 @@ if ($edit_id > 0) {
     $stmt = $pdo->prepare("SELECT * FROM logistica_insumos WHERE id = :id");
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($edit_item) {
+    if ($edit_item && !$is_quick_modal) {
         $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'insumo', $edit_id);
     }
 }
@@ -852,6 +864,7 @@ body {
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <?php if (!$is_quick_modal): ?>
                 <div class="span-2">
                     <label class="field-label">Pacotes do cardápio</label>
                     <select class="form-input" name="cardapio_pacote_ids[]" multiple>
@@ -888,6 +901,7 @@ body {
                     </select>
                     <div class="helper-inline">Selecione uma ou mais seções. Se ficar vazio, o item não aparece no cardápio do cliente.</div>
                 </div>
+                <?php endif; ?>
                 <div>
                     <label class="field-label">Barcode</label>
                     <div class="upload-actions">
