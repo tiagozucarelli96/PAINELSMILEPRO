@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
 $no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
@@ -21,6 +22,8 @@ if (!$can_manage) {
     echo '<div class="alert-error">Acesso negado.</div>';
     exit;
 }
+
+logistica_cardapio_ensure_schema($pdo);
 
 $errors = [];
 $messages = [];
@@ -196,6 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':visivel_na_lista' => $visivel,
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
             ];
+            $cardapio_pacote_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
+            $cardapio_secao_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
 
             $componentes_post = $_POST['componentes'] ?? [];
             $componentes_norm = [];
@@ -318,6 +323,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
+                    $relacoes = logistica_cardapio_item_salvar_relacoes($pdo, 'receita', $receita_id, $cardapio_pacote_ids, $cardapio_secao_ids);
+                    if (empty($relacoes['ok'])) {
+                        throw new RuntimeException((string)($relacoes['error'] ?? 'Falha ao salvar vínculos do cardápio.'));
+                    }
+
                     $pdo->commit();
                 } catch (Throwable $e) {
                     $pdo->rollBack();
@@ -387,6 +397,8 @@ $receitas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_receita WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $unidades_medida = ensure_unidades_medida($pdo);
+$pacotes_cardapio = pacotes_evento_listar($pdo, true);
+$secoes_cardapio = logistica_cardapio_listar_secoes($pdo, true);
 $unidades_medida_map = [];
 foreach ($unidades_medida as $un) {
     $unidades_medida_map[(int)$un['id']] = $un['nome'];
@@ -434,12 +446,16 @@ foreach (array_keys($receita_nome) as $rid) {
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
 $componentes = [];
+$edit_cardapio_relacoes = ['pacote_ids' => [], 'secao_ids' => []];
 if ($edit_id > 0) {
     $stmt = $pdo->prepare("SELECT * FROM logistica_receitas WHERE id = :id");
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
 
     $componentes = $componentes_by_receita[$edit_id] ?? [];
+    if ($edit_item) {
+        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'receita', $edit_id);
+    }
 }
 if ($edit_id > 0 && !$edit_item) {
     $errors[] = 'Receita não encontrada.';
@@ -448,6 +464,12 @@ $edit_foto_url = null;
 if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
 }
+$form_cardapio_pacote_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? [])
+    : ($edit_cardapio_relacoes['pacote_ids'] ?? []);
+$form_cardapio_secao_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? [])
+    : ($edit_cardapio_relacoes['secao_ids'] ?? []);
 
 $fichas = [];
 foreach ($receitas as $rec) {
@@ -590,6 +612,9 @@ body {
     border: 1px solid #cbd5f5;
     border-radius: 8px;
 }
+.form-input[multiple] {
+    min-height: 140px;
+}
 .btn-primary {
     background: #2563eb;
     color: #fff;
@@ -686,6 +711,12 @@ body {
     font-size: 0.85rem;
     color: #64748b;
     cursor: pointer;
+}
+.helper-inline {
+    margin-top: 0.3rem;
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.45;
 }
 .modal-overlay {
     position: fixed;
@@ -805,6 +836,42 @@ body {
                 <div>
                     <label>Rendimento base (pessoas)</label>
                     <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
+                </div>
+                <div class="span-2">
+                    <label>Pacotes do cardápio</label>
+                    <select class="form-input" name="cardapio_pacote_ids[]" multiple>
+                        <?php foreach ($pacotes_cardapio as $pacote): ?>
+                            <?php
+                            $pacote_id = (int)($pacote['id'] ?? 0);
+                            $pacote_nome = (string)($pacote['nome'] ?? '');
+                            if (!empty($pacote['oculto'])) {
+                                $pacote_nome .= ' (oculto)';
+                            }
+                            ?>
+                            <option value="<?= $pacote_id ?>" <?= in_array($pacote_id, $form_cardapio_pacote_ids, true) ? 'selected' : '' ?>>
+                                <?= h($pacote_nome) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="helper-inline">Selecione um ou mais pacotes. Se ficar vazio, a receita não aparece no cardápio do cliente.</div>
+                </div>
+                <div class="span-2">
+                    <label>Seções do cardápio</label>
+                    <select class="form-input" name="cardapio_secao_ids[]" multiple>
+                        <?php foreach ($secoes_cardapio as $secao): ?>
+                            <?php
+                            $secao_id = (int)($secao['id'] ?? 0);
+                            $secao_nome = (string)($secao['nome'] ?? '');
+                            if (empty($secao['ativo'])) {
+                                $secao_nome .= ' (inativa)';
+                            }
+                            ?>
+                            <option value="<?= $secao_id ?>" <?= in_array($secao_id, $form_cardapio_secao_ids, true) ? 'selected' : '' ?>>
+                                <?= h($secao_nome) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="helper-inline">Selecione uma ou mais seções. Se ficar vazio, a receita não aparece no cardápio do cliente.</div>
                 </div>
                 <?php if (!$no_checks): ?>
                 <div class="checkbox-group">

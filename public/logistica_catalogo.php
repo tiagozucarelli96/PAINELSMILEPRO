@@ -287,6 +287,8 @@ includeSidebar('Catálogo Logístico');
             <div class="form-row">
                 <button class="btn-primary" type="button" onclick="openCatalogModal('insumo')">+ Insumo</button>
                 <button class="btn-primary" type="button" onclick="openCatalogModal('receita')">+ Receita</button>
+                <a class="btn-secondary" href="index.php?page=logistica_pacotes_evento" style="text-decoration:none;display:inline-flex;align-items:center;">Pacotes</a>
+                <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes" style="text-decoration:none;display:inline-flex;align-items:center;">Seção de Cardápio</a>
                 <button class="btn-secondary" type="button" onclick="location.reload()">Atualizar</button>
             </div>
             <form method="GET" class="form-row">

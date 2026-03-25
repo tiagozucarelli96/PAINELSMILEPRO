@@ -194,6 +194,7 @@ $routes = [
   'logistica_catalogo' => 'logistica_catalogo.php',
   'logistica_conexao' => 'logistica_conexao.php',
   'logistica_pacotes_evento' => 'logistica_pacotes_evento.php',
+  'logistica_cardapio_secoes' => 'logistica_cardapio_secoes.php',
   'logistica_diagnostico' => 'logistica_diagnostico.php',
   'logistica_unidades_medida' => 'logistica_unidades_medida.php',
   'logistica_tipologias' => 'logistica_tipologias.php',
@@ -336,6 +337,8 @@ $routes = [
   'eventos_cliente_reuniao' => 'eventos_cliente_reuniao.php',
   'eventos_cliente_dj_portal' => 'eventos_cliente_dj_portal.php',
   'eventos_cliente_arquivos' => 'eventos_cliente_arquivos.php',
+  'eventos_cliente_cardapio' => 'eventos_cliente_cardapio.php',
+  'eventos_cardapio' => 'eventos_cardapio.php',
 
   // Outros
   'ver' => 'ver.php',
@@ -401,6 +404,7 @@ $public_pages = [
   'eventos_cliente_reuniao',
   'eventos_cliente_dj_portal',
   'eventos_cliente_arquivos',
+  'eventos_cliente_cardapio',
   // Galeria pública para clientes
   'eventos_galeria_public',
   // Portal Jurídico (acesso externo por usuário/senha próprios)

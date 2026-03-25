@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
 $no_checks = !empty($_GET['nochecks']) || !empty($_POST['nochecks']);
@@ -21,6 +22,8 @@ if (!$can_manage) {
     echo '<div class="alert-error">Acesso negado.</div>';
     exit;
 }
+
+logistica_cardapio_ensure_schema($pdo);
 
 $errors = [];
 $messages = [];
@@ -208,6 +211,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $visivel = $no_checks ? true : !empty($_POST['visivel_na_lista']);
             $ativo = $no_checks ? true : !empty($_POST['ativo']);
             $fracionavel = $no_checks ? true : !empty($_POST['fracionavel']);
+            $cardapio_pacote_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);
+            $cardapio_secao_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? []);
 
             $unidade_id = !empty($_POST['unidade_medida_padrao_id']) ? (int)$_POST['unidade_medida_padrao_id'] : null;
             $unidade_nome = null;
@@ -239,73 +244,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $dados[':custo_padrao'] = parse_decimal_input($custo_raw, 2);
             }
 
-            if ($id > 0) {
-                $sql = "
-                    UPDATE logistica_insumos
-                    SET nome_oficial = :nome_oficial,
-                        foto_url = :foto_url,
-                        foto_chave_storage = :foto_chave_storage,
-                        unidade_medida = :unidade_medida,
-                        unidade_medida_padrao_id = :unidade_medida_padrao_id,
-                        tipologia_insumo_id = :tipologia_insumo_id,
-                        visivel_na_lista = :visivel_na_lista,
-                        ativo = :ativo,
-                        sinonimos = :sinonimos,
-                        barcode = :barcode,
-                        fracionavel = :fracionavel,
-                        tamanho_embalagem = :tamanho_embalagem,
-                        unidade_embalagem = :unidade_embalagem,
-                        observacoes = :observacoes,
-                        updated_at = NOW()
-                ";
-                if ($can_see_cost) {
-                    $sql .= ", custo_padrao = :custo_padrao";
-                }
-                $sql .= " WHERE id = :id";
-                $dados[':id'] = $id;
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($dados);
-                $messages[] = 'Insumo atualizado.';
-                $saved_modal_payload = [
-                    'id' => $id,
-                    'nome_oficial' => $nome,
-                    'barcode' => $dados[':barcode'],
-                    'unidade_medida_padrao_id' => $unidade_id,
-                    'unidade_nome' => $unidade_nome
-                ];
-            } else {
-                $cols = [
-                    'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
-                    'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
-                    'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
-                ];
-                $vals = [
-                    ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
-                    ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
-                    ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
-                ];
-                if ($can_see_cost) {
-                    $cols[] = 'custo_padrao';
-                    $vals[] = ':custo_padrao';
+            try {
+                $pdo->beginTransaction();
+
+                if ($id > 0) {
+                    $sql = "
+                        UPDATE logistica_insumos
+                        SET nome_oficial = :nome_oficial,
+                            foto_url = :foto_url,
+                            foto_chave_storage = :foto_chave_storage,
+                            unidade_medida = :unidade_medida,
+                            unidade_medida_padrao_id = :unidade_medida_padrao_id,
+                            tipologia_insumo_id = :tipologia_insumo_id,
+                            visivel_na_lista = :visivel_na_lista,
+                            ativo = :ativo,
+                            sinonimos = :sinonimos,
+                            barcode = :barcode,
+                            fracionavel = :fracionavel,
+                            tamanho_embalagem = :tamanho_embalagem,
+                            unidade_embalagem = :unidade_embalagem,
+                            observacoes = :observacoes,
+                            updated_at = NOW()
+                    ";
+                    if ($can_see_cost) {
+                        $sql .= ", custo_padrao = :custo_padrao";
+                    }
+                    $sql .= " WHERE id = :id";
+                    $dados[':id'] = $id;
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($dados);
+                    $target_id = $id;
+                    $messages[] = 'Insumo atualizado.';
+                } else {
+                    $cols = [
+                        'nome_oficial', 'foto_url', 'foto_chave_storage', 'unidade_medida', 'unidade_medida_padrao_id', 'tipologia_insumo_id',
+                        'visivel_na_lista', 'ativo', 'sinonimos', 'barcode', 'fracionavel',
+                        'tamanho_embalagem', 'unidade_embalagem', 'observacoes'
+                    ];
+                    $vals = [
+                        ':nome_oficial', ':foto_url', ':foto_chave_storage', ':unidade_medida', ':unidade_medida_padrao_id', ':tipologia_insumo_id',
+                        ':visivel_na_lista', ':ativo', ':sinonimos', ':barcode', ':fracionavel',
+                        ':tamanho_embalagem', ':unidade_embalagem', ':observacoes'
+                    ];
+                    if ($can_see_cost) {
+                        $cols[] = 'custo_padrao';
+                        $vals[] = ':custo_padrao';
+                    }
+
+                    $sql = "
+                        INSERT INTO logistica_insumos
+                        (" . implode(', ', $cols) . ")
+                        VALUES
+                        (" . implode(', ', $vals) . ")
+                    ";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($dados);
+                    $target_id = (int)$pdo->lastInsertId();
+                    $messages[] = 'Insumo criado.';
                 }
 
-                $sql = "
-                    INSERT INTO logistica_insumos
-                    (" . implode(', ', $cols) . ")
-                    VALUES
-                    (" . implode(', ', $vals) . ")
-                ";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($dados);
-                $new_id = (int)$pdo->lastInsertId();
-                $messages[] = 'Insumo criado.';
+                $relacoes = logistica_cardapio_item_salvar_relacoes($pdo, 'insumo', $target_id, $cardapio_pacote_ids, $cardapio_secao_ids);
+                if (empty($relacoes['ok'])) {
+                    throw new RuntimeException((string)($relacoes['error'] ?? 'Falha ao salvar vínculos do cardápio.'));
+                }
+
+                $pdo->commit();
+
                 $saved_modal_payload = [
-                    'id' => $new_id,
+                    'id' => $target_id,
                     'nome_oficial' => $nome,
                     'barcode' => $dados[':barcode'],
                     'unidade_medida_padrao_id' => $unidade_id,
                     'unidade_nome' => $unidade_nome
                 ];
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $errors[] = 'Erro ao salvar insumo: ' . $e->getMessage();
+                $messages = [];
             }
         }
     }
@@ -362,19 +379,31 @@ $insumos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $tipologias = $pdo->query("SELECT id, nome FROM logistica_tipologias_insumo WHERE ativo IS TRUE ORDER BY ordem, nome")->fetchAll(PDO::FETCH_ASSOC);
 $unidades_medida = ensure_unidades_medida($pdo);
+$pacotes_cardapio = pacotes_evento_listar($pdo, true);
+$secoes_cardapio = logistica_cardapio_listar_secoes($pdo, true);
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = null;
+$edit_cardapio_relacoes = ['pacote_ids' => [], 'secao_ids' => []];
 if ($edit_id > 0) {
     $stmt = $pdo->prepare("SELECT * FROM logistica_insumos WHERE id = :id");
     $stmt->execute([':id' => $edit_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($edit_item) {
+        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'insumo', $edit_id);
+    }
 }
 $prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
 $edit_foto_url = null;
 if ($edit_item) {
     $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
 }
+$form_cardapio_pacote_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? [])
+    : ($edit_cardapio_relacoes['pacote_ids'] ?? []);
+$form_cardapio_secao_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
+    ? logistica_cardapio_normalizar_ids($_POST['cardapio_secao_ids'] ?? [])
+    : ($edit_cardapio_relacoes['secao_ids'] ?? []);
 
 if (!$is_modal) {
     includeSidebar('Insumos - Logística');
@@ -467,6 +496,9 @@ body {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.form-input[multiple] {
+    min-height: 140px;
 }
 .input-group {
     display: flex;
@@ -571,6 +603,12 @@ body {
 }
 .form-block {
     margin-top: 1rem;
+}
+.helper-inline {
+    margin-top: 0.3rem;
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.45;
 }
 .form-actions {
     margin-top: 1rem;
@@ -813,6 +851,42 @@ body {
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+                <div class="span-2">
+                    <label class="field-label">Pacotes do cardápio</label>
+                    <select class="form-input" name="cardapio_pacote_ids[]" multiple>
+                        <?php foreach ($pacotes_cardapio as $pacote): ?>
+                            <?php
+                            $pacote_id = (int)($pacote['id'] ?? 0);
+                            $pacote_nome = (string)($pacote['nome'] ?? '');
+                            if (!empty($pacote['oculto'])) {
+                                $pacote_nome .= ' (oculto)';
+                            }
+                            ?>
+                            <option value="<?= $pacote_id ?>" <?= in_array($pacote_id, $form_cardapio_pacote_ids, true) ? 'selected' : '' ?>>
+                                <?= h($pacote_nome) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="helper-inline">Selecione um ou mais pacotes. Se ficar vazio, o item não aparece no cardápio do cliente.</div>
+                </div>
+                <div class="span-2">
+                    <label class="field-label">Seções do cardápio</label>
+                    <select class="form-input" name="cardapio_secao_ids[]" multiple>
+                        <?php foreach ($secoes_cardapio as $secao): ?>
+                            <?php
+                            $secao_id = (int)($secao['id'] ?? 0);
+                            $secao_nome = (string)($secao['nome'] ?? '');
+                            if (empty($secao['ativo'])) {
+                                $secao_nome .= ' (inativa)';
+                            }
+                            ?>
+                            <option value="<?= $secao_id ?>" <?= in_array($secao_id, $form_cardapio_secao_ids, true) ? 'selected' : '' ?>>
+                                <?= h($secao_nome) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="helper-inline">Selecione uma ou mais seções. Se ficar vazio, o item não aparece no cardápio do cliente.</div>
                 </div>
                 <div>
                     <label class="field-label">Barcode</label>

@@ -11,14 +11,21 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
-if (empty($_SESSION['perm_configuracoes']) && empty($_SESSION['perm_superadmin'])) {
+$can_manage = !empty($_SESSION['perm_superadmin'])
+    || !empty($_SESSION['perm_configuracoes'])
+    || !empty($_SESSION['perm_logistico'])
+    || !empty($_SESSION['perm_cadastros']);
+
+if (!$can_manage) {
     http_response_code(403);
     echo '<div style="padding:1rem;color:#b91c1c;">Acesso negado.</div>';
     exit;
 }
 
 pacotes_evento_ensure_schema($pdo);
+logistica_cardapio_ensure_schema($pdo);
 
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $errors = [];
@@ -59,23 +66,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $result = pacotes_evento_salvar($pdo, $pacote_id, $nome, $descricao, $oculto, $user_id);
         if (!empty($result['ok'])) {
+            $saved_pacote_id = (int)($result['pacote']['id'] ?? $pacote_id);
+            $refreshed = $saved_pacote_id > 0 ? pacotes_evento_get($pdo, $saved_pacote_id) : null;
             if (!empty($result['mode']) && $result['mode'] === 'updated') {
                 $messages[] = 'Pacote atualizado com sucesso.';
-                $refreshed = pacotes_evento_get($pdo, $pacote_id);
                 if ($refreshed) {
                     $edit_item = $refreshed;
                 }
             } else {
-                $messages[] = 'Pacote criado com sucesso.';
-                $edit_item = [
-                    'id' => 0,
-                    'nome' => '',
-                    'descricao' => '',
-                    'oculto' => false,
-                ];
+                $messages[] = 'Pacote criado com sucesso. Agora configure as seções do cardápio deste pacote.';
+                if ($refreshed) {
+                    $edit_item = $refreshed;
+                }
             }
         } else {
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar o pacote.');
+        }
+    }
+
+    if ($action === 'save_rules') {
+        $pacote_id = (int)($_POST['id'] ?? 0);
+        $result = logistica_cardapio_pacote_regras_salvar($pdo, $pacote_id, $_POST['regras'] ?? []);
+        if (!empty($result['ok'])) {
+            $messages[] = 'Regras de seções do pacote salvas com sucesso.';
+            $refreshed = pacotes_evento_get($pdo, $pacote_id);
+            if ($refreshed) {
+                $edit_item = $refreshed;
+            }
+        } else {
+            $errors[] = (string)($result['error'] ?? 'Não foi possível salvar as regras do pacote.');
         }
     }
 
@@ -117,6 +136,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pacotes = pacotes_evento_listar($pdo, true);
+$secoes = logistica_cardapio_listar_secoes($pdo, true);
+$regras_by_pacote = [];
+foreach ($pacotes as $pacote_row) {
+    $pacote_row_id = (int)($pacote_row['id'] ?? 0);
+    if ($pacote_row_id <= 0) {
+        continue;
+    }
+    $regras_by_pacote[$pacote_row_id] = logistica_cardapio_pacote_regras_listar($pdo, $pacote_row_id);
+}
+
+$edit_rules = [];
+$edit_rules_map = [];
+if ((int)$edit_item['id'] > 0) {
+    $edit_rules = $regras_by_pacote[(int)$edit_item['id']] ?? [];
+    foreach ($edit_rules as $rule) {
+        $edit_rules_map[(int)$rule['secao_cardapio_id']] = $rule;
+    }
+}
 
 function logistica_pacotes_evento_e(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -319,15 +356,39 @@ includeSidebar('Pacotes de Evento');
         background: #dcfce7;
         color: #166534;
     }
+
+    .helper-text {
+        margin: 0.55rem 0 0;
+        color: #64748b;
+        font-size: 0.88rem;
+        line-height: 1.5;
+    }
+
+    .rules-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+
+    .rule-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.22rem 0.55rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
 </style>
 
 <div class="page-container">
     <div class="page-header">
         <div>
             <h1 class="page-title">Pacotes de Evento</h1>
-            <p class="page-subtitle">Cadastro simples de pacotes para seleção na organização do evento.</p>
+            <p class="page-subtitle">Cadastre pacotes e defina quantas escolhas cada seção libera para o cliente.</p>
         </div>
-        <a href="index.php?page=config_logistica" class="btn-link">← Voltar para Config. Logística</a>
+        <a href="index.php?page=cadastros" class="btn-link">← Voltar para Cadastros</a>
     </div>
 
     <?php foreach ($errors as $error): ?>
@@ -372,6 +433,68 @@ includeSidebar('Pacotes de Evento');
     </div>
 
     <div class="card">
+        <h2>Seções do Pacote</h2>
+        <?php if ((int)$edit_item['id'] <= 0): ?>
+            <p class="helper-text">Salve um pacote primeiro para configurar quantas opções o cliente pode escolher em cada seção.</p>
+        <?php elseif (empty($secoes)): ?>
+            <p class="helper-text">Nenhuma seção de cardápio cadastrada. Cadastre as seções antes de configurar este pacote.</p>
+            <div class="form-actions">
+                <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Abrir Seções de Cardápio</a>
+            </div>
+        <?php else: ?>
+            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote.</p>
+            <form method="POST">
+                <input type="hidden" name="action" value="save_rules">
+                <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Seção</th>
+                                <th>Descrição</th>
+                                <th>Qtd. de escolhas</th>
+                                <th>Ordem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($secoes as $index => $secao): ?>
+                                <?php
+                                $secao_id = (int)($secao['id'] ?? 0);
+                                $rule = $edit_rules_map[$secao_id] ?? null;
+                                ?>
+                                <tr>
+                                    <td>
+                                        <?= logistica_pacotes_evento_e((string)($secao['nome'] ?? '')) ?>
+                                        <?php if (empty($secao['ativo'])): ?>
+                                            <span class="rule-chip">Inativa</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?= logistica_pacotes_evento_e((string)($secao['descricao'] ?? '')) ?></td>
+                                    <td>
+                                        <input type="hidden" name="regras[<?= $index ?>][secao_cardapio_id]" value="<?= $secao_id ?>">
+                                        <input class="form-input" type="number" min="0" step="1"
+                                               name="regras[<?= $index ?>][quantidade_maxima]"
+                                               value="<?= $rule ? (int)$rule['quantidade_maxima'] : 0 ?>">
+                                    </td>
+                                    <td>
+                                        <input class="form-input" type="number" min="0" step="1"
+                                               name="regras[<?= $index ?>][ordem]"
+                                               value="<?= $rule ? (int)$rule['ordem'] : (int)($secao['ordem'] ?? 0) ?>">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn-primary">Salvar regras das seções</button>
+                    <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Gerenciar seções</a>
+                </div>
+            </form>
+        <?php endif; ?>
+    </div>
+
+    <div class="card">
         <h2>Pacotes Cadastrados</h2>
         <div class="table-wrap">
             <table class="table">
@@ -379,6 +502,7 @@ includeSidebar('Pacotes de Evento');
                     <tr>
                         <th>Nome</th>
                         <th>Descrição</th>
+                        <th>Seções configuradas</th>
                         <th>Status</th>
                         <th>Atualizado</th>
                         <th>Ações</th>
@@ -391,10 +515,25 @@ includeSidebar('Pacotes de Evento');
                         $updated_at = trim((string)($pacote['updated_at'] ?? ''));
                         $updated_at_fmt = $updated_at !== '' ? date('d/m/Y H:i', strtotime($updated_at)) : '-';
                         $is_oculto = !empty($pacote['oculto']);
+                        $pacote_rules = $regras_by_pacote[$pacote_id] ?? [];
                         ?>
                         <tr>
                             <td><?= logistica_pacotes_evento_e((string)($pacote['nome'] ?? '')) ?></td>
                             <td><?= logistica_pacotes_evento_e((string)($pacote['descricao'] ?? '')) ?></td>
+                            <td>
+                                <?php if (!empty($pacote_rules)): ?>
+                                    <div class="rules-summary">
+                                        <?php foreach ($pacote_rules as $rule): ?>
+                                            <span class="rule-chip">
+                                                <?= logistica_pacotes_evento_e((string)$rule['secao_nome']) ?>:
+                                                <?= (int)$rule['quantidade_maxima'] ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="helper-text" style="margin:0;">Sem seções configuradas</span>
+                                <?php endif; ?>
+                            </td>
                             <td>
                                 <span class="status-pill <?= $is_oculto ? 'status-oculto' : 'status-visivel' ?>">
                                     <?= $is_oculto ? 'Oculto' : 'Visível' ?>
@@ -424,7 +563,7 @@ includeSidebar('Pacotes de Evento');
                     <?php endforeach; ?>
                     <?php if (empty($pacotes)): ?>
                         <tr>
-                            <td colspan="5">Nenhum pacote cadastrado.</td>
+                            <td colspan="6">Nenhum pacote cadastrado.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>

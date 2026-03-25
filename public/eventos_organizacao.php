@@ -12,6 +12,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -22,6 +23,7 @@ $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
 pacotes_evento_ensure_schema($pdo);
+logistica_cardapio_ensure_schema($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -93,6 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     exit;
                 }
 
+                $reuniao_atual = eventos_reuniao_get($pdo, $meeting_id);
+                $pacote_evento_anterior = (int)($reuniao_atual['pacote_evento_id'] ?? 0);
+
                 $pacote_evento_raw = trim((string)($_POST['pacote_evento_id'] ?? ''));
                 $pacote_evento_id = null;
                 if ($pacote_evento_raw !== '') {
@@ -108,6 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 }
 
                 $updated = eventos_reuniao_atualizar_pacote_evento($pdo, $meeting_id, $pacote_evento_id);
+                if (!empty($updated['ok'])) {
+                    $pacote_evento_novo = (int)($updated['reuniao']['pacote_evento_id'] ?? 0);
+                    if ($pacote_evento_anterior !== $pacote_evento_novo) {
+                        logistica_cardapio_evento_resetar($pdo, $meeting_id);
+                    }
+                }
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
@@ -129,6 +140,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                         'editavel_convidados' => ((string)($_POST['editavel_convidados'] ?? '0') === '1'),
                         'visivel_arquivos' => ((string)($_POST['visivel_arquivos'] ?? '0') === '1'),
                         'editavel_arquivos' => ((string)($_POST['editavel_arquivos'] ?? '0') === '1'),
+                        'visivel_cardapio' => ((string)($_POST['visivel_cardapio'] ?? '0') === '1'),
+                        'editavel_cardapio' => ((string)($_POST['editavel_cardapio'] ?? '0') === '1'),
                     ],
                     $user_id
                 );
@@ -209,6 +222,8 @@ $visivel_convidados = !empty($portal['visivel_convidados']);
 $editavel_convidados = !empty($portal['editavel_convidados']);
 $visivel_arquivos = !empty($portal['visivel_arquivos']);
 $editavel_arquivos = !empty($portal['editavel_arquivos']);
+$visivel_cardapio = !empty($portal['visivel_cardapio']);
+$editavel_cardapio = !empty($portal['editavel_cardapio']);
 $convidados_resumo = $meeting_id > 0 ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
 $arquivos_resumo = $meeting_id > 0 ? eventos_arquivos_resumo($pdo, $meeting_id) : [
     'campos_total' => 0,
@@ -218,6 +233,22 @@ $arquivos_resumo = $meeting_id > 0 ? eventos_arquivos_resumo($pdo, $meeting_id) 
     'arquivos_visiveis_cliente' => 0,
     'arquivos_cliente' => 0,
 ];
+$cardapio_context = $meeting_id > 0 ? logistica_cardapio_evento_contexto($pdo, $meeting_id) : ['ok' => false];
+$cardapio_summary = !empty($cardapio_context['ok']) ? ($cardapio_context['summary'] ?? []) : [];
+$cardapio_submitted_at = trim((string)($cardapio_summary['submitted_at'] ?? ''));
+$cardapio_submitted_fmt = $cardapio_submitted_at !== '' ? date('d/m/Y H:i', strtotime($cardapio_submitted_at)) : '';
+$cardapio_helper_note = 'Selecione um pacote do evento para montar o cardápio.';
+if (!empty($cardapio_summary['has_pacote'])) {
+    if ((int)($cardapio_summary['secoes_total'] ?? 0) <= 0) {
+        $cardapio_helper_note = 'Pacote selecionado, mas sem seções configuradas para o cliente.';
+    } elseif ($cardapio_submitted_at !== '') {
+        $cardapio_helper_note = (int)($cardapio_summary['selecionados_total'] ?? 0)
+            . ' item(ns) escolhidos • enviado em ' . $cardapio_submitted_fmt;
+    } else {
+        $cardapio_helper_note = (int)($cardapio_summary['secoes_total'] ?? 0)
+            . ' seção(ões) configurada(s) • ' . (int)($cardapio_summary['itens_total'] ?? 0) . ' opção(ões) disponíveis';
+    }
+}
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
 $tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
 $tipos_evento_real_options = [
@@ -873,12 +904,22 @@ includeSidebar('Organização eventos');
 
         <div class="module-card">
             <h3>🍽️ Cardápio</h3>
-            <p>Área dedicada para anexar e atualizar os arquivos de cardápio do evento.</p>
+            <p>Monte as opções do cliente com base no pacote do evento, seções configuradas e escolhas bloqueadas após o envio.</p>
+            <div class="module-options">
+                <label class="check-row">
+                    <input type="checkbox" id="cfgVisivelCardapio" <?= $visivel_cardapio ? 'checked' : '' ?>>
+                    <span>Visível para o cliente</span>
+                </label>
+                <label class="check-row">
+                    <input type="checkbox" id="cfgEditavelCardapio" <?= $editavel_cardapio ? 'checked' : '' ?>>
+                    <span>Editável pelo cliente</span>
+                </label>
+            </div>
             <div class="card-actions">
-                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>#cardapio" class="btn btn-primary">Abrir Cardápio</a>
+                <a href="index.php?page=eventos_cardapio&id=<?= (int)$meeting_id ?>" class="btn btn-primary">Abrir Cardápio</a>
             </div>
             <div class="helper-note">
-                Gerenciado na tela de anexos do evento.
+                <?= htmlspecialchars($cardapio_helper_note) ?>
             </div>
         </div>
     </div>
@@ -1335,7 +1376,10 @@ async function salvarPacoteEvento(pacoteEventoIdRaw) {
             return;
         }
         select.dataset.lastValue = nextValue;
-        mostrarStatusConfig('Pacote do evento salvo automaticamente.');
+        mostrarStatusConfig('Pacote do evento salvo automaticamente. Atualizando cardápio...');
+        window.setTimeout(() => {
+            window.location.reload();
+        }, 250);
     } catch (err) {
         select.value = lastValue;
         mostrarStatusConfig('Erro: ' + err.message, true);
@@ -1369,6 +1413,8 @@ async function salvarConfigPortal() {
     const editavelConvidados = document.getElementById('cfgEditavelConvidados');
     const visivelArquivos = document.getElementById('cfgVisivelArquivos');
     const editavelArquivos = document.getElementById('cfgEditavelArquivos');
+    const visivelCardapio = document.getElementById('cfgVisivelCardapio');
+    const editavelCardapio = document.getElementById('cfgEditavelCardapio');
 
     if (editavelReuniao && editavelReuniao.checked && visivelReuniao) {
         visivelReuniao.checked = true;
@@ -1382,6 +1428,9 @@ async function salvarConfigPortal() {
     if (editavelArquivos && editavelArquivos.checked && visivelArquivos) {
         visivelArquivos.checked = true;
     }
+    if (editavelCardapio && editavelCardapio.checked && visivelCardapio) {
+        visivelCardapio.checked = true;
+    }
 
     const formData = new FormData();
     formData.append('action', 'salvar_portal_config');
@@ -1394,6 +1443,8 @@ async function salvarConfigPortal() {
     formData.append('editavel_convidados', editavelConvidados && editavelConvidados.checked ? '1' : '0');
     formData.append('visivel_arquivos', visivelArquivos && visivelArquivos.checked ? '1' : '0');
     formData.append('editavel_arquivos', editavelArquivos && editavelArquivos.checked ? '1' : '0');
+    formData.append('visivel_cardapio', visivelCardapio && visivelCardapio.checked ? '1' : '0');
+    formData.append('editavel_cardapio', editavelCardapio && editavelCardapio.checked ? '1' : '0');
 
     portalConfigSaveInFlight = true;
     mostrarStatusConfig('Salvando configurações...');
@@ -1426,6 +1477,8 @@ function bindPortalConfigAutoSave() {
         'cfgEditavelConvidados',
         'cfgVisivelArquivos',
         'cfgEditavelArquivos',
+        'cfgVisivelCardapio',
+        'cfgEditavelCardapio',
     ];
     ids.forEach((id) => {
         const input = document.getElementById(id);

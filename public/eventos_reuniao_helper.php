@@ -195,6 +195,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
                 visivel_arquivos BOOLEAN NOT NULL DEFAULT FALSE,
                 editavel_arquivos BOOLEAN NOT NULL DEFAULT FALSE,
+                visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -209,6 +211,8 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_arquivos BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_arquivos BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -2736,6 +2740,8 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['editavel_convidados'] = !empty($row['editavel_convidados']);
     $row['visivel_arquivos'] = !empty($row['visivel_arquivos']);
     $row['editavel_arquivos'] = !empty($row['editavel_arquivos']);
+    $row['visivel_cardapio'] = !empty($row['visivel_cardapio']);
+    $row['editavel_cardapio'] = !empty($row['editavel_cardapio']);
     $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
     return $row;
 }
@@ -2805,6 +2811,8 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
     $has_editavel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados');
     $has_visivel_arquivos_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_arquivos');
     $has_editavel_arquivos_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_arquivos');
+    $has_visivel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_cardapio');
+    $has_editavel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_cardapio');
     $has_created_by_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_by_user_id');
     $has_created_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'created_at');
     $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
@@ -2882,6 +2890,14 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_editavel_arquivos_col) {
             $columns[] = 'editavel_arquivos';
+            $values[] = 'FALSE';
+        }
+        if ($has_visivel_cardapio_col) {
+            $columns[] = 'visivel_cardapio';
+            $values[] = 'FALSE';
+        }
+        if ($has_editavel_cardapio_col) {
+            $columns[] = 'editavel_cardapio';
             $values[] = 'FALSE';
         }
         if ($has_created_by_col) {
@@ -3289,6 +3305,8 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $editavel_convidados = !empty($config['editavel_convidados']);
     $visivel_arquivos = !empty($config['visivel_arquivos']);
     $editavel_arquivos = !empty($config['editavel_arquivos']);
+    $visivel_cardapio = !empty($config['visivel_cardapio']);
+    $editavel_cardapio = !empty($config['editavel_cardapio']);
 
     if ($editavel_reuniao) {
         $visivel_reuniao = true;
@@ -3302,6 +3320,9 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     if ($editavel_arquivos) {
         $visivel_arquivos = true;
     }
+    if ($editavel_cardapio) {
+        $visivel_cardapio = true;
+    }
 
     $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
     $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
@@ -3311,6 +3332,8 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $has_editavel_convidados_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados');
     $has_visivel_arquivos_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_arquivos');
     $has_editavel_arquivos_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_arquivos');
+    $has_visivel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_cardapio');
+    $has_editavel_cardapio_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_cardapio');
     $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
 
     try {
@@ -3348,6 +3371,14 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
         if ($has_editavel_arquivos_col) {
             $set_parts[] = 'editavel_arquivos = :editavel_arquivos';
             $params[':editavel_arquivos'] = $editavel_arquivos ? 1 : 0;
+        }
+        if ($has_visivel_cardapio_col) {
+            $set_parts[] = 'visivel_cardapio = :visivel_cardapio';
+            $params[':visivel_cardapio'] = $visivel_cardapio ? 1 : 0;
+        }
+        if ($has_editavel_cardapio_col) {
+            $set_parts[] = 'editavel_cardapio = :editavel_cardapio';
+            $params[':editavel_cardapio'] = $editavel_cardapio ? 1 : 0;
         }
         if ($has_updated_at_col) {
             $set_parts[] = 'updated_at = NOW()';

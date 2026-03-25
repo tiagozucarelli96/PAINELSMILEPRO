@@ -119,7 +119,7 @@ ob_start();
     <!-- Header -->
     <div class="page-logistico-header">
         <h1>📝 Cadastros</h1>
-        <p>Gestão de usuários</p>
+        <p>Gestão de usuários e estruturas do cardápio</p>
     </div>
     
     <!-- Funcionalidades Principais -->
@@ -130,6 +130,24 @@ ob_start();
                 <span class="funcionalidade-card-icon">👥</span>
                 <div class="funcionalidade-card-title">Usuários</div>
                 <div class="funcionalidade-card-subtitle">Gerenciar usuários e permissões</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_pacotes_evento" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">📦</span>
+                <div class="funcionalidade-card-title">Pacotes</div>
+                <div class="funcionalidade-card-subtitle">Criar pacotes e definir regras por seção</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
+        <a href="index.php?page=logistica_cardapio_secoes" class="funcionalidade-card">
+            <div class="funcionalidade-card-header">
+                <span class="funcionalidade-card-icon">🍽️</span>
+                <div class="funcionalidade-card-title">Seção de Cardápio</div>
+                <div class="funcionalidade-card-subtitle">Cadastrar etapas como entradas, bebidas e mais</div>
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>

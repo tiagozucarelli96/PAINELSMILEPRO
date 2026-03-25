@@ -10,6 +10,9 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
+
+logistica_cardapio_ensure_schema($pdo);
 
 $token = trim((string)($_GET['token'] ?? ''));
 $error = '';
@@ -42,6 +45,16 @@ $visivel_convidados = false;
 $editavel_convidados = false;
 $visivel_arquivos = false;
 $editavel_arquivos = false;
+$visivel_cardapio = false;
+$editavel_cardapio = false;
+$cardapio_summary = [
+    'has_pacote' => false,
+    'pacote_nome' => '',
+    'secoes_total' => 0,
+    'itens_total' => 0,
+    'selecionados_total' => 0,
+    'submitted_at' => '',
+];
 
 function eventos_cliente_portal_dj_tem_campos_formulario($schema): bool
 {
@@ -88,6 +101,8 @@ if ($token === '') {
             $editavel_convidados = !empty($portal['editavel_convidados']);
             $visivel_arquivos = !empty($portal['visivel_arquivos']);
             $editavel_arquivos = !empty($portal['editavel_arquivos']);
+            $visivel_cardapio = !empty($portal['visivel_cardapio']);
+            $editavel_cardapio = !empty($portal['editavel_cardapio']);
 
             if ($visivel_reuniao || $editavel_reuniao) {
                 try {
@@ -158,6 +173,13 @@ if ($token === '') {
                 eventos_arquivos_seed_campos_por_tipo($pdo, (int)$reuniao['id'], $tipo_evento_real, 0);
                 $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
             }
+
+            if ($visivel_cardapio) {
+                $cardapio_context = logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']);
+                if (!empty($cardapio_context['ok'])) {
+                    $cardapio_summary = $cardapio_context['summary'] ?? $cardapio_summary;
+                }
+            }
         }
     }
 }
@@ -166,7 +188,8 @@ $cards_visiveis_total =
     ($visivel_reuniao ? 1 : 0) +
     ($visivel_dj ? 1 : 0) +
     ($visivel_convidados ? 1 : 0) +
-    ($visivel_arquivos ? 1 : 0);
+    ($visivel_arquivos ? 1 : 0) +
+    ($visivel_cardapio ? 1 : 0);
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
@@ -320,6 +343,10 @@ foreach ($links_dj_portal as $dj_link_item) {
 
         .portal-card-theme-arquivos {
             background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+        }
+
+        .portal-card-theme-cardapio {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         }
 
         .card-icon {
@@ -529,6 +556,32 @@ foreach ($links_dj_portal as $dj_link_item) {
                 <div class="card-actions">
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_arquivos&token=<?= urlencode($token) ?>">
                         <?= $editavel_arquivos ? 'Abrir área de arquivos' : 'Visualizar arquivos' ?>
+                    </a>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <?php if ($visivel_cardapio): ?>
+            <section class="portal-card portal-card-theme-cardapio">
+                <div>
+                    <div class="card-icon">🍽️</div>
+                    <div class="card-title">
+                        <h3>Cardápio</h3>
+                        <div class="card-subtitle">Escolha os itens do cardápio conforme o pacote configurado para o evento.</div>
+                        <div class="card-meta">
+                            <?php if (empty($cardapio_summary['has_pacote'])): ?>
+                                Aguardando pacote do evento
+                            <?php elseif (!empty($cardapio_summary['submitted_at'])): ?>
+                                <?= (int)($cardapio_summary['selecionados_total'] ?? 0) ?> escolhido(s) • concluído
+                            <?php else: ?>
+                                <?= (int)($cardapio_summary['secoes_total'] ?? 0) ?> seção(ões) • <?= (int)($cardapio_summary['itens_total'] ?? 0) ?> opção(ões)
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_cardapio&token=<?= urlencode($token) ?>">
+                        <?= ($editavel_cardapio && empty($cardapio_summary['submitted_at'])) ? 'Escolher cardápio' : 'Visualizar cardápio' ?>
                     </a>
                 </div>
             </section>
