@@ -28,6 +28,18 @@ logistica_cardapio_ensure_schema($pdo);
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $errors = [];
 $messages = [];
+$flash_key = 'logistica_cardapio_secoes_flash';
+
+if (!empty($_SESSION[$flash_key]) && is_array($_SESSION[$flash_key])) {
+    $flash = $_SESSION[$flash_key];
+    unset($_SESSION[$flash_key]);
+    foreach (($flash['errors'] ?? []) as $flash_error) {
+        $errors[] = (string)$flash_error;
+    }
+    foreach (($flash['messages'] ?? []) as $flash_message) {
+        $messages[] = (string)$flash_message;
+    }
+}
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
 $edit_item = [
@@ -67,14 +79,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $result = logistica_cardapio_secao_salvar($pdo, $secao_id, $nome, $descricao, $ordem, $ativo, $user_id);
         if (!empty($result['ok'])) {
-            $saved_id = (int)($result['secao']['id'] ?? $secao_id);
-            $refreshed = $saved_id > 0 ? logistica_cardapio_secao_get($pdo, $saved_id) : null;
-            $messages[] = !empty($result['mode']) && $result['mode'] === 'updated'
-                ? 'Seção atualizada com sucesso.'
-                : 'Seção criada com sucesso.';
-            if ($refreshed) {
-                $edit_item = $refreshed;
-            }
+            $_SESSION[$flash_key] = [
+                'messages' => [
+                    !empty($result['mode']) && $result['mode'] === 'updated'
+                        ? 'Seção atualizada com sucesso.'
+                        : 'Seção criada com sucesso.',
+                ],
+            ];
+            header('Location: index.php?page=logistica_cardapio_secoes');
+            exit;
         } else {
             $errors[] = (string)($result['error'] ?? 'Não foi possível salvar a seção.');
         }

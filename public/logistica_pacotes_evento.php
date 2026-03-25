@@ -148,12 +148,25 @@ foreach ($pacotes as $pacote_row) {
 
 $edit_rules = [];
 $edit_rules_map = [];
+$secoes_for_edit = $secoes;
 if ((int)$edit_item['id'] > 0) {
     $edit_rules = $regras_by_pacote[(int)$edit_item['id']] ?? [];
     foreach ($edit_rules as $rule) {
         $edit_rules_map[(int)$rule['secao_cardapio_id']] = $rule;
     }
 }
+
+usort($secoes_for_edit, static function (array $a, array $b) use ($edit_rules_map): int {
+    $a_id = (int)($a['id'] ?? 0);
+    $b_id = (int)($b['id'] ?? 0);
+    $a_ordem = isset($edit_rules_map[$a_id]) ? (int)($edit_rules_map[$a_id]['ordem'] ?? 0) : (int)($a['ordem'] ?? 0);
+    $b_ordem = isset($edit_rules_map[$b_id]) ? (int)($edit_rules_map[$b_id]['ordem'] ?? 0) : (int)($b['ordem'] ?? 0);
+
+    if ($a_ordem === $b_ordem) {
+        return strcmp((string)($a['nome'] ?? ''), (string)($b['nome'] ?? ''));
+    }
+    return $a_ordem <=> $b_ordem;
+});
 
 function logistica_pacotes_evento_e(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
@@ -380,6 +393,48 @@ includeSidebar('Pacotes de Evento');
         font-size: 0.78rem;
         font-weight: 600;
     }
+
+    .sortable-table .table {
+        table-layout: fixed;
+    }
+
+    .sortable-row {
+        cursor: grab;
+    }
+
+    .sortable-row.dragging {
+        opacity: 0.45;
+    }
+
+    .sortable-row.drag-over {
+        outline: 2px dashed #3b82f6;
+        outline-offset: -2px;
+        background: #eff6ff;
+    }
+
+    .drag-cell {
+        width: 84px;
+        white-space: nowrap;
+    }
+
+    .drag-handle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.3rem 0.55rem;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: 0.78rem;
+        font-weight: 700;
+        user-select: none;
+    }
+
+    .drag-index {
+        color: #475569;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
 </style>
 
 <div class="page-container">
@@ -442,27 +497,35 @@ includeSidebar('Pacotes de Evento');
                 <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Abrir Seções de Cardápio</a>
             </div>
         <?php else: ?>
-            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote.</p>
-            <form method="POST">
+            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote. Arraste as linhas para definir a ordem.</p>
+            <form method="POST" id="pacoteRulesForm">
                 <input type="hidden" name="action" value="save_rules">
                 <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
-                <div class="table-wrap">
+                <div class="table-wrap sortable-table">
                     <table class="table">
                         <thead>
                             <tr>
+                                <th class="drag-cell">Ordem</th>
                                 <th>Seção</th>
                                 <th>Descrição</th>
                                 <th>Qtd. de escolhas</th>
-                                <th>Ordem</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <?php foreach ($secoes as $index => $secao): ?>
+                        <tbody id="rulesSortableBody">
+                            <?php foreach ($secoes_for_edit as $index => $secao): ?>
                                 <?php
                                 $secao_id = (int)($secao['id'] ?? 0);
                                 $rule = $edit_rules_map[$secao_id] ?? null;
+                                $ordem_atual = $rule ? (int)$rule['ordem'] : ($index + 1);
                                 ?>
-                                <tr>
+                                <tr class="sortable-row" draggable="true">
+                                    <td class="drag-cell">
+                                        <div class="drag-handle" title="Arraste para ordenar">↕ Arrastar</div>
+                                        <div class="drag-index">Posição <span class="drag-index-value"><?= $index + 1 ?></span></div>
+                                        <input type="hidden" class="ordem-input"
+                                               name="regras[<?= $index ?>][ordem]"
+                                               value="<?= $ordem_atual ?>">
+                                    </td>
                                     <td>
                                         <?= logistica_pacotes_evento_e((string)($secao['nome'] ?? '')) ?>
                                         <?php if (empty($secao['ativo'])): ?>
@@ -475,11 +538,6 @@ includeSidebar('Pacotes de Evento');
                                         <input class="form-input" type="number" min="0" step="1"
                                                name="regras[<?= $index ?>][quantidade_maxima]"
                                                value="<?= $rule ? (int)$rule['quantidade_maxima'] : 0 ?>">
-                                    </td>
-                                    <td>
-                                        <input class="form-input" type="number" min="0" step="1"
-                                               name="regras[<?= $index ?>][ordem]"
-                                               value="<?= $rule ? (int)$rule['ordem'] : (int)($secao['ordem'] ?? 0) ?>">
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -571,5 +629,72 @@ includeSidebar('Pacotes de Evento');
         </div>
     </div>
 </div>
+
+<script>
+(() => {
+    const tbody = document.getElementById('rulesSortableBody');
+    if (!tbody) return;
+
+    let draggedRow = null;
+
+    function updateOrderInputs() {
+        Array.from(tbody.querySelectorAll('.sortable-row')).forEach((row, index) => {
+            const ordemInput = row.querySelector('.ordem-input');
+            const indexLabel = row.querySelector('.drag-index-value');
+            const nextValue = index + 1;
+            if (ordemInput) {
+                ordemInput.value = String(nextValue);
+            }
+            if (indexLabel) {
+                indexLabel.textContent = String(nextValue);
+            }
+        });
+    }
+
+    tbody.querySelectorAll('.sortable-row').forEach((row) => {
+        row.addEventListener('dragstart', () => {
+            draggedRow = row;
+            row.classList.add('dragging');
+        });
+
+        row.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            tbody.querySelectorAll('.sortable-row').forEach((item) => item.classList.remove('drag-over'));
+            draggedRow = null;
+            updateOrderInputs();
+        });
+
+        row.addEventListener('dragover', (event) => {
+            event.preventDefault();
+            if (!draggedRow || draggedRow === row) return;
+            row.classList.add('drag-over');
+        });
+
+        row.addEventListener('dragleave', () => {
+            row.classList.remove('drag-over');
+        });
+
+        row.addEventListener('drop', (event) => {
+            event.preventDefault();
+            row.classList.remove('drag-over');
+            if (!draggedRow || draggedRow === row) return;
+
+            const rows = Array.from(tbody.querySelectorAll('.sortable-row'));
+            const draggedIndex = rows.indexOf(draggedRow);
+            const targetIndex = rows.indexOf(row);
+
+            if (draggedIndex < targetIndex) {
+                row.after(draggedRow);
+            } else {
+                row.before(draggedRow);
+            }
+            updateOrderInputs();
+        });
+    });
+
+    document.getElementById('pacoteRulesForm')?.addEventListener('submit', updateOrderInputs);
+    updateOrderInputs();
+})();
+</script>
 
 <?php endSidebar(); ?>
