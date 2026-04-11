@@ -274,7 +274,7 @@ function eventos_cliente_parse_allowed_sections($raw): array {
     $allowed = [];
     foreach ($sections as $section) {
         $normalized = strtolower(trim((string)$section));
-        if (in_array($normalized, ['decoracao', 'dj_protocolo', 'observacoes_gerais'], true)) {
+        if (in_array($normalized, ['decoracao', 'dj_protocolo', 'observacoes_gerais', 'formulario'], true)) {
             $allowed[] = $normalized;
         }
     }
@@ -308,8 +308,12 @@ function eventos_cliente_resolver_secoes_link(array $link): array {
         return ['dj_protocolo'];
     }
 
+    if ($link_type === 'cliente_formulario') {
+        return ['formulario'];
+    }
+
     $sections = [];
-    foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $section) {
+    foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $section) {
         if (in_array($section, $allowed, true)) {
             $sections[] = $section;
         }
@@ -359,6 +363,14 @@ function eventos_cliente_get_section_meta(string $section): array {
             'upload_prefix' => 'cliente_observacoes',
             'notify_dj' => false,
         ],
+        'formulario' => [
+            'page_title' => 'Organização do Evento - Formulários',
+            'header_title' => '📋 Organização - Formulários',
+            'form_heading' => '📋 Formulários do Evento',
+            'default_form_title_prefix' => 'Formulário do Evento - Quadro ',
+            'upload_prefix' => 'cliente_formulario',
+            'notify_dj' => false,
+        ],
     ];
     return $map[$section] ?? $map['dj_protocolo'];
 }
@@ -371,6 +383,7 @@ function eventos_cliente_section_label(string $section): string {
         'decoracao' => 'Decoração',
         'observacoes_gerais' => 'Observações Gerais',
         'dj_protocolo' => 'DJ / Protocolos',
+        'formulario' => 'Formulário',
     ];
     return $labels[$section] ?? 'Formulário';
 }
@@ -731,7 +744,7 @@ if (empty($token)) {
                 }
             }
             $ordered_sections = [];
-            foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $candidate_section) {
+            foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $candidate_section) {
                 if (in_array($candidate_section, $link_sections, true)) {
                     $ordered_sections[] = $candidate_section;
                 }
@@ -752,7 +765,8 @@ if (empty($token)) {
             }
         }
 
-        $link_has_slot_rules = ($link_section === 'dj_protocolo') && !empty($link['portal_configured']);
+        $link_type_current = strtolower(trim((string)($link['link_type'] ?? '')));
+        $link_has_slot_rules = in_array($link_type_current, ['cliente_dj', 'cliente_formulario'], true) && !empty($link['portal_configured']);
         if ($link_has_slot_rules) {
             $link_visivel = !empty($link['portal_visible']);
             $link_editavel = !empty($link['portal_editable']);
@@ -762,6 +776,11 @@ if (empty($token)) {
             if ($is_combined_reuniao || $link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
                 $link_visivel = !empty($portal_config['visivel_reuniao']);
                 $link_editavel = !empty($portal_config['editavel_reuniao']);
+            } elseif ($link_type_current === 'cliente_formulario') {
+                if ($link_has_slot_rules) {
+                    $link_visivel = $link_visivel && !empty($link['portal_visible']);
+                    $link_editavel = $link_editavel && !empty($link['portal_editable']);
+                }
             } else {
                 if (!$link_has_slot_rules) {
                     $link_visivel = !empty($portal_config['visivel_dj']);

@@ -27,6 +27,7 @@ $portal = null;
 $reuniao = null;
 $snapshot = [];
 $links_dj_portal = [];
+$links_formulario_portal = [];
 $convidados_resumo = ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
 $arquivos_resumo = [
     'campos_total' => 0,
@@ -75,6 +76,11 @@ function eventos_cliente_portal_dj_tem_campos_formulario($schema): bool
         }
     }
     return false;
+}
+
+function eventos_cliente_portal_formulario_tem_campos($schema): bool
+{
+    return eventos_cliente_portal_dj_tem_campos_formulario($schema);
 }
 
 if ($token === '') {
@@ -164,6 +170,17 @@ if ($token === '') {
                 }
             }
 
+            $links_formulario = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_formulario');
+            foreach ($links_formulario as $form_link_item) {
+                if (empty($form_link_item['is_active']) || empty($form_link_item['portal_visible'])) {
+                    continue;
+                }
+                if (!eventos_cliente_portal_formulario_tem_campos($form_link_item['form_schema'] ?? null)) {
+                    continue;
+                }
+                $links_formulario_portal[] = $form_link_item;
+            }
+
             if ($visivel_convidados) {
                 $convidados_resumo = eventos_convidados_resumo($pdo, (int)$reuniao['id']);
             }
@@ -187,6 +204,7 @@ if ($token === '') {
 $cards_visiveis_total =
     ($visivel_reuniao ? 1 : 0) +
     ($visivel_dj ? 1 : 0) +
+    (!empty($links_formulario_portal) ? 1 : 0) +
     ($visivel_convidados ? 1 : 0) +
     ($visivel_arquivos ? 1 : 0) +
     ($visivel_cardapio ? 1 : 0);
@@ -210,6 +228,18 @@ foreach ($links_dj_portal as $dj_link_item) {
         $links_dj_formularios[] = $dj_link_item;
     } else {
         $has_dj_texto_direto = true;
+    }
+}
+
+$formularios_total = count($links_formulario_portal);
+$formularios_pendentes = 0;
+$formularios_editaveis_abertos = 0;
+foreach ($links_formulario_portal as $formulario_link_item) {
+    if (empty($formulario_link_item['submitted_at'])) {
+        $formularios_pendentes++;
+    }
+    if (!empty($formulario_link_item['portal_editable']) && empty($formulario_link_item['submitted_at'])) {
+        $formularios_editaveis_abertos++;
     }
 }
 ?>
@@ -347,6 +377,10 @@ foreach ($links_dj_portal as $dj_link_item) {
 
         .portal-card-theme-cardapio {
             background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .portal-card-theme-formulario {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
         }
 
         .card-icon {
@@ -556,6 +590,26 @@ foreach ($links_dj_portal as $dj_link_item) {
                 <div class="card-actions">
                     <a class="btn btn-primary" href="index.php?page=eventos_cliente_arquivos&token=<?= urlencode($token) ?>">
                         <?= $editavel_arquivos ? 'Abrir área de arquivos' : 'Visualizar arquivos' ?>
+                    </a>
+                </div>
+            </section>
+            <?php endif; ?>
+
+            <?php if (!empty($links_formulario_portal)): ?>
+            <section class="portal-card portal-card-theme-formulario">
+                <div>
+                    <div class="card-icon">📋</div>
+                    <div class="card-title">
+                        <h3>Formulários</h3>
+                        <div class="card-subtitle">Visualize os formulários liberados para este evento e preencha os que estiverem disponíveis.</div>
+                        <div class="card-meta">
+                            <?= $formularios_total ?> formulário(s) • <?= $formularios_pendentes ?> pendente(s)
+                        </div>
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_formulario_portal&token=<?= urlencode($token) ?>">
+                        <?= $formularios_editaveis_abertos > 0 ? 'Preencher formulários' : 'Visualizar formulários' ?>
                     </a>
                 </div>
             </section>

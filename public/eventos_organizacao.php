@@ -814,7 +814,7 @@ includeSidebar('Organização eventos');
     <div class="cards-grid">
         <div class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Área central da reunião final com as abas Decoração, Observações Gerais e DJ / Protocolos.</p>
+            <p>Área central da reunião final com as abas Decoração, Observações Gerais, DJ / Protocolos e Formulário.</p>
             <div class="module-options">
                 <label class="check-row">
                     <input type="checkbox" id="cfgVisivelReuniao" <?= $visivel_reuniao ? 'checked' : '' ?>>

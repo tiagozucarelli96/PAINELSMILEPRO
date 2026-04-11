@@ -336,6 +336,7 @@ $routes = [
   'eventos_cliente_convidados' => 'eventos_cliente_convidados.php',
   'eventos_cliente_reuniao' => 'eventos_cliente_reuniao.php',
   'eventos_cliente_dj_portal' => 'eventos_cliente_dj_portal.php',
+  'eventos_cliente_formulario_portal' => 'eventos_cliente_formulario_portal.php',
   'eventos_cliente_arquivos' => 'eventos_cliente_arquivos.php',
   'eventos_cliente_cardapio' => 'eventos_cliente_cardapio.php',
   'eventos_cardapio' => 'eventos_cardapio.php',
@@ -400,6 +401,7 @@ $public_pages = [
   'eventos_cliente_convidados',
   'eventos_cliente_reuniao',
   'eventos_cliente_dj_portal',
+  'eventos_cliente_formulario_portal',
   'eventos_cliente_arquivos',
   'eventos_cliente_cardapio',
   // Galeria pública para clientes

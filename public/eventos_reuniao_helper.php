@@ -96,6 +96,73 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         error_log('eventos_reuniao_ensure_schema: falha ao criar tabela eventos_form_templates: ' . $e->getMessage());
     }
 
+    try {
+        $section_constraints = [
+            'eventos_reunioes_secoes' => ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'],
+            'eventos_reunioes_versoes' => ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'],
+            'eventos_reunioes_anexos' => ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario', 'galeria'],
+        ];
+
+        foreach ($section_constraints as $table_name => $allowed_sections) {
+            if (!eventos_reuniao_has_table($pdo, $table_name)) {
+                continue;
+            }
+
+            $constraint_rows = [];
+            $constraint_stmt = $pdo->prepare("
+                SELECT c.conname, pg_get_constraintdef(c.oid) AS definition
+                FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE c.contype = 'c'
+                  AND t.relname = :table_name
+                  AND n.nspname = ANY (current_schemas(FALSE))
+            ");
+            $constraint_stmt->execute([':table_name' => $table_name]);
+            $constraint_rows = $constraint_stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $section_constraint_ok = false;
+            foreach ($constraint_rows as $constraint_row) {
+                $definition = strtolower((string)($constraint_row['definition'] ?? ''));
+                if (strpos($definition, 'section') === false) {
+                    continue;
+                }
+                if (strpos($definition, "'formulario'") !== false) {
+                    $section_constraint_ok = true;
+                    break;
+                }
+            }
+
+            if ($section_constraint_ok) {
+                continue;
+            }
+
+            foreach ($constraint_rows as $constraint_row) {
+                $definition = strtolower((string)($constraint_row['definition'] ?? ''));
+                if (strpos($definition, 'section') === false) {
+                    continue;
+                }
+                $constraint_name = (string)($constraint_row['conname'] ?? '');
+                if ($constraint_name === '' || !preg_match('/^[a-zA-Z0-9_]+$/', $constraint_name)) {
+                    continue;
+                }
+                $quoted_constraint_name = '"' . str_replace('"', '""', $constraint_name) . '"';
+                $pdo->exec("ALTER TABLE IF EXISTS {$table_name} DROP CONSTRAINT IF EXISTS " . $quoted_constraint_name);
+            }
+
+            $allowed_sql = "'" . implode("', '", array_map(static function (string $item): string {
+                return str_replace("'", "''", $item);
+            }, $allowed_sections)) . "'";
+            $pdo->exec("
+                ALTER TABLE IF EXISTS {$table_name}
+                ADD CONSTRAINT {$table_name}_section_check
+                CHECK (section IN ({$allowed_sql}))
+            ");
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_ensure_schema: falha ao ajustar constraints de section: ' . $e->getMessage());
+    }
+
     // Campos adicionais para múltiplos links/formulários DJ por reunião.
     try {
         if (eventos_reuniao_has_table($pdo, 'eventos_links_publicos')) {
@@ -127,7 +194,7 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 if (strpos($definition, 'link_type') === false) {
                     continue;
                 }
-                if (strpos($definition, 'cliente_observacoes') !== false) {
+                if (strpos($definition, 'cliente_observacoes') !== false && strpos($definition, 'cliente_formulario') !== false) {
                     $link_type_constraint_ok = true;
                     break;
                 }
@@ -151,7 +218,7 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 $pdo->exec("
                     ALTER TABLE IF EXISTS eventos_links_publicos
                     ADD CONSTRAINT eventos_links_publicos_link_type_check
-                    CHECK (link_type IN ('cliente_dj', 'cliente_observacoes', 'link_publico_visualizacao'))
+                    CHECK (link_type IN ('cliente_dj', 'cliente_observacoes', 'cliente_formulario', 'link_publico_visualizacao'))
                 ");
             }
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_links_slot_ativo ON eventos_links_publicos(meeting_id, link_type, slot_index, is_active)");
@@ -1346,7 +1413,7 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
     $reuniao = $stmt->fetch(PDO::FETCH_ASSOC);
     
     // Criar seções vazias
-    $sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+    $sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
     foreach ($sections as $section) {
         $stmt = $pdo->prepare("
             INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at)
@@ -2170,6 +2237,7 @@ function eventos_reuniao_gerar_link_cliente(
         'decoracao' => ['label' => 'Decoração', 'default_link_type' => 'cliente_observacoes'],
         'dj_protocolo' => ['label' => 'DJ/Protocolos', 'default_link_type' => 'cliente_dj'],
         'observacoes_gerais' => ['label' => 'Observações Gerais', 'default_link_type' => 'cliente_observacoes'],
+        'formulario' => ['label' => 'Formulário', 'default_link_type' => 'cliente_formulario'],
     ];
     if (!isset($section_map[$section])) {
         return ['ok' => false, 'error' => 'Seção inválida para geração de link'];

@@ -332,6 +332,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             echo json_encode($result);
             exit;
+
+        case 'atualizar_formulario_slot_portal_config':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $portal_visible = ((string)($_POST['portal_visible'] ?? '0') === '1');
+            $portal_editable = ((string)($_POST['portal_editable'] ?? '0') === '1');
+            if ($portal_editable) {
+                $portal_visible = true;
+            }
+            $schema_payload = $_POST['form_schema_json'] ?? null;
+            $content_snapshot = trim((string)($_POST['content_html'] ?? ''));
+            $form_title = trim((string)($_POST['form_title'] ?? ''));
+
+            $schema_array = null;
+            if ($schema_payload !== null && $schema_payload !== '') {
+                $decoded = json_decode((string)$schema_payload, true);
+                if (!is_array($decoded)) {
+                    echo json_encode(['ok' => false, 'error' => 'Schema inválido para configurar o formulário']);
+                    exit;
+                }
+                $schema_array = $decoded;
+            }
+
+            $result = eventos_reuniao_atualizar_slot_portal_config(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                'cliente_formulario',
+                $portal_visible,
+                $portal_editable,
+                (int)$user_id,
+                $schema_array,
+                $content_snapshot !== '' ? $content_snapshot : null,
+                $form_title !== '' ? $form_title : null,
+                'formulario'
+            );
+            if (!empty($result['ok']) && !empty($result['link']['token'])) {
+                $base_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+                $result['url'] = $base_url . '/index.php?page=eventos_cliente_dj&token=' . $result['link']['token'];
+            }
+            echo json_encode($result);
+            exit;
             
         case 'get_versoes':
             $section = $_POST['section'] ?? '';
@@ -407,6 +452,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
             $result = eventos_reuniao_excluir_slot_cliente($pdo, $meeting_id, $slot_index, (int)$user_id, 'cliente_observacoes');
+            echo json_encode($result);
+            exit;
+
+        case 'destravar_formulario_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_destravar_slot_cliente(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                (int)$user_id,
+                'cliente_formulario',
+                'formulario'
+            );
+            echo json_encode($result);
+            exit;
+
+        case 'excluir_formulario_slot':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
+            $result = eventos_reuniao_excluir_slot_cliente($pdo, $meeting_id, $slot_index, (int)$user_id, 'cliente_formulario');
             echo json_encode($result);
             exit;
             
@@ -622,7 +694,7 @@ if ($meeting_id > 0) {
     $reuniao = eventos_reuniao_get($pdo, $meeting_id);
     if ($reuniao) {
         // Carregar seções
-        foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo'] as $sec) {
+        foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $sec) {
             $secoes[$sec] = eventos_reuniao_get_secao($pdo, $meeting_id, $sec);
         }
     }
@@ -632,6 +704,7 @@ eventos_form_template_seed_protocolo_15anos($pdo, $user_id);
 $form_templates = eventos_form_templates_listar($pdo);
 $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj') : [];
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
+$links_cliente_formulario = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_formulario') : [];
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $scope = strtolower(trim((string)($_GET['scope'] ?? '')));
@@ -654,22 +727,25 @@ $observacoes_schema_saved = is_array($observacoes_schema_decoded) ? $observacoes
 $dj_schema_raw = $secoes['dj_protocolo']['form_schema_json'] ?? '[]';
 $dj_schema_decoded = json_decode((string)$dj_schema_raw, true);
 $dj_schema_saved = is_array($dj_schema_decoded) ? $dj_schema_decoded : [];
+$formulario_schema_raw = $secoes['formulario']['form_schema_json'] ?? '[]';
+$formulario_schema_decoded = json_decode((string)$formulario_schema_raw, true);
+$formulario_schema_saved = is_array($formulario_schema_decoded) ? $formulario_schema_decoded : [];
 
 // Seções disponíveis
 $all_section_labels = [
     'decoracao' => ['icon' => '🎨', 'label' => 'Decoração'],
     'observacoes_gerais' => ['icon' => '📝', 'label' => 'Observações Gerais'],
-    'dj_protocolo' => ['icon' => '🎧', 'label' => 'DJ / Protocolos']
+    'dj_protocolo' => ['icon' => '🎧', 'label' => 'DJ / Protocolos'],
+    'formulario' => ['icon' => '📋', 'label' => 'Formulário']
 ];
 $section_labels = $all_section_labels;
-if ($scope === 'reuniao') {
-    $section_labels = [
-        'decoracao' => $all_section_labels['decoracao'],
-        'observacoes_gerais' => $all_section_labels['observacoes_gerais'],
-    ];
-} elseif ($scope === 'dj') {
+if ($scope === 'dj') {
     $section_labels = [
         'dj_protocolo' => $all_section_labels['dj_protocolo'],
+    ];
+} elseif ($scope === 'formulario') {
+    $section_labels = [
+        'formulario' => $all_section_labels['formulario'],
     ];
 }
 $default_tab_key = (string)(array_key_first($section_labels) ?? 'decoracao');
@@ -681,10 +757,10 @@ if ($active_tab_query === '' || !isset($section_labels[$active_tab_query])) {
 }
 
 $sidebar_title = $meeting_id > 0 ? 'Reunião Final' : 'Nova Reunião Final';
-if ($scope === 'reuniao') {
-    $sidebar_title = $meeting_id > 0 ? 'Reunião Final - Decoração/Observações' : 'Nova Reunião Final';
-} elseif ($scope === 'dj') {
+if ($scope === 'dj') {
     $sidebar_title = 'DJ / Protocolos';
+} elseif ($scope === 'formulario') {
+    $sidebar_title = 'Formulário';
 }
 includeSidebar($sidebar_title);
 ?>
@@ -1960,6 +2036,24 @@ includeSidebar($sidebar_title);
             </div>
             <?php endif; ?>
 
+            <?php if ($key === 'formulario'): ?>
+            <div class="dj-builder-shell">
+                <div class="dj-slots-controls">
+                    <div>
+                        <h4>📋 Formulários</h4>
+                        <p>Selecione um ou mais formulários da biblioteca e defina quais o cliente poderá visualizar e preencher no portal.</p>
+                    </div>
+                    <div class="dj-slots-actions">
+                        <?php if (!$readonly_mode): ?>
+                        <button type="button" class="btn btn-primary" onclick="addFormularioSlot()">+ Adicionar formulário</button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <div id="formularioSlotsEmptyState" class="dj-builder-empty-state" style="display:none;">Nenhum formulário criado. Clique em "Adicionar formulário" para começar.</div>
+                <div id="formularioSlotsContainer" class="dj-slots-stack"></div>
+            </div>
+            <?php endif; ?>
+
             <?php if ($key === 'decoracao'): ?>
             <div class="dj-builder-shell">
                 <div class="dj-builder-head">
@@ -2053,12 +2147,14 @@ includeSidebar($sidebar_title);
                           style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
             
+            <?php if ($key !== 'formulario'): ?>
             <div class="section-actions">
                 <?php if (!$is_locked && !$readonly_mode): ?>
                 <button type="button" class="btn btn-primary" onclick="salvarSecao('<?= $key ?>')">💾 Salvar</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary" onclick="verVersoes('<?= $key ?>')">📋 Histórico de Versões</button>
             </div>
+            <?php endif; ?>
         </div>
         <?php endforeach; ?>
     </div>
@@ -2093,6 +2189,7 @@ includeSidebar($sidebar_title);
                     <label for="printSectionSelect" style="display:block; font-weight: 700; color:#334155; font-size: 0.85rem; margin-bottom: 0.35rem;">Aba</label>
                     <select id="printSectionSelect" style="width:100%; padding: 0.65rem 0.8rem; border:1px solid #e2e8f0; border-radius: 10px; background:#fff;">
                         <?php foreach ($section_labels as $section_key => $section_info): ?>
+                        <?php if ($section_key === 'formulario') { continue; } ?>
                         <option value="<?= htmlspecialchars($section_key) ?>"><?= htmlspecialchars((string)($section_info['label'] ?? $section_key)) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -2113,6 +2210,7 @@ const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($secti
 const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjSchema = <?= json_encode($dj_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialFormularioSchema = <?= json_encode($formulario_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjLinks = <?= json_encode(array_map(static function (array $link): array {
     return [
         'id' => (int)($link['id'] ?? 0),
@@ -2137,6 +2235,20 @@ const initialObservacoesClientLinks = <?= json_encode(array_map(static function 
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_observacoes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const initialFormularioLinks = <?= json_encode(array_map(static function (array $link): array {
+    return [
+        'id' => (int)($link['id'] ?? 0),
+        'token' => (string)($link['token'] ?? ''),
+        'is_active' => !empty($link['is_active']),
+        'slot_index' => (int)($link['slot_index'] ?? 1),
+        'form_title' => (string)($link['form_title'] ?? ''),
+        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'portal_visible' => !empty($link['portal_visible']),
+        'portal_editable' => !empty($link['portal_editable']),
+        'portal_configured' => !empty($link['portal_configured']),
+        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
+    ];
+}, $links_cliente_formulario), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjAnexos = <?= json_encode(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
 }, $anexos_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -2171,6 +2283,11 @@ let djUploadCardCounter = 0;
 let observacoesSlotOrder = [];
 let selectedObservacoesTemplateIds = {};
 let observacoesLinksBySlot = {};
+let formularioSlotOrder = [];
+let selectedFormularioTemplateIds = {};
+let formularioLinksBySlot = {};
+let formularioPortalSaveInFlight = {};
+let formularioPortalSavePending = {};
 let selectedSectionTemplateIds = {
     decoracao: null,
     observacoes_gerais: null,
@@ -2183,6 +2300,7 @@ const sectionLockedState = <?= json_encode([
     'decoracao' => !empty($secoes['decoracao']['is_locked']),
     'observacoes_gerais' => !empty($secoes['observacoes_gerais']['is_locked']),
     'dj_protocolo' => !empty($secoes['dj_protocolo']['is_locked']),
+    'formulario' => !empty($secoes['formulario']['is_locked']),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
 let sectionFormDraftValues = {
@@ -3765,6 +3883,495 @@ function initObservacoesClientTemplateSelection() {
     renderObservacoesClientSlots();
 }
 
+function getSortedFormularioSlots() {
+    return formularioSlotOrder
+        .map((slot) => normalizeSlotIndex(slot))
+        .filter((slot) => slot !== null)
+        .sort((a, b) => a - b);
+}
+
+function formularioSlotExists(slot) {
+    const normalized = normalizeSlotIndex(slot);
+    if (normalized === null) return false;
+    return formularioSlotOrder.includes(normalized);
+}
+
+function ensureFormularioSlotState(slot) {
+    if (!Object.prototype.hasOwnProperty.call(selectedFormularioTemplateIds, slot)) {
+        selectedFormularioTemplateIds[slot] = null;
+    }
+    if (!Object.prototype.hasOwnProperty.call(formularioLinksBySlot, slot)) {
+        formularioLinksBySlot[slot] = null;
+    }
+}
+
+function findNextFormularioSlotIndex() {
+    const used = new Set(getSortedFormularioSlots());
+    for (let slot = DJ_SLOT_MIN; slot <= DJ_SLOT_MAX; slot += 1) {
+        if (!used.has(slot)) return slot;
+    }
+    return null;
+}
+
+function buildFormularioSlotCardHtml(slot) {
+    const link = formularioLinksBySlot[slot] || null;
+    const portalVisibleChecked = link && link.portal_visible ? ' checked' : '';
+    const portalEditableChecked = link && link.portal_editable ? ' checked' : '';
+    const disabledAttr = pageReadonly ? ' disabled' : '';
+    const destravarBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary" onclick="destravarFormularioSlot(${slot})" id="formularioBtnDestravar-${slot}" style="display:none;">🔓 Destravar</button>`;
+    const excluirBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirFormularioSlot(${slot})">🗑 Excluir formulário</button>`;
+    return `
+        <div class="dj-builder-shell" data-formulario-slot="${slot}">
+            <div class="dj-builder-head">
+                <div>
+                    <h4 class="dj-builder-title">📋 Formulário • Quadro ${slot}</h4>
+                    <div class="dj-builder-subtitle">Escolha um formulário da biblioteca e configure a liberação para o portal do cliente.</div>
+                </div>
+                <div class="dj-top-actions">
+                    ${destravarBtnHtml}
+                    ${excluirBtnHtml}
+                </div>
+            </div>
+            <div class="prefill-field" style="margin-top: 0.5rem;">
+                <label for="formularioTemplateSelect-${slot}">Formulário salvo</label>
+                <select id="formularioTemplateSelect-${slot}" onchange="onChangeFormularioTemplateSelect(${slot})"${disabledAttr}>
+                    <option value="">Selecione um formulário...</option>
+                </select>
+            </div>
+            <div class="builder-field-meta" id="formularioSelectedTemplateMeta-${slot}" style="margin-top: 0.55rem;">Nenhum formulário selecionado.</div>
+            <div class="portal-settings">
+                <label class="portal-settings-label" for="formularioPortalVisible-${slot}">
+                    <input type="checkbox" id="formularioPortalVisible-${slot}" onchange="onChangeFormularioPortalVisibility(${slot})"${portalVisibleChecked}${disabledAttr}>
+                    Exibir este formulário no Portal do Cliente
+                </label>
+                <label class="portal-settings-label" for="formularioPortalEditable-${slot}">
+                    <input type="checkbox" id="formularioPortalEditable-${slot}" onchange="onChangeFormularioPortalEditable(${slot})"${portalEditableChecked}${disabledAttr}>
+                    Permitir preenchimento do cliente
+                </label>
+            </div>
+            <p class="share-hint" id="formularioShareHint-${slot}">Selecione um formulário para configurar este quadro no portal.</p>
+        </div>
+    `;
+}
+
+function renderFormularioSlots() {
+    const container = document.getElementById('formularioSlotsContainer');
+    const empty = document.getElementById('formularioSlotsEmptyState');
+    if (!container || !empty) return;
+
+    const slots = getSortedFormularioSlots();
+    if (slots.length === 0) {
+        container.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+
+    empty.style.display = 'none';
+    container.innerHTML = slots.map((slot) => buildFormularioSlotCardHtml(slot)).join('');
+    slots.forEach((slot) => {
+        ensureFormularioSlotState(slot);
+        renderFormularioTemplateSelect(slot);
+        syncFormularioPortalToggles(slot);
+        updateFormularioShareAvailability(slot);
+    });
+}
+
+function addFormularioSlot(preferredSlot = null) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return null;
+    }
+    if (!meetingId) {
+        alert('Crie a reunião antes de adicionar formulários.');
+        return null;
+    }
+    const slot = preferredSlot !== null ? normalizeSlotIndex(preferredSlot) : findNextFormularioSlotIndex();
+    if (slot === null) {
+        alert('Limite de formulários atingido (máximo de 50).');
+        return null;
+    }
+    if (!formularioSlotExists(slot)) {
+        formularioSlotOrder.push(slot);
+    }
+    formularioSlotOrder = getSortedFormularioSlots();
+    ensureFormularioSlotState(slot);
+    renderFormularioSlots();
+    const select = document.getElementById(`formularioTemplateSelect-${slot}`);
+    if (select) select.focus();
+    return slot;
+}
+
+async function excluirFormularioSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !formularioSlotExists(slotIndex)) return;
+    const link = formularioLinksBySlot[slotIndex] || null;
+    if (link && link.submitted_at) {
+        alert('Este formulário já foi enviado pelo cliente e não pode ser excluído.');
+        return;
+    }
+    if (!confirm(`Excluir o formulário ${slotIndex}?`)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'excluir_formulario_slot');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp, 'a exclusão do formulário');
+        if (!data.ok) {
+            alert(data.error || 'Erro ao excluir formulário');
+            return;
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        return;
+    }
+
+    formularioSlotOrder = getSortedFormularioSlots().filter((item) => item !== slotIndex);
+    delete selectedFormularioTemplateIds[slotIndex];
+    delete formularioLinksBySlot[slotIndex];
+    delete formularioPortalSaveInFlight[slotIndex];
+    delete formularioPortalSavePending[slotIndex];
+    renderFormularioSlots();
+}
+
+function getSelectedFormularioTemplateData(slot) {
+    if (!formularioSlotExists(slot)) {
+        return { template: null, schema: [] };
+    }
+    const templateId = Number(selectedFormularioTemplateIds[slot] || 0);
+    if (templateId <= 0) {
+        return { template: null, schema: [] };
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId) || null;
+    const schema = normalizeFormSchema(template && Array.isArray(template.schema) ? template.schema : []);
+    return { template, schema };
+}
+
+function isFormularioSlotLocked(slot) {
+    const link = formularioLinksBySlot[slot] || null;
+    return !!(link && link.submitted_at);
+}
+
+function syncFormularioPortalToggles(slot = 1) {
+    const visibleInput = document.getElementById(`formularioPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`formularioPortalEditable-${slot}`);
+    if (!visibleInput || !editableInput) return;
+    if (editableInput.checked && !visibleInput.checked) {
+        visibleInput.checked = true;
+    }
+}
+
+function onChangeFormularioPortalVisibility(slot = 1) {
+    if (pageReadonly) return;
+    const visibleInput = document.getElementById(`formularioPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`formularioPortalEditable-${slot}`);
+    if (visibleInput && editableInput && editableInput.checked && !visibleInput.checked) {
+        visibleInput.checked = true;
+    }
+    updateFormularioShareAvailability(slot);
+    requestFormularioSlotPortalAutoSave(slot);
+}
+
+function onChangeFormularioPortalEditable(slot = 1) {
+    if (pageReadonly) return;
+    syncFormularioPortalToggles(slot);
+    updateFormularioShareAvailability(slot);
+    requestFormularioSlotPortalAutoSave(slot);
+}
+
+function requestFormularioSlotPortalAutoSave(slot = 1) {
+    if (pageReadonly) return;
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !formularioSlotExists(slotIndex)) return;
+    void salvarFormularioSlotPortalConfig(slotIndex, {
+        silentSuccess: true,
+        suppressValidationAlert: true,
+    });
+}
+
+function updateFormularioShareAvailability(slot = 1) {
+    const hint = document.getElementById(`formularioShareHint-${slot}`);
+    const visibleInput = document.getElementById(`formularioPortalVisible-${slot}`);
+    const editableInput = document.getElementById(`formularioPortalEditable-${slot}`);
+    const select = document.getElementById(`formularioTemplateSelect-${slot}`);
+    const unlockBtn = document.getElementById(`formularioBtnDestravar-${slot}`);
+
+    if (pageReadonly) {
+        if (select) select.disabled = true;
+        if (visibleInput) visibleInput.disabled = true;
+        if (editableInput) editableInput.disabled = true;
+        if (unlockBtn) unlockBtn.style.display = 'none';
+        if (hint) hint.textContent = 'Modo somente leitura.';
+        return;
+    }
+
+    let disabled = false;
+    let hintText = 'Selecione um formulário para configurar este quadro no portal.';
+
+    syncFormularioPortalToggles(slot);
+
+    if (isFormularioSlotLocked(slot)) {
+        hintText = 'Cliente já enviou este formulário. Clique em "Destravar" para permitir novo preenchimento.';
+        if (select) select.disabled = true;
+        if (unlockBtn) unlockBtn.style.display = 'inline-flex';
+    } else {
+        if (select) select.disabled = false;
+        if (unlockBtn) unlockBtn.style.display = 'none';
+    }
+
+    const selected = getSelectedFormularioTemplateData(slot);
+    if (!selected.template) {
+        disabled = true;
+    } else if (!hasUsefulSchemaFields(selected.schema)) {
+        disabled = true;
+        hintText = 'O formulário selecionado não possui campos válidos.';
+    } else if (visibleInput && editableInput) {
+        if (!visibleInput.checked && !editableInput.checked) {
+            hintText = 'Formulário oculto do portal do cliente.';
+        } else if (visibleInput.checked && !editableInput.checked) {
+            hintText = 'Formulário visível no portal em modo somente leitura.';
+        } else if (visibleInput.checked && editableInput.checked) {
+            hintText = 'Formulário visível no portal com preenchimento liberado para o cliente.';
+        }
+    }
+
+    if (visibleInput) visibleInput.disabled = disabled;
+    if (editableInput) editableInput.disabled = disabled;
+    if (hint) hint.textContent = hintText;
+}
+
+function renderFormularioTemplateSelect(slot) {
+    const select = document.getElementById(`formularioTemplateSelect-${slot}`);
+    if (!select) return;
+    const current = selectedFormularioTemplateIds[slot] ? String(selectedFormularioTemplateIds[slot]) : '';
+    const options = ['<option value="">Selecione um formulário...</option>'];
+    (savedFormTemplates || []).forEach((template) => {
+        const id = Number(template.id || 0);
+        if (!id) return;
+        const label = `${String(template.nome || 'Modelo sem nome')} - ${String(template.categoria || 'geral')}`;
+        const selected = String(id) === current ? ' selected' : '';
+        options.push(`<option value="${id}"${selected}>${escapeHtmlForField(label)}</option>`);
+    });
+    select.innerHTML = options.join('');
+    select.disabled = !!pageReadonly;
+    updateSelectedFormularioTemplateMeta(slot);
+}
+
+function updateSelectedFormularioTemplateMeta(slot) {
+    const meta = document.getElementById(`formularioSelectedTemplateMeta-${slot}`);
+    if (!meta) return;
+    const templateId = Number(selectedFormularioTemplateIds[slot] || 0);
+    if (templateId <= 0) {
+        meta.textContent = 'Nenhum formulário selecionado.';
+        return;
+    }
+    const template = savedFormTemplates.find((item) => Number(item.id) === templateId);
+    if (!template) {
+        meta.textContent = 'Formulário selecionado não encontrado.';
+        return;
+    }
+    const stamp = template.updated_at ? formatDate(template.updated_at) : 'Sem data';
+    meta.textContent = `${String(template.nome || 'Modelo sem nome')} • ${String(template.categoria || 'geral')} • Atualizado em ${stamp}`;
+}
+
+function onChangeFormularioTemplateSelect(slot) {
+    if (pageReadonly) return;
+    const select = document.getElementById(`formularioTemplateSelect-${slot}`);
+    selectedFormularioTemplateIds[slot] = select && select.value ? Number(select.value) : null;
+    updateSelectedFormularioTemplateMeta(slot);
+    updateFormularioShareAvailability(slot);
+    requestFormularioSlotPortalAutoSave(slot);
+}
+
+async function salvarFormularioSlotPortalConfig(slot = 1, options = {}) {
+    if (pageReadonly) {
+        return false;
+    }
+    const slotIndex = normalizeSlotIndex(slot);
+    const silentSuccess = !!(options && options.silentSuccess);
+    const suppressValidationAlert = !!(options && options.suppressValidationAlert);
+    if (slotIndex === null || !formularioSlotExists(slotIndex)) {
+        if (!suppressValidationAlert) {
+            alert('Formulário inválido.');
+        }
+        return false;
+    }
+    updateFormularioShareAvailability(slotIndex);
+    if (formularioPortalSaveInFlight[slotIndex]) {
+        formularioPortalSavePending[slotIndex] = true;
+        return false;
+    }
+
+    try {
+        const selected = getSelectedFormularioTemplateData(slotIndex);
+        if (!selected.template) {
+            if (!suppressValidationAlert) {
+                alert('Selecione um formulário antes de salvar as regras.');
+            }
+            return false;
+        }
+        if (!hasUsefulSchemaFields(selected.schema)) {
+            if (!suppressValidationAlert) {
+                alert('O formulário selecionado não possui campos válidos.');
+            }
+            return false;
+        }
+
+        const visibleInput = document.getElementById(`formularioPortalVisible-${slotIndex}`);
+        const editableInput = document.getElementById(`formularioPortalEditable-${slotIndex}`);
+        if (!visibleInput || !editableInput || visibleInput.disabled || editableInput.disabled) {
+            if (!suppressValidationAlert) {
+                const hint = document.getElementById(`formularioShareHint-${slotIndex}`);
+                alert(hint ? hint.textContent : 'Selecione um formulário válido para configurar o portal.');
+            }
+            return false;
+        }
+
+        let portalVisible = !!visibleInput.checked;
+        const portalEditable = !!editableInput.checked;
+        if (portalEditable && !portalVisible) {
+            portalVisible = true;
+            visibleInput.checked = true;
+        }
+
+        const formTitle = String(selected.template.nome || `Formulário do Evento - Quadro ${slotIndex}`);
+        const schemaForPortal = normalizeFormSchema(selected.schema);
+        const contentHtml = buildSchemaHtmlForStorage(schemaForPortal, formTitle);
+
+        const formData = new FormData();
+        formData.append('action', 'atualizar_formulario_slot_portal_config');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+        formData.append('portal_visible', portalVisible ? '1' : '0');
+        formData.append('portal_editable', portalEditable ? '1' : '0');
+        formData.append('form_schema_json', JSON.stringify(schemaForPortal));
+        formData.append('content_html', contentHtml);
+        formData.append('form_title', formTitle);
+        formularioPortalSaveInFlight[slotIndex] = true;
+
+        try {
+            const resp = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await parseJsonResponse(resp, 'a configuração do formulário');
+            if (data.ok) {
+                const link = data.link && typeof data.link === 'object' ? data.link : null;
+                if (link) {
+                    formularioLinksBySlot[slotIndex] = {
+                        id: Number(link.id || 0),
+                        token: String(link.token || ''),
+                        is_active: !('is_active' in link) ? true : !!link.is_active,
+                        slot_index: Number(link.slot_index || slotIndex),
+                        form_title: String(link.form_title || formTitle),
+                        form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : schemaForPortal,
+                        submitted_at: link.submitted_at ? String(link.submitted_at) : null,
+                        portal_visible: !!link.portal_visible,
+                        portal_editable: !!link.portal_editable,
+                        portal_configured: !!link.portal_configured
+                    };
+                } else {
+                    formularioLinksBySlot[slotIndex] = null;
+                }
+                updateFormularioShareAvailability(slotIndex);
+                if (!silentSuccess) {
+                    alert('Configuração do formulário salva para o portal.');
+                }
+                return true;
+            }
+            alert(data.error || 'Erro ao salvar configuração do formulário');
+            return false;
+        } finally {
+            formularioPortalSaveInFlight[slotIndex] = false;
+            updateFormularioShareAvailability(slotIndex);
+            if (formularioPortalSavePending[slotIndex]) {
+                formularioPortalSavePending[slotIndex] = false;
+                void salvarFormularioSlotPortalConfig(slotIndex, {
+                    silentSuccess: true,
+                    suppressValidationAlert: true,
+                });
+            }
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        return false;
+    }
+}
+
+async function destravarFormularioSlot(slot = 1) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !formularioSlotExists(slotIndex)) {
+        alert('Formulário inválido.');
+        return;
+    }
+    if (!confirm(`Destravar o formulário ${slotIndex} permite que o cliente preencha novamente. Continuar?`)) return;
+
+    try {
+        const formData = new FormData();
+        formData.append('action', 'destravar_formulario_slot');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('slot_index', String(slotIndex));
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await parseJsonResponse(resp, 'o destravamento do formulário');
+        if (data.ok) {
+            location.reload();
+        } else {
+            alert(data.error || 'Erro ao destravar formulário');
+        }
+    } catch (err) {
+        alert('Erro: ' + err.message);
+    }
+}
+
+function initFormularioTemplateSelection() {
+    formularioSlotOrder = [];
+    selectedFormularioTemplateIds = {};
+    formularioLinksBySlot = {};
+    formularioPortalSaveInFlight = {};
+    formularioPortalSavePending = {};
+
+    if (Array.isArray(initialFormularioLinks)) {
+        initialFormularioLinks.forEach((link) => {
+            const slot = normalizeSlotIndex(link && link.slot_index ? link.slot_index : 1);
+            if (slot === null || !link || !link.token) return;
+            if (!formularioSlotExists(slot)) {
+                formularioSlotOrder.push(slot);
+            }
+            ensureFormularioSlotState(slot);
+            formularioLinksBySlot[slot] = link;
+
+            const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
+            if (hasUsefulSchemaFields(schema)) {
+                const signature = getSchemaSignature(schema);
+                const templateId = findTemplateIdBySchemaSignature(signature);
+                if (templateId) {
+                    selectedFormularioTemplateIds[slot] = templateId;
+                }
+            }
+        });
+    }
+
+    formularioSlotOrder = getSortedFormularioSlots();
+    renderFormularioSlots();
+}
+
 function getSectionFormTitle(section) {
     if (section === 'decoracao') {
         return 'Formulário de Decoração';
@@ -4226,6 +4833,14 @@ async function fetchTemplates() {
             selectedObservacoesTemplateIds[slot] = null;
         }
     });
+    getSortedFormularioSlots().forEach((slot) => {
+        const templateId = selectedFormularioTemplateIds[slot] || null;
+        if (!templateId) return;
+        const exists = savedFormTemplates.some((item) => Number(item.id) === Number(templateId));
+        if (!exists) {
+            selectedFormularioTemplateIds[slot] = null;
+        }
+    });
     ['decoracao', 'observacoes_gerais'].forEach((section) => {
         const templateId = selectedSectionTemplateIds[section] || null;
         if (!templateId) return;
@@ -4236,6 +4851,7 @@ async function fetchTemplates() {
     });
     renderAllDjTemplateSelects();
     renderObservacoesClientSlots();
+    renderFormularioSlots();
     renderAllSectionTemplateSelects();
 }
 
@@ -4246,6 +4862,7 @@ async function refreshDjTemplates() {
         console.error(err);
     }
     renderAllDjTemplateSelects();
+    renderFormularioSlots();
 }
 
 function initDjTemplateSelection() {
@@ -4802,6 +5419,7 @@ if (meetingId) {
             initSectionTemplateSelection();
             initDjTemplateSelection();
             initObservacoesClientTemplateSelection();
+            initFormularioTemplateSelection();
             refreshDjTemplates();
         });
     } else {
@@ -4812,6 +5430,7 @@ if (meetingId) {
         initSectionTemplateSelection();
         initDjTemplateSelection();
         initObservacoesClientTemplateSelection();
+        initFormularioTemplateSelection();
         refreshDjTemplates();
     }
 } else {

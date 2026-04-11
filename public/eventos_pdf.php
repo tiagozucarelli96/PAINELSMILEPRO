@@ -26,7 +26,7 @@ $meeting_id = (int)($_GET['id'] ?? 0);
 $section = trim((string)($_GET['section'] ?? 'decoracao'));
 $mode = trim((string)($_GET['mode'] ?? 'print')); // print|pdf
 
-$allowed_sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+$allowed_sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
 if (!in_array($section, $allowed_sections, true)) {
     http_response_code(400);
     echo 'Seção inválida.';
@@ -78,6 +78,7 @@ $section_titles = [
     'decoracao' => 'Decoração',
     'observacoes_gerais' => 'Observações Gerais',
     'dj_protocolo' => 'DJ / Protocolos',
+    'formulario' => 'Formulário',
 ];
 $section_title = $section_titles[$section] ?? $section;
 

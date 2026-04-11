@@ -520,7 +520,7 @@ includeSidebar('Realizar evento');
 
         <article class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Acesso à reunião final completa, com as abas Decoração, Observações Gerais e DJ / Protocolos.</p>
+            <p>Acesso à reunião final completa, com as abas Decoração, Observações Gerais, DJ / Protocolos e Formulário.</p>
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
