@@ -122,16 +122,15 @@ if ($hora_inicio !== '' && $hora_fim !== '') {
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
-$links_dj_formularios = [];
-$link_dj_texto_direto = null;
+$link_dj_principal = null;
 foreach ($links_dj_portal as $dj_link_item) {
-    if (!empty($dj_link_item['_direct_text_mode'])) {
-        if ($link_dj_texto_direto === null) {
-            $link_dj_texto_direto = $dj_link_item;
-        }
-        continue;
+    if ($link_dj_principal === null) {
+        $link_dj_principal = $dj_link_item;
     }
-    $links_dj_formularios[] = $dj_link_item;
+    if (!empty($dj_link_item['_direct_text_mode'])) {
+        $link_dj_principal = $dj_link_item;
+        break;
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -326,48 +325,22 @@ foreach ($links_dj_portal as $dj_link_item) {
 
             <section class="card">
                 <h3>
-                    <?= !empty($links_dj_formularios) ? 'Formulários disponíveis' : 'DJ / Protocolos' ?>
+                    DJ / Protocolos
                     <span class="status-badge <?= $editavel_dj ? 'status-editavel' : 'status-visualizacao' ?>">
                         <?= $editavel_dj ? 'Editável' : 'Somente visualização' ?>
                     </span>
                 </h3>
                 <div class="card-subtitle">
-                    <?= !empty($links_dj_formularios)
-                        ? 'Selecione abaixo os formulários que deseja preencher ou consultar.'
-                        : 'Acesse diretamente o conteúdo de DJ / Protocolos.' ?>
+                    Acesse diretamente o conteúdo de DJ / Protocolos.
                 </div>
 
-                <?php if (empty($links_dj_formularios) && empty($link_dj_texto_direto)): ?>
-                <div class="empty-text">Nenhum formulário disponível para este portal no momento.</div>
+                <?php if (empty($link_dj_principal['token'])): ?>
+                <div class="empty-text">Nenhum conteúdo disponível para este portal no momento.</div>
                 <?php endif; ?>
 
-                <?php if (!empty($links_dj_formularios)): ?>
-                <div class="card-subtitle" style="margin-bottom: 0.55rem;"><strong>DJ / Protocolos</strong></div>
-                <div class="dj-grid">
-                    <?php foreach ($links_dj_formularios as $dj_link_portal): ?>
-                    <?php
-                        $dj_slot = max(1, (int)($dj_link_portal['slot_index'] ?? 1));
-                        $dj_title = trim((string)($dj_link_portal['form_title'] ?? ''));
-                        if ($dj_title === '') {
-                            $dj_title = 'Formulário DJ';
-                        }
-                    ?>
-                    <div class="dj-item">
-                        <div>
-                            <div class="dj-item-title"><?= htmlspecialchars($dj_title) ?></div>
-                            <div class="dj-item-subtitle">Quadro <?= $dj_slot ?></div>
-                        </div>
-                        <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$dj_link_portal['token']) ?>">
-                            <?= $editavel_dj ? 'Abrir formulário' : 'Visualizar formulário' ?>
-                        </a>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-
-                <?php if (!empty($link_dj_texto_direto['token'])): ?>
+                <?php if (!empty($link_dj_principal['token'])): ?>
                 <div class="actions-row">
-                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_dj_texto_direto['token']) ?>">
+                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_dj_principal['token']) ?>">
                         <?= $editavel_dj ? 'Abrir DJ / Protocolos' : 'Visualizar DJ / Protocolos' ?>
                     </a>
                 </div>

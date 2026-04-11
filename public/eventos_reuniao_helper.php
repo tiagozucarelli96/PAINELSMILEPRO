@@ -1341,6 +1341,8 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             }
         }
 
+        eventos_reuniao_garantir_secoes($pdo, (int)$reuniao['id']);
+
         if ($tipo_evento_real_norm !== '' && $has_tipo_evento_real_col) {
             $tipo_atual = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''));
             if ($tipo_atual !== $tipo_evento_real_norm) {
@@ -1446,6 +1448,46 @@ function eventos_reuniao_get(PDO $pdo, int $meeting_id): ?array {
 }
 
 /**
+ * Garante que as seções padrão existam para a reunião.
+ * Necessário para reuniões antigas, criadas antes da inclusão de novas abas.
+ */
+function eventos_reuniao_garantir_secoes(PDO $pdo, int $meeting_id, ?array $sections = null): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return false;
+    }
+
+    $normalized_sections = is_array($sections) && !empty($sections)
+        ? array_values(array_unique(array_map(static function ($item): string {
+            return strtolower(trim((string)$item));
+        }, $sections)))
+        : ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
+
+    try {
+        foreach ($normalized_sections as $section) {
+            if ($section === '') {
+                continue;
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at)
+                VALUES (:meeting_id, :section, '', '', NOW(), NOW())
+                ON CONFLICT (meeting_id, section) DO NOTHING
+            ");
+            $stmt->execute([
+                ':meeting_id' => $meeting_id,
+                ':section' => $section,
+            ]);
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_garantir_secoes: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Atualiza o tipo real do evento definido manualmente na organização.
  */
 function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, string $tipo_evento_real, int $user_id = 0): array {
@@ -1547,6 +1589,7 @@ function eventos_reuniao_listar(PDO $pdo, array $filters = []): array {
  * Buscar seção de uma reunião
  */
 function eventos_reuniao_get_secao(PDO $pdo, int $meeting_id, string $section): ?array {
+    eventos_reuniao_garantir_secoes($pdo, $meeting_id, [$section]);
     $stmt = $pdo->prepare("
         SELECT * FROM eventos_reunioes_secoes 
         WHERE meeting_id = :meeting_id AND section = :section
@@ -3271,57 +3314,15 @@ function eventos_cliente_portal_sincronizar_link_dj(
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
-    $schema_snapshot = null;
+    $schema_snapshot = [];
     $content_snapshot = null;
     $form_title = 'DJ / Protocolos';
-    $legacy_text_portal_visible = true;
-    $legacy_text = '';
 
     $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
     if (is_array($secao_dj) && !empty($secao_dj)) {
-        if (array_key_exists('legacy_text_portal_visible', $secao_dj)) {
-            $legacy_text_portal_visible = !empty($secao_dj['legacy_text_portal_visible']);
-        }
-        $schema_raw = json_decode((string)($secao_dj['form_schema_json'] ?? '[]'), true);
-        if (is_array($schema_raw) && !empty($schema_raw)) {
-            $schema_snapshot = $schema_raw;
-        }
         $content_raw = trim((string)($secao_dj['content_html'] ?? ''));
         if ($content_raw !== '') {
             $content_snapshot = $content_raw;
-            $payload = eventos_reuniao_extrair_payload_formulario($content_raw);
-            if (is_array($payload) && !empty($payload)) {
-                if (is_array($schema_snapshot) && isset($payload['values']) && is_array($payload['values'])) {
-                    $schema_snapshot = eventos_reuniao_schema_aplicar_valores_payload($schema_snapshot, $payload['values']);
-                }
-                if (isset($payload['legacy_html'])) {
-                    $legacy_text = eventos_reuniao_html_para_texto((string)$payload['legacy_html']);
-                }
-                if ($legacy_text === '' && isset($payload['values']) && is_array($payload['values'])) {
-                    $legacy_key = 'legacy_portal_text_dj_protocolo';
-                    if (array_key_exists($legacy_key, $payload['values'])) {
-                        $legacy_text = trim((string)$payload['values'][$legacy_key]);
-                    }
-                }
-            }
-        }
-    }
-
-    if ($legacy_text_portal_visible) {
-        $schema_snapshot = eventos_reuniao_schema_adicionar_texto_livre(
-            is_array($schema_snapshot) ? $schema_snapshot : [],
-            'dj_protocolo',
-            $legacy_text
-        );
-    } else {
-        if ($content_snapshot !== null && trim($content_snapshot) !== '') {
-            $payload = eventos_reuniao_extrair_payload_formulario($content_snapshot);
-            if (is_array($payload) && isset($payload['legacy_html'])) {
-                $legacy_raw = trim((string)$payload['legacy_html']);
-                if ($legacy_raw !== '') {
-                    $content_snapshot = str_replace($legacy_raw, '', (string)$content_snapshot);
-                }
-            }
         }
     }
 

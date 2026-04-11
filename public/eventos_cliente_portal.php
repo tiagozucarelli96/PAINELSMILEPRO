@@ -223,11 +223,16 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
 $links_dj_formularios = [];
 $has_dj_texto_direto = false;
+$link_dj_principal = null;
 foreach ($links_dj_portal as $dj_link_item) {
+    if ($link_dj_principal === null) {
+        $link_dj_principal = $dj_link_item;
+    }
     if (eventos_cliente_portal_dj_tem_campos_formulario($dj_link_item['form_schema'] ?? null)) {
         $links_dj_formularios[] = $dj_link_item;
     } else {
         $has_dj_texto_direto = true;
+        $link_dj_principal = $dj_link_item;
     }
 }
 
@@ -539,11 +544,11 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                     <div class="card-icon">🎧</div>
                     <div class="card-title">
                         <h3>DJ e Protocolos</h3>
-                        <div class="card-subtitle">Acesse os formulários de DJ em uma página dedicada.</div>
+                        <div class="card-subtitle">Acesse a área de DJ e protocolos em uma página dedicada.</div>
                         <div class="card-meta">
-                            <?= !empty($links_dj_formularios)
-                                ? count($links_dj_formularios) . ' quadro(s) liberado(s)'
-                                : ($has_dj_texto_direto ? 'Texto livre liberado' : 'Sem quadro liberado') ?>
+                            <?= !empty($link_dj_principal)
+                                ? ($editavel_dj ? 'Área liberada para edição' : 'Área disponível para visualização')
+                                : 'Área ainda sem conteúdo liberado' ?>
                         </div>
                     </div>
                 </div>

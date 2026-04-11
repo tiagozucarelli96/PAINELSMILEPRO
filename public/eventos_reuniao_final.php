@@ -2015,18 +2015,18 @@ includeSidebar($sidebar_title);
             <div class="dj-builder-shell">
                 <div class="dj-slots-controls">
                     <div>
-                        <h4>🧩 DJ / Protocolos</h4>
-                        <p>Comece sem quadros. Ao selecionar o formulário, defina se o cliente verá e poderá editar no portal.</p>
+                        <h4>🎧 DJ / Protocolos</h4>
+                        <p>Os formulários do cliente agora ficam na aba Formulário. Use esta área para texto livre, instruções do DJ e anexos de apoio.</p>
                     </div>
                     <div class="dj-slots-actions">
                         <?php if (!$readonly_mode): ?>
-                        <button type="button" class="btn btn-primary" onclick="addDjSlot()">+ Adicionar quadro</button>
                         <button type="button" class="btn btn-secondary" onclick="addDjUploadCard()">+ Adicionar arquivo</button>
                         <?php endif; ?>
                     </div>
                 </div>
-                <div id="djSlotsEmptyState" class="dj-builder-empty-state" style="display:none;">Nenhum quadro criado. Clique em "Adicionar quadro" para começar.</div>
-                <div id="djSlotsContainer" class="dj-slots-stack"></div>
+                <div class="builder-field-meta" style="margin-top: 0.55rem;">
+                    A liberação de preenchimento estruturado para o cliente passou a ser feita somente na aba <strong>Formulário</strong>.
+                </div>
 
                 <div class="dj-anexos-box" id="djAnexosBox" style="display:none;">
                     <div id="djUploadCardsContainer" class="dj-upload-cards"></div>
@@ -4996,15 +4996,6 @@ async function salvarSecao(section) {
         const data = await parseJsonResponse(resp, 'o salvamento da seção');
         
         if (data.ok) {
-            if (section === 'dj_protocolo') {
-                const slots = getSortedDjSlots();
-                for (const slot of slots) {
-                    await salvarDjSlotPortalConfig(slot, {
-                        silentSuccess: true,
-                        suppressValidationAlert: true,
-                    });
-                }
-            }
             alert('Salvo com sucesso! Versão #' + data.version);
         } else {
             alert(data.error || 'Erro ao salvar');
