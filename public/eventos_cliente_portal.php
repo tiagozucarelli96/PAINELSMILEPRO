@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 logistica_cardapio_ensure_schema($pdo);
@@ -212,12 +213,8 @@ $cards_visiveis_total =
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
-$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_evento .= ' - ' . $hora_fim;
-}
+$horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
+$evento_datetime_iso = eventos_cliente_ui_event_datetime_iso($snapshot);
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
@@ -263,16 +260,21 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8fafc;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 26%),
+                radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.14), transparent 28%),
+                linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
             color: #1e293b;
             line-height: 1.6;
+            min-height: 100vh;
         }
 
         .header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            background: linear-gradient(135deg, #123c9c 0%, #2563eb 55%, #3b82f6 100%);
             color: #fff;
-            padding: 2rem 1rem;
+            padding: 2.35rem 1rem 2.1rem;
             text-align: center;
+            box-shadow: 0 20px 44px rgba(37, 99, 235, 0.18);
         }
 
         .header img {
@@ -293,7 +295,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         .container {
             max-width: 1320px;
             margin: 0 auto;
-            padding: 1.4rem;
+            padding: 1.45rem;
         }
 
         .alert {
@@ -310,46 +312,201 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         }
 
         .event-box {
-            background: #fff;
-            border-radius: 16px;
-            border: 1px solid #e2e8f0;
-            padding: 1.1rem;
-            margin-bottom: 1.2rem;
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(14px);
+            border-radius: 26px;
+            border: 1px solid rgba(191, 219, 254, 0.9);
+            padding: 1.3rem;
+            margin-bottom: 1.25rem;
+            box-shadow: 0 24px 60px rgba(30, 64, 175, 0.12);
+        }
+
+        .event-box-grid {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.95fr);
+            align-items: stretch;
         }
 
         .event-box h2 {
             color: #1e3a8a;
-            margin-bottom: 0.6rem;
-            font-size: 1.3rem;
+            margin-bottom: 0.75rem;
+            font-size: 1.45rem;
+        }
+
+        .event-summary-copy {
+            color: #475569;
+            font-size: 0.94rem;
+            margin-bottom: 1rem;
         }
 
         .event-meta {
             display: grid;
-            gap: 0.6rem;
+            gap: 0.8rem;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            color: #334155;
+        }
+
+        .event-pill {
+            padding: 0.9rem 0.95rem;
+            border-radius: 16px;
+            border: 1px solid #dbeafe;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        .event-pill-label {
+            display: block;
+            font-size: 0.76rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #64748b;
+            margin-bottom: 0.28rem;
+        }
+
+        .event-pill-value {
+            color: #0f172a;
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .countdown-panel {
+            position: relative;
+            overflow: hidden;
+            border-radius: 24px;
+            padding: 1.15rem;
+            background: linear-gradient(155deg, #0f2e7a 0%, #1d4ed8 58%, #60a5fa 100%);
+            color: #fff;
+            box-shadow: 0 24px 48px rgba(29, 78, 216, 0.28);
+        }
+
+        .countdown-panel::before,
+        .countdown-panel::after {
+            content: '';
+            position: absolute;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.12);
+            pointer-events: none;
+        }
+
+        .countdown-panel::before {
+            width: 180px;
+            height: 180px;
+            top: -85px;
+            right: -45px;
+        }
+
+        .countdown-panel::after {
+            width: 120px;
+            height: 120px;
+            bottom: -55px;
+            left: -35px;
+        }
+
+        .countdown-eyebrow,
+        .countdown-title,
+        .countdown-subtitle,
+        .countdown-grid,
+        .countdown-fun {
+            position: relative;
+            z-index: 1;
+        }
+
+        .countdown-eyebrow {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.78;
+            font-weight: 700;
+        }
+
+        .countdown-title {
+            margin-top: 0.25rem;
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .countdown-subtitle {
+            margin-top: 0.28rem;
             font-size: 0.92rem;
+            opacity: 0.9;
+        }
+
+        .countdown-grid {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.55rem;
+        }
+
+        .countdown-unit {
+            padding: 0.8rem 0.55rem;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-align: center;
+            backdrop-filter: blur(12px);
+        }
+
+        .countdown-number {
+            display: block;
+            font-size: 1.55rem;
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+        }
+
+        .countdown-label {
+            display: block;
+            margin-top: 0.35rem;
+            font-size: 0.73rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            opacity: 0.78;
+        }
+
+        .countdown-fun {
+            margin-top: 0.95rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 16px;
+            background: rgba(12, 28, 76, 0.3);
+            font-size: 0.92rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .countdown-panel.is-complete .countdown-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .countdown-panel.is-complete .countdown-unit {
+            padding: 1rem;
+        }
+
+        .countdown-panel.is-complete .countdown-number {
+            font-size: 2rem;
         }
 
         .cards-grid {
             display: grid;
             gap: 1.1rem;
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            align-items: start;
+            align-items: stretch;
+            grid-auto-rows: 1fr;
         }
 
         .portal-card {
-            min-height: 250px;
+            min-height: 260px;
             border-radius: 22px;
             padding: 1.55rem;
             color: #fff;
-            box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+            box-shadow: 0 18px 38px rgba(29, 78, 216, 0.2);
             position: relative;
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            height: 100%;
         }
 
         .portal-card::before {
@@ -364,28 +521,35 @@ foreach ($links_formulario_portal as $formulario_link_item) {
             pointer-events: none;
         }
 
+        .portal-card-inner {
+            display: flex;
+            flex-direction: column;
+            gap: 0.95rem;
+            height: 100%;
+        }
+
         .portal-card-theme-reuniao {
-            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
         }
 
         .portal-card-theme-dj {
-            background: linear-gradient(135deg, #06b6d4 0%, #0284c7 100%);
+            background: linear-gradient(145deg, #2f6ff5 0%, #1e40af 100%);
         }
 
         .portal-card-theme-convidados {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%);
         }
 
         .portal-card-theme-arquivos {
-            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            background: linear-gradient(145deg, #1d4ed8 0%, #1e3a8a 100%);
         }
 
         .portal-card-theme-cardapio {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            background: linear-gradient(145deg, #2563eb 0%, #1e40af 100%);
         }
 
         .portal-card-theme-formulario {
-            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+            background: linear-gradient(145deg, #4f8df8 0%, #1d4ed8 100%);
         }
 
         .card-icon {
@@ -399,6 +563,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         .card-title {
             position: relative;
             z-index: 1;
+            flex: 1 1 auto;
         }
 
         .card-title h3 {
@@ -431,6 +596,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
             flex-wrap: wrap;
             position: relative;
             z-index: 1;
+            margin-top: auto;
         }
 
         .btn {
@@ -448,8 +614,9 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
         .portal-card .btn-primary {
             background: #fff;
-            color: #1e293b;
+            color: #1e3a8a;
             border-color: rgba(255, 255, 255, 0.65);
+            box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
         }
 
         .module-panel {
@@ -475,6 +642,14 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         @media (max-width: 760px) {
             .container {
                 padding: 1rem 0.8rem 1.2rem;
+            }
+
+            .event-box-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .countdown-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             .cards-grid {
@@ -510,19 +685,65 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         </div>
         <?php else: ?>
         <div class="event-box">
-            <h2><?= htmlspecialchars($evento_nome) ?></h2>
-            <div class="event-meta">
-                <div><strong>📅 Data:</strong> <?= htmlspecialchars($data_evento_fmt) ?></div>
-                <div><strong>⏰ Horário:</strong> <?= htmlspecialchars($horario_evento) ?></div>
-                <div><strong>📍 Local:</strong> <?= htmlspecialchars($local_evento) ?></div>
-                <div><strong>👤 Cliente:</strong> <?= htmlspecialchars($cliente_nome) ?></div>
+            <div class="event-box-grid">
+                <div>
+                    <h2><?= htmlspecialchars($evento_nome) ?></h2>
+                    <div class="event-summary-copy">Tudo organizado em um só lugar para o cliente navegar com clareza até o grande dia.</div>
+                    <div class="event-meta">
+                        <div class="event-pill">
+                            <span class="event-pill-label">Data</span>
+                            <div class="event-pill-value"><?= htmlspecialchars($data_evento_fmt) ?></div>
+                        </div>
+                        <div class="event-pill">
+                            <span class="event-pill-label">Horário</span>
+                            <div class="event-pill-value"><?= htmlspecialchars($horario_evento) ?></div>
+                        </div>
+                        <div class="event-pill">
+                            <span class="event-pill-label">Local</span>
+                            <div class="event-pill-value"><?= htmlspecialchars($local_evento) ?></div>
+                        </div>
+                        <div class="event-pill">
+                            <span class="event-pill-label">Cliente</span>
+                            <div class="event-pill-value"><?= htmlspecialchars($cliente_nome) ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <aside class="countdown-panel" data-countdown data-event-datetime="<?= htmlspecialchars($evento_datetime_iso) ?>">
+                    <div class="countdown-eyebrow">Contagem Regressiva</div>
+                    <div class="countdown-title"><?= $evento_datetime_iso !== '' ? 'Falta pouco para o evento' : 'Data em preparação' ?></div>
+                    <div class="countdown-subtitle">
+                        <?= $evento_datetime_iso !== '' ? 'Acompanhe ao vivo quanto tempo falta para esse momento chegar.' : 'Assim que a data e hora estiverem completas, a contagem aparece aqui.' ?>
+                    </div>
+                    <div class="countdown-grid">
+                        <div class="countdown-unit">
+                            <span class="countdown-number" data-unit="days"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
+                            <span class="countdown-label">Dias</span>
+                        </div>
+                        <div class="countdown-unit">
+                            <span class="countdown-number" data-unit="hours"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
+                            <span class="countdown-label">Horas</span>
+                        </div>
+                        <div class="countdown-unit">
+                            <span class="countdown-number" data-unit="minutes"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
+                            <span class="countdown-label">Minutos</span>
+                        </div>
+                        <div class="countdown-unit">
+                            <span class="countdown-number" data-unit="seconds"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
+                            <span class="countdown-label">Segundos</span>
+                        </div>
+                    </div>
+                    <div class="countdown-fun" data-countdown-message>
+                        <?= $evento_datetime_iso !== '' ? 'Respira fundo: a festa já está vindo com estilo.' : 'Defina a data do evento para liberar a experiência completa da contagem.' ?>
+                    </div>
+                </aside>
             </div>
         </div>
 
         <div class="cards-grid">
             <?php if ($visivel_reuniao): ?>
             <section class="portal-card portal-card-theme-reuniao">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">📝</div>
                     <div class="card-title">
                         <h3>Reunião Final</h3>
@@ -540,7 +761,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
             <?php if ($visivel_dj): ?>
             <section class="portal-card portal-card-theme-dj">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">🎧</div>
                     <div class="card-title">
                         <h3>DJ e Protocolos</h3>
@@ -562,7 +783,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
             <?php if ($visivel_convidados): ?>
             <section class="portal-card portal-card-theme-convidados">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">👥</div>
                     <div class="card-title">
                         <h3>Convidados</h3>
@@ -582,7 +803,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
             <?php if ($visivel_arquivos): ?>
             <section class="portal-card portal-card-theme-arquivos">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">📁</div>
                     <div class="card-title">
                         <h3>Arquivos</h3>
@@ -602,7 +823,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
             <?php if (!empty($links_formulario_portal)): ?>
             <section class="portal-card portal-card-theme-formulario">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">📋</div>
                     <div class="card-title">
                         <h3>Formulários</h3>
@@ -622,7 +843,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
             <?php if ($visivel_cardapio): ?>
             <section class="portal-card portal-card-theme-cardapio">
-                <div>
+                <div class="portal-card-inner">
                     <div class="card-icon">🍽️</div>
                     <div class="card-title">
                         <h3>Cardápio</h3>
@@ -655,5 +876,80 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         </div>
         <?php endif; ?>
     </div>
+    <script>
+        (() => {
+            const panels = document.querySelectorAll('[data-countdown]');
+            if (!panels.length) return;
+
+            const funMessages = [
+                { limit: 3600, text: 'Última volta do relógio. Já já esse portal vira evento ao vivo.' },
+                { limit: 21600, text: 'Contagem acelerada: os detalhes finais já estão entrando em cena.' },
+                { limit: 86400, text: 'É amanhã. Hora de curtir a reta final com aquele friozinho bom.' },
+                { limit: 259200, text: 'A energia já mudou por aqui. Está ficando muito perto.' },
+                { limit: 1209600, text: 'Semana de evento no radar. Organização bonita é assim.' },
+                { limit: Infinity, text: 'Tudo certo: o grande momento já tem destino e está no caminho.' }
+            ];
+
+            const pluralize = (value, singular, plural) => value === 1 ? singular : plural;
+
+            panels.forEach((panel) => {
+                const iso = panel.getAttribute('data-event-datetime') || '';
+                if (!iso) return;
+
+                const targetTime = new Date(iso).getTime();
+                if (!Number.isFinite(targetTime)) return;
+
+                const units = {
+                    days: panel.querySelector('[data-unit="days"]'),
+                    hours: panel.querySelector('[data-unit="hours"]'),
+                    minutes: panel.querySelector('[data-unit="minutes"]'),
+                    seconds: panel.querySelector('[data-unit="seconds"]')
+                };
+                const message = panel.querySelector('[data-countdown-message]');
+                const title = panel.querySelector('.countdown-title');
+                const subtitle = panel.querySelector('.countdown-subtitle');
+
+                const update = () => {
+                    const diffMs = targetTime - Date.now();
+                    if (diffMs <= 0) {
+                        panel.classList.add('is-complete');
+                        if (units.days) units.days.textContent = 'Chegou';
+                        if (units.hours) units.hours.textContent = '00';
+                        if (units.minutes) units.minutes.textContent = '00';
+                        if (units.seconds) units.seconds.textContent = '00';
+                        if (title) title.textContent = 'O grande dia começou';
+                        if (subtitle) subtitle.textContent = 'Hora de viver o evento. Que seja inesquecível.';
+                        if (message) message.textContent = 'Portal em modo celebração: agora é curtir cada minuto.';
+                        return;
+                    }
+
+                    const totalSeconds = Math.floor(diffMs / 1000);
+                    const days = Math.floor(totalSeconds / 86400);
+                    const hours = Math.floor((totalSeconds % 86400) / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
+
+                    if (units.days) units.days.textContent = String(days).padStart(2, '0');
+                    if (units.hours) units.hours.textContent = String(hours).padStart(2, '0');
+                    if (units.minutes) units.minutes.textContent = String(minutes).padStart(2, '0');
+                    if (units.seconds) units.seconds.textContent = String(seconds).padStart(2, '0');
+
+                    if (title) {
+                        title.textContent = `Faltam ${days} ${pluralize(days, 'dia', 'dias')} para o evento`;
+                    }
+                    if (subtitle) {
+                        subtitle.textContent = `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}min ${String(seconds).padStart(2, '0')}s para abrir essa experiência.`;
+                    }
+                    if (message) {
+                        const current = funMessages.find((item) => totalSeconds <= item.limit) || funMessages[funMessages.length - 1];
+                        message.textContent = current.text;
+                    }
+                };
+
+                update();
+                window.setInterval(update, 1000);
+            });
+        })();
+    </script>
 </body>
 </html>

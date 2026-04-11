@@ -169,8 +169,10 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS slot_index INTEGER");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_schema_json JSONB");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS content_html_snapshot TEXT");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS draft_content_html_snapshot TEXT");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS form_title VARCHAR(160)");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP NULL");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS draft_saved_at TIMESTAMP NULL");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_visible BOOLEAN NOT NULL DEFAULT FALSE");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_editable BOOLEAN NOT NULL DEFAULT FALSE");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_links_publicos ADD COLUMN IF NOT EXISTS portal_configured BOOLEAN NOT NULL DEFAULT FALSE");
@@ -241,6 +243,9 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
     try {
         if (eventos_reuniao_has_table($pdo, 'eventos_reunioes_anexos')) {
             $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS note TEXT");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS public_link_id BIGINT NULL");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT FALSE");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_reunioes_anexos_link_draft ON eventos_reunioes_anexos(public_link_id, is_draft, deleted_at)");
         }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_reunioes_anexos: ' . $e->getMessage());
@@ -1959,6 +1964,8 @@ function eventos_reuniao_destravar_slot_cliente(
     $slot_index = max(1, min(50, (int)$slot_index));
     $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
     $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $has_draft_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_content_html_snapshot');
+    $has_draft_saved_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_saved_at');
 
     if ($has_slot_index_col) {
         $stmt = $pdo->prepare("
@@ -1999,8 +2006,15 @@ function eventos_reuniao_destravar_slot_cliente(
     if ($has_submitted_at_col) {
         $set .= ", submitted_at = NULL";
     }
+    if ($has_draft_snapshot_col) {
+        $set .= ", draft_content_html_snapshot = NULL";
+    }
+    if ($has_draft_saved_at_col) {
+        $set .= ", draft_saved_at = NULL";
+    }
     $stmt = $pdo->prepare("UPDATE eventos_links_publicos SET {$set} WHERE id = :id");
     $stmt->execute([':id' => $link_id]);
+    eventos_reuniao_limpar_anexos_rascunho_link($pdo, $link_id, $user_id > 0 ? $user_id : null);
 
     if ($unlock_section !== null && trim($unlock_section) !== '') {
         $stmt = $pdo->prepare("
@@ -2170,16 +2184,59 @@ function eventos_reuniao_atualizar_status(PDO $pdo, int $meeting_id, string $sta
 }
 
 /**
- * Buscar anexos de uma seção
+ * Buscar anexos de uma seção.
  */
-function eventos_reuniao_get_anexos(PDO $pdo, int $meeting_id, string $section): array {
+function eventos_reuniao_get_anexos(PDO $pdo, int $meeting_id, string $section, ?array $options = null): array {
+    eventos_reuniao_ensure_schema($pdo);
+
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    $has_draft_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'is_draft');
+
+    $public_link_id = isset($options['public_link_id']) ? (int)$options['public_link_id'] : null;
+    $is_draft = array_key_exists('is_draft', (array)$options) ? (bool)$options['is_draft'] : false;
+    $only_unlinked = !empty($options['only_unlinked']);
+
+    $where = [
+        'meeting_id = :meeting_id',
+        'section = :section',
+        'deleted_at IS NULL',
+    ];
+    $params = [
+        ':meeting_id' => $meeting_id,
+        ':section' => $section,
+    ];
+
+    if ($has_draft_col) {
+        $where[] = 'COALESCE(is_draft, FALSE) = :is_draft';
+        $params[':is_draft'] = $is_draft ? 1 : 0;
+    }
+
+    if ($has_link_col) {
+        if ($public_link_id !== null && $public_link_id > 0) {
+            $where[] = 'public_link_id = :public_link_id';
+            $params[':public_link_id'] = $public_link_id;
+        } elseif ($only_unlinked) {
+            $where[] = 'public_link_id IS NULL';
+        } elseif ($is_draft) {
+            $where[] = 'public_link_id IS NOT NULL';
+        }
+    }
+
     $stmt = $pdo->prepare("
-        SELECT * FROM eventos_reunioes_anexos 
-        WHERE meeting_id = :meeting_id AND section = :section AND deleted_at IS NULL
-        ORDER BY uploaded_at DESC
+        SELECT * FROM eventos_reunioes_anexos
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY uploaded_at DESC, id DESC
     ");
-    $stmt->execute([':meeting_id' => $meeting_id, ':section' => $section]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($rows as &$row) {
+        $row['is_draft'] = !empty($row['is_draft']);
+        $row['public_link_id'] = array_key_exists('public_link_id', $row) && $row['public_link_id'] !== null ? (int)$row['public_link_id'] : null;
+    }
+    unset($row);
+
+    return $rows;
 }
 
 /**
@@ -2204,7 +2261,9 @@ function eventos_reuniao_salvar_anexo(
     array $upload_result,
     string $uploaded_by_type = 'interno',
     ?int $uploaded_by_user_id = null,
-    ?string $note = null
+    ?string $note = null,
+    ?int $public_link_id = null,
+    bool $is_draft = false
 ): array {
     $original_name = trim((string)($upload_result['nome_original'] ?? 'arquivo'));
     $mime_type = trim((string)($upload_result['mime_type'] ?? 'application/octet-stream'));
@@ -2219,17 +2278,31 @@ function eventos_reuniao_salvar_anexo(
     $file_kind = eventos_reuniao_file_kind_from_mime($mime_type);
 
     $has_note_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'note');
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    $has_draft_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'is_draft');
     $sql = "
         INSERT INTO eventos_reunioes_anexos
         (meeting_id, section, file_kind, original_name, mime_type, size_bytes, storage_key, public_url, uploaded_by_user_id, uploaded_by_type, uploaded_at";
     if ($has_note_col) {
         $sql .= ", note";
     }
+    if ($has_link_col) {
+        $sql .= ", public_link_id";
+    }
+    if ($has_draft_col) {
+        $sql .= ", is_draft";
+    }
     $sql .= ")
         VALUES
         (:meeting_id, :section, :file_kind, :original_name, :mime_type, :size_bytes, :storage_key, :public_url, :uploaded_by_user_id, :uploaded_by_type, NOW()";
     if ($has_note_col) {
         $sql .= ", :note";
+    }
+    if ($has_link_col) {
+        $sql .= ", :public_link_id";
+    }
+    if ($has_draft_col) {
+        $sql .= ", :is_draft";
     }
     $sql .= ")
         RETURNING *
@@ -2251,11 +2324,107 @@ function eventos_reuniao_salvar_anexo(
         $clean_note = trim((string)($note ?? ''));
         $params[':note'] = $clean_note !== '' ? $clean_note : null;
     }
+    if ($has_link_col) {
+        $params[':public_link_id'] = $public_link_id && $public_link_id > 0 ? $public_link_id : null;
+    }
+    if ($has_draft_col) {
+        $params[':is_draft'] = $is_draft ? 1 : 0;
+    }
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
     return ['ok' => true, 'anexo' => $stmt->fetch(PDO::FETCH_ASSOC)];
+}
+
+function eventos_reuniao_get_anexos_link_finais(PDO $pdo, int $meeting_id, string $section, int $public_link_id): array {
+    $public_link_id = (int)$public_link_id;
+    if ($public_link_id <= 0) {
+        return eventos_reuniao_get_anexos($pdo, $meeting_id, $section);
+    }
+
+    $linked = eventos_reuniao_get_anexos($pdo, $meeting_id, $section, [
+        'public_link_id' => $public_link_id,
+        'is_draft' => false,
+    ]);
+    if (!empty($linked)) {
+        return $linked;
+    }
+
+    return eventos_reuniao_get_anexos($pdo, $meeting_id, $section, [
+        'is_draft' => false,
+        'only_unlinked' => true,
+    ]);
+}
+
+function eventos_reuniao_get_anexos_link_rascunho(PDO $pdo, int $meeting_id, string $section, int $public_link_id): array {
+    $public_link_id = (int)$public_link_id;
+    if ($public_link_id <= 0) {
+        return [];
+    }
+
+    return eventos_reuniao_get_anexos($pdo, $meeting_id, $section, [
+        'public_link_id' => $public_link_id,
+        'is_draft' => true,
+    ]);
+}
+
+function eventos_reuniao_limpar_anexos_rascunho_link(PDO $pdo, int $public_link_id, ?int $deleted_by_user_id = null): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    $public_link_id = (int)$public_link_id;
+    if ($public_link_id <= 0) {
+        return true;
+    }
+
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    $has_draft_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'is_draft');
+    if (!$has_link_col || !$has_draft_col) {
+        return true;
+    }
+
+    $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
+    $sql = "
+        UPDATE eventos_reunioes_anexos
+        SET deleted_at = NOW()
+    ";
+    if ($has_deleted_by_col) {
+        $sql .= ", deleted_by = :deleted_by";
+    }
+    $sql .= "
+        WHERE public_link_id = :public_link_id
+          AND COALESCE(is_draft, FALSE) = TRUE
+          AND deleted_at IS NULL
+    ";
+    $params = [':public_link_id' => $public_link_id];
+    if ($has_deleted_by_col) {
+        $params[':deleted_by'] = $deleted_by_user_id;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    return $stmt->execute($params);
+}
+
+function eventos_reuniao_promover_anexos_rascunho_link(PDO $pdo, int $public_link_id): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    $public_link_id = (int)$public_link_id;
+    if ($public_link_id <= 0) {
+        return true;
+    }
+
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    $has_draft_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'is_draft');
+    if (!$has_link_col || !$has_draft_col) {
+        return true;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_reunioes_anexos
+        SET is_draft = FALSE
+        WHERE public_link_id = :public_link_id
+          AND COALESCE(is_draft, FALSE) = TRUE
+          AND deleted_at IS NULL
+    ");
+    return $stmt->execute([':public_link_id' => $public_link_id]);
 }
 
 /**
@@ -2526,6 +2695,7 @@ function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id, string 
         $row['portal_visible'] = !empty($row['portal_visible']);
         $row['portal_editable'] = !empty($row['portal_editable']);
         $row['portal_configured'] = !empty($row['portal_configured']);
+        $row['draft_saved_at'] = array_key_exists('draft_saved_at', $row) && $row['draft_saved_at'] !== null ? (string)$row['draft_saved_at'] : null;
     }
     unset($row);
 
@@ -2566,10 +2736,12 @@ function eventos_reuniao_atualizar_slot_portal_config(
     $has_allowed_sections_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'allowed_sections');
     $has_schema_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_schema_json');
     $has_content_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    $has_draft_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_content_html_snapshot');
     $has_form_title_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_title');
     $has_portal_visible_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_visible');
     $has_portal_editable_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_editable');
     $has_portal_configured_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'portal_configured');
+    $has_draft_saved_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_saved_at');
 
     if (!$has_portal_visible_col && !$has_portal_editable_col) {
         return ['ok' => false, 'error' => 'Configuração de portal indisponível neste ambiente'];
@@ -2647,8 +2819,16 @@ function eventos_reuniao_atualizar_slot_portal_config(
     if ($portal_visible || $portal_editable) {
         $set_parts[] = "is_active = TRUE";
     }
+    $reopen_submitted_cycle = $portal_editable && !empty($link['submitted_at']);
+
     if ($portal_editable && $has_submitted_at_col) {
         $set_parts[] = "submitted_at = NULL";
+    }
+    if ($reopen_submitted_cycle && $has_draft_snapshot_col) {
+        $set_parts[] = "draft_content_html_snapshot = NULL";
+    }
+    if ($reopen_submitted_cycle && $has_draft_saved_at_col) {
+        $set_parts[] = "draft_saved_at = NULL";
     }
     if ($has_allowed_sections_col && $section !== '') {
         $set_parts[] = "allowed_sections = CAST(:allowed_sections AS jsonb)";
@@ -2678,6 +2858,9 @@ function eventos_reuniao_atualizar_slot_portal_config(
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         $updated = $stmt->fetch(PDO::FETCH_ASSOC) ?: $link;
+        if ($reopen_submitted_cycle) {
+            eventos_reuniao_limpar_anexos_rascunho_link($pdo, (int)$link['id'], $user_id > 0 ? $user_id : null);
+        }
         $decoded = json_decode((string)($updated['form_schema_json'] ?? '[]'), true);
         $updated['form_schema'] = is_array($decoded) ? $decoded : [];
         $updated['portal_visible'] = !empty($updated['portal_visible']);
@@ -2716,6 +2899,7 @@ function eventos_link_publico_get(PDO $pdo, string $token): ?array {
     $row['portal_visible'] = !empty($row['portal_visible']);
     $row['portal_editable'] = !empty($row['portal_editable']);
     $row['portal_configured'] = !empty($row['portal_configured']);
+    $row['draft_saved_at'] = array_key_exists('draft_saved_at', $row) && $row['draft_saved_at'] !== null ? (string)$row['draft_saved_at'] : null;
     return $row;
 }
 
@@ -2757,6 +2941,39 @@ function eventos_link_publico_salvar_snapshot(PDO $pdo, int $link_id, string $co
 }
 
 /**
+ * Salva um rascunho do formulário público sem marcar como enviado.
+ */
+function eventos_link_publico_salvar_rascunho(PDO $pdo, int $link_id, string $content_html): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($link_id <= 0) {
+        return false;
+    }
+
+    $has_draft_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_content_html_snapshot');
+    $has_draft_saved_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_saved_at');
+    if (!$has_draft_snapshot_col && !$has_draft_saved_at_col) {
+        return true;
+    }
+
+    $set_parts = [];
+    $params = [':id' => $link_id];
+    if ($has_draft_snapshot_col) {
+        $set_parts[] = "draft_content_html_snapshot = :html";
+        $params[':html'] = $content_html;
+    }
+    if ($has_draft_saved_at_col) {
+        $set_parts[] = "draft_saved_at = NOW()";
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE eventos_links_publicos
+        SET " . implode(', ', $set_parts) . "
+        WHERE id = :id
+    ");
+    return $stmt->execute($params);
+}
+
+/**
  * Registra envio do cliente no próprio link sem desativar o token.
  */
 function eventos_link_publico_registrar_envio(PDO $pdo, int $link_id, string $content_html): bool {
@@ -2777,6 +2994,12 @@ function eventos_link_publico_registrar_envio(PDO $pdo, int $link_id, string $co
     }
     if ($has_submitted_at_col) {
         $sql .= ", submitted_at = NOW()";
+    }
+    if (eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_content_html_snapshot')) {
+        $sql .= ", draft_content_html_snapshot = NULL";
+    }
+    if (eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'draft_saved_at')) {
+        $sql .= ", draft_saved_at = NULL";
     }
     $sql .= " WHERE id = :id";
 
@@ -3091,6 +3314,26 @@ function eventos_reuniao_html_para_texto(string $html): string {
     $text = str_replace(["\r\n", "\r"], "\n", $text);
     $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
     return trim($text);
+}
+
+/**
+ * Resume o conteúdo salvo no link público para exibição no painel interno.
+ */
+function eventos_reuniao_resumir_snapshot_publico(string $html, int $max_chars = 4000): string {
+    $text = eventos_reuniao_html_para_texto($html);
+    if ($text === '') {
+        return '';
+    }
+    if ($max_chars > 0) {
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            if (mb_strlen($text, 'UTF-8') > $max_chars) {
+                return rtrim(mb_substr($text, 0, $max_chars - 1, 'UTF-8')) . '…';
+            }
+        } elseif (strlen($text) > $max_chars) {
+            return rtrim(substr($text, 0, $max_chars - 1)) . '...';
+        }
+    }
+    return $text;
 }
 
 /**

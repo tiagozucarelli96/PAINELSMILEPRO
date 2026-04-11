@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 
 function eventos_cliente_convidados_redirect(string $token, bool $ok, string $message = ''): void {
     $params = [
@@ -210,12 +211,7 @@ if ($opcoes_faixa_json === false) {
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
-$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_evento .= ' - ' . $hora_fim;
-}
+$horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
 $local_evento = trim((string)($snapshot['local'] ?? 'Local nao informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 ?>
@@ -234,7 +230,9 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f8fafc;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24%),
+                linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
             color: #1e293b;
             line-height: 1.5;
         }
@@ -572,7 +570,7 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                 <h2><?= htmlspecialchars($evento_nome) ?></h2>
                 <div class="event-meta">
                     <div><strong>📅 Data:</strong> <?= htmlspecialchars($data_evento_fmt) ?></div>
-                    <div><strong>⏰ Horario:</strong> <?= htmlspecialchars($horario_evento) ?></div>
+                    <div><strong>⏰ Horário:</strong> <?= htmlspecialchars($horario_evento) ?></div>
                     <div><strong>📍 Local:</strong> <?= htmlspecialchars($local_evento) ?></div>
                     <div><strong>👤 Cliente:</strong> <?= htmlspecialchars($cliente_nome) ?></div>
                 </div>

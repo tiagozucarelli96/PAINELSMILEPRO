@@ -41,6 +41,13 @@ $reuniao = null;
 $secoes = [];
 $error = '';
 $success = '';
+$observacoes_editor_blocks = [
+    ['key' => 'legacy_text', 'label' => 'Texto livre (opcional)', 'description' => 'Área aberta para observações complementares.', 'public' => true, 'open' => true],
+    ['key' => 'cronograma', 'label' => 'Cronograma', 'description' => 'Use este bloco para roteiro, horários e sequência do evento.', 'public' => true, 'open' => false],
+    ['key' => 'fornecedores_externos', 'label' => 'Fornecedores externos', 'description' => 'Registre contatos, entregas e combinados com fornecedores parceiros.', 'public' => true, 'open' => false],
+    ['key' => 'informacoes_importantes', 'label' => 'Informações importantes', 'description' => 'Pontos críticos que precisam ficar claros para a execução do evento.', 'public' => true, 'open' => false],
+    ['key' => 'informacoes_internas', 'label' => 'Informações internas', 'description' => 'Uso exclusivo da equipe interna. Nunca exibido ao cliente.', 'public' => false, 'open' => false],
+];
 
 function eventos_reuniao_normalizar_uploads_field(array $files, string $field): array {
     if (empty($files[$field])) {
@@ -95,6 +102,7 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
         'uploaded_at' => array_key_exists('uploaded_at', $anexo) && $anexo['uploaded_at'] !== null ? (string)$anexo['uploaded_at'] : null,
         'uploaded_by_type' => (string)($anexo['uploaded_by_type'] ?? ''),
         'note' => (string)($anexo['note'] ?? ''),
+        'is_draft' => !empty($anexo['is_draft']),
     ];
 }
 
@@ -1490,6 +1498,31 @@ includeSidebar($sidebar_title);
         background: #f8fafc;
     }
 
+    .slot-response-status {
+        margin-top: 0.85rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 0.8rem 0.9rem;
+    }
+
+    .slot-response-status strong {
+        color: #0f172a;
+    }
+
+    .slot-response-status p {
+        margin: 0.2rem 0 0 0;
+        color: #475569;
+        font-size: 0.82rem;
+    }
+
+    .slot-response-actions {
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        margin-top: 0.75rem;
+    }
+
     .legacy-editor-toggle {
         margin: 0.75rem 0;
         padding: 0.8rem;
@@ -1505,6 +1538,94 @@ includeSidebar($sidebar_title);
 
     .legacy-editor-wrap {
         margin-top: 0.75rem;
+    }
+
+    .observacoes-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+    }
+
+    .observacoes-panel {
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        background: #ffffff;
+        overflow: hidden;
+    }
+
+    .observacoes-toggle {
+        width: 100%;
+        border: 0;
+        background: #f8fafc;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.95rem 1rem;
+        cursor: pointer;
+        text-align: left;
+    }
+
+    .observacoes-toggle:hover {
+        background: #f1f5f9;
+    }
+
+    .observacoes-toggle-main {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 0;
+    }
+
+    .observacoes-chevron {
+        font-size: 0.95rem;
+        color: #1d4ed8;
+        width: 1rem;
+        flex: 0 0 1rem;
+    }
+
+    .observacoes-toggle strong {
+        display: block;
+        font-size: 0.98rem;
+    }
+
+    .observacoes-toggle small {
+        display: block;
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-top: 0.18rem;
+    }
+
+    .observacoes-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 0.2rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: #e2e8f0;
+        color: #334155;
+        white-space: nowrap;
+    }
+
+    .observacoes-badge.internal {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .observacoes-body {
+        padding: 0 1rem 1rem 1rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .observacoes-body.is-collapsed {
+        display: none;
+    }
+
+    .observacoes-hidden-storage {
+        display: none;
     }
 
     .legacy-portal-option {
@@ -2123,11 +2244,31 @@ includeSidebar($sidebar_title);
                 <button type="button" class="btn btn-secondary" id="btnToggleEditor-<?= $key ?>" onclick="toggleLegacyEditor('<?= $key ?>')">Abrir texto</button>
             </div>
             <?php elseif ($key === 'observacoes_gerais'): ?>
-            <div class="legacy-editor-toggle">
-                <div>
-                    <strong>Texto livre (opcional)</strong>
-                    <div class="builder-field-meta">Área aberta para observações complementares.</div>
+            <div class="observacoes-stack" id="observacoesStack">
+                <?php foreach ($observacoes_editor_blocks as $obs_block): ?>
+                <div class="observacoes-panel" data-observacoes-panel="<?= htmlspecialchars($obs_block['key']) ?>">
+                    <button type="button" class="observacoes-toggle" onclick="toggleObservacoesBlock('<?= htmlspecialchars($obs_block['key']) ?>')">
+                        <span class="observacoes-toggle-main">
+                            <span class="observacoes-chevron" id="obsChevron-<?= htmlspecialchars($obs_block['key']) ?>"><?= !empty($obs_block['open']) ? '▾' : '▸' ?></span>
+                            <span>
+                                <strong><?= htmlspecialchars($obs_block['label']) ?></strong>
+                                <small><?= htmlspecialchars($obs_block['description']) ?></small>
+                            </span>
+                        </span>
+                        <?php if (empty($obs_block['public'])): ?>
+                        <span class="observacoes-badge internal">Interno</span>
+                        <?php else: ?>
+                        <span class="observacoes-badge">Portal</span>
+                        <?php endif; ?>
+                    </button>
+                    <div class="observacoes-body<?= empty($obs_block['open']) ? ' is-collapsed' : '' ?>" id="obsBody-<?= htmlspecialchars($obs_block['key']) ?>">
+                        <textarea id="editor-observacoes-bloco-<?= htmlspecialchars($obs_block['key']) ?>"
+                                  data-observacoes-block="<?= htmlspecialchars($obs_block['key']) ?>"
+                                  <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
+                                  style="width:100%; min-height: 300px; border: 0;"></textarea>
+                    </div>
                 </div>
+                <?php endforeach; ?>
             </div>
             <?php endif; ?>
 
@@ -2135,10 +2276,12 @@ includeSidebar($sidebar_title);
             $editor_wrap_attrs = '';
             if ($key === 'dj_protocolo' || $key === 'decoracao') {
                 $editor_wrap_attrs = ' style="display:none;"';
+            } elseif ($key === 'observacoes_gerais') {
+                $editor_wrap_attrs = ' class="editor-wrapper legacy-editor-wrap observacoes-hidden-storage"';
             }
             ?>
             <?php if ($key !== 'formulario'): ?>
-            <div class="editor-wrapper legacy-editor-wrap" id="legacyEditorWrap-<?= $key ?>"<?= $editor_wrap_attrs ?>>
+            <div<?= $key === 'observacoes_gerais' ? ' class="observacoes-hidden-storage"' : ' class="editor-wrapper legacy-editor-wrap"' ?> id="legacyEditorWrap-<?= $key ?>"<?= $key !== 'observacoes_gerais' ? $editor_wrap_attrs : '' ?>>
                 <?php 
                 $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
                 ?>
@@ -2168,7 +2311,7 @@ includeSidebar($sidebar_title);
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>📋 Histórico de Versões</h3>
+            <h3 id="modalVersoesTitle">📋 Histórico de Versões</h3>
             <button type="button" class="modal-close" onclick="fecharModal()">&times;</button>
         </div>
         <div class="modal-body" id="versoesContent">
@@ -2209,6 +2352,7 @@ includeSidebar($sidebar_title);
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 const legacyDjSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
 const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($section_labels), true) ? $active_tab_query : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const observacoesEditorBlocks = <?= json_encode($observacoes_editor_blocks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialDjSchema = <?= json_encode($dj_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -2238,6 +2382,7 @@ const initialObservacoesClientLinks = <?= json_encode(array_map(static function 
     ];
 }, $links_cliente_observacoes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 const initialFormularioLinks = <?= json_encode(array_map(static function (array $link): array {
+    $link_id = (int)($link['id'] ?? 0);
     return [
         'id' => (int)($link['id'] ?? 0),
         'token' => (string)($link['token'] ?? ''),
@@ -2245,9 +2390,14 @@ const initialFormularioLinks = <?= json_encode(array_map(static function (array 
         'slot_index' => (int)($link['slot_index'] ?? 1),
         'form_title' => (string)($link['form_title'] ?? ''),
         'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'draft_saved_at' => array_key_exists('draft_saved_at', $link) && $link['draft_saved_at'] !== null ? (string)$link['draft_saved_at'] : null,
         'portal_visible' => !empty($link['portal_visible']),
         'portal_editable' => !empty($link['portal_editable']),
         'portal_configured' => !empty($link['portal_configured']),
+        'draft_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['draft_content_html_snapshot'] ?? '')),
+        'submitted_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['content_html_snapshot'] ?? '')),
+        'draft_attachments' => array_map('eventos_reuniao_serializar_anexo', $link_id > 0 ? eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, 'formulario', $link_id) : []),
+        'submitted_attachments' => array_map('eventos_reuniao_serializar_anexo', $link_id > 0 ? eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'formulario', $link_id) : []),
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_formulario), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
@@ -2381,19 +2531,19 @@ function initEditoresReuniao() {
     if (typeof tinymce === 'undefined') return;
     document.querySelectorAll('.editor-load-error').forEach(function(el) { el.remove(); });
     document.querySelectorAll('[id^="editor-"]').forEach(function(el) { el.placeholder = ''; });
-    var sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
-    sections.forEach(function(section) {
-        var textarea = document.getElementById('editor-' + section);
+    function initTinyEditorById(editorId, height) {
+        var textarea = document.getElementById(editorId);
         if (!textarea) return;
+        if (tinymce.get(editorId)) return;
         var isReadonly = textarea.readOnly;
         tinymce.init({
-            selector: '#editor-' + section,
+            selector: '#' + editorId,
             base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
             suffix: '.min',
             plugins: 'lists link image table code',
             toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
             menubar: false,
-            height: 420,
+            height: height,
             content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
             readonly: isReadonly,
             paste_data_images: true,
@@ -2424,7 +2574,121 @@ function initEditoresReuniao() {
                 });
             }
         });
+    }
+
+    ['decoracao', 'dj_protocolo'].forEach(function(section) {
+        initTinyEditorById('editor-' + section, 420);
     });
+    (observacoesEditorBlocks || []).forEach(function(block) {
+        var key = String(block && block.key ? block.key : '').trim();
+        if (!key) return;
+        initTinyEditorById(getObservacoesBlockEditorId(key), 320);
+    });
+}
+
+function getObservacoesBlockConfig(blockKey) {
+    return (observacoesEditorBlocks || []).find(function(block) {
+        return String(block && block.key ? block.key : '') === String(blockKey || '');
+    }) || null;
+}
+
+function getObservacoesBlockEditorId(blockKey) {
+    return 'editor-observacoes-bloco-' + String(blockKey || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function parseObservacoesBlocksFromContent(contentHtml) {
+    const parsed = {};
+    (observacoesEditorBlocks || []).forEach((block) => {
+        const key = String(block && block.key ? block.key : '').trim();
+        if (key !== '') {
+            parsed[key] = '';
+        }
+    });
+
+    const rawHtml = String(contentHtml || '').trim();
+    if (rawHtml === '') {
+        return parsed;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = rawHtml;
+    const sections = Array.from(wrapper.querySelectorAll('[data-smile-observacoes-block]'));
+    if (!sections.length) {
+        parsed.legacy_text = rawHtml;
+        return parsed;
+    }
+
+    sections.forEach((section) => {
+        const key = String(section.getAttribute('data-smile-observacoes-block') || '').trim();
+        if (key === '' || !Object.prototype.hasOwnProperty.call(parsed, key)) return;
+        const contentNode = section.querySelector('[data-smile-observacoes-content]');
+        parsed[key] = String(contentNode ? contentNode.innerHTML : section.innerHTML || '').trim();
+    });
+
+    return parsed;
+}
+
+function setObservacoesBlockContent(blockKey, html) {
+    const editorId = getObservacoesBlockEditorId(blockKey);
+    if (typeof tinymce !== 'undefined' && tinymce.get(editorId)) {
+        tinymce.get(editorId).setContent(String(html || ''));
+        return;
+    }
+    const textarea = document.getElementById(editorId);
+    if (textarea) {
+        textarea.value = String(html || '');
+    }
+}
+
+function getObservacoesBlockContent(blockKey) {
+    const editorId = getObservacoesBlockEditorId(blockKey);
+    if (typeof tinymce !== 'undefined' && tinymce.get(editorId)) {
+        return tinymce.get(editorId).getContent() || '';
+    }
+    const textarea = document.getElementById(editorId);
+    return textarea ? String(textarea.value || '') : '';
+}
+
+function hydrateObservacoesBlocksFromSavedContent() {
+    const parsed = parseObservacoesBlocksFromContent(getEditorContent('observacoes_gerais'));
+    Object.keys(parsed).forEach((blockKey) => {
+        setObservacoesBlockContent(blockKey, parsed[blockKey]);
+    });
+}
+
+function buildObservacoesBlocksContent(options = {}) {
+    const onlyPublic = !!(options && options.onlyPublic);
+    const parts = [];
+    (observacoesEditorBlocks || []).forEach((block) => {
+        const key = String(block && block.key ? block.key : '').trim();
+        const label = String(block && block.label ? block.label : '').trim();
+        const isPublic = !block || !Object.prototype.hasOwnProperty.call(block, 'public') ? true : !!block.public;
+        if (!key || (onlyPublic && !isPublic)) {
+            return;
+        }
+
+        const html = sanitizeRichHtmlForField(getObservacoesBlockContent(key)).trim();
+        if (stripHtmlToText(html) === '') {
+            return;
+        }
+
+        parts.push(
+            `<section data-smile-observacoes-block="${escapeHtmlForField(key)}" data-smile-client-visible="${isPublic ? '1' : '0'}">`
+            + `<h3>${escapeHtmlForField(label)}</h3>`
+            + `<div data-smile-observacoes-content="1">${html}</div>`
+            + `</section>`
+        );
+    });
+    return parts.join('\n');
+}
+
+function toggleObservacoesBlock(blockKey) {
+    const body = document.getElementById(`obsBody-${blockKey}`);
+    const chevron = document.getElementById(`obsChevron-${blockKey}`);
+    if (!body || !chevron) return;
+    const isCollapsed = body.classList.contains('is-collapsed');
+    body.classList.toggle('is-collapsed', !isCollapsed);
+    chevron.textContent = isCollapsed ? '▾' : '▸';
 }
 
 function normalizeText(value) {
@@ -3347,7 +3611,9 @@ function buildPortalSchemaWithLegacyText(section, schema) {
         return normalized;
     }
 
-    const legacyRaw = getEditorContent(section);
+    const legacyRaw = section === 'observacoes_gerais'
+        ? buildObservacoesBlocksContent({ onlyPublic: true })
+        : getEditorContent(section);
     const legacyHtml = sanitizeRichHtmlForField(String(legacyRaw || '')).trim();
     if (stripHtmlToText(legacyHtml) === '') {
         return normalized;
@@ -3926,6 +4192,7 @@ function buildFormularioSlotCardHtml(slot) {
     const excluirBtnHtml = pageReadonly
         ? ''
         : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirFormularioSlot(${slot})">🗑 Excluir formulário</button>`;
+    const statusHtml = buildFormularioSlotResponseStatusHtml(slot);
     return `
         <div class="dj-builder-shell" data-formulario-slot="${slot}">
             <div class="dj-builder-head">
@@ -3955,7 +4222,47 @@ function buildFormularioSlotCardHtml(slot) {
                     Permitir preenchimento do cliente
                 </label>
             </div>
+            ${statusHtml}
             <p class="share-hint" id="formularioShareHint-${slot}">Selecione um formulário para configurar este quadro no portal.</p>
+        </div>
+    `;
+}
+
+function buildFormularioSlotResponseStatusHtml(slot) {
+    const link = formularioLinksBySlot[slot] || null;
+    if (!link) {
+        return '';
+    }
+
+    const draftSavedAt = link.draft_saved_at ? formatDate(link.draft_saved_at) : '';
+    const submittedAt = link.submitted_at ? formatDate(link.submitted_at) : '';
+    const hasDraft = !!link.draft_saved_at;
+    const hasSubmitted = !!link.submitted_at;
+    const actions = [];
+
+    if (hasDraft) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalFormularioResposta(${slot}, 'draft')">👁 Ver rascunho</button>`);
+    }
+    if (hasSubmitted) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalFormularioResposta(${slot}, 'submitted')">👁 Ver enviado</button>`);
+    }
+
+    if (!hasDraft && !hasSubmitted) {
+        return '';
+    }
+
+    const lines = [];
+    if (hasDraft) {
+        lines.push(`<div><strong>Rascunho salvo</strong><p>${escapeHtmlForField(draftSavedAt)}</p></div>`);
+    }
+    if (hasSubmitted) {
+        lines.push(`<div><strong>Formulário enviado</strong><p>${escapeHtmlForField(submittedAt)}</p></div>`);
+    }
+
+    return `
+        <div class="slot-response-status">
+            ${lines.join('')}
+            ${actions.length ? `<div class="slot-response-actions">${actions.join('')}</div>` : ''}
         </div>
     `;
 }
@@ -4269,6 +4576,7 @@ async function salvarFormularioSlotPortalConfig(slot = 1, options = {}) {
             if (data.ok) {
                 const link = data.link && typeof data.link === 'object' ? data.link : null;
                 if (link) {
+                    const existingLink = formularioLinksBySlot[slotIndex] || {};
                     formularioLinksBySlot[slotIndex] = {
                         id: Number(link.id || 0),
                         token: String(link.token || ''),
@@ -4277,9 +4585,18 @@ async function salvarFormularioSlotPortalConfig(slot = 1, options = {}) {
                         form_title: String(link.form_title || formTitle),
                         form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : schemaForPortal,
                         submitted_at: link.submitted_at ? String(link.submitted_at) : null,
+                        draft_saved_at: link.draft_saved_at ? String(link.draft_saved_at) : null,
                         portal_visible: !!link.portal_visible,
                         portal_editable: !!link.portal_editable,
-                        portal_configured: !!link.portal_configured
+                        portal_configured: !!link.portal_configured,
+                        draft_preview_text: link.draft_saved_at
+                            ? (typeof link.draft_preview_text === 'string' ? link.draft_preview_text : String(existingLink.draft_preview_text || ''))
+                            : '',
+                        submitted_preview_text: link.submitted_at
+                            ? (typeof link.submitted_preview_text === 'string' ? link.submitted_preview_text : String(existingLink.submitted_preview_text || ''))
+                            : '',
+                        draft_attachments: Array.isArray(link.draft_attachments) ? link.draft_attachments : (Array.isArray(existingLink.draft_attachments) ? existingLink.draft_attachments : []),
+                        submitted_attachments: Array.isArray(link.submitted_attachments) ? link.submitted_attachments : (Array.isArray(existingLink.submitted_attachments) ? existingLink.submitted_attachments : [])
                     };
                 } else {
                     formularioLinksBySlot[slotIndex] = null;
@@ -4974,6 +5291,8 @@ async function salvarSecao(section) {
         }
     }
     if (section === 'observacoes_gerais') {
+        content = buildObservacoesBlocksContent();
+        setEditorContent(content, section);
         formSchemaJson = JSON.stringify([]);
     }
     
@@ -5142,6 +5461,10 @@ async function verVersoes(section) {
         
         if (data.ok) {
             const container = document.getElementById('versoesContent');
+            const title = document.getElementById('modalVersoesTitle');
+            if (title) {
+                title.textContent = '📋 Histórico de Versões';
+            }
             
             if (!data.versoes || data.versoes.length === 0) {
                 container.innerHTML = '<p style="color: #64748b;">Nenhuma versão registrada ainda.</p>';
@@ -5165,6 +5488,70 @@ async function verVersoes(section) {
     } catch (err) {
         alert('Erro: ' + err.message);
     }
+}
+
+function abrirModalFormularioResposta(slot, responseType) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null) return;
+    const link = formularioLinksBySlot[slotIndex] || null;
+    if (!link) return;
+
+    const isDraft = responseType === 'draft';
+    const previewText = isDraft
+        ? String(link.draft_preview_text || '')
+        : String(link.submitted_preview_text || '');
+    const savedAt = isDraft
+        ? (link.draft_saved_at ? formatDate(link.draft_saved_at) : '')
+        : (link.submitted_at ? formatDate(link.submitted_at) : '');
+    const attachments = isDraft
+        ? (Array.isArray(link.draft_attachments) ? link.draft_attachments : [])
+        : (Array.isArray(link.submitted_attachments) ? link.submitted_attachments : []);
+
+    if (previewText.trim() === '' && attachments.length === 0) {
+        alert(isDraft ? 'Nenhum rascunho salvo neste formulário.' : 'Nenhum envio concluído neste formulário.');
+        return;
+    }
+
+    const title = document.getElementById('modalVersoesTitle');
+    const container = document.getElementById('versoesContent');
+    if (!container) return;
+
+    if (title) {
+        title.textContent = isDraft
+            ? `📋 Formulário ${slotIndex} • Rascunho`
+            : `📋 Formulário ${slotIndex} • Enviado`;
+    }
+
+    const statusLabel = isDraft ? 'Rascunho salvo em' : 'Enviado em';
+    const attachmentsHtml = attachments.length ? `
+        <div style="margin-top: 1rem;">
+            <h4 style="margin: 0 0 0.6rem 0;">Anexos ${isDraft ? 'do rascunho' : 'enviados'}</h4>
+            <ul style="margin:0; padding-left:1.1rem; color:#334155;">
+                ${attachments.map((anexo) => {
+                    const name = escapeHtmlForField(String(anexo && anexo.original_name ? anexo.original_name : 'arquivo'));
+                    const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
+                    const note = escapeHtmlForField(String(anexo && anexo.note ? anexo.note : ''));
+                    const uploadedAt = anexo && anexo.uploaded_at ? formatDate(anexo.uploaded_at) : '-';
+                    const linkHtml = url !== ''
+                        ? `<a href="${escapeHtmlForField(url)}" target="_blank" rel="noopener noreferrer">${name}</a>`
+                        : name;
+                    return `<li style="margin-bottom:0.55rem;">${linkHtml}<div style="font-size:0.8rem; color:#64748b;">${escapeHtmlForField(uploadedAt)}${note !== '' ? ` • Obs: ${note}` : ''}</div></li>`;
+                }).join('')}
+            </ul>
+        </div>
+    ` : '';
+    container.innerHTML = `
+        <div class="version-item active">
+            <div class="version-header">
+                <span class="version-number">${isDraft ? 'Rascunho' : 'Concluído / Enviado'}</span>
+                <span class="version-meta">${escapeHtmlForField(statusLabel)} ${escapeHtmlForField(savedAt || '-')}</span>
+            </div>
+            <div class="version-note" style="white-space: pre-wrap; line-height: 1.55;">${previewText.trim() !== '' ? escapeHtmlForField(previewText) : '<em>Sem conteúdo textual.</em>'}</div>
+            ${attachmentsHtml}
+        </div>
+    `;
+
+    document.getElementById('modalVersoes').classList.add('show');
 }
 
 function fecharModal() {
@@ -5408,6 +5795,7 @@ if (meetingId) {
             renderDjUploadCards();
             renderDjAnexosList();
             applyInitialTabFromQuery();
+            hydrateObservacoesBlocksFromSavedContent();
             loadTinyMCEAndInit();
             initSectionTemplateSelection();
             initDjTemplateSelection();
@@ -5419,6 +5807,7 @@ if (meetingId) {
         renderDjUploadCards();
         renderDjAnexosList();
         applyInitialTabFromQuery();
+        hydrateObservacoesBlocksFromSavedContent();
         loadTinyMCEAndInit();
         initSectionTemplateSelection();
         initDjTemplateSelection();

@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $token = trim((string)($_GET['token'] ?? $_POST['token'] ?? ''));
@@ -172,12 +173,7 @@ if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (strin
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
-$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_evento .= ' - ' . $hora_fim;
-}
+$horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 ?>
@@ -192,13 +188,15 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8fafc;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24%),
+                linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
             color: #1e293b;
             line-height: 1.6;
         }
 
         .header {
-            background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
+            background: linear-gradient(135deg, #123c9c 0%, #2563eb 60%, #3b82f6 100%);
             color: #fff;
             padding: 2rem 1rem;
             text-align: center;
@@ -288,8 +286,8 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             gap: 0.45rem;
         }
 
-        .btn-primary { background: #ea580c; color: #fff; }
-        .btn-primary:hover { background: #c2410c; }
+        .btn-primary { background: #1d4ed8; color: #fff; }
+        .btn-primary:hover { background: #1e40af; }
         .btn-secondary { background: #f1f5f9; border-color: #dbe3ef; color: #334155; }
 
         .upload-form {

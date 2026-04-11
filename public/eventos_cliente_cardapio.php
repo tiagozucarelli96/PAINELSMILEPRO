@@ -10,6 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 logistica_cardapio_ensure_schema($pdo);
@@ -80,12 +81,7 @@ $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
-$horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_evento .= ' - ' . $hora_fim;
-}
+$horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $pacote_nome = trim((string)($contexto_cardapio['pacote']['nome'] ?? ''));
 $submitted_at = trim((string)($contexto_cardapio['summary']['submitted_at'] ?? ''));
@@ -117,7 +113,7 @@ $pode_editar = $error === ''
         }
 
         .hero {
-            background: linear-gradient(135deg, #1d4ed8 0%, #0f172a 100%);
+            background: linear-gradient(135deg, #123c9c 0%, #2563eb 60%, #3b82f6 100%);
             color: #fff;
             padding: 2.25rem 1rem 2rem;
             text-align: center;
@@ -344,7 +340,7 @@ $pode_editar = $error === ''
         }
 
         .footer-inner {
-            background: rgba(15, 23, 42, 0.92);
+            background: linear-gradient(135deg, rgba(18, 60, 156, 0.96) 0%, rgba(37, 99, 235, 0.96) 100%);
             color: #fff;
             border-radius: 20px;
             padding: 1rem;
@@ -376,8 +372,8 @@ $pode_editar = $error === ''
         }
 
         .btn-submit {
-            background: #22c55e;
-            color: #052e16;
+            background: #ffffff;
+            color: #1e3a8a;
         }
 
         .btn-submit:disabled {

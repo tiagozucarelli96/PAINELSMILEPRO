@@ -13,6 +13,53 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
+
+function eventos_organizacao_e(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+}
+
+function eventos_organizacao_upload_error_message(int $code): string
+{
+    switch ($code) {
+        case UPLOAD_ERR_OK:
+            return '';
+        case UPLOAD_ERR_INI_SIZE:
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'Arquivo excede o limite máximo permitido pelo servidor.';
+        case UPLOAD_ERR_PARTIAL:
+            return 'Upload incompleto. Tente novamente.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'Selecione um arquivo para enviar.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'Servidor sem pasta temporária para upload.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'Falha ao gravar o arquivo temporário.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'Upload bloqueado por extensão do servidor.';
+        default:
+            return 'Erro desconhecido de upload.';
+    }
+}
+
+function eventos_organizacao_flash_set(string $type, string $message): void
+{
+    $_SESSION['eventos_organizacao_flash'] = [
+        'type' => $type,
+        'message' => $message,
+    ];
+}
+
+function eventos_organizacao_resumo_redirect(int $meeting_id): void
+{
+    $target = 'index.php?page=eventos_organizacao';
+    if ($meeting_id > 0) {
+        $target .= '&id=' . $meeting_id . '#resumo-evento-card';
+    }
+    header('Location: ' . $target);
+    exit;
+}
 
 if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
     header('Location: index.php?page=dashboard');
@@ -24,6 +71,89 @@ $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
 pacotes_evento_ensure_schema($pdo);
 logistica_cardapio_ensure_schema($pdo);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['upload_resumo_evento_card', 'excluir_resumo_evento_card'], true)) {
+    if ($meeting_id <= 0) {
+        eventos_organizacao_flash_set('error', 'Reunião inválida para atualizar o resumo do evento.');
+        eventos_organizacao_resumo_redirect(0);
+    }
+
+    try {
+        $reuniao_resumo = eventos_reuniao_get($pdo, $meeting_id);
+        if (!$reuniao_resumo) {
+            eventos_organizacao_flash_set('error', 'Reunião não encontrada.');
+            eventos_organizacao_resumo_redirect($meeting_id);
+        }
+
+        eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
+        $campo_resumo = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
+        if (!$campo_resumo || (int)($campo_resumo['id'] ?? 0) <= 0) {
+            eventos_organizacao_flash_set('error', 'Campo "Resumo do evento" não encontrado.');
+            eventos_organizacao_resumo_redirect($meeting_id);
+        }
+
+        if ($action === 'upload_resumo_evento_card') {
+            $file = $_FILES['arquivo_resumo_evento'] ?? null;
+            $descricao = trim((string)($_POST['descricao_resumo_evento'] ?? ''));
+
+            if (!$file || !is_array($file)) {
+                eventos_organizacao_flash_set('error', 'Selecione um PDF para o Resumo do evento.');
+                eventos_organizacao_resumo_redirect($meeting_id);
+            }
+
+            $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($upload_error !== UPLOAD_ERR_OK) {
+                eventos_organizacao_flash_set('error', eventos_organizacao_upload_error_message($upload_error));
+                eventos_organizacao_resumo_redirect($meeting_id);
+            }
+
+            if ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                eventos_organizacao_flash_set('error', 'Arquivo muito grande. Limite máximo: 500MB.');
+                eventos_organizacao_resumo_redirect($meeting_id);
+            }
+
+            $uploader = new MagaluUpload(500);
+            $upload_result = $uploader->upload($file, 'eventos/reunioes/' . $meeting_id . '/arquivos/resumo_evento');
+            $saved = eventos_arquivos_salvar_item(
+                $pdo,
+                $meeting_id,
+                $upload_result,
+                (int)$campo_resumo['id'],
+                $descricao,
+                false,
+                'interno',
+                $user_id > 0 ? $user_id : null
+            );
+
+            if (!empty($saved['ok'])) {
+                $replaced_count = (int)($saved['replaced_count'] ?? 0);
+                eventos_organizacao_flash_set(
+                    'success',
+                    $replaced_count > 0
+                        ? 'Resumo do evento atualizado com sucesso.'
+                        : 'Resumo do evento anexado com sucesso.'
+                );
+            } else {
+                eventos_organizacao_flash_set('error', (string)($saved['error'] ?? 'Falha ao salvar o Resumo do evento.'));
+            }
+        }
+
+        if ($action === 'excluir_resumo_evento_card') {
+            $arquivo_id = (int)($_POST['arquivo_id'] ?? 0);
+            $deleted = eventos_arquivos_excluir_item($pdo, $meeting_id, $arquivo_id, $user_id);
+            if (!empty($deleted['ok'])) {
+                eventos_organizacao_flash_set('success', 'Resumo do evento removido com sucesso.');
+            } else {
+                eventos_organizacao_flash_set('error', (string)($deleted['error'] ?? 'Falha ao remover o Resumo do evento.'));
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_organizacao resumo POST: ' . $e->getMessage());
+        eventos_organizacao_flash_set('error', 'Erro interno ao processar o resumo do evento.');
+    }
+
+    eventos_organizacao_resumo_redirect($meeting_id);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
     header('Content-Type: application/json; charset=utf-8');
@@ -273,6 +403,21 @@ foreach ($pacotes_evento_raw as $pacote_item) {
 
 $has_dj_link = !empty($links_cliente_dj);
 $has_obs_link = !empty($links_cliente_observacoes);
+$flash = $_SESSION['eventos_organizacao_flash'] ?? null;
+unset($_SESSION['eventos_organizacao_flash']);
+$flash_type = is_array($flash) ? trim((string)($flash['type'] ?? '')) : '';
+$flash_message = is_array($flash) ? trim((string)($flash['message'] ?? '')) : '';
+$resumo_evento_arquivo_atual = null;
+
+if ($meeting_id > 0 && $reuniao) {
+    eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
+    $campo_resumo_evento = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
+    $campo_resumo_evento_id = (int)($campo_resumo_evento['id'] ?? 0);
+    if ($campo_resumo_evento_id > 0) {
+        $resumo_evento_arquivos = eventos_arquivos_listar($pdo, $meeting_id, false, $campo_resumo_evento_id, true);
+        $resumo_evento_arquivo_atual = $resumo_evento_arquivos[0] ?? null;
+    }
+}
 
 includeSidebar('Organização eventos');
 ?>
@@ -347,6 +492,35 @@ includeSidebar('Organização eventos');
 
     .btn-success:hover {
         background: #047857;
+    }
+
+    .btn-danger {
+        background: #dc2626;
+        color: #fff;
+    }
+
+    .btn-danger:hover {
+        background: #b91c1c;
+    }
+
+    .alert {
+        margin-bottom: 1rem;
+        padding: 0.85rem 1rem;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        font-size: 0.88rem;
+    }
+
+    .alert-success {
+        background: #ecfdf5;
+        color: #166534;
+        border-color: #a7f3d0;
+    }
+
+    .alert-error {
+        background: #fef2f2;
+        color: #991b1b;
+        border-color: #fecaca;
     }
 
     .event-selector {
@@ -595,6 +769,10 @@ includeSidebar('Organização eventos');
         flex-wrap: wrap;
     }
 
+    .card-actions form {
+        display: inline-flex;
+    }
+
     .helper-note {
         margin-top: 0.5rem;
         color: #64748b;
@@ -604,6 +782,65 @@ includeSidebar('Organização eventos');
     .helper-note-stack {
         display: grid;
         gap: 0.2rem;
+    }
+
+    .resumo-upload-form {
+        margin-top: 0.9rem;
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .resumo-upload-field {
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .resumo-upload-field label {
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .resumo-upload-field input[type="file"] {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.55rem 0.65rem;
+        background: #fff;
+        color: #1f2937;
+        font-size: 0.84rem;
+    }
+
+    .resumo-upload-field textarea {
+        min-height: 72px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.65rem 0.75rem;
+        resize: vertical;
+        font: inherit;
+        color: #1f2937;
+    }
+
+    .resumo-file-box {
+        margin-top: 0.9rem;
+        padding: 0.8rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #f8fafc;
+    }
+
+    .resumo-file-title {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+
+    .resumo-file-meta {
+        margin-top: 0.35rem;
+        color: #64748b;
+        font-size: 0.82rem;
+        line-height: 1.45;
     }
 
     .status-note {
@@ -713,6 +950,10 @@ includeSidebar('Organização eventos');
 </style>
 
 <div class="organizacao-container">
+    <?php if ($flash_message !== ''): ?>
+    <div class="alert <?= $flash_type === 'success' ? 'alert-success' : 'alert-error' ?>"><?= eventos_organizacao_e($flash_message) ?></div>
+    <?php endif; ?>
+
     <div class="page-header">
         <div>
             <h1 class="page-title">🧩 Organização de Eventos</h1>
@@ -884,14 +1125,66 @@ includeSidebar('Organização eventos');
             </div>
         </div>
 
-        <div class="module-card">
+        <div class="module-card" id="resumo-evento-card">
             <h3>📄 Resumo do Evento</h3>
             <p>Contrato do cliente em PDF com tudo que foi contratado. Uso interno, com histórico de substituições no log de anexos.</p>
-            <div class="card-actions">
-                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>#resumo-evento" class="btn btn-primary">Abrir Resumo do Evento</a>
+
+            <?php
+                $resumo_nome = trim((string)($resumo_evento_arquivo_atual['original_name'] ?? ''));
+                $resumo_url = trim((string)($resumo_evento_arquivo_atual['public_url'] ?? ''));
+                $resumo_desc = trim((string)($resumo_evento_arquivo_atual['descricao'] ?? ''));
+                $resumo_uploaded_at = trim((string)($resumo_evento_arquivo_atual['uploaded_at'] ?? ''));
+                $resumo_uploaded_at_fmt = $resumo_uploaded_at !== '' ? date('d/m/Y H:i', strtotime($resumo_uploaded_at)) : '-';
+            ?>
+
+            <?php if (!$resumo_evento_arquivo_atual): ?>
+            <div class="helper-note">Nenhum PDF anexado ainda.</div>
+            <?php else: ?>
+            <div class="resumo-file-box">
+                <div class="resumo-file-title"><?= eventos_organizacao_e($resumo_nome !== '' ? $resumo_nome : 'arquivo.pdf') ?></div>
+                <div class="resumo-file-meta">
+                    Última atualização: <?= eventos_organizacao_e($resumo_uploaded_at_fmt) ?>
+                    <?php if ($resumo_desc !== ''): ?><br><?= eventos_organizacao_e($resumo_desc) ?><?php endif; ?>
+                </div>
             </div>
+            <?php endif; ?>
+
+            <form method="POST" enctype="multipart/form-data" class="resumo-upload-form">
+                <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                <input type="hidden" name="action" value="upload_resumo_evento_card">
+
+                <div class="resumo-upload-field">
+                    <label for="arquivoResumoEventoCard">Arquivo PDF</label>
+                    <input type="file" id="arquivoResumoEventoCard" name="arquivo_resumo_evento" accept=".pdf,application/pdf" required>
+                </div>
+
+                <div class="resumo-upload-field">
+                    <label for="descricaoResumoEventoCard">Descrição (opcional)</label>
+                    <textarea id="descricaoResumoEventoCard" name="descricao_resumo_evento" placeholder="Ex.: Contrato assinado atualizado."></textarea>
+                </div>
+
+                <div class="card-actions">
+                    <button type="submit" class="btn btn-primary"><?= $resumo_evento_arquivo_atual ? 'Substituir PDF' : 'Anexar PDF' ?></button>
+                    <?php if ($resumo_url !== ''): ?>
+                    <a href="<?= eventos_organizacao_e($resumo_url) ?>" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">Visualizar PDF</a>
+                    <?php endif; ?>
+                    <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>#resumo-evento" class="btn btn-secondary">Abrir histórico</a>
+                </div>
+            </form>
+
+            <?php if ($resumo_evento_arquivo_atual): ?>
+            <div class="card-actions">
+                <form method="POST" onsubmit="return confirm('Deseja excluir o PDF atual do resumo do evento?');">
+                    <input type="hidden" name="meeting_id" value="<?= (int)$meeting_id ?>">
+                    <input type="hidden" name="action" value="excluir_resumo_evento_card">
+                    <input type="hidden" name="arquivo_id" value="<?= (int)($resumo_evento_arquivo_atual['id'] ?? 0) ?>">
+                    <button type="submit" class="btn btn-danger">Excluir PDF</button>
+                </form>
+            </div>
+            <?php endif; ?>
+
             <div class="helper-note">
-                Sem opção de exibição no portal do cliente.
+                Sem opção de exibição no portal do cliente. Ao anexar novo PDF, o anterior é substituído automaticamente.
             </div>
         </div>
 

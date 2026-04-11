@@ -11,11 +11,13 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $token = $_GET['token'] ?? $_POST['token'] ?? '';
 $error = '';
 $success = false;
+$draft_saved = false;
 $link = null;
 $reuniao = null;
 $secao = null;
@@ -24,6 +26,7 @@ $section_views = [];
 $link_sections = ['dj_protocolo'];
 $is_combined_reuniao = false;
 $portal_config = null;
+$link_type_current = '';
 $link_section = 'dj_protocolo';
 $link_visivel = true;
 $link_editavel = true;
@@ -552,7 +555,7 @@ function eventos_cliente_schema_garantir_texto_livre(array $schema, string $sect
 /**
  * Monta HTML de resposta do cliente a partir do schema.
  */
-function eventos_cliente_montar_resposta_schema(array $schema, array $post, string $section = ''): array {
+function eventos_cliente_montar_resposta_schema(array $schema, array $post, string $section = '', bool $allow_partial = false): array {
     $errors = [];
     $parts = [];
     $values = [];
@@ -586,7 +589,7 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
         }
 
         $value = isset($post[$input_name]) ? trim((string)$post[$input_name]) : '';
-        if ($required && $value === '') {
+        if (!$allow_partial && $required && $value === '') {
             $errors[] = 'Preencha o campo obrigatório: ' . $label;
             continue;
         }
@@ -625,12 +628,80 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
 /**
  * Prepara dados de uma seção pública para renderização/submit.
  */
+function eventos_cliente_mesclar_listas_anexos(array ...$listas): array {
+    $map = [];
+    foreach ($listas as $lista) {
+        foreach ($lista as $anexo) {
+            if (!is_array($anexo)) {
+                continue;
+            }
+            $key = (string)($anexo['id'] ?? '');
+            if ($key === '') {
+                $key = md5(json_encode($anexo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: uniqid('anexo_', true));
+            }
+            $anexo['is_draft'] = !empty($anexo['is_draft']);
+            $map[$key] = $anexo;
+        }
+    }
+
+    $merged = array_values($map);
+    usort($merged, static function (array $a, array $b): int {
+        $timeA = strtotime((string)($a['uploaded_at'] ?? '')) ?: 0;
+        $timeB = strtotime((string)($b['uploaded_at'] ?? '')) ?: 0;
+        if ($timeA === $timeB) {
+            return ((int)($b['id'] ?? 0)) <=> ((int)($a['id'] ?? 0));
+        }
+        return $timeB <=> $timeA;
+    });
+
+    return $merged;
+}
+
+function eventos_cliente_filtrar_observacoes_publicas(string $html): string {
+    $content = trim($html);
+    if ($content === '' || stripos($content, 'data-smile-observacoes-block') === false) {
+        return $html;
+    }
+
+    $filtered = preg_replace(
+        '#<section\b[^>]*data-smile-observacoes-block="[^"]*"[^>]*data-smile-client-visible="0"[^>]*>.*?</section>#is',
+        '',
+        $content
+    );
+
+    return is_string($filtered) ? trim($filtered) : $html;
+}
+
 function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, string $section, ?array $link = null, bool $prefer_link_snapshot = false): array {
     $secao = eventos_reuniao_get_secao($pdo, $meeting_id, $section);
-    $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, $section);
+    $link_id = (int)($link['id'] ?? 0);
+    if ($prefer_link_snapshot && $link_id > 0) {
+        $anexos_finais = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, $section, $link_id);
+        if (!empty($link['submitted_at'])) {
+            $anexos = $anexos_finais;
+        } else {
+            $anexos_rascunho = eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, $section, $link_id);
+            $anexos = eventos_cliente_mesclar_listas_anexos($anexos_rascunho, $anexos_finais);
+        }
+    } else {
+        $anexos = eventos_reuniao_get_anexos($pdo, $meeting_id, $section);
+    }
 
-    $content_from_link_snapshot = $prefer_link_snapshot ? trim((string)($link['content_html_snapshot'] ?? '')) : '';
+    $content_from_link_snapshot = '';
+    if ($prefer_link_snapshot) {
+        $content_from_final_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
+        $content_from_draft_snapshot = empty($link['submitted_at'])
+            ? trim((string)($link['draft_content_html_snapshot'] ?? ''))
+            : '';
+        $content_from_link_snapshot = $content_from_draft_snapshot !== ''
+            ? $content_from_draft_snapshot
+            : $content_from_final_snapshot;
+    }
     $content_from_secao = trim((string)($secao['content_html'] ?? ''));
+    if ($section === 'observacoes_gerais') {
+        $content_from_link_snapshot = eventos_cliente_filtrar_observacoes_publicas($content_from_link_snapshot);
+        $content_from_secao = eventos_cliente_filtrar_observacoes_publicas($content_from_secao);
+    }
     $content = $content_from_link_snapshot !== '' ? $content_from_link_snapshot : $content_from_secao;
 
     $form_schema = [];
@@ -679,6 +750,7 @@ function eventos_cliente_preparar_secao_publica(PDO $pdo, int $meeting_id, strin
         'form_values' => $form_values,
         'legacy_text_portal_visible' => $legacy_text_portal_visible,
         'uses_link_snapshot' => $prefer_link_snapshot,
+        'uses_draft_snapshot' => $prefer_link_snapshot && empty($link['submitted_at']) && trim((string)($link['draft_content_html_snapshot'] ?? '')) !== '',
     ];
 }
 
@@ -814,7 +886,8 @@ if (empty($token)) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
     $action = $_POST['action'] ?? '';
     
-    if ($action === 'salvar') {
+    if ($action === 'salvar' || $action === 'salvar_rascunho') {
+        $is_draft_action = $action === 'salvar_rascunho';
         if (!$link_editavel) {
             $error = 'Este formulário está em modo somente visualização.';
         } elseif (!empty($link['submitted_at'])) {
@@ -836,7 +909,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 $section_content = '';
 
                 if (!empty($schema_submit)) {
-                    $compiled = eventos_cliente_montar_resposta_schema($schema_submit, $_POST, $section_key);
+                    $compiled = eventos_cliente_montar_resposta_schema($schema_submit, $_POST, $section_key, $is_draft_action);
                     if (empty($compiled['ok'])) {
                         $error = implode(' | ', array_slice((array)($compiled['errors'] ?? []), 0, 2));
                         break;
@@ -868,7 +941,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                         $field_input = eventos_cliente_file_input_name($field_raw_id, $section_key);
                         $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
                         $has_existing_attachments = !empty($section_view['anexos']);
-                        if (!empty($field['required']) && empty($field_uploads) && !$has_existing_attachments) {
+                        if (!$is_draft_action && !empty($field['required']) && empty($field_uploads) && !$has_existing_attachments) {
                             $error = 'Campo obrigatório sem anexo: ' . (string)($field['label'] ?? 'Arquivo');
                             break 2;
                         }
@@ -884,7 +957,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     }
                 } else {
                     $section_content = (string)($_POST[eventos_cliente_content_input_name($section_key)] ?? '');
-                    if (trim(strip_tags($section_content)) === '') {
+                    if (!$is_draft_action && trim(strip_tags($section_content)) === '') {
                         $error = 'Por favor, preencha as informações de ' . eventos_cliente_section_label($section_key) . ' antes de enviar.';
                         break;
                     }
@@ -912,23 +985,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 $uploader = null;
 
                 foreach ($pending_sections as $section_key => $pending) {
-                    $result = eventos_reuniao_salvar_secao(
-                        $pdo,
-                        (int)$link['meeting_id'],
-                        $section_key,
-                        (string)$pending['content'],
-                        0,
-                        'Envio do cliente',
-                        'cliente',
-                        !empty($pending['schema_submit']) ? json_encode($pending['schema_submit'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
-                    );
-
-                    if (empty($result['ok'])) {
-                        $error = $result['error'] ?? 'Erro ao salvar';
-                        break;
-                    }
-
                     $saved_contents[$section_key] = (string)$pending['content'];
+
+                    if (!$is_draft_action) {
+                        $result = eventos_reuniao_salvar_secao(
+                            $pdo,
+                            (int)$link['meeting_id'],
+                            $section_key,
+                            (string)$pending['content'],
+                            0,
+                            'Envio do cliente',
+                            'cliente',
+                            !empty($pending['schema_submit']) ? json_encode($pending['schema_submit'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null
+                        );
+
+                        if (empty($result['ok'])) {
+                            $error = $result['error'] ?? 'Erro ao salvar';
+                            break;
+                        }
+
+                    }
 
                     if (!empty($pending['uploads'])) {
                         if (!$uploader) {
@@ -952,7 +1028,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                                     $upload_result,
                                     'cliente',
                                     null,
-                                    $file_note !== '' ? $file_note : null
+                                    $file_note !== '' ? $file_note : null,
+                                    (int)$link['id'],
+                                    $is_draft_action
                                 );
                                 if (empty($save_result['ok'])) {
                                     $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
@@ -970,7 +1048,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                 }
 
                 if ($error === '') {
-                    if (!empty($upload_errors)) {
+                    if (!$is_draft_action && !eventos_reuniao_promover_anexos_rascunho_link($pdo, (int)$link['id'])) {
+                        $error = 'Conteúdo salvo, mas não foi possível consolidar os anexos do rascunho.';
+                    }
+                }
+
+                if ($error === '') {
+                    if ($is_draft_action) {
+                        $saved_link = eventos_link_publico_salvar_rascunho($pdo, (int)$link['id'], $snapshot_content);
+                        if (empty($saved_link)) {
+                            $error = 'Não foi possível salvar o rascunho. Tente novamente.';
+                        } else {
+                            $draft_saved = true;
+                        }
+                    } elseif (!empty($upload_errors)) {
                         $error = 'Conteúdo salvo, mas alguns anexos falharam: ' . implode(' | ', array_slice($upload_errors, 0, 2));
                         eventos_link_publico_salvar_snapshot($pdo, (int)$link['id'], $snapshot_content);
                     } else {
@@ -993,7 +1084,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                     }
                 }
 
-                if ($error !== '' || $success) {
+                if ($error !== '' || $success || $draft_saved) {
+                    $link = eventos_link_publico_get($pdo, $token) ?: $link;
                     $section_views = [];
                     foreach ($link_sections as $section_key) {
                         $section_views[$section_key] = eventos_cliente_preparar_secao_publica(
@@ -1019,12 +1111,7 @@ $is_locked = !empty($link['submitted_at']) || !$link_editavel;
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : 'Não informada';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? $snapshot['horainicio'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? ''));
-$horario_evento = $hora_inicio !== '' ? $hora_inicio : 'Não informado';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_evento .= ' - ' . $hora_fim;
-}
+$horario_evento = eventos_cliente_ui_horario_evento($snapshot, 'Não informado');
 $local_evento = trim((string)($snapshot['local'] ?? $snapshot['nomelocal'] ?? 'Não informado'));
 $convidados_evento = (int)($snapshot['convidados'] ?? $snapshot['nconvidados'] ?? 0);
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? $snapshot['nomecliente'] ?? 'Não informado'));
@@ -1034,6 +1121,7 @@ $tipo_evento = trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento']
 $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
 $section_view_items = array_values($section_views);
 $section_views_total = count($section_view_items);
+$back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_current, $link_section, $is_combined_reuniao);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -1050,7 +1138,9 @@ $section_views_total = count($section_view_items);
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8fafc;
+            background:
+                radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 24%),
+                linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
             color: #1e293b;
             line-height: 1.6;
         }
@@ -1084,6 +1174,13 @@ $section_views_total = count($section_view_items);
             max-width: 800px;
             margin: 0 auto;
             padding: 2rem;
+        }
+
+        .page-top-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
         }
         
         .event-info {
@@ -1424,6 +1521,27 @@ $section_views_total = count($section_view_items);
             color: white;
             width: 100%;
         }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #0f172a;
+            border: 1px solid #cbd5e1;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .form-actions .btn {
+            flex: 1 1 220px;
+        }
         
         .btn-primary:hover {
             transform: translateY(-2px);
@@ -1533,9 +1651,18 @@ $section_views_total = count($section_view_items);
     </div>
     
     <div class="container">
+        <?php if (($back_link['href'] ?? '') !== ''): ?>
+        <div class="page-top-actions">
+            <a class="btn btn-secondary" href="<?= htmlspecialchars((string)$back_link['href']) ?>">← <?= htmlspecialchars((string)($back_link['label'] ?? 'Voltar')) ?></a>
+        </div>
+        <?php endif; ?>
         <?php if ($error): ?>
         <div class="alert alert-error">
             <strong>Erro:</strong> <?= htmlspecialchars($error) ?>
+        </div>
+        <?php elseif ($draft_saved): ?>
+        <div class="alert alert-success">
+            <strong>Rascunho salvo.</strong> Você pode voltar depois para continuar e enviar quando terminar.
         </div>
         <?php elseif ($success): ?>
         <div class="form-section">
@@ -1666,6 +1793,7 @@ $section_views_total = count($section_view_items);
                             <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
                             <?php endif; ?>
                         </div>
+                        <div class="attachment-note"><strong>Status:</strong> <?= !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado' ?></div>
                         <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
                         <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
                         <?php endif; ?>
@@ -1756,7 +1884,6 @@ $section_views_total = count($section_view_items);
         </div>
         
         <form method="POST" id="djForm" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="salvar">
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
             
             <?php foreach ($section_view_items as $section_view): ?>
@@ -1895,7 +2022,7 @@ $section_views_total = count($section_view_items);
 
                 <?php if (!empty($section_anexos)): ?>
                 <div class="attachments-list">
-                    <h4>Arquivos já enviados</h4>
+                    <h4>Arquivos salvos neste formulário</h4>
                     <ul>
                         <?php foreach ($section_anexos as $anexo): ?>
                         <li>
@@ -1909,6 +2036,7 @@ $section_views_total = count($section_view_items);
                                 <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
                                 <?php endif; ?>
                             </div>
+                            <div class="attachment-note"><strong>Status:</strong> <?= !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado' ?></div>
                             <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
                             <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
                             <?php endif; ?>
@@ -1920,9 +2048,14 @@ $section_views_total = count($section_view_items);
             </div>
             <?php endforeach; ?>
             
-            <button type="submit" class="btn btn-primary" id="submitBtn">
-                ✓ Enviar Informações
-            </button>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-secondary" id="draftBtn" name="action" value="salvar_rascunho" formnovalidate>
+                    Salvar rascunho
+                </button>
+                <button type="submit" class="btn btn-primary" id="submitBtn" name="action" value="salvar">
+                    ✓ Enviar Informações
+                </button>
+            </div>
             
             <p style="text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #64748b;">
                 Após o envio, a edição fica bloqueada até a equipe destravar novamente.
@@ -1978,29 +2111,40 @@ $section_views_total = count($section_view_items);
             }
             
             document.getElementById('djForm').addEventListener('submit', function(e) {
+                const submitter = e.submitter || null;
+                const action = submitter && submitter.value ? submitter.value : 'salvar';
+                const isDraftAction = action === 'salvar_rascunho';
                 let emptyLegacySection = '';
                 document.querySelectorAll('[data-client-editor="legacy"]').forEach((editor) => {
                     const inputId = editor.getAttribute('data-content-input') || '';
                     const contentInput = inputId ? document.getElementById(inputId) : null;
                     if (!contentInput) return;
                     contentInput.value = editor.innerHTML;
-                    if (!emptyLegacySection && !editor.innerText.trim()) {
+                    if (!isDraftAction && emptyLegacySection === '' && !editor.innerText.trim()) {
                         emptyLegacySection = editor.getAttribute('data-section-label') || 'o formulário';
                     }
                 });
-                if (emptyLegacySection !== '') {
+                if (!isDraftAction && emptyLegacySection !== '') {
                     e.preventDefault();
                     alert(`Por favor, preencha as informações de ${emptyLegacySection} antes de enviar.`);
                     return false;
                 }
-                
-                if (!confirm('Confirma o envio das informações? Após enviar, não será possível alterar.')) {
+
+                if (!isDraftAction && !confirm('Confirma o envio das informações? Após enviar, não será possível alterar.')) {
                     e.preventDefault();
                     return false;
                 }
-                
-                document.getElementById('submitBtn').disabled = true;
-                document.getElementById('submitBtn').innerText = 'Enviando...';
+
+                const submitBtn = document.getElementById('submitBtn');
+                const draftBtn = document.getElementById('draftBtn');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerText = isDraftAction ? 'Enviar Informações' : 'Enviando...';
+                }
+                if (draftBtn) {
+                    draftBtn.disabled = true;
+                    draftBtn.innerText = isDraftAction ? 'Salvando...' : 'Salvar rascunho';
+                }
             });
 
             bindUploadNoteInputs();
