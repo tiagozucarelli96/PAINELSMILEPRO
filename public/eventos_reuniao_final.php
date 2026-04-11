@@ -2137,6 +2137,7 @@ includeSidebar($sidebar_title);
                 $editor_wrap_attrs = ' style="display:none;"';
             }
             ?>
+            <?php if ($key !== 'formulario'): ?>
             <div class="editor-wrapper legacy-editor-wrap" id="legacyEditorWrap-<?= $key ?>"<?= $editor_wrap_attrs ?>>
                 <?php 
                 $safe_content = str_replace('</textarea>', '&lt;/textarea&gt;', $content);
@@ -2146,6 +2147,7 @@ includeSidebar($sidebar_title);
                           <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
                           style="width:100%; min-height: 400px; border: 0;"><?= $safe_content ?></textarea>
             </div>
+            <?php endif; ?>
             
             <?php if ($key !== 'formulario'): ?>
             <div class="section-actions">
