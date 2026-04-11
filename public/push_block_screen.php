@@ -22,8 +22,7 @@ $is_internal = $is_superadmin
     || !empty($_SESSION['perm_logistico'])
     || !empty($_SESSION['perm_configuracoes'])
     || !empty($_SESSION['perm_cadastros'])
-    || !empty($_SESSION['perm_financeiro'])
-    || !empty($_SESSION['perm_banco_smile']);
+    || !empty($_SESSION['perm_financeiro']);
 
 // Se não for usuário interno, redirecionar
 if (!$is_internal) {

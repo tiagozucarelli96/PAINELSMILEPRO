@@ -361,6 +361,11 @@ includeSidebar('Realizar evento');
         font-size: 0.82rem;
     }
 
+    .helper-note-stack {
+        display: grid;
+        gap: 0.2rem;
+    }
+
     .status-badge {
         display: inline-flex;
         align-items: center;
@@ -514,21 +519,15 @@ includeSidebar('Realizar evento');
         </article>
 
         <article class="module-card">
-            <h3>🎧 DJ / Protocolos</h3>
-            <p>Mantém o fluxo atual de DJ/Protocolos com os mesmos quadros.</p>
-            <div class="card-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=dj&origin=realizar&readonly=1" class="btn btn-primary">Abrir DJ / Protocolos</a>
-            </div>
-            <div class="helper-note">Mesmo conteúdo e lógica da tela de Organização.</div>
-        </article>
-
-        <article class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Acesso às áreas de Decoração e Observações Gerais da reunião final.</p>
+            <p>Acesso à reunião final completa, com as abas Decoração, Observações Gerais e DJ / Protocolos.</p>
             <div class="card-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=reuniao&origin=realizar&readonly=1" class="btn btn-primary">Abrir Reunião Final</a>
+                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
-            <div class="helper-note">Mesmo fluxo da Organização, sem mudanças de comportamento.</div>
+            <div class="helper-note helper-note-stack">
+                <div>Mesma tela da Organização, agora com DJ / Protocolos dentro da reunião final.</div>
+                <div>Os dados e integrações do DJ continuam os mesmos, apenas a entrada visual foi unificada.</div>
+            </div>
         </article>
 
         <article class="module-card">

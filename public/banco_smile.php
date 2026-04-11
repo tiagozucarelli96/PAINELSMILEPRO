@@ -1,9 +1,0 @@
-<?php
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
-require_once __DIR__.'/conexao.php';
-require_once __DIR__.'/config.php';
-exigeLogin(); refreshPermissoes($pdo);
-if (empty($_SESSION['perm_banco_smile'])) { echo '<div class="alert-error">Acesso negado.</div>'; exit; }
-?>
-<h1>🏦 Banco Smile</h1>
-<p>Em breve.</p>

@@ -24,6 +24,32 @@ if (!function_exists('portao_provider_mode')) {
     }
 }
 
+if (!function_exists('portao_provider_uses_queue')) {
+    function portao_provider_uses_queue(?string $provider = null): bool {
+        $provider = strtolower(trim((string)($provider ?? portao_provider_mode())));
+        return in_array($provider, ['fila', 'queue', 'agent', 'local_agent', 'cloud_agent'], true);
+    }
+}
+
+if (!function_exists('portao_agent_token')) {
+    function portao_agent_token(): string {
+        return trim((string)(portao_env('PORTAO_AGENT_TOKEN', '') ?? ''));
+    }
+}
+
+if (!function_exists('portao_agent_processing_timeout_seconds')) {
+    function portao_agent_processing_timeout_seconds(): int {
+        $seconds = (int)(portao_env('PORTAO_AGENT_PROCESSING_TIMEOUT_SECONDS', '120') ?? '120');
+        if ($seconds < 30) {
+            $seconds = 30;
+        }
+        if ($seconds > 3600) {
+            $seconds = 3600;
+        }
+        return $seconds;
+    }
+}
+
 if (!function_exists('portao_auto_close_minutes')) {
     function portao_auto_close_minutes(): int {
         $minutes = (int)(portao_env('PORTAO_AUTO_CLOSE_MINUTES', '30') ?? '30');
@@ -104,6 +130,30 @@ if (!function_exists('portao_ensure_schema')) {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_portao_logs_criado_em ON portao_logs (criado_em DESC)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_portao_logs_usuario ON portao_logs (usuario_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_portao_logs_acao ON portao_logs (acao)");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS portao_comandos (
+                id BIGSERIAL PRIMARY KEY,
+                acao VARCHAR(20) NOT NULL,
+                origem VARCHAR(20) NOT NULL DEFAULT 'manual',
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                provider VARCHAR(30) NOT NULL DEFAULT 'queue',
+                usuario_id INTEGER NULL,
+                usuario_nome VARCHAR(255) NULL,
+                detalhe TEXT NULL,
+                ip VARCHAR(45) NULL,
+                user_agent VARCHAR(255) NULL,
+                agent_id VARCHAR(255) NULL,
+                reservado_em TIMESTAMP NULL,
+                concluido_em TIMESTAMP NULL,
+                payload_json JSONB NULL,
+                resultado_json JSONB NULL,
+                criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_portao_comandos_status_criado_em ON portao_comandos (status, criado_em ASC)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_portao_comandos_agent_id ON portao_comandos (agent_id)");
 
         $initialized = true;
     }
@@ -205,6 +255,411 @@ if (!function_exists('portao_log')) {
             error_log('[PORTAO] Falha ao gravar log: ' . $e->getMessage());
             return 0;
         }
+    }
+}
+
+if (!function_exists('portao_json_encode_payload')) {
+    function portao_json_encode_payload($payload): ?string {
+        if ($payload === null) {
+            return null;
+        }
+
+        $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return ($encoded === false) ? null : $encoded;
+    }
+}
+
+if (!function_exists('portao_normalize_estado')) {
+    function portao_normalize_estado(?string $estado, ?string $fallback = null): string {
+        $estado = strtolower(trim((string)$estado));
+        if (in_array($estado, ['aberto', 'fechado', 'desconhecido'], true)) {
+            return $estado;
+        }
+
+        $fallback = strtolower(trim((string)$fallback));
+        if (in_array($fallback, ['aberto', 'fechado', 'desconhecido'], true)) {
+            return $fallback;
+        }
+
+        return 'desconhecido';
+    }
+}
+
+if (!function_exists('portao_enqueue_command')) {
+    function portao_enqueue_command(PDO $pdo, string $acao, array $context, string $origem = 'manual'): array {
+        portao_ensure_schema($pdo);
+
+        $acao = strtolower(trim($acao));
+        if (!in_array($acao, ['abrir', 'fechar'], true)) {
+            return ['ok' => false, 'queued' => false, 'message' => 'Acao invalida para fila.'];
+        }
+
+        $timeout = portao_agent_processing_timeout_seconds();
+        $intervalSql = (int)$timeout . ' seconds';
+
+        $sqlActive = "
+            SELECT id, acao, status, criado_em, reservado_em
+            FROM portao_comandos
+            WHERE status = 'pending'
+               OR (status = 'processing' AND reservado_em IS NOT NULL AND reservado_em >= CURRENT_TIMESTAMP - INTERVAL '{$intervalSql}')
+            ORDER BY id DESC
+            LIMIT 1
+        ";
+        $active = $pdo->query($sqlActive);
+        $existing = $active ? $active->fetch(PDO::FETCH_ASSOC) : false;
+
+        if (is_array($existing)) {
+            $existingAction = strtolower(trim((string)($existing['acao'] ?? '')));
+            if ($existingAction === $acao) {
+                return [
+                    'ok' => true,
+                    'queued' => true,
+                    'executed' => false,
+                    'duplicate' => true,
+                    'provider' => 'queue',
+                    'message' => 'Ja existe um comando pendente para ' . $acao . '.',
+                    'command_id' => (int)($existing['id'] ?? 0),
+                ];
+            }
+
+            return [
+                'ok' => false,
+                'queued' => false,
+                'executed' => false,
+                'provider' => 'queue',
+                'message' => 'Existe um comando pendente (' . $existingAction . '). Aguarde concluir antes de enviar outro.',
+                'command_id' => (int)($existing['id'] ?? 0),
+            ];
+        }
+
+        $payload = [
+            'requested_at' => date('c'),
+            'requested_by' => [
+                'usuario_id' => $context['usuario_id'] ?? null,
+                'usuario_nome' => $context['usuario_nome'] ?? null,
+            ],
+        ];
+
+        $sql = "
+            INSERT INTO portao_comandos
+                (acao, origem, status, provider, usuario_id, usuario_nome, detalhe, ip, user_agent, payload_json, criado_em)
+            VALUES
+                (:acao, :origem, 'pending', 'queue', :usuario_id, :usuario_nome, :detalhe, :ip, :user_agent, CAST(:payload AS JSONB), CURRENT_TIMESTAMP)
+            RETURNING id
+        ";
+
+        $st = $pdo->prepare($sql);
+        $st->execute([
+            ':acao' => $acao,
+            ':origem' => $origem,
+            ':usuario_id' => $context['usuario_id'] ?? null,
+            ':usuario_nome' => $context['usuario_nome'] ?? null,
+            ':detalhe' => 'Comando aguardando agente local.',
+            ':ip' => $context['ip'] ?? null,
+            ':user_agent' => $context['user_agent'] ?? null,
+            ':payload' => portao_json_encode_payload($payload),
+        ]);
+        $id = (int)($st->fetchColumn() ?: 0);
+
+        return [
+            'ok' => $id > 0,
+            'queued' => $id > 0,
+            'executed' => false,
+            'provider' => 'queue',
+            'message' => $id > 0
+                ? 'Comando enfileirado para o agente local.'
+                : 'Nao foi possivel enfileirar o comando.',
+            'command_id' => $id,
+            'payload' => ['command_id' => $id],
+        ];
+    }
+}
+
+if (!function_exists('portao_fetch_next_command')) {
+    function portao_fetch_next_command(PDO $pdo, string $agentId): array {
+        portao_ensure_schema($pdo);
+
+        $agentId = trim($agentId);
+        if ($agentId === '') {
+            $agentId = 'portao-agent';
+        }
+        if (strlen($agentId) > 255) {
+            $agentId = substr($agentId, 0, 255);
+        }
+
+        $timeout = portao_agent_processing_timeout_seconds();
+        $intervalSql = (int)$timeout . ' seconds';
+
+        try {
+            $pdo->beginTransaction();
+
+            $sql = "
+                SELECT *
+                FROM portao_comandos
+                WHERE status = 'pending'
+                   OR (status = 'processing' AND reservado_em IS NOT NULL AND reservado_em < CURRENT_TIMESTAMP - INTERVAL '{$intervalSql}')
+                ORDER BY
+                    CASE WHEN status = 'pending' THEN 0 ELSE 1 END,
+                    id ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            ";
+
+            $st = $pdo->query($sql);
+            $command = $st ? $st->fetch(PDO::FETCH_ASSOC) : false;
+
+            if (!$command) {
+                $pdo->commit();
+                return ['ok' => true, 'command' => null];
+            }
+
+            $update = $pdo->prepare("
+                UPDATE portao_comandos
+                SET
+                    status = 'processing',
+                    agent_id = :agent_id,
+                    reservado_em = CURRENT_TIMESTAMP,
+                    detalhe = :detalhe
+                WHERE id = :id
+            ");
+            $update->execute([
+                ':agent_id' => $agentId,
+                ':detalhe' => 'Comando reservado para o agente ' . $agentId . '.',
+                ':id' => (int)$command['id'],
+            ]);
+
+            $pdo->commit();
+
+            $command['status'] = 'processing';
+            $command['agent_id'] = $agentId;
+            $command['reservado_em'] = date('Y-m-d H:i:s');
+
+            return ['ok' => true, 'command' => $command];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            return [
+                'ok' => false,
+                'command' => null,
+                'message' => 'Falha ao buscar comando pendente: ' . $e->getMessage(),
+            ];
+        }
+    }
+}
+
+if (!function_exists('portao_finish_command')) {
+    function portao_finish_command(
+        PDO $pdo,
+        int $commandId,
+        bool $success,
+        ?string $message = null,
+        ?string $estado = null,
+        ?array $resultPayload = null,
+        ?string $agentId = null
+    ): array {
+        portao_ensure_schema($pdo);
+
+        if ($commandId <= 0) {
+            return ['ok' => false, 'message' => 'command_id invalido.'];
+        }
+
+        $message = trim((string)$message);
+        if ($message === '') {
+            $message = $success ? 'Comando executado pelo agente local.' : 'Falha ao executar comando no agente local.';
+        }
+
+        try {
+            $pdo->beginTransaction();
+
+            $st = $pdo->prepare("SELECT * FROM portao_comandos WHERE id = :id FOR UPDATE");
+            $st->execute([':id' => $commandId]);
+            $command = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$command) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'Comando nao encontrado.'];
+            }
+
+            $currentStatus = strtolower(trim((string)($command['status'] ?? '')));
+            if (in_array($currentStatus, ['success', 'error', 'cancelled'], true)) {
+                $pdo->commit();
+                return [
+                    'ok' => true,
+                    'message' => 'Comando ja estava finalizado.',
+                    'command' => $command,
+                ];
+            }
+
+            $agentId = trim((string)($agentId ?? $command['agent_id'] ?? ''));
+            if ($agentId === '') {
+                $agentId = 'portao-agent';
+            }
+            if (strlen($agentId) > 255) {
+                $agentId = substr($agentId, 0, 255);
+            }
+
+            $commandAction = strtolower(trim((string)($command['acao'] ?? '')));
+            $commandOrigin = trim((string)($command['origem'] ?? 'manual'));
+            $finalEstado = portao_normalize_estado(
+                $estado,
+                $success ? ($commandAction === 'abrir' ? 'aberto' : ($commandAction === 'fechar' ? 'fechado' : 'desconhecido')) : null
+            );
+
+            $update = $pdo->prepare("
+                UPDATE portao_comandos
+                SET
+                    status = :status,
+                    agent_id = :agent_id,
+                    detalhe = :detalhe,
+                    concluido_em = CURRENT_TIMESTAMP,
+                    resultado_json = CAST(:resultado_json AS JSONB)
+                WHERE id = :id
+            ");
+            $update->execute([
+                ':status' => $success ? 'success' : 'error',
+                ':agent_id' => $agentId,
+                ':detalhe' => $message,
+                ':resultado_json' => portao_json_encode_payload($resultPayload),
+                ':id' => $commandId,
+            ]);
+
+            $stateBefore = portao_get_estado($pdo);
+            $autoCloseAt = $stateBefore['auto_close_at'] ?? null;
+
+            if ($success) {
+                if ($finalEstado === 'aberto') {
+                    $minutes = portao_auto_close_minutes();
+                    $autoCloseAt = (new DateTimeImmutable('now'))->modify('+' . $minutes . ' minutes')->format('Y-m-d H:i:s');
+                } elseif ($finalEstado === 'fechado') {
+                    $autoCloseAt = null;
+                }
+
+                portao_set_estado($pdo, [
+                    'estado' => $finalEstado,
+                    'ultima_acao' => $commandAction,
+                    'ultima_origem' => $commandOrigin,
+                    'ultima_resultado' => 'success',
+                    'ultima_usuario_id' => $command['usuario_id'] ?? null,
+                    'ultima_usuario_nome' => $command['usuario_nome'] ?? null,
+                    'ultima_detalhe' => $message,
+                    'auto_close_at' => $autoCloseAt,
+                ]);
+
+                portao_log($pdo, [
+                    'usuario_id' => $command['usuario_id'] ?? null,
+                    'usuario_nome' => $command['usuario_nome'] ?? null,
+                    'acao' => $commandAction,
+                    'origem' => 'agent',
+                    'resultado' => 'success',
+                    'detalhe' => $message,
+                    'ip' => $command['ip'] ?? null,
+                    'user_agent' => $command['user_agent'] ?? null,
+                    'payload' => [
+                        'command_id' => $commandId,
+                        'agent_id' => $agentId,
+                        'result' => $resultPayload,
+                    ],
+                ]);
+
+                if ($finalEstado === 'aberto') {
+                    portao_log($pdo, [
+                        'usuario_id' => $command['usuario_id'] ?? null,
+                        'usuario_nome' => $command['usuario_nome'] ?? null,
+                        'acao' => 'auto_close_agendado',
+                        'origem' => 'agent',
+                        'resultado' => 'success',
+                        'detalhe' => 'Fechamento automatico agendado para ' . $autoCloseAt . '.',
+                        'ip' => $command['ip'] ?? null,
+                        'user_agent' => $command['user_agent'] ?? null,
+                        'payload' => [
+                            'command_id' => $commandId,
+                            'agent_id' => $agentId,
+                            'auto_close_at' => $autoCloseAt,
+                            'minutes' => portao_auto_close_minutes(),
+                        ],
+                    ]);
+                } elseif ($commandAction === 'fechar' && !empty($stateBefore['auto_close_at'])) {
+                    portao_log($pdo, [
+                        'usuario_id' => $command['usuario_id'] ?? null,
+                        'usuario_nome' => $command['usuario_nome'] ?? null,
+                        'acao' => 'auto_close_cancelado',
+                        'origem' => 'agent',
+                        'resultado' => 'success',
+                        'detalhe' => 'Auto-fechamento cancelado apos execucao do fechamento pelo agente.',
+                        'ip' => $command['ip'] ?? null,
+                        'user_agent' => $command['user_agent'] ?? null,
+                        'payload' => [
+                            'command_id' => $commandId,
+                            'agent_id' => $agentId,
+                        ],
+                    ]);
+                }
+            } else {
+                portao_set_estado($pdo, [
+                    'estado' => portao_normalize_estado((string)($stateBefore['estado'] ?? 'desconhecido')),
+                    'ultima_acao' => $commandAction,
+                    'ultima_origem' => $commandOrigin,
+                    'ultima_resultado' => 'error',
+                    'ultima_usuario_id' => $command['usuario_id'] ?? null,
+                    'ultima_usuario_nome' => $command['usuario_nome'] ?? null,
+                    'ultima_detalhe' => $message,
+                    'auto_close_at' => $stateBefore['auto_close_at'] ?? null,
+                ]);
+
+                portao_log($pdo, [
+                    'usuario_id' => $command['usuario_id'] ?? null,
+                    'usuario_nome' => $command['usuario_nome'] ?? null,
+                    'acao' => $commandAction,
+                    'origem' => 'agent',
+                    'resultado' => 'error',
+                    'detalhe' => $message,
+                    'ip' => $command['ip'] ?? null,
+                    'user_agent' => $command['user_agent'] ?? null,
+                    'payload' => [
+                        'command_id' => $commandId,
+                        'agent_id' => $agentId,
+                        'result' => $resultPayload,
+                    ],
+                ]);
+            }
+
+            $pdo->commit();
+
+            return [
+                'ok' => true,
+                'message' => $message,
+                'command_id' => $commandId,
+                'status' => $success ? 'success' : 'error',
+                'estado' => $success ? $finalEstado : portao_normalize_estado((string)($stateBefore['estado'] ?? 'desconhecido')),
+            ];
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            return ['ok' => false, 'message' => 'Falha ao finalizar comando: ' . $e->getMessage()];
+        }
+    }
+}
+
+if (!function_exists('portao_list_pending_commands')) {
+    function portao_list_pending_commands(PDO $pdo, int $limit = 10): array {
+        portao_ensure_schema($pdo);
+
+        $limit = max(1, min(50, $limit));
+        $st = $pdo->prepare("
+            SELECT id, acao, origem, status, usuario_id, usuario_nome, detalhe, agent_id, criado_em, reservado_em, concluido_em
+            FROM portao_comandos
+            WHERE status IN ('pending', 'processing')
+            ORDER BY id DESC
+            LIMIT :limite
+        ");
+        $st->bindValue(':limite', $limit, PDO::PARAM_INT);
+        $st->execute();
+
+        return $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 }
 
@@ -907,6 +1362,8 @@ if (!function_exists('portao_dispatch_command')) {
         if (in_array($provider, ['simulado', 'mock', 'teste'], true)) {
             return [
                 'ok' => true,
+                'queued' => false,
+                'executed' => true,
                 'provider' => 'simulado',
                 'message' => 'Comando executado em modo simulado.',
                 'payload' => ['acao' => $acao, 'origem' => $origem],
@@ -918,6 +1375,8 @@ if (!function_exists('portao_dispatch_command')) {
             if ($url === '') {
                 return [
                     'ok' => false,
+                    'queued' => false,
+                    'executed' => false,
                     'provider' => $provider,
                     'message' => 'PORTAO_HTTP_URL nao configurada.',
                 ];
@@ -926,6 +1385,8 @@ if (!function_exists('portao_dispatch_command')) {
             if (!function_exists('curl_init')) {
                 return [
                     'ok' => false,
+                    'queued' => false,
+                    'executed' => false,
                     'provider' => $provider,
                     'message' => 'Extensao cURL nao disponivel no PHP.',
                 ];
@@ -967,6 +1428,8 @@ if (!function_exists('portao_dispatch_command')) {
             if ($responseRaw === false) {
                 return [
                     'ok' => false,
+                    'queued' => false,
+                    'executed' => false,
                     'provider' => $provider,
                     'message' => 'Falha HTTP: ' . ($curlError ?: 'erro desconhecido'),
                     'payload' => ['http_code' => $httpCode],
@@ -990,6 +1453,8 @@ if (!function_exists('portao_dispatch_command')) {
 
             return [
                 'ok' => $ok,
+                'queued' => false,
+                'executed' => $ok,
                 'provider' => $provider,
                 'message' => $message,
                 'payload' => [
@@ -1009,6 +1474,8 @@ if (!function_exists('portao_dispatch_command')) {
 
         return [
             'ok' => false,
+            'queued' => false,
+            'executed' => false,
             'provider' => $provider,
             'message' => 'Provider de portao invalido: ' . $provider,
         ];
@@ -1086,8 +1553,16 @@ if (!function_exists('portao_execute_action')) {
             return ['ok' => true, 'message' => 'Portao ja estava aberto. Temporizador renovado.', 'acao' => $acao];
         }
 
-        $dispatch = portao_dispatch_command($acao, $origem);
+        $provider = portao_provider_mode();
+
+        if (portao_provider_uses_queue($provider)) {
+            $dispatch = portao_enqueue_command($pdo, $acao, $ctx, $origem);
+        } else {
+            $dispatch = portao_dispatch_command($acao, $origem);
+        }
+
         $ok = !empty($dispatch['ok']);
+        $queued = !empty($dispatch['queued']) && empty($dispatch['executed']);
         $detail = (string)($dispatch['message'] ?? ($ok ? 'Comando enviado.' : 'Falha ao enviar comando.'));
 
         if (!$ok) {
@@ -1115,6 +1590,40 @@ if (!function_exists('portao_execute_action')) {
             ]);
 
             return ['ok' => false, 'message' => $detail, 'acao' => $acao, 'provider' => $dispatch['provider'] ?? null];
+        }
+
+        if ($queued) {
+            portao_set_estado($pdo, [
+                'estado' => portao_normalize_estado((string)($estadoAntes['estado'] ?? 'desconhecido')),
+                'ultima_acao' => $acao,
+                'ultima_origem' => $origem,
+                'ultima_resultado' => 'pending',
+                'ultima_usuario_id' => $ctx['usuario_id'] ?? null,
+                'ultima_usuario_nome' => $ctx['usuario_nome'] ?? null,
+                'ultima_detalhe' => $detail,
+                'auto_close_at' => $estadoAntes['auto_close_at'] ?? null,
+            ]);
+
+            portao_log($pdo, [
+                'usuario_id' => $ctx['usuario_id'] ?? null,
+                'usuario_nome' => $ctx['usuario_nome'] ?? null,
+                'acao' => $acao,
+                'origem' => $origem,
+                'resultado' => 'pending',
+                'detalhe' => $detail,
+                'ip' => $ctx['ip'] ?? null,
+                'user_agent' => $ctx['user_agent'] ?? null,
+                'payload' => $dispatch,
+            ]);
+
+            return [
+                'ok' => true,
+                'queued' => true,
+                'message' => $detail,
+                'acao' => $acao,
+                'provider' => $dispatch['provider'] ?? $provider,
+                'command_id' => $dispatch['command_id'] ?? null,
+            ];
         }
 
         $newState = ($acao === 'abrir') ? 'aberto' : 'fechado';

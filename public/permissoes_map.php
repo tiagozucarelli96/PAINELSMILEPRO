@@ -35,9 +35,6 @@ return [
     'contabilidade' => 'perm_administrativo',
     'contabilidade_holerite_individual' => 'perm_administrativo',
     'rh' => 'perm_administrativo',
-    'banco_smile' => 'perm_banco_smile',
-    'banco_smile_main' => 'perm_banco_smile',
-    'banco_smile_admin' => 'perm_banco_smile_admin',
     
     // Páginas específicas dentro dos módulos
     

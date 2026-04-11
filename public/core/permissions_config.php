@@ -15,7 +15,6 @@
  * - Cadastros: perm_cadastros
  * - Financeiro: perm_financeiro
  * - Administrativo: perm_administrativo
- * - Banco Smile: perm_banco_smile
  * - Superadmin: perm_superadmin (acesso total)
  */
 
@@ -75,11 +74,6 @@ define('SYSTEM_PERMISSIONS', [
         'label' => 'Administrativo / Vendas',
         'icon' => '🛡️',
         'description' => 'Acesso à aprovação de pré-contratos e criação de eventos na ME'
-    ],
-    'perm_banco_smile' => [
-        'label' => 'Banco Smile',
-        'icon' => '🏦',
-        'description' => 'Acesso ao Banco Smile'
     ],
 ]);
 
@@ -149,7 +143,6 @@ function user_can_access(string $module): bool {
         'vendas_administracao' => 'perm_vendas_administracao',
         'contabilidade' => 'perm_administrativo',
         'rh' => 'perm_administrativo',
-        'banco_smile' => 'perm_banco_smile',
     ];
     
     $perm = $module_map[$module] ?? null;

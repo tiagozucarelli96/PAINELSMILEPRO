@@ -1,9 +1,9 @@
 <?php
 // lc_permissions_enhanced.php
-// Sistema de permissões simplificado - apenas 10 permissões da sidebar + superadmin
+// Sistema de permissões simplificado - permissões principais da sidebar + superadmin
 
 /**
- * Lista das permissões válidas do sistema (10 da sidebar + superadmin)
+ * Lista das permissões válidas do sistema
  */
 define('VALID_PERMISSIONS', [
     'perm_agenda',
@@ -15,7 +15,6 @@ define('VALID_PERMISSIONS', [
     'perm_financeiro',
     'perm_administrativo',
     'perm_vendas_administracao',
-    'perm_banco_smile',
     'perm_superadmin'
 ]);
 
@@ -75,7 +74,6 @@ function lc_can_access_module(string $module): bool {
         'administrativo' => 'perm_administrativo',
         'vendas_administracao' => 'perm_vendas_administracao',
         'contabilidade' => 'perm_administrativo', // Contabilidade usa perm_administrativo
-        'banco_smile' => 'perm_banco_smile',
         'rh' => 'perm_administrativo', // RH usa perm_administrativo
     ];
     
@@ -193,7 +191,6 @@ function lc_get_permission_message(string $action): string {
         'administrativo' => 'Você precisa da permissão "Administrativo" para acessar este módulo.',
         'agenda' => 'Você precisa da permissão "Agenda" para acessar este módulo.',
         'demandas' => 'Você precisa da permissão "Demandas" para acessar este módulo.',
-        'banco_smile' => 'Você precisa da permissão "Banco Smile" para acessar este módulo.',
         'degustacoes_editar' => 'Você precisa da permissão "Comercial" para editar degustações.',
         'inscritos_manage' => 'Você precisa da permissão "Comercial" para gerenciar inscritos.',
         'conversao_view' => 'Você precisa da permissão "Comercial" ou "Financeiro" para ver conversão.',

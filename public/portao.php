@@ -67,8 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $autoCloseProbe = portao_process_auto_close($pdo, false);
 $state = portao_get_estado($pdo);
 $logs = portao_list_logs($pdo, 120);
+$pendingCommands = portao_list_pending_commands($pdo, 10);
 $provider = portao_provider_mode();
 $autoMinutes = portao_auto_close_minutes();
+$agentConfigured = portao_agent_token() !== '';
 $flash = $_SESSION['portao_flash'] ?? null;
 unset($_SESSION['portao_flash']);
 
@@ -157,6 +159,13 @@ ob_start();
     color: #64748b;
     font-size: .85rem;
 }
+.portao-pending-list {
+    margin: .75rem 0 0;
+    padding-left: 1rem;
+}
+.portao-pending-list li {
+    margin-bottom: .35rem;
+}
 </style>
 
 <div class="portao-wrap">
@@ -171,6 +180,12 @@ ob_start();
     <?php if (!empty($autoCloseProbe['executed']) && empty($autoCloseProbe['ok'])): ?>
         <div class="alert-error" style="margin-bottom:1rem;">
             Falha ao processar auto-fechamento pendente.
+        </div>
+    <?php endif; ?>
+
+    <?php if (($state['ultima_resultado'] ?? '') === 'pending'): ?>
+        <div class="alert-warning" style="margin-bottom:1rem;">
+            Existe um comando aguardando execucao do agente local. O estado do portao so muda apos confirmacao do agente.
         </div>
     <?php endif; ?>
 
@@ -198,6 +213,12 @@ ob_start();
                 Auto-fechamento: <strong><?= (int)$autoMinutes ?> min</strong><br>
                 Proximo fechamento: <strong><?= h(!empty($state['auto_close_at']) ? brDate((string)$state['auto_close_at']) : '-') ?></strong>
             </div>
+            <?php if (portao_provider_uses_queue($provider)): ?>
+                <div class="portao-muted" style="margin-top:.6rem;">
+                    Modo fila/agente local ativo. Token do agente:
+                    <strong><?= $agentConfigured ? 'configurado' : 'nao configurado' ?></strong>
+                </div>
+            <?php endif; ?>
             <?php if (in_array($provider, ['simulado', 'mock', 'teste'], true)): ?>
                 <div class="portao-muted" style="margin-top:.6rem;">
                     Modo simulado ativo. Nenhum dispositivo fisico sera acionado.
@@ -220,6 +241,28 @@ ob_start();
                     <input type="hidden" name="acao" value="auto_close_now">
                     <button type="submit" class="btn-portao btn-aux">Rodar auto-close agora</button>
                 </form>
+            <?php endif; ?>
+        </div>
+
+        <div class="portao-card">
+            <div class="portao-muted">Fila do agente</div>
+            <?php if (empty($pendingCommands)): ?>
+                <div style="margin-top:.35rem; font-weight:700; color:#0f172a;">Nenhum comando pendente</div>
+            <?php else: ?>
+                <ul class="portao-pending-list">
+                    <?php foreach ($pendingCommands as $cmd): ?>
+                        <li>
+                            <strong>#<?= (int)$cmd['id'] ?> <?= h((string)$cmd['acao']) ?></strong>
+                            <span class="portao-muted">[<?= h((string)$cmd['status']) ?>]</span><br>
+                            <span class="portao-muted">
+                                <?= h((string)($cmd['usuario_nome'] ?? 'sistema')) ?> em <?= h(brDate((string)($cmd['criado_em'] ?? ''))) ?>
+                                <?php if (!empty($cmd['agent_id'])): ?>
+                                    | agente: <?= h((string)$cmd['agent_id']) ?>
+                                <?php endif; ?>
+                            </span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
             <?php endif; ?>
         </div>
     </div>
@@ -272,4 +315,3 @@ $content = ob_get_clean();
 includeSidebar('Portao');
 echo $content;
 endSidebar();
-

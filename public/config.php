@@ -14,8 +14,6 @@ function temPerm(string $k){ return !empty($_SESSION[$k]) && (int)$_SESSION[$k] 
  * Atualiza a sessão com o estado real do banco
  * Inclui as novas chaves:
  *  - perm_lista
- *  - perm_banco_smile
- *  - perm_banco_smile_admin
  *  - perm_notas_fiscais
  *  - perm_estoque_logistico (REMOVIDO: Módulo desativado)
  *  - perm_dados_contrato
@@ -26,7 +24,7 @@ function refreshPermissoes(PDO $pdo) {
 
     $sql = "SELECT id, nome, status,
                    perm_tarefas, perm_lista, perm_demandas, perm_pagamentos, perm_usuarios, perm_portao,
-                   perm_banco_smile, perm_banco_smile_admin, perm_notas_fiscais,
+                   perm_notas_fiscais,
                    perm_dados_contrato, perm_uso_fiorino // REMOVIDO: perm_estoque_logistico
             FROM usuarios
             WHERE id = :id
@@ -40,7 +38,7 @@ function refreshPermissoes(PDO $pdo) {
         // lista completa de chaves que o dashboard usa
         $keys = [
             'perm_tarefas','perm_lista','perm_demandas','perm_pagamentos','perm_usuarios','perm_portao',
-            'perm_banco_smile','perm_banco_smile_admin','perm_notas_fiscais',
+            'perm_notas_fiscais',
             'perm_dados_contrato','perm_uso_fiorino' // REMOVIDO: 'perm_estoque_logistico'
         ];
         foreach ($keys as $k) {

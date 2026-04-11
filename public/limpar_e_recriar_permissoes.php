@@ -80,7 +80,6 @@ header('Content-Type: text/html; charset=utf-8');
                     'perm_cadastros',
                     'perm_financeiro',
                     'perm_administrativo',
-                    'perm_banco_smile',
                     'perm_usuarios'
                 ];
                 
@@ -134,7 +133,7 @@ header('Content-Type: text/html; charset=utf-8');
                 <p>Este processo irá:</p>
                 <ul>
                     <li>Remover <strong>TODAS</strong> as <?= count($permCols) ?> colunas de permissões existentes</li>
-                    <li>Criar apenas as 10 permissões essenciais do sistema</li>
+                    <li>Criar apenas as permissões essenciais do sistema</li>
                 </ul>
                 <p><strong>Os dados de permissões dos usuários serão perdidos!</strong></p>
             </div>

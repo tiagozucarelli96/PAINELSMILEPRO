@@ -36,8 +36,6 @@ $todas_permissoes = [
     'perm_cadastros',
     'perm_financeiro',
     'perm_administrativo',
-    'perm_banco_smile',
-    'perm_banco_smile_admin',
     // Permissões específicas
     'perm_usuarios',
     'perm_pagamentos',

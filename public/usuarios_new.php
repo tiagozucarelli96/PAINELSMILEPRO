@@ -888,10 +888,12 @@ ob_start();
 
     .foto-editor-content {
         width: min(760px, 100%);
-        max-height: calc(100vh - 2rem);
+        height: min(860px, calc(100vh - 2rem));
         background: #fff;
         border-radius: 12px;
-        overflow: auto;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     .foto-editor-header {
@@ -904,11 +906,20 @@ ob_start();
     }
 
     .foto-editor-body {
+        flex: 1 1 auto;
+        min-height: 0;
         padding: 1rem;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f172a;
     }
 
     .foto-editor-body img {
+        display: block;
         max-width: 100%;
+        max-height: 100%;
     }
 
     .foto-editor-actions {
@@ -934,6 +945,31 @@ ob_start();
     .btn-editor-primary {
         background: #1e3a8a;
         color: #fff;
+    }
+
+    @media (max-width: 640px) {
+        .foto-editor-modal {
+            padding: 0.75rem;
+        }
+
+        .foto-editor-content {
+            width: 100%;
+            height: calc(100vh - 1.5rem);
+            border-radius: 10px;
+        }
+
+        .foto-editor-body {
+            padding: 0.75rem;
+        }
+
+        .foto-editor-actions {
+            justify-content: stretch;
+        }
+
+        .btn-editor {
+            flex: 1 1 calc(50% - 0.25rem);
+            text-align: center;
+        }
     }
 </style>
 
@@ -974,7 +1010,7 @@ ob_start();
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
             'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
-            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao', 'perm_banco_smile',
+            'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
         
@@ -1220,7 +1256,6 @@ ob_start();
                     'perm_financeiro' => '💰 Financeiro',
                     'perm_administrativo' => '👥 Administrativo',
                     'perm_vendas_administracao' => '🛡️ Administrativo / Vendas',
-                    'perm_banco_smile' => '🏦 Banco Smile',
                     'perm_portao' => '🔓 Portao',
                 ];
                 
@@ -1236,7 +1271,6 @@ ob_start();
                     'perm_financeiro',
                     'perm_administrativo',
                     'perm_vendas_administracao',
-                    'perm_banco_smile',
                     'perm_portao'
                 ];
                 

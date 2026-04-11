@@ -601,6 +601,11 @@ includeSidebar('Organização eventos');
         font-size: 0.8rem;
     }
 
+    .helper-note-stack {
+        display: grid;
+        gap: 0.2rem;
+    }
+
     .status-note {
         margin-top: 0.75rem;
         font-size: 0.82rem;
@@ -809,7 +814,7 @@ includeSidebar('Organização eventos');
     <div class="cards-grid">
         <div class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Área da reunião final com Decoração e Observações Gerais para o cliente.</p>
+            <p>Área central da reunião final com as abas Decoração, Observações Gerais e DJ / Protocolos.</p>
             <div class="module-options">
                 <label class="check-row">
                     <input type="checkbox" id="cfgVisivelReuniao" <?= $visivel_reuniao ? 'checked' : '' ?>>
@@ -819,33 +824,21 @@ includeSidebar('Organização eventos');
                     <input type="checkbox" id="cfgEditavelReuniao" <?= $editavel_reuniao ? 'checked' : '' ?>>
                     <span>Editável pelo cliente</span>
                 </label>
-            </div>
-            <div class="card-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=reuniao&origin=organizacao" class="btn btn-primary">Abrir Reunião Final</a>
-            </div>
-            <div class="helper-note">
-                <?= $has_obs_link ? 'Há link público ativo para Reunião Final.' : 'Sem link público ativo de Reunião Final.' ?>
-            </div>
-        </div>
-
-        <div class="module-card">
-            <h3>🎧 DJ / Protocolos</h3>
-            <p>Mantém os quadros, links de formulário e uploads exatamente como no DJ / Protocolos atual.</p>
-            <div class="module-options">
                 <label class="check-row">
                     <input type="checkbox" id="cfgVisivelDj" <?= $visivel_dj ? 'checked' : '' ?>>
-                    <span>Visível para o cliente</span>
+                    <span>Visível para o cliente (DJ)</span>
                 </label>
                 <label class="check-row">
                     <input type="checkbox" id="cfgEditavelDj" <?= $editavel_dj ? 'checked' : '' ?>>
-                    <span>Editável pelo cliente</span>
+                    <span>Editável pelo cliente (DJ)</span>
                 </label>
             </div>
             <div class="card-actions">
-                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&scope=dj&origin=organizacao" class="btn btn-primary">Abrir DJ / Protocolos</a>
+                <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=organizacao" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
-            <div class="helper-note">
-                <?= $has_dj_link ? 'Há link público ativo para DJ.' : 'Sem link público ativo de DJ.' ?>
+            <div class="helper-note helper-note-stack">
+                <div><?= $has_obs_link ? 'Há link público ativo para Reunião Final.' : 'Sem link público ativo de Reunião Final.' ?></div>
+                <div><?= $has_dj_link ? 'Há link público ativo para DJ.' : 'Sem link público ativo de DJ.' ?></div>
             </div>
         </div>
 

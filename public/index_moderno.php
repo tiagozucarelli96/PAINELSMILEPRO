@@ -62,8 +62,7 @@ $pageTitles = [
     'comercial_clientes' => 'Conversão',
     'notas_fiscais' => 'Notas Fiscais',
     'usuarios' => 'Usuários',
-    'configuracoes' => 'Configurações',
-    'banco_smile_admin' => 'Banco Smile'
+    'configuracoes' => 'Configurações'
 ];
 
 $pageTitle = $pageTitles[$page] ?? 'Página';
@@ -78,8 +77,7 @@ $breadcrumbs = [
     'comercial_clientes' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'Comercial'], ['title' => 'Conversão']],
     'notas_fiscais' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'Financeiro'], ['title' => 'Notas Fiscais']],
     'usuarios' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'RH'], ['title' => 'Usuários']],
-    'configuracoes' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'RH'], ['title' => 'Configurações']],
-    'banco_smile_admin' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'Administrativo'], ['title' => 'Banco Smile']]
+    'configuracoes' => [['title' => 'Dashboard', 'url' => 'index.php?page=dashboard'], ['title' => 'RH'], ['title' => 'Configurações']]
 ];
 
 if (isset($breadcrumbs[$page])) {

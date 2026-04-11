@@ -591,17 +591,6 @@ if ($current_page === 'dashboard') {
             
             <div class="dashboard-card">
                 <div class="card-header">
-                    <h3>🏦 Banco Smile</h3>
-                    <span class="card-icon">🏦</span>
-                </div>
-                <div class="card-content">
-                    <p>Acesso ao banco Smile</p>
-                    <a href="index.php?page=banco_smile" class="btn-primary">Acessar</a>
-                </div>
-            </div>
-            
-            <div class="dashboard-card">
-                <div class="card-header">
                     <h3>📄 Notas Fiscais</h3>
                     <span class="card-icon">📄</span>
                 </div>
@@ -1642,13 +1631,6 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
                 
-                <?php if (!empty($_SESSION['perm_banco_smile'])): ?>
-                <a href="index.php?page=banco_smile" class="nav-item <?= isActiveUnified('banco_smile') ?>">
-                    <span class="nav-item-icon">🏦</span>
-                    Banco Smile
-                </a>
-                <?php endif; ?>
-
                 <?php if (!empty($_SESSION['perm_portao']) || !empty($_SESSION['perm_superadmin'])): ?>
                 <a href="index.php?page=portao" class="nav-item nav-item-gate <?= isActiveUnified('portao') ?>">
                     <span class="nav-item-icon">🔓</span>
