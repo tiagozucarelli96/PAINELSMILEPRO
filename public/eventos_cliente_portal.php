@@ -330,44 +330,65 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
         .event-box h2 {
             color: #1e3a8a;
-            margin-bottom: 0.75rem;
-            font-size: 1.45rem;
+            margin-bottom: 0.45rem;
+            font-size: 1.55rem;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
+        }
+
+        .event-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            border-radius: 999px;
+            border: 1px solid #bfdbfe;
+            background: #eff6ff;
+            color: #1e40af;
+            font-size: 0.74rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            padding: 0.3rem 0.62rem;
+            margin-bottom: 0.65rem;
         }
 
         .event-summary-copy {
             color: #475569;
-            font-size: 0.94rem;
-            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            margin-bottom: 0.95rem;
+            line-height: 1.45;
         }
 
-        .event-meta {
+        .event-facts {
             display: grid;
-            gap: 0.8rem;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.55rem;
         }
 
-        .event-pill {
-            padding: 0.9rem 0.95rem;
-            border-radius: 16px;
+        .event-fact {
+            display: grid;
+            grid-template-columns: 110px minmax(0, 1fr);
+            align-items: baseline;
+            gap: 0.65rem;
             border: 1px solid #dbeafe;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            background: #ffffff;
+            padding: 0.62rem 0.72rem;
         }
 
-        .event-pill-label {
-            display: block;
-            font-size: 0.76rem;
+        .event-fact-label {
+            font-size: 0.72rem;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             font-weight: 700;
             color: #64748b;
-            margin-bottom: 0.28rem;
+            white-space: nowrap;
         }
 
-        .event-pill-value {
+        .event-fact-value {
             color: #0f172a;
-            font-size: 1rem;
-            font-weight: 800;
+            font-size: 1.04rem;
+            font-weight: 700;
+            overflow-wrap: anywhere;
         }
 
         .countdown-panel {
@@ -648,6 +669,11 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                 grid-template-columns: 1fr;
             }
 
+            .event-fact {
+                grid-template-columns: 1fr;
+                gap: 0.28rem;
+            }
+
             .countdown-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -687,24 +713,25 @@ foreach ($links_formulario_portal as $formulario_link_item) {
         <div class="event-box">
             <div class="event-box-grid">
                 <div>
+                    <div class="event-kicker">Resumo do Evento</div>
                     <h2><?= htmlspecialchars($evento_nome) ?></h2>
                     <div class="event-summary-copy">Tudo organizado em um só lugar para o cliente navegar com clareza até o grande dia.</div>
-                    <div class="event-meta">
-                        <div class="event-pill">
-                            <span class="event-pill-label">Data</span>
-                            <div class="event-pill-value"><?= htmlspecialchars($data_evento_fmt) ?></div>
+                    <div class="event-facts">
+                        <div class="event-fact">
+                            <div class="event-fact-label">Data</div>
+                            <div class="event-fact-value"><?= htmlspecialchars($data_evento_fmt) ?></div>
                         </div>
-                        <div class="event-pill">
-                            <span class="event-pill-label">Horário</span>
-                            <div class="event-pill-value"><?= htmlspecialchars($horario_evento) ?></div>
+                        <div class="event-fact">
+                            <div class="event-fact-label">Horário</div>
+                            <div class="event-fact-value"><?= htmlspecialchars($horario_evento) ?></div>
                         </div>
-                        <div class="event-pill">
-                            <span class="event-pill-label">Local</span>
-                            <div class="event-pill-value"><?= htmlspecialchars($local_evento) ?></div>
+                        <div class="event-fact">
+                            <div class="event-fact-label">Local</div>
+                            <div class="event-fact-value"><?= htmlspecialchars($local_evento) ?></div>
                         </div>
-                        <div class="event-pill">
-                            <span class="event-pill-label">Cliente</span>
-                            <div class="event-pill-value"><?= htmlspecialchars($cliente_nome) ?></div>
+                        <div class="event-fact">
+                            <div class="event-fact-label">Cliente</div>
+                            <div class="event-fact-value"><?= htmlspecialchars($cliente_nome) ?></div>
                         </div>
                     </div>
                 </div>
