@@ -106,6 +106,59 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
     ];
 }
 
+function eventos_reuniao_serializar_lista_anexos(array $anexos): array {
+    $serialized = [];
+    foreach ($anexos as $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        $serialized[] = eventos_reuniao_serializar_anexo($anexo);
+    }
+    return $serialized;
+}
+
+function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeting_id, array $link): array {
+    $link_id = (int)($link['id'] ?? 0);
+    $draft_attachments = [];
+    $submitted_attachments = [];
+
+    if ($link_id > 0) {
+        try {
+            $draft_attachments = eventos_reuniao_serializar_lista_anexos(
+                eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, 'formulario', $link_id)
+            );
+        } catch (Throwable $e) {
+            error_log('eventos_reuniao_final draft attachments link ' . $link_id . ': ' . $e->getMessage());
+        }
+
+        try {
+            $submitted_attachments = eventos_reuniao_serializar_lista_anexos(
+                eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'formulario', $link_id)
+            );
+        } catch (Throwable $e) {
+            error_log('eventos_reuniao_final submitted attachments link ' . $link_id . ': ' . $e->getMessage());
+        }
+    }
+
+    return [
+        'id' => $link_id,
+        'token' => (string)($link['token'] ?? ''),
+        'is_active' => !empty($link['is_active']),
+        'slot_index' => (int)($link['slot_index'] ?? 1),
+        'form_title' => (string)($link['form_title'] ?? ''),
+        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
+        'draft_saved_at' => array_key_exists('draft_saved_at', $link) && $link['draft_saved_at'] !== null ? (string)$link['draft_saved_at'] : null,
+        'portal_visible' => !empty($link['portal_visible']),
+        'portal_editable' => !empty($link['portal_editable']),
+        'portal_configured' => !empty($link['portal_configured']),
+        'draft_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['draft_content_html_snapshot'] ?? '')),
+        'submitted_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['content_html_snapshot'] ?? '')),
+        'draft_attachments' => $draft_attachments,
+        'submitted_attachments' => $submitted_attachments,
+        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
+    ];
+}
+
 function eventos_reuniao_json_script($value, string $fallback = 'null'): string {
     $options = JSON_UNESCAPED_UNICODE
         | JSON_UNESCAPED_SLASHES
@@ -732,6 +785,34 @@ $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo,
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
 $links_cliente_formulario = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_formulario') : [];
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
+$links_cliente_formulario_payload = [];
+foreach ($links_cliente_formulario as $link_formulario) {
+    if (!is_array($link_formulario)) {
+        continue;
+    }
+    try {
+        $links_cliente_formulario_payload[] = eventos_reuniao_serializar_link_formulario_payload($pdo, $meeting_id, $link_formulario);
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_final serializar link formulario: ' . $e->getMessage());
+        $links_cliente_formulario_payload[] = [
+            'id' => (int)($link_formulario['id'] ?? 0),
+            'token' => (string)($link_formulario['token'] ?? ''),
+            'is_active' => !empty($link_formulario['is_active']),
+            'slot_index' => (int)($link_formulario['slot_index'] ?? 1),
+            'form_title' => (string)($link_formulario['form_title'] ?? ''),
+            'submitted_at' => array_key_exists('submitted_at', $link_formulario) && $link_formulario['submitted_at'] !== null ? (string)$link_formulario['submitted_at'] : null,
+            'draft_saved_at' => array_key_exists('draft_saved_at', $link_formulario) && $link_formulario['draft_saved_at'] !== null ? (string)$link_formulario['draft_saved_at'] : null,
+            'portal_visible' => !empty($link_formulario['portal_visible']),
+            'portal_editable' => !empty($link_formulario['portal_editable']),
+            'portal_configured' => !empty($link_formulario['portal_configured']),
+            'draft_preview_text' => '',
+            'submitted_preview_text' => '',
+            'draft_attachments' => [],
+            'submitted_attachments' => [],
+            'form_schema' => is_array($link_formulario['form_schema'] ?? null) ? $link_formulario['form_schema'] : [],
+        ];
+    }
+}
 $active_tab_query = trim((string)($_GET['tab'] ?? ''));
 $scope = strtolower(trim((string)($_GET['scope'] ?? '')));
 $back_href = 'index.php?page=eventos';
@@ -2448,26 +2529,7 @@ const initialObservacoesClientLinks = <?= eventos_reuniao_json_script(array_map(
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_observacoes), '[]') ?>;
-const initialFormularioLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
-    $link_id = (int)($link['id'] ?? 0);
-    return [
-        'id' => (int)($link['id'] ?? 0),
-        'token' => (string)($link['token'] ?? ''),
-        'is_active' => !empty($link['is_active']),
-        'slot_index' => (int)($link['slot_index'] ?? 1),
-        'form_title' => (string)($link['form_title'] ?? ''),
-        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
-        'draft_saved_at' => array_key_exists('draft_saved_at', $link) && $link['draft_saved_at'] !== null ? (string)$link['draft_saved_at'] : null,
-        'portal_visible' => !empty($link['portal_visible']),
-        'portal_editable' => !empty($link['portal_editable']),
-        'portal_configured' => !empty($link['portal_configured']),
-        'draft_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['draft_content_html_snapshot'] ?? '')),
-        'submitted_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['content_html_snapshot'] ?? '')),
-        'draft_attachments' => array_map('eventos_reuniao_serializar_anexo', $link_id > 0 ? eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, 'formulario', $link_id) : []),
-        'submitted_attachments' => array_map('eventos_reuniao_serializar_anexo', $link_id > 0 ? eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'formulario', $link_id) : []),
-        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
-    ];
-}, $links_cliente_formulario), '[]') ?>;
+const initialFormularioLinks = <?= eventos_reuniao_json_script($links_cliente_formulario_payload, '[]') ?>;
 const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
 }, $anexos_dj), '[]') ?>;
