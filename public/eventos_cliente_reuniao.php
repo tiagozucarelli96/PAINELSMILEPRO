@@ -18,12 +18,17 @@ $error = '';
 $portal = null;
 $reuniao = null;
 $snapshot = [];
-$link_observacoes = null;
+$links_observacoes_portal = [];
+$links_dj_portal = [];
+$links_formulario_portal = [];
 $visivel_reuniao = false;
 $editavel_reuniao = false;
+$visivel_dj = false;
+$editavel_dj = false;
 
-function eventos_cliente_reuniao_selecionar_link_observacoes(array $links_observacoes): ?array
+function eventos_cliente_reuniao_filtrar_links_observacoes(array $links_observacoes): array
 {
+    $result = [];
     $has_rules = false;
     foreach ($links_observacoes as $link_item) {
         if (!empty($link_item['portal_configured'])) {
@@ -39,10 +44,98 @@ function eventos_cliente_reuniao_selecionar_link_observacoes(array $links_observ
         if ($has_rules && empty($link_item['portal_visible'])) {
             continue;
         }
-        return $link_item;
+        $result[] = $link_item;
     }
 
-    return null;
+    usort($result, static function (array $a, array $b): int {
+        $slotA = max(1, (int)($a['slot_index'] ?? 1));
+        $slotB = max(1, (int)($b['slot_index'] ?? 1));
+        if ($slotA !== $slotB) {
+            return $slotA <=> $slotB;
+        }
+        return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0));
+    });
+
+    return $result;
+}
+
+function eventos_cliente_reuniao_tem_campos_formulario($schema): bool
+{
+    if (!is_array($schema)) {
+        return false;
+    }
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        if (strpos($field_id, 'legacy_portal_text_') === 0) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        if (in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function eventos_cliente_reuniao_filtrar_links_dj(array $links_dj): array
+{
+    $result = [];
+    $has_rules = false;
+    foreach ($links_dj as $link_item) {
+        if (!empty($link_item['portal_configured'])) {
+            $has_rules = true;
+            break;
+        }
+    }
+
+    foreach ($links_dj as $link_item) {
+        if (empty($link_item['is_active'])) {
+            continue;
+        }
+        if ($has_rules && empty($link_item['portal_visible'])) {
+            continue;
+        }
+        $result[] = $link_item;
+    }
+
+    usort($result, static function (array $a, array $b): int {
+        $slotA = max(1, (int)($a['slot_index'] ?? 1));
+        $slotB = max(1, (int)($b['slot_index'] ?? 1));
+        if ($slotA !== $slotB) {
+            return $slotA <=> $slotB;
+        }
+        return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0));
+    });
+
+    return $result;
+}
+
+function eventos_cliente_reuniao_filtrar_links_formulario(array $links_formulario): array
+{
+    $result = [];
+    foreach ($links_formulario as $link_item) {
+        if (empty($link_item['is_active']) || empty($link_item['portal_visible'])) {
+            continue;
+        }
+        if (!eventos_cliente_reuniao_tem_campos_formulario($link_item['form_schema'] ?? null)) {
+            continue;
+        }
+        $result[] = $link_item;
+    }
+
+    usort($result, static function (array $a, array $b): int {
+        $slotA = max(1, (int)($a['slot_index'] ?? 1));
+        $slotB = max(1, (int)($b['slot_index'] ?? 1));
+        if ($slotA !== $slotB) {
+            return $slotA <=> $slotB;
+        }
+        return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0));
+    });
+
+    return $result;
 }
 
 if ($token === '') {
@@ -63,6 +156,8 @@ if ($token === '') {
 
             $visivel_reuniao = !empty($portal['visivel_reuniao']);
             $editavel_reuniao = !empty($portal['editavel_reuniao']);
+            $visivel_dj = !empty($portal['visivel_dj']);
+            $editavel_dj = !empty($portal['editavel_dj']);
             if (!$visivel_reuniao) {
                 $error = 'A área de reunião final ainda não está habilitada para este evento.';
             } else {
@@ -79,7 +174,15 @@ if ($token === '') {
                     }
 
                     $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
-                    $link_observacoes = eventos_cliente_reuniao_selecionar_link_observacoes($links_observacoes);
+                    $links_observacoes_portal = eventos_cliente_reuniao_filtrar_links_observacoes($links_observacoes);
+
+                    if ($visivel_dj) {
+                        $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
+                        $links_dj_portal = eventos_cliente_reuniao_filtrar_links_dj($links_dj);
+                    }
+
+                    $links_formulario = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_formulario');
+                    $links_formulario_portal = eventos_cliente_reuniao_filtrar_links_formulario($links_formulario);
                 } catch (Throwable $e) {
                     error_log('eventos_cliente_reuniao load/sync: ' . $e->getMessage());
                     $error = 'Não foi possível carregar o formulário da reunião final neste momento.';
@@ -95,6 +198,21 @@ $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_event
 $horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
+$abas_disponiveis = [];
+if (!empty($links_observacoes_portal)) {
+    $abas_disponiveis['decoracao'] = '🎨 Decoração';
+    $abas_disponiveis['observacoes_gerais'] = '📝 Observações Gerais';
+}
+if ($visivel_dj && !empty($links_dj_portal)) {
+    $abas_disponiveis['dj_protocolo'] = '🎧 DJ / Protocolos';
+}
+if (!empty($links_formulario_portal)) {
+    $abas_disponiveis['formulario'] = '📋 Formulário';
+}
+$aba_ativa = trim((string)($_GET['aba'] ?? ''));
+if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
+    $aba_ativa = (string)(array_key_first($abas_disponiveis) ?? 'decoracao');
+}
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -232,6 +350,85 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
             color: #334155;
         }
 
+        .form-grid {
+            display: grid;
+            gap: 0.7rem;
+        }
+
+        .form-item {
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #fff;
+            padding: 0.85rem 0.9rem;
+        }
+
+        .form-item-title {
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .form-item-subtitle {
+            font-size: 0.82rem;
+            color: #64748b;
+        }
+
+        .tabs-wrap {
+            margin-top: 0.8rem;
+        }
+
+        .tabs-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .tab-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            text-decoration: none;
+            border: 1px solid #dbe3ef;
+            background: #f8fafc;
+            color: #334155;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 0.5rem 0.78rem;
+            font-size: 0.83rem;
+        }
+
+        .tab-link.is-active {
+            border-color: #93c5fd;
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .tab-panel {
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 0.85rem;
+            background: #fff;
+        }
+
+        .tab-panel-title {
+            font-size: 0.95rem;
+            color: #0f172a;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        .tab-panel-subtitle {
+            color: #64748b;
+            font-size: 0.84rem;
+            margin-bottom: 0.75rem;
+        }
+
         @media (max-width: 780px) {
             .container {
                 padding: 1rem 0.8rem 1.2rem;
@@ -265,21 +462,128 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 
             <section class="card">
                 <h3>
-                    Formulário da reunião final
-                    <span class="status-badge <?= $editavel_reuniao ? 'status-editavel' : 'status-visualizacao' ?>">
-                        <?= $editavel_reuniao ? 'Editável' : 'Somente visualização' ?>
-                    </span>
+                    Guias de organização
+                    <span class="status-badge status-visualizacao">Acesso conforme liberação</span>
                 </h3>
-                <div class="card-subtitle">Preencha ou consulte as informações finais alinhadas com a equipe.</div>
+                <div class="card-subtitle">Escolha uma guia para continuar conforme o que está disponível para seu portal.</div>
 
-                <?php if (!empty($link_observacoes['token'])): ?>
-                <div class="actions-row">
-                    <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_observacoes['token']) ?>">
-                        <?= $editavel_reuniao ? 'Abrir formulário da reunião final' : 'Visualizar formulário da reunião final' ?>
-                    </a>
+                <?php if (!empty($abas_disponiveis)): ?>
+                <div class="tabs-wrap">
+                    <div class="tabs-nav">
+                        <?php foreach ($abas_disponiveis as $aba_id => $aba_label): ?>
+                        <a
+                            class="tab-link <?= $aba_ativa === $aba_id ? 'is-active' : '' ?>"
+                            href="index.php?page=eventos_cliente_reuniao&token=<?= urlencode($token) ?>&aba=<?= urlencode($aba_id) ?>"
+                        >
+                            <?= htmlspecialchars($aba_label) ?>
+                        </a>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="tab-panel">
+                        <?php if ($aba_ativa === 'decoracao' || $aba_ativa === 'observacoes_gerais'): ?>
+                        <div class="tab-panel-title"><?= $aba_ativa === 'decoracao' ? 'Decoração' : 'Observações Gerais' ?></div>
+                        <div class="tab-panel-subtitle">Formulários da reunião final liberados para este evento.</div>
+                        <div class="form-grid">
+                            <?php foreach ($links_observacoes_portal as $link_item): ?>
+                            <?php
+                                $slot = max(1, (int)($link_item['slot_index'] ?? 1));
+                                $title = trim((string)($link_item['form_title'] ?? ''));
+                                if ($title === '') {
+                                    $title = 'Reunião Final - Quadro ' . $slot;
+                                }
+                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']) && $editavel_reuniao;
+                            ?>
+                            <div class="form-item">
+                                <div>
+                                    <div class="form-item-title"><?= htmlspecialchars($title) ?></div>
+                                    <div class="form-item-subtitle">
+                                        <?php if (!empty($link_item['submitted_at'])): ?>
+                                            Enviado • somente visualização
+                                        <?php elseif ($item_is_editable): ?>
+                                            Aguardando preenchimento
+                                        <?php else: ?>
+                                            Somente visualização
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>&secao=<?= urlencode($aba_ativa) ?>">
+                                    <?= $item_is_editable ? 'Abrir formulário' : 'Visualizar formulário' ?>
+                                </a>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php elseif ($aba_ativa === 'dj_protocolo'): ?>
+                        <div class="tab-panel-title">DJ / Protocolos</div>
+                        <div class="tab-panel-subtitle">Formulários de música e protocolos disponibilizados pela equipe.</div>
+                        <div class="form-grid">
+                            <?php foreach ($links_dj_portal as $link_item): ?>
+                            <?php
+                                $slot = max(1, (int)($link_item['slot_index'] ?? 1));
+                                $title = trim((string)($link_item['form_title'] ?? ''));
+                                if ($title === '') {
+                                    $title = 'DJ / Protocolos - Quadro ' . $slot;
+                                }
+                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']) && $editavel_dj;
+                            ?>
+                            <div class="form-item">
+                                <div>
+                                    <div class="form-item-title"><?= htmlspecialchars($title) ?></div>
+                                    <div class="form-item-subtitle">
+                                        <?php if (!empty($link_item['submitted_at'])): ?>
+                                            Enviado • somente visualização
+                                        <?php elseif ($item_is_editable): ?>
+                                            Aguardando preenchimento
+                                        <?php else: ?>
+                                            Somente visualização
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>">
+                                    <?= $item_is_editable ? 'Abrir formulário' : 'Visualizar formulário' ?>
+                                </a>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php elseif ($aba_ativa === 'formulario'): ?>
+                        <div class="tab-panel-title">Formulário</div>
+                        <div class="tab-panel-subtitle">Demais formulários públicos vinculados ao evento.</div>
+                        <div class="form-grid">
+                            <?php foreach ($links_formulario_portal as $link_item): ?>
+                            <?php
+                                $slot = max(1, (int)($link_item['slot_index'] ?? 1));
+                                $title = trim((string)($link_item['form_title'] ?? ''));
+                                if ($title === '') {
+                                    $title = 'Formulário - Quadro ' . $slot;
+                                }
+                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']);
+                            ?>
+                            <div class="form-item">
+                                <div>
+                                    <div class="form-item-title"><?= htmlspecialchars($title) ?></div>
+                                    <div class="form-item-subtitle">
+                                        <?php if (!empty($link_item['submitted_at'])): ?>
+                                            Enviado • somente visualização
+                                        <?php elseif ($item_is_editable): ?>
+                                            Aguardando preenchimento
+                                        <?php else: ?>
+                                            Somente visualização
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>">
+                                    <?= $item_is_editable ? 'Abrir formulário' : 'Visualizar formulário' ?>
+                                </a>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 <?php else: ?>
-                <div class="empty-text">Nenhum formulário disponível no momento para esta área.</div>
+                <div class="empty-text">Nenhuma guia está disponível no momento para este portal.</div>
                 <?php endif; ?>
             </section>
         <?php endif; ?>

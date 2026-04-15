@@ -426,7 +426,6 @@ foreach ($links_formulario_portal as $formulario_link_item) {
 
         .countdown-eyebrow,
         .countdown-title,
-        .countdown-subtitle,
         .countdown-grid,
         .countdown-fun {
             position: relative;
@@ -448,16 +447,10 @@ foreach ($links_formulario_portal as $formulario_link_item) {
             letter-spacing: -0.02em;
         }
 
-        .countdown-subtitle {
-            margin-top: 0.28rem;
-            font-size: 0.92rem;
-            opacity: 0.9;
-        }
-
         .countdown-grid {
             margin-top: 1rem;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 0.55rem;
         }
 
@@ -739,9 +732,6 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                 <aside class="countdown-panel" data-countdown data-event-datetime="<?= htmlspecialchars($evento_datetime_iso) ?>">
                     <div class="countdown-eyebrow">Contagem Regressiva</div>
                     <div class="countdown-title"><?= $evento_datetime_iso !== '' ? 'Falta pouco para o evento' : 'Data em preparação' ?></div>
-                    <div class="countdown-subtitle">
-                        <?= $evento_datetime_iso !== '' ? 'Acompanhe ao vivo quanto tempo falta para esse momento chegar.' : 'Assim que a data e hora estiverem completas, a contagem aparece aqui.' ?>
-                    </div>
                     <div class="countdown-grid">
                         <div class="countdown-unit">
                             <span class="countdown-number" data-unit="days"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
@@ -754,10 +744,6 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                         <div class="countdown-unit">
                             <span class="countdown-number" data-unit="minutes"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
                             <span class="countdown-label">Minutos</span>
-                        </div>
-                        <div class="countdown-unit">
-                            <span class="countdown-number" data-unit="seconds"><?= $evento_datetime_iso !== '' ? '--' : '00' ?></span>
-                            <span class="countdown-label">Segundos</span>
                         </div>
                     </div>
                     <div class="countdown-fun" data-countdown-message>
@@ -929,12 +915,10 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                 const units = {
                     days: panel.querySelector('[data-unit="days"]'),
                     hours: panel.querySelector('[data-unit="hours"]'),
-                    minutes: panel.querySelector('[data-unit="minutes"]'),
-                    seconds: panel.querySelector('[data-unit="seconds"]')
+                    minutes: panel.querySelector('[data-unit="minutes"]')
                 };
                 const message = panel.querySelector('[data-countdown-message]');
                 const title = panel.querySelector('.countdown-title');
-                const subtitle = panel.querySelector('.countdown-subtitle');
 
                 const update = () => {
                     const diffMs = targetTime - Date.now();
@@ -943,9 +927,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                         if (units.days) units.days.textContent = 'Chegou';
                         if (units.hours) units.hours.textContent = '00';
                         if (units.minutes) units.minutes.textContent = '00';
-                        if (units.seconds) units.seconds.textContent = '00';
                         if (title) title.textContent = 'O grande dia começou';
-                        if (subtitle) subtitle.textContent = 'Hora de viver o evento. Que seja inesquecível.';
                         if (message) message.textContent = 'Portal em modo celebração: agora é curtir cada minuto.';
                         return;
                     }
@@ -954,18 +936,13 @@ foreach ($links_formulario_portal as $formulario_link_item) {
                     const days = Math.floor(totalSeconds / 86400);
                     const hours = Math.floor((totalSeconds % 86400) / 3600);
                     const minutes = Math.floor((totalSeconds % 3600) / 60);
-                    const seconds = totalSeconds % 60;
 
                     if (units.days) units.days.textContent = String(days).padStart(2, '0');
                     if (units.hours) units.hours.textContent = String(hours).padStart(2, '0');
                     if (units.minutes) units.minutes.textContent = String(minutes).padStart(2, '0');
-                    if (units.seconds) units.seconds.textContent = String(seconds).padStart(2, '0');
 
                     if (title) {
                         title.textContent = `Faltam ${days} ${pluralize(days, 'dia', 'dias')} para o evento`;
-                    }
-                    if (subtitle) {
-                        subtitle.textContent = `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}min ${String(seconds).padStart(2, '0')}s para abrir essa experiência.`;
                     }
                     if (message) {
                         const current = funMessages.find((item) => totalSeconds <= item.limit) || funMessages[funMessages.length - 1];

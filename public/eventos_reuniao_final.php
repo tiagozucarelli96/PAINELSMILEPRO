@@ -2108,7 +2108,7 @@ includeSidebar($sidebar_title);
                     $is_locked = false;
                 }
             ?>
-            <button type="button" class="tab-btn <?= $key === $default_tab_key ? 'active' : '' ?>" onclick="switchTab('<?= $key ?>')">
+            <button type="button" class="tab-btn <?= $key === $default_tab_key ? 'active' : '' ?>" data-tab-section="<?= htmlspecialchars((string)$key) ?>">
                 <span><?= $info['icon'] ?></span>
                 <span><?= $info['label'] ?></span>
                 <?php if ($is_locked): ?>
@@ -2307,6 +2307,55 @@ includeSidebar($sidebar_title);
 </div>
 
 <!-- TinyMCE carregado via script dinâmico (evita ficar travado em "Carregando editor...") -->
+<script>
+(function() {
+    function escapeSelectorValue(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+        return String(value || '').replace(/["\\]/g, '\\$&');
+    }
+
+    function switchTab(section) {
+        const sectionKey = String(section || '').trim();
+        if (!sectionKey) return;
+
+        const buttons = document.querySelectorAll('.tab-btn[data-tab-section]');
+        const tabs = document.querySelectorAll('.tab-content');
+        if (!buttons.length || !tabs.length) return;
+
+        buttons.forEach((btn) => btn.classList.remove('active'));
+        tabs.forEach((tab) => tab.classList.remove('active'));
+
+        const selectorValue = escapeSelectorValue(sectionKey);
+        const btn = document.querySelector(`.tab-btn[data-tab-section="${selectorValue}"]`);
+        const tab = document.getElementById(`tab-${sectionKey}`);
+        if (!btn || !tab) return;
+
+        btn.classList.add('active');
+        tab.classList.add('active');
+    }
+
+    function bindTabButtons() {
+        document.querySelectorAll('.tab-btn[data-tab-section]').forEach((btn) => {
+            if (btn.dataset.tabBound === '1') return;
+            btn.dataset.tabBound = '1';
+            btn.addEventListener('click', function() {
+                switchTab(this.dataset.tabSection || '');
+            });
+        });
+    }
+
+    window.switchTab = switchTab;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindTabButtons);
+    } else {
+        bindTabButtons();
+    }
+})();
+</script>
+
 <!-- Modal de Versões -->
 <div class="modal-overlay" id="modalVersoes">
     <div class="modal-content">
@@ -2894,7 +2943,10 @@ function switchTab(section) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
     
-    const btn = document.querySelector(`.tab-btn[onclick="switchTab('${section}')"]`);
+    const escapedSection = (window.CSS && typeof window.CSS.escape === 'function')
+        ? window.CSS.escape(String(section))
+        : String(section).replace(/["\\]/g, '\\$&');
+    const btn = document.querySelector(`.tab-btn[data-tab-section="${escapedSection}"]`);
     const tab = document.getElementById(`tab-${section}`);
     if (!btn || !tab) return;
     btn.classList.add('active');
