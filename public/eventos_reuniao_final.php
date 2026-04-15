@@ -106,6 +106,22 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
     ];
 }
 
+function eventos_reuniao_json_script($value, string $fallback = 'null'): string {
+    $options = JSON_UNESCAPED_UNICODE
+        | JSON_UNESCAPED_SLASHES
+        | JSON_HEX_TAG
+        | JSON_HEX_AMP
+        | JSON_HEX_APOS
+        | JSON_HEX_QUOT
+        | JSON_INVALID_UTF8_SUBSTITUTE;
+    $encoded = json_encode($value, $options);
+    if ($encoded === false) {
+        error_log('eventos_reuniao_final json_encode script payload: ' . json_last_error_msg());
+        return $fallback;
+    }
+    return $encoded;
+}
+
 // Processar ações POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
@@ -2166,7 +2182,7 @@ includeSidebar($sidebar_title);
                     </div>
                     <div class="dj-slots-actions">
                         <?php if (!$readonly_mode): ?>
-                        <button type="button" class="btn btn-primary" onclick="addFormularioSlot()">+ Adicionar formulário</button>
+                        <button type="button" class="btn btn-primary" id="btnAddFormularioSlot">+ Adicionar formulário</button>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -2400,13 +2416,13 @@ includeSidebar($sidebar_title);
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 const legacyDjSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
-const initialTab = <?= json_encode(in_array($active_tab_query, array_keys($section_labels), true) ? $active_tab_query : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const observacoesEditorBlocks = <?= json_encode($observacoes_editor_blocks, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialDecoracaoSchema = <?= json_encode($decoracao_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialObservacoesSchema = <?= json_encode($observacoes_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialDjSchema = <?= json_encode($dj_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialFormularioSchema = <?= json_encode($formulario_schema_saved, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialDjLinks = <?= json_encode(array_map(static function (array $link): array {
+const initialTab = <?= eventos_reuniao_json_script(in_array($active_tab_query, array_keys($section_labels), true) ? $active_tab_query : '', '""') ?>;
+const observacoesEditorBlocks = <?= eventos_reuniao_json_script($observacoes_editor_blocks, '[]') ?>;
+const initialDecoracaoSchema = <?= eventos_reuniao_json_script($decoracao_schema_saved, '[]') ?>;
+const initialObservacoesSchema = <?= eventos_reuniao_json_script($observacoes_schema_saved, '[]') ?>;
+const initialDjSchema = <?= eventos_reuniao_json_script($dj_schema_saved, '[]') ?>;
+const initialFormularioSchema = <?= eventos_reuniao_json_script($formulario_schema_saved, '[]') ?>;
+const initialDjLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
     return [
         'id' => (int)($link['id'] ?? 0),
         'token' => (string)($link['token'] ?? ''),
@@ -2419,8 +2435,8 @@ const initialDjLinks = <?= json_encode(array_map(static function (array $link): 
         'portal_configured' => !empty($link['portal_configured']),
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
-}, $links_cliente_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialObservacoesClientLinks = <?= json_encode(array_map(static function (array $link): array {
+}, $links_cliente_dj), '[]') ?>;
+const initialObservacoesClientLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
     return [
         'id' => (int)($link['id'] ?? 0),
         'token' => (string)($link['token'] ?? ''),
@@ -2429,8 +2445,8 @@ const initialObservacoesClientLinks = <?= json_encode(array_map(static function 
         'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
-}, $links_cliente_observacoes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialFormularioLinks = <?= json_encode(array_map(static function (array $link): array {
+}, $links_cliente_observacoes), '[]') ?>;
+const initialFormularioLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
     $link_id = (int)($link['id'] ?? 0);
     return [
         'id' => (int)($link['id'] ?? 0),
@@ -2449,10 +2465,10 @@ const initialFormularioLinks = <?= json_encode(array_map(static function (array 
         'submitted_attachments' => array_map('eventos_reuniao_serializar_anexo', $link_id > 0 ? eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'formulario', $link_id) : []),
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
-}, $links_cliente_formulario), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-const initialDjAnexos = <?= json_encode(array_map(static function(array $anexo): array {
+}, $links_cliente_formulario), '[]') ?>;
+const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
-}, $anexos_dj), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+}, $anexos_dj), '[]') ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -2460,7 +2476,7 @@ let searchAbortController = null;
 let eventsCacheLoaded = false;
 let eventsMasterCache = [];
 const eventsQueryCache = new Map();
-let savedFormTemplates = <?= json_encode(array_map(static function(array $template): array {
+let savedFormTemplates = <?= eventos_reuniao_json_script(array_map(static function(array $template): array {
     return [
         'id' => (int)($template['id'] ?? 0),
         'nome' => (string)($template['nome'] ?? ''),
@@ -2469,7 +2485,7 @@ let savedFormTemplates = <?= json_encode(array_map(static function(array $templa
         'created_by_user_id' => (int)($template['created_by_user_id'] ?? 0),
         'schema' => is_array($template['schema'] ?? null) ? $template['schema'] : [],
     ];
-}, $form_templates), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+}, $form_templates), '[]') ?>;
 const DJ_SLOT_MIN = 1;
 const DJ_SLOT_MAX = 50;
 let djSlotOrder = [];
@@ -2497,12 +2513,12 @@ let lastSavedSectionSchemaSignatures = {
     decoracao: '',
     observacoes_gerais: '',
 };
-const sectionLockedState = <?= json_encode([
+const sectionLockedState = <?= eventos_reuniao_json_script([
     'decoracao' => !empty($secoes['decoracao']['is_locked']),
     'observacoes_gerais' => !empty($secoes['observacoes_gerais']['is_locked']),
     'dj_protocolo' => !empty($secoes['dj_protocolo']['is_locked']),
     'formulario' => !empty($secoes['formulario']['is_locked']),
-], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+], '{"decoracao":false,"observacoes_gerais":false,"dj_protocolo":false,"formulario":false}') ?>;
 const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
 let sectionFormDraftValues = {
     decoracao: {},
@@ -5840,10 +5856,21 @@ function bindSearchEvents() {
     searchEvents('', false);
 }
 
+function bindMeetingActionButtons() {
+    const addFormularioBtn = document.getElementById('btnAddFormularioSlot');
+    if (addFormularioBtn && addFormularioBtn.dataset.bound !== '1') {
+        addFormularioBtn.dataset.bound = '1';
+        addFormularioBtn.addEventListener('click', function () {
+            addFormularioSlot();
+        });
+    }
+}
+
 // Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)
 if (meetingId) {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
+            bindMeetingActionButtons();
             renderDjUploadCards();
             renderDjAnexosList();
             applyInitialTabFromQuery();
@@ -5856,6 +5883,7 @@ if (meetingId) {
             refreshDjTemplates();
         });
     } else {
+        bindMeetingActionButtons();
         renderDjUploadCards();
         renderDjAnexosList();
         applyInitialTabFromQuery();
