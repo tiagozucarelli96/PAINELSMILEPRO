@@ -112,8 +112,10 @@ function eventos_reuniao_json_script($value, string $fallback = 'null'): string 
         | JSON_HEX_TAG
         | JSON_HEX_AMP
         | JSON_HEX_APOS
-        | JSON_HEX_QUOT
-        | JSON_INVALID_UTF8_SUBSTITUTE;
+        | JSON_HEX_QUOT;
+    if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+        $options |= JSON_INVALID_UTF8_SUBSTITUTE;
+    }
     $encoded = json_encode($value, $options);
     if ($encoded === false) {
         error_log('eventos_reuniao_final json_encode script payload: ' . json_last_error_msg());
@@ -5823,6 +5825,53 @@ function formatDate(dateStr) {
     }
     return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
+
+function exposeInlineHandlersToWindow() {
+    if (typeof searchEvents === 'function') window.searchEvents = searchEvents;
+    if (typeof criarReuniao === 'function') window.criarReuniao = criarReuniao;
+    if (typeof concluirReuniao === 'function') window.concluirReuniao = concluirReuniao;
+    if (typeof reabrirReuniao === 'function') window.reabrirReuniao = reabrirReuniao;
+    if (typeof abrirModalImpressao === 'function') window.abrirModalImpressao = abrirModalImpressao;
+    if (typeof fecharModalImpressao === 'function') window.fecharModalImpressao = fecharModalImpressao;
+    if (typeof emitirDocumentoReuniao === 'function') window.emitirDocumentoReuniao = emitirDocumentoReuniao;
+    if (typeof retryLoadTinyMCE === 'function') window.retryLoadTinyMCE = retryLoadTinyMCE;
+    if (typeof selectEvent === 'function') window.selectEvent = selectEvent;
+
+    if (typeof aplicarTemplateNaSecao === 'function') window.aplicarTemplateNaSecao = aplicarTemplateNaSecao;
+    if (typeof onChangeSectionTemplateSelect === 'function') window.onChangeSectionTemplateSelect = onChangeSectionTemplateSelect;
+    if (typeof toggleLegacyEditor === 'function') window.toggleLegacyEditor = toggleLegacyEditor;
+    if (typeof toggleObservacoesBlock === 'function') window.toggleObservacoesBlock = toggleObservacoesBlock;
+    if (typeof salvarSecao === 'function') window.salvarSecao = salvarSecao;
+    if (typeof verVersoes === 'function') window.verVersoes = verVersoes;
+    if (typeof fecharModal === 'function') window.fecharModal = fecharModal;
+    if (typeof restaurarVersao === 'function') window.restaurarVersao = restaurarVersao;
+    if (typeof destravarSecao === 'function') window.destravarSecao = destravarSecao;
+
+    if (typeof addDjUploadCard === 'function') window.addDjUploadCard = addDjUploadCard;
+    if (typeof removeDjUploadCard === 'function') window.removeDjUploadCard = removeDjUploadCard;
+    if (typeof uploadDjAnexos === 'function') window.uploadDjAnexos = uploadDjAnexos;
+    if (typeof excluirDjAnexo === 'function') window.excluirDjAnexo = excluirDjAnexo;
+    if (typeof excluirDjSlot === 'function') window.excluirDjSlot = excluirDjSlot;
+    if (typeof onChangeDjTemplateSelect === 'function') window.onChangeDjTemplateSelect = onChangeDjTemplateSelect;
+    if (typeof onChangeDjPortalVisibility === 'function') window.onChangeDjPortalVisibility = onChangeDjPortalVisibility;
+    if (typeof onChangeDjPortalEditable === 'function') window.onChangeDjPortalEditable = onChangeDjPortalEditable;
+
+    if (typeof gerarLinkClienteObservacoes === 'function') window.gerarLinkClienteObservacoes = gerarLinkClienteObservacoes;
+    if (typeof destravarObservacoesSlot === 'function') window.destravarObservacoesSlot = destravarObservacoesSlot;
+    if (typeof excluirObservacoesSlot === 'function') window.excluirObservacoesSlot = excluirObservacoesSlot;
+    if (typeof copiarLinkObservacoes === 'function') window.copiarLinkObservacoes = copiarLinkObservacoes;
+    if (typeof onChangeObservacoesTemplateSelect === 'function') window.onChangeObservacoesTemplateSelect = onChangeObservacoesTemplateSelect;
+
+    if (typeof addFormularioSlot === 'function') window.addFormularioSlot = addFormularioSlot;
+    if (typeof excluirFormularioSlot === 'function') window.excluirFormularioSlot = excluirFormularioSlot;
+    if (typeof destravarFormularioSlot === 'function') window.destravarFormularioSlot = destravarFormularioSlot;
+    if (typeof onChangeFormularioTemplateSelect === 'function') window.onChangeFormularioTemplateSelect = onChangeFormularioTemplateSelect;
+    if (typeof onChangeFormularioPortalVisibility === 'function') window.onChangeFormularioPortalVisibility = onChangeFormularioPortalVisibility;
+    if (typeof onChangeFormularioPortalEditable === 'function') window.onChangeFormularioPortalEditable = onChangeFormularioPortalEditable;
+    if (typeof abrirModalFormularioResposta === 'function') window.abrirModalFormularioResposta = abrirModalFormularioResposta;
+}
+
+exposeInlineHandlersToWindow();
 
 window.addEventListener('click', function (e) {
     if (e.target && e.target.id === 'modalVersoes') {

@@ -109,6 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
         $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
         $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
+        $status_anterior = '';
+        $pre_contrato_notificacao = null;
         
         // Buscar adicionais
         $adicionais = [];
@@ -131,6 +133,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         try {
             $pdo->beginTransaction();
+
+            $stmt_pre = $pdo->prepare("
+                SELECT id, status, nome_completo, tipo_evento, data_evento, unidade
+                FROM vendas_pre_contratos
+                WHERE id = ?
+                FOR UPDATE
+            ");
+            $stmt_pre->execute([$pre_contrato_id]);
+            $pre_contrato_notificacao = $stmt_pre->fetch(PDO::FETCH_ASSOC);
+            if (!$pre_contrato_notificacao) {
+                throw new Exception('Pré-contrato não encontrado.');
+            }
+            $status_anterior = (string)($pre_contrato_notificacao['status'] ?? '');
             
             // Atualizar pré-contrato
             $stmt = $pdo->prepare("
@@ -193,6 +208,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $pdo->commit();
             $mensagens[] = 'Dados comerciais salvos com sucesso!';
+
+            $deve_notificar_envio = !in_array($status_anterior, ['pronto_aprovacao', 'aprovado_criado_me'], true);
+            if ($deve_notificar_envio && is_array($pre_contrato_notificacao)) {
+                $usuario_nome_notificacao = trim((string)($_SESSION['nome'] ?? $_SESSION['usuario_nome'] ?? $_SESSION['usuario'] ?? ''));
+                vendas_notificar_superadmins_contrato($pdo, [
+                    'evento' => 'enviado_aprovacao',
+                    'pre_contrato_id' => (int)$pre_contrato_id,
+                    'nome_cliente' => (string)($pre_contrato_notificacao['nome_completo'] ?? ''),
+                    'tipo_evento' => (string)($pre_contrato_notificacao['tipo_evento'] ?? ''),
+                    'data_evento' => (string)($pre_contrato_notificacao['data_evento'] ?? ''),
+                    'unidade' => (string)($pre_contrato_notificacao['unidade'] ?? ''),
+                    'valor_total' => (float)$valor_total,
+                    'usuario_nome' => $usuario_nome_notificacao,
+                    'url_destino' => 'index.php?page=vendas_administracao&editar=' . (int)$pre_contrato_id,
+                ]);
+            }
             
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -589,6 +620,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'kanban_card_created' => (bool)$kanban_card_created,
                     'kanban_card_id' => (int)($kanban_card_id ?? 0),
                 ];
+
+                $usuario_nome_notificacao = trim((string)($_SESSION['nome'] ?? $_SESSION['usuario_nome'] ?? $_SESSION['usuario'] ?? ''));
+                vendas_notificar_superadmins_contrato($pdo, [
+                    'evento' => 'aprovado_me',
+                    'pre_contrato_id' => (int)$pre_contrato_id,
+                    'nome_cliente' => (string)($pre_contrato['nome_completo'] ?? ''),
+                    'tipo_evento' => (string)($pre_contrato['tipo_evento'] ?? ''),
+                    'data_evento' => (string)($pre_contrato['data_evento'] ?? ''),
+                    'unidade' => (string)($pre_contrato['unidade'] ?? ''),
+                    'valor_total' => isset($pre_contrato['valor_total']) ? (float)$pre_contrato['valor_total'] : null,
+                    'me_client_id' => (int)$me_client_id,
+                    'me_event_id' => (int)$me_event_id,
+                    'usuario_nome' => $usuario_nome_notificacao,
+                    'url_destino' => 'index.php?page=vendas_administracao&editar=' . (int)$pre_contrato_id,
+                ]);
 
                 header('Location: ' . $redirect_url_success);
                 exit;

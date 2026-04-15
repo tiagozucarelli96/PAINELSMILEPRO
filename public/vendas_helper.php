@@ -219,6 +219,233 @@ function vendas_memoria_pre_contrato_dias(): int {
 }
 
 /**
+ * Busca destinatários de notificações de contratos:
+ * - superadmins ativos
+ * - usuária específica solicitada (Taina / alias "tay"), quando encontrada.
+ */
+function vendas_buscar_destinatarios_superadmin(PDO $pdo): array {
+    try {
+        if (!vendas_has_column($pdo, 'usuarios', 'email')) {
+            return [];
+        }
+
+        $whereDestinatarios = [];
+        if (vendas_has_column($pdo, 'usuarios', 'perm_superadmin')) {
+            $whereDestinatarios[] = "perm_superadmin = TRUE";
+        }
+
+        $filtrosTaina = [];
+        if (vendas_has_column($pdo, 'usuarios', 'nome')) {
+            $filtrosTaina[] = "LOWER(TRIM(COALESCE(nome, ''))) = LOWER('Taina Aparecida Silva Pereira')";
+            $filtrosTaina[] = "LOWER(COALESCE(nome, '')) LIKE '%taina aparecida silva pereira%'";
+        }
+
+        foreach (['login', 'loguin', 'usuario', 'username', 'user'] as $colLogin) {
+            if (vendas_has_column($pdo, 'usuarios', $colLogin)) {
+                $filtrosTaina[] = "LOWER(TRIM(COALESCE({$colLogin}, ''))) = 'tay'";
+            }
+        }
+
+        $filtrosTaina[] = "LOWER(COALESCE(email, '')) LIKE 'tay@%'";
+        if (!empty($filtrosTaina)) {
+            $whereDestinatarios[] = '(' . implode(' OR ', $filtrosTaina) . ')';
+        }
+
+        if (empty($whereDestinatarios)) {
+            return [];
+        }
+
+        $sql = "
+            SELECT id, nome, email
+            FROM usuarios
+            WHERE email IS NOT NULL
+              AND TRIM(email) <> ''
+              AND (" . implode(' OR ', $whereDestinatarios) . ")
+        ";
+        if (vendas_has_column($pdo, 'usuarios', 'ativo')) {
+            $sql .= " AND ativo IS DISTINCT FROM FALSE";
+        }
+        $sql .= " ORDER BY id ASC";
+
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao buscar destinatarios superadmin: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function vendas_resolver_base_url_notificacao(): string {
+    $base = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+    if ($base !== '') {
+        return rtrim($base, '/');
+    }
+
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') {
+        return '';
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . $host;
+}
+
+function vendas_resolver_url_notificacao(string $urlDestino): string {
+    $urlDestino = trim($urlDestino);
+    if ($urlDestino === '') {
+        return '';
+    }
+    if (preg_match('/^https?:\/\//i', $urlDestino)) {
+        return $urlDestino;
+    }
+
+    $base = vendas_resolver_base_url_notificacao();
+    if ($base === '') {
+        return $urlDestino;
+    }
+
+    return $base . '/' . ltrim($urlDestino, '/');
+}
+
+function vendas_formatar_tipo_evento_notificacao(string $tipoEvento): string {
+    $tipo = trim(mb_strtolower($tipoEvento));
+    $map = [
+        'casamento' => 'Casamento',
+        '15anos' => '15 anos',
+        'infantil' => 'Infantil',
+        'pj' => 'PJ',
+    ];
+    return $map[$tipo] ?? ($tipoEvento !== '' ? ucfirst($tipoEvento) : '-');
+}
+
+function vendas_formatar_data_notificacao(?string $dataEvento): string {
+    $dataEvento = trim((string)$dataEvento);
+    if ($dataEvento === '') {
+        return '-';
+    }
+    $ts = strtotime($dataEvento);
+    return $ts ? date('d/m/Y', $ts) : $dataEvento;
+}
+
+/**
+ * Dispara e-mail para superadmins em mudanças relevantes de contratos.
+ *
+ * Contexto esperado:
+ * - evento: enviado_aprovacao | aprovado_me
+ * - pre_contrato_id, nome_cliente, tipo_evento, data_evento, unidade, valor_total
+ * - url_destino (relativa ou absoluta)
+ * - me_client_id / me_event_id (para aprovado_me)
+ * - usuario_nome (opcional)
+ */
+function vendas_notificar_superadmins_contrato(PDO $pdo, array $contexto): bool {
+    try {
+        $destinatarios = vendas_buscar_destinatarios_superadmin($pdo);
+        if (empty($destinatarios)) {
+            return false;
+        }
+
+        require_once __DIR__ . '/core/notification_dispatcher.php';
+        static $dispatcher = null;
+        if (!($dispatcher instanceof NotificationDispatcher)) {
+            $dispatcher = new NotificationDispatcher($pdo);
+        }
+
+        $evento = trim((string)($contexto['evento'] ?? ''));
+        $preContratoId = (int)($contexto['pre_contrato_id'] ?? 0);
+        $nomeCliente = trim((string)($contexto['nome_cliente'] ?? 'Cliente'));
+        $tipoEvento = vendas_formatar_tipo_evento_notificacao((string)($contexto['tipo_evento'] ?? ''));
+        $dataEvento = vendas_formatar_data_notificacao((string)($contexto['data_evento'] ?? ''));
+        $unidade = trim((string)($contexto['unidade'] ?? '-'));
+        $valorTotal = isset($contexto['valor_total']) ? (float)$contexto['valor_total'] : null;
+        $valorTotalFmt = $valorTotal !== null ? ('R$ ' . number_format($valorTotal, 2, ',', '.')) : '-';
+        $usuarioNome = trim((string)($contexto['usuario_nome'] ?? ''));
+        $urlDestino = trim((string)($contexto['url_destino'] ?? 'index.php?page=vendas_administracao'));
+        $urlDestinoAbs = vendas_resolver_url_notificacao($urlDestino);
+
+        $titulo = 'Contrato atualizado';
+        $assunto = '[Vendas] Contrato atualizado';
+        $mensagem = "Pré-contrato #{$preContratoId} foi atualizado no módulo de Vendas.";
+
+        if ($evento === 'enviado_aprovacao') {
+            $titulo = 'Contrato enviado para aprovação';
+            $assunto = '[Vendas] Novo contrato enviado para aprovação';
+            $mensagem = "Pré-contrato #{$preContratoId} enviado para aprovação.";
+        } elseif ($evento === 'aprovado_me') {
+            $titulo = 'Contrato aprovado e criado na ME';
+            $assunto = '[Vendas] Contrato aprovado e criado na ME';
+            $meClientId = (int)($contexto['me_client_id'] ?? 0);
+            $meEventId = (int)($contexto['me_event_id'] ?? 0);
+            $mensagem = "Pré-contrato #{$preContratoId} aprovado e criado na ME (Cliente {$meClientId} / Evento {$meEventId}).";
+        }
+
+        $nomeClienteHtml = htmlspecialchars($nomeCliente, ENT_QUOTES, 'UTF-8');
+        $tipoEventoHtml = htmlspecialchars($tipoEvento, ENT_QUOTES, 'UTF-8');
+        $dataEventoHtml = htmlspecialchars($dataEvento, ENT_QUOTES, 'UTF-8');
+        $unidadeHtml = htmlspecialchars($unidade !== '' ? $unidade : '-', ENT_QUOTES, 'UTF-8');
+        $valorTotalHtml = htmlspecialchars($valorTotalFmt, ENT_QUOTES, 'UTF-8');
+        $tituloHtml = htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+        $mensagemHtml = nl2br(htmlspecialchars($mensagem, ENT_QUOTES, 'UTF-8'));
+        $urlHtml = htmlspecialchars($urlDestinoAbs !== '' ? $urlDestinoAbs : $urlDestino, ENT_QUOTES, 'UTF-8');
+        $usuarioHtml = htmlspecialchars($usuarioNome !== '' ? $usuarioNome : '-', ENT_QUOTES, 'UTF-8');
+        $preHtml = htmlspecialchars((string)$preContratoId, ENT_QUOTES, 'UTF-8');
+
+        $extraHtml = '';
+        if ($evento === 'aprovado_me') {
+            $meClientId = (int)($contexto['me_client_id'] ?? 0);
+            $meEventId = (int)($contexto['me_event_id'] ?? 0);
+            $extraHtml = "
+                <tr><td style='padding:6px 0;color:#64748b;'>Cliente ME</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$meClientId}</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Evento ME</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$meEventId}</td></tr>
+            ";
+        }
+
+        $emailHtml = "
+            <div style='font-family:Arial,sans-serif;line-height:1.5;color:#1f2937;max-width:720px;margin:0 auto;'>
+                <div style='background:#1e3a8a;color:#fff;padding:14px 18px;border-radius:10px 10px 0 0;'>
+                    <h2 style='margin:0;font-size:20px;'>{$tituloHtml}</h2>
+                </div>
+                <div style='border:1px solid #dbe3ef;border-top:none;padding:16px 18px;border-radius:0 0 10px 10px;background:#fff;'>
+                    <p style='margin:0 0 14px 0;color:#334155;'>{$mensagemHtml}</p>
+                    <table style='width:100%;border-collapse:collapse;'>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Pré-contrato</td><td style='padding:6px 0;color:#111827;font-weight:600;'>#{$preHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Cliente</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$nomeClienteHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Tipo</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$tipoEventoHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Data do evento</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$dataEventoHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Unidade</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$unidadeHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Valor total</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$valorTotalHtml}</td></tr>
+                        <tr><td style='padding:6px 0;color:#64748b;'>Atualizado por</td><td style='padding:6px 0;color:#111827;font-weight:600;'>{$usuarioHtml}</td></tr>
+                        {$extraHtml}
+                    </table>
+                    <p style='margin:16px 0 0 0;'>
+                        <a href='{$urlHtml}' style='display:inline-block;background:#1e3a8a;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;'>
+                            Abrir no Painel
+                        </a>
+                    </p>
+                </div>
+            </div>
+        ";
+
+        $result = $dispatcher->dispatch(
+            $destinatarios,
+            [
+                'tipo' => 'vendas_' . ($evento !== '' ? $evento : 'contrato_atualizado'),
+                'referencia_id' => $preContratoId > 0 ? $preContratoId : null,
+                'titulo' => $titulo,
+                'mensagem' => $mensagem,
+                'url_destino' => $urlDestinoAbs !== '' ? $urlDestinoAbs : $urlDestino,
+                'email_assunto' => $assunto,
+                'email_html' => $emailHtml,
+            ],
+            ['email' => true]
+        );
+
+        return ((int)($result['enviados_email'] ?? 0)) > 0;
+    } catch (Throwable $e) {
+        error_log('[VENDAS] Erro ao notificar superadmins por e-mail: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Busca o pré-contrato público mais recente do mesmo cliente/tipo dentro da janela de memória.
  * A consulta é feita por CPF normalizado para evitar duplicatas com máscara diferente.
  */

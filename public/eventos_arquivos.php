@@ -31,7 +31,9 @@ if ($origin !== 'realizar' && $origin !== 'organizacao') {
 if ($somente_realizar) {
     $origin = 'realizar';
 }
-$readonly_mode = $somente_realizar
+$visualizacao_apenas = true;
+$readonly_mode = $visualizacao_apenas
+    || $somente_realizar
     || ($origin === 'realizar')
     || ((string)($_GET['readonly'] ?? $_POST['readonly'] ?? '0') === '1');
 $back_page = $origin === 'realizar' ? 'eventos_realizar' : 'eventos_organizacao';
@@ -688,7 +690,7 @@ includeSidebar('Arquivos do Evento');
     <div class="page-header">
         <div>
             <h1 class="page-title">📁 Arquivos do Evento</h1>
-            <div class="page-subtitle">Uploads até 500MB por arquivo, com descrição e controle de visibilidade para o cliente.</div>
+            <div class="page-subtitle">Visualização e download dos arquivos já enviados para este evento.</div>
         </div>
         <a href="<?= eventos_arquivos_e($back_href) ?>" class="btn btn-secondary"><?= eventos_arquivos_e($back_label) ?></a>
     </div>
@@ -703,7 +705,7 @@ includeSidebar('Arquivos do Evento');
 
     <?php if ($readonly_mode): ?>
     <div class="alert alert-success">
-        Modo realização ativo: somente visualização em modal e download. Edição desabilitada.
+        Modo visualização ativo: anexos e edições desabilitados. Use apenas visualizar (nova guia) ou download.
     </div>
     <?php endif; ?>
 
@@ -760,7 +762,7 @@ includeSidebar('Arquivos do Evento');
     <section class="grid-two">
         <div class="panel" id="resumo-evento">
             <h3>📄 Resumo do evento (Contrato cliente)</h3>
-            <div class="panel-subtitle">Upload exclusivo em PDF. Sempre interno, sem opção de exibição no portal do cliente.</div>
+            <div class="panel-subtitle">Arquivo interno disponível para visualização em nova guia e download.</div>
 
             <?php if (!$readonly_mode): ?>
             <form method="POST" enctype="multipart/form-data" class="form-grid">
@@ -809,7 +811,7 @@ includeSidebar('Arquivos do Evento');
                     <div class="item-actions">
                         <?php if ($resumo_url !== ''): ?>
                         <?php if ($readonly_mode): ?>
-                        <button type="button" class="btn btn-secondary js-preview-file" data-file-url="<?= eventos_arquivos_e($resumo_url) ?>" data-file-name="<?= eventos_arquivos_e($resumo_nome) ?>">Visualizar</button>
+                        <a class="btn btn-secondary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Visualizar</a>
                         <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer" download>Download</a>
                         <?php else: ?>
                         <a class="btn btn-primary" href="<?= eventos_arquivos_e($resumo_url) ?>" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
@@ -826,7 +828,7 @@ includeSidebar('Arquivos do Evento');
     <section class="grid-two">
         <div class="panel">
             <h3>📌 Campos Solicitados do Cliente</h3>
-            <div class="panel-subtitle">Cadastre os arquivos que você quer receber neste evento.</div>
+            <div class="panel-subtitle">Campos de arquivo solicitados para este evento.</div>
 
             <?php if (!$readonly_mode): ?>
             <form method="POST" class="form-grid">
@@ -951,7 +953,7 @@ includeSidebar('Arquivos do Evento');
         <h3>🗂️ Arquivos Enviados</h3>
         <div class="panel-subtitle">
             <?= $readonly_mode
-                ? 'Visualização em modal e download dos arquivos do evento.'
+                ? 'Visualização em nova guia e download dos arquivos do evento.'
                 : 'Controle de visibilidade e remoção dos arquivos do evento.' ?>
         </div>
 
@@ -997,7 +999,7 @@ includeSidebar('Arquivos do Evento');
                 <div class="item-actions">
                     <?php if ($public_url !== ''): ?>
                     <?php if ($readonly_mode): ?>
-                    <button type="button" class="btn btn-secondary js-preview-file" data-file-url="<?= eventos_arquivos_e($public_url) ?>" data-file-name="<?= eventos_arquivos_e($nome) ?>">Visualizar</button>
+                    <a class="btn btn-secondary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer">Visualizar</a>
                     <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer" download>Download</a>
                     <?php else: ?>
                     <a class="btn btn-primary" href="<?= eventos_arquivos_e($public_url) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
@@ -1072,92 +1074,5 @@ includeSidebar('Arquivos do Evento');
         </div>
     </section>
 </div>
-
-<?php if ($readonly_mode): ?>
-<div class="preview-modal" id="previewModalArquivos" hidden>
-    <div class="preview-modal-card">
-        <div class="preview-modal-head">
-            <p class="preview-modal-title" id="previewModalTitle">Visualização de arquivo</p>
-            <button type="button" class="preview-modal-close" id="previewModalClose" aria-label="Fechar">×</button>
-        </div>
-        <div class="preview-modal-body" id="previewModalBody"></div>
-    </div>
-</div>
-<script>
-(() => {
-    const modal = document.getElementById('previewModalArquivos');
-    const modalBody = document.getElementById('previewModalBody');
-    const modalTitle = document.getElementById('previewModalTitle');
-    const btnClose = document.getElementById('previewModalClose');
-    if (!modal || !modalBody || !modalTitle) return;
-
-    function guessIsImage(url = '') {
-        const u = (url || '').toLowerCase();
-        return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('.gif') || u.includes('.bmp') || u.includes('.svg');
-    }
-
-    function clearModal() {
-        modalBody.innerHTML = '';
-    }
-
-    function closeModal() {
-        modal.classList.remove('open');
-        modal.hidden = true;
-        document.body.classList.remove('modal-open');
-        clearModal();
-    }
-
-    function openModal(url, name) {
-        clearModal();
-        modalTitle.textContent = name || 'Visualização de arquivo';
-
-        const safeUrl = String(url || '').trim();
-        if (!safeUrl) {
-            modalBody.innerHTML = '<div style="color:#64748b;">Arquivo inválido para visualização.</div>';
-        } else if (guessIsImage(safeUrl)) {
-            const img = document.createElement('img');
-            img.className = 'preview-image';
-            img.alt = name || 'arquivo';
-            img.src = safeUrl;
-            modalBody.appendChild(img);
-        } else {
-            const frame = document.createElement('iframe');
-            frame.className = 'preview-frame';
-            frame.src = safeUrl;
-            frame.loading = 'lazy';
-            modalBody.appendChild(frame);
-        }
-
-        modal.hidden = false;
-        modal.classList.add('open');
-        document.body.classList.add('modal-open');
-    }
-
-    document.querySelectorAll('.js-preview-file').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const url = btn.getAttribute('data-file-url') || '';
-            const name = btn.getAttribute('data-file-name') || 'Arquivo';
-            openModal(url, name);
-        });
-    });
-
-    if (btnClose) {
-        btnClose.addEventListener('click', closeModal);
-    }
-
-    modal.addEventListener('click', (event) => {
-        if (event.target === modal) {
-            closeModal();
-        }
-    });
-
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && modal.classList.contains('open')) {
-            closeModal();
-        }
-    });
-})();
-</script>
-<?php endif; ?>
 
 <?php endSidebar(); ?>
