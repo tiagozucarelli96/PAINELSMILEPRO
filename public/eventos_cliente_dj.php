@@ -626,6 +626,133 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
 }
 
 /**
+ * Normaliza identificador de campo associado ao anexo.
+ */
+function eventos_cliente_anexo_form_field_id(array $anexo): string {
+    $field_id = trim((string)($anexo['form_field_id'] ?? ''));
+    return $field_id;
+}
+
+/**
+ * Filtra anexos vinculados a um campo específico do schema.
+ */
+function eventos_cliente_filtrar_anexos_por_campo(array $anexos, string $field_id): array {
+    $target = trim($field_id);
+    if ($target === '') {
+        return [];
+    }
+    $filtered = [];
+    foreach ($anexos as $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        if (eventos_cliente_anexo_form_field_id($anexo) !== $target) {
+            continue;
+        }
+        $filtered[] = $anexo;
+    }
+    return $filtered;
+}
+
+/**
+ * Filtra anexos gerais (sem vínculo direto com campo do schema).
+ */
+function eventos_cliente_filtrar_anexos_sem_campo(array $anexos): array {
+    $filtered = [];
+    foreach ($anexos as $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        if (eventos_cliente_anexo_form_field_id($anexo) !== '') {
+            continue;
+        }
+        $filtered[] = $anexo;
+    }
+    return $filtered;
+}
+
+/**
+ * Monta visualização de conteúdo com base no schema e valores, incluindo anexos por campo.
+ */
+function eventos_cliente_montar_visualizacao_schema(array $schema, array $values, array $anexos, string $section = ''): string {
+    $parts = [];
+
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $field_id = trim((string)($field['id'] ?? ''));
+        $field_type = strtolower(trim((string)($field['type'] ?? 'text')));
+        $label = trim((string)($field['label'] ?? 'Campo'));
+
+        if ($field_type === 'divider') {
+            $parts[] = '<hr>';
+            continue;
+        }
+        if ($field_type === 'section') {
+            $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
+            continue;
+        }
+        if ($field_type === 'note') {
+            $note_html = eventos_cliente_note_html($field);
+            if ($note_html !== '') {
+                $parts[] = '<div>' . $note_html . '</div>';
+            }
+            continue;
+        }
+
+        if ($field_type === 'file') {
+            $field_anexos = eventos_cliente_filtrar_anexos_por_campo($anexos, $field_id);
+            $items = '';
+            if (!empty($field_anexos)) {
+                foreach ($field_anexos as $anexo) {
+                    $name = eventos_cliente_e((string)($anexo['original_name'] ?? 'arquivo'));
+                    $url = trim((string)($anexo['public_url'] ?? ''));
+                    $note = trim((string)($anexo['note'] ?? ''));
+                    $status = !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado';
+                    $link_html = $url !== ''
+                        ? '<a href="' . eventos_cliente_e($url) . '" target="_blank" rel="noopener noreferrer">' . $name . '</a>'
+                        : $name;
+                    $meta = '<small>Status: ' . eventos_cliente_e($status) . '</small>';
+                    if ($note !== '') {
+                        $meta .= '<br><small>Obs: ' . eventos_cliente_e($note) . '</small>';
+                    }
+                    $items .= '<li>' . $link_html . '<br>' . $meta . '</li>';
+                }
+            }
+            $attachments_html = $items !== ''
+                ? '<ul>' . $items . '</ul>'
+                : '<em>Nenhum arquivo anexado.</em>';
+            $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $attachments_html . '</p>';
+            continue;
+        }
+
+        $value = trim((string)($values[$field_id] ?? ''));
+        if ($value === '' && $field_type === 'yesno') {
+            $input_name = eventos_cliente_field_input_name($field_id, $section);
+            $value = trim((string)($values[$input_name] ?? ''));
+        }
+
+        if ($field_type === 'yesno') {
+            if ($value === 'sim') {
+                $display = 'Sim';
+            } elseif ($value === 'nao') {
+                $display = 'Não';
+            } else {
+                $display = '';
+            }
+        } else {
+            $display = $value;
+        }
+
+        $answer = $display !== '' ? nl2br(eventos_cliente_e($display)) : '<em>Não informado</em>';
+        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $answer . '</p>';
+    }
+
+    return implode("\n", $parts);
+}
+
+/**
  * Prepara dados de uma seção pública para renderização/submit.
  */
 function eventos_cliente_mesclar_listas_anexos(array ...$listas): array {
@@ -848,18 +975,12 @@ if (empty($token)) {
             if ($is_combined_reuniao || $link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
                 $link_visivel = !empty($portal_config['visivel_reuniao']);
                 $link_editavel = !empty($portal_config['editavel_reuniao']);
-            } elseif ($link_type_current === 'cliente_formulario') {
-                if ($link_has_slot_rules) {
-                    $link_visivel = $link_visivel && !empty($link['portal_visible']);
-                    $link_editavel = $link_editavel && !empty($link['portal_editable']);
-                }
-            } else {
+            } elseif ($link_type_current === 'cliente_dj') {
+                // Para links DJ por slot (regras novas), a própria configuração do slot manda.
+                // A configuração global DJ fica apenas como fallback para links legados.
                 if (!$link_has_slot_rules) {
                     $link_visivel = !empty($portal_config['visivel_dj']);
                     $link_editavel = !empty($portal_config['editavel_dj']);
-                } else {
-                    $link_visivel = $link_visivel && !empty($portal_config['visivel_dj']);
-                    $link_editavel = $link_editavel && !empty($portal_config['editavel_dj']);
                 }
             }
         }
@@ -940,8 +1061,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                         $field_raw_id = (string)($field['id'] ?? '');
                         $field_input = eventos_cliente_file_input_name($field_raw_id, $section_key);
                         $field_uploads = eventos_cliente_normalizar_uploads($_FILES, $field_input);
-                        $has_existing_attachments = !empty($section_view['anexos']);
-                        if (!$is_draft_action && !empty($field['required']) && empty($field_uploads) && !$has_existing_attachments) {
+                        $existing_field_attachments = eventos_cliente_filtrar_anexos_por_campo(
+                            (array)($section_view['anexos'] ?? []),
+                            $field_raw_id
+                        );
+                        if (!$is_draft_action && !empty($field['required']) && empty($field_uploads) && empty($existing_field_attachments)) {
                             $error = 'Campo obrigatório sem anexo: ' . (string)($field['label'] ?? 'Arquivo');
                             break 2;
                         }
@@ -951,6 +1075,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                                 $section_uploads[] = [
                                     'file' => $field_file,
                                     'note' => (string)($field_notes[$upload_index] ?? ''),
+                                    'form_field_id' => $field_raw_id,
                                 ];
                             }
                         }
@@ -1030,7 +1155,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                                     null,
                                     $file_note !== '' ? $file_note : null,
                                     (int)$link['id'],
-                                    $is_draft_action
+                                    $is_draft_action,
+                                    isset($upload_item['form_field_id']) ? (string)$upload_item['form_field_id'] : null
                                 );
                                 if (empty($save_result['ok'])) {
                                     $upload_errors[] = ($file['name'] ?? 'arquivo') . ': ' . ($save_result['error'] ?? 'erro ao salvar metadados');
@@ -1766,8 +1892,18 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         <?php
             $section_key = (string)($section_view['section'] ?? $link_section);
             $section_label = (string)($section_view['label'] ?? eventos_cliente_section_label($section_key));
+            $section_schema = (array)($section_view['form_schema'] ?? []);
+            $section_values = (array)($section_view['form_values'] ?? []);
             $section_content = (string)($section_view['content'] ?? '');
             $section_anexos = (array)($section_view['anexos'] ?? []);
+            $section_general_anexos = eventos_cliente_filtrar_anexos_sem_campo($section_anexos);
+            $section_content_view = $section_content;
+            if (!empty($section_schema)) {
+                $compiled_view = eventos_cliente_montar_visualizacao_schema($section_schema, $section_values, $section_anexos, $section_key);
+                if (trim(strip_tags($compiled_view)) !== '') {
+                    $section_content_view = $compiled_view;
+                }
+            }
             $read_only_heading = ($is_combined_reuniao || $section_views_total > 1)
                 ? $section_label
                 : 'Suas informações enviadas:';
@@ -1776,14 +1912,14 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             <h3><?= eventos_cliente_e($read_only_heading) ?></h3>
             <div class="client-content-frame">
                 <div class="client-content-view">
-                    <?= $section_content ?: '<em>Sem conteúdo</em>' ?>
+                    <?= $section_content_view ?: '<em>Sem conteúdo</em>' ?>
                 </div>
             </div>
-            <?php if (!empty($section_anexos)): ?>
+            <?php if (!empty($section_general_anexos)): ?>
             <div class="attachments-list">
-                <h4>Anexos enviados</h4>
+                <h4>Anexos gerais enviados</h4>
                 <ul>
-                    <?php foreach ($section_anexos as $anexo): ?>
+                    <?php foreach ($section_general_anexos as $anexo): ?>
                     <li>
                         <div class="attachment-item-head">
                             <span>📎</span>
@@ -1897,6 +2033,7 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                 $section_values = (array)($section_view['form_values'] ?? []);
                 $section_content = (string)($section_view['content'] ?? '');
                 $section_anexos = (array)($section_view['anexos'] ?? []);
+                $section_general_anexos = eventos_cliente_filtrar_anexos_sem_campo($section_anexos);
                 $section_heading = ($is_combined_reuniao || $section_views_total > 1)
                     ? $section_label
                     : (string)($section_meta['form_heading'] ?? 'Formulário');
@@ -1928,7 +2065,8 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                         $label = (string)($field['label'] ?? '');
                         $required = !empty($field['required']);
                         $required_attr = $required ? ' required' : '';
-                        $file_required_attr = ($required && empty($section_anexos)) ? ' required' : '';
+                        $field_attachments = eventos_cliente_filtrar_anexos_por_campo($section_anexos, $field_raw_id);
+                        $file_required_attr = ($required && empty($field_attachments)) ? ' required' : '';
                         $field_default_value = isset($field['default_value']) ? (string)$field['default_value'] : '';
                         $field_value = isset($section_values[$field_raw_id]) ? (string)$section_values[$field_raw_id] : $field_default_value;
                     ?>
@@ -1976,6 +2114,31 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                                        data-note-name="<?= eventos_cliente_e($file_note_name) ?>[]"
                                        <?= $file_required_attr ?>>
                                 <div class="file-note-wrap" id="<?= eventos_cliente_e($file_note_target) ?>"></div>
+                                <?php if (!empty($field_attachments)): ?>
+                                <div class="attachments-list" style="margin-top:0.6rem;">
+                                    <h4 style="margin-bottom:0.45rem;">Arquivos deste campo</h4>
+                                    <ul>
+                                        <?php foreach ($field_attachments as $anexo): ?>
+                                        <li>
+                                            <div class="attachment-item-head">
+                                                <span>📎</span>
+                                                <?php if (!empty($anexo['public_url'])): ?>
+                                                <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer">
+                                                    <?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?>
+                                                </a>
+                                                <?php else: ?>
+                                                <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="attachment-note"><strong>Status:</strong> <?= !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado' ?></div>
+                                            <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
+                                            <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
+                                            <?php endif; ?>
+                                        </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                </div>
+                                <?php endif; ?>
                             <?php else: ?>
                                 <input type="text" id="<?= eventos_cliente_e($field_name) ?>" name="<?= eventos_cliente_e($field_name) ?>" value="<?= eventos_cliente_e($field_value) ?>" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem;"<?= $required_attr ?>>
                             <?php endif; ?>
@@ -2023,11 +2186,11 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                 </div>
                 <?php endif; ?>
 
-                <?php if (!empty($section_anexos)): ?>
+                <?php if (!empty($section_general_anexos)): ?>
                 <div class="attachments-list">
-                    <h4>Arquivos salvos neste formulário</h4>
+                    <h4>Arquivos gerais salvos neste formulário</h4>
                     <ul>
-                        <?php foreach ($section_anexos as $anexo): ?>
+                        <?php foreach ($section_general_anexos as $anexo): ?>
                         <li>
                             <div class="attachment-item-head">
                                 <span>📎</span>

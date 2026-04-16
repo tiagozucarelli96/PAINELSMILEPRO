@@ -25,7 +25,7 @@ if (!$is_superadmin && !$can_eventos && !$can_realizar_evento) {
     exit;
 }
 
-$user_id = $_SESSION['id'] ?? $_SESSION['user_id'] ?? 0;
+$user_id = $_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0;
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $me_event_id = (int)($_GET['me_event_id'] ?? $_POST['me_event_id'] ?? 0);
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -42,7 +42,7 @@ $secoes = [];
 $error = '';
 $success = '';
 $observacoes_editor_blocks = [
-    ['key' => 'legacy_text', 'label' => 'Texto livre (opcional)', 'description' => 'Área aberta para observações complementares.', 'public' => true, 'open' => true],
+    ['key' => 'legacy_text', 'label' => 'Texto livre (opcional)', 'description' => 'Área aberta para observações complementares.', 'public' => true, 'open' => false],
     ['key' => 'cronograma', 'label' => 'Cronograma', 'description' => 'Use este bloco para roteiro, horários e sequência do evento.', 'public' => true, 'open' => false],
     ['key' => 'fornecedores_externos', 'label' => 'Fornecedores externos', 'description' => 'Registre contatos, entregas e combinados com fornecedores parceiros.', 'public' => true, 'open' => false],
     ['key' => 'informacoes_importantes', 'label' => 'Informações importantes', 'description' => 'Pontos críticos que precisam ficar claros para a execução do evento.', 'public' => true, 'open' => false],
@@ -117,15 +117,16 @@ function eventos_reuniao_serializar_lista_anexos(array $anexos): array {
     return $serialized;
 }
 
-function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeting_id, array $link): array {
+function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeting_id, array $link, string $section = 'formulario'): array {
     $link_id = (int)($link['id'] ?? 0);
+    $section_key = trim($section) !== '' ? trim($section) : 'formulario';
     $draft_attachments = [];
     $submitted_attachments = [];
 
     if ($link_id > 0) {
         try {
             $draft_attachments = eventos_reuniao_serializar_lista_anexos(
-                eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, 'formulario', $link_id)
+                eventos_reuniao_get_anexos_link_rascunho($pdo, $meeting_id, $section_key, $link_id)
             );
         } catch (Throwable $e) {
             error_log('eventos_reuniao_final draft attachments link ' . $link_id . ': ' . $e->getMessage());
@@ -133,7 +134,7 @@ function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeti
 
         try {
             $submitted_attachments = eventos_reuniao_serializar_lista_anexos(
-                eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'formulario', $link_id)
+                eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, $section_key, $link_id)
             );
         } catch (Throwable $e) {
             error_log('eventos_reuniao_final submitted attachments link ' . $link_id . ': ' . $e->getMessage());
@@ -175,6 +176,74 @@ function eventos_reuniao_json_script($value, string $fallback = 'null'): string 
         return $fallback;
     }
     return $encoded;
+}
+
+function eventos_reuniao_validar_senha_usuario(PDO $pdo, int $user_id, string $senha): array {
+    if ($user_id <= 0) {
+        return ['ok' => false, 'error' => 'Sessão inválida. Faça login novamente.'];
+    }
+
+    $senha = (string)$senha;
+    if ($senha === '') {
+        return ['ok' => false, 'error' => 'Informe sua senha para confirmar a exclusão.'];
+    }
+
+    try {
+        $cols_stmt = $pdo->query("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'usuarios'
+        ");
+        $cols = $cols_stmt ? $cols_stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        $has = static function(string $column) use ($cols): bool {
+            return in_array($column, $cols, true);
+        };
+
+        $senha_col = null;
+        foreach (['senha', 'senha_hash', 'password', 'pass'] as $candidate) {
+            if ($has($candidate)) {
+                $senha_col = $candidate;
+                break;
+            }
+        }
+
+        if ($senha_col === null) {
+            return ['ok' => false, 'error' => 'Não foi possível validar a senha neste ambiente.'];
+        }
+
+        $stmt = $pdo->prepare("SELECT id, {$senha_col} AS senha_armazenada FROM usuarios WHERE id = :id LIMIT 1");
+        $stmt->execute([':id' => $user_id]);
+        $usuario = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$usuario) {
+            return ['ok' => false, 'error' => 'Usuário da sessão não encontrado.'];
+        }
+
+        $stored = (string)($usuario['senha_armazenada'] ?? '');
+        if ($stored === '') {
+            return ['ok' => false, 'error' => 'Senha inválida. Exclusão cancelada.'];
+        }
+
+        $ok = false;
+        if (!$ok && preg_match('/^\$2[ayb]\$|\$argon2/i', $stored) === 1) {
+            $ok = password_verify($senha, $stored);
+        }
+        if (!$ok && preg_match('/^[a-f0-9]{32}$/i', $stored) === 1) {
+            $ok = (strtolower($stored) === md5($senha));
+        }
+        if (!$ok) {
+            $ok = hash_equals($stored, $senha);
+        }
+
+        if (!$ok) {
+            return ['ok' => false, 'error' => 'Senha inválida. Exclusão cancelada.'];
+        }
+
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_final validar senha exclusao: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Falha ao validar a senha. Tente novamente.'];
+    }
 }
 
 // Processar ações POST
@@ -502,8 +571,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
                 exit;
             }
+            $confirm_password = (string)($_POST['confirm_password'] ?? '');
+            $password_check = eventos_reuniao_validar_senha_usuario($pdo, (int)$user_id, $confirm_password);
+            if (empty($password_check['ok'])) {
+                echo json_encode(['ok' => false, 'error' => (string)($password_check['error'] ?? 'Senha inválida.')]);
+                exit;
+            }
             $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
-            $result = eventos_reuniao_excluir_dj_slot($pdo, $meeting_id, $slot_index, (int)$user_id);
+            $result = eventos_reuniao_excluir_slot_cliente(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                (int)$user_id,
+                'cliente_dj',
+                true
+            );
             echo json_encode($result);
             exit;
 
@@ -556,8 +638,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
                 exit;
             }
+            $confirm_password = (string)($_POST['confirm_password'] ?? '');
+            $password_check = eventos_reuniao_validar_senha_usuario($pdo, (int)$user_id, $confirm_password);
+            if (empty($password_check['ok'])) {
+                echo json_encode(['ok' => false, 'error' => (string)($password_check['error'] ?? 'Senha inválida.')]);
+                exit;
+            }
             $slot_index = max(1, (int)($_POST['slot_index'] ?? 1));
-            $result = eventos_reuniao_excluir_slot_cliente($pdo, $meeting_id, $slot_index, (int)$user_id, 'cliente_formulario');
+            $result = eventos_reuniao_excluir_slot_cliente(
+                $pdo,
+                $meeting_id,
+                $slot_index,
+                (int)$user_id,
+                'cliente_formulario',
+                true
+            );
             echo json_encode($result);
             exit;
             
@@ -785,6 +880,34 @@ $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo,
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
 $links_cliente_formulario = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_formulario') : [];
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
+$links_cliente_dj_payload = [];
+foreach ($links_cliente_dj as $link_dj) {
+    if (!is_array($link_dj)) {
+        continue;
+    }
+    try {
+        $links_cliente_dj_payload[] = eventos_reuniao_serializar_link_formulario_payload($pdo, $meeting_id, $link_dj, 'dj_protocolo');
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_final serializar link dj: ' . $e->getMessage());
+        $links_cliente_dj_payload[] = [
+            'id' => (int)($link_dj['id'] ?? 0),
+            'token' => (string)($link_dj['token'] ?? ''),
+            'is_active' => !empty($link_dj['is_active']),
+            'slot_index' => (int)($link_dj['slot_index'] ?? 1),
+            'form_title' => (string)($link_dj['form_title'] ?? ''),
+            'submitted_at' => array_key_exists('submitted_at', $link_dj) && $link_dj['submitted_at'] !== null ? (string)$link_dj['submitted_at'] : null,
+            'draft_saved_at' => array_key_exists('draft_saved_at', $link_dj) && $link_dj['draft_saved_at'] !== null ? (string)$link_dj['draft_saved_at'] : null,
+            'portal_visible' => !empty($link_dj['portal_visible']),
+            'portal_editable' => !empty($link_dj['portal_editable']),
+            'portal_configured' => !empty($link_dj['portal_configured']),
+            'draft_preview_text' => '',
+            'submitted_preview_text' => '',
+            'draft_attachments' => [],
+            'submitted_attachments' => [],
+            'form_schema' => is_array($link_dj['form_schema'] ?? null) ? $link_dj['form_schema'] : [],
+        ];
+    }
+}
 $links_cliente_formulario_payload = [];
 foreach ($links_cliente_formulario as $link_formulario) {
     if (!is_array($link_formulario)) {
@@ -1723,6 +1846,88 @@ includeSidebar($sidebar_title);
         display: none;
     }
 
+    .cronograma-builder {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 0.2rem;
+    }
+
+    .cronograma-help {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.8rem;
+    }
+
+    .cronograma-rows {
+        display: grid;
+        gap: 0.6rem;
+    }
+
+    .cronograma-row {
+        display: grid;
+        grid-template-columns: auto minmax(200px, 1fr) auto;
+        gap: 0.55rem;
+        align-items: center;
+        padding: 0.55rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #fff;
+    }
+
+    .cronograma-time-fields {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .cronograma-time-separator {
+        color: #334155;
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+
+    .cronograma-time-input {
+        width: 66px;
+        padding: 0.45rem 0.5rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 0.84rem;
+        font-weight: 600;
+        text-align: center;
+        background: #fff;
+    }
+
+    .cronograma-text-input {
+        width: 100%;
+        min-width: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 0.5rem 0.65rem;
+        font-size: 0.85rem;
+        color: #0f172a;
+        background: #fff;
+    }
+
+    .cronograma-row-empty {
+        opacity: 0.82;
+        border-style: dashed;
+    }
+
+    .cronograma-row-actions {
+        display: inline-flex;
+        gap: 0.35rem;
+    }
+
+    .cronograma-empty {
+        margin: 0;
+        padding: 0.75rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        color: #64748b;
+        font-size: 0.82rem;
+        background: #f8fafc;
+    }
+
     .observacoes-hidden-storage {
         display: none;
     }
@@ -2049,6 +2254,22 @@ includeSidebar($sidebar_title);
             width: 100%;
             min-width: 0;
         }
+
+        .cronograma-row {
+            grid-template-columns: 1fr;
+        }
+
+        .cronograma-time-fields {
+            width: fit-content;
+        }
+
+        .cronograma-row-actions {
+            width: 100%;
+        }
+
+        .cronograma-row-actions .btn {
+            width: 100%;
+        }
     }
 </style>
 
@@ -2236,16 +2457,19 @@ includeSidebar($sidebar_title);
                 <div class="dj-slots-controls">
                     <div>
                         <h4>🎧 DJ / Protocolos</h4>
-                        <p>Os formulários do cliente agora ficam na aba Formulário. Use esta área para texto livre, instruções do DJ e anexos de apoio.</p>
+                        <p>Crie formulários exclusivos do DJ, configure visibilidade no portal do cliente e acompanhe o envio por quadro.</p>
                     </div>
                     <div class="dj-slots-actions">
                         <?php if (!$readonly_mode): ?>
+                        <button type="button" class="btn btn-primary" id="btnAddDjSlot">+ Adicionar formulário</button>
                         <button type="button" class="btn btn-secondary" onclick="addDjUploadCard()">+ Adicionar arquivo</button>
                         <?php endif; ?>
                     </div>
                 </div>
-                <div class="builder-field-meta" style="margin-top: 0.55rem;">
-                    A liberação de preenchimento estruturado para o cliente passou a ser feita somente na aba <strong>Formulário</strong>.
+                <div id="djSlotsEmptyState" class="dj-builder-empty-state" style="display:none;">Nenhum formulário DJ criado. Clique em "Adicionar formulário" para começar.</div>
+                <div id="djSlotsContainer" class="dj-slots-stack"></div>
+                <div class="builder-field-meta" style="margin-top: 0.75rem;">
+                    Arquivos abaixo são de apoio interno/cliente da seção DJ e não substituem os uploads dos campos do formulário.
                 </div>
 
                 <div class="dj-anexos-box" id="djAnexosBox" style="display:none;">
@@ -2345,6 +2569,7 @@ includeSidebar($sidebar_title);
             <?php elseif ($key === 'observacoes_gerais'): ?>
             <div class="observacoes-stack" id="observacoesStack">
                 <?php foreach ($observacoes_editor_blocks as $obs_block): ?>
+                <?php $is_cronograma_block = (($obs_block['key'] ?? '') === 'cronograma'); ?>
                 <div class="observacoes-panel" data-observacoes-panel="<?= htmlspecialchars($obs_block['key']) ?>">
                     <button type="button" class="observacoes-toggle" onclick="toggleObservacoesBlock('<?= htmlspecialchars($obs_block['key']) ?>')">
                         <span class="observacoes-toggle-main">
@@ -2361,10 +2586,26 @@ includeSidebar($sidebar_title);
                         <?php endif; ?>
                     </button>
                     <div class="observacoes-body<?= empty($obs_block['open']) ? ' is-collapsed' : '' ?>" id="obsBody-<?= htmlspecialchars($obs_block['key']) ?>">
+                        <?php if ($is_cronograma_block): ?>
+                        <div
+                            class="cronograma-builder"
+                            id="cronogramaBuilder"
+                            data-cronograma-readonly="<?= ($is_locked || $readonly_mode) ? '1' : '0' ?>"
+                        >
+                            <p class="cronograma-help">Preencha hora e minuto + descrição. O cronograma se reorganiza automaticamente conforme os horários.</p>
+                            <div class="cronograma-rows" id="cronogramaRows"></div>
+                            <?php if (!$is_locked && !$readonly_mode): ?>
+                            <div class="cronograma-row-actions">
+                                <button type="button" class="btn btn-secondary" onclick="adicionarLinhaCronograma()">+ Adicionar horário</button>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        <?php else: ?>
                         <textarea id="editor-observacoes-bloco-<?= htmlspecialchars($obs_block['key']) ?>"
                                   data-observacoes-block="<?= htmlspecialchars($obs_block['key']) ?>"
                                   <?= ($is_locked || $readonly_mode) ? 'readonly' : '' ?>
                                   style="width:100%; min-height: 300px; border: 0;"></textarea>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endforeach; ?>
@@ -2505,20 +2746,7 @@ const initialDecoracaoSchema = <?= eventos_reuniao_json_script($decoracao_schema
 const initialObservacoesSchema = <?= eventos_reuniao_json_script($observacoes_schema_saved, '[]') ?>;
 const initialDjSchema = <?= eventos_reuniao_json_script($dj_schema_saved, '[]') ?>;
 const initialFormularioSchema = <?= eventos_reuniao_json_script($formulario_schema_saved, '[]') ?>;
-const initialDjLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
-    return [
-        'id' => (int)($link['id'] ?? 0),
-        'token' => (string)($link['token'] ?? ''),
-        'is_active' => !empty($link['is_active']),
-        'slot_index' => (int)($link['slot_index'] ?? 1),
-        'form_title' => (string)($link['form_title'] ?? ''),
-        'submitted_at' => array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null,
-        'portal_visible' => !empty($link['portal_visible']),
-        'portal_editable' => !empty($link['portal_editable']),
-        'portal_configured' => !empty($link['portal_configured']),
-        'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
-    ];
-}, $links_cliente_dj), '[]') ?>;
+const initialDjLinks = <?= eventos_reuniao_json_script($links_cliente_dj_payload, '[]') ?>;
 const initialObservacoesClientLinks = <?= eventos_reuniao_json_script(array_map(static function (array $link): array {
     return [
         'id' => (int)($link['id'] ?? 0),
@@ -2589,6 +2817,15 @@ let sectionFormDraftValues = {
     decoracao: {},
     observacoes_gerais: {},
 };
+const CRONOGRAMA_BLOCK_KEY = 'cronograma';
+const CRONOGRAMA_ROW_EMPTY_TEMPLATE = {
+    id: 0,
+    hour: '',
+    minute: '',
+    text: '',
+};
+let cronogramaRows = [];
+let cronogramaRowCounter = 0;
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -2722,8 +2959,386 @@ function getObservacoesBlockConfig(blockKey) {
     }) || null;
 }
 
+function isCronogramaBlock(blockKey) {
+    return String(blockKey || '').trim() === CRONOGRAMA_BLOCK_KEY;
+}
+
 function getObservacoesBlockEditorId(blockKey) {
     return 'editor-observacoes-bloco-' + String(blockKey || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function getCronogramaBuilderState() {
+    const builder = document.getElementById('cronogramaBuilder');
+    const readonlyByDom = builder && String(builder.getAttribute('data-cronograma-readonly') || '') === '1';
+    return {
+        builder,
+        readonly: !!(readonlyByDom || pageReadonly || sectionLockedState.observacoes_gerais)
+    };
+}
+
+function nextCronogramaRowId() {
+    cronogramaRowCounter += 1;
+    return cronogramaRowCounter;
+}
+
+function ensureCronogramaRowCounter(rowId) {
+    const parsed = Number(rowId || 0);
+    if (Number.isInteger(parsed) && parsed > cronogramaRowCounter) {
+        cronogramaRowCounter = parsed;
+    }
+}
+
+function createCronogramaRow(row = {}) {
+    const parsedId = Number(row && row.id ? row.id : 0);
+    const id = Number.isInteger(parsedId) && parsedId > 0 ? parsedId : nextCronogramaRowId();
+    ensureCronogramaRowCounter(id);
+    return {
+        id,
+        hour: String(row && row.hour ? row.hour : ''),
+        minute: String(row && row.minute ? row.minute : ''),
+        text: String(row && row.text ? row.text : '')
+    };
+}
+
+function sanitizeCronogramaTimePart(value, max) {
+    const digits = String(value == null ? '' : value).replace(/[^\d]/g, '').slice(0, 2);
+    if (digits === '') {
+        return '';
+    }
+    const parsed = Number(digits);
+    if (!Number.isInteger(parsed)) {
+        return '';
+    }
+    return String(Math.max(0, Math.min(max, parsed)));
+}
+
+function normalizeCronogramaTimePart(value, max) {
+    const sanitized = sanitizeCronogramaTimePart(value, max);
+    if (sanitized === '') {
+        return '';
+    }
+    return String(Number(sanitized)).padStart(2, '0');
+}
+
+function normalizeCronogramaRow(row) {
+    const normalized = createCronogramaRow({
+        id: Number(row && row.id ? row.id : 0),
+        hour: normalizeCronogramaTimePart(row && row.hour ? row.hour : '', 23),
+        minute: normalizeCronogramaTimePart(row && row.minute ? row.minute : '', 59),
+        text: String(row && row.text ? row.text : '').trim()
+    });
+    return normalized;
+}
+
+function cronogramaRowHasContent(row) {
+    if (!row || typeof row !== 'object') return false;
+    return String(row.hour || '').trim() !== ''
+        || String(row.minute || '').trim() !== ''
+        || String(row.text || '').trim() !== '';
+}
+
+function cronogramaRowHasTime(row) {
+    const hour = normalizeCronogramaTimePart(row && row.hour ? row.hour : '', 23);
+    const minute = normalizeCronogramaTimePart(row && row.minute ? row.minute : '', 59);
+    return hour !== '' && minute !== '';
+}
+
+function getCronogramaRowMinutes(row) {
+    if (!cronogramaRowHasTime(row)) {
+        return null;
+    }
+    const hour = Number(normalizeCronogramaTimePart(row && row.hour ? row.hour : '', 23));
+    const minute = Number(normalizeCronogramaTimePart(row && row.minute ? row.minute : '', 59));
+    if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+        return null;
+    }
+    return (hour * 60) + minute;
+}
+
+function sortCronogramaRows(rows) {
+    const withTime = [];
+    const withoutTime = [];
+
+    (Array.isArray(rows) ? rows : []).forEach((row, idx) => {
+        const normalized = normalizeCronogramaRow(row);
+        if (!cronogramaRowHasContent(normalized)) return;
+        const minutes = getCronogramaRowMinutes(normalized);
+        if (minutes === null) {
+            withoutTime.push({ row: normalized, idx });
+            return;
+        }
+        withTime.push({ row: normalized, idx, minutes });
+    });
+
+    const hasLateNight = withTime.some((item) => item.minutes >= (18 * 60));
+    const hasEarlyMorning = withTime.some((item) => item.minutes <= (6 * 60));
+    const useOvernightOrdering = hasLateNight && hasEarlyMorning;
+
+    withTime.sort((a, b) => {
+        const aOrder = useOvernightOrdering && a.minutes <= (6 * 60) ? a.minutes + 1440 : a.minutes;
+        const bOrder = useOvernightOrdering && b.minutes <= (6 * 60) ? b.minutes + 1440 : b.minutes;
+        if (aOrder !== bOrder) {
+            return aOrder - bOrder;
+        }
+        return a.idx - b.idx;
+    });
+
+    withoutTime.sort((a, b) => a.idx - b.idx);
+    return withTime.map((item) => item.row).concat(withoutTime.map((item) => item.row));
+}
+
+function getCronogramaContentRows() {
+    const rows = sortCronogramaRows(Array.isArray(cronogramaRows) ? cronogramaRows : []);
+    return rows.filter((row) => cronogramaRowHasContent(row));
+}
+
+function buildCronogramaHtmlFromRows() {
+    const rows = getCronogramaContentRows();
+    if (!rows.length) {
+        return '';
+    }
+
+    const items = rows.map((row) => {
+        const hour = normalizeCronogramaTimePart(row.hour, 23);
+        const minute = normalizeCronogramaTimePart(row.minute, 59);
+        const hasTime = hour !== '' && minute !== '';
+        const timeLabel = hasTime ? `${hour}:${minute}` : '--:--';
+        const text = String(row.text || '').trim();
+        const textLabel = text !== '' ? text : 'Sem descrição';
+        return `<li data-smile-cronograma-item="1" data-hour="${escapeHtmlForField(hour)}" data-minute="${escapeHtmlForField(minute)}" data-text="${escapeHtmlForField(text)}">`
+            + `<strong data-smile-cronograma-time="1">${escapeHtmlForField(timeLabel)}</strong> `
+            + `<span data-smile-cronograma-text="1">${escapeHtmlForField(textLabel)}</span>`
+            + `</li>`;
+    });
+
+    return `<div data-smile-cronograma="1"><ul>${items.join('')}</ul></div>`;
+}
+
+function parseCronogramaRowFromTextLine(line) {
+    const raw = String(line || '').trim();
+    if (raw === '') {
+        return null;
+    }
+
+    let match = raw.match(/^(\d{1,2})\s*[:hH]\s*(\d{1,2})\s*(?:[-–—:]?\s*)?(.*)$/i);
+    if (match) {
+        return createCronogramaRow({
+            hour: normalizeCronogramaTimePart(match[1], 23),
+            minute: normalizeCronogramaTimePart(match[2], 59),
+            text: String(match[3] || '').trim()
+        });
+    }
+
+    match = raw.match(/^(\d{1,2})\s*(?:h|hr|hrs|hora|horas)\b\.?\s*(?:[-–—:]?\s*)?(.*)$/i);
+    if (match) {
+        return createCronogramaRow({
+            hour: normalizeCronogramaTimePart(match[1], 23),
+            minute: '00',
+            text: String(match[2] || '').trim()
+        });
+    }
+
+    return createCronogramaRow({
+        hour: '',
+        minute: '',
+        text: raw
+    });
+}
+
+function parseCronogramaRowsFromHtml(contentHtml) {
+    const rows = [];
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = String(contentHtml || '');
+
+    const structuredItems = Array.from(wrapper.querySelectorAll('[data-smile-cronograma-item]'));
+    if (structuredItems.length > 0) {
+        structuredItems.forEach((item) => {
+            const hourAttr = normalizeCronogramaTimePart(item.getAttribute('data-hour') || '', 23);
+            const minuteAttr = normalizeCronogramaTimePart(item.getAttribute('data-minute') || '', 59);
+            let text = String(item.getAttribute('data-text') || '').trim();
+            if (text === '') {
+                const textNode = item.querySelector('[data-smile-cronograma-text]');
+                if (textNode) {
+                    text = String(textNode.textContent || '').trim();
+                } else {
+                    text = String(item.textContent || '').trim();
+                }
+            }
+
+            rows.push(createCronogramaRow({
+                hour: hourAttr,
+                minute: minuteAttr,
+                text
+            }));
+        });
+        return rows;
+    }
+
+    const text = String(wrapper.innerText || wrapper.textContent || '').replace(/\u00a0/g, ' ');
+    if (text.trim() === '') {
+        return [];
+    }
+    text.split(/\r?\n/).forEach((line) => {
+        const parsed = parseCronogramaRowFromTextLine(line);
+        if (parsed && cronogramaRowHasContent(parsed)) {
+            rows.push(parsed);
+        }
+    });
+    return rows;
+}
+
+function findCronogramaRowById(rowId) {
+    const id = Number(rowId || 0);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    return (Array.isArray(cronogramaRows) ? cronogramaRows : []).find((row) => Number(row && row.id ? row.id : 0) === id) || null;
+}
+
+function normalizeAndRenderCronogramaRows() {
+    const state = getCronogramaBuilderState();
+    const normalizedRows = getCronogramaContentRows();
+    cronogramaRows = normalizedRows;
+
+    if (!state.readonly) {
+        cronogramaRows.push(createCronogramaRow(CRONOGRAMA_ROW_EMPTY_TEMPLATE));
+    }
+
+    renderCronogramaRows();
+}
+
+function renderCronogramaRows() {
+    const rowsWrap = document.getElementById('cronogramaRows');
+    if (!rowsWrap) return;
+    const state = getCronogramaBuilderState();
+
+    if (!Array.isArray(cronogramaRows)) {
+        cronogramaRows = [];
+    }
+    if (!state.readonly && cronogramaRows.length === 0) {
+        cronogramaRows.push(createCronogramaRow(CRONOGRAMA_ROW_EMPTY_TEMPLATE));
+    }
+    if (state.readonly && cronogramaRows.length === 0) {
+        rowsWrap.innerHTML = '<p class="cronograma-empty">Nenhum horário informado.</p>';
+        bindCronogramaRowsEvents();
+        return;
+    }
+
+    rowsWrap.innerHTML = cronogramaRows.map((row) => {
+        const rowId = Number(row && row.id ? row.id : 0);
+        const hour = String(row && row.hour ? row.hour : '');
+        const minute = String(row && row.minute ? row.minute : '');
+        const text = String(row && row.text ? row.text : '');
+        const isEmpty = !cronogramaRowHasContent(row);
+        const disabledAttr = state.readonly ? ' disabled' : '';
+        const removeHtml = state.readonly
+            ? ''
+            : `<button type="button" class="btn btn-secondary btn-mini" data-cronograma-action="remove" data-row-id="${rowId}">Remover</button>`;
+        return `<div class="cronograma-row${isEmpty ? ' cronograma-row-empty' : ''}" data-cronograma-row="${rowId}">`
+            + `<div class="cronograma-time-fields">`
+            + `<input type="number" min="0" max="23" step="1" class="cronograma-time-input" placeholder="HH" data-cronograma-field="hour" data-row-id="${rowId}" value="${escapeHtmlForField(hour)}"${disabledAttr}>`
+            + `<span class="cronograma-time-separator">:</span>`
+            + `<input type="number" min="0" max="59" step="1" class="cronograma-time-input" placeholder="MM" data-cronograma-field="minute" data-row-id="${rowId}" value="${escapeHtmlForField(minute)}"${disabledAttr}>`
+            + `</div>`
+            + `<input type="text" class="cronograma-text-input" placeholder="Descreva o que acontece neste horário" data-cronograma-field="text" data-row-id="${rowId}" value="${escapeHtmlForField(text)}"${disabledAttr}>`
+            + `<div class="cronograma-row-actions">${removeHtml}</div>`
+            + `</div>`;
+    }).join('');
+
+    bindCronogramaRowsEvents();
+}
+
+function bindCronogramaRowsEvents() {
+    const rowsWrap = document.getElementById('cronogramaRows');
+    if (!rowsWrap || rowsWrap.dataset.bound === '1') return;
+    rowsWrap.dataset.bound = '1';
+
+    rowsWrap.addEventListener('input', function(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        const field = String(target.getAttribute('data-cronograma-field') || '').trim();
+        const rowId = Number(target.getAttribute('data-row-id') || 0);
+        const row = findCronogramaRowById(rowId);
+        if (!row) return;
+
+        if (field === 'hour') {
+            row.hour = sanitizeCronogramaTimePart(target.value, 23);
+            target.value = row.hour;
+            return;
+        }
+        if (field === 'minute') {
+            row.minute = sanitizeCronogramaTimePart(target.value, 59);
+            target.value = row.minute;
+            return;
+        }
+        if (field === 'text') {
+            row.text = String(target.value || '');
+        }
+    });
+
+    rowsWrap.addEventListener('change', function(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement)) return;
+        const field = String(target.getAttribute('data-cronograma-field') || '').trim();
+        const rowId = Number(target.getAttribute('data-row-id') || 0);
+        const row = findCronogramaRowById(rowId);
+        if (!row) return;
+
+        if (field === 'hour') {
+            row.hour = normalizeCronogramaTimePart(target.value, 23);
+        } else if (field === 'minute') {
+            row.minute = normalizeCronogramaTimePart(target.value, 59);
+        } else if (field === 'text') {
+            row.text = String(target.value || '').trim();
+        }
+
+        normalizeAndRenderCronogramaRows();
+    });
+
+    rowsWrap.addEventListener('click', function(event) {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const actionEl = target.closest('[data-cronograma-action]');
+        if (!actionEl) return;
+        const action = String(actionEl.getAttribute('data-cronograma-action') || '').trim();
+        const rowId = Number(actionEl.getAttribute('data-row-id') || 0);
+        if (action !== 'remove' || !Number.isInteger(rowId) || rowId <= 0) return;
+
+        cronogramaRows = (Array.isArray(cronogramaRows) ? cronogramaRows : []).filter((row) => Number(row && row.id ? row.id : 0) !== rowId);
+        normalizeAndRenderCronogramaRows();
+    });
+}
+
+function hydrateCronogramaFromHtml(html) {
+    cronogramaRows = parseCronogramaRowsFromHtml(html);
+    normalizeAndRenderCronogramaRows();
+}
+
+function adicionarLinhaCronograma() {
+    const state = getCronogramaBuilderState();
+    if (state.readonly) return;
+
+    if (!Array.isArray(cronogramaRows)) {
+        cronogramaRows = [];
+    }
+
+    const lastRow = cronogramaRows.length > 0 ? cronogramaRows[cronogramaRows.length - 1] : null;
+    if (lastRow && !cronogramaRowHasContent(lastRow)) {
+        const lastInput = document.querySelector(`#cronogramaRows [data-row-id="${Number(lastRow.id || 0)}"][data-cronograma-field="hour"]`);
+        if (lastInput) {
+            lastInput.focus();
+        }
+        return;
+    }
+
+    cronogramaRows.push(createCronogramaRow(CRONOGRAMA_ROW_EMPTY_TEMPLATE));
+    renderCronogramaRows();
+
+    const newRow = cronogramaRows[cronogramaRows.length - 1];
+    if (newRow) {
+        const hourInput = document.querySelector(`#cronogramaRows [data-row-id="${Number(newRow.id || 0)}"][data-cronograma-field="hour"]`);
+        if (hourInput) {
+            hourInput.focus();
+        }
+    }
 }
 
 function parseObservacoesBlocksFromContent(contentHtml) {
@@ -2759,6 +3374,10 @@ function parseObservacoesBlocksFromContent(contentHtml) {
 }
 
 function setObservacoesBlockContent(blockKey, html) {
+    if (isCronogramaBlock(blockKey)) {
+        hydrateCronogramaFromHtml(html);
+        return;
+    }
     const editorId = getObservacoesBlockEditorId(blockKey);
     if (typeof tinymce !== 'undefined' && tinymce.get(editorId)) {
         tinymce.get(editorId).setContent(String(html || ''));
@@ -2771,6 +3390,9 @@ function setObservacoesBlockContent(blockKey, html) {
 }
 
 function getObservacoesBlockContent(blockKey) {
+    if (isCronogramaBlock(blockKey)) {
+        return buildCronogramaHtmlFromRows();
+    }
     const editorId = getObservacoesBlockEditorId(blockKey);
     if (typeof tinymce !== 'undefined' && tinymce.get(editorId)) {
         return tinymce.get(editorId).getContent() || '';
@@ -2784,6 +3406,9 @@ function hydrateObservacoesBlocksFromSavedContent() {
     Object.keys(parsed).forEach((blockKey) => {
         setObservacoesBlockContent(blockKey, parsed[blockKey]);
     });
+    if (!Object.prototype.hasOwnProperty.call(parsed, CRONOGRAMA_BLOCK_KEY)) {
+        hydrateCronogramaFromHtml('');
+    }
 }
 
 function buildObservacoesBlocksContent(options = {}) {
@@ -3158,22 +3783,96 @@ function findNextDjSlotIndex() {
     return null;
 }
 
+function getDjPublicUrl(slot) {
+    const link = djLinksBySlot[slot] || null;
+    if (!link || !link.token) {
+        return '';
+    }
+    const base = String(clientPortalBaseUrl || window.location.origin || '').replace(/\/+$/, '');
+    return `${base}/index.php?page=eventos_cliente_dj&token=${encodeURIComponent(String(link.token))}`;
+}
+
+function abrirDjFormularioPublico(slot) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !djSlotExists(slotIndex)) {
+        alert('Formulário DJ inválido.');
+        return;
+    }
+    const url = getDjPublicUrl(slotIndex);
+    if (!url) {
+        alert('Nenhum link público disponível para este formulário DJ.');
+        return;
+    }
+    window.open(url, '_blank');
+}
+
+function buildDjSlotResponseStatusHtml(slot) {
+    const link = djLinksBySlot[slot] || null;
+    if (!link) {
+        return '';
+    }
+
+    const draftSavedAt = link.draft_saved_at ? formatDate(link.draft_saved_at) : '';
+    const submittedAt = link.submitted_at ? formatDate(link.submitted_at) : '';
+    const hasDraft = !!link.draft_saved_at;
+    const hasSubmitted = !!link.submitted_at;
+    const publicUrl = getDjPublicUrl(slot);
+    const actions = [];
+
+    if (publicUrl) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirDjFormularioPublico(${slot})">↗ Abrir formulário</button>`);
+    }
+    if (hasDraft) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalDjResposta(${slot}, 'draft')">👁 Ver rascunho</button>`);
+    }
+    if (hasSubmitted) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalDjResposta(${slot}, 'submitted')">👁 Ver enviado</button>`);
+    }
+
+    if (!hasDraft && !hasSubmitted && !publicUrl) {
+        return '';
+    }
+
+    const lines = [];
+    if (publicUrl && !hasDraft && !hasSubmitted) {
+        lines.push('<div><strong>Link ativo</strong><p>Aguardando preenchimento do cliente.</p></div>');
+    }
+    if (hasDraft) {
+        lines.push(`<div><strong>Rascunho salvo</strong><p>${escapeHtmlForField(draftSavedAt)}</p></div>`);
+    }
+    if (hasSubmitted) {
+        lines.push(`<div><strong>Formulário enviado</strong><p>${escapeHtmlForField(submittedAt)}</p></div>`);
+    }
+
+    return `
+        <div class="slot-response-status">
+            ${lines.join('')}
+            ${actions.length ? `<div class="slot-response-actions">${actions.join('')}</div>` : ''}
+        </div>
+    `;
+}
+
 function buildDjSlotCardHtml(slot) {
     const link = djLinksBySlot[slot] || null;
     const portalVisibleChecked = link && link.portal_visible ? ' checked' : '';
     const portalEditableChecked = link && link.portal_editable ? ' checked' : '';
     const disabledAttr = pageReadonly ? ' disabled' : '';
+    const destravarBtnHtml = pageReadonly
+        ? ''
+        : `<button type="button" class="btn btn-secondary" onclick="destravarDjSlot(${slot})" id="djBtnDestravar-${slot}" style="display:none;">🔓 Destravar</button>`;
     const removeBtnHtml = pageReadonly
         ? ''
-        : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir quadro</button>`;
+        : `<button type="button" class="btn btn-secondary btn-slot-remove" onclick="excluirDjSlot(${slot})">🗑 Excluir formulário</button>`;
+    const statusHtml = buildDjSlotResponseStatusHtml(slot);
     return `
         <div class="dj-builder-shell" data-dj-slot="${slot}">
             <div class="dj-builder-head">
                 <div>
-                    <h4 class="dj-builder-title">🧩 Formulário DJ / Protocolos • Quadro ${slot}</h4>
-                    <div class="dj-builder-subtitle">Selecione o formulário e configure a visibilidade/edição deste quadro no Portal do Cliente.</div>
+                    <h4 class="dj-builder-title">🎧 Formulário DJ • Quadro ${slot}</h4>
+                    <div class="dj-builder-subtitle">Selecione um formulário exclusivo do DJ e configure a liberação para o portal.</div>
                 </div>
                 <div class="dj-top-actions">
+                    ${destravarBtnHtml}
                     ${removeBtnHtml}
                 </div>
             </div>
@@ -3191,9 +3890,10 @@ function buildDjSlotCardHtml(slot) {
                 </label>
                 <label class="portal-settings-label" for="djPortalEditable-${slot}">
                     <input type="checkbox" id="djPortalEditable-${slot}" onchange="onChangeDjPortalEditable(${slot})"${portalEditableChecked}${disabledAttr}>
-                    Permitir edição/preenchimento do cliente
+                    Permitir preenchimento do cliente
                 </label>
             </div>
+            ${statusHtml}
             <p class="share-hint" id="shareHint-${slot}">Selecione um formulário para configurar este quadro no portal.</p>
         </div>
     `;
@@ -3207,7 +3907,7 @@ function renderDjSlots() {
     const slots = getSortedDjSlots();
     if (slots.length === 0) {
         container.innerHTML = '';
-        if (empty) empty.style.display = 'none';
+        if (empty) empty.style.display = 'block';
         return;
     }
 
@@ -3225,6 +3925,10 @@ function renderDjSlots() {
 function addDjSlot(preferredSlot = null) {
     if (pageReadonly) {
         alert('Modo somente leitura.');
+        return null;
+    }
+    if (!meetingId) {
+        alert('Crie a reunião antes de adicionar formulários DJ.');
         return null;
     }
     const slot = preferredSlot !== null ? normalizeSlotIndex(preferredSlot) : findNextDjSlotIndex();
@@ -3256,13 +3960,13 @@ async function excluirDjSlot(slot = 1) {
         return;
     }
 
-    const link = djLinksBySlot[slotIndex] || null;
-    if (link && link.submitted_at) {
-        alert('Este quadro já foi enviado pelo cliente e não pode ser excluído.');
+    if (!confirm(`Excluir o quadro ${slotIndex}?`)) {
         return;
     }
-
-    if (!confirm(`Excluir o quadro ${slotIndex}?`)) {
+    const senhaConfirmacao = window.prompt('Digite sua senha para confirmar a exclusão deste formulário DJ:');
+    if (senhaConfirmacao === null) return;
+    if (!String(senhaConfirmacao).trim()) {
+        alert('Informe sua senha para concluir a exclusão.');
         return;
     }
 
@@ -3272,6 +3976,7 @@ async function excluirDjSlot(slot = 1) {
             formData.append('action', 'excluir_dj_slot');
             formData.append('meeting_id', String(meetingId));
             formData.append('slot_index', String(slotIndex));
+            formData.append('confirm_password', String(senhaConfirmacao));
             const resp = await fetch(window.location.href, {
                 method: 'POST',
                 body: formData
@@ -3366,11 +4071,13 @@ function updateShareAvailability(slot = 1) {
     const visibleInput = document.getElementById(`djPortalVisible-${slot}`);
     const editableInput = document.getElementById(`djPortalEditable-${slot}`);
     const select = document.getElementById(`djTemplateSelect-${slot}`);
+    const unlockBtn = document.getElementById(`djBtnDestravar-${slot}`);
 
     if (pageReadonly) {
         if (select) select.disabled = true;
         if (visibleInput) visibleInput.disabled = true;
         if (editableInput) editableInput.disabled = true;
+        if (unlockBtn) unlockBtn.style.display = 'none';
         if (hint) hint.textContent = 'Modo somente leitura.';
         return;
     }
@@ -3381,10 +4088,12 @@ function updateShareAvailability(slot = 1) {
     syncDjPortalToggles(slot);
 
     if (isDjSlotLocked(slot)) {
-        hintText = 'Cliente já enviou este quadro. Marque "Permitir edição/preenchimento" para salvar e destravar automaticamente.';
+        hintText = 'Cliente já enviou este formulário DJ. Clique em "Destravar" para permitir novo preenchimento.';
         if (select) select.disabled = true;
+        if (unlockBtn) unlockBtn.style.display = 'inline-flex';
     } else {
         if (select) select.disabled = false;
+        if (unlockBtn) unlockBtn.style.display = 'none';
     }
 
     const selected = getSelectedDjTemplateData(slot);
@@ -4484,18 +5193,21 @@ async function excluirFormularioSlot(slot = 1) {
     }
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null || !formularioSlotExists(slotIndex)) return;
-    const link = formularioLinksBySlot[slotIndex] || null;
-    if (link && link.submitted_at) {
-        alert('Este formulário já foi enviado pelo cliente e não pode ser excluído.');
+    if (!confirm(`Excluir o formulário ${slotIndex}?`)) return;
+
+    const senhaConfirmacao = window.prompt('Digite sua senha para confirmar a exclusão deste formulário:');
+    if (senhaConfirmacao === null) return;
+    if (!String(senhaConfirmacao).trim()) {
+        alert('Informe sua senha para concluir a exclusão.');
         return;
     }
-    if (!confirm(`Excluir o formulário ${slotIndex}?`)) return;
 
     try {
         const formData = new FormData();
         formData.append('action', 'excluir_formulario_slot');
         formData.append('meeting_id', String(meetingId));
         formData.append('slot_index', String(slotIndex));
+        formData.append('confirm_password', String(senhaConfirmacao));
         const resp = await fetch(window.location.href, { method: 'POST', body: formData });
         const data = await parseJsonResponse(resp, 'a exclusão do formulário');
         if (!data.ok) {
@@ -5566,6 +6278,7 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
             if (data.ok) {
                 const link = data.link && typeof data.link === 'object' ? data.link : null;
                 if (link) {
+                    const existingLink = djLinksBySlot[slotIndex] || {};
                     djLinksBySlot[slotIndex] = {
                         id: Number(link.id || 0),
                         token: String(link.token || ''),
@@ -5574,9 +6287,18 @@ async function salvarDjSlotPortalConfig(slot = 1, options = {}) {
                         form_title: String(link.form_title || formTitle),
                         form_schema: Array.isArray(link.form_schema) ? normalizeFormSchema(link.form_schema) : schemaForPortal,
                         submitted_at: link.submitted_at ? String(link.submitted_at) : null,
+                        draft_saved_at: link.draft_saved_at ? String(link.draft_saved_at) : null,
                         portal_visible: !!link.portal_visible,
                         portal_editable: !!link.portal_editable,
-                        portal_configured: !!link.portal_configured
+                        portal_configured: !!link.portal_configured,
+                        draft_preview_text: link.draft_saved_at
+                            ? (typeof link.draft_preview_text === 'string' ? link.draft_preview_text : String(existingLink.draft_preview_text || ''))
+                            : '',
+                        submitted_preview_text: link.submitted_at
+                            ? (typeof link.submitted_preview_text === 'string' ? link.submitted_preview_text : String(existingLink.submitted_preview_text || ''))
+                            : '',
+                        draft_attachments: Array.isArray(link.draft_attachments) ? link.draft_attachments : (Array.isArray(existingLink.draft_attachments) ? existingLink.draft_attachments : []),
+                        submitted_attachments: Array.isArray(link.submitted_attachments) ? link.submitted_attachments : (Array.isArray(existingLink.submitted_attachments) ? existingLink.submitted_attachments : [])
                     };
                 } else {
                     djLinksBySlot[slotIndex] = null;
@@ -5653,10 +6375,13 @@ async function verVersoes(section) {
     }
 }
 
-function abrirModalFormularioResposta(slot, responseType) {
+function abrirModalRespostaSlot(slot, responseType, sourceType = 'formulario') {
     const slotIndex = normalizeSlotIndex(slot);
     if (slotIndex === null) return;
-    const link = formularioLinksBySlot[slotIndex] || null;
+    const source = String(sourceType || 'formulario').toLowerCase();
+    const linksMap = source === 'dj' ? djLinksBySlot : formularioLinksBySlot;
+    const sourceLabel = source === 'dj' ? 'Formulário DJ' : 'Formulário';
+    const link = linksMap[slotIndex] || null;
     if (!link) return;
 
     const isDraft = responseType === 'draft';
@@ -5681,8 +6406,8 @@ function abrirModalFormularioResposta(slot, responseType) {
 
     if (title) {
         title.textContent = isDraft
-            ? `📋 Formulário ${slotIndex} • Rascunho`
-            : `📋 Formulário ${slotIndex} • Enviado`;
+            ? `📋 ${sourceLabel} ${slotIndex} • Rascunho`
+            : `📋 ${sourceLabel} ${slotIndex} • Enviado`;
     }
 
     const statusLabel = isDraft ? 'Rascunho salvo em' : 'Enviado em';
@@ -5715,6 +6440,14 @@ function abrirModalFormularioResposta(slot, responseType) {
     `;
 
     document.getElementById('modalVersoes').classList.add('show');
+}
+
+function abrirModalFormularioResposta(slot, responseType) {
+    abrirModalRespostaSlot(slot, responseType, 'formulario');
+}
+
+function abrirModalDjResposta(slot, responseType) {
+    abrirModalRespostaSlot(slot, responseType, 'dj');
 }
 
 function fecharModal() {
@@ -5944,16 +6677,21 @@ function exposeInlineHandlersToWindow() {
     if (typeof removeDjUploadCard === 'function') window.removeDjUploadCard = removeDjUploadCard;
     if (typeof uploadDjAnexos === 'function') window.uploadDjAnexos = uploadDjAnexos;
     if (typeof excluirDjAnexo === 'function') window.excluirDjAnexo = excluirDjAnexo;
+    if (typeof addDjSlot === 'function') window.addDjSlot = addDjSlot;
     if (typeof excluirDjSlot === 'function') window.excluirDjSlot = excluirDjSlot;
+    if (typeof destravarDjSlot === 'function') window.destravarDjSlot = destravarDjSlot;
     if (typeof onChangeDjTemplateSelect === 'function') window.onChangeDjTemplateSelect = onChangeDjTemplateSelect;
     if (typeof onChangeDjPortalVisibility === 'function') window.onChangeDjPortalVisibility = onChangeDjPortalVisibility;
     if (typeof onChangeDjPortalEditable === 'function') window.onChangeDjPortalEditable = onChangeDjPortalEditable;
+    if (typeof abrirDjFormularioPublico === 'function') window.abrirDjFormularioPublico = abrirDjFormularioPublico;
+    if (typeof abrirModalDjResposta === 'function') window.abrirModalDjResposta = abrirModalDjResposta;
 
     if (typeof gerarLinkClienteObservacoes === 'function') window.gerarLinkClienteObservacoes = gerarLinkClienteObservacoes;
     if (typeof destravarObservacoesSlot === 'function') window.destravarObservacoesSlot = destravarObservacoesSlot;
     if (typeof excluirObservacoesSlot === 'function') window.excluirObservacoesSlot = excluirObservacoesSlot;
     if (typeof copiarLinkObservacoes === 'function') window.copiarLinkObservacoes = copiarLinkObservacoes;
     if (typeof onChangeObservacoesTemplateSelect === 'function') window.onChangeObservacoesTemplateSelect = onChangeObservacoesTemplateSelect;
+    if (typeof adicionarLinhaCronograma === 'function') window.adicionarLinhaCronograma = adicionarLinhaCronograma;
 
     if (typeof addFormularioSlot === 'function') window.addFormularioSlot = addFormularioSlot;
     if (typeof excluirFormularioSlot === 'function') window.excluirFormularioSlot = excluirFormularioSlot;
@@ -5999,6 +6737,14 @@ function bindSearchEvents() {
 }
 
 function bindMeetingActionButtons() {
+    const addDjBtn = document.getElementById('btnAddDjSlot');
+    if (addDjBtn && addDjBtn.dataset.bound !== '1') {
+        addDjBtn.dataset.bound = '1';
+        addDjBtn.addEventListener('click', function () {
+            addDjSlot();
+        });
+    }
+
     const addFormularioBtn = document.getElementById('btnAddFormularioSlot');
     if (addFormularioBtn && addFormularioBtn.dataset.bound !== '1') {
         addFormularioBtn.dataset.bound = '1';

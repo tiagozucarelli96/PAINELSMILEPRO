@@ -245,7 +245,9 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
             $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS note TEXT");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS public_link_id BIGINT NULL");
             $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT FALSE");
+            $pdo->exec("ALTER TABLE IF EXISTS eventos_reunioes_anexos ADD COLUMN IF NOT EXISTS form_field_id VARCHAR(160) NULL");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_reunioes_anexos_link_draft ON eventos_reunioes_anexos(public_link_id, is_draft, deleted_at)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_eventos_reunioes_anexos_form_field ON eventos_reunioes_anexos(form_field_id, deleted_at)");
         }
     } catch (Throwable $e) {
         error_log('eventos_reuniao_ensure_schema: falha ao ajustar tabela eventos_reunioes_anexos: ' . $e->getMessage());
@@ -2049,14 +2051,16 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
 
 /**
  * Exclui um quadro (slot) de link público do cliente.
- * Regra de segurança: não exclui quadro que já recebeu envio do cliente.
+ * Regra padrão: não exclui quadro que já recebeu envio do cliente.
+ * Pode ser sobrescrita via $allow_submitted_delete.
  */
 function eventos_reuniao_excluir_slot_cliente(
     PDO $pdo,
     int $meeting_id,
     int $slot_index,
     int $user_id,
-    string $link_type = 'cliente_dj'
+    string $link_type = 'cliente_dj',
+    bool $allow_submitted_delete = false
 ): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
@@ -2084,7 +2088,7 @@ function eventos_reuniao_excluir_slot_cliente(
         return ['ok' => false, 'error' => 'Este ambiente suporta apenas quadro 1'];
     }
 
-    if ($has_submitted_at_col) {
+    if ($has_submitted_at_col && !$allow_submitted_delete) {
         $stmt = $pdo->prepare("
             SELECT COUNT(*)
             FROM eventos_links_publicos
@@ -2263,7 +2267,8 @@ function eventos_reuniao_salvar_anexo(
     ?int $uploaded_by_user_id = null,
     ?string $note = null,
     ?int $public_link_id = null,
-    bool $is_draft = false
+    bool $is_draft = false,
+    ?string $form_field_id = null
 ): array {
     $original_name = trim((string)($upload_result['nome_original'] ?? 'arquivo'));
     $mime_type = trim((string)($upload_result['mime_type'] ?? 'application/octet-stream'));
@@ -2280,6 +2285,7 @@ function eventos_reuniao_salvar_anexo(
     $has_note_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'note');
     $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
     $has_draft_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'is_draft');
+    $has_form_field_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'form_field_id');
     $sql = "
         INSERT INTO eventos_reunioes_anexos
         (meeting_id, section, file_kind, original_name, mime_type, size_bytes, storage_key, public_url, uploaded_by_user_id, uploaded_by_type, uploaded_at";
@@ -2292,6 +2298,9 @@ function eventos_reuniao_salvar_anexo(
     if ($has_draft_col) {
         $sql .= ", is_draft";
     }
+    if ($has_form_field_col) {
+        $sql .= ", form_field_id";
+    }
     $sql .= ")
         VALUES
         (:meeting_id, :section, :file_kind, :original_name, :mime_type, :size_bytes, :storage_key, :public_url, :uploaded_by_user_id, :uploaded_by_type, NOW()";
@@ -2303,6 +2312,9 @@ function eventos_reuniao_salvar_anexo(
     }
     if ($has_draft_col) {
         $sql .= ", :is_draft";
+    }
+    if ($has_form_field_col) {
+        $sql .= ", :form_field_id";
     }
     $sql .= ")
         RETURNING *
@@ -2329,6 +2341,13 @@ function eventos_reuniao_salvar_anexo(
     }
     if ($has_draft_col) {
         $params[':is_draft'] = $is_draft ? 1 : 0;
+    }
+    if ($has_form_field_col) {
+        $clean_field_id = trim((string)($form_field_id ?? ''));
+        if ($clean_field_id !== '') {
+            $clean_field_id = function_exists('mb_substr') ? mb_substr($clean_field_id, 0, 160) : substr($clean_field_id, 0, 160);
+        }
+        $params[':form_field_id'] = $clean_field_id !== '' ? $clean_field_id : null;
     }
 
     $stmt = $pdo->prepare($sql);

@@ -108,9 +108,40 @@ try {
 $evento_selecionado = null;
 $secao_dj = null;
 $secao_observacoes = null;
+$secao_formulario = null;
 $anexos_dj = [];
 $anexos_observacoes = [];
+$anexos_formulario = [];
 $arquivos_evento = [];
+
+function portal_dj_secao_tem_conteudo(?array $secao): bool
+{
+    if (!$secao) {
+        return false;
+    }
+
+    $schema_raw = $secao['form_schema_json'] ?? null;
+    if (is_string($schema_raw) && trim($schema_raw) !== '') {
+        $decoded = json_decode($schema_raw, true);
+        if (is_array($decoded) && !empty($decoded)) {
+            foreach ($decoded as $field) {
+                if (!is_array($field)) {
+                    continue;
+                }
+                $field_type = strtolower(trim((string)($field['type'] ?? '')));
+                if (in_array($field_type, ['text', 'textarea', 'yesno', 'select', 'file', 'note', 'title'], true)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    $html = trim((string)($secao['content_html'] ?? ''));
+    if ($html === '') {
+        return false;
+    }
+    return trim(strip_tags($html)) !== '';
+}
 
 if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
@@ -149,8 +180,10 @@ if (!empty($_GET['evento'])) {
             } else {
                 $secao_dj = eventos_reuniao_get_secao($pdo, $evento_id, 'dj_protocolo');
                 $secao_observacoes = eventos_reuniao_get_secao($pdo, $evento_id, 'observacoes_gerais');
+                $secao_formulario = eventos_reuniao_get_secao($pdo, $evento_id, 'formulario');
                 $anexos_dj = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
                 $anexos_observacoes = eventos_reuniao_get_anexos($pdo, $evento_id, 'observacoes_gerais');
+                $anexos_formulario = eventos_reuniao_get_anexos($pdo, $evento_id, 'formulario');
                 $arquivos_evento = eventos_arquivos_listar($pdo, $evento_id, false);
             }
         }
@@ -158,6 +191,19 @@ if (!empty($_GET['evento'])) {
         error_log("Erro portal DJ (detalhe): " . $e->getMessage());
         $evento_selecionado = null;
     }
+}
+
+$aba_detalhe = trim((string)($_GET['aba'] ?? ''));
+$exibir_aba_formulario = portal_dj_secao_tem_conteudo($secao_formulario) || !empty($anexos_formulario);
+$abas_detalhe = [
+    'observacoes_gerais' => '📝 Observações Gerais',
+    'dj_protocolo' => '🎵 DJ / Protocolos',
+];
+if ($exibir_aba_formulario) {
+    $abas_detalhe['formulario'] = '📋 Formulário';
+}
+if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
+    $aba_detalhe = 'observacoes_gerais';
 }
 ?>
 <!DOCTYPE html>
@@ -300,14 +346,60 @@ if (!empty($_GET['evento'])) {
         }
         .detail-header {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+            flex-direction: column;
+            gap: 0.8rem;
             margin-bottom: 1.5rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid #e5e7eb;
         }
         .detail-header h2 {
             font-size: 1.25rem;
+        }
+        .event-meta-grid {
+            display: grid;
+            gap: 0.55rem;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+        .tabs-wrap {
+            margin-bottom: 1.2rem;
+        }
+        .tabs-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.9rem;
+        }
+        .tab-link {
+            text-decoration: none;
+            padding: 0.5rem 0.8rem;
+            border-radius: 999px;
+            border: 1px solid #dbe3ef;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 0.83rem;
+            font-weight: 700;
+        }
+        .tab-link:hover {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+        .tab-link.is-active {
+            background: #1e3a8a;
+            border-color: #1e3a8a;
+            color: #fff;
+        }
+        .tab-panel-title {
+            font-size: 1.02rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.2rem;
+        }
+        .tab-panel-subtitle {
+            color: #64748b;
+            font-size: 0.84rem;
+            margin-bottom: 0.75rem;
         }
         .content-box {
             background: #f8fafc;
@@ -651,6 +743,13 @@ if (!empty($_GET['evento'])) {
                 flex: 1;
                 justify-content: center;
             }
+            .tabs-nav {
+                gap: 0.4rem;
+            }
+            .tab-link {
+                font-size: 0.79rem;
+                padding: 0.45rem 0.7rem;
+            }
         }
     </style>
 </head>
@@ -677,153 +776,134 @@ if (!empty($_GET['evento'])) {
             <div class="detail-header">
                 <div>
                     <h2><?= htmlspecialchars($evento_selecionado['nome_evento']) ?></h2>
-                    <p style="color: #64748b; margin-top: 0.25rem;">
-                        📅 <?= date('d/m/Y', strtotime($evento_selecionado['data_evento'])) ?> às <?= htmlspecialchars($evento_selecionado['hora_evento'] ?: '-') ?>
-                        • 📍 <?= htmlspecialchars($evento_selecionado['local_evento'] ?: '-') ?>
-                        • 👤 <?= htmlspecialchars($evento_selecionado['cliente_nome'] ?: '-') ?>
-                    </p>
+                    <div class="event-meta-grid" style="margin-top: 0.4rem;">
+                        <div><strong>📅 Data:</strong> <?= date('d/m/Y', strtotime($evento_selecionado['data_evento'])) ?></div>
+                        <div><strong>⏰ Horário:</strong> <?= htmlspecialchars($evento_selecionado['hora_evento'] ?: '-') ?></div>
+                        <div><strong>📍 Local:</strong> <?= htmlspecialchars($evento_selecionado['local_evento'] ?: '-') ?></div>
+                        <div><strong>👤 Cliente:</strong> <?= htmlspecialchars($evento_selecionado['cliente_nome'] ?: '-') ?></div>
+                    </div>
                 </div>
             </div>
             
-            <div class="content-box">
-                <h3>🎵 Músicas e Protocolos</h3>
-                <?php if ($secao_dj && $secao_dj['content_html']): ?>
-                <div><?= $secao_dj['content_html'] ?></div>
-                <?php else: ?>
-                <p style="color: #64748b; font-style: italic;">Nenhuma informação cadastrada ainda.</p>
-                <?php endif; ?>
-            </div>
+            <div class="tabs-wrap">
+                <div class="tabs-nav">
+                    <?php foreach ($abas_detalhe as $aba_id => $aba_label): ?>
+                    <a
+                        class="tab-link <?= $aba_detalhe === $aba_id ? 'is-active' : '' ?>"
+                        href="?page=portal_dj&evento=<?= (int)$evento_selecionado['id'] ?>&aba=<?= urlencode($aba_id) ?>"
+                    >
+                        <?= htmlspecialchars($aba_label) ?>
+                    </a>
+                    <?php endforeach; ?>
+                </div>
 
-            <div class="content-box" style="margin-top: 1rem;">
-                <h3>📝 Observações Gerais</h3>
-                <?php if ($secao_observacoes && $secao_observacoes['content_html']): ?>
-                <div><?= $secao_observacoes['content_html'] ?></div>
-                <?php else: ?>
-                <p style="color: #64748b; font-style: italic;">Nenhuma observação geral cadastrada ainda.</p>
-                <?php endif; ?>
-            </div>
-            
-            <?php if (!empty($anexos_dj)): ?>
-            <div class="anexos-list">
-                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos (DJ / Protocolos)</h3>
-                <?php foreach ($anexos_dj as $a): ?>
                 <?php
-                    $anexo_url = trim((string)($a['public_url'] ?? ''));
-                    $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
-                    $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
-                    $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
-                    $anexo_size = (int)($a['size_bytes'] ?? 0);
-                    $anexo_note = trim((string)($a['note'] ?? ''));
-                    $anexo_icon = '📎';
-                    if ($anexo_kind === 'imagem') {
-                        $anexo_icon = '🖼️';
-                    } elseif ($anexo_kind === 'video') {
-                        $anexo_icon = '🎬';
-                    } elseif ($anexo_kind === 'audio') {
-                        $anexo_icon = '🎵';
-                    } elseif ($anexo_kind === 'pdf') {
-                        $anexo_icon = '📄';
+                    $aba_conteudos = [
+                        'observacoes_gerais' => [
+                            'titulo' => 'Observações Gerais',
+                            'subtitulo' => 'Informações gerais alinhadas para o evento.',
+                            'secao' => $secao_observacoes,
+                            'mensagem_vazia' => 'Nenhuma observação geral cadastrada ainda.',
+                            'anexos' => $anexos_observacoes,
+                            'titulo_anexos' => '📎 Anexos (Observações Gerais)',
+                        ],
+                        'dj_protocolo' => [
+                            'titulo' => 'DJ / Protocolos',
+                            'subtitulo' => 'Músicas, protocolos e orientações do evento.',
+                            'secao' => $secao_dj,
+                            'mensagem_vazia' => 'Nenhuma informação cadastrada ainda.',
+                            'anexos' => $anexos_dj,
+                            'titulo_anexos' => '📎 Anexos (DJ / Protocolos)',
+                        ],
+                        'formulario' => [
+                            'titulo' => 'Formulário',
+                            'subtitulo' => 'Conteúdo consolidado dos formulários do evento.',
+                            'secao' => $secao_formulario,
+                            'mensagem_vazia' => 'Nenhum formulário disponível para este evento.',
+                            'anexos' => $anexos_formulario,
+                            'titulo_anexos' => '📎 Anexos (Formulário)',
+                        ],
+                    ];
+                    $aba_atual = $aba_conteudos[$aba_detalhe] ?? $aba_conteudos['observacoes_gerais'];
+                    if ($aba_detalhe === 'formulario' && !$exibir_aba_formulario) {
+                        $aba_atual = $aba_conteudos['observacoes_gerais'];
                     }
+                    $secao_ativa = $aba_atual['secao'] ?? null;
+                    $html_secao_ativa = trim((string)($secao_ativa['content_html'] ?? ''));
+                    $anexos_aba_ativa = is_array($aba_atual['anexos'] ?? null) ? $aba_atual['anexos'] : [];
                 ?>
-                <div class="anexo-item">
-                    <div class="anexo-main">
-                        <span class="anexo-icon"><?= $anexo_icon ?></span>
-                        <div class="anexo-info">
-                            <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
-                            <div class="anexo-meta">
-                                <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
-                                • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
+                <div class="tab-panel-title"><?= htmlspecialchars($aba_atual['titulo']) ?></div>
+                <div class="tab-panel-subtitle"><?= htmlspecialchars($aba_atual['subtitulo']) ?></div>
+
+                <div class="content-box">
+                    <?php if ($html_secao_ativa !== ''): ?>
+                    <div><?= $html_secao_ativa ?></div>
+                    <?php else: ?>
+                    <p style="color: #64748b; font-style: italic;"><?= htmlspecialchars($aba_atual['mensagem_vazia']) ?></p>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!empty($anexos_aba_ativa)): ?>
+                <div class="anexos-list">
+                    <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;"><?= htmlspecialchars($aba_atual['titulo_anexos']) ?></h3>
+                    <?php foreach ($anexos_aba_ativa as $a): ?>
+                    <?php
+                        $anexo_url = trim((string)($a['public_url'] ?? ''));
+                        $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
+                        $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
+                        $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
+                        $anexo_size = (int)($a['size_bytes'] ?? 0);
+                        $anexo_note = trim((string)($a['note'] ?? ''));
+                        $anexo_icon = '📎';
+                        if ($anexo_kind === 'imagem') {
+                            $anexo_icon = '🖼️';
+                        } elseif ($anexo_kind === 'video') {
+                            $anexo_icon = '🎬';
+                        } elseif ($anexo_kind === 'audio') {
+                            $anexo_icon = '🎵';
+                        } elseif ($anexo_kind === 'pdf') {
+                            $anexo_icon = '📄';
+                        }
+                    ?>
+                    <div class="anexo-item">
+                        <div class="anexo-main">
+                            <span class="anexo-icon"><?= $anexo_icon ?></span>
+                            <div class="anexo-info">
+                                <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
+                                <div class="anexo-meta">
+                                    <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
+                                    • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
+                                </div>
+                                <?php if ($anexo_note !== ''): ?>
+                                <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
+                                <?php endif; ?>
                             </div>
-                            <?php if ($anexo_note !== ''): ?>
-                            <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
+                        </div>
+                        <div class="anexo-actions">
+                            <?php if ($anexo_url !== ''): ?>
+                            <button type="button"
+                                    class="btn btn-secondary btn-small"
+                                    data-open-anexo-modal="1"
+                                    data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
+                                    data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
+                                Visualizar
+                            </button>
+                            <a href="<?= htmlspecialchars($anexo_url) ?>"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               download
+                               class="btn btn-primary btn-small">Download</a>
+                            <?php else: ?>
+                            <span class="anexo-meta">Arquivo sem URL pública.</span>
                             <?php endif; ?>
                         </div>
                     </div>
-                    <div class="anexo-actions">
-                        <?php if ($anexo_url !== ''): ?>
-                        <button type="button"
-                                class="btn btn-secondary btn-small"
-                                data-open-anexo-modal="1"
-                                data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
-                                data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
-                                data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
-                                data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
-                            Visualizar
-                        </button>
-                        <a href="<?= htmlspecialchars($anexo_url) ?>"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           download
-                           class="btn btn-primary btn-small">Download</a>
-                        <?php else: ?>
-                        <span class="anexo-meta">Arquivo sem URL pública.</span>
-                        <?php endif; ?>
-                    </div>
+                    <?php endforeach; ?>
                 </div>
-                <?php endforeach; ?>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
-
-            <?php if (!empty($anexos_observacoes)): ?>
-            <div class="anexos-list">
-                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos (Observações Gerais)</h3>
-                <?php foreach ($anexos_observacoes as $a): ?>
-                <?php
-                    $anexo_url = trim((string)($a['public_url'] ?? ''));
-                    $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
-                    $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
-                    $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
-                    $anexo_size = (int)($a['size_bytes'] ?? 0);
-                    $anexo_note = trim((string)($a['note'] ?? ''));
-                    $anexo_icon = '📎';
-                    if ($anexo_kind === 'imagem') {
-                        $anexo_icon = '🖼️';
-                    } elseif ($anexo_kind === 'video') {
-                        $anexo_icon = '🎬';
-                    } elseif ($anexo_kind === 'audio') {
-                        $anexo_icon = '🎵';
-                    } elseif ($anexo_kind === 'pdf') {
-                        $anexo_icon = '📄';
-                    }
-                ?>
-                <div class="anexo-item">
-                    <div class="anexo-main">
-                        <span class="anexo-icon"><?= $anexo_icon ?></span>
-                        <div class="anexo-info">
-                            <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
-                            <div class="anexo-meta">
-                                <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
-                                • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
-                            </div>
-                            <?php if ($anexo_note !== ''): ?>
-                            <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    <div class="anexo-actions">
-                        <?php if ($anexo_url !== ''): ?>
-                        <button type="button"
-                                class="btn btn-secondary btn-small"
-                                data-open-anexo-modal="1"
-                                data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
-                                data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
-                                data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
-                                data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
-                            Visualizar
-                        </button>
-                        <a href="<?= htmlspecialchars($anexo_url) ?>"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           download
-                           class="btn btn-primary btn-small">Download</a>
-                        <?php else: ?>
-                        <span class="anexo-meta">Arquivo sem URL pública.</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
 
             <div class="anexos-list">
                 <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📁 Arquivos anexados do evento</h3>
