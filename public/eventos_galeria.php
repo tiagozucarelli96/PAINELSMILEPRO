@@ -1627,7 +1627,12 @@ includeSidebar('Galeria de Imagens - Comercial');
                 btn.textContent = oldText;
             }, 1800);
         }).catch(() => {
-            window.prompt('Copie este link público:', absolute);
+            customPrompt(
+                'Copie este link público:',
+                absolute,
+                'Link público',
+                { inputType: 'text', placeholder: 'Link do portal' }
+            );
         });
     }
 

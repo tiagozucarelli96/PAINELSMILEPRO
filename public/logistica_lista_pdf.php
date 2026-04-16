@@ -69,6 +69,8 @@ ob_start();
 <head>
 <meta charset="utf-8">
 <title>Lista de Compras #<?= (int)$lista_id ?></title>
+<link rel="stylesheet" href="assets/css/custom_modals.css">
+<script src="assets/js/custom_modals.js"></script>
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;color:#111}

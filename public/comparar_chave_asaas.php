@@ -22,6 +22,8 @@ header('Content-Type: text/html; charset=utf-8');
 <head>
     <meta charset="UTF-8">
     <title>Comparar Chave Asaas</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         body { font-family: Arial; padding: 20px; background: #f5f5f5; }
         .box { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -195,4 +197,3 @@ header('Content-Type: text/html; charset=utf-8');
     </script>
 </body>
 </html>
-

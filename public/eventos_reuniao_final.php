@@ -3963,7 +3963,12 @@ async function excluirDjSlot(slot = 1) {
     if (!confirm(`Excluir o quadro ${slotIndex}?`)) {
         return;
     }
-    const senhaConfirmacao = window.prompt('Digite sua senha para confirmar a exclusão deste formulário DJ:');
+    const senhaConfirmacao = await customPrompt(
+        'Digite sua senha para confirmar a exclusão deste formulário DJ:',
+        '',
+        'Confirmação de segurança',
+        { inputType: 'password', placeholder: 'Senha do usuário logado' }
+    );
     if (senhaConfirmacao === null) return;
     if (!String(senhaConfirmacao).trim()) {
         alert('Informe sua senha para concluir a exclusão.');
@@ -5195,7 +5200,12 @@ async function excluirFormularioSlot(slot = 1) {
     if (slotIndex === null || !formularioSlotExists(slotIndex)) return;
     if (!confirm(`Excluir o formulário ${slotIndex}?`)) return;
 
-    const senhaConfirmacao = window.prompt('Digite sua senha para confirmar a exclusão deste formulário:');
+    const senhaConfirmacao = await customPrompt(
+        'Digite sua senha para confirmar a exclusão deste formulário:',
+        '',
+        'Confirmação de segurança',
+        { inputType: 'password', placeholder: 'Senha do usuário logado' }
+    );
     if (senhaConfirmacao === null) return;
     if (!String(senhaConfirmacao).trim()) {
         alert('Informe sua senha para concluir a exclusão.');

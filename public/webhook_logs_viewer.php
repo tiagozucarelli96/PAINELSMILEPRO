@@ -24,6 +24,8 @@ $refresh = isset($_GET['refresh']) ? (int)$_GET['refresh'] : 0;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logs Webhook ME Eventos</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         * {
             margin: 0;
@@ -342,4 +344,3 @@ $refresh = isset($_GET['refresh']) ? (int)$_GET['refresh'] : 0;
     </script>
 </body>
 </html>
-

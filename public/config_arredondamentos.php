@@ -88,6 +88,8 @@ if ($action === 'edit' && $id > 0) {
 <title>Configurações • Arredondamentos</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="estilo.css">
+<link rel="stylesheet" href="assets/css/custom_modals.css">
+<script src="assets/js/custom_modals.js"></script>
 <style>
 .content-narrow{ max-width:1100px; margin:0 auto; }
 .topbar{display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap}

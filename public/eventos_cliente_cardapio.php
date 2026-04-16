@@ -96,6 +96,8 @@ $pode_editar = $error === ''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cardápio do Evento</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         * {
             box-sizing: border-box;

@@ -2050,6 +2050,193 @@ function eventos_reuniao_destravar_dj_slot(PDO $pdo, int $meeting_id, int $slot_
 }
 
 /**
+ * Resolve a seção principal vinculada ao tipo de link público.
+ */
+function eventos_reuniao_secao_por_link_tipo(string $link_type): ?string {
+    $normalized = strtolower(trim($link_type));
+    switch ($normalized) {
+        case 'cliente_dj':
+            return 'dj_protocolo';
+        case 'cliente_observacoes':
+            return 'observacoes_gerais';
+        case 'cliente_formulario':
+            return 'formulario';
+        default:
+            return null;
+    }
+}
+
+/**
+ * Marca como excluídos anexos vinculados aos links informados.
+ * Não remove anexos sem public_link_id (arquivos gerais da seção).
+ */
+function eventos_reuniao_excluir_anexos_por_links(
+    PDO $pdo,
+    int $meeting_id,
+    string $section,
+    array $link_ids,
+    ?int $deleted_by_user_id = null
+): int {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return 0;
+    }
+
+    $section = trim((string)$section);
+    if ($section === '') {
+        return 0;
+    }
+
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    if (!$has_link_col) {
+        return 0;
+    }
+
+    $normalized_ids = [];
+    foreach ($link_ids as $link_id) {
+        $id = (int)$link_id;
+        if ($id > 0) {
+            $normalized_ids[$id] = $id;
+        }
+    }
+    if (empty($normalized_ids)) {
+        return 0;
+    }
+
+    $params = [
+        ':meeting_id' => $meeting_id,
+        ':section' => $section,
+    ];
+    $placeholders = [];
+    foreach (array_values($normalized_ids) as $idx => $id) {
+        $placeholder = ':link_id_' . $idx;
+        $placeholders[] = $placeholder;
+        $params[$placeholder] = $id;
+    }
+
+    $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
+    $sql = "
+        UPDATE eventos_reunioes_anexos
+        SET deleted_at = NOW()
+    ";
+    if ($has_deleted_by_col) {
+        $sql .= ", deleted_by = :deleted_by";
+        $params[':deleted_by'] = $deleted_by_user_id;
+    }
+    $sql .= "
+        WHERE meeting_id = :meeting_id
+          AND section = :section
+          AND public_link_id IN (" . implode(', ', $placeholders) . ")
+          AND deleted_at IS NULL
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->rowCount();
+}
+
+/**
+ * Recalcula o conteúdo consolidado da seção após exclusão de quadro.
+ * Prioriza o snapshot do link ativo mais recente já enviado.
+ */
+function eventos_reuniao_recalcular_secao_por_links_ativos(
+    PDO $pdo,
+    int $meeting_id,
+    string $link_type,
+    string $section,
+    int $user_id
+): bool {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return false;
+    }
+
+    $link_type = trim((string)$link_type);
+    $section = trim((string)$section);
+    if ($link_type === '' || $section === '') {
+        return false;
+    }
+
+    $has_content_snapshot_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'content_html_snapshot');
+    $has_schema_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'form_schema_json');
+    $has_submitted_at_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'submitted_at');
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+
+    $columns = ['id'];
+    if ($has_content_snapshot_col) {
+        $columns[] = 'content_html_snapshot';
+    }
+    if ($has_schema_col) {
+        $columns[] = 'form_schema_json';
+    }
+    if ($has_submitted_at_col) {
+        $columns[] = 'submitted_at';
+    }
+
+    $order_by = [];
+    if ($has_submitted_at_col) {
+        $order_by[] = 'CASE WHEN submitted_at IS NULL THEN 1 ELSE 0 END ASC';
+        $order_by[] = 'submitted_at DESC';
+    }
+    if ($has_slot_index_col) {
+        $order_by[] = 'COALESCE(slot_index, 1) ASC';
+    }
+    $order_by[] = 'id DESC';
+
+    $stmt = $pdo->prepare("
+        SELECT " . implode(', ', $columns) . "
+        FROM eventos_links_publicos
+        WHERE meeting_id = :meeting_id
+          AND link_type = :link_type
+          AND is_active = TRUE
+        ORDER BY " . implode(', ', $order_by) . "
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meeting_id,
+        ':link_type' => $link_type,
+    ]);
+    $active_link = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    $content_html = '';
+    if ($active_link && $has_content_snapshot_col) {
+        $content_html = (string)($active_link['content_html_snapshot'] ?? '');
+    }
+
+    $schema_json_for_save = null;
+    if ($has_schema_col) {
+        if ($active_link) {
+            $decoded_schema = json_decode((string)($active_link['form_schema_json'] ?? '[]'), true);
+            if (is_array($decoded_schema)) {
+                $normalized_schema = eventos_form_template_normalizar_schema($decoded_schema);
+                $schema_json_for_save = json_encode($normalized_schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            } else {
+                $schema_json_for_save = '[]';
+            }
+        } else {
+            $schema_json_for_save = '[]';
+        }
+    }
+
+    $note = $active_link
+        ? 'Seção recalculada automaticamente após exclusão de quadro.'
+        : 'Seção limpa automaticamente após exclusão de quadro.';
+
+    $saved = eventos_reuniao_salvar_secao(
+        $pdo,
+        $meeting_id,
+        $section,
+        $content_html,
+        $user_id,
+        $note,
+        'interno',
+        $schema_json_for_save
+    );
+
+    return !empty($saved['ok']);
+}
+
+/**
  * Exclui um quadro (slot) de link público do cliente.
  * Regra padrão: não exclui quadro que já recebeu envio do cliente.
  * Pode ser sobrescrita via $allow_submitted_delete.
@@ -2102,6 +2289,16 @@ function eventos_reuniao_excluir_slot_cliente(
         }
     }
 
+    $stmt_links = $pdo->prepare("
+        SELECT id
+        FROM eventos_links_publicos
+        WHERE {$where_sql}
+    ");
+    $stmt_links->execute($params);
+    $slot_link_ids = array_map(static function($value): int {
+        return (int)$value;
+    }, $stmt_links->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
     $stmt = $pdo->prepare("
         UPDATE eventos_links_publicos
         SET is_active = FALSE
@@ -2109,13 +2306,48 @@ function eventos_reuniao_excluir_slot_cliente(
           AND is_active = TRUE
     ");
     $stmt->execute($params);
+    $removed_links = (int)$stmt->rowCount();
 
-    return [
+    $section = eventos_reuniao_secao_por_link_tipo($link_type);
+    $removed_attachments = 0;
+    $section_synced = true;
+    $warning = '';
+    if ($section !== null) {
+        if (!empty($slot_link_ids)) {
+            $removed_attachments = eventos_reuniao_excluir_anexos_por_links(
+                $pdo,
+                $meeting_id,
+                $section,
+                $slot_link_ids,
+                $user_id > 0 ? $user_id : null
+            );
+        }
+        if (!empty($slot_link_ids)) {
+            $section_synced = eventos_reuniao_recalcular_secao_por_links_ativos(
+                $pdo,
+                $meeting_id,
+                $link_type,
+                $section,
+                $user_id
+            );
+            if (!$section_synced) {
+                $warning = 'Quadro excluído, mas a seção não pôde ser sincronizada automaticamente.';
+            }
+        }
+    }
+
+    $response = [
         'ok' => true,
         'slot_index' => $slot_index,
-        'removed_links' => (int)$stmt->rowCount(),
+        'removed_links' => $removed_links,
+        'removed_attachments' => $removed_attachments,
+        'section_synced' => $section_synced,
         'updated_by' => $user_id,
     ];
+    if ($warning !== '') {
+        $response['warning'] = $warning;
+    }
+    return $response;
 }
 
 /**

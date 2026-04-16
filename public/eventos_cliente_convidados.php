@@ -221,6 +221,8 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lista de Convidados - Portal do Cliente</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         * {
             box-sizing: border-box;

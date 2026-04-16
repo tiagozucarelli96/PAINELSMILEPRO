@@ -99,6 +99,8 @@ $competencia_atual = date('Y-m', strtotime('-1 month'));
     <title>Lançar Holerites - RH</title>
     <link rel="stylesheet" href="estilo.css">
     <link rel="stylesheet" href="css/smile-ui.css">
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         .rh-container {
             max-width: 1000px;

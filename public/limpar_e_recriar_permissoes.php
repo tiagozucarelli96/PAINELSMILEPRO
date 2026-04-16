@@ -18,6 +18,8 @@ header('Content-Type: text/html; charset=utf-8');
 <html>
 <head>
     <title>Limpar e Recriar Permissões</title>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }

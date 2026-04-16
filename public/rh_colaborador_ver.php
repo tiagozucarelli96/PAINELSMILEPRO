@@ -98,6 +98,8 @@ $tab_ativa = $_GET['tab'] ?? 'dados';
     <title>Dossiê - <?= htmlspecialchars($colaborador['nome']) ?></title>
     <link rel="stylesheet" href="estilo.css">
     <link rel="stylesheet" href="css/smile-ui.css">
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         .rh-container {
             max-width: 1200px;

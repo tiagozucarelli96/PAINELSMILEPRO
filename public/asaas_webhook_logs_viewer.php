@@ -43,6 +43,8 @@ if (file_exists($log_file)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logs Webhook Asaas - GRUPO Smile EVENTOS</title>
     <link rel="stylesheet" href="estilo.css">
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
     <style>
         .logs-container {
             max-width: 1400px;
@@ -311,4 +313,3 @@ if (isset($_GET['clear']) && file_exists($log_file)) {
     exit;
 }
 ?>
-
