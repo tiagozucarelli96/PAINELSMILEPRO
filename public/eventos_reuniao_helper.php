@@ -2695,6 +2695,7 @@ function eventos_reuniao_listar_links_cliente(PDO $pdo, int $meeting_id, string 
         $row['portal_visible'] = !empty($row['portal_visible']);
         $row['portal_editable'] = !empty($row['portal_editable']);
         $row['portal_configured'] = !empty($row['portal_configured']);
+        $row['submitted_at'] = array_key_exists('submitted_at', $row) && $row['submitted_at'] !== null ? (string)$row['submitted_at'] : null;
         $row['draft_saved_at'] = array_key_exists('draft_saved_at', $row) && $row['draft_saved_at'] !== null ? (string)$row['draft_saved_at'] : null;
     }
     unset($row);
@@ -2866,6 +2867,8 @@ function eventos_reuniao_atualizar_slot_portal_config(
         $updated['portal_visible'] = !empty($updated['portal_visible']);
         $updated['portal_editable'] = !empty($updated['portal_editable']);
         $updated['portal_configured'] = !empty($updated['portal_configured']);
+        $updated['submitted_at'] = array_key_exists('submitted_at', $updated) && $updated['submitted_at'] !== null ? (string)$updated['submitted_at'] : null;
+        $updated['draft_saved_at'] = array_key_exists('draft_saved_at', $updated) && $updated['draft_saved_at'] !== null ? (string)$updated['draft_saved_at'] : null;
         return ['ok' => true, 'slot_index' => $slot_index, 'link' => $updated];
     }
 
@@ -2874,6 +2877,8 @@ function eventos_reuniao_atualizar_slot_portal_config(
     $link['portal_visible'] = !empty($link['portal_visible']);
     $link['portal_editable'] = !empty($link['portal_editable']);
     $link['portal_configured'] = !empty($link['portal_configured']);
+    $link['submitted_at'] = array_key_exists('submitted_at', $link) && $link['submitted_at'] !== null ? (string)$link['submitted_at'] : null;
+    $link['draft_saved_at'] = array_key_exists('draft_saved_at', $link) && $link['draft_saved_at'] !== null ? (string)$link['draft_saved_at'] : null;
     return ['ok' => true, 'slot_index' => $slot_index, 'link' => $link];
 }
 
@@ -2899,6 +2904,7 @@ function eventos_link_publico_get(PDO $pdo, string $token): ?array {
     $row['portal_visible'] = !empty($row['portal_visible']);
     $row['portal_editable'] = !empty($row['portal_editable']);
     $row['portal_configured'] = !empty($row['portal_configured']);
+    $row['submitted_at'] = array_key_exists('submitted_at', $row) && $row['submitted_at'] !== null ? (string)$row['submitted_at'] : null;
     $row['draft_saved_at'] = array_key_exists('draft_saved_at', $row) && $row['draft_saved_at'] !== null ? (string)$row['draft_saved_at'] : null;
     return $row;
 }

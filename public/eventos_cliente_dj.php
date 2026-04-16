@@ -1641,6 +1641,8 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             }
         }
     </style>
+    <link rel="stylesheet" href="assets/css/custom_modals.css">
+    <script src="assets/js/custom_modals.js"></script>
 </head>
 <body>
     <div class="header">
@@ -1885,6 +1887,7 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         
         <form method="POST" id="djForm" enctype="multipart/form-data">
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+            <input type="hidden" name="action" id="djActionInput" value="salvar">
             
             <?php foreach ($section_view_items as $section_view): ?>
             <?php
@@ -2049,10 +2052,10 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             <?php endforeach; ?>
             
             <div class="form-actions">
-                <button type="submit" class="btn btn-secondary" id="draftBtn" name="action" value="salvar_rascunho" formnovalidate>
+                <button type="submit" class="btn btn-secondary" id="draftBtn" data-action="salvar_rascunho" formnovalidate>
                     Salvar rascunho
                 </button>
-                <button type="submit" class="btn btn-primary" id="submitBtn" name="action" value="salvar">
+                <button type="submit" class="btn btn-primary" id="submitBtn" data-action="salvar">
                     ✓ Enviar Informações
                 </button>
             </div>
@@ -2109,11 +2112,23 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     input.addEventListener('change', () => renderUploadNotesForInput(input));
                 });
             }
-            
-            document.getElementById('djForm').addEventListener('submit', function(e) {
-                const submitter = e.submitter || null;
-                const action = submitter && submitter.value ? submitter.value : 'salvar';
-                const isDraftAction = action === 'salvar_rascunho';
+
+            function showPortalAlert(message, title = 'Aviso') {
+                if (typeof window.customAlert === 'function') {
+                    return window.customAlert(message, title);
+                }
+                window.alert(message);
+                return Promise.resolve();
+            }
+
+            async function showPortalConfirm(message, title = 'Confirmar') {
+                if (typeof window.customConfirm === 'function') {
+                    return !!(await window.customConfirm(message, title));
+                }
+                return window.confirm(message);
+            }
+
+            function syncLegacyEditors(isDraftAction) {
                 let emptyLegacySection = '';
                 document.querySelectorAll('[data-client-editor="legacy"]').forEach((editor) => {
                     const inputId = editor.getAttribute('data-content-input') || '';
@@ -2124,19 +2139,17 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                         emptyLegacySection = editor.getAttribute('data-section-label') || 'o formulário';
                     }
                 });
-                if (!isDraftAction && emptyLegacySection !== '') {
-                    e.preventDefault();
-                    alert(`Por favor, preencha as informações de ${emptyLegacySection} antes de enviar.`);
-                    return false;
-                }
+                return emptyLegacySection;
+            }
 
-                if (!isDraftAction && !confirm('Confirma o envio das informações? Após enviar, não será possível alterar.')) {
-                    e.preventDefault();
-                    return false;
-                }
-
+            function setDjFormSubmittingState(action) {
+                const isDraftAction = action === 'salvar_rascunho';
                 const submitBtn = document.getElementById('submitBtn');
                 const draftBtn = document.getElementById('draftBtn');
+                const form = document.getElementById('djForm');
+                if (form) {
+                    form.dataset.submitting = '1';
+                }
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     submitBtn.innerText = isDraftAction ? 'Enviar Informações' : 'Enviando...';
@@ -2145,6 +2158,60 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     draftBtn.disabled = true;
                     draftBtn.innerText = isDraftAction ? 'Salvando...' : 'Salvar rascunho';
                 }
+            }
+
+            let pendingDjAction = 'salvar';
+
+            function setPendingDjAction(action) {
+                pendingDjAction = action === 'salvar_rascunho' ? 'salvar_rascunho' : 'salvar';
+                const actionInput = document.getElementById('djActionInput');
+                if (actionInput) {
+                    actionInput.value = pendingDjAction;
+                }
+            }
+
+            async function handleDjFormSubmit(action) {
+                const form = document.getElementById('djForm');
+                if (!form || form.dataset.submitting === '1') {
+                    return;
+                }
+                const isDraftAction = action === 'salvar_rascunho';
+                const emptyLegacySection = syncLegacyEditors(isDraftAction);
+                if (!isDraftAction && typeof form.reportValidity === 'function' && !form.reportValidity()) {
+                    return;
+                }
+                if (!isDraftAction && emptyLegacySection !== '') {
+                    await showPortalAlert(`Por favor, preencha as informações de ${emptyLegacySection} antes de enviar.`);
+                    return;
+                }
+
+                if (!isDraftAction) {
+                    const confirmed = await showPortalConfirm('Confirma o envio das informações? Após enviar, não será possível alterar.', 'Confirmar envio');
+                    if (!confirmed) {
+                        return;
+                    }
+                }
+
+                setPendingDjAction(action);
+                setDjFormSubmittingState(action);
+                HTMLFormElement.prototype.submit.call(form);
+            }
+
+            document.getElementById('draftBtn')?.addEventListener('click', function() {
+                setPendingDjAction(this.dataset.action || 'salvar_rascunho');
+            });
+
+            document.getElementById('submitBtn')?.addEventListener('click', function() {
+                setPendingDjAction(this.dataset.action || 'salvar');
+            });
+
+            document.getElementById('djForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const submitter = e.submitter || null;
+                const action = submitter && submitter.dataset && submitter.dataset.action
+                    ? submitter.dataset.action
+                    : pendingDjAction;
+                void handleDjFormSubmit(action);
             });
 
             bindUploadNoteInputs();

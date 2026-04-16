@@ -2529,6 +2529,7 @@ const initialObservacoesClientLinks = <?= eventos_reuniao_json_script(array_map(
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
     ];
 }, $links_cliente_observacoes), '[]') ?>;
+const clientPortalBaseUrl = <?= eventos_reuniao_json_script(rtrim(eventos_cliente_portal_base_url(), '/'), '""') ?>;
 const initialFormularioLinks = <?= eventos_reuniao_json_script($links_cliente_formulario_payload, '[]') ?>;
 const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
@@ -4313,6 +4314,29 @@ function findNextFormularioSlotIndex() {
     return null;
 }
 
+function getFormularioPublicUrl(slot) {
+    const link = formularioLinksBySlot[slot] || null;
+    if (!link || !link.token) {
+        return '';
+    }
+    const base = String(clientPortalBaseUrl || window.location.origin || '').replace(/\/+$/, '');
+    return `${base}/index.php?page=eventos_cliente_dj&token=${encodeURIComponent(String(link.token))}`;
+}
+
+function abrirFormularioPublico(slot) {
+    const slotIndex = normalizeSlotIndex(slot);
+    if (slotIndex === null || !formularioSlotExists(slotIndex)) {
+        alert('Formulário inválido.');
+        return;
+    }
+    const url = getFormularioPublicUrl(slotIndex);
+    if (!url) {
+        alert('Nenhum link público disponível para este formulário.');
+        return;
+    }
+    window.open(url, '_blank');
+}
+
 function buildFormularioSlotCardHtml(slot) {
     const link = formularioLinksBySlot[slot] || null;
     const portalVisibleChecked = link && link.portal_visible ? ' checked' : '';
@@ -4370,8 +4394,12 @@ function buildFormularioSlotResponseStatusHtml(slot) {
     const submittedAt = link.submitted_at ? formatDate(link.submitted_at) : '';
     const hasDraft = !!link.draft_saved_at;
     const hasSubmitted = !!link.submitted_at;
+    const publicUrl = getFormularioPublicUrl(slot);
     const actions = [];
 
+    if (publicUrl) {
+        actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirFormularioPublico(${slot})">↗ Abrir formulário</button>`);
+    }
     if (hasDraft) {
         actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalFormularioResposta(${slot}, 'draft')">👁 Ver rascunho</button>`);
     }
@@ -4379,11 +4407,14 @@ function buildFormularioSlotResponseStatusHtml(slot) {
         actions.push(`<button type="button" class="btn btn-secondary" onclick="abrirModalFormularioResposta(${slot}, 'submitted')">👁 Ver enviado</button>`);
     }
 
-    if (!hasDraft && !hasSubmitted) {
+    if (!hasDraft && !hasSubmitted && !publicUrl) {
         return '';
     }
 
     const lines = [];
+    if (publicUrl && !hasDraft && !hasSubmitted) {
+        lines.push('<div><strong>Link ativo</strong><p>Aguardando preenchimento do cliente.</p></div>');
+    }
     if (hasDraft) {
         lines.push(`<div><strong>Rascunho salvo</strong><p>${escapeHtmlForField(draftSavedAt)}</p></div>`);
     }
