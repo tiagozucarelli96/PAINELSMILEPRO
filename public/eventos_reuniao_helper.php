@@ -3990,15 +3990,45 @@ function eventos_cliente_portal_sincronizar_link_dj(
         return ['ok' => false, 'error' => 'Reunião inválida'];
     }
 
-    $schema_snapshot = [];
+    $schema_snapshot = null;
     $content_snapshot = null;
-    $form_title = 'DJ / Protocolos';
+    $form_title = null;
 
-    $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
-    if (is_array($secao_dj) && !empty($secao_dj)) {
-        $content_raw = trim((string)($secao_dj['content_html'] ?? ''));
-        if ($content_raw !== '') {
-            $content_snapshot = $content_raw;
+    $has_slot_index_col = eventos_reuniao_has_column($pdo, 'eventos_links_publicos', 'slot_index');
+    if ($has_slot_index_col) {
+        $stmt_link = $pdo->prepare("
+            SELECT id
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+              AND COALESCE(slot_index, 1) = 1
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt_link->execute([':meeting_id' => $meeting_id]);
+    } else {
+        $stmt_link = $pdo->prepare("
+            SELECT id
+            FROM eventos_links_publicos
+            WHERE meeting_id = :meeting_id
+              AND link_type = 'cliente_dj'
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt_link->execute([':meeting_id' => $meeting_id]);
+    }
+    $existing_link = $stmt_link->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    // Só envia snapshot/título no primeiro vínculo.
+    // Em links já existentes, preserva schema e conteúdo atuais para evitar sobrescrever formulário do DJ.
+    if (!$existing_link) {
+        $form_title = 'DJ / Protocolos';
+        $secao_dj = eventos_reuniao_get_secao($pdo, $meeting_id, 'dj_protocolo');
+        if (is_array($secao_dj) && !empty($secao_dj)) {
+            $content_raw = trim((string)($secao_dj['content_html'] ?? ''));
+            if ($content_raw !== '') {
+                $content_snapshot = $content_raw;
+            }
         }
     }
 

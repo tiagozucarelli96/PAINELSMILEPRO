@@ -112,6 +112,7 @@ $secao_formulario = null;
 $anexos_dj = [];
 $anexos_observacoes = [];
 $anexos_formulario = [];
+$quadros_observacoes = [];
 $arquivos_evento = [];
 
 function portal_dj_secao_tem_conteudo(?array $secao): bool
@@ -421,6 +422,177 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
     ];
 }
 
+/**
+ * Verifica se o link contempla uma seção específica no allowed_sections.
+ * Compatibilidade: quando ausente, assume permitido.
+ */
+function portal_dj_link_contem_secao(?array $link, string $section): bool
+{
+    if (!is_array($link)) {
+        return false;
+    }
+
+    $section = strtolower(trim((string)$section));
+    if ($section === '') {
+        return true;
+    }
+
+    $raw_allowed = $link['allowed_sections'] ?? null;
+    if ($raw_allowed === null || $raw_allowed === '') {
+        return true;
+    }
+
+    $sections = [];
+    if (is_array($raw_allowed)) {
+        $sections = $raw_allowed;
+    } elseif (is_string($raw_allowed)) {
+        $decoded = json_decode($raw_allowed, true);
+        if (is_array($decoded)) {
+            $sections = $decoded;
+        }
+    }
+
+    if (empty($sections)) {
+        return true;
+    }
+
+    foreach ($sections as $allowed) {
+        if (strtolower(trim((string)$allowed)) === $section) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Extrai do snapshot apenas o conteúdo da seção pedida quando o HTML vier agregado.
+ */
+function portal_dj_extrair_secao_publica_snapshot(string $content_html, string $section): string
+{
+    $content_html = trim($content_html);
+    $section = strtolower(trim($section));
+    if ($content_html === '' || $section === '') {
+        return $content_html;
+    }
+    if (stripos($content_html, 'data-smile-public-section') === false) {
+        return $content_html;
+    }
+    if (!class_exists('DOMDocument')) {
+        return $content_html;
+    }
+
+    $dom = new DOMDocument();
+    $prev_state = libxml_use_internal_errors(true);
+    $flags = 0;
+    if (defined('LIBXML_HTML_NODEFDTD')) {
+        $flags |= LIBXML_HTML_NODEFDTD;
+    }
+    if (defined('LIBXML_HTML_NOIMPLIED')) {
+        $flags |= LIBXML_HTML_NOIMPLIED;
+    }
+
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $content_html . '</body></html>';
+    $loaded = $dom->loadHTML($wrapped, $flags);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev_state);
+    if (!$loaded) {
+        return $content_html;
+    }
+
+    $sections = $dom->getElementsByTagName('section');
+    foreach ($sections as $node) {
+        if (!$node instanceof DOMElement) {
+            continue;
+        }
+        $current = strtolower(trim((string)$node->getAttribute('data-smile-public-section')));
+        if ($current !== $section) {
+            continue;
+        }
+        $inner = '';
+        foreach ($node->childNodes as $child) {
+            $inner .= (string)$dom->saveHTML($child);
+        }
+        $inner = trim($inner);
+        return $inner !== '' ? $inner : $content_html;
+    }
+
+    return $content_html;
+}
+
+/**
+ * Carrega os quadros (slots) de Observações Gerais da reunião final para visualização no Portal DJ.
+ */
+function portal_dj_resolver_quadros_observacoes(PDO $pdo, int $meeting_id): array
+{
+    if ($meeting_id <= 0) {
+        return [];
+    }
+
+    $links = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes');
+    if (empty($links)) {
+        return [];
+    }
+
+    $by_slot = [];
+    foreach ($links as $link) {
+        if (!is_array($link)) {
+            continue;
+        }
+        if (!portal_dj_link_contem_secao($link, 'observacoes_gerais')) {
+            continue;
+        }
+
+        $slot_index = max(1, (int)($link['slot_index'] ?? 1));
+        if (isset($by_slot[$slot_index])) {
+            continue;
+        }
+
+        $submitted_snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
+        $draft_snapshot = trim((string)($link['draft_content_html_snapshot'] ?? ''));
+
+        $content_html = $submitted_snapshot;
+        $snapshot_status = 'submitted';
+        if ($content_html === '' && $draft_snapshot !== '') {
+            $content_html = $draft_snapshot;
+            $snapshot_status = 'draft';
+        } elseif ($content_html === '') {
+            $snapshot_status = 'empty';
+        }
+        if ($content_html !== '') {
+            $content_html = portal_dj_extrair_secao_publica_snapshot($content_html, 'observacoes_gerais');
+        }
+
+        $form_title = trim((string)($link['form_title'] ?? ''));
+        if ($form_title === '') {
+            $form_title = 'Observações Gerais - Quadro ' . $slot_index;
+        }
+
+        $link_id = (int)($link['id'] ?? 0);
+        $anexos = $link_id > 0
+            ? eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'observacoes_gerais', $link_id)
+            : [];
+
+        $by_slot[$slot_index] = [
+            'slot_index' => $slot_index,
+            'id' => $link_id,
+            'form_title' => $form_title,
+            'content_html' => $content_html,
+            'snapshot_status' => $snapshot_status,
+            'submitted_at' => isset($link['submitted_at']) ? (string)$link['submitted_at'] : '',
+            'draft_saved_at' => isset($link['draft_saved_at']) ? (string)$link['draft_saved_at'] : '',
+            'anexos' => is_array($anexos) ? $anexos : [],
+        ];
+    }
+
+    if (empty($by_slot)) {
+        return [];
+    }
+
+    ksort($by_slot, SORT_NUMERIC);
+    return array_values($by_slot);
+}
+
 if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
 
@@ -467,6 +639,7 @@ if (!empty($_GET['evento'])) {
                     $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
                     $anexos_dj = $dj_resolvido['anexos'] ?? [];
                 }
+                $quadros_observacoes = portal_dj_resolver_quadros_observacoes($pdo, $evento_id);
                 $arquivos_evento = eventos_arquivos_listar($pdo, $evento_id, false);
             }
         }
@@ -684,6 +857,62 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             font-size: 0.84rem;
             margin-bottom: 0.75rem;
         }
+        .obs-quadros-wrap {
+            margin-top: 1rem;
+            display: grid;
+            gap: 0.85rem;
+        }
+        .obs-quadro-card {
+            border: 1px solid #dbe3ef;
+            background: #fff;
+            border-radius: 10px;
+            padding: 0.95rem;
+        }
+        .obs-quadro-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.55rem;
+        }
+        .obs-quadro-title {
+            font-size: 0.9rem;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .obs-quadro-status {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border-radius: 999px;
+            padding: 0.2rem 0.55rem;
+            border: 1px solid #dbe3ef;
+            background: #f1f5f9;
+            color: #334155;
+        }
+        .obs-quadro-status.is-draft {
+            background: #fef3c7;
+            border-color: #fde68a;
+            color: #92400e;
+        }
+        .obs-quadro-status.is-empty {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #64748b;
+        }
+        .obs-quadro-meta {
+            color: #64748b;
+            font-size: 0.78rem;
+            margin-bottom: 0.55rem;
+        }
+        .obs-quadro-content {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.85rem;
+        }
         .content-box {
             background: #f8fafc;
             border: 1px solid #e5e7eb;
@@ -823,12 +1052,36 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             padding: 0.5rem;
             position: relative;
         }
+        .calendar-day.month-break {
+            border-top: 3px solid #1e3a8a;
+            box-shadow: inset 0 2px 0 rgba(30, 58, 138, 0.1);
+        }
         .calendar-day.other-month {
             background: #f8fafc;
             color: #94a3b8;
         }
         .calendar-day.today {
             background: #eff6ff;
+        }
+        .month-marker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #1e3a8a;
+            background: #dbeafe;
+            border: 1px solid #bfdbfe;
+            border-radius: 999px;
+            padding: 0.15rem 0.45rem;
+            margin-bottom: 0.35rem;
+        }
+        .calendar-day.other-month .month-marker {
+            color: #475569;
+            background: #e2e8f0;
+            border-color: #cbd5e1;
         }
         .day-number {
             font-size: 0.875rem;
@@ -1090,7 +1343,7 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     $aba_conteudos = [
                         'observacoes_gerais' => [
                             'titulo' => 'Observações Gerais',
-                            'subtitulo' => 'Informações gerais alinhadas para o evento.',
+                            'subtitulo' => 'Informações gerais e quadros da reunião final em modo somente leitura.',
                             'secao' => $secao_observacoes,
                             'mensagem_vazia' => 'Nenhuma observação geral cadastrada ainda.',
                             'anexos' => $anexos_observacoes,
@@ -1142,6 +1395,117 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     <p style="color: #64748b; font-style: italic;"><?= htmlspecialchars($aba_atual['mensagem_vazia']) ?></p>
                     <?php endif; ?>
                 </div>
+
+                <?php if ($aba_detalhe === 'observacoes_gerais' && !empty($quadros_observacoes)): ?>
+                <div class="obs-quadros-wrap">
+                    <h3 style="font-size: 0.95rem; color: #374151;">🧩 Demais quadros da reunião final</h3>
+                    <?php foreach ($quadros_observacoes as $quadro): ?>
+                    <?php
+                        $quadro_slot = max(1, (int)($quadro['slot_index'] ?? 1));
+                        $quadro_titulo = trim((string)($quadro['form_title'] ?? ''));
+                        if ($quadro_titulo === '') {
+                            $quadro_titulo = 'Observações Gerais - Quadro ' . $quadro_slot;
+                        }
+                        $quadro_html = trim((string)($quadro['content_html'] ?? ''));
+                        $quadro_status = trim((string)($quadro['snapshot_status'] ?? 'submitted'));
+                        $quadro_submitted_raw = trim((string)($quadro['submitted_at'] ?? ''));
+                        $quadro_submitted_fmt = $quadro_submitted_raw !== '' ? date('d/m/Y H:i', strtotime($quadro_submitted_raw)) : '';
+                        $quadro_draft_raw = trim((string)($quadro['draft_saved_at'] ?? ''));
+                        $quadro_draft_fmt = $quadro_draft_raw !== '' ? date('d/m/Y H:i', strtotime($quadro_draft_raw)) : '';
+                        $quadro_status_text = 'Enviado';
+                        $quadro_status_class = '';
+                        $quadro_meta = $quadro_submitted_fmt !== '' ? 'Enviado em ' . $quadro_submitted_fmt : '';
+                        if ($quadro_status === 'draft') {
+                            $quadro_status_text = 'Rascunho';
+                            $quadro_status_class = ' is-draft';
+                            $quadro_meta = $quadro_draft_fmt !== '' ? 'Rascunho salvo em ' . $quadro_draft_fmt : 'Quadro em rascunho (sem envio final).';
+                        } elseif ($quadro_status === 'empty') {
+                            $quadro_status_text = 'Sem conteúdo';
+                            $quadro_status_class = ' is-empty';
+                            $quadro_meta = 'Quadro sem conteúdo enviado até o momento.';
+                        }
+                        $anexos_quadro = is_array($quadro['anexos'] ?? null) ? $quadro['anexos'] : [];
+                    ?>
+                    <div class="obs-quadro-card">
+                        <div class="obs-quadro-head">
+                            <div class="obs-quadro-title">Quadro <?= (int)$quadro_slot ?> • <?= htmlspecialchars($quadro_titulo) ?></div>
+                            <span class="obs-quadro-status<?= htmlspecialchars($quadro_status_class) ?>"><?= htmlspecialchars($quadro_status_text) ?></span>
+                        </div>
+                        <?php if ($quadro_meta !== ''): ?>
+                        <div class="obs-quadro-meta"><?= htmlspecialchars($quadro_meta) ?></div>
+                        <?php endif; ?>
+                        <div class="obs-quadro-content">
+                            <?php if ($quadro_html !== ''): ?>
+                            <div><?= $quadro_html ?></div>
+                            <?php else: ?>
+                            <p style="color: #64748b; font-style: italic;">Quadro sem conteúdo disponível.</p>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if (!empty($anexos_quadro)): ?>
+                        <div class="anexos-list">
+                            <h3 style="font-size: 0.88rem; color: #374151; margin-bottom: 0.75rem;">📎 Anexos do quadro</h3>
+                            <?php foreach ($anexos_quadro as $a): ?>
+                            <?php
+                                $anexo_url = trim((string)($a['public_url'] ?? ''));
+                                $anexo_nome = trim((string)($a['original_name'] ?? 'arquivo'));
+                                $anexo_mime = strtolower(trim((string)($a['mime_type'] ?? 'application/octet-stream')));
+                                $anexo_kind = strtolower(trim((string)($a['file_kind'] ?? 'outros')));
+                                $anexo_size = (int)($a['size_bytes'] ?? 0);
+                                $anexo_note = trim((string)($a['note'] ?? ''));
+                                $anexo_icon = '📎';
+                                if ($anexo_kind === 'imagem') {
+                                    $anexo_icon = '🖼️';
+                                } elseif ($anexo_kind === 'video') {
+                                    $anexo_icon = '🎬';
+                                } elseif ($anexo_kind === 'audio') {
+                                    $anexo_icon = '🎵';
+                                } elseif ($anexo_kind === 'pdf') {
+                                    $anexo_icon = '📄';
+                                }
+                            ?>
+                            <div class="anexo-item">
+                                <div class="anexo-main">
+                                    <span class="anexo-icon"><?= $anexo_icon ?></span>
+                                    <div class="anexo-info">
+                                        <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
+                                        <div class="anexo-meta">
+                                            <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
+                                            • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
+                                        </div>
+                                        <?php if ($anexo_note !== ''): ?>
+                                        <div class="anexo-note"><strong>Obs:</strong> <?= htmlspecialchars($anexo_note) ?></div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <div class="anexo-actions">
+                                    <?php if ($anexo_url !== ''): ?>
+                                    <button type="button"
+                                            class="btn btn-secondary btn-small"
+                                            data-open-anexo-modal="1"
+                                            data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
+                                        Visualizar
+                                    </button>
+                                    <a href="<?= htmlspecialchars($anexo_url) ?>"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       download
+                                       class="btn btn-primary btn-small">Download</a>
+                                    <?php else: ?>
+                                    <span class="anexo-meta">Arquivo sem URL pública.</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
 
                 <?php if ($mostrar_lista_anexos_aba): ?>
                 <div class="anexos-list">
@@ -1305,6 +1669,20 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
         <?php
             $today = new DateTime('today');
             $end = clone $today;
+            $meses_abreviados = [
+                1 => 'Jan',
+                2 => 'Fev',
+                3 => 'Mar',
+                4 => 'Abr',
+                5 => 'Mai',
+                6 => 'Jun',
+                7 => 'Jul',
+                8 => 'Ago',
+                9 => 'Set',
+                10 => 'Out',
+                11 => 'Nov',
+                12 => 'Dez',
+            ];
             if (!empty($eventos)) {
                 $ultimo_evento = end($eventos);
                 $ultima_data = trim((string)($ultimo_evento['data_evento'] ?? ''));
@@ -1333,6 +1711,7 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             }
 
             $cursor = clone $start_grid;
+            $primeiro_dia_visivel = $start_grid->format('Y-m-d');
         ?>
 
         <div class="calendar">
@@ -1351,8 +1730,13 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     $is_today = $date_key === $today->format('Y-m-d');
                     $is_outside = ($cursor < $today) || ($cursor > $end);
                     $day_events = $eventos_por_data[$date_key] ?? [];
+                    $is_month_break = ((int)$cursor->format('j') === 1) || ($date_key === $primeiro_dia_visivel);
+                    $month_label = $meses_abreviados[(int)$cursor->format('n')] . '/' . $cursor->format('Y');
                 ?>
-                <div class="calendar-day <?= $is_outside ? 'other-month' : '' ?> <?= $is_today ? 'today' : '' ?>">
+                <div class="calendar-day <?= $is_outside ? 'other-month' : '' ?> <?= $is_today ? 'today' : '' ?> <?= $is_month_break ? 'month-break' : '' ?>">
+                    <?php if ($is_month_break): ?>
+                    <div class="month-marker"><?= htmlspecialchars($month_label) ?></div>
+                    <?php endif; ?>
                     <div class="day-number"><?= (int)$cursor->format('j') ?></div>
                     <div class="day-events">
                         <?php foreach (array_slice($day_events, 0, 3) as $ev): 

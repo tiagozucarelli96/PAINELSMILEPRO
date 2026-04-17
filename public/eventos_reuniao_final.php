@@ -1327,7 +1327,7 @@ includeSidebar($sidebar_title);
     .tab-portal-icons {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: 0.5rem;
         margin-left: auto;
     }
 
@@ -1335,24 +1335,23 @@ includeSidebar($sidebar_title);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 28px;
-        height: 28px;
-        border: 1px solid transparent;
-        border-radius: 8px;
-        background: #ffffff;
+        width: 34px;
+        height: 34px;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
         cursor: pointer;
         transition: all 0.2s ease;
-        box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
+        box-shadow: none;
     }
 
     .tab-portal-toggle:hover {
-        border-color: #93c5fd;
-        background: #eff6ff;
+        background: #e2e8f0;
     }
 
     .tab-portal-toggle img {
-        width: 17px;
-        height: 17px;
+        width: 22px;
+        height: 22px;
         display: block;
         object-fit: contain;
     }
@@ -6442,28 +6441,6 @@ function initDjTemplateSelection() {
             if (djSlotExists(slot) && djLinksBySlot[slot]) return;
 
             const schema = normalizeFormSchema(Array.isArray(link.form_schema) ? link.form_schema : []);
-            const formTitle = String(link.form_title || '').trim().toLowerCase();
-            const hasUsefulNonLegacyFields = schema.some((field) => {
-                const type = String(field && field.type ? field.type : '').toLowerCase();
-                const label = String(field && field.label ? field.label : '').trim();
-                const fieldId = String(field && field.id ? field.id : '').trim();
-                if (!['text', 'textarea', 'yesno', 'select', 'file'].includes(type)) {
-                    return false;
-                }
-                if (label === '') {
-                    return false;
-                }
-                if (fieldId.startsWith('legacy_portal_text_')) {
-                    return false;
-                }
-                return true;
-            });
-            const isDirectTextFallback = !hasUsefulNonLegacyFields
-                && slot === 1
-                && formTitle === 'dj / protocolos';
-            if (isDirectTextFallback) {
-                return;
-            }
 
             if (!djSlotExists(slot)) {
                 djSlotOrder.push(slot);
