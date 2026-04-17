@@ -2559,7 +2559,7 @@ includeSidebar($sidebar_title);
                         data-state="<?= $portal_secao_visivel ? '1' : '0' ?>"
                     >
                         <img
-                            src="<?= htmlspecialchars($portal_secao_visivel ? 'Olho aberto.png' : 'Olho fechado.png') ?>"
+                            src="<?= htmlspecialchars($portal_secao_visivel ? 'olho-aberto.png' : 'olho-fechado.png') ?>"
                             alt="<?= $portal_secao_visivel ? 'Visível' : 'Oculto' ?>"
                         >
                     </span>
@@ -2574,7 +2574,7 @@ includeSidebar($sidebar_title);
                         data-state="<?= $portal_secao_editavel ? '1' : '0' ?>"
                     >
                         <img
-                            src="<?= htmlspecialchars($portal_secao_editavel ? 'edição.png' : 'nãoedição.png') ?>"
+                            src="<?= htmlspecialchars($portal_secao_editavel ? 'edicao.png' : 'nao-edicao.png') ?>"
                             alt="<?= $portal_secao_editavel ? 'Editável' : 'Não editável' ?>"
                         >
                     </span>
@@ -2963,10 +2963,10 @@ const sectionLockedState = <?= eventos_reuniao_json_script([
 ], '{"decoracao":false,"observacoes_gerais":false,"dj_protocolo":false,"formulario":false}') ?>;
 const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
 const sectionPortalIconSources = {
-    visibleOn: 'Olho aberto.png',
-    visibleOff: 'Olho fechado.png',
-    editableOn: 'edição.png',
-    editableOff: 'nãoedição.png',
+    visibleOn: 'olho-aberto.png',
+    visibleOff: 'olho-fechado.png',
+    editableOn: 'edicao.png',
+    editableOff: 'nao-edicao.png',
 };
 let sectionFormDraftValues = {
     decoracao: {},
