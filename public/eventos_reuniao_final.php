@@ -300,11 +300,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($result['ok']) && $section === 'decoracao') {
                 $portal_cfg = eventos_cliente_portal_get($pdo, $meeting_id);
                 if (is_array($portal_cfg) && !empty($portal_cfg)) {
+                    $portal_secoes_cfg = eventos_cliente_portal_obter_config_secoes($portal_cfg);
+                    $sync_visivel = !empty($portal_cfg['visivel_reuniao'])
+                        && (
+                            !empty($portal_secoes_cfg['decoracao']['visivel'])
+                            || !empty($portal_secoes_cfg['observacoes_gerais']['visivel'])
+                        );
+                    $sync_editavel = !empty($portal_secoes_cfg['decoracao']['editavel'])
+                        || !empty($portal_secoes_cfg['observacoes_gerais']['editavel']);
+                    if ($sync_editavel) {
+                        $sync_visivel = true;
+                    }
                     $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
                         $pdo,
                         $meeting_id,
-                        !empty($portal_cfg['visivel_reuniao']),
-                        !empty($portal_cfg['editavel_reuniao']),
+                        $sync_visivel,
+                        $sync_editavel,
                         (int)$user_id
                     );
                     if (empty($sync_reuniao['ok'])) {
@@ -315,11 +326,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($result['ok']) && $section === 'dj_protocolo') {
                 $portal_cfg = eventos_cliente_portal_get($pdo, $meeting_id);
                 if (is_array($portal_cfg) && !empty($portal_cfg)) {
+                    $portal_secoes_cfg = eventos_cliente_portal_obter_config_secoes($portal_cfg);
+                    $sync_visivel = !empty($portal_secoes_cfg['dj_protocolo']['visivel']);
+                    $sync_editavel = !empty($portal_secoes_cfg['dj_protocolo']['editavel']);
                     $sync_dj = eventos_cliente_portal_sincronizar_link_dj(
                         $pdo,
                         $meeting_id,
-                        !empty($portal_cfg['visivel_dj']),
-                        !empty($portal_cfg['editavel_dj']),
+                        $sync_visivel,
+                        $sync_editavel,
                         (int)$user_id
                     );
                     if (empty($sync_dj['ok'])) {
@@ -525,6 +539,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $result['url'] = $base_url . '/index.php?page=eventos_cliente_dj&token=' . $result['link']['token'];
             }
             echo json_encode($result);
+            exit;
+
+        case 'atualizar_secao_portal_config':
+            if ($meeting_id <= 0) {
+                echo json_encode(['ok' => false, 'error' => 'Reunião inválida']);
+                exit;
+            }
+            $section = strtolower(trim((string)($_POST['section'] ?? '')));
+            $portal_visible = ((string)($_POST['portal_visible'] ?? '0') === '1');
+            $portal_editable = ((string)($_POST['portal_editable'] ?? '0') === '1');
+            if ($portal_editable) {
+                $portal_visible = true;
+            }
+
+            $result = eventos_cliente_portal_atualizar_secao_config(
+                $pdo,
+                $meeting_id,
+                $section,
+                $portal_visible,
+                $portal_editable,
+                (int)$user_id
+            );
+            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
             
         case 'get_versoes':
@@ -881,6 +918,20 @@ $links_cliente_dj = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo,
 $links_cliente_observacoes = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes') : [];
 $links_cliente_formulario = $meeting_id > 0 ? eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_formulario') : [];
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
+$portal_cliente = null;
+$portal_section_config = [
+    'decoracao' => ['visivel' => true, 'editavel' => true],
+    'observacoes_gerais' => ['visivel' => true, 'editavel' => true],
+    'dj_protocolo' => ['visivel' => true, 'editavel' => true],
+    'formulario' => ['visivel' => true, 'editavel' => true],
+];
+if ($meeting_id > 0) {
+    $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, (int)$user_id);
+    if (!empty($portal_result['ok']) && !empty($portal_result['portal']) && is_array($portal_result['portal'])) {
+        $portal_cliente = $portal_result['portal'];
+        $portal_section_config = eventos_cliente_portal_obter_config_secoes($portal_cliente);
+    }
+}
 $links_cliente_dj_payload = [];
 foreach ($links_cliente_dj as $link_dj) {
     if (!is_array($link_dj)) {
@@ -1243,11 +1294,17 @@ includeSidebar($sidebar_title);
         transition: all 0.2s;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: space-between;
         gap: 0.5rem;
         border-bottom: 3px solid transparent;
     }
-    
+
+    .tab-btn-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
     .tab-btn:hover {
         background: #f1f5f9;
         color: #1e293b;
@@ -1265,6 +1322,50 @@ includeSidebar($sidebar_title);
         font-size: 0.7rem;
         padding: 0.125rem 0.5rem;
         border-radius: 9999px;
+    }
+
+    .tab-portal-icons {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-left: auto;
+    }
+
+    .tab-portal-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
+    }
+
+    .tab-portal-toggle:hover {
+        border-color: #93c5fd;
+        background: #eff6ff;
+    }
+
+    .tab-portal-toggle img {
+        width: 17px;
+        height: 17px;
+        display: block;
+        object-fit: contain;
+    }
+
+    .tab-portal-toggle.is-off {
+        opacity: 0.72;
+        background: #f8fafc;
+    }
+
+    .tab-portal-toggle.is-disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
     }
     
     .tab-content {
@@ -2224,10 +2325,15 @@ includeSidebar($sidebar_title);
         .tab-btn {
             border-bottom: none;
             border-left: 3px solid transparent;
+            justify-content: space-between;
         }
         
         .tab-btn.active {
             border-left-color: #1e3a8a;
+        }
+
+        .tab-portal-icons {
+            margin-left: 0;
         }
         
         .event-meta {
@@ -2426,16 +2532,53 @@ includeSidebar($sidebar_title);
             <?php foreach ($section_labels as $key => $info): 
                 $secao = $secoes[$key] ?? null;
                 $is_locked = $secao && !empty($secao['is_locked']);
+                $portal_cfg_secao = $portal_section_config[$key] ?? ['visivel' => true, 'editavel' => true];
+                $portal_secao_visivel = !empty($portal_cfg_secao['visivel']);
+                $portal_secao_editavel = !empty($portal_cfg_secao['editavel']);
                 if ($key === 'dj_protocolo') {
                     $is_locked = false;
                 }
             ?>
             <button type="button" class="tab-btn <?= $key === $default_tab_key ? 'active' : '' ?>" data-tab-section="<?= htmlspecialchars((string)$key) ?>">
-                <span><?= $info['icon'] ?></span>
-                <span><?= $info['label'] ?></span>
+                <span class="tab-btn-main">
+                    <span><?= $info['icon'] ?></span>
+                    <span><?= $info['label'] ?></span>
+                </span>
                 <?php if ($is_locked): ?>
                 <span class="locked-badge">🔒</span>
                 <?php endif; ?>
+                <span class="tab-portal-icons" data-portal-icons="<?= htmlspecialchars((string)$key) ?>">
+                    <span
+                        class="tab-portal-toggle"
+                        role="button"
+                        tabindex="<?= $readonly_mode ? '-1' : '0' ?>"
+                        title="<?= $portal_secao_visivel ? 'Visível para o cliente' : 'Oculto para o cliente' ?>"
+                        aria-label="<?= $portal_secao_visivel ? 'Visível para o cliente' : 'Oculto para o cliente' ?>"
+                        data-portal-toggle="visible"
+                        data-section="<?= htmlspecialchars((string)$key) ?>"
+                        data-state="<?= $portal_secao_visivel ? '1' : '0' ?>"
+                    >
+                        <img
+                            src="<?= htmlspecialchars($portal_secao_visivel ? 'Olho aberto.png' : 'Olho fechado.png') ?>"
+                            alt="<?= $portal_secao_visivel ? 'Visível' : 'Oculto' ?>"
+                        >
+                    </span>
+                    <span
+                        class="tab-portal-toggle"
+                        role="button"
+                        tabindex="<?= $readonly_mode ? '-1' : '0' ?>"
+                        title="<?= $portal_secao_editavel ? 'Editável pelo cliente' : 'Somente leitura para o cliente' ?>"
+                        aria-label="<?= $portal_secao_editavel ? 'Editável pelo cliente' : 'Somente leitura para o cliente' ?>"
+                        data-portal-toggle="editable"
+                        data-section="<?= htmlspecialchars((string)$key) ?>"
+                        data-state="<?= $portal_secao_editavel ? '1' : '0' ?>"
+                    >
+                        <img
+                            src="<?= htmlspecialchars($portal_secao_editavel ? 'edição.png' : 'nãoedição.png') ?>"
+                            alt="<?= $portal_secao_editavel ? 'Editável' : 'Não editável' ?>"
+                        >
+                    </span>
+                </span>
             </button>
             <?php endforeach; ?>
         </div>
@@ -2767,6 +2910,7 @@ const initialFormularioLinks = <?= eventos_reuniao_json_script($links_cliente_fo
 const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
 }, $anexos_dj), '[]') ?>;
+const initialSectionPortalConfig = <?= eventos_reuniao_json_script($portal_section_config, '{"decoracao":{"visivel":true,"editavel":true},"observacoes_gerais":{"visivel":true,"editavel":true},"dj_protocolo":{"visivel":true,"editavel":true},"formulario":{"visivel":true,"editavel":true}}') ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -2818,6 +2962,12 @@ const sectionLockedState = <?= eventos_reuniao_json_script([
     'formulario' => !empty($secoes['formulario']['is_locked']),
 ], '{"decoracao":false,"observacoes_gerais":false,"dj_protocolo":false,"formulario":false}') ?>;
 const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
+const sectionPortalIconSources = {
+    visibleOn: 'Olho aberto.png',
+    visibleOff: 'Olho fechado.png',
+    editableOn: 'edição.png',
+    editableOff: 'nãoedição.png',
+};
 let sectionFormDraftValues = {
     decoracao: {},
     observacoes_gerais: {},
@@ -2832,6 +2982,10 @@ const CRONOGRAMA_ROW_EMPTY_TEMPLATE = {
 let cronogramaRows = [];
 let cronogramaRowCounter = 0;
 let salvarTudoInFlight = false;
+let sectionPortalConfigState = {};
+let sectionPortalConfigSaveInFlight = {};
+let sectionPortalConfigSavePending = {};
+let sectionPortalConfigPendingState = {};
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -3663,6 +3817,194 @@ function switchTab(section) {
     if (!btn || !tab) return;
     btn.classList.add('active');
     tab.classList.add('active');
+}
+
+function normalizeSectionPortalConfigEntry(raw) {
+    const next = raw && typeof raw === 'object' ? raw : {};
+    let visivel = !!next.visivel;
+    const editavel = !!next.editavel;
+    if (editavel) {
+        visivel = true;
+    }
+    return { visivel, editavel };
+}
+
+function getSectionPortalConfig(section) {
+    const key = String(section || '').trim();
+    const current = sectionPortalConfigState[key] || null;
+    if (current) {
+        return normalizeSectionPortalConfigEntry(current);
+    }
+    return { visivel: true, editavel: true };
+}
+
+function setSectionPortalConfig(section, config) {
+    const key = String(section || '').trim();
+    if (!key) return;
+    sectionPortalConfigState[key] = normalizeSectionPortalConfigEntry(config);
+}
+
+function updateSectionPortalToggleElement(toggle, sectionConfig) {
+    if (!toggle) return;
+    const type = String(toggle.dataset.portalToggle || '');
+    const isVisibleToggle = type === 'visible';
+    const stateOn = isVisibleToggle ? !!sectionConfig.visivel : !!sectionConfig.editavel;
+    const img = toggle.querySelector('img');
+    const src = isVisibleToggle
+        ? (stateOn ? sectionPortalIconSources.visibleOn : sectionPortalIconSources.visibleOff)
+        : (stateOn ? sectionPortalIconSources.editableOn : sectionPortalIconSources.editableOff);
+    const title = isVisibleToggle
+        ? (stateOn ? 'Visível para o cliente' : 'Oculto para o cliente')
+        : (stateOn ? 'Editável pelo cliente' : 'Somente leitura para o cliente');
+
+    if (img) {
+        img.src = src;
+        img.alt = title;
+    }
+    toggle.dataset.state = stateOn ? '1' : '0';
+    toggle.title = title;
+    toggle.setAttribute('aria-label', title);
+    toggle.classList.toggle('is-off', !stateOn);
+    toggle.classList.toggle('is-disabled', !!pageReadonly);
+    toggle.setAttribute('tabindex', pageReadonly ? '-1' : '0');
+}
+
+function renderSectionPortalToggles(section = null) {
+    const selector = section
+        ? `.tab-portal-toggle[data-section="${(window.CSS && window.CSS.escape) ? window.CSS.escape(String(section)) : String(section).replace(/["\\]/g, '\\$&')}"]`
+        : '.tab-portal-toggle[data-section]';
+    document.querySelectorAll(selector).forEach((toggle) => {
+        const sectionKey = String(toggle.dataset.section || '').trim();
+        const config = getSectionPortalConfig(sectionKey);
+        updateSectionPortalToggleElement(toggle, config);
+    });
+}
+
+async function salvarSecaoPortalConfig(section, nextConfig, options = {}) {
+    const sectionKey = String(section || '').trim();
+    if (!meetingId || !sectionKey) {
+        return false;
+    }
+    if (pageReadonly) {
+        return false;
+    }
+
+    const normalized = normalizeSectionPortalConfigEntry(nextConfig);
+    const silentSuccess = !!(options && options.silentSuccess);
+
+    if (sectionPortalConfigSaveInFlight[sectionKey]) {
+        sectionPortalConfigSavePending[sectionKey] = true;
+        sectionPortalConfigPendingState[sectionKey] = normalized;
+        return false;
+    }
+
+    sectionPortalConfigSaveInFlight[sectionKey] = true;
+    try {
+        const formData = new FormData();
+        formData.append('action', 'atualizar_secao_portal_config');
+        formData.append('meeting_id', String(meetingId));
+        formData.append('section', sectionKey);
+        formData.append('portal_visible', normalized.visivel ? '1' : '0');
+        formData.append('portal_editable', normalized.editavel ? '1' : '0');
+
+        const resp = await fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await parseJsonResponse(resp, 'a configuração da seção no portal');
+        if (!data.ok) {
+            alert(data.error || 'Erro ao salvar a configuração da seção.');
+            return false;
+        }
+
+        const saved = normalizeSectionPortalConfigEntry(data.section_config || normalized);
+        setSectionPortalConfig(sectionKey, saved);
+        renderSectionPortalToggles(sectionKey);
+        if (!silentSuccess) {
+            alert('Configuração da seção salva no portal do cliente.');
+        }
+        return true;
+    } catch (err) {
+        alert('Erro: ' + err.message);
+        return false;
+    } finally {
+        sectionPortalConfigSaveInFlight[sectionKey] = false;
+        if (sectionPortalConfigSavePending[sectionKey]) {
+            sectionPortalConfigSavePending[sectionKey] = false;
+            const pendingState = sectionPortalConfigPendingState[sectionKey] || getSectionPortalConfig(sectionKey);
+            sectionPortalConfigPendingState[sectionKey] = null;
+            void salvarSecaoPortalConfig(sectionKey, pendingState, { silentSuccess: true });
+        }
+    }
+}
+
+async function toggleSectionPortalSetting(section, type) {
+    const sectionKey = String(section || '').trim();
+    const toggleType = String(type || '').trim();
+    if (!sectionKey || !toggleType || pageReadonly) {
+        return;
+    }
+
+    const current = getSectionPortalConfig(sectionKey);
+    const previous = { ...current };
+    if (toggleType === 'visible') {
+        current.visivel = !current.visivel;
+        if (!current.visivel) {
+            current.editavel = false;
+        }
+    } else if (toggleType === 'editable') {
+        current.editavel = !current.editavel;
+        if (current.editavel) {
+            current.visivel = true;
+        }
+    } else {
+        return;
+    }
+
+    setSectionPortalConfig(sectionKey, current);
+    renderSectionPortalToggles(sectionKey);
+    const ok = await salvarSecaoPortalConfig(sectionKey, current, { silentSuccess: true });
+    if (!ok) {
+        setSectionPortalConfig(sectionKey, previous);
+        renderSectionPortalToggles(sectionKey);
+    }
+}
+
+function bindSectionPortalToggleEvents() {
+    document.querySelectorAll('.tab-portal-toggle[data-section][data-portal-toggle]').forEach((toggle) => {
+        if (toggle.dataset.bound === '1') return;
+        toggle.dataset.bound = '1';
+        toggle.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            const sectionKey = String(this.dataset.section || '').trim();
+            const type = String(this.dataset.portalToggle || '').trim();
+            void toggleSectionPortalSetting(sectionKey, type);
+        });
+        toggle.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            event.stopPropagation();
+            const sectionKey = String(this.dataset.section || '').trim();
+            const type = String(this.dataset.portalToggle || '').trim();
+            void toggleSectionPortalSetting(sectionKey, type);
+        });
+    });
+}
+
+function initSectionPortalToggleState() {
+    sectionPortalConfigState = {};
+    sectionPortalConfigSaveInFlight = {};
+    sectionPortalConfigSavePending = {};
+    sectionPortalConfigPendingState = {};
+    const source = initialSectionPortalConfig && typeof initialSectionPortalConfig === 'object'
+        ? initialSectionPortalConfig
+        : {};
+    Object.keys(source).forEach((sectionKey) => {
+        setSectionPortalConfig(sectionKey, source[sectionKey]);
+    });
+    bindSectionPortalToggleEvents();
+    renderSectionPortalToggles();
 }
 
 function applyInitialTabFromQuery() {
@@ -7014,6 +7356,7 @@ if (meetingId) {
             bindMeetingActionButtons();
             renderDjUploadCards();
             renderDjAnexosList();
+            initSectionPortalToggleState();
             applyInitialTabFromQuery();
             hydrateObservacoesBlocksFromSavedContent();
             loadTinyMCEAndInit();
@@ -7027,6 +7370,7 @@ if (meetingId) {
         bindMeetingActionButtons();
         renderDjUploadCards();
         renderDjAnexosList();
+        initSectionPortalToggleState();
         applyInitialTabFromQuery();
         hydrateObservacoesBlocksFromSavedContent();
         loadTinyMCEAndInit();

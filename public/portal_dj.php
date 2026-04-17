@@ -144,29 +144,242 @@ function portal_dj_secao_tem_conteudo(?array $secao): bool
 }
 
 /**
+ * Retorna IDs de campos do tipo "file" respeitando a ordem do schema.
+ */
+function portal_dj_schema_file_field_ids(?array $secao): array
+{
+    if (!$secao) {
+        return [];
+    }
+
+    $schema_raw = $secao['form_schema_json'] ?? null;
+    if (!is_string($schema_raw) || trim($schema_raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($schema_raw, true);
+    if (!is_array($decoded) || empty($decoded)) {
+        return [];
+    }
+
+    $ids = [];
+    foreach ($decoded as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? '')));
+        $field_id = trim((string)($field['id'] ?? ''));
+        if ($type !== 'file' || $field_id === '') {
+            continue;
+        }
+        $ids[] = $field_id;
+    }
+
+    return $ids;
+}
+
+function portal_dj_render_inline_anexo_link(array $anexo): string
+{
+    $name = trim((string)($anexo['original_name'] ?? 'arquivo'));
+    if ($name === '') {
+        $name = 'arquivo';
+    }
+    $name_esc = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+    $url = trim((string)($anexo['public_url'] ?? ''));
+    if ($url === '') {
+        return $name_esc;
+    }
+
+    return '<a class="inline-anexo-link" href="'
+        . htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+        . '" target="_blank" rel="noopener noreferrer">'
+        . $name_esc
+        . '</a>';
+}
+
+/**
+ * Injeta os anexos na mesma linha da frase "Arquivo anexado separadamente.",
+ * replicando o comportamento do "Ver enviado" da reunião final.
+ */
+function portal_dj_renderizar_html_com_anexos_inline(string $content_html, array $anexos, ?array $secao): array
+{
+    $result = [
+        'html' => $content_html,
+        'used_inline' => false,
+    ];
+
+    $content_html = trim($content_html);
+    if ($content_html === '' || empty($anexos)) {
+        return $result;
+    }
+
+    $entries = [];
+    foreach (array_values($anexos) as $idx => $anexo) {
+        if (!is_array($anexo)) {
+            continue;
+        }
+        $id = (int)($anexo['id'] ?? 0);
+        $entries[] = [
+            'anexo' => $anexo,
+            'key' => $id > 0 ? ('id:' . $id) : ('idx:' . (int)$idx),
+        ];
+    }
+    if (empty($entries)) {
+        return $result;
+    }
+
+    $attachments_by_field = [];
+    $unlinked = [];
+    foreach ($entries as $entry) {
+        $field_id = trim((string)($entry['anexo']['form_field_id'] ?? ''));
+        if ($field_id === '') {
+            $unlinked[] = $entry;
+            continue;
+        }
+        if (!isset($attachments_by_field[$field_id]) || !is_array($attachments_by_field[$field_id])) {
+            $attachments_by_field[$field_id] = [];
+        }
+        $attachments_by_field[$field_id][] = $entry;
+    }
+
+    $file_field_ids = portal_dj_schema_file_field_ids($secao);
+    $has_field_mapping = !empty($attachments_by_field);
+    $rendered_keys = [];
+    $file_field_cursor = 0;
+    $unlinked_fallback_used = false;
+    $placeholder_hits = 0;
+
+    $rendered_html = preg_replace_callback(
+        '/Arquivo anexado separadamente\.?/iu',
+        static function (array $matches) use (
+            &$file_field_cursor,
+            &$unlinked_fallback_used,
+            &$placeholder_hits,
+            &$rendered_keys,
+            $file_field_ids,
+            $attachments_by_field,
+            $has_field_mapping,
+            $unlinked
+        ): string {
+            $line_attachments = [];
+
+            $field_id = $file_field_ids[$file_field_cursor] ?? '';
+            if ($file_field_cursor < count($file_field_ids)) {
+                $file_field_cursor++;
+            }
+            if ($field_id !== '' && !empty($attachments_by_field[$field_id])) {
+                $line_attachments = $attachments_by_field[$field_id];
+            } elseif (!$has_field_mapping && !$unlinked_fallback_used && !empty($unlinked)) {
+                $line_attachments = $unlinked;
+                $unlinked_fallback_used = true;
+            }
+
+            if (empty($line_attachments)) {
+                return (string)($matches[0] ?? 'Arquivo anexado separadamente.');
+            }
+
+            $placeholder_hits++;
+            $links = [];
+            foreach ($line_attachments as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $key = (string)($entry['key'] ?? '');
+                if ($key !== '') {
+                    $rendered_keys[$key] = true;
+                }
+                $links[] = portal_dj_render_inline_anexo_link((array)($entry['anexo'] ?? []));
+            }
+
+            $prefix = (string)($matches[0] ?? 'Arquivo anexado separadamente.');
+            if (empty($links)) {
+                return $prefix;
+            }
+            return $prefix . ' ' . implode(' • ', $links);
+        },
+        $content_html
+    );
+
+    if (!is_string($rendered_html)) {
+        $rendered_html = $content_html;
+    }
+
+    $remaining_links = [];
+    foreach ($entries as $entry) {
+        $key = (string)($entry['key'] ?? '');
+        if ($key !== '' && isset($rendered_keys[$key])) {
+            continue;
+        }
+        $remaining_links[] = portal_dj_render_inline_anexo_link((array)($entry['anexo'] ?? []));
+    }
+
+    if (!empty($remaining_links)) {
+        $rendered_html .= '<p><em>Arquivo anexado separadamente.</em> ' . implode(' • ', $remaining_links) . '</p>';
+        $placeholder_hits++;
+    }
+
+    return [
+        'html' => $rendered_html,
+        'used_inline' => $placeholder_hits > 0,
+    ];
+}
+
+/**
  * Resolve conteúdo/anexos da seção DJ com base nos links ativos.
  * Evita exibir dados órfãos quando os quadros forem excluídos na reunião final.
  */
 function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id, ?array $secao_fallback = null): array
 {
-    $blank_secao = is_array($secao_fallback) ? $secao_fallback : [];
-    $blank_secao['section'] = 'dj_protocolo';
-    $blank_secao['content_html'] = '';
-    $blank_secao['content_text'] = '';
-    if (!array_key_exists('form_schema_json', $blank_secao)) {
-        $blank_secao['form_schema_json'] = '[]';
-    }
-
     if ($meeting_id <= 0) {
-        return ['secao' => $blank_secao, 'anexos' => []];
+        return ['resolved' => false];
     }
 
     $links_ativos = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj');
     if (empty($links_ativos)) {
-        return ['secao' => $blank_secao, 'anexos' => []];
+        return ['resolved' => false];
     }
 
-    usort($links_ativos, static function (array $a, array $b): int {
+    $links_filtrados = array_values(array_filter($links_ativos, static function ($link): bool {
+        if (!is_array($link)) {
+            return false;
+        }
+        if (strtolower(trim((string)($link['link_type'] ?? 'cliente_dj'))) !== 'cliente_dj') {
+            return false;
+        }
+
+        // Compatibilidade: se allowed_sections estiver ausente, considera DJ por padrão.
+        $raw_allowed = $link['allowed_sections'] ?? null;
+        if ($raw_allowed === null || $raw_allowed === '') {
+            return true;
+        }
+
+        $sections = [];
+        if (is_array($raw_allowed)) {
+            $sections = $raw_allowed;
+        } elseif (is_string($raw_allowed) && trim($raw_allowed) !== '') {
+            $decoded = json_decode($raw_allowed, true);
+            if (is_array($decoded)) {
+                $sections = $decoded;
+            }
+        }
+
+        if (empty($sections)) {
+            return true;
+        }
+
+        foreach ($sections as $section) {
+            if (strtolower(trim((string)$section)) === 'dj_protocolo') {
+                return true;
+            }
+        }
+        return false;
+    }));
+    if (empty($links_filtrados)) {
+        return ['resolved' => false];
+    }
+
+    usort($links_filtrados, static function (array $a, array $b): int {
         $a_submitted = trim((string)($a['submitted_at'] ?? ''));
         $b_submitted = trim((string)($b['submitted_at'] ?? ''));
         $a_has_submitted = $a_submitted !== '';
@@ -181,7 +394,7 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
         return ((int)($b['id'] ?? 0)) <=> ((int)($a['id'] ?? 0));
     });
 
-    $principal = $links_ativos[0];
+    $principal = $links_filtrados[0];
     $principal_id = (int)($principal['id'] ?? 0);
     $snapshot_html = (string)($principal['content_html_snapshot'] ?? '');
 
@@ -202,6 +415,7 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
     }
 
     return [
+        'resolved' => true,
         'secao' => $secao_resolvida,
         'anexos' => is_array($anexos) ? $anexos : [],
     ];
@@ -249,8 +463,10 @@ if (!empty($_GET['evento'])) {
                 $anexos_observacoes = eventos_reuniao_get_anexos($pdo, $evento_id, 'observacoes_gerais');
                 $anexos_formulario = eventos_reuniao_get_anexos($pdo, $evento_id, 'formulario');
                 $dj_resolvido = portal_dj_resolver_dados_dj_por_links_ativos($pdo, $evento_id, $secao_dj);
-                $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
-                $anexos_dj = $dj_resolvido['anexos'] ?? [];
+                if (!empty($dj_resolvido['resolved'])) {
+                    $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
+                    $anexos_dj = $dj_resolvido['anexos'] ?? [];
+                }
                 $arquivos_evento = eventos_arquivos_listar($pdo, $evento_id, false);
             }
         }
@@ -479,6 +695,12 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             font-size: 0.95rem;
             color: #374151;
             margin-bottom: 1rem;
+        }
+        .content-box .inline-anexo-link {
+            color: #1d4ed8;
+            text-decoration: underline;
+            word-break: break-word;
+            font-weight: 700;
         }
         .anexos-list {
             margin-top: 1.5rem;
@@ -897,20 +1119,31 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     }
                     $secao_ativa = $aba_atual['secao'] ?? null;
                     $html_secao_ativa = trim((string)($secao_ativa['content_html'] ?? ''));
+                    $html_secao_ativa_render = $html_secao_ativa;
                     $anexos_aba_ativa = is_array($aba_atual['anexos'] ?? null) ? $aba_atual['anexos'] : [];
+                    $mostrar_lista_anexos_aba = !empty($anexos_aba_ativa);
+
+                    if ($aba_detalhe === 'formulario' && $html_secao_ativa !== '' && !empty($anexos_aba_ativa)) {
+                        $inline = portal_dj_renderizar_html_com_anexos_inline($html_secao_ativa, $anexos_aba_ativa, $secao_ativa);
+                        $html_secao_ativa_render = trim((string)($inline['html'] ?? $html_secao_ativa));
+                        if (!empty($inline['used_inline'])) {
+                            // Evita duplicar os mesmos anexos: já ficaram inline no conteúdo.
+                            $mostrar_lista_anexos_aba = false;
+                        }
+                    }
                 ?>
                 <div class="tab-panel-title"><?= htmlspecialchars($aba_atual['titulo']) ?></div>
                 <div class="tab-panel-subtitle"><?= htmlspecialchars($aba_atual['subtitulo']) ?></div>
 
                 <div class="content-box">
-                    <?php if ($html_secao_ativa !== ''): ?>
-                    <div><?= $html_secao_ativa ?></div>
+                    <?php if ($html_secao_ativa_render !== ''): ?>
+                    <div><?= $html_secao_ativa_render ?></div>
                     <?php else: ?>
                     <p style="color: #64748b; font-style: italic;"><?= htmlspecialchars($aba_atual['mensagem_vazia']) ?></p>
                     <?php endif; ?>
                 </div>
 
-                <?php if (!empty($anexos_aba_ativa)): ?>
+                <?php if ($mostrar_lista_anexos_aba): ?>
                 <div class="anexos-list">
                     <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;"><?= htmlspecialchars($aba_atual['titulo_anexos']) ?></h3>
                     <?php foreach ($anexos_aba_ativa as $a): ?>

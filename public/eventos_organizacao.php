@@ -258,21 +258,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     exit;
                 }
 
+                $config_payload = [];
+                $bool_fields = [
+                    'visivel_reuniao',
+                    'editavel_reuniao',
+                    'visivel_dj',
+                    'editavel_dj',
+                    'visivel_convidados',
+                    'editavel_convidados',
+                    'visivel_arquivos',
+                    'editavel_arquivos',
+                    'visivel_cardapio',
+                    'editavel_cardapio',
+                ];
+                foreach ($bool_fields as $field) {
+                    if (!array_key_exists($field, $_POST)) {
+                        continue;
+                    }
+                    $config_payload[$field] = ((string)($_POST[$field] ?? '0') === '1');
+                }
+
                 $result = eventos_cliente_portal_atualizar_config(
                     $pdo,
                     $meeting_id,
-                    [
-                        'visivel_reuniao' => ((string)($_POST['visivel_reuniao'] ?? '0') === '1'),
-                        'editavel_reuniao' => ((string)($_POST['editavel_reuniao'] ?? '0') === '1'),
-                        'visivel_dj' => ((string)($_POST['visivel_dj'] ?? '0') === '1'),
-                        'editavel_dj' => ((string)($_POST['editavel_dj'] ?? '0') === '1'),
-                        'visivel_convidados' => ((string)($_POST['visivel_convidados'] ?? '0') === '1'),
-                        'editavel_convidados' => ((string)($_POST['editavel_convidados'] ?? '0') === '1'),
-                        'visivel_arquivos' => ((string)($_POST['visivel_arquivos'] ?? '0') === '1'),
-                        'editavel_arquivos' => ((string)($_POST['editavel_arquivos'] ?? '0') === '1'),
-                        'visivel_cardapio' => ((string)($_POST['visivel_cardapio'] ?? '0') === '1'),
-                        'editavel_cardapio' => ((string)($_POST['editavel_cardapio'] ?? '0') === '1'),
-                    ],
+                    $config_payload,
                     $user_id
                 );
 
@@ -306,21 +315,34 @@ if ($meeting_id > 0) {
         $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
         if (!empty($portal_result['ok']) && !empty($portal_result['portal'])) {
             $portal = $portal_result['portal'];
-            if (!empty($portal['visivel_reuniao']) || !empty($portal['editavel_reuniao'])) {
+            $portal_secoes_cfg = eventos_cliente_portal_obter_config_secoes($portal);
+            $sync_reuniao_visivel = !empty($portal['visivel_reuniao'])
+                && (
+                    !empty($portal_secoes_cfg['decoracao']['visivel'])
+                    || !empty($portal_secoes_cfg['observacoes_gerais']['visivel'])
+                );
+            $sync_reuniao_editavel = !empty($portal_secoes_cfg['decoracao']['editavel'])
+                || !empty($portal_secoes_cfg['observacoes_gerais']['editavel']);
+            if ($sync_reuniao_editavel) {
+                $sync_reuniao_visivel = true;
+            }
+            if ($sync_reuniao_visivel || $sync_reuniao_editavel) {
                 eventos_cliente_portal_sincronizar_link_reuniao(
                     $pdo,
                     $meeting_id,
-                    !empty($portal['visivel_reuniao']),
-                    !empty($portal['editavel_reuniao']),
+                    $sync_reuniao_visivel,
+                    $sync_reuniao_editavel,
                     (int)$user_id
                 );
             }
-            if (!empty($portal['visivel_dj']) || !empty($portal['editavel_dj'])) {
+            $sync_dj_visivel = !empty($portal_secoes_cfg['dj_protocolo']['visivel']);
+            $sync_dj_editavel = !empty($portal_secoes_cfg['dj_protocolo']['editavel']);
+            if ($sync_dj_visivel || $sync_dj_editavel) {
                 eventos_cliente_portal_sincronizar_link_dj(
                     $pdo,
                     $meeting_id,
-                    !empty($portal['visivel_dj']),
-                    !empty($portal['editavel_dj']),
+                    $sync_dj_visivel,
+                    $sync_dj_editavel,
                     (int)$user_id
                 );
             }
@@ -1061,18 +1083,6 @@ includeSidebar('Organização eventos');
                     <input type="checkbox" id="cfgVisivelReuniao" <?= $visivel_reuniao ? 'checked' : '' ?>>
                     <span>Visível para o cliente</span>
                 </label>
-                <label class="check-row">
-                    <input type="checkbox" id="cfgEditavelReuniao" <?= $editavel_reuniao ? 'checked' : '' ?>>
-                    <span>Editável pelo cliente</span>
-                </label>
-                <label class="check-row">
-                    <input type="checkbox" id="cfgVisivelDj" <?= $visivel_dj ? 'checked' : '' ?>>
-                    <span>Visível para o cliente (DJ)</span>
-                </label>
-                <label class="check-row">
-                    <input type="checkbox" id="cfgEditavelDj" <?= $editavel_dj ? 'checked' : '' ?>>
-                    <span>Editável pelo cliente (DJ)</span>
-                </label>
             </div>
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=organizacao" class="btn btn-primary">Abrir Reunião Final</a>
@@ -1692,9 +1702,6 @@ async function salvarConfigPortal() {
     }
 
     const visivelReuniao = document.getElementById('cfgVisivelReuniao');
-    const editavelReuniao = document.getElementById('cfgEditavelReuniao');
-    const visivelDj = document.getElementById('cfgVisivelDj');
-    const editavelDj = document.getElementById('cfgEditavelDj');
     const visivelConvidados = document.getElementById('cfgVisivelConvidados');
     const editavelConvidados = document.getElementById('cfgEditavelConvidados');
     const visivelArquivos = document.getElementById('cfgVisivelArquivos');
@@ -1702,12 +1709,6 @@ async function salvarConfigPortal() {
     const visivelCardapio = document.getElementById('cfgVisivelCardapio');
     const editavelCardapio = document.getElementById('cfgEditavelCardapio');
 
-    if (editavelReuniao && editavelReuniao.checked && visivelReuniao) {
-        visivelReuniao.checked = true;
-    }
-    if (editavelDj && editavelDj.checked && visivelDj) {
-        visivelDj.checked = true;
-    }
     if (editavelConvidados && editavelConvidados.checked && visivelConvidados) {
         visivelConvidados.checked = true;
     }
@@ -1721,16 +1722,17 @@ async function salvarConfigPortal() {
     const formData = new FormData();
     formData.append('action', 'salvar_portal_config');
     formData.append('meeting_id', String(meetingId));
-    formData.append('visivel_reuniao', visivelReuniao && visivelReuniao.checked ? '1' : '0');
-    formData.append('editavel_reuniao', editavelReuniao && editavelReuniao.checked ? '1' : '0');
-    formData.append('visivel_dj', visivelDj && visivelDj.checked ? '1' : '0');
-    formData.append('editavel_dj', editavelDj && editavelDj.checked ? '1' : '0');
-    formData.append('visivel_convidados', visivelConvidados && visivelConvidados.checked ? '1' : '0');
-    formData.append('editavel_convidados', editavelConvidados && editavelConvidados.checked ? '1' : '0');
-    formData.append('visivel_arquivos', visivelArquivos && visivelArquivos.checked ? '1' : '0');
-    formData.append('editavel_arquivos', editavelArquivos && editavelArquivos.checked ? '1' : '0');
-    formData.append('visivel_cardapio', visivelCardapio && visivelCardapio.checked ? '1' : '0');
-    formData.append('editavel_cardapio', editavelCardapio && editavelCardapio.checked ? '1' : '0');
+    const appendCheckbox = (key, input) => {
+        if (!input) return;
+        formData.append(key, input.checked ? '1' : '0');
+    };
+    appendCheckbox('visivel_reuniao', visivelReuniao);
+    appendCheckbox('visivel_convidados', visivelConvidados);
+    appendCheckbox('editavel_convidados', editavelConvidados);
+    appendCheckbox('visivel_arquivos', visivelArquivos);
+    appendCheckbox('editavel_arquivos', editavelArquivos);
+    appendCheckbox('visivel_cardapio', visivelCardapio);
+    appendCheckbox('editavel_cardapio', editavelCardapio);
 
     portalConfigSaveInFlight = true;
     mostrarStatusConfig('Salvando configurações...');
@@ -1756,9 +1758,6 @@ async function salvarConfigPortal() {
 function bindPortalConfigAutoSave() {
     const ids = [
         'cfgVisivelReuniao',
-        'cfgEditavelReuniao',
-        'cfgVisivelDj',
-        'cfgEditavelDj',
         'cfgVisivelConvidados',
         'cfgEditavelConvidados',
         'cfgVisivelArquivos',

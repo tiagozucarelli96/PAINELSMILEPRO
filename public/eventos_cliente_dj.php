@@ -15,6 +15,7 @@ require_once __DIR__ . '/eventos_cliente_portal_ui.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 $token = $_GET['token'] ?? $_POST['token'] ?? '';
+$requested_section = strtolower(trim((string)($_GET['secao'] ?? $_POST['secao'] ?? '')));
 $error = '';
 $success = false;
 $draft_saved = false;
@@ -26,6 +27,7 @@ $section_views = [];
 $link_sections = ['dj_protocolo'];
 $is_combined_reuniao = false;
 $portal_config = null;
+$portal_section_config = [];
 $link_type_current = '';
 $link_section = 'dj_protocolo';
 $link_visivel = true;
@@ -915,7 +917,74 @@ if (empty($token)) {
         eventos_link_publico_registrar_acesso($pdo, $link['id']);
 
         $link_sections = eventos_cliente_resolver_secoes_link($link);
-        $is_combined_reuniao = strtolower(trim((string)($link['link_type'] ?? ''))) === 'cliente_observacoes'
+        $reuniao = eventos_reuniao_get($pdo, $link['meeting_id']);
+        $portal_config = eventos_cliente_portal_get($pdo, (int)$link['meeting_id']);
+        $link_type_current = strtolower(trim((string)($link['link_type'] ?? '')));
+        $link_has_slot_rules = in_array($link_type_current, ['cliente_dj', 'cliente_formulario'], true) && !empty($link['portal_configured']);
+        $portal_section_config = is_array($portal_config) && !empty($portal_config)
+            ? eventos_cliente_portal_obter_config_secoes($portal_config)
+            : [
+                'decoracao' => ['visivel' => true, 'editavel' => true],
+                'observacoes_gerais' => ['visivel' => true, 'editavel' => true],
+                'dj_protocolo' => ['visivel' => true, 'editavel' => true],
+                'formulario' => ['visivel' => true, 'editavel' => true],
+            ];
+
+        if ($link_type_current === 'cliente_observacoes'
+            && in_array($requested_section, ['decoracao', 'observacoes_gerais'], true)
+            && !in_array($requested_section, $link_sections, true)
+        ) {
+            $link_sections[] = $requested_section;
+        }
+
+        $ordered_sections = [];
+        $section_permissions = [];
+        foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $candidate_section) {
+            if (!in_array($candidate_section, $link_sections, true)) {
+                continue;
+            }
+
+            $sec_cfg = $portal_section_config[$candidate_section] ?? ['visivel' => true, 'editavel' => true];
+            $sec_visivel = !empty($sec_cfg['visivel']);
+            $sec_editavel = !empty($sec_cfg['editavel']);
+
+            if (is_array($portal_config)
+                && !empty($portal_config)
+                && empty($portal_config['visivel_reuniao'])
+            ) {
+                $sec_visivel = false;
+                $sec_editavel = false;
+            }
+
+            if (in_array($candidate_section, ['dj_protocolo', 'formulario'], true) && $link_has_slot_rules) {
+                $sec_visivel = $sec_visivel && !empty($link['portal_visible']);
+                $sec_editavel = $sec_editavel && !empty($link['portal_editable']);
+            }
+
+            if ($sec_editavel) {
+                $sec_visivel = true;
+            }
+
+            $section_permissions[$candidate_section] = [
+                'visivel' => $sec_visivel,
+                'editavel' => $sec_editavel,
+            ];
+
+            if ($sec_visivel) {
+                $ordered_sections[] = $candidate_section;
+            }
+        }
+
+        $link_sections = array_values(array_unique($ordered_sections));
+        if ($requested_section !== '' && in_array($requested_section, ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'], true)) {
+            if (!in_array($requested_section, $link_sections, true)) {
+                $error = 'Esta seção não está disponível no portal do cliente no momento.';
+            } else {
+                $link_sections = [$requested_section];
+            }
+        }
+
+        $is_combined_reuniao = $link_type_current === 'cliente_observacoes'
             && in_array('decoracao', $link_sections, true)
             && in_array('observacoes_gerais', $link_sections, true);
         $link_section = (string)($link_sections[0] ?? 'dj_protocolo');
@@ -930,64 +999,36 @@ if (empty($token)) {
             ]
             : eventos_cliente_get_section_meta($link_section);
 
-        $reuniao = eventos_reuniao_get($pdo, $link['meeting_id']);
-        $portal_config = eventos_cliente_portal_get($pdo, (int)$link['meeting_id']);
-
-        if (is_array($portal_config) && !empty($portal_config)
-            && strtolower(trim((string)($link['link_type'] ?? ''))) === 'cliente_observacoes'
-            && (!empty($portal_config['visivel_reuniao']) || !empty($portal_config['editavel_reuniao']))
-        ) {
-            foreach (['decoracao', 'observacoes_gerais'] as $portal_section) {
-                if (!in_array($portal_section, $link_sections, true)) {
-                    $link_sections[] = $portal_section;
-                }
-            }
-            $ordered_sections = [];
-            foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $candidate_section) {
-                if (in_array($candidate_section, $link_sections, true)) {
-                    $ordered_sections[] = $candidate_section;
-                }
-            }
-            $link_sections = array_values(array_unique($ordered_sections));
-            $link_section = (string)($link_sections[0] ?? 'decoracao');
-            $is_combined_reuniao = in_array('decoracao', $link_sections, true)
-                && in_array('observacoes_gerais', $link_sections, true);
-            if ($is_combined_reuniao) {
-                $section_meta = [
-                    'page_title' => 'Reunião Final - Portal do Cliente',
-                    'header_title' => '📝 Reunião Final',
-                    'form_heading' => '📝 Reunião Final',
-                    'default_form_title_prefix' => 'Reunião Final - ',
-                    'upload_prefix' => 'cliente_reuniao',
-                    'notify_dj' => false,
-                ];
+        $link_visivel = !empty($link_sections);
+        $link_editavel = false;
+        foreach ($link_sections as $section_key) {
+            if (!empty($section_permissions[$section_key]['editavel'])) {
+                $link_editavel = true;
+                break;
             }
         }
-
-        $link_type_current = strtolower(trim((string)($link['link_type'] ?? '')));
-        $link_has_slot_rules = in_array($link_type_current, ['cliente_dj', 'cliente_formulario'], true) && !empty($link['portal_configured']);
-        if ($link_has_slot_rules) {
-            $link_visivel = !empty($link['portal_visible']);
-            $link_editavel = !empty($link['portal_editable']);
-        }
-
-        if (is_array($portal_config) && !empty($portal_config)) {
-            if ($is_combined_reuniao || $link_section === 'observacoes_gerais' || $link_section === 'decoracao') {
-                $link_visivel = !empty($portal_config['visivel_reuniao']);
-                $link_editavel = !empty($portal_config['editavel_reuniao']);
-            } elseif ($link_type_current === 'cliente_dj') {
-                // Para links DJ por slot (regras novas), a própria configuração do slot manda.
-                // A configuração global DJ fica apenas como fallback para links legados.
-                if (!$link_has_slot_rules) {
-                    $link_visivel = !empty($portal_config['visivel_dj']);
-                    $link_editavel = !empty($portal_config['editavel_dj']);
+        if ($link_editavel && count($link_sections) > 1) {
+            $editable_sections = [];
+            foreach ($link_sections as $section_key) {
+                if (!empty($section_permissions[$section_key]['editavel'])) {
+                    $editable_sections[] = $section_key;
+                }
+            }
+            if (!empty($editable_sections)) {
+                $link_sections = array_values(array_unique($editable_sections));
+                $link_section = (string)($link_sections[0] ?? $link_section);
+                $is_combined_reuniao = $link_type_current === 'cliente_observacoes'
+                    && in_array('decoracao', $link_sections, true)
+                    && in_array('observacoes_gerais', $link_sections, true);
+                if (!$is_combined_reuniao) {
+                    $section_meta = eventos_cliente_get_section_meta($link_section);
                 }
             }
         }
 
-        if (!$link_visivel) {
+        if ($error === '' && !$link_visivel) {
             $error = 'Este conteúdo não está disponível no portal do cliente no momento.';
-        } else {
+        } elseif ($error === '') {
             foreach ($link_sections as $section_key) {
                 $section_views[$section_key] = eventos_cliente_preparar_secao_publica(
                     $pdo,

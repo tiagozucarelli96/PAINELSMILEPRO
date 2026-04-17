@@ -22,9 +22,12 @@ $links_observacoes_portal = [];
 $links_dj_portal = [];
 $links_formulario_portal = [];
 $visivel_reuniao = false;
-$editavel_reuniao = false;
-$visivel_dj = false;
-$editavel_dj = false;
+$portal_secoes = [
+    'decoracao' => ['visivel' => false, 'editavel' => false],
+    'observacoes_gerais' => ['visivel' => false, 'editavel' => false],
+    'dj_protocolo' => ['visivel' => false, 'editavel' => false],
+    'formulario' => ['visivel' => false, 'editavel' => false],
+];
 
 function eventos_cliente_reuniao_filtrar_links_observacoes(array $links_observacoes): array
 {
@@ -155,9 +158,8 @@ if ($token === '') {
             }
 
             $visivel_reuniao = !empty($portal['visivel_reuniao']);
-            $editavel_reuniao = !empty($portal['editavel_reuniao']);
-            $visivel_dj = !empty($portal['visivel_dj']);
-            $editavel_dj = !empty($portal['editavel_dj']);
+            $portal_secoes = eventos_cliente_portal_obter_config_secoes($portal);
+            $editavel_reuniao = !empty($portal_secoes['decoracao']['editavel']) || !empty($portal_secoes['observacoes_gerais']['editavel']);
             if (!$visivel_reuniao) {
                 $error = 'A área de reunião final ainda não está habilitada para este evento.';
             } else {
@@ -176,7 +178,7 @@ if ($token === '') {
                     $links_observacoes = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_observacoes');
                     $links_observacoes_portal = eventos_cliente_reuniao_filtrar_links_observacoes($links_observacoes);
 
-                    if ($visivel_dj) {
+                    if (!empty($portal_secoes['dj_protocolo']['visivel'])) {
                         $links_dj = eventos_reuniao_listar_links_cliente($pdo, (int)$reuniao['id'], 'cliente_dj');
                         $links_dj_portal = eventos_cliente_reuniao_filtrar_links_dj($links_dj);
                     }
@@ -199,14 +201,16 @@ $horario_evento = eventos_cliente_ui_horario_evento($snapshot, '-');
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $abas_disponiveis = [];
-if (!empty($links_observacoes_portal)) {
+if (!empty($portal_secoes['decoracao']['visivel']) && !empty($links_observacoes_portal)) {
     $abas_disponiveis['decoracao'] = '🎨 Decoração';
+}
+if (!empty($portal_secoes['observacoes_gerais']['visivel']) && !empty($links_observacoes_portal)) {
     $abas_disponiveis['observacoes_gerais'] = '📝 Observações Gerais';
 }
-if ($visivel_dj && !empty($links_dj_portal)) {
+if (!empty($portal_secoes['dj_protocolo']['visivel']) && !empty($links_dj_portal)) {
     $abas_disponiveis['dj_protocolo'] = '🎧 DJ / Protocolos';
 }
-if (!empty($links_formulario_portal)) {
+if (!empty($portal_secoes['formulario']['visivel']) && !empty($links_formulario_portal)) {
     $abas_disponiveis['formulario'] = '📋 Formulário';
 }
 $aba_ativa = trim((string)($_GET['aba'] ?? ''));
@@ -492,7 +496,12 @@ if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
                                 if ($title === '') {
                                     $title = 'Reunião Final - Quadro ' . $slot;
                                 }
-                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']) && $editavel_reuniao;
+                                $secao_editavel = $aba_ativa === 'observacoes_gerais'
+                                    ? !empty($portal_secoes['observacoes_gerais']['editavel'])
+                                    : !empty($portal_secoes['decoracao']['editavel']);
+                                $slot_tem_regras = !empty($link_item['portal_configured']);
+                                $slot_editavel = !$slot_tem_regras || !empty($link_item['portal_editable']);
+                                $item_is_editable = $secao_editavel && $slot_editavel && empty($link_item['submitted_at']);
                             ?>
                             <div class="form-item">
                                 <div>
@@ -525,7 +534,11 @@ if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
                                 if ($title === '') {
                                     $title = 'DJ / Protocolos - Quadro ' . $slot;
                                 }
-                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']) && $editavel_dj;
+                                $slot_tem_regras = !empty($link_item['portal_configured']);
+                                $slot_editavel = $slot_tem_regras ? !empty($link_item['portal_editable']) : true;
+                                $item_is_editable = !empty($portal_secoes['dj_protocolo']['editavel'])
+                                    && $slot_editavel
+                                    && empty($link_item['submitted_at']);
                             ?>
                             <div class="form-item">
                                 <div>
@@ -540,7 +553,7 @@ if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
-                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>">
+                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>&secao=dj_protocolo">
                                     <?= $item_is_editable ? 'Abrir formulário' : 'Visualizar formulário' ?>
                                 </a>
                             </div>
@@ -558,7 +571,11 @@ if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
                                 if ($title === '') {
                                     $title = 'Formulário - Quadro ' . $slot;
                                 }
-                                $item_is_editable = !empty($link_item['portal_editable']) && empty($link_item['submitted_at']);
+                                $slot_tem_regras = !empty($link_item['portal_configured']);
+                                $slot_editavel = $slot_tem_regras ? !empty($link_item['portal_editable']) : true;
+                                $item_is_editable = !empty($portal_secoes['formulario']['editavel'])
+                                    && $slot_editavel
+                                    && empty($link_item['submitted_at']);
                             ?>
                             <div class="form-item">
                                 <div>
@@ -573,7 +590,7 @@ if ($aba_ativa === '' || !array_key_exists($aba_ativa, $abas_disponiveis)) {
                                         <?php endif; ?>
                                     </div>
                                 </div>
-                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>">
+                                <a class="btn btn-primary" href="index.php?page=eventos_cliente_dj&token=<?= urlencode((string)$link_item['token']) ?>&secao=formulario">
                                     <?= $item_is_editable ? 'Abrir formulário' : 'Visualizar formulário' ?>
                                 </a>
                             </div>

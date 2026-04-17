@@ -265,6 +265,14 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE,
                 visivel_dj BOOLEAN NOT NULL DEFAULT FALSE,
                 editavel_dj BOOLEAN NOT NULL DEFAULT FALSE,
+                visivel_secao_decoracao BOOLEAN NULL DEFAULT NULL,
+                editavel_secao_decoracao BOOLEAN NULL DEFAULT NULL,
+                visivel_secao_observacoes_gerais BOOLEAN NULL DEFAULT NULL,
+                editavel_secao_observacoes_gerais BOOLEAN NULL DEFAULT NULL,
+                visivel_secao_dj_protocolo BOOLEAN NULL DEFAULT NULL,
+                editavel_secao_dj_protocolo BOOLEAN NULL DEFAULT NULL,
+                visivel_secao_formulario BOOLEAN NULL DEFAULT NULL,
+                editavel_secao_formulario BOOLEAN NULL DEFAULT NULL,
                 visivel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
                 editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
                 visivel_arquivos BOOLEAN NOT NULL DEFAULT FALSE,
@@ -281,6 +289,14 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_reuniao BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_dj BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_dj BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_secao_decoracao BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_secao_decoracao BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_secao_observacoes_gerais BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_secao_observacoes_gerais BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_secao_dj_protocolo BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_secao_dj_protocolo BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_secao_formulario BOOLEAN NULL DEFAULT NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_secao_formulario BOOLEAN NULL DEFAULT NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_arquivos BOOLEAN NOT NULL DEFAULT FALSE");
@@ -3393,6 +3409,76 @@ function eventos_cliente_portal_build_url(string $token): string {
 }
 
 /**
+ * Mapa fixo das chaves/colunas de configuração por seção da Reunião Final.
+ */
+function eventos_cliente_portal_mapear_secoes_config(): array {
+    return [
+        'decoracao' => [
+            'visivel_col' => 'visivel_secao_decoracao',
+            'editavel_col' => 'editavel_secao_decoracao',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'observacoes_gerais' => [
+            'visivel_col' => 'visivel_secao_observacoes_gerais',
+            'editavel_col' => 'editavel_secao_observacoes_gerais',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'dj_protocolo' => [
+            'visivel_col' => 'visivel_secao_dj_protocolo',
+            'editavel_col' => 'editavel_secao_dj_protocolo',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'formulario' => [
+            'visivel_col' => 'visivel_secao_formulario',
+            'editavel_col' => 'editavel_secao_formulario',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+    ];
+}
+
+/**
+ * Normaliza bool nullable mantendo NULL para fallback de compatibilidade.
+ */
+function eventos_cliente_portal_bool_nullable(?array $row, string $column): ?bool {
+    if (!is_array($row) || !array_key_exists($column, $row) || $row[$column] === null) {
+        return null;
+    }
+    return !empty($row[$column]);
+}
+
+/**
+ * Resolve visibilidade/edição por seção com fallback para flags legadas.
+ */
+function eventos_cliente_portal_obter_config_secoes(?array $portal): array {
+    $config = [];
+    $map = eventos_cliente_portal_mapear_secoes_config();
+    foreach ($map as $section => $meta) {
+        $fallback_visivel = !empty($portal[(string)($meta['fallback_visivel_col'] ?? '')]);
+        $fallback_editavel = !empty($portal[(string)($meta['fallback_editavel_col'] ?? '')]);
+
+        $visivel_raw = eventos_cliente_portal_bool_nullable($portal, (string)($meta['visivel_col'] ?? ''));
+        $editavel_raw = eventos_cliente_portal_bool_nullable($portal, (string)($meta['editavel_col'] ?? ''));
+
+        $visivel = $visivel_raw !== null ? $visivel_raw : $fallback_visivel;
+        $editavel = $editavel_raw !== null ? $editavel_raw : $fallback_editavel;
+        if ($editavel) {
+            $visivel = true;
+        }
+
+        $config[$section] = [
+            'visivel' => $visivel,
+            'editavel' => $editavel,
+        ];
+    }
+
+    return $config;
+}
+
+/**
  * Converte linha de portal em estrutura consistente.
  */
 function eventos_cliente_portal_normalizar_row(?array $row): ?array {
@@ -3408,12 +3494,21 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['editavel_reuniao'] = !empty($row['editavel_reuniao']);
     $row['visivel_dj'] = !empty($row['visivel_dj']);
     $row['editavel_dj'] = !empty($row['editavel_dj']);
+    $row['visivel_secao_decoracao'] = eventos_cliente_portal_bool_nullable($row, 'visivel_secao_decoracao');
+    $row['editavel_secao_decoracao'] = eventos_cliente_portal_bool_nullable($row, 'editavel_secao_decoracao');
+    $row['visivel_secao_observacoes_gerais'] = eventos_cliente_portal_bool_nullable($row, 'visivel_secao_observacoes_gerais');
+    $row['editavel_secao_observacoes_gerais'] = eventos_cliente_portal_bool_nullable($row, 'editavel_secao_observacoes_gerais');
+    $row['visivel_secao_dj_protocolo'] = eventos_cliente_portal_bool_nullable($row, 'visivel_secao_dj_protocolo');
+    $row['editavel_secao_dj_protocolo'] = eventos_cliente_portal_bool_nullable($row, 'editavel_secao_dj_protocolo');
+    $row['visivel_secao_formulario'] = eventos_cliente_portal_bool_nullable($row, 'visivel_secao_formulario');
+    $row['editavel_secao_formulario'] = eventos_cliente_portal_bool_nullable($row, 'editavel_secao_formulario');
     $row['visivel_convidados'] = !empty($row['visivel_convidados']);
     $row['editavel_convidados'] = !empty($row['editavel_convidados']);
     $row['visivel_arquivos'] = !empty($row['visivel_arquivos']);
     $row['editavel_arquivos'] = !empty($row['editavel_arquivos']);
     $row['visivel_cardapio'] = !empty($row['visivel_cardapio']);
     $row['editavel_cardapio'] = !empty($row['editavel_cardapio']);
+    $row['secoes'] = eventos_cliente_portal_obter_config_secoes($row);
     $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
     return $row;
 }
@@ -3947,16 +4042,37 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
         return ['ok' => false, 'error' => $created['error'] ?? 'Portal não encontrado'];
     }
 
-    $visivel_reuniao = !empty($config['visivel_reuniao']);
-    $editavel_reuniao = !empty($config['editavel_reuniao']);
-    $visivel_dj = !empty($config['visivel_dj']);
-    $editavel_dj = !empty($config['editavel_dj']);
-    $visivel_convidados = !empty($config['visivel_convidados']);
-    $editavel_convidados = !empty($config['editavel_convidados']);
-    $visivel_arquivos = !empty($config['visivel_arquivos']);
-    $editavel_arquivos = !empty($config['editavel_arquivos']);
-    $visivel_cardapio = !empty($config['visivel_cardapio']);
-    $editavel_cardapio = !empty($config['editavel_cardapio']);
+    $portal_atual = is_array($created['portal'] ?? null) ? $created['portal'] : [];
+    $visivel_reuniao = array_key_exists('visivel_reuniao', $config)
+        ? !empty($config['visivel_reuniao'])
+        : !empty($portal_atual['visivel_reuniao']);
+    $editavel_reuniao = array_key_exists('editavel_reuniao', $config)
+        ? !empty($config['editavel_reuniao'])
+        : !empty($portal_atual['editavel_reuniao']);
+    $visivel_dj = array_key_exists('visivel_dj', $config)
+        ? !empty($config['visivel_dj'])
+        : !empty($portal_atual['visivel_dj']);
+    $editavel_dj = array_key_exists('editavel_dj', $config)
+        ? !empty($config['editavel_dj'])
+        : !empty($portal_atual['editavel_dj']);
+    $visivel_convidados = array_key_exists('visivel_convidados', $config)
+        ? !empty($config['visivel_convidados'])
+        : !empty($portal_atual['visivel_convidados']);
+    $editavel_convidados = array_key_exists('editavel_convidados', $config)
+        ? !empty($config['editavel_convidados'])
+        : !empty($portal_atual['editavel_convidados']);
+    $visivel_arquivos = array_key_exists('visivel_arquivos', $config)
+        ? !empty($config['visivel_arquivos'])
+        : !empty($portal_atual['visivel_arquivos']);
+    $editavel_arquivos = array_key_exists('editavel_arquivos', $config)
+        ? !empty($config['editavel_arquivos'])
+        : !empty($portal_atual['editavel_arquivos']);
+    $visivel_cardapio = array_key_exists('visivel_cardapio', $config)
+        ? !empty($config['visivel_cardapio'])
+        : !empty($portal_atual['visivel_cardapio']);
+    $editavel_cardapio = array_key_exists('editavel_cardapio', $config)
+        ? !empty($config['editavel_cardapio'])
+        : !empty($portal_atual['editavel_cardapio']);
 
     if ($editavel_reuniao) {
         $visivel_reuniao = true;
@@ -4051,22 +4167,36 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
             return ['ok' => false, 'error' => 'Não foi possível salvar as configurações do portal'];
         }
 
+        $portal_secoes = eventos_cliente_portal_obter_config_secoes($portal);
+        $sync_reuniao_visivel = !empty($portal['visivel_reuniao'])
+            && (
+                !empty($portal_secoes['decoracao']['visivel'])
+                || !empty($portal_secoes['observacoes_gerais']['visivel'])
+            );
+        $sync_reuniao_editavel = !empty($portal_secoes['decoracao']['editavel'])
+            || !empty($portal_secoes['observacoes_gerais']['editavel']);
+        if ($sync_reuniao_editavel) {
+            $sync_reuniao_visivel = true;
+        }
+
         $sync_reuniao = eventos_cliente_portal_sincronizar_link_reuniao(
             $pdo,
             $meeting_id,
-            $visivel_reuniao,
-            $editavel_reuniao,
+            $sync_reuniao_visivel,
+            $sync_reuniao_editavel,
             $user_id
         );
         if (empty($sync_reuniao['ok'])) {
             error_log('eventos_cliente_portal_atualizar_config sync reuniao: ' . (string)($sync_reuniao['error'] ?? 'erro desconhecido'));
         }
 
+        $sync_dj_visivel = !empty($portal_secoes['dj_protocolo']['visivel']);
+        $sync_dj_editavel = !empty($portal_secoes['dj_protocolo']['editavel']);
         $sync_dj = eventos_cliente_portal_sincronizar_link_dj(
             $pdo,
             $meeting_id,
-            $visivel_dj,
-            $editavel_dj,
+            $sync_dj_visivel,
+            $sync_dj_editavel,
             $user_id
         );
         if (empty($sync_dj['ok'])) {
@@ -4077,6 +4207,88 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     } catch (Throwable $e) {
         error_log('eventos_cliente_portal_atualizar_config: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao salvar configurações do portal.'];
+    }
+}
+
+/**
+ * Atualiza visibilidade/edição de uma seção da Reunião Final no portal do cliente.
+ */
+function eventos_cliente_portal_atualizar_secao_config(
+    PDO $pdo,
+    int $meeting_id,
+    string $section,
+    bool $visivel,
+    bool $editavel,
+    int $user_id = 0
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $section = strtolower(trim($section));
+    $map = eventos_cliente_portal_mapear_secoes_config();
+    if (!isset($map[$section])) {
+        return ['ok' => false, 'error' => 'Seção inválida para configuração do portal'];
+    }
+    if ($editavel) {
+        $visivel = true;
+    }
+
+    $created = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
+    if (empty($created['ok']) || empty($created['portal']['id'])) {
+        return ['ok' => false, 'error' => $created['error'] ?? 'Portal não encontrado'];
+    }
+
+    $visivel_col = (string)($map[$section]['visivel_col'] ?? '');
+    $editavel_col = (string)($map[$section]['editavel_col'] ?? '');
+    if ($visivel_col === '' || $editavel_col === '') {
+        return ['ok' => false, 'error' => 'Configuração da seção indisponível'];
+    }
+
+    $has_visivel_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', $visivel_col);
+    $has_editavel_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', $editavel_col);
+    if (!$has_visivel_col || !$has_editavel_col) {
+        return ['ok' => false, 'error' => 'Este ambiente não possui suporte à configuração por seção'];
+    }
+
+    $has_updated_at_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at');
+
+    try {
+        $set_parts = [
+            "{$visivel_col} = :visivel",
+            "{$editavel_col} = :editavel",
+        ];
+        if ($has_updated_at_col) {
+            $set_parts[] = 'updated_at = NOW()';
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE eventos_cliente_portais
+            SET " . implode(', ', $set_parts) . "
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':id' => (int)$created['portal']['id'],
+            ':visivel' => $visivel ? 1 : 0,
+            ':editavel' => $editavel ? 1 : 0,
+        ]);
+
+        $portal = eventos_cliente_portal_normalizar_row($stmt->fetch(PDO::FETCH_ASSOC) ?: null);
+        if (!$portal) {
+            return ['ok' => false, 'error' => 'Não foi possível salvar a configuração da seção'];
+        }
+
+        return [
+            'ok' => true,
+            'portal' => $portal,
+            'section' => $section,
+            'section_config' => $portal['secoes'][$section] ?? ['visivel' => $visivel, 'editavel' => $editavel],
+        ];
+    } catch (Throwable $e) {
+        error_log('eventos_cliente_portal_atualizar_secao_config: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao salvar configuração da seção no portal.'];
     }
 }
 

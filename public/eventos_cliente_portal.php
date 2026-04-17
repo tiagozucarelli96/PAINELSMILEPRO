@@ -43,12 +43,20 @@ $visivel_reuniao = false;
 $editavel_reuniao = false;
 $visivel_dj = false;
 $editavel_dj = false;
+$visivel_formulario = false;
+$editavel_formulario = false;
 $visivel_convidados = false;
 $editavel_convidados = false;
 $visivel_arquivos = false;
 $editavel_arquivos = false;
 $visivel_cardapio = false;
 $editavel_cardapio = false;
+$portal_secoes = [
+    'decoracao' => ['visivel' => false, 'editavel' => false],
+    'observacoes_gerais' => ['visivel' => false, 'editavel' => false],
+    'dj_protocolo' => ['visivel' => false, 'editavel' => false],
+    'formulario' => ['visivel' => false, 'editavel' => false],
+];
 $cardapio_summary = [
     'has_pacote' => false,
     'pacote_nome' => '',
@@ -101,9 +109,15 @@ if ($token === '') {
             }
 
             $visivel_reuniao = !empty($portal['visivel_reuniao']);
-            $editavel_reuniao = !empty($portal['editavel_reuniao']);
-            $visivel_dj = !empty($portal['visivel_dj']);
-            $editavel_dj = !empty($portal['editavel_dj']);
+            $portal_secoes = eventos_cliente_portal_obter_config_secoes($portal);
+            $editavel_reuniao = !empty($portal_secoes['decoracao']['editavel'])
+                || !empty($portal_secoes['observacoes_gerais']['editavel'])
+                || !empty($portal_secoes['dj_protocolo']['editavel'])
+                || !empty($portal_secoes['formulario']['editavel']);
+            $visivel_dj = !empty($portal_secoes['dj_protocolo']['visivel']);
+            $editavel_dj = !empty($portal_secoes['dj_protocolo']['editavel']);
+            $visivel_formulario = !empty($portal_secoes['formulario']['visivel']);
+            $editavel_formulario = !empty($portal_secoes['formulario']['editavel']);
             $visivel_convidados = !empty($portal['visivel_convidados']);
             $editavel_convidados = !empty($portal['editavel_convidados']);
             $visivel_arquivos = !empty($portal['visivel_arquivos']);
@@ -202,10 +216,14 @@ if ($token === '') {
     }
 }
 
+$ocultar_cards_embutidos_reuniao = $visivel_reuniao;
+$mostrar_card_dj = $visivel_dj && !$ocultar_cards_embutidos_reuniao;
+$mostrar_card_formularios = $visivel_formulario && !empty($links_formulario_portal) && !$ocultar_cards_embutidos_reuniao;
+
 $cards_visiveis_total =
     ($visivel_reuniao ? 1 : 0) +
-    ($visivel_dj ? 1 : 0) +
-    (!empty($links_formulario_portal) ? 1 : 0) +
+    ($mostrar_card_dj ? 1 : 0) +
+    ($mostrar_card_formularios ? 1 : 0) +
     ($visivel_convidados ? 1 : 0) +
     ($visivel_arquivos ? 1 : 0) +
     ($visivel_cardapio ? 1 : 0);
@@ -772,7 +790,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
             </section>
             <?php endif; ?>
 
-            <?php if ($visivel_dj): ?>
+            <?php if ($mostrar_card_dj): ?>
             <section class="portal-card portal-card-theme-dj">
                 <div class="portal-card-inner">
                     <div class="card-icon">🎧</div>
@@ -834,7 +852,7 @@ foreach ($links_formulario_portal as $formulario_link_item) {
             </section>
             <?php endif; ?>
 
-            <?php if (!empty($links_formulario_portal)): ?>
+            <?php if ($mostrar_card_formularios): ?>
             <section class="portal-card portal-card-theme-formulario">
                 <div class="portal-card-inner">
                     <div class="card-icon">📋</div>
