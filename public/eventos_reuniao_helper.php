@@ -2076,20 +2076,27 @@ function eventos_reuniao_excluir_anexos_por_links(
     string $section,
     array $link_ids,
     ?int $deleted_by_user_id = null
-): int {
+): array {
+    $result = [
+        'db_deleted' => 0,
+        'storage_deleted' => 0,
+        'storage_failed' => 0,
+        'storage_skipped' => 0,
+    ];
+
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0) {
-        return 0;
+        return $result;
     }
 
     $section = trim((string)$section);
     if ($section === '') {
-        return 0;
+        return $result;
     }
 
     $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
     if (!$has_link_col) {
-        return 0;
+        return $result;
     }
 
     $normalized_ids = [];
@@ -2100,7 +2107,7 @@ function eventos_reuniao_excluir_anexos_por_links(
         }
     }
     if (empty($normalized_ids)) {
-        return 0;
+        return $result;
     }
 
     $params = [
@@ -2112,6 +2119,62 @@ function eventos_reuniao_excluir_anexos_por_links(
         $placeholder = ':link_id_' . $idx;
         $placeholders[] = $placeholder;
         $params[$placeholder] = $id;
+    }
+
+    $stmt_files = $pdo->prepare("
+        SELECT id, storage_key
+        FROM eventos_reunioes_anexos
+        WHERE meeting_id = :meeting_id
+          AND section = :section
+          AND public_link_id IN (" . implode(', ', $placeholders) . ")
+          AND deleted_at IS NULL
+    ");
+    $stmt_files->execute($params);
+    $file_rows = $stmt_files->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $storage_keys = [];
+    foreach ($file_rows as $row) {
+        $key = trim((string)($row['storage_key'] ?? ''));
+        if ($key !== '') {
+            $storage_keys[$key] = $key;
+        }
+    }
+
+    if (!empty($storage_keys)) {
+        if (!class_exists('MagaluUpload')) {
+            $upload_helper = __DIR__ . '/upload_magalu.php';
+            if (is_file($upload_helper)) {
+                require_once $upload_helper;
+            }
+        }
+
+        $uploader = null;
+        if (class_exists('MagaluUpload')) {
+            try {
+                $uploader = new MagaluUpload();
+            } catch (Throwable $e) {
+                error_log('eventos_reuniao_excluir_anexos_por_links: falha ao inicializar MagaluUpload: ' . $e->getMessage());
+                $uploader = null;
+            }
+        }
+
+        if ($uploader === null) {
+            $result['storage_skipped'] += count($storage_keys);
+        } else {
+            foreach ($storage_keys as $storage_key) {
+                try {
+                    if ($uploader->delete($storage_key)) {
+                        $result['storage_deleted']++;
+                    } else {
+                        $result['storage_failed']++;
+                        error_log('eventos_reuniao_excluir_anexos_por_links: falha ao excluir storage_key ' . $storage_key);
+                    }
+                } catch (Throwable $e) {
+                    $result['storage_failed']++;
+                    error_log('eventos_reuniao_excluir_anexos_por_links: erro ao excluir storage_key ' . $storage_key . ': ' . $e->getMessage());
+                }
+            }
+        }
     }
 
     $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
@@ -2132,7 +2195,8 @@ function eventos_reuniao_excluir_anexos_por_links(
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
-    return (int)$stmt->rowCount();
+    $result['db_deleted'] = (int)$stmt->rowCount();
+    return $result;
 }
 
 /**
@@ -2310,17 +2374,31 @@ function eventos_reuniao_excluir_slot_cliente(
 
     $section = eventos_reuniao_secao_por_link_tipo($link_type);
     $removed_attachments = 0;
+    $removed_storage_files = 0;
+    $failed_storage_files = 0;
+    $skipped_storage_files = 0;
     $section_synced = true;
-    $warning = '';
+    $warnings = [];
     if ($section !== null) {
         if (!empty($slot_link_ids)) {
-            $removed_attachments = eventos_reuniao_excluir_anexos_por_links(
+            $attachments_cleanup = eventos_reuniao_excluir_anexos_por_links(
                 $pdo,
                 $meeting_id,
                 $section,
                 $slot_link_ids,
                 $user_id > 0 ? $user_id : null
             );
+            $removed_attachments = (int)($attachments_cleanup['db_deleted'] ?? 0);
+            $removed_storage_files = (int)($attachments_cleanup['storage_deleted'] ?? 0);
+            $failed_storage_files = (int)($attachments_cleanup['storage_failed'] ?? 0);
+            $skipped_storage_files = (int)($attachments_cleanup['storage_skipped'] ?? 0);
+
+            if ($failed_storage_files > 0) {
+                $warnings[] = 'Alguns arquivos não puderam ser removidos do storage.';
+            }
+            if ($skipped_storage_files > 0) {
+                $warnings[] = 'Storage não disponível neste momento; alguns arquivos ficaram pendentes de remoção física.';
+            }
         }
         if (!empty($slot_link_ids)) {
             $section_synced = eventos_reuniao_recalcular_secao_por_links_ativos(
@@ -2331,7 +2409,7 @@ function eventos_reuniao_excluir_slot_cliente(
                 $user_id
             );
             if (!$section_synced) {
-                $warning = 'Quadro excluído, mas a seção não pôde ser sincronizada automaticamente.';
+                $warnings[] = 'Quadro excluído, mas a seção não pôde ser sincronizada automaticamente.';
             }
         }
     }
@@ -2341,11 +2419,14 @@ function eventos_reuniao_excluir_slot_cliente(
         'slot_index' => $slot_index,
         'removed_links' => $removed_links,
         'removed_attachments' => $removed_attachments,
+        'removed_storage_files' => $removed_storage_files,
+        'failed_storage_files' => $failed_storage_files,
+        'skipped_storage_files' => $skipped_storage_files,
         'section_synced' => $section_synced,
         'updated_by' => $user_id,
     ];
-    if ($warning !== '') {
-        $response['warning'] = $warning;
+    if (!empty($warnings)) {
+        $response['warning'] = implode(' ', $warnings);
     }
     return $response;
 }

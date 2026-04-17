@@ -143,6 +143,70 @@ function portal_dj_secao_tem_conteudo(?array $secao): bool
     return trim(strip_tags($html)) !== '';
 }
 
+/**
+ * Resolve conteúdo/anexos da seção DJ com base nos links ativos.
+ * Evita exibir dados órfãos quando os quadros forem excluídos na reunião final.
+ */
+function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id, ?array $secao_fallback = null): array
+{
+    $blank_secao = is_array($secao_fallback) ? $secao_fallback : [];
+    $blank_secao['section'] = 'dj_protocolo';
+    $blank_secao['content_html'] = '';
+    $blank_secao['content_text'] = '';
+    if (!array_key_exists('form_schema_json', $blank_secao)) {
+        $blank_secao['form_schema_json'] = '[]';
+    }
+
+    if ($meeting_id <= 0) {
+        return ['secao' => $blank_secao, 'anexos' => []];
+    }
+
+    $links_ativos = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj');
+    if (empty($links_ativos)) {
+        return ['secao' => $blank_secao, 'anexos' => []];
+    }
+
+    usort($links_ativos, static function (array $a, array $b): int {
+        $a_submitted = trim((string)($a['submitted_at'] ?? ''));
+        $b_submitted = trim((string)($b['submitted_at'] ?? ''));
+        $a_has_submitted = $a_submitted !== '';
+        $b_has_submitted = $b_submitted !== '';
+
+        if ($a_has_submitted && $b_has_submitted && $a_submitted !== $b_submitted) {
+            return strcmp($b_submitted, $a_submitted);
+        }
+        if ($a_has_submitted !== $b_has_submitted) {
+            return $a_has_submitted ? -1 : 1;
+        }
+        return ((int)($b['id'] ?? 0)) <=> ((int)($a['id'] ?? 0));
+    });
+
+    $principal = $links_ativos[0];
+    $principal_id = (int)($principal['id'] ?? 0);
+    $snapshot_html = (string)($principal['content_html_snapshot'] ?? '');
+
+    $secao_resolvida = is_array($secao_fallback) ? $secao_fallback : [];
+    $secao_resolvida['section'] = 'dj_protocolo';
+    $secao_resolvida['content_html'] = $snapshot_html;
+    $secao_resolvida['content_text'] = trim(strip_tags($snapshot_html));
+    if (array_key_exists('form_schema', $principal) && is_array($principal['form_schema'])) {
+        $secao_resolvida['form_schema_json'] = json_encode(
+            $principal['form_schema'],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ) ?: '[]';
+    }
+
+    $anexos = [];
+    if ($principal_id > 0) {
+        $anexos = eventos_reuniao_get_anexos_link_finais($pdo, $meeting_id, 'dj_protocolo', $principal_id);
+    }
+
+    return [
+        'secao' => $secao_resolvida,
+        'anexos' => is_array($anexos) ? $anexos : [],
+    ];
+}
+
 if (!empty($_GET['evento'])) {
     $evento_id = (int)$_GET['evento'];
 
@@ -184,6 +248,9 @@ if (!empty($_GET['evento'])) {
                 $anexos_dj = eventos_reuniao_get_anexos($pdo, $evento_id, 'dj_protocolo');
                 $anexos_observacoes = eventos_reuniao_get_anexos($pdo, $evento_id, 'observacoes_gerais');
                 $anexos_formulario = eventos_reuniao_get_anexos($pdo, $evento_id, 'formulario');
+                $dj_resolvido = portal_dj_resolver_dados_dj_por_links_ativos($pdo, $evento_id, $secao_dj);
+                $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
+                $anexos_dj = $dj_resolvido['anexos'] ?? [];
                 $arquivos_evento = eventos_arquivos_listar($pdo, $evento_id, false);
             }
         }

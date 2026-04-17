@@ -99,6 +99,7 @@ function eventos_reuniao_serializar_anexo(array $anexo): array {
         'file_kind' => (string)($anexo['file_kind'] ?? 'outros'),
         'size_bytes' => (int)($anexo['size_bytes'] ?? 0),
         'public_url' => (string)($anexo['public_url'] ?? ''),
+        'form_field_id' => (string)($anexo['form_field_id'] ?? ''),
         'uploaded_at' => array_key_exists('uploaded_at', $anexo) && $anexo['uploaded_at'] !== null ? (string)$anexo['uploaded_at'] : null,
         'uploaded_by_type' => (string)($anexo['uploaded_by_type'] ?? ''),
         'note' => (string)($anexo['note'] ?? ''),
@@ -2355,7 +2356,8 @@ includeSidebar($sidebar_title);
         <div class="header-actions">
             <?php if (!$readonly_mode): ?>
             <?php if ($reuniao['status'] === 'rascunho'): ?>
-            <button type="button" class="btn btn-success" onclick="concluirReuniao()">✓ Marcar como Concluída</button>
+            <button type="button" class="btn btn-primary" id="btnSalvarTudoHeader" onclick="salvarTudoAbas()">💾 Salvar</button>
+            <button type="button" class="btn btn-success" id="btnConcluirReuniaoHeader" onclick="concluirReuniao()">✓ Marcar como Concluída</button>
             <?php else: ?>
             <button type="button" class="btn btn-secondary" onclick="reabrirReuniao()">↺ Reabrir</button>
             <?php endif; ?>
@@ -2443,11 +2445,14 @@ includeSidebar($sidebar_title);
             $content = $secao['content_html'] ?? '';
             $is_locked = $secao && !empty($secao['is_locked']);
             $legacy_text_portal_visible = true;
+            $show_dj_legacy_text_toggle = true;
             if (is_array($secao) && array_key_exists('legacy_text_portal_visible', $secao)) {
                 $legacy_text_portal_visible = !empty($secao['legacy_text_portal_visible']);
             }
             if ($key === 'dj_protocolo') {
                 $is_locked = false;
+                $content_plain = trim((string)strip_tags((string)$content));
+                $show_dj_legacy_text_toggle = ($content_plain !== '');
             }
         ?>
         <div class="tab-content <?= $key === $default_tab_key ? 'active' : '' ?>" id="tab-<?= $key ?>">
@@ -2547,7 +2552,7 @@ includeSidebar($sidebar_title);
             </div>
             <?php endif; ?>
             
-            <?php if ($key === 'decoracao' || $key === 'dj_protocolo'): ?>
+            <?php if ($key === 'decoracao' || ($key === 'dj_protocolo' && $show_dj_legacy_text_toggle)): ?>
             <div class="legacy-editor-toggle">
                 <div>
                     <strong>Texto livre (opcional)</strong>
@@ -2826,6 +2831,7 @@ const CRONOGRAMA_ROW_EMPTY_TEMPLATE = {
 };
 let cronogramaRows = [];
 let cronogramaRowCounter = 0;
+let salvarTudoInFlight = false;
 
 var tinymceLoadTimeout = null;
 var tinymceRetryCount = 0;
@@ -3991,6 +3997,9 @@ async function excluirDjSlot(slot = 1) {
                 alert(data.error || 'Erro ao excluir quadro');
                 return;
             }
+            if (data.warning) {
+                alert(data.warning);
+            }
         } catch (err) {
             alert('Erro: ' + err.message);
             return;
@@ -4838,6 +4847,9 @@ async function excluirObservacoesSlot(slot = 1) {
             alert(data.error || 'Erro ao excluir quadro');
             return;
         }
+        if (data.warning) {
+            alert(data.warning);
+        }
     } catch (err) {
         alert('Erro: ' + err.message);
         return;
@@ -5223,6 +5235,9 @@ async function excluirFormularioSlot(slot = 1) {
         if (!data.ok) {
             alert(data.error || 'Erro ao excluir formulário');
             return;
+        }
+        if (data.warning) {
+            alert(data.warning);
         }
     } catch (err) {
         alert('Erro: ' + err.message);
@@ -6148,10 +6163,16 @@ function initSectionTemplateSelection() {
 }
 
 // Salvar seção (conteúdo vem do TinyMCE)
-async function salvarSecao(section) {
+async function salvarSecao(section, options = {}) {
+    const silentSuccess = !!(options && options.silentSuccess);
+    const suppressErrorAlert = !!(options && options.suppressErrorAlert);
+    const suppressValidationAlert = !!(options && options.suppressValidationAlert);
+
     if (pageReadonly) {
-        alert('Modo somente leitura.');
-        return;
+        if (!suppressErrorAlert) {
+            alert('Modo somente leitura.');
+        }
+        return false;
     }
     let content = getEditorContent(section);
     let formSchemaJson = null;
@@ -6167,8 +6188,10 @@ async function salvarSecao(section) {
             }
             const built = buildSectionContentFromForm(section, normalizedSchema, values, legacyContent);
             if (!built.ok) {
-                alert((built.errors || ['Preencha os campos obrigatórios do formulário.']).join(' | '));
-                return;
+                if (!suppressValidationAlert) {
+                    alert((built.errors || ['Preencha os campos obrigatórios do formulário.']).join(' | '));
+                }
+                return false;
             }
             content = String(built.content_html || '');
             formSchemaJson = JSON.stringify(normalizedSchema);
@@ -6202,12 +6225,21 @@ async function salvarSecao(section) {
         const data = await parseJsonResponse(resp, 'o salvamento da seção');
         
         if (data.ok) {
-            alert('Salvo com sucesso! Versão #' + data.version);
+            if (!silentSuccess) {
+                alert('Salvo com sucesso! Versão #' + data.version);
+            }
+            return true;
         } else {
-            alert(data.error || 'Erro ao salvar');
+            if (!suppressErrorAlert) {
+                alert(data.error || 'Erro ao salvar');
+            }
+            return false;
         }
     } catch (err) {
-        alert('Erro: ' + err.message);
+        if (!suppressErrorAlert) {
+            alert('Erro: ' + err.message);
+        }
+        return false;
     }
 }
 
@@ -6421,35 +6453,113 @@ function abrirModalRespostaSlot(slot, responseType, sourceType = 'formulario') {
     }
 
     const statusLabel = isDraft ? 'Rascunho salvo em' : 'Enviado em';
-    const attachmentsHtml = attachments.length ? `
-        <div style="margin-top: 1rem;">
-            <h4 style="margin: 0 0 0.6rem 0;">Anexos ${isDraft ? 'do rascunho' : 'enviados'}</h4>
-            <ul style="margin:0; padding-left:1.1rem; color:#334155;">
-                ${attachments.map((anexo) => {
-                    const name = escapeHtmlForField(String(anexo && anexo.original_name ? anexo.original_name : 'arquivo'));
-                    const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
-                    const note = escapeHtmlForField(String(anexo && anexo.note ? anexo.note : ''));
-                    const uploadedAt = anexo && anexo.uploaded_at ? formatDate(anexo.uploaded_at) : '-';
-                    const linkHtml = url !== ''
-                        ? `<a href="${escapeHtmlForField(url)}" target="_blank" rel="noopener noreferrer">${name}</a>`
-                        : name;
-                    return `<li style="margin-bottom:0.55rem;">${linkHtml}<div style="font-size:0.8rem; color:#64748b;">${escapeHtmlForField(uploadedAt)}${note !== '' ? ` • Obs: ${note}` : ''}</div></li>`;
-                }).join('')}
-            </ul>
-        </div>
-    ` : '';
+    const formSchema = Array.isArray(link.form_schema) ? link.form_schema : [];
+    const previewHtml = renderPreviewTextWithInlineAttachments(previewText, attachments, formSchema);
     container.innerHTML = `
         <div class="version-item active">
             <div class="version-header">
                 <span class="version-number">${isDraft ? 'Rascunho' : 'Concluído / Enviado'}</span>
                 <span class="version-meta">${escapeHtmlForField(statusLabel)} ${escapeHtmlForField(savedAt || '-')}</span>
             </div>
-            <div class="version-note" style="white-space: pre-wrap; line-height: 1.55;">${previewText.trim() !== '' ? escapeHtmlForField(previewText) : '<em>Sem conteúdo textual.</em>'}</div>
-            ${attachmentsHtml}
+            <div class="version-note" style="line-height: 1.55;">${previewHtml}</div>
         </div>
     `;
 
     document.getElementById('modalVersoes').classList.add('show');
+}
+
+function buildPreviewAttachmentLinkHtml(anexo) {
+    const name = escapeHtmlForField(String(anexo && anexo.original_name ? anexo.original_name : 'arquivo'));
+    const url = String(anexo && anexo.public_url ? anexo.public_url : '').trim();
+    if (url === '') {
+        return name;
+    }
+    return `<a href="${escapeHtmlForField(url)}" target="_blank" rel="noopener noreferrer">${name}</a>`;
+}
+
+function renderPreviewTextWithInlineAttachments(previewText, attachments, schema) {
+    const text = String(previewText || '').replace(/\r\n?/g, '\n').trim();
+    if (text === '') {
+        return '<em>Sem conteúdo textual.</em>';
+    }
+
+    const attachmentEntries = Array.isArray(attachments)
+        ? attachments
+            .filter((anexo) => anexo && typeof anexo === 'object')
+            .map((anexo, index) => ({
+                anexo,
+                key: Number(anexo.id || 0) > 0 ? `id:${Number(anexo.id)}` : `idx:${index}`,
+            }))
+        : [];
+
+    if (attachmentEntries.length === 0) {
+        return escapeHtmlForField(text).replace(/\n/g, '<br>');
+    }
+
+    const attachmentsByField = {};
+    const unlinkedAttachments = [];
+    attachmentEntries.forEach((entry) => {
+        const fieldId = String(entry.anexo && entry.anexo.form_field_id ? entry.anexo.form_field_id : '').trim();
+        if (fieldId === '') {
+            unlinkedAttachments.push(entry);
+            return;
+        }
+        if (!Array.isArray(attachmentsByField[fieldId])) {
+            attachmentsByField[fieldId] = [];
+        }
+        attachmentsByField[fieldId].push(entry);
+    });
+
+    const fileFieldIds = Array.isArray(schema)
+        ? schema
+            .filter((field) => field && typeof field === 'object' && String(field.type || '').toLowerCase() === 'file')
+            .map((field) => String(field.id || '').trim())
+            .filter((fieldId) => fieldId !== '')
+        : [];
+
+    const hasFieldMapping = Object.keys(attachmentsByField).length > 0;
+    const renderedKeys = new Set();
+    let fileFieldCursor = 0;
+    let unlinkedFallbackUsed = false;
+
+    const linesHtml = text.split('\n').map((rawLine) => {
+        const line = String(rawLine || '');
+        const trimmed = line.trim();
+        if (!/^Arquivo anexado separadamente\.?$/i.test(trimmed)) {
+            return escapeHtmlForField(line);
+        }
+
+        const currentFieldId = fileFieldIds[fileFieldCursor] || '';
+        if (fileFieldCursor < fileFieldIds.length) {
+            fileFieldCursor += 1;
+        }
+
+        let lineAttachments = currentFieldId !== '' && Array.isArray(attachmentsByField[currentFieldId])
+            ? attachmentsByField[currentFieldId]
+            : [];
+
+        if (lineAttachments.length === 0 && !hasFieldMapping && !unlinkedFallbackUsed && unlinkedAttachments.length > 0) {
+            lineAttachments = unlinkedAttachments;
+            unlinkedFallbackUsed = true;
+        }
+
+        if (lineAttachments.length === 0) {
+            return `<em>${escapeHtmlForField(trimmed || 'Arquivo anexado separadamente.')}</em>`;
+        }
+
+        lineAttachments.forEach((entry) => renderedKeys.add(entry.key));
+        const linksHtml = lineAttachments.map((entry) => buildPreviewAttachmentLinkHtml(entry.anexo)).join(' • ');
+        return `<em>${escapeHtmlForField(trimmed || 'Arquivo anexado separadamente.')}</em> ${linksHtml}`;
+    });
+
+    const remainingLinksHtml = attachmentEntries
+        .filter((entry) => !renderedKeys.has(entry.key))
+        .map((entry) => buildPreviewAttachmentLinkHtml(entry.anexo));
+    if (remainingLinksHtml.length > 0) {
+        linesHtml.push(`<em>Arquivo anexado separadamente.</em> ${remainingLinksHtml.join(' • ')}`);
+    }
+
+    return linesHtml.join('<br>');
 }
 
 function abrirModalFormularioResposta(slot, responseType) {
@@ -6613,13 +6723,145 @@ async function destravarDjSlot(slot = 1) {
 }
 
 // Atualizar status
+async function salvarTudoAbas(options = {}) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return false;
+    }
+    if (!meetingId) {
+        alert('Reunião inválida.');
+        return false;
+    }
+    if (salvarTudoInFlight) {
+        return false;
+    }
+
+    const silentSuccess = !!(options && options.silentSuccess);
+    const suppressErrorAlert = !!(options && options.suppressErrorAlert);
+    const saveButton = document.getElementById('btnSalvarTudoHeader');
+    const concludeButton = document.getElementById('btnConcluirReuniaoHeader');
+    const originalSaveLabel = saveButton ? String(saveButton.textContent || '') : '';
+    const originalConcludeDisabled = concludeButton ? !!concludeButton.disabled : false;
+    const failures = [];
+
+    salvarTudoInFlight = true;
+    if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = 'Salvando...';
+    }
+    if (concludeButton) {
+        concludeButton.disabled = true;
+    }
+
+    try {
+        const sectionLabels = {
+            decoracao: 'Decoração',
+            observacoes_gerais: 'Observações Gerais',
+            dj_protocolo: 'DJ / Protocolos',
+        };
+        const sectionKeys = ['decoracao', 'observacoes_gerais', 'dj_protocolo'];
+        for (const section of sectionKeys) {
+            const hasEditor = !!document.getElementById(`editor-${section}`);
+            if (!hasEditor) {
+                continue;
+            }
+            const sectionOk = await salvarSecao(section, {
+                silentSuccess: true,
+                suppressErrorAlert: true,
+                suppressValidationAlert: true,
+            });
+            if (!sectionOk) {
+                failures.push(`Seção ${sectionLabels[section] || section}`);
+            }
+        }
+
+        const djSlots = typeof getSortedDjSlots === 'function' ? getSortedDjSlots() : [];
+        for (const slot of djSlots) {
+            const selected = getSelectedDjTemplateData(slot);
+            if (!selected || !selected.template || isDjSlotLocked(slot)) {
+                continue;
+            }
+            const slotOk = await salvarDjSlotPortalConfig(slot, {
+                silentSuccess: true,
+                suppressValidationAlert: true,
+            });
+            if (!slotOk) {
+                failures.push(`DJ / Protocolos (quadro ${slot})`);
+            }
+        }
+
+        const formularioSlots = typeof getSortedFormularioSlots === 'function' ? getSortedFormularioSlots() : [];
+        for (const slot of formularioSlots) {
+            const selected = getSelectedFormularioTemplateData(slot);
+            if (!selected || !selected.template || isFormularioSlotLocked(slot)) {
+                continue;
+            }
+            const slotOk = await salvarFormularioSlotPortalConfig(slot, {
+                silentSuccess: true,
+                suppressValidationAlert: true,
+            });
+            if (!slotOk) {
+                failures.push(`Formulário (quadro ${slot})`);
+            }
+        }
+
+        if (failures.length > 0) {
+            if (!suppressErrorAlert) {
+                alert('Não foi possível salvar tudo. Revise os itens abaixo:\n- ' + failures.join('\n- '));
+            }
+            return false;
+        }
+
+        if (!silentSuccess) {
+            alert('Tudo salvo com sucesso.');
+        }
+        return true;
+    } catch (err) {
+        if (!suppressErrorAlert) {
+            alert('Erro ao salvar tudo: ' + err.message);
+        }
+        return false;
+    } finally {
+        salvarTudoInFlight = false;
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = originalSaveLabel || '💾 Salvar';
+        }
+        if (concludeButton) {
+            concludeButton.disabled = originalConcludeDisabled;
+        }
+    }
+}
+
 async function concluirReuniao() {
     if (pageReadonly) {
         alert('Modo somente leitura.');
         return;
     }
     if (!confirm('Marcar reunião como concluída?')) return;
-    await atualizarStatus('concluida');
+
+    const saved = await salvarTudoAbas({
+        silentSuccess: true,
+    });
+    if (!saved) {
+        return;
+    }
+
+    const concludeButton = document.getElementById('btnConcluirReuniaoHeader');
+    const originalLabel = concludeButton ? String(concludeButton.textContent || '') : '';
+    if (concludeButton) {
+        concludeButton.disabled = true;
+        concludeButton.textContent = 'Concluindo...';
+    }
+
+    try {
+        await atualizarStatus('concluida');
+    } finally {
+        if (concludeButton) {
+            concludeButton.disabled = false;
+            concludeButton.textContent = originalLabel || '✓ Marcar como Concluída';
+        }
+    }
 }
 
 async function reabrirReuniao() {
@@ -6665,6 +6907,7 @@ function formatDate(dateStr) {
 function exposeInlineHandlersToWindow() {
     if (typeof searchEvents === 'function') window.searchEvents = searchEvents;
     if (typeof criarReuniao === 'function') window.criarReuniao = criarReuniao;
+    if (typeof salvarTudoAbas === 'function') window.salvarTudoAbas = salvarTudoAbas;
     if (typeof concluirReuniao === 'function') window.concluirReuniao = concluirReuniao;
     if (typeof reabrirReuniao === 'function') window.reabrirReuniao = reabrirReuniao;
     if (typeof abrirModalImpressao === 'function') window.abrirModalImpressao = abrirModalImpressao;
