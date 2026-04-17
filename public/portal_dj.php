@@ -112,6 +112,7 @@ $secao_formulario = null;
 $anexos_dj = [];
 $anexos_observacoes = [];
 $anexos_formulario = [];
+$observacoes_blocos = [];
 $quadros_observacoes = [];
 $arquivos_evento = [];
 
@@ -521,6 +522,139 @@ function portal_dj_extrair_secao_publica_snapshot(string $content_html, string $
 }
 
 /**
+ * Definição fixa dos blocos de Observações Gerais da reunião final.
+ */
+function portal_dj_observacoes_blocos_padrao(): array
+{
+    return [
+        [
+            'key' => 'legacy_text',
+            'label' => 'Texto livre (opcional)',
+            'description' => 'Área aberta para observações complementares.',
+            'internal' => false,
+        ],
+        [
+            'key' => 'cronograma',
+            'label' => 'Cronograma',
+            'description' => 'Use este bloco para roteiro, horários e sequência do evento.',
+            'internal' => false,
+        ],
+        [
+            'key' => 'fornecedores_externos',
+            'label' => 'Fornecedores externos',
+            'description' => 'Registre contatos, entregas e combinados com fornecedores parceiros.',
+            'internal' => false,
+        ],
+        [
+            'key' => 'informacoes_importantes',
+            'label' => 'Informações importantes',
+            'description' => 'Pontos críticos que precisam ficar claros para a execução do evento.',
+            'internal' => false,
+        ],
+        [
+            'key' => 'informacoes_internas',
+            'label' => 'Informações internas',
+            'description' => 'Uso exclusivo da equipe interna. Nunca exibido ao cliente.',
+            'internal' => true,
+        ],
+    ];
+}
+
+/**
+ * Parseia o HTML salvo da seção de observações em blocos por chave.
+ */
+function portal_dj_parsear_observacoes_blocos(string $content_html): array
+{
+    $content_html = trim($content_html);
+    if ($content_html === '') {
+        return [];
+    }
+
+    if (stripos($content_html, 'data-smile-observacoes-block') === false || !class_exists('DOMDocument')) {
+        return ['legacy_text' => $content_html];
+    }
+
+    $dom = new DOMDocument();
+    $prev_state = libxml_use_internal_errors(true);
+    $flags = 0;
+    if (defined('LIBXML_HTML_NODEFDTD')) {
+        $flags |= LIBXML_HTML_NODEFDTD;
+    }
+    if (defined('LIBXML_HTML_NOIMPLIED')) {
+        $flags |= LIBXML_HTML_NOIMPLIED;
+    }
+
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $content_html . '</body></html>';
+    $loaded = $dom->loadHTML($wrapped, $flags);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev_state);
+    if (!$loaded) {
+        return ['legacy_text' => $content_html];
+    }
+
+    $xpath = new DOMXPath($dom);
+    $nodes = $xpath->query('//*[@data-smile-observacoes-block]');
+    if (!$nodes || $nodes->length === 0) {
+        return ['legacy_text' => $content_html];
+    }
+
+    $parsed = [];
+    foreach ($nodes as $node) {
+        if (!$node instanceof DOMElement) {
+            continue;
+        }
+
+        $key = strtolower(trim((string)$node->getAttribute('data-smile-observacoes-block')));
+        if ($key === '') {
+            continue;
+        }
+
+        $target = $node;
+        $content_nodes = $xpath->query('.//*[@data-smile-observacoes-content]', $node);
+        if ($content_nodes && $content_nodes->length > 0 && $content_nodes->item(0) instanceof DOMElement) {
+            $target = $content_nodes->item(0);
+        }
+
+        $inner = '';
+        foreach ($target->childNodes as $child) {
+            $inner .= (string)$dom->saveHTML($child);
+        }
+        $parsed[$key] = trim($inner);
+    }
+
+    return $parsed;
+}
+
+/**
+ * Monta a visão dos blocos de Observações Gerais com conteúdo e estado.
+ */
+function portal_dj_montar_observacoes_blocos(string $content_html): array
+{
+    $defs = portal_dj_observacoes_blocos_padrao();
+    $parsed = portal_dj_parsear_observacoes_blocos($content_html);
+    $view = [];
+
+    foreach ($defs as $def) {
+        $key = trim((string)($def['key'] ?? ''));
+        if ($key === '') {
+            continue;
+        }
+        $html = trim((string)($parsed[$key] ?? ''));
+        $plain = trim((string)strip_tags($html));
+        $view[] = [
+            'key' => $key,
+            'label' => (string)($def['label'] ?? $key),
+            'description' => (string)($def['description'] ?? ''),
+            'internal' => !empty($def['internal']),
+            'content_html' => $html,
+            'has_content' => $plain !== '',
+        ];
+    }
+
+    return $view;
+}
+
+/**
  * Carrega os quadros (slots) de Observações Gerais da reunião final para visualização no Portal DJ.
  */
 function portal_dj_resolver_quadros_observacoes(PDO $pdo, int $meeting_id): array
@@ -639,6 +773,7 @@ if (!empty($_GET['evento'])) {
                     $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
                     $anexos_dj = $dj_resolvido['anexos'] ?? [];
                 }
+                $observacoes_blocos = portal_dj_montar_observacoes_blocos((string)($secao_observacoes['content_html'] ?? ''));
                 $quadros_observacoes = portal_dj_resolver_quadros_observacoes($pdo, $evento_id);
                 $arquivos_evento = eventos_arquivos_listar($pdo, $evento_id, false);
             }
@@ -856,6 +991,58 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
             color: #64748b;
             font-size: 0.84rem;
             margin-bottom: 0.75rem;
+        }
+        .obs-fields-wrap {
+            display: grid;
+            gap: 0.7rem;
+        }
+        .obs-field-card {
+            border: 1px solid #dbe3ef;
+            background: #fff;
+            border-radius: 10px;
+            padding: 0.85rem;
+        }
+        .obs-field-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .obs-field-title {
+            font-size: 0.92rem;
+            color: #0f172a;
+            font-weight: 800;
+        }
+        .obs-field-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            border: 1px solid #dbe3ef;
+            background: #f1f5f9;
+            color: #334155;
+            padding: 0.15rem 0.55rem;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+        .obs-field-badge.internal {
+            background: #fee2e2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        .obs-field-desc {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+        }
+        .obs-field-content {
+            margin-top: 0.55rem;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 0.75rem;
         }
         .obs-quadros-wrap {
             margin-top: 1rem;
@@ -1388,6 +1575,37 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                 <div class="tab-panel-title"><?= htmlspecialchars($aba_atual['titulo']) ?></div>
                 <div class="tab-panel-subtitle"><?= htmlspecialchars($aba_atual['subtitulo']) ?></div>
 
+                <?php if ($aba_detalhe === 'observacoes_gerais'): ?>
+                <div class="obs-fields-wrap">
+                    <?php foreach ($observacoes_blocos as $bloco): ?>
+                    <?php
+                        $bloco_label = trim((string)($bloco['label'] ?? 'Campo'));
+                        $bloco_desc = trim((string)($bloco['description'] ?? ''));
+                        $bloco_html = trim((string)($bloco['content_html'] ?? ''));
+                        $bloco_has_content = !empty($bloco['has_content']);
+                        $bloco_internal = !empty($bloco['internal']);
+                    ?>
+                    <article class="obs-field-card">
+                        <div class="obs-field-head">
+                            <div class="obs-field-title"><?= htmlspecialchars($bloco_label !== '' ? $bloco_label : 'Campo') ?></div>
+                            <span class="obs-field-badge<?= $bloco_internal ? ' internal' : '' ?>">
+                                <?= $bloco_internal ? 'Interno' : 'Portal' ?>
+                            </span>
+                        </div>
+                        <?php if ($bloco_desc !== ''): ?>
+                        <div class="obs-field-desc"><?= htmlspecialchars($bloco_desc) ?></div>
+                        <?php endif; ?>
+                        <div class="obs-field-content">
+                            <?php if ($bloco_has_content): ?>
+                            <div><?= $bloco_html ?></div>
+                            <?php else: ?>
+                            <p style="color: #64748b; font-style: italic;">Sem informação registrada neste campo.</p>
+                            <?php endif; ?>
+                        </div>
+                    </article>
+                    <?php endforeach; ?>
+                </div>
+                <?php else: ?>
                 <div class="content-box">
                     <?php if ($html_secao_ativa_render !== ''): ?>
                     <div><?= $html_secao_ativa_render ?></div>
@@ -1395,6 +1613,7 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                     <p style="color: #64748b; font-style: italic;"><?= htmlspecialchars($aba_atual['mensagem_vazia']) ?></p>
                     <?php endif; ?>
                 </div>
+                <?php endif; ?>
 
                 <?php if ($aba_detalhe === 'observacoes_gerais' && !empty($quadros_observacoes)): ?>
                 <div class="obs-quadros-wrap">
