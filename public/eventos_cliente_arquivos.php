@@ -108,64 +108,111 @@ if ($error === '' && $reuniao) {
     }
 }
 
-if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'upload_arquivo_cliente') {
-    if (!$editavel_arquivos) {
-        $form_error = 'Uploads de arquivos não estão habilitados para este portal.';
-    } else {
-        $file = $_FILES['arquivo'] ?? null;
-        if (!$file || !is_array($file)) {
-            $form_error = 'Selecione um arquivo para enviar.';
+if ($error === '' && $reuniao && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string)($_POST['action'] ?? '');
+    if ($action === 'upload_arquivo_cliente') {
+        if (!$editavel_arquivos) {
+            $form_error = 'Uploads de arquivos não estão habilitados para este portal.';
         } else {
-            $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
-            if ($upload_error !== UPLOAD_ERR_OK) {
-                $form_error = eventos_cliente_arquivos_upload_error_message($upload_error);
-            } elseif ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
-                $form_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+            $file = $_FILES['arquivo'] ?? null;
+            if (!$file || !is_array($file)) {
+                $form_error = 'Selecione um arquivo para enviar.';
             } else {
-                $campo_id = (int)($_POST['campo_id'] ?? 0);
-                $descricao = trim((string)($_POST['descricao_arquivo'] ?? ''));
+                $upload_error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+                if ($upload_error !== UPLOAD_ERR_OK) {
+                    $form_error = eventos_cliente_arquivos_upload_error_message($upload_error);
+                } elseif ((int)($file['size'] ?? 0) > 500 * 1024 * 1024) {
+                    $form_error = 'Arquivo muito grande. Limite máximo: 500MB.';
+                } else {
+                    $campo_id = (int)($_POST['campo_id'] ?? 0);
+                    $descricao = trim((string)($_POST['descricao_arquivo'] ?? ''));
 
-                try {
-                    $uploader = new MagaluUpload(500);
-                    $upload_result = $uploader->upload($file, 'eventos/reunioes/' . (int)$reuniao['id'] . '/cliente_arquivos');
-                    $saved = eventos_arquivos_salvar_item(
-                        $pdo,
-                        (int)$reuniao['id'],
-                        $upload_result,
-                        $campo_id > 0 ? $campo_id : null,
-                        $descricao,
-                        true,
-                        'cliente',
-                        null
-                    );
+                    try {
+                        $uploader = new MagaluUpload(500);
+                        $upload_result = $uploader->upload($file, 'eventos/reunioes/' . (int)$reuniao['id'] . '/cliente_arquivos');
+                        $saved = eventos_arquivos_salvar_item(
+                            $pdo,
+                            (int)$reuniao['id'],
+                            $upload_result,
+                            $campo_id > 0 ? $campo_id : null,
+                            $descricao,
+                            true,
+                            'cliente',
+                            null
+                        );
 
-                    if (!empty($saved['ok'])) {
-                        $success_message = 'Arquivo enviado com sucesso.';
-                        $campos_arquivos = array_values(array_filter(
-                            eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true, false),
-                            static fn(array $campo): bool => trim((string)($campo['chave_sistema'] ?? '')) === ''
-                        ));
-                        $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true, null, false);
-                        $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
-                        $arquivos_campos_map = [];
-                        foreach ($arquivos_portal as $arquivo_item) {
-                            $campo_id_row = (int)($arquivo_item['campo_id'] ?? 0);
-                            if ($campo_id_row <= 0) {
-                                continue;
-                            }
-                            if (!isset($arquivos_campos_map[$campo_id_row])) {
-                                $arquivos_campos_map[$campo_id_row] = [];
-                            }
-                            $arquivos_campos_map[$campo_id_row][] = $arquivo_item;
+                        if (!empty($saved['ok'])) {
+                            $success_message = 'Arquivo enviado com sucesso.';
+                        } else {
+                            $form_error = (string)($saved['error'] ?? 'Não foi possível salvar o arquivo.');
                         }
-                    } else {
-                        $form_error = (string)($saved['error'] ?? 'Não foi possível salvar o arquivo.');
+                    } catch (Throwable $e) {
+                        error_log('eventos_cliente_arquivos upload arquivo: ' . $e->getMessage());
+                        $form_error = 'Falha ao enviar arquivo. Tente novamente.';
                     }
-                } catch (Throwable $e) {
-                    error_log('eventos_cliente_arquivos upload arquivo: ' . $e->getMessage());
-                    $form_error = 'Falha ao enviar arquivo. Tente novamente.';
                 }
             }
+        }
+    } elseif ($action === 'excluir_arquivo_cliente') {
+        if (!$editavel_arquivos) {
+            $form_error = 'Exclusão de arquivos não está habilitada para este portal.';
+        } else {
+            $arquivo_id = (int)($_POST['arquivo_id'] ?? 0);
+            if ($arquivo_id <= 0) {
+                $form_error = 'Arquivo inválido para exclusão.';
+            } else {
+                $stmt_arquivo = $pdo->prepare("
+                    SELECT id, uploaded_by_type
+                    FROM eventos_arquivos_itens
+                    WHERE id = :id
+                      AND meeting_id = :meeting_id
+                      AND deleted_at IS NULL
+                    LIMIT 1
+                ");
+                $stmt_arquivo->execute([
+                    ':id' => $arquivo_id,
+                    ':meeting_id' => (int)$reuniao['id'],
+                ]);
+                $arquivo_row = $stmt_arquivo->fetch(PDO::FETCH_ASSOC) ?: null;
+                if (!$arquivo_row) {
+                    $form_error = 'Arquivo não encontrado.';
+                } elseif (strtolower(trim((string)($arquivo_row['uploaded_by_type'] ?? ''))) !== 'cliente') {
+                    $form_error = 'Você só pode excluir arquivos enviados pelo cliente neste portal.';
+                } else {
+                    $deleted = eventos_arquivos_excluir_item(
+                        $pdo,
+                        (int)$reuniao['id'],
+                        $arquivo_id,
+                        0,
+                        'cliente'
+                    );
+                    if (!empty($deleted['ok'])) {
+                        $success_message = 'Arquivo excluído com sucesso.';
+                    } else {
+                        $form_error = (string)($deleted['error'] ?? 'Não foi possível excluir o arquivo.');
+                    }
+                }
+            }
+        }
+    }
+
+    if ($form_error === '' || $success_message !== '') {
+        $campos_arquivos = array_values(array_filter(
+            eventos_arquivos_listar_campos($pdo, (int)$reuniao['id'], true, false),
+            static fn(array $campo): bool => trim((string)($campo['chave_sistema'] ?? '')) === ''
+        ));
+        $arquivos_portal = eventos_arquivos_listar($pdo, (int)$reuniao['id'], true, null, false);
+        $arquivos_resumo = eventos_arquivos_resumo($pdo, (int)$reuniao['id']);
+        $arquivos_campos_map = [];
+        foreach ($arquivos_portal as $arquivo_item) {
+            $campo_id_row = (int)($arquivo_item['campo_id'] ?? 0);
+            if ($campo_id_row <= 0) {
+                continue;
+            }
+            if (!isset($arquivos_campos_map[$campo_id_row])) {
+                $arquivos_campos_map[$campo_id_row] = [];
+            }
+            $arquivos_campos_map[$campo_id_row][] = $arquivo_item;
         }
     }
 }
@@ -289,6 +336,8 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
         .btn-primary { background: #1d4ed8; color: #fff; }
         .btn-primary:hover { background: #1e40af; }
         .btn-secondary { background: #f1f5f9; border-color: #dbe3ef; color: #334155; }
+        .btn-danger { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+        .btn-danger:hover { background: #fee2e2; }
 
         .upload-form {
             border: 1px solid #dbe3ef;
@@ -521,6 +570,8 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                     $arquivo_data = trim((string)($arquivo_portal['uploaded_at'] ?? ''));
                     $arquivo_data_fmt = $arquivo_data !== '' ? date('d/m/Y H:i', strtotime($arquivo_data)) : '-';
                     $arquivo_autor = trim((string)($arquivo_portal['uploaded_by_type'] ?? 'interno'));
+                    $arquivo_id = (int)($arquivo_portal['id'] ?? 0);
+                    $can_delete_cliente = $editavel_arquivos && strtolower($arquivo_autor) === 'cliente' && $arquivo_id > 0;
                 ?>
                 <div class="arquivo-item">
                     <?php if ($arquivo_url !== ''): ?>
@@ -535,6 +586,14 @@ $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
                         Enviado por <?= htmlspecialchars($arquivo_autor) ?> em <?= htmlspecialchars($arquivo_data_fmt) ?>
                         <?php if ($arquivo_desc !== ''): ?><br><?= htmlspecialchars($arquivo_desc) ?><?php endif; ?>
                     </div>
+                    <?php if ($can_delete_cliente): ?>
+                    <form method="POST" style="margin-top:0.45rem;" onsubmit="return confirm('Deseja excluir este arquivo? Esta ação remove o arquivo permanentemente do portal e do storage.');">
+                        <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+                        <input type="hidden" name="action" value="excluir_arquivo_cliente">
+                        <input type="hidden" name="arquivo_id" value="<?= $arquivo_id ?>">
+                        <button type="submit" class="btn btn-danger">Excluir arquivo</button>
+                    </form>
+                    <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
                 <?php endif; ?>

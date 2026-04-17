@@ -19,6 +19,7 @@ $requested_section = strtolower(trim((string)($_GET['secao'] ?? $_POST['secao'] 
 $error = '';
 $success = false;
 $draft_saved = false;
+$info_message = '';
 $link = null;
 $reuniao = null;
 $secao = null;
@@ -1047,8 +1048,49 @@ if (empty($token)) {
 // Processar envio do formulário
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
     $action = $_POST['action'] ?? '';
-    
-    if ($action === 'salvar' || $action === 'salvar_rascunho') {
+
+    if ($action === 'excluir_anexo') {
+        if (!$link_editavel) {
+            $error = 'Este formulário está em modo somente visualização.';
+        } elseif (!empty($link['submitted_at'])) {
+            $error = 'Este formulário já foi enviado e está travado. Aguarde o desbloqueio da equipe para editar novamente.';
+        } else {
+            $anexo_id = (int)($_POST['anexo_id'] ?? 0);
+            $anexo_section = strtolower(trim((string)($_POST['anexo_section'] ?? $link_section)));
+            if ($anexo_id <= 0) {
+                $error = 'Anexo inválido para exclusão.';
+            } elseif (!in_array($anexo_section, $link_sections, true)) {
+                $error = 'Seção inválida para exclusão do anexo.';
+            } else {
+                $delete_result = eventos_reuniao_excluir_anexo_cliente_publico(
+                    $pdo,
+                    (int)$link['meeting_id'],
+                    $anexo_section,
+                    $anexo_id,
+                    (int)$link['id']
+                );
+                if (empty($delete_result['ok'])) {
+                    $error = (string)($delete_result['error'] ?? 'Não foi possível excluir o anexo.');
+                } else {
+                    $info_message = 'Arquivo excluído com sucesso.';
+                }
+            }
+        }
+
+        $link = eventos_link_publico_get($pdo, $token) ?: $link;
+        $section_views = [];
+        foreach ($link_sections as $section_key) {
+            $section_views[$section_key] = eventos_cliente_preparar_secao_publica(
+                $pdo,
+                (int)$link['meeting_id'],
+                $section_key,
+                $link,
+                !$is_combined_reuniao && $section_key === $link_section
+            );
+        }
+        $secao = $section_views[$link_section]['secao'] ?? null;
+        $anexos = $section_views[$link_section]['anexos'] ?? [];
+    } elseif ($action === 'salvar' || $action === 'salvar_rascunho') {
         $is_draft_action = $action === 'salvar_rascunho';
         if (!$link_editavel) {
             $error = 'Este formulário está em modo somente visualização.';
@@ -1494,6 +1536,23 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             white-space: pre-wrap;
         }
 
+        .attachment-remove-btn {
+            margin-top: 0.45rem;
+            margin-left: 1.4rem;
+            border: 1px solid #fecaca;
+            background: #fef2f2;
+            color: #b91c1c;
+            border-radius: 6px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            padding: 0.28rem 0.55rem;
+            cursor: pointer;
+        }
+
+        .attachment-remove-btn:hover {
+            background: #fee2e2;
+        }
+
         .attachments-list a {
             color: #1d4ed8;
             text-decoration: none;
@@ -1829,6 +1888,10 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         <div class="alert alert-error">
             <strong>Erro:</strong> <?= htmlspecialchars($error) ?>
         </div>
+        <?php elseif ($info_message !== ''): ?>
+        <div class="alert alert-success">
+            <?= htmlspecialchars($info_message) ?>
+        </div>
         <?php elseif ($draft_saved): ?>
         <div class="alert alert-success">
             <strong>Rascunho salvo.</strong> Você pode voltar depois para continuar e enviar quando terminar.
@@ -2160,6 +2223,11 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                                     <h4 style="margin-bottom:0.45rem;">Arquivos deste campo</h4>
                                     <ul>
                                         <?php foreach ($field_attachments as $anexo): ?>
+                                        <?php
+                                            $can_delete_attachment = !$is_locked
+                                                && strtolower(trim((string)($anexo['uploaded_by_type'] ?? ''))) === 'cliente'
+                                                && (int)($anexo['id'] ?? 0) > 0;
+                                        ?>
                                         <li>
                                             <div class="attachment-item-head">
                                                 <span>📎</span>
@@ -2174,6 +2242,14 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                                             <div class="attachment-note"><strong>Status:</strong> <?= !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado' ?></div>
                                             <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
                                             <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
+                                            <?php endif; ?>
+                                            <?php if ($can_delete_attachment): ?>
+                                            <button type="button"
+                                                    class="attachment-remove-btn"
+                                                    data-delete-anexo="<?= (int)($anexo['id'] ?? 0) ?>"
+                                                    data-delete-section="<?= eventos_cliente_e($section_key) ?>">
+                                                Excluir arquivo
+                                            </button>
                                             <?php endif; ?>
                                         </li>
                                         <?php endforeach; ?>
@@ -2232,6 +2308,11 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     <h4>Arquivos gerais salvos neste formulário</h4>
                     <ul>
                         <?php foreach ($section_general_anexos as $anexo): ?>
+                        <?php
+                            $can_delete_attachment = !$is_locked
+                                && strtolower(trim((string)($anexo['uploaded_by_type'] ?? ''))) === 'cliente'
+                                && (int)($anexo['id'] ?? 0) > 0;
+                        ?>
                         <li>
                             <div class="attachment-item-head">
                                 <span>📎</span>
@@ -2246,6 +2327,14 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                             <div class="attachment-note"><strong>Status:</strong> <?= !empty($anexo['is_draft']) ? 'Rascunho' : 'Enviado' ?></div>
                             <?php if (trim((string)($anexo['note'] ?? '')) !== ''): ?>
                             <div class="attachment-note"><strong>Observação:</strong> <?= eventos_cliente_e((string)$anexo['note']) ?></div>
+                            <?php endif; ?>
+                            <?php if ($can_delete_attachment): ?>
+                            <button type="button"
+                                    class="attachment-remove-btn"
+                                    data-delete-anexo="<?= (int)($anexo['id'] ?? 0) ?>"
+                                    data-delete-section="<?= eventos_cliente_e($section_key) ?>">
+                                Excluir arquivo
+                            </button>
                             <?php endif; ?>
                         </li>
                         <?php endforeach; ?>
@@ -2267,6 +2356,13 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             <p style="text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #64748b;">
                 Após o envio, a edição fica bloqueada até a equipe destravar novamente.
             </p>
+        </form>
+
+        <form method="POST" id="deleteAttachmentForm" style="display:none;">
+            <input type="hidden" name="token" value="<?= eventos_cliente_e($token) ?>">
+            <input type="hidden" name="action" value="excluir_anexo">
+            <input type="hidden" name="anexo_id" id="deleteAttachmentId" value="">
+            <input type="hidden" name="anexo_section" id="deleteAttachmentSection" value="">
         </form>
         
         <script>
@@ -2330,6 +2426,44 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     return !!(await window.customConfirm(message, title));
                 }
                 return window.confirm(message);
+            }
+
+            async function handleAttachmentDeleteClick(button) {
+                if (!button) return;
+                const anexoId = Number(button.getAttribute('data-delete-anexo') || 0);
+                const section = String(button.getAttribute('data-delete-section') || '').trim();
+                if (!Number.isInteger(anexoId) || anexoId <= 0 || section === '') {
+                    await showPortalAlert('Não foi possível identificar o arquivo para exclusão.');
+                    return;
+                }
+
+                const confirmed = await showPortalConfirm(
+                    'Deseja realmente excluir este arquivo? Esta ação remove o arquivo permanentemente do formulário e do storage.',
+                    'Excluir arquivo'
+                );
+                if (!confirmed) {
+                    return;
+                }
+
+                const form = document.getElementById('deleteAttachmentForm');
+                const idInput = document.getElementById('deleteAttachmentId');
+                const sectionInput = document.getElementById('deleteAttachmentSection');
+                if (!form || !idInput || !sectionInput) {
+                    await showPortalAlert('Não foi possível iniciar a exclusão do arquivo.');
+                    return;
+                }
+
+                idInput.value = String(anexoId);
+                sectionInput.value = section;
+                HTMLFormElement.prototype.submit.call(form);
+            }
+
+            function bindDeleteAttachmentButtons() {
+                document.querySelectorAll('button[data-delete-anexo][data-delete-section]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        void handleAttachmentDeleteClick(button);
+                    });
+                });
             }
 
             function syncLegacyEditors(isDraftAction) {
@@ -2419,6 +2553,7 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             });
 
             bindUploadNoteInputs();
+            bindDeleteAttachmentButtons();
         </script>
         <?php endif; ?>
     </div>

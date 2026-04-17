@@ -2685,6 +2685,112 @@ function eventos_reuniao_salvar_anexo(
     return ['ok' => true, 'anexo' => $stmt->fetch(PDO::FETCH_ASSOC)];
 }
 
+/**
+ * Exclui um anexo de formulário público enviado pelo cliente.
+ * A exclusão só acontece se o arquivo também for removido do storage.
+ */
+function eventos_reuniao_excluir_anexo_cliente_publico(
+    PDO $pdo,
+    int $meeting_id,
+    string $section,
+    int $anexo_id,
+    int $public_link_id
+): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0 || $anexo_id <= 0 || $public_link_id <= 0) {
+        return ['ok' => false, 'error' => 'Dados inválidos para exclusão do anexo.'];
+    }
+
+    $section = trim(strtolower($section));
+    if ($section === '') {
+        return ['ok' => false, 'error' => 'Seção inválida para exclusão do anexo.'];
+    }
+
+    $has_link_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'public_link_id');
+    $stmt = $pdo->prepare("
+        SELECT id, storage_key, uploaded_by_type, public_link_id
+        FROM eventos_reunioes_anexos
+        WHERE id = :id
+          AND meeting_id = :meeting_id
+          AND section = :section
+          AND deleted_at IS NULL
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':id' => $anexo_id,
+        ':meeting_id' => $meeting_id,
+        ':section' => $section,
+    ]);
+    $anexo = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$anexo) {
+        return ['ok' => false, 'error' => 'Anexo não encontrado.'];
+    }
+
+    $uploaded_by_type = strtolower(trim((string)($anexo['uploaded_by_type'] ?? '')));
+    if ($uploaded_by_type !== 'cliente') {
+        return ['ok' => false, 'error' => 'Este arquivo não pode ser excluído pelo cliente.'];
+    }
+
+    if ($has_link_col) {
+        $row_link_id = $anexo['public_link_id'] !== null ? (int)$anexo['public_link_id'] : null;
+        if ($row_link_id !== null && $row_link_id !== $public_link_id) {
+            return ['ok' => false, 'error' => 'Anexo não pertence a este formulário.'];
+        }
+    }
+
+    $storage_key = trim((string)($anexo['storage_key'] ?? ''));
+    if ($storage_key !== '') {
+        if (!class_exists('MagaluUpload')) {
+            $upload_helper = __DIR__ . '/upload_magalu.php';
+            if (is_file($upload_helper)) {
+                require_once $upload_helper;
+            }
+        }
+        if (!class_exists('MagaluUpload')) {
+            return ['ok' => false, 'error' => 'Não foi possível carregar o serviço de storage para excluir o arquivo.'];
+        }
+
+        try {
+            $uploader = new MagaluUpload();
+        } catch (Throwable $e) {
+            error_log('eventos_reuniao_excluir_anexo_cliente_publico: falha ao inicializar MagaluUpload: ' . $e->getMessage());
+            return ['ok' => false, 'error' => 'Falha ao conectar no storage para excluir o arquivo.'];
+        }
+
+        try {
+            $deleted = $uploader->delete($storage_key);
+            if (!$deleted) {
+                return ['ok' => false, 'error' => 'Não foi possível excluir o arquivo no storage. Tente novamente.'];
+            }
+        } catch (Throwable $e) {
+            error_log('eventos_reuniao_excluir_anexo_cliente_publico: erro ao excluir storage_key ' . $storage_key . ': ' . $e->getMessage());
+            return ['ok' => false, 'error' => 'Erro ao excluir o arquivo no storage.'];
+        }
+    }
+
+    $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
+    $sql = "
+        UPDATE eventos_reunioes_anexos
+        SET deleted_at = NOW()
+    ";
+    $params = [':id' => $anexo_id];
+    if ($has_deleted_by_col) {
+        $sql .= ", deleted_by = :deleted_by";
+        $params[':deleted_by'] = null;
+    }
+    $sql .= "
+        WHERE id = :id
+          AND deleted_at IS NULL
+    ";
+    $stmt_delete = $pdo->prepare($sql);
+    $stmt_delete->execute($params);
+    if ($stmt_delete->rowCount() <= 0) {
+        return ['ok' => false, 'error' => 'Não foi possível concluir a exclusão do anexo.'];
+    }
+
+    return ['ok' => true];
+}
+
 function eventos_reuniao_get_anexos_link_finais(PDO $pdo, int $meeting_id, string $section, int $public_link_id): array {
     $public_link_id = (int)$public_link_id;
     if ($public_link_id <= 0) {
@@ -5282,7 +5388,7 @@ function eventos_arquivos_atualizar_visibilidade(PDO $pdo, int $meeting_id, int 
 /**
  * Remove (soft delete) um arquivo do módulo.
  */
-function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_id, int $user_id = 0): array {
+function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_id, int $user_id = 0, string $actor_type = 'interno'): array {
     eventos_reuniao_ensure_schema($pdo);
     if ($meeting_id <= 0 || $arquivo_id <= 0) {
         return ['ok' => false, 'error' => 'Dados inválidos.'];
@@ -5290,7 +5396,7 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
 
     try {
         $stmt_file = $pdo->prepare("
-            SELECT id, campo_id, original_name
+            SELECT id, campo_id, original_name, storage_key
             FROM eventos_arquivos_itens
             WHERE id = :id
               AND meeting_id = :meeting_id
@@ -5304,6 +5410,36 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
         $file_row = $stmt_file->fetch(PDO::FETCH_ASSOC) ?: null;
         if (!$file_row) {
             return ['ok' => false, 'error' => 'Arquivo não encontrado.'];
+        }
+
+        $storage_key = trim((string)($file_row['storage_key'] ?? ''));
+        if ($storage_key !== '') {
+            if (!class_exists('MagaluUpload')) {
+                $upload_helper = __DIR__ . '/upload_magalu.php';
+                if (is_file($upload_helper)) {
+                    require_once $upload_helper;
+                }
+            }
+            if (!class_exists('MagaluUpload')) {
+                return ['ok' => false, 'error' => 'Serviço de storage indisponível para excluir o arquivo.'];
+            }
+
+            try {
+                $uploader = new MagaluUpload();
+            } catch (Throwable $e) {
+                error_log('eventos_arquivos_excluir_item: falha ao inicializar MagaluUpload: ' . $e->getMessage());
+                return ['ok' => false, 'error' => 'Falha ao conectar no storage para excluir o arquivo.'];
+            }
+
+            try {
+                $deleted_storage = $uploader->delete($storage_key);
+                if (!$deleted_storage) {
+                    return ['ok' => false, 'error' => 'Não foi possível excluir o arquivo no storage. Tente novamente.'];
+                }
+            } catch (Throwable $e) {
+                error_log('eventos_arquivos_excluir_item: erro ao excluir storage_key ' . $storage_key . ': ' . $e->getMessage());
+                return ['ok' => false, 'error' => 'Erro ao excluir o arquivo no storage.'];
+            }
         }
 
         $stmt = $pdo->prepare("
@@ -5326,6 +5462,10 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
         }
 
         $nome = trim((string)($file_row['original_name'] ?? 'arquivo'));
+        $actor_type_norm = strtolower(trim($actor_type));
+        if (!in_array($actor_type_norm, ['interno', 'cliente', 'fornecedor'], true)) {
+            $actor_type_norm = 'interno';
+        }
         eventos_arquivos_log_registrar(
             $pdo,
             $meeting_id,
@@ -5333,7 +5473,7 @@ function eventos_arquivos_excluir_item(PDO $pdo, int $meeting_id, int $arquivo_i
             $arquivo_id,
             'arquivo_excluido',
             'Arquivo "' . $nome . '" removido.',
-            'interno',
+            $actor_type_norm,
             $user_id > 0 ? $user_id : null
         );
 

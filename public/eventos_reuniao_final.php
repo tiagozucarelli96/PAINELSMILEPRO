@@ -624,7 +624,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'cliente_dj',
                 true
             );
-            echo json_encode($result);
+            if (!empty($result['ok'])) {
+                $result['anexos'] = array_map(
+                    static function(array $item): array {
+                        return eventos_reuniao_serializar_anexo($item);
+                    },
+                    eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo')
+                );
+            }
+            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             exit;
 
         case 'destravar_observacoes_slot':
@@ -791,12 +799,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $stmt_anexo = $pdo->prepare("
-                SELECT id, storage_key
+                SELECT id, storage_key, deleted_at
                 FROM eventos_reunioes_anexos
                 WHERE id = :id
                   AND meeting_id = :meeting_id
                   AND section = 'dj_protocolo'
-                  AND deleted_at IS NULL
                 LIMIT 1
             ");
             $stmt_anexo->execute([
@@ -810,37 +817,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $delete_warning = '';
-            $storage_key = trim((string)($anexo['storage_key'] ?? ''));
-            if ($storage_key !== '') {
-                try {
-                    $uploader = new MagaluUpload();
-                    $deleted = $uploader->delete($storage_key);
-                    if (!$deleted) {
+            $already_deleted = array_key_exists('deleted_at', $anexo) && $anexo['deleted_at'] !== null;
+            if (!$already_deleted) {
+                $storage_key = trim((string)($anexo['storage_key'] ?? ''));
+                if ($storage_key !== '') {
+                    try {
+                        $uploader = new MagaluUpload();
+                        $deleted = $uploader->delete($storage_key);
+                        if (!$deleted) {
+                            $delete_warning = 'Arquivo removido da lista, mas houve falha ao excluir no storage.';
+                        }
+                    } catch (Throwable $e) {
                         $delete_warning = 'Arquivo removido da lista, mas houve falha ao excluir no storage.';
                     }
-                } catch (Throwable $e) {
-                    $delete_warning = 'Arquivo removido da lista, mas houve falha ao excluir no storage.';
                 }
-            }
 
-            $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
-            if ($has_deleted_by_col) {
-                $stmt_delete = $pdo->prepare("
-                    UPDATE eventos_reunioes_anexos
-                    SET deleted_at = NOW(), deleted_by = :user_id
-                    WHERE id = :id
-                ");
-                $stmt_delete->execute([
-                    ':id' => $anexo_id,
-                    ':user_id' => (int)$user_id
-                ]);
-            } else {
-                $stmt_delete = $pdo->prepare("
-                    UPDATE eventos_reunioes_anexos
-                    SET deleted_at = NOW()
-                    WHERE id = :id
-                ");
-                $stmt_delete->execute([':id' => $anexo_id]);
+                $has_deleted_by_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes_anexos', 'deleted_by');
+                if ($has_deleted_by_col) {
+                    $stmt_delete = $pdo->prepare("
+                        UPDATE eventos_reunioes_anexos
+                        SET deleted_at = NOW(), deleted_by = :user_id
+                        WHERE id = :id
+                          AND deleted_at IS NULL
+                    ");
+                    $stmt_delete->execute([
+                        ':id' => $anexo_id,
+                        ':user_id' => (int)$user_id
+                    ]);
+                } else {
+                    $stmt_delete = $pdo->prepare("
+                        UPDATE eventos_reunioes_anexos
+                        SET deleted_at = NOW()
+                        WHERE id = :id
+                          AND deleted_at IS NULL
+                    ");
+                    $stmt_delete->execute([':id' => $anexo_id]);
+                }
+            } elseif ($delete_warning === '') {
+                $delete_warning = 'Este anexo já havia sido removido anteriormente.';
             }
 
             $anexos_dj_response = array_map(
@@ -1335,8 +1349,8 @@ includeSidebar($sidebar_title);
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 34px;
-        height: 34px;
+        width: 40px;
+        height: 40px;
         border: none;
         border-radius: 10px;
         background: transparent;
@@ -1350,8 +1364,8 @@ includeSidebar($sidebar_title);
     }
 
     .tab-portal-toggle img {
-        width: 22px;
-        height: 22px;
+        width: 26px;
+        height: 26px;
         display: block;
         object-fit: contain;
     }
@@ -2333,6 +2347,16 @@ includeSidebar($sidebar_title);
 
         .tab-portal-icons {
             margin-left: 0;
+        }
+
+        .tab-portal-toggle {
+            width: 34px;
+            height: 34px;
+        }
+
+        .tab-portal-toggle img {
+            width: 22px;
+            height: 22px;
         }
         
         .event-meta {
@@ -4337,6 +4361,10 @@ async function excluirDjSlot(slot = 1) {
             if (!data.ok) {
                 alert(data.error || 'Erro ao excluir quadro');
                 return;
+            }
+            if (Array.isArray(data.anexos)) {
+                djAnexos = data.anexos;
+                renderDjAnexosList();
             }
             if (data.warning) {
                 alert(data.warning);

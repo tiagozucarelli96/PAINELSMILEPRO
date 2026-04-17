@@ -425,7 +425,7 @@ function portal_dj_resolver_dados_dj_por_links_ativos(PDO $pdo, int $meeting_id,
 
 /**
  * Verifica se o link contempla uma seção específica no allowed_sections.
- * Compatibilidade: quando ausente, assume permitido.
+ * Para observações_gerais, evita incluir links legados de decoração.
  */
 function portal_dj_link_contem_secao(?array $link, string $section): bool
 {
@@ -439,10 +439,6 @@ function portal_dj_link_contem_secao(?array $link, string $section): bool
     }
 
     $raw_allowed = $link['allowed_sections'] ?? null;
-    if ($raw_allowed === null || $raw_allowed === '') {
-        return true;
-    }
-
     $sections = [];
     if (is_array($raw_allowed)) {
         $sections = $raw_allowed;
@@ -453,16 +449,49 @@ function portal_dj_link_contem_secao(?array $link, string $section): bool
         }
     }
 
-    if (empty($sections)) {
+    if (!empty($sections)) {
+        foreach ($sections as $allowed) {
+            if (strtolower(trim((string)$allowed)) === $section) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Fallback legado: sem allowed_sections.
+    // Para observações, não assumir "permitido" para não misturar com decoração.
+    if ($section !== 'observacoes_gerais') {
         return true;
     }
 
-    foreach ($sections as $allowed) {
-        if (strtolower(trim((string)$allowed)) === $section) {
+    $title = strtolower(trim((string)($link['form_title'] ?? '')));
+    if ($title !== '') {
+        if (str_contains($title, 'decora')) {
+            return false;
+        }
+        if (str_contains($title, 'observa')) {
             return true;
         }
     }
 
+    $snapshot = trim((string)($link['content_html_snapshot'] ?? ''));
+    $draft = trim((string)($link['draft_content_html_snapshot'] ?? ''));
+    $haystack = strtolower($snapshot . "\n" . $draft);
+    if ($haystack !== '') {
+        if (str_contains($haystack, 'data-smile-public-section="decoracao"')
+            || str_contains($haystack, "data-smile-public-section='decoracao'")
+        ) {
+            return false;
+        }
+        if (str_contains($haystack, 'data-smile-public-section="observacoes_gerais"')
+            || str_contains($haystack, "data-smile-public-section='observacoes_gerais'")
+            || str_contains($haystack, 'data-smile-observacoes-block')
+        ) {
+            return true;
+        }
+    }
+
+    // Sem evidência de que seja observações gerais.
     return false;
 }
 
