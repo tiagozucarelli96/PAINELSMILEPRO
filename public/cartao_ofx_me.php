@@ -833,6 +833,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesSelecionadas);
             $duplicados = array_flip($duplicados);
             $incluirDuplicados = !empty($_POST['incluir_duplicados']);
+            $confirmouDecisaoDuplicados = !empty($_POST['confirmou_decisao_duplicados']);
             $duplicadosSelecionados = 0;
             foreach ($selecionadas as $txCheck) {
                 if (isset($duplicados[$txCheck['hash_parcela']])) {
@@ -840,6 +841,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             error_log('[CARTAO_OFX] Confirmar: duplicados selecionados=' . $duplicadosSelecionados . ' incluirDuplicados=' . ($incluirDuplicados ? '1' : '0'));
+            if ($duplicadosSelecionados > 0 && !$confirmouDecisaoDuplicados) {
+                $erros[] = 'Foram encontrados lançamentos duplicados. Confirme se deseja gerar incluindo ou ignorando os duplicados.';
+                error_log('[CARTAO_OFX] Confirmar: decisão sobre duplicados não informada, geração bloqueada');
+            }
 
             $transacoesFinal = [];
             $transacoesJson = [];
@@ -1305,6 +1310,7 @@ ob_start();
                 <input type="hidden" name="cartao_id" value="<?php echo (int)$preview['cartao_id']; ?>">
                 <input type="hidden" name="competencia" value="<?php echo htmlspecialchars($preview['competencia']); ?>">
                 <input type="hidden" name="incluir_duplicados" value="0">
+                <input type="hidden" name="confirmou_decisao_duplicados" value="0">
 
                 <table class="ofx-table">
                     <thead>
@@ -1396,8 +1402,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (confirmForm) {
         confirmForm.addEventListener('submit', function() {
             var inputIncluirDuplicados = confirmForm.querySelector('input[name="incluir_duplicados"]');
-            if (!inputIncluirDuplicados) return;
+            var inputConfirmouDecisao = confirmForm.querySelector('input[name="confirmou_decisao_duplicados"]');
+            if (!inputIncluirDuplicados || !inputConfirmouDecisao) return;
             inputIncluirDuplicados.value = '0';
+            inputConfirmouDecisao.value = '0';
 
             var duplicadosSelecionados = 0;
             confirmForm.querySelectorAll('tbody tr[data-duplicado="1"]').forEach(function(row) {
@@ -1410,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (duplicadosSelecionados > 0) {
                 var msg = 'Foram encontrados ' + duplicadosSelecionados + ' lançamento(ões) duplicado(s). Clique "OK" para gerar o OFX incluindo os duplicados ou "Cancelar" para gerar ignorando os duplicados.';
                 var incluir = window.confirm(msg);
+                inputConfirmouDecisao.value = '1';
                 if (incluir) {
                     inputIncluirDuplicados.value = '1';
                 }
@@ -1424,15 +1433,15 @@ document.addEventListener('DOMContentLoaded', function() {
             var tag = row.querySelector('.status-tag');
             if (!tag) return;
             if (this.checked) {
+                tag.textContent = 'Ignorado';
+                tag.classList.add('ignorado');
+            } else {
                 if (tag.classList.contains('duplicado')) {
                     tag.textContent = 'Duplicado';
                 } else {
                     tag.textContent = 'Novo';
                 }
                 tag.classList.remove('ignorado');
-            } else {
-                tag.textContent = 'Ignorado';
-                tag.classList.add('ignorado');
             }
         });
     });
