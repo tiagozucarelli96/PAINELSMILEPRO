@@ -832,12 +832,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('[CARTAO_OFX] Confirmar: selecionadas=' . count($selecionadas));
             $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesSelecionadas);
             $duplicados = array_flip($duplicados);
+            $incluirDuplicados = !empty($_POST['incluir_duplicados']);
+            $duplicadosSelecionados = 0;
+            foreach ($selecionadas as $txCheck) {
+                if (isset($duplicados[$txCheck['hash_parcela']])) {
+                    $duplicadosSelecionados++;
+                }
+            }
+            error_log('[CARTAO_OFX] Confirmar: duplicados selecionados=' . $duplicadosSelecionados . ' incluirDuplicados=' . ($incluirDuplicados ? '1' : '0'));
 
             $transacoesFinal = [];
             $transacoesJson = [];
             $competenciaGeracao = $selecionadas[0]['competencia_base'] ?? ($_POST['competencia'] ?? '');
             foreach ($selecionadas as $tx) {
-                        if (isset($duplicados[$tx['hash_parcela']])) {
+                        if (isset($duplicados[$tx['hash_parcela']]) && !$incluirDuplicados) {
                             continue;
                         }
                         $descFinal = $tx['descricao'];
@@ -1296,6 +1304,7 @@ ob_start();
                 <input type="hidden" name="action" value="confirmar">
                 <input type="hidden" name="cartao_id" value="<?php echo (int)$preview['cartao_id']; ?>">
                 <input type="hidden" name="competencia" value="<?php echo htmlspecialchars($preview['competencia']); ?>">
+                <input type="hidden" name="incluir_duplicados" value="0">
 
                 <table class="ofx-table">
                     <thead>
@@ -1309,7 +1318,7 @@ ob_start();
                     </thead>
                     <tbody>
                         <?php foreach ($preview['transacoes'] as $idx => $tx): ?>
-                            <tr>
+                            <tr data-duplicado="<?php echo $tx['duplicado'] ? '1' : '0'; ?>">
                                 <td><?php echo htmlspecialchars(cartao_ofx_format_date_display($tx['data_vencimento'])); ?></td>
                                 <td>
                                     <input style="width:100%;" type="text" name="tx[<?php echo $idx; ?>][descricao]" value="<?php echo htmlspecialchars($tx['descricao']); ?>">
@@ -1382,6 +1391,32 @@ ob_start();
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    var confirmFormAction = document.querySelector('form input[name="action"][value="confirmar"]');
+    var confirmForm = confirmFormAction ? confirmFormAction.closest('form') : null;
+    if (confirmForm) {
+        confirmForm.addEventListener('submit', function() {
+            var inputIncluirDuplicados = confirmForm.querySelector('input[name="incluir_duplicados"]');
+            if (!inputIncluirDuplicados) return;
+            inputIncluirDuplicados.value = '0';
+
+            var duplicadosSelecionados = 0;
+            confirmForm.querySelectorAll('tbody tr[data-duplicado="1"]').forEach(function(row) {
+                var excluirCheckbox = row.querySelector('.tx-include');
+                if (excluirCheckbox && !excluirCheckbox.checked) {
+                    duplicadosSelecionados++;
+                }
+            });
+
+            if (duplicadosSelecionados > 0) {
+                var msg = 'Foram encontrados ' + duplicadosSelecionados + ' lançamento(ões) duplicado(s). Clique "OK" para gerar o OFX incluindo os duplicados ou "Cancelar" para gerar ignorando os duplicados.';
+                var incluir = window.confirm(msg);
+                if (incluir) {
+                    inputIncluirDuplicados.value = '1';
+                }
+            }
+        });
+    }
+
     document.querySelectorAll('.tx-include').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
             var row = this.closest('tr');

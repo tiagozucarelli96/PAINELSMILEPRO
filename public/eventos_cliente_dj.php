@@ -925,10 +925,10 @@ if (empty($token)) {
         $portal_section_config = is_array($portal_config) && !empty($portal_config)
             ? eventos_cliente_portal_obter_config_secoes($portal_config)
             : [
-                'decoracao' => ['visivel' => true, 'editavel' => true],
-                'observacoes_gerais' => ['visivel' => true, 'editavel' => true],
-                'dj_protocolo' => ['visivel' => true, 'editavel' => true],
-                'formulario' => ['visivel' => true, 'editavel' => true],
+                'decoracao' => ['visivel' => true, 'editavel' => false],
+                'observacoes_gerais' => ['visivel' => true, 'editavel' => false],
+                'dj_protocolo' => ['visivel' => true, 'editavel' => false],
+                'formulario' => ['visivel' => true, 'editavel' => false],
             ];
 
         if ($link_type_current === 'cliente_observacoes'
@@ -945,7 +945,7 @@ if (empty($token)) {
                 continue;
             }
 
-            $sec_cfg = $portal_section_config[$candidate_section] ?? ['visivel' => true, 'editavel' => true];
+            $sec_cfg = $portal_section_config[$candidate_section] ?? ['visivel' => true, 'editavel' => false];
             $sec_visivel = !empty($sec_cfg['visivel']);
             $sec_editavel = !empty($sec_cfg['editavel']);
 

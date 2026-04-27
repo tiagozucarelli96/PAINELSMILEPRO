@@ -934,10 +934,10 @@ $links_cliente_formulario = $meeting_id > 0 ? eventos_reuniao_listar_links_clien
 $anexos_dj = $meeting_id > 0 ? eventos_reuniao_get_anexos($pdo, $meeting_id, 'dj_protocolo') : [];
 $portal_cliente = null;
 $portal_section_config = [
-    'decoracao' => ['visivel' => true, 'editavel' => true],
-    'observacoes_gerais' => ['visivel' => true, 'editavel' => true],
-    'dj_protocolo' => ['visivel' => true, 'editavel' => true],
-    'formulario' => ['visivel' => true, 'editavel' => true],
+    'decoracao' => ['visivel' => true, 'editavel' => false],
+    'observacoes_gerais' => ['visivel' => true, 'editavel' => false],
+    'dj_protocolo' => ['visivel' => true, 'editavel' => false],
+    'formulario' => ['visivel' => true, 'editavel' => false],
 ];
 if ($meeting_id > 0) {
     $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, (int)$user_id);
@@ -2555,7 +2555,7 @@ includeSidebar($sidebar_title);
             <?php foreach ($section_labels as $key => $info): 
                 $secao = $secoes[$key] ?? null;
                 $is_locked = $secao && !empty($secao['is_locked']);
-                $portal_cfg_secao = $portal_section_config[$key] ?? ['visivel' => true, 'editavel' => true];
+                $portal_cfg_secao = $portal_section_config[$key] ?? ['visivel' => true, 'editavel' => false];
                 $portal_secao_visivel = !empty($portal_cfg_secao['visivel']);
                 $portal_secao_editavel = !empty($portal_cfg_secao['editavel']);
                 if ($key === 'dj_protocolo') {
@@ -2933,7 +2933,7 @@ const initialFormularioLinks = <?= eventos_reuniao_json_script($links_cliente_fo
 const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
 }, $anexos_dj), '[]') ?>;
-const initialSectionPortalConfig = <?= eventos_reuniao_json_script($portal_section_config, '{"decoracao":{"visivel":true,"editavel":true},"observacoes_gerais":{"visivel":true,"editavel":true},"dj_protocolo":{"visivel":true,"editavel":true},"formulario":{"visivel":true,"editavel":true}}') ?>;
+const initialSectionPortalConfig = <?= eventos_reuniao_json_script($portal_section_config, '{"decoracao":{"visivel":true,"editavel":false},"observacoes_gerais":{"visivel":true,"editavel":false},"dj_protocolo":{"visivel":true,"editavel":false},"formulario":{"visivel":true,"editavel":false}}') ?>;
 let selectedEventId = null;
 let selectedEventData = null;
 let searchDebounceTimer = null;
@@ -3858,7 +3858,7 @@ function getSectionPortalConfig(section) {
     if (current) {
         return normalizeSectionPortalConfigEntry(current);
     }
-    return { visivel: true, editavel: true };
+    return { visivel: true, editavel: false };
 }
 
 function setSectionPortalConfig(section, config) {
