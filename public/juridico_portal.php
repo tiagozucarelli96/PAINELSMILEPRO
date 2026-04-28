@@ -73,32 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = trim((string)($_POST['acao'] ?? ''));
 
     try {
-        if ($acao === 'criar_pasta') {
-            $nomePasta = trim((string)($_POST['nome_pasta'] ?? ''));
-            $descricaoPasta = trim((string)($_POST['descricao_pasta'] ?? ''));
-
-            if ($nomePasta === '') {
-                throw new Exception('Informe o nome da pasta.');
-            }
-
-            $stmtExiste = $pdo->prepare('SELECT id FROM administrativo_juridico_pastas WHERE LOWER(nome) = LOWER(:nome) LIMIT 1');
-            $stmtExiste->execute([':nome' => $nomePasta]);
-            if ($stmtExiste->fetchColumn()) {
-                throw new Exception('Já existe uma pasta com esse nome.');
-            }
-
-            $stmtInsert = $pdo->prepare(
-                'INSERT INTO administrativo_juridico_pastas (nome, descricao, criado_por_usuario_id)
-                 VALUES (:nome, :descricao, NULL)'
-            );
-            $stmtInsert->execute([
-                ':nome' => $nomePasta,
-                ':descricao' => $descricaoPasta !== '' ? $descricaoPasta : null,
-            ]);
-
-            $mensagem = 'Pasta criada com sucesso.';
-        }
-
         if ($acao === 'adicionar_arquivo') {
             $pastaId = (int)($_POST['pasta_id'] ?? 0);
             $titulo = trim((string)($_POST['titulo'] ?? ''));
@@ -165,7 +139,6 @@ try {
          FROM administrativo_juridico_arquivos
          ORDER BY criado_em DESC'
     );
-
     $arquivos = $stmtArquivos->fetchAll(PDO::FETCH_ASSOC) ?: [];
     foreach ($arquivos as $arquivo) {
         $pastaId = (int)($arquivo['pasta_id'] ?? 0);
@@ -638,7 +611,7 @@ try {
                 <span>Ambiente oficial de documentos jurídicos</span>
             </div>
         </div>
-        <p class="intro">Aqui você também pode criar pastas e adicionar arquivos jurídicos com descrição.</p>
+        <p class="intro">Aqui o jurídico acessa os documentos organizados por funcionário e também pode adicionar novos arquivos com descrição.</p>
 
         <?php if ($mensagem !== ''): ?>
             <div class="alert ok"><?= htmlspecialchars($mensagem) ?></div>
@@ -649,7 +622,6 @@ try {
         <?php endif; ?>
 
         <div class="jp-toolbar">
-            <button type="button" class="jp-btn" onclick="openJpModal('modalPasta')">📁 Criar pasta</button>
             <button type="button" class="jp-btn secondary" onclick="openJpModal('modalArquivo')">📎 Adicionar arquivo</button>
         </div>
 
@@ -716,36 +688,6 @@ try {
             </section>
         <?php endif; ?>
     </main>
-
-    <div class="jp-modal" id="modalPasta" aria-hidden="true">
-        <div class="jp-modal-dialog">
-            <div class="jp-modal-header">
-                <h3>Criar pasta</h3>
-                <button type="button" class="jp-modal-close" onclick="closeJpModal('modalPasta')">×</button>
-            </div>
-            <div class="jp-modal-body">
-                <form method="POST">
-                    <input type="hidden" name="acao" value="criar_pasta">
-
-                    <div class="jp-grid">
-                        <div class="jp-field" style="grid-column: 1 / -1;">
-                            <label>Nome da pasta *</label>
-                            <input type="text" name="nome_pasta" maxlength="150" required>
-                        </div>
-                        <div class="jp-field" style="grid-column: 1 / -1;">
-                            <label>Descrição (opcional)</label>
-                            <textarea name="descricao_pasta" placeholder="Ex: Contratos, procurações, processos..."></textarea>
-                        </div>
-                    </div>
-
-                    <div class="jp-modal-actions">
-                        <button type="button" class="jp-btn-outline" onclick="closeJpModal('modalPasta')">Cancelar</button>
-                        <button type="submit" class="jp-btn">Salvar pasta</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
 
     <div class="jp-modal" id="modalArquivo" aria-hidden="true">
         <div class="jp-modal-dialog">

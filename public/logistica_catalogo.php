@@ -26,6 +26,72 @@ $status = in_array($status, ['todos', 'ativos', 'inativos'], true) ? $status : '
 
 $itens = [];
 $catalog_messages = [];
+$catalog_errors = [];
+
+function catalogo_erros_fk(PDOException $e): bool
+{
+    return $e->getCode() === '23503';
+}
+
+function catalogo_buscar_bloqueios_exclusao_insumo(PDO $pdo, int $id): array
+{
+    $checks = [
+        'fichas técnicas' => "SELECT COUNT(*) FROM logistica_receita_componentes WHERE item_tipo = 'insumo' AND item_id = :id",
+        'listas de compras' => "SELECT COUNT(*) FROM logistica_lista_itens WHERE insumo_id = :id",
+        'saldos de estoque' => "SELECT COUNT(*) FROM logistica_estoque_saldos WHERE insumo_id = :id",
+        'contagens de estoque' => "SELECT COUNT(*) FROM logistica_estoque_contagem_itens WHERE insumo_id = :id",
+        'movimentações de estoque' => "SELECT COUNT(*) FROM logistica_estoque_movimentos WHERE insumo_id = :id",
+        'itens baixados em eventos' => "SELECT COUNT(*) FROM logistica_evento_itens_baixa WHERE insumo_id = :id",
+        'alertas/logs' => "SELECT COUNT(*) FROM logistica_alertas_log WHERE insumo_id = :id",
+        'revisões de custo' => "SELECT COUNT(*) FROM logistica_custos_log WHERE insumo_id = :id"
+    ];
+
+    $blockedBy = [];
+    foreach ($checks as $label => $sql) {
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([':id' => $id]);
+            $count = (int)$stmt->fetchColumn();
+            if ($count > 0) {
+                $blockedBy[] = $label;
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    return $blockedBy;
+}
+
+function catalogo_buscar_bloqueios_exclusao_receita(PDO $pdo, int $id): array
+{
+    $checks = [
+        'componentes de outras fichas técnicas' => "SELECT COUNT(*) FROM logistica_receita_componentes WHERE item_tipo = 'receita' AND item_id = :id"
+    ];
+
+    $blockedBy = [];
+    foreach ($checks as $label => $sql) {
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([':id' => $id]);
+            $count = (int)$stmt->fetchColumn();
+            if ($count > 0) {
+                $blockedBy[] = $label;
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    return $blockedBy;
+}
+
+function catalogo_mensagem_bloqueio(string $tipo, array $blockedBy): string
+{
+    if (empty($blockedBy)) {
+        return "Não foi possível excluir {$tipo} porque ele ainda está sendo usado em outros registros.";
+    }
+
+    return "Não foi possível excluir {$tipo} porque ele ainda está vinculado a: " . implode(', ', $blockedBy) . '.';
+}
 
 function h_catalogo(?string $value): string
 {
@@ -154,12 +220,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
-        if ($action === 'delete_insumo') {
-            $pdo->prepare("DELETE FROM logistica_insumos WHERE id = :id")->execute([':id' => $id]);
-            $catalog_messages[] = 'Insumo excluído.';
-        } elseif ($action === 'delete_receita') {
-            $pdo->prepare("DELETE FROM logistica_receitas WHERE id = :id")->execute([':id' => $id]);
-            $catalog_messages[] = 'Receita excluída.';
+        try {
+            if ($action === 'delete_insumo') {
+                $pdo->prepare("DELETE FROM logistica_insumos WHERE id = :id")->execute([':id' => $id]);
+                $catalog_messages[] = 'Insumo excluído.';
+            } elseif ($action === 'delete_receita') {
+                $pdo->prepare("DELETE FROM logistica_receitas WHERE id = :id")->execute([':id' => $id]);
+                $catalog_messages[] = 'Receita excluída.';
+            }
+        } catch (PDOException $e) {
+            if ($action === 'delete_insumo' && catalogo_erros_fk($e)) {
+                $catalog_errors[] = catalogo_mensagem_bloqueio('este insumo', catalogo_buscar_bloqueios_exclusao_insumo($pdo, $id));
+            } elseif ($action === 'delete_receita' && catalogo_erros_fk($e)) {
+                $catalog_errors[] = catalogo_mensagem_bloqueio('esta receita', catalogo_buscar_bloqueios_exclusao_receita($pdo, $id));
+            } else {
+                $catalog_errors[] = 'Não foi possível concluir a exclusão agora.';
+                error_log('Erro ao excluir item do catálogo: ' . $e->getMessage());
+            }
         }
     }
 }
@@ -439,6 +516,9 @@ includeSidebar('Catálogo Logístico');
 
 <div class="catalogo-container">
     <div class="section-card">
+        <?php foreach ($catalog_errors as $msg): ?>
+            <div class="alert alert-error"><?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endforeach; ?>
         <?php foreach ($catalog_messages as $msg): ?>
             <div class="alert alert-success"><?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>

@@ -141,6 +141,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mensagem = 'Arquivo adicionado com sucesso na pasta "' . ((string)($pasta['nome'] ?? '')) . '".';
         }
 
+        if ($acao === 'mover_arquivo') {
+            $arquivoId = (int)($_POST['arquivo_id'] ?? 0);
+            $novaPastaId = (int)($_POST['nova_pasta_id'] ?? 0);
+
+            if ($arquivoId <= 0) {
+                throw new Exception('Arquivo inválido para movimentação.');
+            }
+
+            if ($novaPastaId <= 0) {
+                throw new Exception('Selecione a nova pasta do arquivo.');
+            }
+
+            $stmtArquivo = $pdo->prepare(
+                'SELECT a.id, a.titulo, a.pasta_id, p.nome AS pasta_nome
+                 FROM administrativo_juridico_arquivos a
+                 INNER JOIN administrativo_juridico_pastas p ON p.id = a.pasta_id
+                 WHERE a.id = :id
+                 LIMIT 1'
+            );
+            $stmtArquivo->execute([':id' => $arquivoId]);
+            $arquivo = $stmtArquivo->fetch(PDO::FETCH_ASSOC);
+
+            if (!$arquivo) {
+                throw new Exception('Arquivo não encontrado.');
+            }
+
+            if ((int)($arquivo['pasta_id'] ?? 0) === $novaPastaId) {
+                throw new Exception('O arquivo já está nesta pasta.');
+            }
+
+            $stmtNovaPasta = $pdo->prepare('SELECT id, nome FROM administrativo_juridico_pastas WHERE id = :id LIMIT 1');
+            $stmtNovaPasta->execute([':id' => $novaPastaId]);
+            $novaPasta = $stmtNovaPasta->fetch(PDO::FETCH_ASSOC);
+
+            if (!$novaPasta) {
+                throw new Exception('Nova pasta não encontrada.');
+            }
+
+            $stmtMover = $pdo->prepare(
+                'UPDATE administrativo_juridico_arquivos
+                 SET pasta_id = :pasta_id,
+                     atualizado_em = NOW()
+                 WHERE id = :id'
+            );
+            $stmtMover->execute([
+                ':pasta_id' => $novaPastaId,
+                ':id' => $arquivoId,
+            ]);
+
+            $mensagem = 'Arquivo "' . ((string)($arquivo['titulo'] ?? 'Documento')) . '" movido para a pasta "' . ((string)($novaPasta['nome'] ?? '')) . '".';
+        }
+
         if ($acao === 'cadastrar_usuario') {
             $nomeUsuario = trim((string)($_POST['nome_usuario'] ?? ''));
             $emailUsuario = trim((string)($_POST['email_usuario'] ?? ''));
@@ -265,15 +317,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $pastas = [];
 $arquivos = [];
 $arquivosPorPasta = [];
+$colaboradoresComPastas = [];
 $usuariosJuridico = [];
 
 try {
     $stmt = $pdo->query(
-        'SELECT p.id, p.nome, p.descricao, p.criado_em, COUNT(a.id) AS total_arquivos
+        'SELECT p.id, p.nome, p.descricao, p.criado_em, p.usuario_empresa_id,
+                ue.nome AS usuario_empresa_nome,
+                COUNT(a.id) AS total_arquivos
          FROM administrativo_juridico_pastas p
+         LEFT JOIN usuarios ue ON ue.id = p.usuario_empresa_id
          LEFT JOIN administrativo_juridico_arquivos a ON a.pasta_id = p.id
-         GROUP BY p.id
-         ORDER BY p.nome ASC'
+         GROUP BY p.id, ue.nome
+         ORDER BY
+            CASE WHEN p.usuario_empresa_id IS NULL THEN 1 ELSE 0 END,
+            COALESCE(ue.nome, p.nome) ASC'
     );
     $pastas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {
@@ -283,8 +341,10 @@ try {
 try {
     $stmt = $pdo->query(
         'SELECT a.id, a.pasta_id, a.titulo, a.descricao, a.arquivo_nome, a.criado_em, a.tamanho_bytes,
+                p.nome AS pasta_nome,
                 u.nome AS criado_por_nome
          FROM administrativo_juridico_arquivos a
+         INNER JOIN administrativo_juridico_pastas p ON p.id = a.pasta_id
          LEFT JOIN usuarios u ON u.id = a.criado_por_usuario_id
          ORDER BY a.criado_em DESC'
     );
@@ -303,9 +363,37 @@ try {
 
 try {
     $stmt = $pdo->query(
-        'SELECT id, nome, email, ativo, criado_em
-         FROM administrativo_juridico_usuarios
-         ORDER BY ativo DESC, nome ASC'
+        'SELECT u.id, u.nome, u.email, u.cargo, u.ativo,
+                p.id AS pasta_id,
+                COALESCE(arquivos.total_arquivos, 0) AS total_arquivos
+         FROM usuarios u
+         LEFT JOIN administrativo_juridico_pastas p ON p.usuario_empresa_id = u.id
+         LEFT JOIN (
+             SELECT pasta_id, COUNT(*) AS total_arquivos
+             FROM administrativo_juridico_arquivos
+             GROUP BY pasta_id
+         ) arquivos ON arquivos.pasta_id = p.id
+         WHERE u.ativo IS DISTINCT FROM FALSE
+         ORDER BY u.nome ASC'
+    );
+    $colaboradoresComPastas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {
+    error_log('Juridico - listar colaboradores: ' . $e->getMessage());
+}
+
+try {
+    $stmt = $pdo->query(
+        'SELECT uj.id, uj.nome, uj.email, uj.ativo, uj.criado_em,
+                p.id AS pasta_id,
+                COALESCE(arquivos.total_arquivos, 0) AS total_arquivos
+         FROM administrativo_juridico_usuarios uj
+         LEFT JOIN administrativo_juridico_pastas p ON p.usuario_juridico_id = uj.id
+         LEFT JOIN (
+             SELECT pasta_id, COUNT(*) AS total_arquivos
+             FROM administrativo_juridico_arquivos
+             GROUP BY pasta_id
+         ) arquivos ON arquivos.pasta_id = p.id
+         ORDER BY uj.ativo DESC, uj.nome ASC'
     );
     $usuariosJuridico = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (Exception $e) {
@@ -419,6 +507,29 @@ ob_start();
         margin-bottom: .72rem;
         line-height: 1.38;
     }
+    .aj-folder-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .4rem;
+        margin-bottom: .72rem;
+    }
+    .aj-badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: .24rem .56rem;
+        font-size: .74rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .aj-badge.user {
+        background: #dcfce7;
+        color: #166534;
+    }
+    .aj-badge.legacy {
+        background: #fef3c7;
+        color: #92400e;
+    }
 
     .aj-file-list {
         display: flex;
@@ -482,6 +593,11 @@ ob_start();
         text-decoration: none;
     }
     .aj-link-btn:hover { background: #dbeafe; }
+    .aj-link-btn.move {
+        background: #ecfeff;
+        color: #155e75;
+    }
+    .aj-link-btn.move:hover { background: #cffafe; }
 
     .aj-empty {
         background: #f8fafc;
@@ -632,7 +748,7 @@ ob_start();
 
 <div class="aj-container">
     <h1 class="aj-title">⚖️ Jurídico</h1>
-    <p class="aj-subtitle">Área para gestão de arquivos jurídicos por pasta, com acesso externo dedicado por usuário e senha.</p>
+    <p class="aj-subtitle">Cada funcionário cadastrado no sistema possui uma pasta própria com o mesmo nome. As pastas antigas continuam disponíveis e os arquivos podem ser movidos para a pasta correta de cada colaborador.</p>
 
     <?php if ($mensagem !== ''): ?>
         <div class="aj-alert ok"><?= htmlspecialchars($mensagem) ?></div>
@@ -645,6 +761,7 @@ ob_start();
     <div class="aj-toolbar">
         <button type="button" class="aj-btn" onclick="openAjModal('modalPasta')">📁 Criar pasta</button>
         <button type="button" class="aj-btn secondary" onclick="openAjModal('modalArquivo')">📎 Adicionar arquivos</button>
+        <button type="button" class="aj-btn secondary" style="background:#0f766e;" onclick="openAjModal('modalMoverArquivo')">🔁 Mover arquivo</button>
         <button type="button" class="aj-btn dark" onclick="openAjModal('modalUsuario')">👤 Usuário</button>
     </div>
 
@@ -671,6 +788,14 @@ ob_start();
                             <?php if (!empty($pasta['descricao'])): ?>
                                 <div class="aj-folder-desc"><?= nl2br(htmlspecialchars((string)$pasta['descricao'])) ?></div>
                             <?php endif; ?>
+
+                            <div class="aj-folder-badges">
+                                <?php if (!empty($pasta['usuario_empresa_id'])): ?>
+                                    <span class="aj-badge user">Funcionário: <?= htmlspecialchars((string)($pasta['usuario_empresa_nome'] ?? $pasta['nome'] ?? '')) ?></span>
+                                <?php else: ?>
+                                    <span class="aj-badge legacy">Pasta legada / geral</span>
+                                <?php endif; ?>
+                            </div>
 
                             <?php if (empty($arquivosDaPasta)): ?>
                                 <div class="aj-empty">Sem arquivos nesta pasta.</div>
@@ -701,6 +826,12 @@ ob_start();
                                                     onclick='openAjPreview(<?= json_encode("juridico_download.php?id=" . (int)($arquivo["id"] ?? 0)) ?>, <?= json_encode((string)($arquivo["titulo"] ?? "Arquivo"), JSON_UNESCAPED_UNICODE) ?>)'>
                                                     Visualizar arquivo
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    class="aj-link-btn move"
+                                                    onclick='openMoveFileModal(<?= (int)($arquivo["id"] ?? 0) ?>, <?= json_encode((string)($arquivo["titulo"] ?? "Arquivo"), JSON_UNESCAPED_UNICODE) ?>, <?= (int)($arquivo["pasta_id"] ?? 0) ?>, <?= json_encode((string)($arquivo["pasta_nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>)'>
+                                                    Mover
+                                                </button>
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
@@ -708,6 +839,40 @@ ob_start();
                             <?php endif; ?>
                         </div>
                     </details>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <div class="aj-section">
+        <h2>Funcionários com pastas</h2>
+        <?php if (empty($colaboradoresComPastas)): ?>
+            <div class="aj-empty">Nenhum funcionário ativo encontrado no sistema.</div>
+        <?php else: ?>
+            <div class="aj-users-list">
+                <?php foreach ($colaboradoresComPastas as $user): ?>
+                    <?php
+                    $userId = (int)($user['id'] ?? 0);
+                    $userNome = (string)($user['nome'] ?? '');
+                    $userEmail = (string)($user['email'] ?? '');
+                    $userCargo = trim((string)($user['cargo'] ?? ''));
+                    ?>
+                    <div class="aj-user-item">
+                        <div class="aj-user-top">
+                            <div>
+                                <div class="aj-user-name"><?= htmlspecialchars($userNome) ?></div>
+                                <div class="aj-user-meta">
+                                    <?= $userCargo !== '' ? htmlspecialchars($userCargo) . ' • ' : '' ?>
+                                    <?= $userEmail !== '' ? htmlspecialchars($userEmail) : 'Sem e-mail' ?>
+                                </div>
+                            </div>
+                            <span class="aj-user-edit" style="cursor:default; background:#dcfce7; color:#166534;">
+                                <?= !empty($user['pasta_id']) ? 'Pasta criada' : 'Sem pasta' ?>
+                            </span>
+                        </div>
+                        <div class="aj-user-meta">ID do sistema: <?= $userId ?></div>
+                        <div class="aj-user-meta">Pasta vinculada: <?= !empty($user['pasta_id']) ? 'Sim' : 'Não' ?> • <?= (int)($user['total_arquivos'] ?? 0) ?> arquivo(s)</div>
+                    </div>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -760,6 +925,7 @@ ob_start();
                     <div class="aj-field" style="grid-column: 1 / -1;">
                         <label>Nome da pasta *</label>
                         <input type="text" name="nome_pasta" maxlength="150" required>
+                        <div class="aj-help">Use esta opção apenas para pastas legadas, temporárias ou compartilhadas. As pastas dos funcionários são criadas automaticamente a partir do cadastro do sistema.</div>
                     </div>
                     <div class="aj-field" style="grid-column: 1 / -1;">
                         <label>Descrição (opcional)</label>
@@ -836,6 +1002,7 @@ ob_start();
                     <div class="aj-field" style="grid-column: 1 / -1;">
                         <label>Nome do usuário *</label>
                         <input type="text" name="nome_usuario" maxlength="120" required>
+                        <div class="aj-help">Este cadastro é para quem acessa o portal jurídico. As pastas dos funcionários vêm do cadastro principal do sistema.</div>
                     </div>
 
                     <div class="aj-field" style="grid-column: 1 / -1;">
@@ -914,6 +1081,58 @@ ob_start();
     </div>
 </div>
 
+<div class="aj-modal" id="modalMoverArquivo" aria-hidden="true">
+    <div class="aj-modal-dialog">
+        <div class="aj-modal-header" style="background:#0f766e;">
+            <h3>Mover arquivo</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalMoverArquivo')">×</button>
+        </div>
+        <div class="aj-modal-body">
+            <form method="POST">
+                <input type="hidden" name="acao" value="mover_arquivo">
+                <input type="hidden" name="arquivo_id" id="moveArquivoId" value="">
+
+                <div class="aj-grid">
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Arquivo selecionado</label>
+                        <input type="text" id="moveArquivoTitulo" value="" readonly>
+                    </div>
+
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Pasta atual</label>
+                        <input type="text" id="moveArquivoPastaAtual" value="" readonly>
+                    </div>
+
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Nova pasta *</label>
+                        <select name="nova_pasta_id" id="moveNovaPastaId" required>
+                            <option value="">Selecione a nova pasta</option>
+                            <?php foreach ($pastas as $pasta): ?>
+                                <?php
+                                $isPastaUsuario = !empty($pasta['usuario_empresa_id']);
+                                $rotuloPasta = (string)($pasta['nome'] ?? '');
+                                if ($isPastaUsuario && !empty($pasta['usuario_empresa_nome'])) {
+                                    $rotuloPasta .= ' (funcionário)';
+                                } elseif (!$isPastaUsuario) {
+                                    $rotuloPasta .= ' (legada)';
+                                }
+                                ?>
+                                <option value="<?= (int)($pasta['id'] ?? 0) ?>"><?= htmlspecialchars($rotuloPasta) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="aj-help">Use esta ação para migrar arquivos das pastas antigas para a pasta correta do funcionário.</div>
+                    </div>
+                </div>
+
+                <div class="aj-modal-actions">
+                    <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalMoverArquivo')">Cancelar</button>
+                    <button type="submit" class="aj-btn secondary">Mover arquivo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="aj-modal" id="modalVisualizarArquivo" aria-hidden="true">
     <div class="aj-modal-dialog aj-preview-dialog">
         <div class="aj-modal-header">
@@ -976,6 +1195,26 @@ ob_start();
         if (inputEmail) inputEmail.value = email || '';
 
         openAjModal('modalEditarUsuario');
+    }
+
+    function openMoveFileModal(id, titulo, pastaIdAtual, pastaNomeAtual) {
+        var inputId = document.getElementById('moveArquivoId');
+        var inputTitulo = document.getElementById('moveArquivoTitulo');
+        var inputPastaAtual = document.getElementById('moveArquivoPastaAtual');
+        var selectNovaPasta = document.getElementById('moveNovaPastaId');
+
+        if (inputId) inputId.value = id || '';
+        if (inputTitulo) inputTitulo.value = titulo || '';
+        if (inputPastaAtual) inputPastaAtual.value = pastaNomeAtual || '';
+
+        if (selectNovaPasta) {
+            selectNovaPasta.value = '';
+            Array.prototype.forEach.call(selectNovaPasta.options, function(option) {
+                option.disabled = String(option.value || '') === String(pastaIdAtual || '');
+            });
+        }
+
+        openAjModal('modalMoverArquivo');
     }
 
     function openAjPreview(url, title) {

@@ -57,9 +57,9 @@ if ($arquivoId <= 0) {
 $arquivo = null;
 try {
     $stmt = $pdo->prepare(
-        'SELECT id, arquivo_nome, arquivo_url, chave_storage
-         FROM administrativo_juridico_arquivos
-         WHERE id = :id
+        'SELECT a.id, a.arquivo_nome, a.arquivo_url, a.chave_storage
+         FROM administrativo_juridico_arquivos a
+         WHERE a.id = :id
          LIMIT 1'
     );
     $stmt->execute([':id' => $arquivoId]);
