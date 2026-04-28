@@ -49,13 +49,50 @@ function parse_decimal($value): ?float {
     if ($raw === '') {
         return null;
     }
-    $normalized = preg_replace('/[^0-9,\\.]/', '', $raw);
-    $normalized = str_replace(['.', ','], ['', '.'], $normalized);
-    return $normalized === '' ? null : (float)$normalized;
+
+    $normalized = preg_replace('/[^0-9,\\.\\-]/', '', $raw);
+    if ($normalized === '' || $normalized === '-') {
+        return null;
+    }
+
+    if (strpos($normalized, ',') !== false && strpos($normalized, '.') !== false) {
+        $normalized = str_replace('.', '', $normalized);
+        $normalized = str_replace(',', '.', $normalized);
+    } elseif (strpos($normalized, ',') !== false) {
+        $normalized = str_replace('.', '', $normalized);
+        $normalized = str_replace(',', '.', $normalized);
+    } else {
+        if (substr_count($normalized, '.') > 1) {
+            $normalized = str_replace('.', '', $normalized);
+        } elseif (strpos($normalized, '.') !== false) {
+            [$intPart, $fracPart] = explode('.', $normalized, 2);
+            if (strlen($fracPart) === 3 && $intPart !== '' && $intPart !== '-') {
+                $normalized = $intPart . $fracPart;
+            }
+        }
+    }
+
+    if ($normalized === '' || $normalized === '-' || $normalized === '.') {
+        return null;
+    }
+
+    return (float)$normalized;
 }
 
 function pg_bool_param(bool $value): string {
     return $value ? 'true' : 'false';
+}
+
+function validate_numeric_12_4(?float $value, string $label): ?string {
+    if ($value === null) {
+        return null;
+    }
+
+    if (abs($value) >= 100000000) {
+        return sprintf('%s excede o limite máximo permitido.', $label);
+    }
+
+    return null;
 }
 
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
@@ -245,6 +282,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $fator = 1.0;
                 }
                 $peso_bruto = $peso_liquido * $fator;
+
+                $overflow_error = validate_numeric_12_4($peso_liquido, 'Peso líquido');
+                if ($overflow_error === null) {
+                    $overflow_error = validate_numeric_12_4($fator, 'Fator de correção');
+                }
+                if ($overflow_error === null) {
+                    $overflow_error = validate_numeric_12_4($peso_bruto, 'Peso bruto');
+                }
+                if ($overflow_error !== null) {
+                    $errors[] = $overflow_error;
+                    continue;
+                }
 
                 $componentes_norm[] = [
                     'item_tipo' => $tipo,

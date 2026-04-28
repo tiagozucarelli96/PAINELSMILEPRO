@@ -56,6 +56,122 @@ function eventos_realizar_resumo_checklist(PDO $pdo, int $meeting_id): array
     return ['total' => $total, 'concluidos' => $concluidos];
 }
 
+function eventos_realizar_buscar_evento_cache_lista(PDO $pdo, int $me_event_id): ?array
+{
+    if ($me_event_id <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT data
+            FROM eventos_me_cache
+            WHERE cache_key LIKE 'events_list_%'
+            ORDER BY cached_at DESC
+            LIMIT 10
+        ");
+        $stmt->execute();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $events = json_decode((string)($row['data'] ?? ''), true);
+            if (!is_array($events)) {
+                continue;
+            }
+
+            foreach ($events as $event) {
+                if (!is_array($event)) {
+                    continue;
+                }
+                if ((int)($event['id'] ?? 0) === $me_event_id) {
+                    return $event;
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_realizar_buscar_evento_cache_lista: ' . $e->getMessage());
+    }
+
+    return null;
+}
+
+function eventos_realizar_atualizar_snapshot_me(PDO $pdo, array $reuniao): array
+{
+    $me_event_id = (int)($reuniao['me_event_id'] ?? 0);
+    if ($me_event_id <= 0) {
+        return $reuniao;
+    }
+
+    $snapshot_atual = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot_atual)) {
+        $snapshot_atual = [];
+    }
+
+    try {
+        $result = eventos_me_buscar_por_id($pdo, $me_event_id);
+        $event = (!empty($result['ok']) && !empty($result['event']) && is_array($result['event']))
+            ? $result['event']
+            : eventos_realizar_buscar_evento_cache_lista($pdo, $me_event_id);
+
+        if (!is_array($event)) {
+            return $reuniao;
+        }
+
+        $snapshot_me = eventos_me_criar_snapshot($event);
+        $snapshot_atualizado = eventos_me_merge_snapshot($snapshot_atual, $snapshot_me);
+        $snapshot_atualizado['snapshot_at'] = date('Y-m-d H:i:s');
+
+        $snapshot_json_atual = json_encode($snapshot_atual, JSON_UNESCAPED_UNICODE);
+        $snapshot_json_novo = json_encode($snapshot_atualizado, JSON_UNESCAPED_UNICODE);
+        if ($snapshot_json_novo !== false && $snapshot_json_novo !== $snapshot_json_atual) {
+            $stmt = $pdo->prepare("
+                UPDATE eventos_reunioes
+                SET me_event_snapshot = :snapshot, updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':snapshot' => $snapshot_json_novo,
+                ':id' => (int)$reuniao['id'],
+            ]);
+
+            $reuniao['me_event_snapshot'] = $snapshot_json_novo;
+            $reuniao['updated_at'] = date('Y-m-d H:i:s');
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_realizar_atualizar_snapshot_me: ' . $e->getMessage());
+    }
+
+    return $reuniao;
+}
+
+function eventos_realizar_linha_from_reuniao(array $reuniao): array
+{
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+
+    $data_evento = trim((string)($snapshot['data'] ?? ''));
+    $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+    $hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+    $data_hora_evento = null;
+    if ($data_evento !== '') {
+        $data_hora_evento = trim($data_evento . ' ' . ($hora_inicio !== '' ? $hora_inicio : '00:00'));
+    }
+
+    return [
+        'id' => (int)($reuniao['id'] ?? 0),
+        'me_event_id' => (int)($reuniao['me_event_id'] ?? 0),
+        'status' => (string)($reuniao['status'] ?? 'rascunho'),
+        'updated_at' => (string)($reuniao['updated_at'] ?? ''),
+        'data_evento' => $data_evento,
+        'hora_inicio' => $hora_inicio,
+        'hora_fim' => $hora_fim,
+        'data_hora_evento' => $data_hora_evento,
+        'nome_evento' => eventos_me_pick_text($snapshot, ['nome'], 'Evento sem nome'),
+        'local_evento' => eventos_me_snapshot_local($snapshot, 'Local não informado'),
+        'cliente_nome' => eventos_me_snapshot_cliente_nome($snapshot, 'Cliente não informado'),
+    ];
+}
+
 $meeting_id = (int)($_GET['id'] ?? 0);
 $busca = trim((string)($_GET['busca'] ?? ''));
 $reuniao = null;
@@ -69,6 +185,7 @@ if ($meeting_id > 0) {
         $meeting_id = 0;
         $erro_reuniao = 'Evento não encontrado para realização.';
     } else {
+        $reuniao = eventos_realizar_atualizar_snapshot_me($pdo, $reuniao);
         $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
         if (!is_array($snapshot)) {
             $snapshot = [];
@@ -123,6 +240,7 @@ if (!$reuniao) {
         SELECT
             r.id,
             r.me_event_id,
+            r.me_event_snapshot,
             r.status,
             r.updated_at,
             (r.me_event_snapshot->>'data') AS data_evento,
@@ -142,6 +260,18 @@ if (!$reuniao) {
     ");
     $stmt->execute($params);
     $eventos_disponiveis = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($eventos_disponiveis as $idx => $evento_item) {
+        $reuniao_item = [
+            'id' => (int)($evento_item['id'] ?? 0),
+            'me_event_id' => (int)($evento_item['me_event_id'] ?? 0),
+            'status' => (string)($evento_item['status'] ?? 'rascunho'),
+            'updated_at' => (string)($evento_item['updated_at'] ?? ''),
+            'me_event_snapshot' => (string)($evento_item['me_event_snapshot'] ?? '{}'),
+        ];
+        $reuniao_item = eventos_realizar_atualizar_snapshot_me($pdo, $reuniao_item);
+        $eventos_disponiveis[$idx] = eventos_realizar_linha_from_reuniao($reuniao_item);
+    }
 }
 
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Evento'));

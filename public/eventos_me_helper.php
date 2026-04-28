@@ -652,7 +652,7 @@ function eventos_me_merge_snapshot(array $current, array $incoming): array {
 
         $value = $incoming[$field];
         if (is_string($value)) {
-            if (trim($value) !== '' || !array_key_exists($field, $merged)) {
+            if (trim($value) !== '') {
                 $merged[$field] = $value;
             }
             continue;
@@ -686,7 +686,7 @@ function eventos_me_merge_snapshot(array $current, array $incoming): array {
 
         $value = $incoming_cliente[$field];
         if (is_string($value)) {
-            if (trim($value) !== '' || !array_key_exists($field, $merged['cliente'])) {
+            if (trim($value) !== '') {
                 $merged['cliente'][$field] = $value;
             }
             continue;
