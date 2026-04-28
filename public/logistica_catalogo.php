@@ -27,6 +27,129 @@ $status = in_array($status, ['todos', 'ativos', 'inativos'], true) ? $status : '
 $itens = [];
 $catalog_messages = [];
 
+function h_catalogo(?string $value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function catalogo_normalizar_texto(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    if (is_string($ascii) && $ascii !== '') {
+        $value = $ascii;
+    }
+
+    $value = preg_replace('/[^a-z0-9\s]/', ' ', $value);
+    $value = preg_replace('/\s+/', ' ', (string)$value);
+    return trim((string)$value);
+}
+
+function catalogo_match_score(string $query, string $candidate): ?float
+{
+    $query = catalogo_normalizar_texto($query);
+    $candidate = catalogo_normalizar_texto($candidate);
+
+    if ($query === '' || $candidate === '') {
+        return null;
+    }
+
+    if ($query === $candidate) {
+        return 1000.0;
+    }
+
+    if (str_contains($candidate, $query)) {
+        return 900.0 - (strlen($candidate) - strlen($query));
+    }
+
+    $queryTokens = array_values(array_filter(explode(' ', $query)));
+    $candidateTokens = array_values(array_filter(explode(' ', $candidate)));
+
+    $tokenHits = 0;
+    foreach ($queryTokens as $token) {
+        foreach ($candidateTokens as $candidateToken) {
+            if ($candidateToken === $token || str_contains($candidateToken, $token) || str_contains($token, $candidateToken)) {
+                $tokenHits++;
+                break;
+            }
+
+            $distance = levenshtein($token, $candidateToken);
+            $maxLen = max(strlen($token), strlen($candidateToken));
+            if ($maxLen <= 0) {
+                continue;
+            }
+            if ($distance <= 1 || ($maxLen >= 6 && $distance <= 2)) {
+                $tokenHits++;
+                break;
+            }
+        }
+    }
+
+    similar_text($query, $candidate, $similarityPercent);
+    $distance = levenshtein($query, $candidate);
+    $maxLen = max(strlen($query), strlen($candidate));
+    $distanceRatio = $maxLen > 0 ? 1 - ($distance / $maxLen) : 0;
+
+    if ($tokenHits === 0 && $similarityPercent < 55 && $distanceRatio < 0.45) {
+        return null;
+    }
+
+    return ($tokenHits * 100) + $similarityPercent + ($distanceRatio * 100);
+}
+
+function catalogo_filtrar_itens(array $items, string $search): array
+{
+    $search = trim($search);
+    if ($search === '') {
+        return $items;
+    }
+
+    $ranked = [];
+    foreach ($items as $item) {
+        $searchables = [
+            (string)($item['nome'] ?? ''),
+            (string)($item['tipologia'] ?? ''),
+            (string)($item['extra'] ?? ''),
+            (string)($item['search_extra'] ?? '')
+        ];
+
+        $bestScore = null;
+        foreach ($searchables as $candidate) {
+            $score = catalogo_match_score($search, $candidate);
+            if ($score !== null && ($bestScore === null || $score > $bestScore)) {
+                $bestScore = $score;
+            }
+        }
+
+        if ($bestScore === null) {
+            continue;
+        }
+
+        $item['_score'] = $bestScore;
+        $ranked[] = $item;
+    }
+
+    usort($ranked, static function (array $a, array $b): int {
+        $scoreCompare = ($b['_score'] ?? 0) <=> ($a['_score'] ?? 0);
+        if ($scoreCompare !== 0) {
+            return $scoreCompare;
+        }
+        return strcmp((string)($a['nome'] ?? ''), (string)($b['nome'] ?? ''));
+    });
+
+    foreach ($ranked as &$item) {
+        unset($item['_score']);
+    }
+    unset($item);
+
+    return $ranked;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
@@ -46,6 +169,7 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
         SELECT i.id,
                i.nome_oficial AS nome,
                i.ativo,
+               i.sinonimos,
                t.nome AS tipologia,
                u.nome AS unidade,
                i.custo_padrao
@@ -55,10 +179,6 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
     ";
     $conds = [];
     $params = [];
-    if ($search !== '') {
-        $conds[] = "(LOWER(i.nome_oficial) LIKE LOWER(:q) OR LOWER(COALESCE(i.sinonimos, '')) LIKE LOWER(:q))";
-        $params[':q'] = '%' . $search . '%';
-    }
     if ($status === 'ativos') {
         $conds[] = "i.ativo IS TRUE";
     } elseif ($status === 'inativos') {
@@ -81,6 +201,7 @@ if ($tipo === 'todos' || $tipo === 'insumos') {
             'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
             'extra' => $row['unidade'] ?? '',
+            'search_extra' => (string)($row['sinonimos'] ?? ''),
             'valores' => $valores ? implode(' | ', $valores) : '-',
             'ativo' => !empty($row['ativo']),
             'id' => (int)$row['id'],
@@ -101,10 +222,6 @@ if ($tipo === 'todos' || $tipo === 'receitas') {
     ";
     $conds = [];
     $params = [];
-    if ($search !== '') {
-        $conds[] = "LOWER(r.nome) LIKE LOWER(:q)";
-        $params[':q'] = '%' . $search . '%';
-    }
     if ($status === 'ativos') {
         $conds[] = "r.ativo IS TRUE";
     } elseif ($status === 'inativos') {
@@ -123,6 +240,7 @@ if ($tipo === 'todos' || $tipo === 'receitas') {
             'nome' => $row['nome'] ?? '',
             'tipologia' => $row['tipologia'] ?? '',
             'extra' => $rendimento > 0 ? ('Rendimento: ' . $rendimento) : '',
+            'search_extra' => '',
             'valores' => '-',
             'ativo' => !empty($row['ativo']),
             'id' => (int)$row['id'],
@@ -131,9 +249,13 @@ if ($tipo === 'todos' || $tipo === 'receitas') {
     }
 }
 
-usort($itens, static function ($a, $b) {
-    return strcmp($a['nome'], $b['nome']);
-});
+$itens = catalogo_filtrar_itens($itens, $search);
+
+if ($search === '') {
+    usort($itens, static function ($a, $b) {
+        return strcmp($a['nome'], $b['nome']);
+    });
+}
 
 includeSidebar('Catálogo Logístico');
 ?>
@@ -284,6 +406,9 @@ includeSidebar('Catálogo Logístico');
     opacity: 0;
     pointer-events: none;
 }
+.catalog-hidden {
+    display: none;
+}
 .modal-loader-spinner {
     width: 18px;
     height: 18px;
@@ -337,7 +462,7 @@ includeSidebar('Catálogo Logístico');
                     <option value="ativos" <?= $status === 'ativos' ? 'selected' : '' ?>>Ativos</option>
                     <option value="inativos" <?= $status === 'inativos' ? 'selected' : '' ?>>Inativos</option>
                 </select>
-                <input class="form-input" name="q" placeholder="Buscar por nome" value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
+                <input class="form-input" id="catalog-search-input" name="q" placeholder="Buscar por nome" value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>" autocomplete="off">
                 <button class="btn-secondary" type="submit">Filtrar</button>
             </form>
         </div>
@@ -357,7 +482,7 @@ includeSidebar('Catálogo Logístico');
                     <th>Ações</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="catalogo-tbody">
                 <?php foreach ($itens as $item): ?>
                     <tr>
                         <td><?= htmlspecialchars($item['tipo'], ENT_QUOTES, 'UTF-8') ?></td>
@@ -372,6 +497,7 @@ includeSidebar('Catálogo Logístico');
                         </td>
                         <td>
                             <button class="btn-secondary" type="button" onclick="openCatalogModal('<?= $item['page'] === 'logistica_insumos' ? 'insumo' : 'receita' ?>', <?= (int)$item['id'] ?>)">Editar</button>
+                            <button class="btn-secondary" type="button" onclick="openCatalogModal('<?= $item['page'] === 'logistica_insumos' ? 'insumo' : 'receita' ?>', null, <?= (int)$item['id'] ?>)">Copiar</button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir este item?');">
                                 <input type="hidden" name="action" value="<?= $item['page'] === 'logistica_insumos' ? 'delete_insumo' : 'delete_receita' ?>">
                                 <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
@@ -380,11 +506,9 @@ includeSidebar('Catálogo Logístico');
                         </td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (empty($itens)): ?>
-                    <tr><td colspan="7">Nenhum item encontrado.</td></tr>
-                <?php endif; ?>
             </tbody>
         </table>
+        <div id="catalog-empty-state" class="<?= empty($itens) ? '' : 'catalog-hidden' ?>" style="padding:1rem 0;color:#64748b;">Nenhum item encontrado.</div>
     </div>
 </div>
 
@@ -405,6 +529,172 @@ includeSidebar('Catálogo Logístico');
 </div>
 
 <script>
+const CATALOGO_ITEMS = <?= json_encode(array_map(static function (array $item): array {
+    return [
+        'tipo' => (string)($item['tipo'] ?? ''),
+        'nome' => (string)($item['nome'] ?? ''),
+        'tipologia' => (string)($item['tipologia'] ?? ''),
+        'extra' => (string)($item['extra'] ?? ''),
+        'search_extra' => (string)($item['search_extra'] ?? ''),
+        'valores' => (string)($item['valores'] ?? ''),
+        'ativo' => !empty($item['ativo']),
+        'id' => (int)($item['id'] ?? 0),
+        'page' => (string)($item['page'] ?? '')
+    ];
+}, $itens), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[char] || char));
+}
+
+function normalizeCatalogText(value) {
+    return String(value ?? '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function levenshteinDistance(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const matrix = Array.from({ length: b.length + 1 }, () => []);
+    for (let i = 0; i <= b.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            const cost = b[i - 1] === a[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost
+            );
+        }
+    }
+    return matrix[b.length][a.length];
+}
+
+function catalogMatchScore(query, candidate) {
+    const normalizedQuery = normalizeCatalogText(query);
+    const normalizedCandidate = normalizeCatalogText(candidate);
+    if (!normalizedQuery || !normalizedCandidate) return null;
+    if (normalizedQuery === normalizedCandidate) return 1000;
+    if (normalizedCandidate.includes(normalizedQuery)) {
+        return 900 - (normalizedCandidate.length - normalizedQuery.length);
+    }
+
+    const queryTokens = normalizedQuery.split(' ').filter(Boolean);
+    const candidateTokens = normalizedCandidate.split(' ').filter(Boolean);
+    let tokenHits = 0;
+
+    for (const token of queryTokens) {
+        for (const candidateToken of candidateTokens) {
+            if (candidateToken === token || candidateToken.includes(token) || token.includes(candidateToken)) {
+                tokenHits++;
+                break;
+            }
+            const distance = levenshteinDistance(token, candidateToken);
+            const maxLen = Math.max(token.length, candidateToken.length);
+            if (distance <= 1 || (maxLen >= 6 && distance <= 2)) {
+                tokenHits++;
+                break;
+            }
+        }
+    }
+
+    const distance = levenshteinDistance(normalizedQuery, normalizedCandidate);
+    const maxLen = Math.max(normalizedQuery.length, normalizedCandidate.length);
+    const distanceRatio = maxLen > 0 ? 1 - (distance / maxLen) : 0;
+
+    let sameChars = 0;
+    for (const char of normalizedQuery) {
+        if (normalizedCandidate.includes(char)) sameChars++;
+    }
+    const similarityPercent = normalizedQuery.length > 0 ? (sameChars / normalizedQuery.length) * 100 : 0;
+
+    if (tokenHits === 0 && similarityPercent < 55 && distanceRatio < 0.45) {
+        return null;
+    }
+
+    return (tokenHits * 100) + similarityPercent + (distanceRatio * 100);
+}
+
+function buildCatalogRow(item) {
+    const modalType = item.page === 'logistica_insumos' ? 'insumo' : 'receita';
+    return `
+        <tr>
+            <td>${escapeHtml(item.tipo)}</td>
+            <td>${escapeHtml(item.nome)}</td>
+            <td>${escapeHtml(item.tipologia)}</td>
+            <td>${escapeHtml(item.extra)}</td>
+            <td>${escapeHtml(item.valores)}</td>
+            <td>
+                <span class="status-pill ${item.ativo ? 'status-ativo' : 'status-inativo'}">
+                    ${item.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+            </td>
+            <td>
+                <button class="btn-secondary" type="button" onclick="openCatalogModal('${modalType}', ${item.id})">Editar</button>
+                <button class="btn-secondary" type="button" onclick="openCatalogModal('${modalType}', null, ${item.id})">Copiar</button>
+                <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir este item?');">
+                    <input type="hidden" name="action" value="${item.page === 'logistica_insumos' ? 'delete_insumo' : 'delete_receita'}">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <button class="btn-secondary" type="submit">Excluir</button>
+                </form>
+            </td>
+        </tr>
+    `;
+}
+
+function filterCatalogItems(query) {
+    const normalizedQuery = String(query ?? '').trim();
+    if (!normalizedQuery) {
+        return [...CATALOGO_ITEMS].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    }
+
+    return CATALOGO_ITEMS
+        .map((item) => {
+            const candidates = [item.nome, item.tipologia, item.extra, item.search_extra];
+            let bestScore = null;
+            for (const candidate of candidates) {
+                const score = catalogMatchScore(normalizedQuery, candidate);
+                if (score !== null && (bestScore === null || score > bestScore)) {
+                    bestScore = score;
+                }
+            }
+            return bestScore === null ? null : { ...item, _score: bestScore };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (b._score !== a._score) return b._score - a._score;
+            return a.nome.localeCompare(b.nome, 'pt-BR');
+        });
+}
+
+function renderCatalogItems(items) {
+    const tbody = document.getElementById('catalogo-tbody');
+    const emptyState = document.getElementById('catalog-empty-state');
+    if (!tbody || !emptyState) return;
+
+    if (!items.length) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('catalog-hidden');
+        return;
+    }
+
+    tbody.innerHTML = items.map(buildCatalogRow).join('');
+    emptyState.classList.add('catalog-hidden');
+}
+
 function setCatalogModalLoading(isLoading) {
     const body = document.querySelector('#modal-catalogo .modal-body');
     if (body) {
@@ -412,7 +702,7 @@ function setCatalogModalLoading(isLoading) {
     }
 }
 
-function openCatalogModal(tipo, id) {
+function openCatalogModal(tipo, id, cloneId) {
     const iframe = document.getElementById('modal-catalogo-iframe');
     const modal = document.getElementById('modal-catalogo');
     const title = document.getElementById('modal-catalogo-title');
@@ -421,8 +711,16 @@ function openCatalogModal(tipo, id) {
     if (id) {
         url += `&edit_id=${id}`;
     }
+    if (cloneId) {
+        url += `&clone_id=${cloneId}`;
+    }
     if (title) {
-        title.textContent = tipo === 'insumo' ? 'Cadastro de Insumo' : 'Cadastro de Receita';
+        const isClone = !!cloneId;
+        if (tipo === 'insumo') {
+            title.textContent = isClone ? 'Copiar Insumo' : 'Cadastro de Insumo';
+        } else {
+            title.textContent = isClone ? 'Copiar Receita' : 'Cadastro de Receita';
+        }
     }
     if (iframe) {
         setCatalogModalLoading(true);
@@ -452,6 +750,15 @@ document.getElementById('modal-catalogo')?.addEventListener('click', (event) => 
         closeCatalogModal();
     }
 });
+
+const catalogSearchInput = document.getElementById('catalog-search-input');
+catalogSearchInput?.addEventListener('input', (event) => {
+    renderCatalogItems(filterCatalogItems(event.target.value || ''));
+});
+
+if (catalogSearchInput) {
+    renderCatalogItems(filterCatalogItems(catalogSearchInput.value || ''));
+}
 </script>
 
 <?php endSidebar(); ?>

@@ -122,6 +122,17 @@ function pg_bool_param(bool $value): string {
     return $value ? 'true' : 'false';
 }
 
+function clone_label(string $value): string {
+    $base = trim($value);
+    if ($base === '') {
+        return 'Cópia';
+    }
+    if (preg_match('/\bcópia\b/i', $base)) {
+        return $base;
+    }
+    return $base . ' (Cópia)';
+}
+
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
     if (!empty($chave_storage)) {
         if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
@@ -399,20 +410,32 @@ if (!$is_quick_modal) {
 }
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
+$clone_id = (int)($_GET['clone_id'] ?? 0);
+$is_clone = $clone_id > 0;
 $edit_item = null;
 $edit_cardapio_relacoes = ['pacote_ids' => [], 'secao_ids' => []];
-if ($edit_id > 0) {
+if ($edit_id > 0 || $clone_id > 0) {
+    $source_id = $clone_id > 0 ? $clone_id : $edit_id;
     $stmt = $pdo->prepare("SELECT * FROM logistica_insumos WHERE id = :id");
-    $stmt->execute([':id' => $edit_id]);
+    $stmt->execute([':id' => $source_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($edit_item && !$is_quick_modal) {
-        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'insumo', $edit_id);
+        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'insumo', $source_id);
     }
+}
+if (($edit_id > 0 || $clone_id > 0) && !$edit_item) {
+    $errors[] = 'Insumo não encontrado.';
+}
+$form_item_id = $is_clone ? 0 : $edit_id;
+$form_item = $edit_item;
+if ($form_item && $is_clone) {
+    $form_item['id'] = null;
+    $form_item['nome_oficial'] = clone_label((string)($form_item['nome_oficial'] ?? ''));
 }
 $prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
 $edit_foto_url = null;
-if ($edit_item) {
-    $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
+if ($form_item) {
+    $edit_foto_url = gerarUrlPreviewMagalu($form_item['foto_chave_storage'] ?? null, $form_item['foto_url'] ?? null);
 }
 $form_cardapio_pacote_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? [])
@@ -827,7 +850,7 @@ body {
     <?php endif; ?>
 
     <div class="section-card">
-        <h2>Novo / Editar Insumo</h2>
+        <h2><?= $is_clone ? 'Copiar Insumo' : 'Novo / Editar Insumo' ?></h2>
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
             <?php if ($is_modal): ?>
@@ -839,19 +862,19 @@ body {
                 <input type="hidden" name="ativo" value="1">
                 <input type="hidden" name="fracionavel" value="1">
             <?php endif; ?>
-            <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
+            <input type="hidden" name="id" value="<?= $form_item_id > 0 ? $form_item_id : '' ?>">
             <input type="hidden" name="confirm_duplicate" value="<?= $duplicate_warning ? '1' : '' ?>">
             <div class="form-grid">
                 <div class="span-2">
                     <label class="field-label">Nome oficial *</label>
-                    <input class="form-input" name="nome_oficial" required value="<?= h($edit_item['nome_oficial'] ?? '') ?>">
+                    <input class="form-input" name="nome_oficial" required value="<?= h($form_item['nome_oficial'] ?? '') ?>">
                 </div>
                 <div>
                     <label class="field-label">Tipologia</label>
                     <select class="form-input" name="tipologia_insumo_id">
                         <option value="">Selecione...</option>
                         <?php foreach ($tipologias as $tip): ?>
-                            <option value="<?= (int)$tip['id'] ?>" <?= (int)($edit_item['tipologia_insumo_id'] ?? 0) === (int)$tip['id'] ? 'selected' : '' ?>>
+                            <option value="<?= (int)$tip['id'] ?>" <?= (int)($form_item['tipologia_insumo_id'] ?? 0) === (int)$tip['id'] ? 'selected' : '' ?>>
                                 <?= h($tip['nome']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -862,7 +885,7 @@ body {
                     <select class="form-input" name="unidade_medida_padrao_id">
                         <option value="">Selecione...</option>
                         <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= (int)$un['id'] ?>" <?= (int)($edit_item['unidade_medida_padrao_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
+                            <option value="<?= (int)$un['id'] ?>" <?= (int)($form_item['unidade_medida_padrao_id'] ?? 0) === (int)$un['id'] ? 'selected' : '' ?>>
                                 <?= h($un['nome']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -909,7 +932,7 @@ body {
                 <div>
                     <label class="field-label">Barcode</label>
                     <div class="upload-actions">
-                        <input class="form-input" id="barcode_input" name="barcode" value="<?= h($edit_item['barcode'] ?? $prefill_barcode) ?>">
+                        <input class="form-input" id="barcode_input" name="barcode" value="<?= h($form_item['barcode'] ?? $prefill_barcode) ?>">
                         <button type="button" class="btn-primary btn-scanner" id="open-scanner">Ler câmera</button>
                     </div>
                 </div>
@@ -917,21 +940,21 @@ body {
                 <div>
                     <label class="field-label">Fracionável</label>
                     <label class="check-item">
-                        <input type="checkbox" name="fracionavel" <?= !isset($edit_item) || !empty($edit_item['fracionavel']) ? 'checked' : '' ?>>
+                        <input type="checkbox" name="fracionavel" <?= !isset($form_item) || !empty($form_item['fracionavel']) ? 'checked' : '' ?>>
                         <span>Sim</span>
                     </label>
                 </div>
                 <?php endif; ?>
                 <div>
                     <label class="field-label">Tamanho embalagem</label>
-                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1.500 ou 0,5100" value="<?= isset($edit_item['tamanho_embalagem']) ? format_decimal_input($edit_item['tamanho_embalagem'] !== null ? (float)$edit_item['tamanho_embalagem'] : null, 4) : '' ?>">
+                    <input class="form-input" name="tamanho_embalagem" id="tamanho_embalagem" type="text" inputmode="decimal" placeholder="Ex.: 1.500 ou 0,5100" value="<?= isset($form_item['tamanho_embalagem']) ? format_decimal_input($form_item['tamanho_embalagem'] !== null ? (float)$form_item['tamanho_embalagem'] : null, 4) : '' ?>">
                 </div>
                 <div>
                     <label class="field-label">Unidade embalagem</label>
                     <select class="form-input" name="unidade_embalagem">
                         <option value="">Selecione...</option>
                         <?php foreach ($unidades_medida as $un): ?>
-                            <option value="<?= h($un['nome']) ?>" <?= ($edit_item['unidade_embalagem'] ?? '') === $un['nome'] ? 'selected' : '' ?>>
+                            <option value="<?= h($un['nome']) ?>" <?= ($form_item['unidade_embalagem'] ?? '') === $un['nome'] ? 'selected' : '' ?>>
                                 <?= h($un['nome']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -942,7 +965,7 @@ body {
                     <label class="field-label">Custo padrão</label>
                     <div class="input-group">
                         <span>R$</span>
-                        <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= isset($edit_item['custo_padrao']) && $edit_item['custo_padrao'] !== null ? number_format((float)$edit_item['custo_padrao'], 2, ',', '.') : '' ?>">
+                        <input id="custo_padrao" name="custo_padrao" type="text" inputmode="decimal" value="<?= isset($form_item['custo_padrao']) && $form_item['custo_padrao'] !== null ? number_format((float)$form_item['custo_padrao'], 2, ',', '.') : '' ?>">
                     </div>
                 </div>
                 <?php endif; ?>
@@ -950,14 +973,14 @@ body {
                 <div>
                     <label class="field-label">Visível na lista</label>
                     <label class="check-item">
-                        <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
+                        <input type="checkbox" name="visivel_na_lista" <?= !isset($form_item) || !empty($form_item['visivel_na_lista']) ? 'checked' : '' ?>>
                         <span>Sim</span>
                     </label>
                 </div>
                 <div>
                     <label class="field-label">Ativo</label>
                     <label class="check-item">
-                        <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                        <input type="checkbox" name="ativo" <?= !isset($form_item) || !empty($form_item['ativo']) ? 'checked' : '' ?>>
                         <span>Sim</span>
                     </label>
                 </div>

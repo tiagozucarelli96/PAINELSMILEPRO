@@ -83,6 +83,17 @@ function pg_bool_param(bool $value): string {
     return $value ? 'true' : 'false';
 }
 
+function clone_label(string $value): string {
+    $base = trim($value);
+    if ($base === '') {
+        return 'Cópia';
+    }
+    if (preg_match('/\bcópia\b/i', $base)) {
+        return $base;
+    }
+    return $base . ' (Cópia)';
+}
+
 function validate_numeric_12_4(?float $value, string $label): ?string {
     if ($value === null) {
         return null;
@@ -497,25 +508,34 @@ foreach (array_keys($receita_nome) as $rid) {
 }
 
 $edit_id = (int)($_GET['edit_id'] ?? 0);
+$clone_id = (int)($_GET['clone_id'] ?? 0);
+$is_clone = $clone_id > 0;
 $edit_item = null;
 $componentes = [];
 $edit_cardapio_relacoes = ['pacote_ids' => [], 'secao_ids' => []];
-if ($edit_id > 0) {
+if ($edit_id > 0 || $clone_id > 0) {
+    $source_id = $clone_id > 0 ? $clone_id : $edit_id;
     $stmt = $pdo->prepare("SELECT * FROM logistica_receitas WHERE id = :id");
-    $stmt->execute([':id' => $edit_id]);
+    $stmt->execute([':id' => $source_id]);
     $edit_item = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $componentes = $componentes_by_receita[$edit_id] ?? [];
+    $componentes = $componentes_by_receita[$source_id] ?? [];
     if ($edit_item) {
-        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'receita', $edit_id);
+        $edit_cardapio_relacoes = logistica_cardapio_item_relacoes_get($pdo, 'receita', $source_id);
     }
 }
-if ($edit_id > 0 && !$edit_item) {
+if (($edit_id > 0 || $clone_id > 0) && !$edit_item) {
     $errors[] = 'Receita não encontrada.';
 }
+$form_item_id = $is_clone ? 0 : $edit_id;
+$form_item = $edit_item;
+if ($form_item && $is_clone) {
+    $form_item['id'] = null;
+    $form_item['nome'] = clone_label((string)($form_item['nome'] ?? ''));
+}
 $edit_foto_url = null;
-if ($edit_item) {
-    $edit_foto_url = gerarUrlPreviewMagalu($edit_item['foto_chave_storage'] ?? null, $edit_item['foto_url'] ?? null);
+if ($form_item) {
+    $edit_foto_url = gerarUrlPreviewMagalu($form_item['foto_chave_storage'] ?? null, $form_item['foto_url'] ?? null);
 }
 $form_cardapio_pacote_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? [])
@@ -858,7 +878,7 @@ body {
     <?php endforeach; ?>
 
     <div class="section-card">
-        <h2>Nova / Editar Receita</h2>
+        <h2><?= $is_clone ? 'Copiar Receita' : 'Nova / Editar Receita' ?></h2>
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="action" value="save">
             <?php if ($is_modal): ?>
@@ -869,18 +889,18 @@ body {
                 <input type="hidden" name="visivel_na_lista" value="1">
                 <input type="hidden" name="ativo" value="1">
             <?php endif; ?>
-            <input type="hidden" name="id" value="<?= $edit_item ? (int)$edit_item['id'] : '' ?>">
+            <input type="hidden" name="id" value="<?= $form_item_id > 0 ? $form_item_id : '' ?>">
             <div class="form-grid">
                 <div class="span-2">
                     <label>Nome *</label>
-                    <input class="form-input" name="nome" required value="<?= h($edit_item['nome'] ?? '') ?>">
+                    <input class="form-input" name="nome" required value="<?= h($form_item['nome'] ?? '') ?>">
                 </div>
                 <div>
                     <label>Tipologia</label>
                     <select class="form-input" name="tipologia_receita_id">
                         <option value="">Selecione...</option>
                         <?php foreach ($tipologias as $tip): ?>
-                            <option value="<?= (int)$tip['id'] ?>" <?= (int)($edit_item['tipologia_receita_id'] ?? 0) === (int)$tip['id'] ? 'selected' : '' ?>>
+                            <option value="<?= (int)$tip['id'] ?>" <?= (int)($form_item['tipologia_receita_id'] ?? 0) === (int)$tip['id'] ? 'selected' : '' ?>>
                                 <?= h($tip['nome']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -888,7 +908,7 @@ body {
                 </div>
                 <div>
                     <label>Rendimento base (pessoas)</label>
-                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($edit_item['rendimento_base_pessoas'] ?? 1) ?>">
+                    <input class="form-input" name="rendimento_base_pessoas" type="number" min="1" value="<?= h($form_item['rendimento_base_pessoas'] ?? 1) ?>">
                 </div>
                 <div class="span-2">
                     <label>Pacotes do cardápio</label>
@@ -929,11 +949,11 @@ body {
                 <?php if (!$no_checks): ?>
                 <div class="checkbox-group">
                     <label>
-                        <input type="checkbox" name="visivel_na_lista" <?= !isset($edit_item) || !empty($edit_item['visivel_na_lista']) ? 'checked' : '' ?>>
+                        <input type="checkbox" name="visivel_na_lista" <?= !isset($form_item) || !empty($form_item['visivel_na_lista']) ? 'checked' : '' ?>>
                         Visível na lista
                     </label>
                     <label>
-                        <input type="checkbox" name="ativo" <?= !isset($edit_item) || !empty($edit_item['ativo']) ? 'checked' : '' ?>>
+                        <input type="checkbox" name="ativo" <?= !isset($form_item) || !empty($form_item['ativo']) ? 'checked' : '' ?>>
                         Ativo
                     </label>
                 </div>
@@ -1148,7 +1168,7 @@ body {
 
 <script>
 const CAN_SEE_COST = <?= $can_see_cost ? 'true' : 'false' ?>;
-const CURRENT_RECIPE_ID = <?= (int)$edit_id ?>;
+const CURRENT_RECIPE_ID = <?= (int)$form_item_id ?>;
 const INSUMOS = <?= json_encode(array_map(fn($i) => ['id' => (int)$i['id'], 'nome' => $i['nome_oficial'], 'unidade_padrao' => (int)($i['unidade_medida_padrao_id'] ?? 0), 'sinonimos' => $i['sinonimos'] ?? ''], $insumos_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const RECEITAS = <?= json_encode(array_map(fn($r) => ['id' => (int)$r['id'], 'nome' => $r['nome'], 'unidade_padrao' => (int)($r['unidade_medida_padrao_id'] ?? 0)], $receitas_select), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 const UNIDADES = <?= json_encode($unidades_medida, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
