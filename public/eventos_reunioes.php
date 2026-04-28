@@ -26,10 +26,23 @@ $per_page = 20;
 
 // Buscar reuniões
 $where = [];
+$evento_local_sql = "COALESCE(
+    NULLIF(TRIM(me_event_snapshot->>'local'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'nomelocal'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'localevento'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'localEvento'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'endereco'), '')
+)";
+$evento_cliente_sql = "COALESCE(
+    NULLIF(TRIM(me_event_snapshot->'cliente'->>'nome'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'nomecliente'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'nomeCliente'), ''),
+    NULLIF(TRIM(me_event_snapshot->>'client_name'), '')
+)";
 $params = [];
 
 if ($search) {
-    $where[] = "(me_event_snapshot->>'nome' ILIKE :search OR me_event_snapshot->'cliente'->>'nome' ILIKE :search)";
+    $where[] = "(me_event_snapshot->>'nome' ILIKE :search OR {$evento_cliente_sql} ILIKE :search OR {$evento_local_sql} ILIKE :search)";
     $params[':search'] = '%' . $search . '%';
 }
 
@@ -52,8 +65,8 @@ $stmt = $pdo->prepare("
     SELECT r.*, 
            (r.me_event_snapshot->>'data') as data_evento,
            (r.me_event_snapshot->>'nome') as nome_evento,
-           (r.me_event_snapshot->>'local') as local_evento,
-           (r.me_event_snapshot->'cliente'->>'nome') as cliente_nome,
+           {$evento_local_sql} as local_evento,
+           {$evento_cliente_sql} as cliente_nome,
            (r.me_event_snapshot->>'convidados') as convidados
     FROM eventos_reunioes r
     {$where_sql}

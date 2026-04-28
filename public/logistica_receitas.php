@@ -54,6 +54,10 @@ function parse_decimal($value): ?float {
     return $normalized === '' ? null : (float)$normalized;
 }
 
+function pg_bool_param(bool $value): string {
+    return $value ? 'true' : 'false';
+}
+
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
     if (!empty($chave_storage)) {
         if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
@@ -195,8 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':foto_chave_storage' => $foto_chave,
                 ':tipologia_receita_id' => !empty($_POST['tipologia_receita_id']) ? (int)$_POST['tipologia_receita_id'] : null,
                 ':unidade_medida_padrao_id' => $unidade_padrao,
-                ':ativo' => $ativo,
-                ':visivel_na_lista' => $visivel,
+                ':ativo' => pg_bool_param($ativo),
+                ':visivel_na_lista' => pg_bool_param($visivel),
                 ':rendimento_base_pessoas' => (int)($_POST['rendimento_base_pessoas'] ?? 1)
             ];
             $cardapio_pacote_ids = logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? []);

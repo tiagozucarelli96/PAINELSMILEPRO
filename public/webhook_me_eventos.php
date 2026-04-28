@@ -140,6 +140,20 @@ function processarWebhook($data) {
 
             $me_id_int = (int)$evento_id;
             if ($me_id_int > 0) {
+                $stmt_existing = $pdo->prepare("
+                    SELECT me_event_snapshot
+                    FROM eventos_reunioes
+                    WHERE me_event_id = :me_event_id
+                    LIMIT 1
+                ");
+                $stmt_existing->execute([':me_event_id' => $me_id_int]);
+                $existing_snapshot = json_decode((string)$stmt_existing->fetchColumn(), true);
+                if (!is_array($existing_snapshot)) {
+                    $existing_snapshot = [];
+                }
+
+                $snapshot = eventos_me_merge_snapshot($existing_snapshot, $snapshot);
+
                 $stmt_up = $pdo->prepare("
                     UPDATE eventos_reunioes
                     SET me_event_snapshot = :snapshot, updated_at = NOW()

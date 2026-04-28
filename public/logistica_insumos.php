@@ -118,6 +118,10 @@ function format_decimal_input(?float $value, int $maxDecimals): string {
     return rtrim(rtrim($formatted, '0'), ',');
 }
 
+function pg_bool_param(bool $value): string {
+    return $value ? 'true' : 'false';
+}
+
 function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?string {
     if (!empty($chave_storage)) {
         if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
@@ -232,11 +236,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':unidade_medida' => $unidade_nome,
                 ':unidade_medida_padrao_id' => $unidade_id,
                 ':tipologia_insumo_id' => !empty($_POST['tipologia_insumo_id']) ? (int)$_POST['tipologia_insumo_id'] : null,
-                ':visivel_na_lista' => $visivel,
-                ':ativo' => $ativo,
+                ':visivel_na_lista' => pg_bool_param($visivel),
+                ':ativo' => pg_bool_param($ativo),
                 ':sinonimos' => $sinonimos_raw !== '' ? $sinonimos_raw : null,
                 ':barcode' => trim((string)($_POST['barcode'] ?? '')) ?: null,
-                ':fracionavel' => $fracionavel,
+                ':fracionavel' => pg_bool_param($fracionavel),
                 ':tamanho_embalagem' => parse_decimal_input((string)($_POST['tamanho_embalagem'] ?? ''), 4),
                 ':unidade_embalagem' => trim((string)($_POST['unidade_embalagem'] ?? '')) ?: null,
                 ':observacoes' => trim((string)($_POST['observacoes'] ?? '')) ?: null

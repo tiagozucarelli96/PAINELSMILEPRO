@@ -80,6 +80,19 @@ if (!$reuniao) {
     $evento_data_sql = "NULLIF(TRIM(r.me_event_snapshot->>'data'), '')";
     $evento_hora_sql = "COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'hora_inicio'), ''), NULLIF(TRIM(r.me_event_snapshot->>'hora'), ''), '00:00')";
     $evento_data_hora_sql = "(($evento_data_sql)::date + ($evento_hora_sql)::time)";
+    $evento_local_sql = "COALESCE(
+        NULLIF(TRIM(r.me_event_snapshot->>'local'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'nomelocal'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'localevento'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'localEvento'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'endereco'), '')
+    )";
+    $evento_cliente_sql = "COALESCE(
+        NULLIF(TRIM(r.me_event_snapshot->'cliente'->>'nome'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'nomecliente'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'nomeCliente'), ''),
+        NULLIF(TRIM(r.me_event_snapshot->>'client_name'), '')
+    )";
     $janela_pos_meia_noite_horas = 6;
 
     $where = [
@@ -98,8 +111,8 @@ if (!$reuniao) {
     if ($busca !== '') {
         $where[] = "(
             r.me_event_snapshot->>'nome' ILIKE :busca
-            OR r.me_event_snapshot->'cliente'->>'nome' ILIKE :busca
-            OR r.me_event_snapshot->>'local' ILIKE :busca
+            OR {$evento_cliente_sql} ILIKE :busca
+            OR {$evento_local_sql} ILIKE :busca
             OR CAST(r.me_event_id AS TEXT) ILIKE :busca
         )";
         $params[':busca'] = '%' . $busca . '%';
@@ -117,8 +130,8 @@ if (!$reuniao) {
             (r.me_event_snapshot->>'hora_fim') AS hora_fim,
             {$evento_data_hora_sql} AS data_hora_evento,
             COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'nome'), ''), 'Evento sem nome') AS nome_evento,
-            COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'local'), ''), 'Local não informado') AS local_evento,
-            COALESCE(NULLIF(TRIM(r.me_event_snapshot->'cliente'->>'nome'), ''), 'Cliente não informado') AS cliente_nome
+            COALESCE({$evento_local_sql}, 'Local não informado') AS local_evento,
+            COALESCE({$evento_cliente_sql}, 'Cliente não informado') AS cliente_nome
         FROM eventos_reunioes r
         {$where_sql}
         ORDER BY
@@ -140,8 +153,8 @@ $horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
 if ($hora_inicio !== '' && $hora_fim !== '') {
     $horario_evento .= ' - ' . $hora_fim;
 }
-$local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
-$cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente não informado'));
+$local_evento = eventos_me_snapshot_local($snapshot, 'Local não informado');
+$cliente_nome = eventos_me_snapshot_cliente_nome($snapshot, 'Cliente não informado');
 
 $checklist_resumo = $reuniao ? eventos_realizar_resumo_checklist($pdo, (int)$reuniao['id']) : ['total' => 0, 'concluidos' => 0];
 $checklist_total = (int)($checklist_resumo['total'] ?? 0);

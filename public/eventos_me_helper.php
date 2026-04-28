@@ -574,3 +574,150 @@ function eventos_me_criar_snapshot(array $event): array {
         'snapshot_at' => date('Y-m-d H:i:s')
     ];
 }
+
+/**
+ * Lê o nome do cliente a partir de snapshots novos e legados.
+ */
+function eventos_me_snapshot_cliente_nome(array $snapshot, string $default = ''): string {
+    return eventos_me_pick_text($snapshot, [
+        'cliente.nome',
+        'nomecliente',
+        'nomeCliente',
+        'client_name',
+    ], $default);
+}
+
+/**
+ * Lê o e-mail do cliente a partir de snapshots novos e legados.
+ */
+function eventos_me_snapshot_cliente_email(array $snapshot, string $default = ''): string {
+    return eventos_me_pick_text($snapshot, [
+        'cliente.email',
+        'emailcliente',
+        'client_email',
+    ], $default);
+}
+
+/**
+ * Lê o telefone do cliente a partir de snapshots novos e legados.
+ */
+function eventos_me_snapshot_cliente_telefone(array $snapshot, string $default = ''): string {
+    return eventos_me_pick_text($snapshot, [
+        'cliente.telefone',
+        'telefonecliente',
+        'celular',
+    ], $default);
+}
+
+/**
+ * Lê o local do evento a partir de snapshots novos e legados.
+ */
+function eventos_me_snapshot_local(array $snapshot, string $default = ''): string {
+    return eventos_me_pick_text($snapshot, [
+        'local',
+        'nomelocal',
+        'localevento',
+        'localEvento',
+        'endereco',
+    ], $default);
+}
+
+/**
+ * Mescla snapshot parcial preservando dados existentes e reescrevendo campos canônicos.
+ */
+function eventos_me_merge_snapshot(array $current, array $incoming): array {
+    $merged = $current;
+
+    $scalar_fields = [
+        'id',
+        'nome',
+        'data',
+        'hora_inicio',
+        'hora_fim',
+        'local',
+        'unidade',
+        'convidados',
+        'tipo_evento',
+        'tipo_evento_real',
+        'me_status',
+        'webhook_event',
+        'webhook_at',
+        'snapshot_at',
+    ];
+
+    foreach ($scalar_fields as $field) {
+        if (!array_key_exists($field, $incoming)) {
+            continue;
+        }
+
+        $value = $incoming[$field];
+        if (is_string($value)) {
+            if (trim($value) !== '' || !array_key_exists($field, $merged)) {
+                $merged[$field] = $value;
+            }
+            continue;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            if ($value > 0 || !isset($merged[$field])) {
+                $merged[$field] = $value;
+            }
+            continue;
+        }
+
+        if (is_bool($value) || $value !== null) {
+            $merged[$field] = $value;
+        }
+    }
+
+    if (!isset($merged['cliente']) || !is_array($merged['cliente'])) {
+        $merged['cliente'] = [];
+    }
+
+    $incoming_cliente = [];
+    if (isset($incoming['cliente']) && is_array($incoming['cliente'])) {
+        $incoming_cliente = $incoming['cliente'];
+    }
+
+    foreach (['id', 'nome', 'email', 'telefone'] as $field) {
+        if (!array_key_exists($field, $incoming_cliente)) {
+            continue;
+        }
+
+        $value = $incoming_cliente[$field];
+        if (is_string($value)) {
+            if (trim($value) !== '' || !array_key_exists($field, $merged['cliente'])) {
+                $merged['cliente'][$field] = $value;
+            }
+            continue;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            if ($value > 0 || !isset($merged['cliente'][$field])) {
+                $merged['cliente'][$field] = $value;
+            }
+        }
+    }
+
+    $cliente_nome = eventos_me_snapshot_cliente_nome($merged, '');
+    if ($cliente_nome !== '') {
+        $merged['cliente']['nome'] = $cliente_nome;
+    }
+
+    $cliente_email = eventos_me_snapshot_cliente_email($merged, '');
+    if ($cliente_email !== '') {
+        $merged['cliente']['email'] = $cliente_email;
+    }
+
+    $cliente_telefone = eventos_me_snapshot_cliente_telefone($merged, '');
+    if ($cliente_telefone !== '') {
+        $merged['cliente']['telefone'] = $cliente_telefone;
+    }
+
+    $local = eventos_me_snapshot_local($merged, '');
+    if ($local !== '') {
+        $merged['local'] = $local;
+    }
+
+    return $merged;
+}

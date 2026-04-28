@@ -25,13 +25,26 @@ $where = [
     'r.me_event_id IS NOT NULL',
     'r.me_event_id > 0',
 ];
+$evento_local_sql = "COALESCE(
+    NULLIF(TRIM(r.me_event_snapshot->>'local'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'nomelocal'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'localevento'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'localEvento'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'endereco'), '')
+)";
+$evento_cliente_sql = "COALESCE(
+    NULLIF(TRIM(r.me_event_snapshot->'cliente'->>'nome'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'nomecliente'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'nomeCliente'), ''),
+    NULLIF(TRIM(r.me_event_snapshot->>'client_name'), '')
+)";
 $params = [];
 
 if ($search !== '') {
     $where[] = "(
         r.me_event_snapshot->>'nome' ILIKE :search
-        OR r.me_event_snapshot->'cliente'->>'nome' ILIKE :search
-        OR r.me_event_snapshot->>'local' ILIKE :search
+        OR {$evento_cliente_sql} ILIKE :search
+        OR {$evento_local_sql} ILIKE :search
         OR CAST(r.me_event_id AS TEXT) ILIKE :search
     )";
     $params[':search'] = '%' . $search . '%';
@@ -87,8 +100,8 @@ try {
             r.updated_at,
             (r.me_event_snapshot->>'data') AS data_evento,
             COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'nome'), ''), 'Evento sem nome') AS nome_evento,
-            COALESCE(NULLIF(TRIM(r.me_event_snapshot->>'local'), ''), 'Local não informado') AS local_evento,
-            COALESCE(NULLIF(TRIM(r.me_event_snapshot->'cliente'->>'nome'), ''), 'Cliente não informado') AS cliente_nome
+            COALESCE({$evento_local_sql}, 'Local não informado') AS local_evento,
+            COALESCE({$evento_cliente_sql}, 'Cliente não informado') AS cliente_nome
         FROM eventos_reunioes r
         {$where_sql}
         ORDER BY
