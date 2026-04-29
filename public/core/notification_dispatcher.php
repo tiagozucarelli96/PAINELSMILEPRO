@@ -41,10 +41,13 @@ class NotificationDispatcher {
         $this->safeExec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS titulo VARCHAR(180)");
         $this->safeExec("ALTER TABLE demandas_notificacoes ADD COLUMN IF NOT EXISTS url_destino TEXT");
         $this->safeExec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_usuario ON demandas_notificacoes(usuario_id, lida)");
-        $this->safeExec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_criada_em_desc ON demandas_notificacoes(criada_em DESC)");
 
         $this->schemaEnsured = true;
         $this->internalColumns = null;
+        $dateColumn = $this->getInternalDateColumn();
+        if ($dateColumn !== null) {
+            $this->safeExec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_{$dateColumn}_desc ON demandas_notificacoes({$dateColumn} DESC)");
+        }
     }
 
     public function dispatch(array $recipients, array $payload = [], array $channels = []): array {
@@ -307,6 +310,17 @@ class NotificationDispatcher {
         }
 
         return $this->internalColumns;
+    }
+
+    private function getInternalDateColumn(): ?string {
+        $columns = $this->getInternalColumns();
+        foreach (['criada_em', 'criado_em', 'created_at', 'data_notificacao'] as $column) {
+            if (!empty($columns[$column])) {
+                return $column;
+            }
+        }
+
+        return null;
     }
 
     private function getPushHelper() {

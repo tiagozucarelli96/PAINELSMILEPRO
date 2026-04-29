@@ -1221,18 +1221,21 @@ ob_start();
     flex-wrap: wrap;
 }
 
-.vendas-container .form-group {
+.vendas-container .form-group,
+.vendas-modal-content .form-group {
     margin-bottom: 1.5rem;
 }
 
-.vendas-container .cliente-contato-texto {
+.vendas-container .cliente-contato-texto,
+.vendas-modal-content .cliente-contato-texto {
     color: #475569;
     display: block;
     font-size: 0.875rem;
     margin-top: 0.25rem;
 }
 
-.vendas-container .form-group label {
+.vendas-container .form-group label,
+.vendas-modal-content .form-group label {
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 500;
@@ -1241,11 +1244,18 @@ ob_start();
 
 .vendas-container .form-group input,
 .vendas-container .form-group select,
-.vendas-container .form-group textarea {
+.vendas-container .form-group textarea,
+.vendas-modal-content .form-group input,
+.vendas-modal-content .form-group select,
+.vendas-modal-content .form-group textarea {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #d1d5db;
     border-radius: 6px;
+    font: inherit;
+    color: #0f172a;
+    background: #fff;
+    box-sizing: border-box;
 }
 
 .adicionais-table {

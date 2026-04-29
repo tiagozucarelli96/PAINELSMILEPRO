@@ -382,7 +382,7 @@ if ($current_page === 'dashboard') {
         ";
 
         $params_dashboard = [
-            ':is_admin' => $is_admin_dashboard,
+            ':is_admin' => $is_admin_dashboard ? 't' : 'f',
             ':user_id' => (int)($usuario_id_dashboard ?? 0),
         ];
 
