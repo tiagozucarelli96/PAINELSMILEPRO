@@ -9,6 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once __DIR__ . '/conexao.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
 
 // Permite reaproveitar este template para formulários com mesmo layout/campos
@@ -28,6 +29,7 @@ $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $limite_por_hora = 3;
 
 $pdo = $GLOBALS['pdo'];
+$pacotes_evento = pacotes_evento_listar($pdo, false);
 
 // Verificar rate limit
 $stmt = $pdo->prepare("
@@ -78,6 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         
         // Texto livre (público)
         $pacote_plano = trim($_POST['pacote_plano'] ?? '');
+        $forma_pagamento = trim($_POST['forma_pagamento'] ?? '');
+        $item_extra = trim($_POST['item_extra'] ?? '');
         $registro_existente_id = (int)($_POST['registro_existente_id'] ?? 0);
         $alterar_registro_existente = ($_POST['alterar_registro_existente'] ?? '') === '1';
         
@@ -221,6 +225,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     como_conheceu = ?,
                     como_conheceu_outro = ?,
                     pacote_contratado = ?,
+                    forma_pagamento = ?,
+                    observacoes = ?,
                     atualizado_em = NOW()
                 WHERE id = ?
             ");
@@ -249,6 +255,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu,
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
+                $forma_pagamento !== '' ? $forma_pagamento : null,
+                $item_extra !== '' ? $item_extra : null,
                 $pre_contrato_id
             ]);
 
@@ -272,8 +280,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                  cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
                  data_evento, unidade, horario_inicio, horario_termino,
                  nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
-                 pacote_contratado, status, criado_por_ip)
-                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
+                 pacote_contratado, forma_pagamento, observacoes, status, criado_por_ip)
+                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
             ");
 
             $stmt->execute([
@@ -301,6 +309,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu,
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
+                $forma_pagamento !== '' ? $forma_pagamento : null,
+                $item_extra !== '' ? $item_extra : null,
                 $ip
             ]);
 
@@ -396,8 +406,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         }
         
         .brand-row img {
-            width: 100px;
-            height: 100px;
+            width: 150px;
+            height: 150px;
             object-fit: contain;
             transition: transform 0.3s ease;
         }
@@ -946,9 +956,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     
                     <div class="form-group">
                         <label for="pacote_plano">Pacote/Plano Escolhido <span class="required">*</span></label>
-                        <textarea id="pacote_plano" name="pacote_plano" required 
-                                  placeholder="Descreva o pacote ou plano escolhido..."
-                                  rows="3"><?php echo htmlspecialchars($_POST['pacote_plano'] ?? ''); ?></textarea>
+                        <select id="pacote_plano" name="pacote_plano" required>
+                            <option value="">Selecione...</option>
+                            <?php foreach ($pacotes_evento as $pacote): ?>
+                                <option value="<?php echo htmlspecialchars((string)$pacote['nome']); ?>"
+                                        <?php echo (($_POST['pacote_plano'] ?? '') === (string)$pacote['nome']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars((string)$pacote['nome']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="item_extra"><strong>Deseja adicionar algum item extra além do pacote contratado?</strong></label>
+                        <small style="color:#64748b;display:block;margin:.1rem 0 .5rem;">Caso sim, informe abaixo qual item adicional deseja incluir.</small>
+                        <small style="color:#64748b;display:block;margin:0 0 .5rem;">Caso não deseje adicionar nenhum item, deixe este campo em branco.</small>
+                        <textarea id="item_extra" name="item_extra" rows="3"><?php echo htmlspecialchars($_POST['item_extra'] ?? ''); ?></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="forma_pagamento">Forma de Pagamento</label>
+                        <input type="text" id="forma_pagamento" name="forma_pagamento"
+                               placeholder="Ex: PIX, cartão, dinheiro, parcelado..."
+                               value="<?php echo htmlspecialchars($_POST['forma_pagamento'] ?? ''); ?>">
                     </div>
                 </div>
                 
@@ -1184,6 +1214,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             preencherCampo('nome_noivos', registro.nome_noivos || '');
             preencherCampo('num_convidados', registro.num_convidados || '');
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
+            preencherCampo('forma_pagamento', registro.forma_pagamento || '');
+            preencherCampo('item_extra', registro.observacoes || '');
 
             const comoConheceuEl = document.getElementById('como_conheceu');
             if (comoConheceuEl) {
