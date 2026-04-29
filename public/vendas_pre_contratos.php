@@ -98,6 +98,42 @@ function vendas_format_phone_display(?string $raw): string {
     return trim((string)$raw);
 }
 
+function vendas_normalize_pre_contrato_status(array $preContrato): string {
+    $status = (string)($preContrato['status'] ?? '');
+
+    if (in_array($status, ['', 'aguardando_conferencia', 'pronto_aprovacao'], true) && !empty($preContrato['me_event_id'])) {
+        return 'aprovado_criado_me';
+    }
+
+    return $status !== '' ? $status : 'aguardando_conferencia';
+}
+
+function vendas_status_meta(string $status): array {
+    $map = [
+        'aguardando_conferencia' => ['class' => 'status-aguardando', 'text' => 'Aguardando conferência'],
+        'pronto_aprovacao' => ['class' => 'status-pronto', 'text' => 'Pronto para aprovação'],
+        'aprovado_criado_me' => ['class' => 'status-aprovado', 'text' => 'Aprovado / Criado na ME'],
+        'cancelado_nao_fechou' => ['class' => 'status-cancelado', 'text' => 'Cancelado / Não fechou'],
+    ];
+
+    return $map[$status] ?? $map['aguardando_conferencia'];
+}
+
+function vendas_format_date_display(?string $date): string {
+    $timestamp = strtotime((string)$date);
+    return $timestamp ? date('d/m/Y', $timestamp) : '-';
+}
+
+function vendas_build_list_url(string $baseUrl, array $params = []): string {
+    $query = array_merge([
+        'status' => '',
+        'tipo' => '',
+        'busca' => '',
+    ], $params);
+
+    return $baseUrl . '&' . http_build_query($query);
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -682,28 +718,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filtro_status = $_GET['status'] ?? '';
 $filtro_tipo = $_GET['tipo'] ?? '';
 $busca = trim($_GET['busca'] ?? '');
+$status_tabs = [
+    '' => 'Todos',
+    'aguardando_conferencia' => 'Aguardando conferência',
+    'pronto_aprovacao' => 'Pronto para aprovação',
+    'aprovado_criado_me' => 'Aprovado / Criado na ME',
+    'cancelado_nao_fechou' => 'Cancelado / Não fechou',
+];
+$status_expression = "CASE
+    WHEN COALESCE(v.me_event_id, 0) > 0 AND COALESCE(v.status, '') IN ('', 'aguardando_conferencia', 'pronto_aprovacao') THEN 'aprovado_criado_me'
+    WHEN COALESCE(v.status, '') = '' THEN 'aguardando_conferencia'
+    ELSE v.status
+END";
 
 $where = [];
 $params = [];
 
-if ($filtro_status) {
-    $where[] = "status = ?";
+if ($filtro_status && isset($status_tabs[$filtro_status])) {
+    $where[] = $status_expression . " = ?";
     $params[] = $filtro_status;
 }
 
 if ($filtro_tipo) {
-    $where[] = "tipo_evento = ?";
+    $where[] = "v.tipo_evento = ?";
     $params[] = $filtro_tipo;
 }
 
 if ($busca) {
-    $where[] = "(nome_completo ILIKE ? OR email ILIKE ? OR cpf ILIKE ?)";
+    $where[] = "(COALESCE(v.nome_completo, '') ILIKE ? OR COALESCE(v.email, '') ILIKE ? OR COALESCE(v.cpf, '') ILIKE ?)";
     $params[] = "%$busca%";
     $params[] = "%$busca%";
     $params[] = "%$busca%";
 }
 
 $sql = "SELECT v.*, 
+               {$status_expression} AS status_normalizado,
                u1.nome as atualizado_por_nome,
                u2.nome as aprovado_por_nome
         FROM vendas_pre_contratos v
@@ -723,10 +772,11 @@ $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // Base de URL para manter o contexto correto (listagem vs administração)
 $page_param = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
 $base_url = 'index.php?page=' . $page_param;
-$base_query = $base_url
-    . '&status=' . urlencode((string)$filtro_status)
-    . '&tipo=' . urlencode((string)$filtro_tipo)
-    . '&busca=' . urlencode((string)$busca);
+$base_query = vendas_build_list_url($base_url, [
+    'status' => (string)$filtro_status,
+    'tipo' => (string)$filtro_tipo,
+    'busca' => (string)$busca,
+]);
 
 // Buscar pré-contrato específico para edição
 $editar_id = (int)($_GET['editar'] ?? 0);
@@ -794,6 +844,39 @@ ob_start();
     border: 1px solid #dbe3ef;
     border-radius: 12px;
     background: #f8fafc;
+}
+
+.vendas-tabs {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.vendas-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.18s ease;
+}
+
+.vendas-tab:hover {
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.vendas-tab.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
 }
 
 .vendas-filters select,
@@ -1008,6 +1091,12 @@ ob_start();
     padding: 0.5rem;
     border-bottom: 1px solid #e5e7eb;
 }
+
+.vendas-empty-state {
+    text-align: center;
+    color: #64748b;
+    padding: 2rem 1rem;
+}
 .valor-base-badge {
     display: inline-block;
     padding: 0.25rem 0.5rem;
@@ -1077,30 +1166,38 @@ ob_start();
         </div>
     <?php endif; ?>
     
+    <div class="vendas-tabs">
+        <?php foreach ($status_tabs as $tab_status => $tab_label): ?>
+            <?php
+                $tab_url = vendas_build_list_url($base_url, [
+                    'status' => $tab_status,
+                    'tipo' => (string)$filtro_tipo,
+                    'busca' => (string)$busca,
+                ]);
+                $tab_active = $filtro_status === $tab_status;
+            ?>
+            <a href="<?php echo htmlspecialchars($tab_url); ?>" class="vendas-tab <?php echo $tab_active ? 'active' : ''; ?>">
+                <?php echo htmlspecialchars($tab_label); ?>
+            </a>
+        <?php endforeach; ?>
+    </div>
+
     <div class="vendas-filters">
-        <select name="filtro_status" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status='+encodeURIComponent(this.value)+'&tipo=<?php echo htmlspecialchars(urlencode((string)$filtro_tipo)); ?>&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
-            <option value="">Todos os status</option>
-            <option value="aguardando_conferencia" <?php echo $filtro_status === 'aguardando_conferencia' ? 'selected' : ''; ?>>Aguardando conferência</option>
-            <option value="pronto_aprovacao" <?php echo $filtro_status === 'pronto_aprovacao' ? 'selected' : ''; ?>>Pronto para aprovação</option>
-            <option value="aprovado_criado_me" <?php echo $filtro_status === 'aprovado_criado_me' ? 'selected' : ''; ?>>Aprovado / Criado na ME</option>
-            <option value="cancelado_nao_fechou" <?php echo $filtro_status === 'cancelado_nao_fechou' ? 'selected' : ''; ?>>Cancelado / Não fechou</option>
-        </select>
-        
-        <select name="filtro_tipo" onchange="window.location.href='<?php echo htmlspecialchars($base_url); ?>&status=<?php echo htmlspecialchars(urlencode((string)$filtro_status)); ?>&tipo='+encodeURIComponent(this.value)+'&busca=<?php echo htmlspecialchars(urlencode((string)$busca)); ?>'">
-            <option value="">Todos os tipos</option>
-            <option value="casamento" <?php echo $filtro_tipo === 'casamento' ? 'selected' : ''; ?>>Casamento</option>
-            <option value="15anos" <?php echo $filtro_tipo === '15anos' ? 'selected' : ''; ?>>15 Anos</option>
-            <option value="infantil" <?php echo $filtro_tipo === 'infantil' ? 'selected' : ''; ?>>Infantil</option>
-            <option value="pj" <?php echo $filtro_tipo === 'pj' ? 'selected' : ''; ?>>PJ</option>
-        </select>
-        
-        <form method="GET" style="display: flex; gap: 0.5rem; flex: 1;">
+        <form method="GET" action="index.php" style="display: flex; gap: 0.5rem; flex: 1; flex-wrap: wrap;">
+            <select name="tipo">
+                <option value="">Todos os tipos</option>
+                <option value="casamento" <?php echo $filtro_tipo === 'casamento' ? 'selected' : ''; ?>>Casamento</option>
+                <option value="15anos" <?php echo $filtro_tipo === '15anos' ? 'selected' : ''; ?>>15 Anos</option>
+                <option value="infantil" <?php echo $filtro_tipo === 'infantil' ? 'selected' : ''; ?>>Infantil</option>
+                <option value="pj" <?php echo $filtro_tipo === 'pj' ? 'selected' : ''; ?>>PJ</option>
+            </select>
+
             <input type="text" name="busca" placeholder="Buscar por nome, email ou CPF..." 
                    value="<?php echo htmlspecialchars($busca); ?>" style="flex: 1;">
             <input type="hidden" name="page" value="<?php echo htmlspecialchars($page_param); ?>">
             <input type="hidden" name="status" value="<?php echo htmlspecialchars($filtro_status); ?>">
-            <input type="hidden" name="tipo" value="<?php echo htmlspecialchars($filtro_tipo); ?>">
             <button type="submit" class="btn btn-primary">Buscar</button>
+            <a href="<?php echo htmlspecialchars(vendas_build_list_url($base_url, ['status' => (string)$filtro_status])); ?>" class="btn btn-secondary">Limpar</a>
         </form>
     </div>
     
@@ -1120,13 +1217,18 @@ ob_start();
                 </tr>
             </thead>
             <tbody>
+                <?php if (!$pre_contratos): ?>
+                    <tr>
+                        <td colspan="8" class="vendas-empty-state">Nenhum pré-contrato encontrado para os filtros informados.</td>
+                    </tr>
+                <?php endif; ?>
                 <?php foreach ($pre_contratos as $pc): ?>
                     <tr>
                         <td><?php echo $pc['id']; ?></td>
                         <td>
                             <?php $cliente_telefone_lista = vendas_format_phone_display($pc['telefone'] ?? ''); ?>
-                            <strong><?php echo htmlspecialchars($pc['nome_completo']); ?></strong><br>
-                            <small style="color: #6b7280;"><?php echo htmlspecialchars($pc['email']); ?></small>
+                            <strong><?php echo htmlspecialchars((string)($pc['nome_completo'] ?? 'Sem nome')); ?></strong><br>
+                            <small style="color: #6b7280;"><?php echo htmlspecialchars((string)($pc['email'] ?? '')); ?></small>
                             <?php if ($cliente_telefone_lista !== ''): ?>
                                 <br>
                                 <small style="color: #6b7280;"><?php echo htmlspecialchars($cliente_telefone_lista); ?></small>
@@ -1144,34 +1246,19 @@ ob_start();
                                 }
                             ?>
                         </td>
-                        <td><?php echo date('d/m/Y', strtotime($pc['data_evento'])); ?></td>
-                        <td><?php echo htmlspecialchars($pc['unidade']); ?></td>
+                        <td><?php echo htmlspecialchars(vendas_format_date_display($pc['data_evento'] ?? null)); ?></td>
+                        <td><?php echo htmlspecialchars((string)($pc['unidade'] ?? '')); ?></td>
                         <td>R$ <?php echo number_format($pc['valor_total'] ?? 0, 2, ',', '.'); ?></td>
                         <td>
                             <?php
-                            $status_class = 'status-aguardando';
-                            $status_text = 'Aguardando conferência';
-                            $st = (string)($pc['status'] ?? '');
-                            // Robustez: se já tem ME IDs, considerar aprovado mesmo que status tenha ficado divergente
-                            if (($st === '' || $st === 'aguardando_conferencia' || $st === 'pronto_aprovacao') && !empty($pc['me_event_id'])) {
-                                $st = 'aprovado_criado_me';
-                            }
-                            if ($st === 'pronto_aprovacao') {
-                                $status_class = 'status-pronto';
-                                $status_text = 'Pronto para aprovação';
-                            } elseif ($st === 'aprovado_criado_me') {
-                                $status_class = 'status-aprovado';
-                                $status_text = 'Aprovado / Criado na ME';
-                            } elseif ($st === 'cancelado_nao_fechou') {
-                                $status_class = 'status-cancelado';
-                                $status_text = 'Cancelado / Não fechou';
-                            }
+                            $status_meta = vendas_status_meta((string)($pc['status_normalizado'] ?? vendas_normalize_pre_contrato_status($pc)));
                             ?>
-                            <span class="status-badge <?php echo $status_class; ?>"><?php echo $status_text; ?></span>
+                            <span class="status-badge <?php echo htmlspecialchars($status_meta['class']); ?>"><?php echo htmlspecialchars($status_meta['text']); ?></span>
                         </td>
                         <td>
                             <?php
-                                $abrir_aprovacao = ($is_admin && ($pc['status'] ?? '') === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
+                                $status_normalizado = (string)($pc['status_normalizado'] ?? vendas_normalize_pre_contrato_status($pc));
+                                $abrir_aprovacao = ($is_admin && $status_normalizado === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
                             ?>
                             <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
                                 Editar

@@ -25,7 +25,7 @@ $locais_mapeados = vendas_buscar_locais_mapeados();
 // Títulos por tipo
 $titulos = [
     'casamento' => 'Cadastro do Contrato - Casamento',
-    'infantil' => 'Cadastro do Contrato - Infantil / 15 anos',
+    'infantil' => 'Cadastro do Contrato - Infantil',
     'pj' => 'Cadastro do Contrato - Pessoa Jurídica (PJ)'
 ];
 
@@ -37,6 +37,12 @@ $limite_por_hora = 3; // Máximo 3 envios por hora por IP
 
 $pdo = $GLOBALS['pdo'];
 $pacotes_evento = pacotes_evento_listar($pdo, false);
+if ($tipo_evento === 'infantil') {
+    $pacotes_evento = array_values(array_filter($pacotes_evento, static function (array $pacote): bool {
+        $nome = mb_strtolower(trim((string)($pacote['nome'] ?? '')), 'UTF-8');
+        return in_array($nome, ['essencial', 'diver'], true);
+    }));
+}
 
 // Verificar rate limit
 $stmt = $pdo->prepare("
@@ -224,6 +230,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
 
         if (empty($pacote_plano)) {
             throw new Exception('Pacote/Plano escolhido é obrigatório');
+        }
+        if ($tipo_evento === 'infantil') {
+            $pacote_plano_normalizado = mb_strtolower($pacote_plano, 'UTF-8');
+            if (!in_array($pacote_plano_normalizado, ['essencial', 'diver'], true)) {
+                throw new Exception('Para eventos infantis, escolha apenas os pacotes Essencial ou Diver.');
+            }
         }
 
         $registro_existente = null;
@@ -632,7 +644,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     $ph_nome_evento = 'Ex: Aniversário da Maria';
                     if ($tipo_evento === 'infantil') {
                         $label_nome_evento = 'Nome do aniversariante';
-                        $ph_nome_evento = 'Ex: Maria (15 anos)';
+                        $ph_nome_evento = 'Ex: Maria';
                     } elseif ($tipo_evento === 'pj') {
                         $label_nome_evento = 'Nome do evento';
                         $ph_nome_evento = 'Ex: Confraternização Empresa X';
