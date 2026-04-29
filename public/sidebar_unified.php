@@ -2123,7 +2123,7 @@ if ($current_page === 'dashboard') {
             // NOTA: Páginas que usam includeSidebar/endSidebar já renderizam o conteúdo, não carregar via AJAX
             const pagesWithOwnRender = [
                 'dashboard', 'logistico', 'configuracoes', 'cadastros', 'financeiro', 'administrativo', 
-                'agenda', 'demandas', 'demandas_quadro',
+                'agenda', 'agenda_eventos', 'demandas', 'demandas_quadro',
                 'comercial', 'comercial_degust_inscritos', 'comercial_degust_inscricoes', 'comercial_degustacao_editar',
                 'comercial_degust_public', 'comercial_pagamento', 'comercial_realizar_degustacao',
                 'pagamento_degustacao', 'testar_identificacao_pagamento',
