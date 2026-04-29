@@ -63,6 +63,15 @@ if (!vendas_ensure_schema($pdo, $erros, $mensagens)) {
     exit;
 }
 
+$pacotes_evento = pacotes_evento_listar($pdo, false);
+$pacotes_evento_validos = [];
+foreach ($pacotes_evento as $pacote_evento_item) {
+    $pacote_evento_item_id = (int)($pacote_evento_item['id'] ?? 0);
+    if ($pacote_evento_item_id > 0) {
+        $pacotes_evento_validos[$pacote_evento_item_id] = true;
+    }
+}
+
 function vendas_parse_money($value): float {
     if ($value === null) return 0.0;
     if (is_string($value)) {
@@ -314,6 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Selecione o pacote do evento para a organização.');
                 }
             }
+            if ($payload['pacote_evento_id'] > 0 && !isset($pacotes_evento_validos[$payload['pacote_evento_id']])) {
+                throw new Exception('Selecione um pacote válido para a organização.');
+            }
             $pdo->beginTransaction();
             $save_result = vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload, $usuario_id, true);
             
@@ -416,6 +428,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($payload_comercial['pacote_evento_id'] <= 0) {
                 throw new Exception('Selecione o pacote do evento para a organização.');
+            }
+            if (!isset($pacotes_evento_validos[$payload_comercial['pacote_evento_id']])) {
+                throw new Exception('Selecione um pacote válido para a organização.');
             }
 
             $pdo->beginTransaction();
@@ -856,7 +871,6 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $locais_curto_map = vendas_locais_curto_map($pdo);
-$pacotes_evento = pacotes_evento_listar($pdo, false);
 $tipos_evento_real_options = eventos_reuniao_tipos_evento_real_options($pdo, false);
 
 // Base de URL para manter o contexto correto (listagem vs administração)

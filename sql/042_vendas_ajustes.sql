@@ -25,6 +25,8 @@ ADD COLUMN IF NOT EXISTS como_conheceu_outro TEXT,
 ADD COLUMN IF NOT EXISTS forma_pagamento TEXT, -- Interno, não vai para ME
 ADD COLUMN IF NOT EXISTS itens_adicionais TEXT, -- Interno, não vai para ME
 ADD COLUMN IF NOT EXISTS observacoes_internas TEXT, -- Interno
+ADD COLUMN IF NOT EXISTS tipo_evento_real VARCHAR(24), -- Interno, preenche a organização
+ADD COLUMN IF NOT EXISTS pacote_evento_id BIGINT REFERENCES logistica_pacotes_evento(id) ON DELETE SET NULL, -- Interno, preenche a organização
 ADD COLUMN IF NOT EXISTS responsavel_comercial_id INT REFERENCES usuarios(id) ON DELETE SET NULL;
 
 -- 3. Ajustar campo unidade para aceitar apenas locais mapeados
