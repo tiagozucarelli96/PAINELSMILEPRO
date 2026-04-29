@@ -613,7 +613,7 @@ if ($current_page === 'dashboard') {
                 <div class="metric-icon">✅</div>
                 <div class="metric-content">
                     <h3>' . number_format((float)$stats['fechamentos_realizados'], 1, ',', '.') . '%</h3>
-                    <p>Converssão</p>
+                    <p>Conversão</p>
                     <small>Conversão do mês entre visitas e vendas.</small>
                 </div>
             </div>
@@ -708,40 +708,6 @@ if ($current_page === 'dashboard') {
                 ) . '
             </div>
         </div>
-        
-        <!-- Botão Flutuante de Solicitar Pagamento -->
-        <div class="floating-payment-btn" onclick="openPaymentModal()">
-            <span class="payment-icon">💳</span>
-            <span class="payment-text">Solicitar Pagamento</span>
-        </div>
-        
-        <!-- Modal de Solicitar Pagamento -->
-        <div id="paymentModal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>💳 Solicitar Pagamento</h3>
-                    <button class="modal-close" onclick="closePaymentModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <form id="paymentForm">
-                        <div class="form-group">
-                            <label>Valor:</label>
-                            <input type="number" name="valor" step="0.01" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Descrição:</label>
-                            <textarea name="descricao" required></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Chave PIX:</label>
-                            <input type="text" name="chave_pix" required>
-                        </div>
-                        <button type="submit" class="btn-primary">Solicitar</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-
         <div id="dashboardAvisoModal" class="dashboard-aviso-modal" aria-hidden="true">
             <div class="dashboard-aviso-modal-card">
                 <div class="dashboard-aviso-modal-header">
@@ -1490,13 +1456,14 @@ if ($current_page === 'dashboard') {
         .metric-card {
             background: white;
             border-radius: 12px;
-            padding: 20px;
+            padding: 20px 22px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             border: 1px solid #e2e8f0;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 15px;
             transition: all 0.3s ease;
+            min-height: 132px;
         }
         
         .metric-card:hover {
@@ -1519,13 +1486,31 @@ if ($current_page === 'dashboard') {
             font-size: 24px;
             font-weight: 700;
             color: #1e293b;
-            margin: 0 0 5px 0;
+            margin: 0 0 6px 0;
+            line-height: 1.05;
         }
         
+        .metric-content {
+            min-width: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
         .metric-content p {
-            color: #64748b;
+            color: #475569;
             margin: 0;
             font-size: 14px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        .metric-content small {
+            display: block;
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.35;
         }
         
         /* Seções da Dashboard */
@@ -1677,108 +1662,6 @@ if ($current_page === 'dashboard') {
         .empty-state p {
             margin: 0;
             font-size: 14px;
-        }
-        
-        /* Botão Flutuante */
-        .floating-payment-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 50px;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            z-index: 1000;
-        }
-        
-        .floating-payment-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4);
-        }
-        
-        .payment-icon {
-            font-size: 20px;
-        }
-        
-        /* Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 2000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            padding: 0;
-            max-width: 500px;
-            width: 90%;
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-header h3 {
-            margin: 0;
-            color: #1e293b;
-        }
-        
-        .modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #64748b;
-        }
-        
-        .modal-body {
-            padding: 20px;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-            color: #374151;
-        }
-        
-        .form-group input,
-        .form-group textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .form-group textarea {
-            height: 80px;
-            resize: vertical;
         }
         
         /* Responsivo */
@@ -2283,23 +2166,6 @@ if ($current_page === 'dashboard') {
             setInterval(run, 300000);
         }
         
-        // Funções do modal de pagamento
-        function openPaymentModal() {
-            document.getElementById('paymentModal').style.display = 'flex';
-        }
-        
-        function closePaymentModal() {
-            document.getElementById('paymentModal').style.display = 'none';
-        }
-        
-        // Fechar modal ao clicar fora
-        document.addEventListener('click', function(e) {
-            const modal = document.getElementById('paymentModal');
-            if (e.target === modal) {
-                closePaymentModal();
-            }
-        });
-
         const DASHBOARD_AVISOS_API = 'avisos_dashboard_api.php';
 
         function formatarDataAvisoDashboard(dataTexto) {

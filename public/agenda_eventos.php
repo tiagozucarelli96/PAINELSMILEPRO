@@ -117,19 +117,40 @@ function agenda_eventos_parse_month(string $mesParam, DateTimeImmutable $mesAtua
     return $mesAtual;
 }
 
+function agenda_eventos_clamp_month(
+    DateTimeImmutable $mesSelecionado,
+    DateTimeImmutable $mesMinimo,
+    DateTimeImmutable $mesMaximo
+): DateTimeImmutable {
+    if ($mesSelecionado < $mesMinimo) {
+        return $mesMinimo;
+    }
+
+    if ($mesSelecionado > $mesMaximo) {
+        return $mesMaximo;
+    }
+
+    return $mesSelecionado;
+}
+
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $spacesUsuario = $isSuperadmin ? [] : agenda_eventos_fetch_user_spaces($pdo, $usuarioId);
 
 $mesAtual = new DateTimeImmutable('first day of this month');
+$mesLimiteInicial = $mesAtual;
+$mesLimiteFinal = $mesAtual->modify('+2 months');
 $hojeIso = (new DateTimeImmutable('today'))->format('Y-m-d');
 
 $mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
 $mesSelecionado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)->modify('first day of this month');
-$inicioPeriodo = $mesSelecionado;
-$fimPeriodo = $mesSelecionado->modify('last day of this month');
-$mesAnteriorLink = $mesSelecionado->modify('-1 month')->format('Y-m');
-$mesProximoLink = $mesSelecionado->modify('+1 month')->format('Y-m');
+$mesSelecionado = agenda_eventos_clamp_month($mesSelecionado, $mesLimiteInicial, $mesLimiteFinal);
+$inicioPeriodo = $mesLimiteInicial;
+$fimPeriodo = $mesLimiteFinal->modify('last day of this month');
+$inicioConsulta = $mesSelecionado;
+$fimConsulta = $mesSelecionado->modify('last day of this month');
+$mesAnteriorLink = $mesSelecionado > $mesLimiteInicial ? $mesSelecionado->modify('-1 month')->format('Y-m') : null;
+$mesProximoLink = $mesSelecionado < $mesLimiteFinal ? $mesSelecionado->modify('+1 month')->format('Y-m') : null;
 $weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
@@ -198,8 +219,8 @@ if (!$temTabelaEventos) {
         ";
 
         $params = [
-            ':inicio' => $inicioPeriodo->format('Y-m-d'),
-            ':fim' => $fimPeriodo->format('Y-m-d'),
+            ':inicio' => $inicioConsulta->format('Y-m-d'),
+            ':fim' => $fimConsulta->format('Y-m-d'),
         ];
 
         if (!$isSuperadmin) {
@@ -636,11 +657,11 @@ includeSidebar('Agenda de eventos');
         <div class="calendar-toolbar">
             <div>
                 <h2 class="calendar-toolbar-title"><?= h(agenda_eventos_month_label($mesSelecionado)) ?></h2>
-                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez.</p>
+                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez dentro da janela de 3 meses.</p>
             </div>
             <div class="calendar-nav">
-                <a href="index.php?page=agenda_eventos&mes=<?= urlencode($mesAnteriorLink) ?>" class="calendar-nav-btn" aria-label="Mês anterior">←</a>
-                <a href="index.php?page=agenda_eventos&mes=<?= urlencode($mesProximoLink) ?>" class="calendar-nav-btn" aria-label="Próximo mês">→</a>
+                <a href="index.php?page=agenda_eventos<?= $mesAnteriorLink !== null ? '&mes=' . urlencode($mesAnteriorLink) : '' ?>" class="calendar-nav-btn<?= $mesAnteriorLink === null ? ' is-disabled' : '' ?>" aria-label="Mês anterior"<?= $mesAnteriorLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>←</a>
+                <a href="index.php?page=agenda_eventos<?= $mesProximoLink !== null ? '&mes=' . urlencode($mesProximoLink) : '' ?>" class="calendar-nav-btn<?= $mesProximoLink === null ? ' is-disabled' : '' ?>" aria-label="Próximo mês"<?= $mesProximoLink === null ? ' aria-disabled="true" tabindex="-1"' : '' ?>>→</a>
             </div>
         </div>
     <?php endif; ?>
