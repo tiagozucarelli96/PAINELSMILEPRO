@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     como_conheceu_outro = ?,
                     pacote_contratado = ?,
                     forma_pagamento = ?,
-                    observacoes = ?,
+                    itens_adicionais = ?,
                     atualizado_em = NOW()
                 WHERE id = ?
             ");
@@ -281,7 +281,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                  cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
                  data_evento, unidade, horario_inicio, horario_termino,
                  nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
-                 pacote_contratado, forma_pagamento, observacoes, status, criado_por_ip)
+                 pacote_contratado, forma_pagamento, itens_adicionais, status, criado_por_ip)
                 VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
             ");
 
@@ -1216,7 +1216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             preencherCampo('num_convidados', registro.num_convidados || '');
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
             preencherCampo('forma_pagamento', registro.forma_pagamento || '');
-            preencherCampo('item_extra', registro.observacoes || '');
+            preencherCampo('item_extra', registro.itens_adicionais || '');
 
             const comoConheceuEl = document.getElementById('como_conheceu');
             if (comoConheceuEl) {

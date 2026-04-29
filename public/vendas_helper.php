@@ -495,6 +495,7 @@ function vendas_buscar_pre_contrato_publico_recente(string $cpf, string $tipoEve
                 como_conheceu,
                 como_conheceu_outro,
                 pacote_contratado,
+                itens_adicionais,
                 observacoes,
                 criado_em,
                 atualizado_em
@@ -598,7 +599,7 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
     }
 
     // Se tabelas existem mas faltam colunas do 042, tentar aplicar 042
-    $cols042 = ['origem', 'rg', 'cep', 'endereco_completo', 'nome_noivos', 'num_convidados', 'como_conheceu', 'forma_pagamento', 'observacoes_internas', 'responsavel_comercial_id'];
+    $cols042 = ['origem', 'rg', 'cep', 'endereco_completo', 'nome_noivos', 'num_convidados', 'como_conheceu', 'forma_pagamento', 'itens_adicionais', 'observacoes_internas', 'responsavel_comercial_id'];
     $needs042 = false;
     foreach ($cols042 as $c) {
         if (!vendas_has_column($pdo, 'vendas_pre_contratos', $c)) {
@@ -611,13 +612,13 @@ function vendas_ensure_schema(PDO $pdo, array &$errors, array &$messages): bool 
         $sql042 = __DIR__ . '/../sql/042_vendas_ajustes.sql';
         try {
             if (!is_file($sql042)) {
-                $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
+                $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql e sql/059_vendas_itens_adicionais.sql.';
                 return false;
             }
-            $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
+            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql e sql/059_vendas_itens_adicionais.sql.';
             return false;
         } catch (Throwable $e) {
-            $errors[] = 'Base de Vendas desatualizada. Execute o SQL sql/042_vendas_ajustes.sql.';
+            $errors[] = 'Base de Vendas desatualizada. Execute os SQLs sql/042_vendas_ajustes.sql e sql/059_vendas_itens_adicionais.sql.';
             return false;
         }
     }

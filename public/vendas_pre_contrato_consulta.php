@@ -124,6 +124,7 @@ try {
         'como_conheceu' => (string)($registro['como_conheceu'] ?? ''),
         'como_conheceu_outro' => (string)($registro['como_conheceu_outro'] ?? ''),
         'pacote_contratado' => (string)($registro['pacote_contratado'] ?? ''),
+        'itens_adicionais' => (string)($registro['itens_adicionais'] ?? ''),
         'observacoes' => (string)($registro['observacoes'] ?? ''),
     ];
 

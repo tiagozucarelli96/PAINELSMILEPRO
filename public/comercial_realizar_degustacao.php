@@ -248,7 +248,7 @@ function dr_checkin_schema_ensure(PDO $pdo): void
     }
 
     try {
-        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS compareceu SMALLINT DEFAULT 0");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS compareceu BOOLEAN DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS checkin_qtd INTEGER NOT NULL DEFAULT 0");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS first_checkin_at TIMESTAMP NULL");
         $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMP NULL");
@@ -298,7 +298,7 @@ function dr_buscar_inscritos_confirmados(PDO $pdo, int $degustacao_id): array
     $stmt = $pdo->prepare("
         SELECT id, nome, email, qtd_pessoas, tipo_festa,
                COALESCE(fechou_contrato, 'nao') as fechou_contrato,
-               COALESCE(compareceu, 0) as compareceu,
+               COALESCE(compareceu, FALSE) as compareceu,
                COALESCE(checkin_qtd, 0) as checkin_qtd,
                first_checkin_at,
                last_checkin_at,
@@ -517,7 +517,7 @@ if ($action === 'atualizar_checkin_porta') {
 
         $qtd_pessoas = max(1, (int)($inscricao['qtd_pessoas'] ?? 1));
         $checkin_qtd = max(0, min($qtd_pessoas, $checkin_qtd));
-        $compareceu = $checkin_qtd > 0 ? 1 : 0;
+        $compareceu = $checkin_qtd > 0;
 
         $stmt = $pdo->prepare("
             UPDATE comercial_inscricoes

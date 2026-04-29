@@ -171,130 +171,150 @@ function vendas_unidade_curta(array $map, ?string $unidade): string {
     return $map[$key] ?? $nome;
 }
 
+function vendas_collect_comercial_payload_from_post(): array {
+    $pacote = trim((string)($_POST['pacote_contratado'] ?? ''));
+    $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
+    $itens_adicionais = trim((string)($_POST['itens_adicionais'] ?? ''));
+    $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
+    $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
+    $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
+
+    $adicionais = [];
+    if (!empty($_POST['adicionais']) && is_array($_POST['adicionais'])) {
+        foreach ($_POST['adicionais'] as $adicional) {
+            $item = trim((string)($adicional['item'] ?? ''));
+            $valor_raw = $adicional['valor'] ?? '';
+            if ($item !== '' && trim((string)$valor_raw) !== '') {
+                $adicionais[] = [
+                    'item' => $item,
+                    'valor' => vendas_parse_money($valor_raw),
+                ];
+            }
+        }
+    }
+
+    return [
+        'pacote_contratado' => $pacote,
+        'forma_pagamento' => $forma_pagamento_detalhada,
+        'itens_adicionais' => $itens_adicionais,
+        'observacoes_internas' => $observacoes_internas,
+        'valor_negociado' => $valor_negociado,
+        'desconto' => $desconto,
+        'valor_total' => $valor_negociado + array_sum(array_column($adicionais, 'valor')) - $desconto,
+        'adicionais' => $adicionais,
+    ];
+}
+
+function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $payload, int $usuario_id, bool $registrar_pronto_aprovacao = true): array {
+    $stmt_pre = $pdo->prepare("
+        SELECT id, status, nome_completo, tipo_evento, data_evento, unidade
+        FROM vendas_pre_contratos
+        WHERE id = ?
+        FOR UPDATE
+    ");
+    $stmt_pre->execute([$pre_contrato_id]);
+    $pre_contrato = $stmt_pre->fetch(PDO::FETCH_ASSOC);
+    if (!$pre_contrato) {
+        throw new Exception('Pré-contrato não encontrado.');
+    }
+
+    $status_anterior = (string)($pre_contrato['status'] ?? '');
+    $novo_status = $status_anterior;
+    if ($registrar_pronto_aprovacao && !in_array($status_anterior, ['aprovado_criado_me', 'cancelado_nao_fechou'], true)) {
+        $novo_status = 'pronto_aprovacao';
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE vendas_pre_contratos
+        SET pacote_contratado = ?, forma_pagamento = ?, itens_adicionais = ?, observacoes_internas = ?,
+            valor_negociado = ?, desconto = ?, valor_total = ?,
+            atualizado_em = NOW(), atualizado_por = ?, status = ?,
+            responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
+        WHERE id = ?
+    ");
+    $stmt->execute([
+        $payload['pacote_contratado'] !== '' ? $payload['pacote_contratado'] : null,
+        $payload['forma_pagamento'] !== '' ? $payload['forma_pagamento'] : null,
+        $payload['itens_adicionais'] !== '' ? $payload['itens_adicionais'] : null,
+        $payload['observacoes_internas'] !== '' ? $payload['observacoes_internas'] : null,
+        $payload['valor_negociado'],
+        $payload['desconto'],
+        $payload['valor_total'],
+        $usuario_id,
+        $novo_status,
+        $usuario_id,
+        $pre_contrato_id
+    ]);
+
+    $stmt_del = $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?");
+    $stmt_del->execute([$pre_contrato_id]);
+
+    $stmt_add = $pdo->prepare("INSERT INTO vendas_adicionais (pre_contrato_id, item, valor) VALUES (?, ?, ?)");
+    foreach ($payload['adicionais'] as $adicional) {
+        $stmt_add->execute([$pre_contrato_id, $adicional['item'], $adicional['valor']]);
+    }
+
+    if (!empty($_FILES['anexo_orcamento']['tmp_name'])) {
+        $uploader = new MagaluUpload();
+        $result = $uploader->upload($_FILES['anexo_orcamento'], 'vendas/orcamentos');
+
+        if (!empty($result['chave_storage']) || !empty($result['url'])) {
+            $stmt_anexo = $pdo->prepare("
+                INSERT INTO vendas_anexos
+                (pre_contrato_id, nome_original, nome_arquivo, chave_storage, url, mime_type, tamanho_bytes, upload_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt_anexo->execute([
+                $pre_contrato_id,
+                $_FILES['anexo_orcamento']['name'],
+                $result['nome_original'] ?? $_FILES['anexo_orcamento']['name'],
+                $result['chave_storage'] ?? null,
+                $result['url'] ?? null,
+                $_FILES['anexo_orcamento']['type'],
+                $_FILES['anexo_orcamento']['size'],
+                $usuario_id
+            ]);
+        }
+    }
+
+    $stmt_log = $pdo->prepare("INSERT INTO vendas_logs (pre_contrato_id, acao, usuario_id, detalhes) VALUES (?, 'dados_comerciais_salvos', ?, ?)");
+    $stmt_log->execute([$pre_contrato_id, $usuario_id, json_encode(['valor_total' => $payload['valor_total']])]);
+
+    return [
+        'pre_contrato' => $pre_contrato,
+        'status_anterior' => $status_anterior,
+        'status_atual' => $novo_status,
+        'valor_total' => $payload['valor_total'],
+    ];
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'salvar_comercial') {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
-        $pacote = trim($_POST['pacote_contratado'] ?? '');
-        $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
-        $itens_adicionais = trim((string)($_POST['itens_adicionais'] ?? ''));
-        $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
-        $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
-        $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
-        $status_anterior = '';
-        $pre_contrato_notificacao = null;
-        
-        // Buscar adicionais
-        $adicionais = [];
-        if (!empty($_POST['adicionais'])) {
-            foreach ($_POST['adicionais'] as $adicional) {
-                $item = trim((string)($adicional['item'] ?? ''));
-                $valor_raw = $adicional['valor'] ?? '';
-                if ($item !== '' && trim((string)$valor_raw) !== '') {
-                    $adicionais[] = [
-                        'item' => $item,
-                        'valor' => vendas_parse_money($valor_raw)
-                    ];
-                }
-            }
-        }
-        
-        // Calcular total
-        $total_adicionais = array_sum(array_column($adicionais, 'valor'));
-        $valor_total = $valor_negociado + $total_adicionais - $desconto;
+        $payload = vendas_collect_comercial_payload_from_post();
         
         try {
             $pdo->beginTransaction();
-
-            $stmt_pre = $pdo->prepare("
-                SELECT id, status, nome_completo, tipo_evento, data_evento, unidade
-                FROM vendas_pre_contratos
-                WHERE id = ?
-                FOR UPDATE
-            ");
-            $stmt_pre->execute([$pre_contrato_id]);
-            $pre_contrato_notificacao = $stmt_pre->fetch(PDO::FETCH_ASSOC);
-            if (!$pre_contrato_notificacao) {
-                throw new Exception('Pré-contrato não encontrado.');
-            }
-            $status_anterior = (string)($pre_contrato_notificacao['status'] ?? '');
-            
-            // Atualizar pré-contrato
-            $stmt = $pdo->prepare("
-                UPDATE vendas_pre_contratos 
-                SET pacote_contratado = ?, forma_pagamento = ?, observacoes = ?, observacoes_internas = ?,
-                    valor_negociado = ?, desconto = ?, valor_total = ?,
-                    atualizado_em = NOW(), atualizado_por = ?, status = 'pronto_aprovacao',
-                    responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
-                WHERE id = ?
-            ");
-            $stmt->execute([
-                $pacote,
-                $forma_pagamento_detalhada !== '' ? $forma_pagamento_detalhada : null,
-                $itens_adicionais !== '' ? $itens_adicionais : null,
-                $observacoes_internas !== '' ? $observacoes_internas : null,
-                $valor_negociado,
-                $desconto,
-                $valor_total,
-                $usuario_id,
-                $usuario_id,
-                $pre_contrato_id
-            ]);
-            
-            // Remover adicionais antigos
-            $stmt_del = $pdo->prepare("DELETE FROM vendas_adicionais WHERE pre_contrato_id = ?");
-            $stmt_del->execute([$pre_contrato_id]);
-            
-            // Inserir novos adicionais
-            $stmt_add = $pdo->prepare("INSERT INTO vendas_adicionais (pre_contrato_id, item, valor) VALUES (?, ?, ?)");
-            foreach ($adicionais as $adicional) {
-                $stmt_add->execute([$pre_contrato_id, $adicional['item'], $adicional['valor']]);
-            }
-            
-            // Upload de anexo (orçamento)
-            if (!empty($_FILES['anexo_orcamento']['tmp_name'])) {
-                $uploader = new MagaluUpload();
-                $result = $uploader->upload($_FILES['anexo_orcamento'], 'vendas/orcamentos');
-                
-                if (!empty($result['chave_storage']) || !empty($result['url'])) {
-                    $stmt_anexo = $pdo->prepare("
-                        INSERT INTO vendas_anexos 
-                        (pre_contrato_id, nome_original, nome_arquivo, chave_storage, url, mime_type, tamanho_bytes, upload_por)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ");
-                    $stmt_anexo->execute([
-                        $pre_contrato_id,
-                        $_FILES['anexo_orcamento']['name'],
-                        $result['nome_original'] ?? $_FILES['anexo_orcamento']['name'],
-                        $result['chave_storage'] ?? null,
-                        $result['url'] ?? null,
-                        $_FILES['anexo_orcamento']['type'],
-                        $_FILES['anexo_orcamento']['size'],
-                        $usuario_id
-                    ]);
-                }
-            }
-            
-            // Log
-            $stmt_log = $pdo->prepare("INSERT INTO vendas_logs (pre_contrato_id, acao, usuario_id, detalhes) VALUES (?, 'dados_comerciais_salvos', ?, ?)");
-            $stmt_log->execute([$pre_contrato_id, $usuario_id, json_encode(['valor_total' => $valor_total])]);
+            $save_result = vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload, $usuario_id, true);
             
             $pdo->commit();
             $mensagens[] = 'Dados comerciais salvos com sucesso!';
 
-            $deve_notificar_envio = !in_array($status_anterior, ['pronto_aprovacao', 'aprovado_criado_me'], true);
-            if ($deve_notificar_envio && is_array($pre_contrato_notificacao)) {
+            $deve_notificar_envio = !in_array($save_result['status_anterior'], ['pronto_aprovacao', 'aprovado_criado_me'], true)
+                && $save_result['status_atual'] === 'pronto_aprovacao';
+            if ($deve_notificar_envio && is_array($save_result['pre_contrato'])) {
                 $usuario_nome_notificacao = trim((string)($_SESSION['nome'] ?? $_SESSION['usuario_nome'] ?? $_SESSION['usuario'] ?? ''));
                 vendas_notificar_superadmins_contrato($pdo, [
                     'evento' => 'enviado_aprovacao',
                     'pre_contrato_id' => (int)$pre_contrato_id,
-                    'nome_cliente' => (string)($pre_contrato_notificacao['nome_completo'] ?? ''),
-                    'tipo_evento' => (string)($pre_contrato_notificacao['tipo_evento'] ?? ''),
-                    'data_evento' => (string)($pre_contrato_notificacao['data_evento'] ?? ''),
-                    'unidade' => (string)($pre_contrato_notificacao['unidade'] ?? ''),
-                    'valor_total' => (float)$valor_total,
+                    'nome_cliente' => (string)($save_result['pre_contrato']['nome_completo'] ?? ''),
+                    'tipo_evento' => (string)($save_result['pre_contrato']['tipo_evento'] ?? ''),
+                    'data_evento' => (string)($save_result['pre_contrato']['data_evento'] ?? ''),
+                    'unidade' => (string)($save_result['pre_contrato']['unidade'] ?? ''),
+                    'valor_total' => (float)$save_result['valor_total'],
                     'usuario_nome' => $usuario_nome_notificacao,
                     'url_destino' => 'index.php?page=vendas_administracao&editar=' . (int)$pre_contrato_id,
                 ]);
@@ -356,6 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $override_conflito = isset($_POST['override_conflito']) && $_POST['override_conflito'] === '1';
         $override_motivo = trim($_POST['override_motivo'] ?? '');
         $atualizar_cliente_me = $_POST['atualizar_cliente_me'] ?? 'manter'; // manter, atualizar, apenas_painel
+        $payload_comercial = vendas_collect_comercial_payload_from_post();
 
         // A aprovação só existe no contexto admin. Em caso de erro, reabrimos o modal para mostrar detalhes.
         // Em caso de sucesso, voltamos para a listagem da Administração com banner (flash).
@@ -373,6 +394,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($idvendedor <= 0) {
                 throw new Exception('Selecione o vendedor (ME) para criar o evento.');
             }
+
+            $pdo->beginTransaction();
+            vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload_comercial, $usuario_id, true);
+            $pdo->commit();
 
             // Buscar pré-contrato
             $stmt = $pdo->prepare("SELECT * FROM vendas_pre_contratos WHERE id = ?");
@@ -1015,24 +1040,33 @@ ob_start();
 .status-cancelado { background: #fee2e2; color: #991b1b; }
 
 .vendas-container .btn,
-.vendas-toast .btn {
+.vendas-toast .btn,
+.vendas-modal-content .btn {
     padding: 0.5rem 1rem;
     border-radius: 6px;
     border: none;
     cursor: pointer;
     font-weight: 500;
     text-decoration: none;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    line-height: 1;
 }
 
 .vendas-container .btn-primary,
-.vendas-toast .btn-primary { background: #2563eb; color: white; }
+.vendas-toast .btn-primary,
+.vendas-modal-content .btn-primary { background: #2563eb; color: white; }
 .vendas-container .btn-success,
-.vendas-toast .btn-success { background: #16a34a; color: white; }
+.vendas-toast .btn-success,
+.vendas-modal-content .btn-success { background: #16a34a; color: white; }
 .vendas-container .btn-danger,
-.vendas-toast .btn-danger { background: #ef4444; color: white; }
+.vendas-toast .btn-danger,
+.vendas-modal-content .btn-danger { background: #ef4444; color: white; }
 .vendas-container .btn-secondary,
-.vendas-toast .btn-secondary { background: #6b7280; color: white; }
+.vendas-toast .btn-secondary,
+.vendas-modal-content .btn-secondary { background: #6b7280; color: white; }
 
 /* Alerts (inline) */
 .vendas-container .alert {
@@ -1219,6 +1253,14 @@ ob_start();
     gap: 1rem;
     margin-top: 2rem;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.modal-actions .btn {
+    min-width: 180px;
 }
 
 .vendas-container .form-group,
@@ -1264,10 +1306,37 @@ ob_start();
     border-collapse: collapse;
 }
 
+.adicionais-toolbar {
+    display: flex;
+    justify-content: flex-start;
+    margin: 0.85rem 0 0.35rem;
+}
+
+.adicionais-toolbar .btn {
+    min-width: 0;
+    padding: 0.7rem 1rem;
+    font-weight: 600;
+}
+
 .adicionais-table th,
 .adicionais-table td {
-    padding: 0.5rem;
+    padding: 0.8rem 0.5rem;
     border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+}
+
+.adicionais-table th {
+    color: #334155;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.adicionais-table td:first-child {
+    color: #0f172a;
+}
+
+.adicionais-table input[type="text"] {
+    min-height: 42px;
 }
 
 .vendas-empty-state {
@@ -1289,15 +1358,42 @@ ob_start();
     background: #ef4444;
     color: white;
     border: none;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
+    padding: 0.65rem 0.9rem;
+    border-radius: 8px;
     cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.totais-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.totais-grid > * {
+    min-width: 0;
+}
+
+.totais-grid .full-width {
+    grid-column: 1 / -1;
 }
 
 @media (max-width: 900px) {
     .modal-grid,
-    .modal-form-grid {
+    .modal-form-grid,
+    .totais-grid {
         grid-template-columns: 1fr;
+    }
+
+    .modal-actions .btn {
+        width: 100%;
+        min-width: 0;
     }
 }
 </style>
@@ -1472,9 +1568,8 @@ ob_start();
             if ($observacoes_internas_valor === '') {
                 $observacoes_internas_valor = '';
             }
-            $itens_adicionais_valor = trim((string)($pre_contrato_editar['observacoes'] ?? ''));
-            $tipo_pre_contrato = (string)($pre_contrato_editar['tipo_evento'] ?? '');
-            $itens_adicionais_label = $tipo_pre_contrato === 'pj' ? 'Observações do cliente' : 'Itens adicionais';
+            $itens_adicionais_valor = trim((string)($pre_contrato_editar['itens_adicionais'] ?? ''));
+            $itens_adicionais_label = 'Itens adicionais';
             $pacote_atual_edicao = trim((string)($pre_contrato_editar['pacote_contratado'] ?? ''));
             $pacote_atual_existe = false;
             foreach ($pacotes_evento as $pacote_evento_item) {
@@ -1493,8 +1588,13 @@ ob_start();
                 </div>
                 
                 <form method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="action" value="salvar_comercial">
+                    <input type="hidden" id="action_comercial" name="action" value="salvar_comercial">
                     <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
+                    <input type="hidden" name="admin_context" value="<?php echo $admin_context ? '1' : '0'; ?>">
+                    <input type="hidden" name="idvendedor" id="approve_idvendedor" value="">
+                    <input type="hidden" name="override_conflito" id="approve_override_conflito" value="0">
+                    <input type="hidden" name="override_motivo" id="approve_override_motivo" value="">
+                    <input type="hidden" name="atualizar_cliente_me" id="approve_atualizar_cliente_me" value="manter">
 
                     <div class="modal-grid">
                         <div class="modal-field">
@@ -1560,7 +1660,9 @@ ob_start();
                     <div class="modal-secao">
                         <h3>Itens e valores</h3>
                         <small style="display:block;color:#64748b;margin:.2rem 0 .6rem;">Preencha item e valor por linha. O total considera todas as linhas e aplica desconto, se houver.</small>
-                        <button type="button" class="btn btn-secondary" onclick="adicionarItem()">+ Adicionar linha</button>
+                        <div class="adicionais-toolbar">
+                            <button type="button" class="btn btn-secondary" onclick="adicionarItem()">+ Adicionar linha</button>
+                        </div>
                         <table class="adicionais-table" id="tabelaAdicionais">
                             <thead>
                                 <tr>
@@ -1604,10 +1706,7 @@ ob_start();
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
-                    </div>
-
-                    <div class="modal-secao">
-                        <div class="modal-form-grid">
+                        <div class="totais-grid">
                             <div class="form-group">
                                 <label for="desconto">Desconto aplicado (R$)</label>
                                 <input
@@ -1661,7 +1760,7 @@ ob_start();
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
                         <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
                         
-                        <?php if ($is_admin && $pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
+                        <?php if ($is_admin && in_array((string)($pre_contrato_editar['status'] ?? ''), ['pronto_aprovacao', 'aguardando_conferencia', ''], true)): ?>
                             <button type="button" class="btn btn-primary" onclick="abrirModalAprovacao()">Aprovar e Criar na ME</button>
                         <?php endif; ?>
                     </div>
@@ -1673,7 +1772,7 @@ ob_start();
         <?php
             $aprovacao_result = $_SESSION['vendas_aprovacao_result'] ?? null;
             if ($aprovacao_result !== null) { unset($_SESSION['vendas_aprovacao_result']); }
-            $show_aprovacao_modal = ($is_admin && ($pre_contrato_editar['status'] === 'pronto_aprovacao' || is_array($aprovacao_result)));
+            $show_aprovacao_modal = ($is_admin && (in_array((string)($pre_contrato_editar['status'] ?? ''), ['pronto_aprovacao', 'aguardando_conferencia', ''], true) || is_array($aprovacao_result)));
         ?>
         <?php if ($show_aprovacao_modal): ?>
         <div class="vendas-modal" id="modalAprovacao">
@@ -1770,7 +1869,7 @@ ob_start();
                 <div class="form-group">
                     <label for="idvendedor_select">Vendedor (ME) <span style="color: #ef4444;">*</span>:</label>
                     <?php if (!empty($vendedores_me)): ?>
-                        <select id="idvendedor_select" name="idvendedor" form="formAprovacao" required>
+                        <select id="idvendedor_select" name="idvendedor" required>
                             <option value="">Selecione...</option>
                             <?php foreach ($vendedores_me as $v): ?>
                                 <option value="<?= (int)($v['id'] ?? 0) ?>">
@@ -1780,7 +1879,7 @@ ob_start();
                         </select>
                         <small style="color:#6b7280;">Este vendedor será enviado como <code>idvendedor</code> na criação do evento na ME.</small>
                     <?php else: ?>
-                        <input type="number" id="idvendedor_select" name="idvendedor" form="formAprovacao" min="1" step="1" placeholder="ID do vendedor na ME" required>
+                        <input type="number" id="idvendedor_select" name="idvendedor" min="1" step="1" placeholder="ID do vendedor na ME" required>
                         <small style="color:#6b7280;">Não foi possível listar vendedores da ME agora. Informe o ID manualmente.</small>
                     <?php endif; ?>
                 </div>
@@ -1832,20 +1931,11 @@ ob_start();
                     </div>
                 <?php endif; ?>
                 
-                <?php if ($pre_contrato_editar['status'] === 'pronto_aprovacao'): ?>
-                    <form method="POST" id="formAprovacao">
-                        <input type="hidden" name="action" value="aprovar_criar_me">
-                        <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
-                        <input type="hidden" name="admin_context" value="1">
-                        <input type="hidden" name="override_conflito" id="input_override_conflito" value="0">
-                        <input type="hidden" name="override_motivo" id="input_override_motivo" value="">
-                        <input type="hidden" name="atualizar_cliente_me" id="input_atualizar_cliente_me" value="manter">
-                        
-                        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                            <button type="submit" class="btn btn-success">Confirmar Aprovação</button>
-                            <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Fechar</button>
-                        </div>
-                    </form>
+                <?php if ($pre_contrato_editar['status'] === 'pronto_aprovacao' || $pre_contrato_editar['status'] === 'aguardando_conferencia' || $pre_contrato_editar['status'] === ''): ?>
+                    <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                        <button type="button" class="btn btn-success" onclick="submeterAprovacao()">Confirmar Aprovação</button>
+                        <button type="button" class="btn btn-secondary" onclick="fecharModalAprovacao()">Fechar</button>
+                    </div>
                 <?php else: ?>
                     <div style="display:flex; gap:1rem; margin-top:1.25rem; justify-content:flex-end;">
                         <a class="btn btn-primary" href="index.php?page=vendas_kanban">Ir para o Kanban</a>
@@ -2014,7 +2104,7 @@ function fecharModalEditar() {
 document.getElementById('override_conflito')?.addEventListener('change', function() {
     const divMotivo = document.getElementById('div_motivo_override');
     const inputMotivo = document.getElementById('override_motivo');
-    const inputOverride = document.getElementById('input_override_conflito');
+    const inputOverride = document.getElementById('approve_override_conflito');
     
     if (this.checked) {
         divMotivo.style.display = 'block';
@@ -2029,23 +2119,41 @@ document.getElementById('override_conflito')?.addEventListener('change', functio
 });
 
 document.getElementById('override_motivo')?.addEventListener('input', function() {
-    document.getElementById('input_override_motivo').value = this.value;
+    document.getElementById('approve_override_motivo').value = this.value;
 });
 
-// Validar formulário de aprovação
-document.getElementById('formAprovacao')?.addEventListener('submit', function(e) {
+function submeterAprovacao() {
     const overrideCheckbox = document.getElementById('override_conflito');
     const motivoTextarea = document.getElementById('override_motivo');
-    
+    const vendedor = document.getElementById('idvendedor_select');
+    const actionInput = document.getElementById('action_comercial');
+    const formComercial = actionInput ? actionInput.form : null;
+
     if (overrideCheckbox && overrideCheckbox.checked && (!motivoTextarea || !motivoTextarea.value.trim())) {
-        e.preventDefault();
         alert('Por favor, informe o motivo do override para continuar.');
-        return false;
+        return;
     }
-});
+
+    if (vendedor && !String(vendedor.value || '').trim()) {
+        alert('Selecione o vendedor (ME) para continuar.');
+        vendedor.focus();
+        return;
+    }
+
+    if (!formComercial || !actionInput) {
+        return;
+    }
+
+    actionInput.value = 'aprovar_criar_me';
+    document.getElementById('approve_idvendedor').value = vendedor ? String(vendedor.value || '') : '';
+    document.getElementById('approve_override_conflito').value = overrideCheckbox?.checked ? '1' : '0';
+    document.getElementById('approve_override_motivo').value = motivoTextarea ? String(motivoTextarea.value || '') : '';
+    document.getElementById('approve_atualizar_cliente_me').value = document.getElementById('atualizar_cliente_me')?.value || 'manter';
+    formComercial.submit();
+}
 
 document.getElementById('atualizar_cliente_me')?.addEventListener('change', function() {
-    document.getElementById('input_atualizar_cliente_me').value = this.value;
+    document.getElementById('approve_atualizar_cliente_me').value = this.value;
 });
 
 function confirmarApagar(id, nome) {

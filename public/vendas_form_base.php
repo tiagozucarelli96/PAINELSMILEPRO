@@ -107,7 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
         $observacoes_publicas = $tipo_evento === 'pj'
             ? trim((string)($_POST['observacoes_pj'] ?? $_POST['observacoes'] ?? ''))
             : trim((string)($_POST['observacoes'] ?? ''));
-        $observacoes_para_salvar = $observacoes_publicas !== '' ? $observacoes_publicas : null;
+        $itens_adicionais_para_salvar = $tipo_evento === 'pj' ? null : ($observacoes_publicas !== '' ? $observacoes_publicas : null);
+        $observacoes_para_salvar = $tipo_evento === 'pj' && $observacoes_publicas !== '' ? $observacoes_publicas : null;
         $registro_existente_id = (int)($_POST['registro_existente_id'] ?? 0);
         $alterar_registro_existente = ($_POST['alterar_registro_existente'] ?? '') === '1';
 
@@ -274,6 +275,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                     como_conheceu_outro = ?,
                     pacote_contratado = ?,
                     forma_pagamento = ?,
+                    itens_adicionais = ?,
                     observacoes = ?,
                     atualizado_em = NOW()
                 WHERE id = ?
@@ -304,6 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
                 $forma_pagamento !== '' ? $forma_pagamento : null,
+                $itens_adicionais_para_salvar,
                 $observacoes_para_salvar,
                 $pre_contrato_id
             ]);
@@ -328,8 +331,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                  cep, endereco_completo, numero, complemento, bairro, cidade, estado, pais, instagram,
                  data_evento, unidade, horario_inicio, horario_termino,
                  nome_noivos, num_convidados, como_conheceu, como_conheceu_outro,
-                 pacote_contratado, forma_pagamento, observacoes, status, criado_por_ip)
-                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
+                 pacote_contratado, forma_pagamento, itens_adicionais, observacoes, status, criado_por_ip)
+                VALUES (?, 'publico', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_conferencia', ?)
             ");
 
             $stmt->execute([
@@ -358,6 +361,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
                 $como_conheceu === 'outro' ? $como_conheceu_outro : null,
                 $pacote_plano,
                 $forma_pagamento !== '' ? $forma_pagamento : null,
+                $itens_adicionais_para_salvar,
                 $observacoes_para_salvar,
                 $ip
             ]);
@@ -1148,7 +1152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
             preencherCampo('num_convidados', registro.num_convidados || '');
             preencherCampo('pacote_plano', registro.pacote_contratado || '');
             preencherCampo('forma_pagamento', registro.forma_pagamento || '');
-            preencherCampo('observacoes', registro.observacoes || '');
+            preencherCampo('observacoes', registro.itens_adicionais || '');
             preencherCampo('observacoes_pj', registro.observacoes || '');
 
             const nomeEventoEl = document.getElementById('nome_evento');

@@ -23,6 +23,7 @@ ADD COLUMN IF NOT EXISTS num_convidados INT,
 ADD COLUMN IF NOT EXISTS como_conheceu VARCHAR(50),
 ADD COLUMN IF NOT EXISTS como_conheceu_outro TEXT,
 ADD COLUMN IF NOT EXISTS forma_pagamento TEXT, -- Interno, não vai para ME
+ADD COLUMN IF NOT EXISTS itens_adicionais TEXT, -- Interno, não vai para ME
 ADD COLUMN IF NOT EXISTS observacoes_internas TEXT, -- Interno
 ADD COLUMN IF NOT EXISTS responsavel_comercial_id INT REFERENCES usuarios(id) ON DELETE SET NULL;
 
