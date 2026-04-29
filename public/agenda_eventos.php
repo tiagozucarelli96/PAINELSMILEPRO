@@ -97,21 +97,40 @@ function agenda_eventos_month_label(DateTimeImmutable $date): string
     return ($meses[(int)$date->format('n')] ?? $date->format('F')) . ' ' . $date->format('Y');
 }
 
+function agenda_eventos_parse_month(string $mesParam, DateTimeImmutable $mesAtual): DateTimeImmutable
+{
+    if ($mesParam === '' || $mesParam === 'atual') {
+        return $mesAtual;
+    }
+
+    if ($mesParam === 'seguinte') {
+        return $mesAtual->modify('+1 month');
+    }
+
+    if (preg_match('/^\d{4}-\d{2}$/', $mesParam) === 1) {
+        $mesSelecionado = DateTimeImmutable::createFromFormat('!Y-m', $mesParam);
+        if ($mesSelecionado instanceof DateTimeImmutable) {
+            return $mesSelecionado;
+        }
+    }
+
+    return $mesAtual;
+}
+
 $usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $isSuperadmin = !empty($_SESSION['perm_superadmin']);
 $spacesUsuario = $isSuperadmin ? [] : agenda_eventos_fetch_user_spaces($pdo, $usuarioId);
 
 $mesAtual = new DateTimeImmutable('first day of this month');
-$mesSeguinte = $mesAtual->modify('+1 month');
-$fimPeriodo = $mesSeguinte->modify('last day of this month');
 $hojeIso = (new DateTimeImmutable('today'))->format('Y-m-d');
 
 $mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
-$mesSelecionado = $mesSelecionadoParam === 'seguinte' ? $mesSeguinte : $mesAtual;
-$mesSelecionadoChave = $mesSelecionadoParam === 'seguinte' ? 'seguinte' : 'atual';
-$mesAnteriorLink = $mesSelecionadoChave === 'seguinte' ? 'atual' : null;
-$mesProximoLink = $mesSelecionadoChave === 'atual' ? 'seguinte' : null;
-$weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+$mesSelecionado = agenda_eventos_parse_month($mesSelecionadoParam, $mesAtual)->modify('first day of this month');
+$inicioPeriodo = $mesSelecionado;
+$fimPeriodo = $mesSelecionado->modify('last day of this month');
+$mesAnteriorLink = $mesSelecionado->modify('-1 month')->format('Y-m');
+$mesProximoLink = $mesSelecionado->modify('+1 month')->format('Y-m');
+$weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 $eventos = [];
 $eventosPorData = [];
 $errors = [];
@@ -179,7 +198,7 @@ if (!$temTabelaEventos) {
         ";
 
         $params = [
-            ':inicio' => $mesAtual->format('Y-m-d'),
+            ':inicio' => $inicioPeriodo->format('Y-m-d'),
             ':fim' => $fimPeriodo->format('Y-m-d'),
         ];
 
@@ -600,10 +619,10 @@ includeSidebar('Agenda de eventos');
     <div class="agenda-eventos-header">
         <div>
             <h1 class="agenda-eventos-title">Agenda de eventos</h1>
-            <p class="agenda-eventos-subtitle">Calendário do mês atual e do próximo mês, filtrado pelas unidades marcadas no usuário.</p>
+            <p class="agenda-eventos-subtitle">Calendário mensal de eventos, filtrado pelas unidades marcadas no usuário.</p>
         </div>
         <div class="agenda-eventos-badges">
-            <div class="agenda-badge">Período: <?= h($mesAtual->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
+            <div class="agenda-badge">Período: <?= h($inicioPeriodo->format('d/m/Y')) ?> até <?= h($fimPeriodo->format('d/m/Y')) ?></div>
             <div class="agenda-badge">Eventos: <?= count($eventos) ?></div>
             <?php if ($isSuperadmin): ?>
                 <div class="agenda-badge">Visualização: todas as unidades</div>
@@ -620,8 +639,8 @@ includeSidebar('Agenda de eventos');
                 <p class="calendar-toolbar-subtitle">Exibindo um mês por vez.</p>
             </div>
             <div class="calendar-nav">
-                <a href="index.php?page=agenda_eventos<?= $mesAnteriorLink !== null ? '&mes=' . urlencode($mesAnteriorLink) : '' ?>" class="calendar-nav-btn<?= $mesAnteriorLink === null ? ' is-disabled' : '' ?>" aria-label="Mês anterior">←</a>
-                <a href="index.php?page=agenda_eventos<?= $mesProximoLink !== null ? '&mes=' . urlencode($mesProximoLink) : '' ?>" class="calendar-nav-btn<?= $mesProximoLink === null ? ' is-disabled' : '' ?>" aria-label="Próximo mês">→</a>
+                <a href="index.php?page=agenda_eventos&mes=<?= urlencode($mesAnteriorLink) ?>" class="calendar-nav-btn" aria-label="Mês anterior">←</a>
+                <a href="index.php?page=agenda_eventos&mes=<?= urlencode($mesProximoLink) ?>" class="calendar-nav-btn" aria-label="Próximo mês">→</a>
             </div>
         </div>
     <?php endif; ?>
@@ -634,7 +653,7 @@ includeSidebar('Agenda de eventos');
         <?php
         $monthStart = $mesSelecionado->modify('first day of this month');
         $daysInMonth = (int)$monthStart->format('t');
-        $firstWeekday = (int)$monthStart->format('N');
+        $firstWeekday = (int)$monthStart->format('w');
         ?>
         <section class="calendar-card">
             <div class="calendar-header">
@@ -646,7 +665,7 @@ includeSidebar('Agenda de eventos');
                     <div class="weekday"><?= h($weekDay) ?></div>
                 <?php endforeach; ?>
 
-                <?php for ($blank = 1; $blank < $firstWeekday; $blank++): ?>
+                <?php for ($blank = 0; $blank < $firstWeekday; $blank++): ?>
                     <div class="day-cell is-empty"></div>
                 <?php endfor; ?>
 

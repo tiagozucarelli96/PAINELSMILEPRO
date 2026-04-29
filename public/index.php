@@ -187,6 +187,7 @@ $routes = [
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
   'administrativo_avisos' => 'administrativo_avisos.php',
+  'administrativo_avisos_upload' => 'administrativo_avisos_upload.php',
   'administrativo_gestao_documentos' => 'administrativo_gestao_documentos.php',
   'administrativo_juridico' => 'administrativo_juridico.php',
   'cartao_ofx_me' => 'cartao_ofx_me.php',

@@ -95,17 +95,21 @@ ob_start();
 
 <style>
 .avisos-admin-page {
-    max-width: 1400px;
+    max-width: 1320px;
     margin: 0 auto;
     padding: 1.5rem;
 }
 
 .avisos-admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
     margin-bottom: 1.5rem;
 }
 
 .avisos-admin-header h1 {
-    margin: 0 0 0.5rem;
+    margin: 0 0 0.45rem;
     color: #1e3a8a;
     font-size: 2rem;
 }
@@ -113,113 +117,10 @@ ob_start();
 .avisos-admin-header p {
     margin: 0;
     color: #64748b;
+    max-width: 760px;
 }
 
-.avisos-admin-grid {
-    display: grid;
-    grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
-    gap: 1.5rem;
-    align-items: start;
-}
-
-.avisos-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-    overflow: hidden;
-}
-
-.avisos-card-header {
-    padding: 1.25rem 1.25rem 0.75rem;
-    border-bottom: 1px solid #eef2f7;
-}
-
-.avisos-card-header h2 {
-    margin: 0;
-    font-size: 1.1rem;
-    color: #0f172a;
-}
-
-.avisos-card-header p {
-    margin: 0.35rem 0 0;
-    color: #64748b;
-    font-size: 0.92rem;
-}
-
-.avisos-card-body {
-    padding: 1.25rem;
-}
-
-.avisos-form-grid {
-    display: grid;
-    gap: 1rem;
-}
-
-.avisos-form-group {
-    display: grid;
-    gap: 0.45rem;
-}
-
-.avisos-form-group label {
-    font-weight: 600;
-    color: #334155;
-}
-
-.avisos-form-group input[type="text"],
-.avisos-form-group input[type="datetime-local"],
-.avisos-form-group textarea,
-.avisos-form-group select {
-    width: 100%;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    padding: 0.8rem 0.9rem;
-    font-size: 0.95rem;
-}
-
-.avisos-form-help {
-    color: #64748b;
-    font-size: 0.82rem;
-}
-
-.avisos-toggle-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.9rem;
-}
-
-.avisos-choice {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: #334155;
-    font-size: 0.94rem;
-}
-
-.avisos-destinatarios {
-    max-height: 240px;
-    overflow: auto;
-    border: 1px solid #dbe3ee;
-    border-radius: 12px;
-    padding: 0.85rem;
-    display: grid;
-    gap: 0.55rem;
-    background: #f8fafc;
-}
-
-.avisos-destinatario-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    font-size: 0.92rem;
-}
-
-.avisos-destinatario-item small {
-    display: block;
-    color: #64748b;
-}
-
-.avisos-actions {
+.avisos-header-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
@@ -227,15 +128,28 @@ ob_start();
 
 .avisos-btn {
     border: none;
-    border-radius: 10px;
-    padding: 0.85rem 1.1rem;
-    font-weight: 600;
+    border-radius: 12px;
+    padding: 0.9rem 1.15rem;
+    font-weight: 700;
     cursor: pointer;
+    font-size: 0.95rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.avisos-btn:hover {
+    transform: translateY(-1px);
 }
 
 .avisos-btn-primary {
     background: linear-gradient(135deg, #1d4ed8, #2563eb);
     color: #fff;
+    box-shadow: 0 14px 24px rgba(37, 99, 235, 0.18);
+}
+
+.avisos-btn-secondary {
+    background: #fff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
 }
 
 .avisos-btn-danger {
@@ -262,6 +176,198 @@ ob_start();
     border: 1px solid #a7f3d0;
 }
 
+.avisos-main-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+    overflow: hidden;
+}
+
+.avisos-main-top {
+    padding: 1.4rem 1.5rem 1rem;
+    border-bottom: 1px solid #eef2f7;
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.avisos-main-top h2 {
+    margin: 0 0 0.4rem;
+    color: #0f172a;
+    font-size: 1.18rem;
+}
+
+.avisos-main-top p {
+    margin: 0;
+    color: #64748b;
+}
+
+.avisos-form {
+    padding: 1.5rem;
+    display: grid;
+    gap: 1.25rem;
+}
+
+.avisos-grid-two {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.avisos-form-group {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.avisos-form-group label {
+    font-weight: 700;
+    color: #334155;
+}
+
+.avisos-form-group input[type="text"],
+.avisos-form-group input[type="datetime-local"],
+.avisos-form-group textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 0.85rem 0.95rem;
+    font-size: 0.96rem;
+}
+
+.avisos-form-help {
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.avisos-inline-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+}
+
+.avisos-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #334155;
+    font-size: 0.94rem;
+}
+
+.avisos-side-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 1rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.avisos-side-panel h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+}
+
+.avisos-destinatarios {
+    max-height: 340px;
+    overflow: auto;
+    border: 1px solid #dbe3ee;
+    border-radius: 12px;
+    padding: 0.85rem;
+    display: grid;
+    gap: 0.55rem;
+    background: #fff;
+}
+
+.avisos-destinatario-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    font-size: 0.92rem;
+}
+
+.avisos-destinatario-item small {
+    display: block;
+    color: #64748b;
+}
+
+.avisos-empty {
+    padding: 1.2rem;
+    text-align: center;
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+}
+
+.avisos-main-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding-top: 0.25rem;
+}
+
+.avisos-history-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    z-index: 1600;
+}
+
+.avisos-history-modal.open {
+    display: flex;
+}
+
+.avisos-history-modal-card {
+    width: min(1180px, 100%);
+    max-height: min(88vh, 920px);
+    overflow: auto;
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 24px 56px rgba(15, 23, 42, 0.24);
+}
+
+.avisos-history-modal-header {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 2;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.2rem 1.3rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.avisos-history-modal-header h2 {
+    margin: 0 0 0.35rem;
+    color: #0f172a;
+    font-size: 1.15rem;
+}
+
+.avisos-history-modal-header p {
+    margin: 0;
+    color: #64748b;
+}
+
+.avisos-modal-close {
+    border: none;
+    background: transparent;
+    font-size: 1.9rem;
+    line-height: 1;
+    color: #475569;
+    cursor: pointer;
+}
+
+.avisos-history-modal-body {
+    padding: 1.25rem;
+}
+
 .avisos-history-list {
     display: grid;
     gap: 1rem;
@@ -269,7 +375,7 @@ ob_start();
 
 .avisos-history-item {
     border: 1px solid #e5e7eb;
-    border-radius: 14px;
+    border-radius: 16px;
     padding: 1rem;
     background: #fff;
 }
@@ -367,27 +473,37 @@ ob_start();
     padding-bottom: 0;
 }
 
-.avisos-empty {
-    padding: 1.2rem;
-    text-align: center;
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-}
+@media (max-width: 1040px) {
+    .avisos-admin-header,
+    .avisos-history-top {
+        flex-direction: column;
+    }
 
-@media (max-width: 1080px) {
-    .avisos-admin-grid,
+    .avisos-grid-two,
     .avisos-history-columns {
         grid-template-columns: 1fr;
+    }
+
+    .avisos-main-actions {
+        justify-content: stretch;
+    }
+
+    .avisos-main-actions .avisos-btn,
+    .avisos-header-actions .avisos-btn {
+        width: 100%;
     }
 }
 </style>
 
 <div class="avisos-admin-page">
     <div class="avisos-admin-header">
-        <h1>📣 Enviar Avisos</h1>
-        <p>Crie avisos curtos para a dashboard, defina audiência, expiração e acompanhe quem visualizou.</p>
+        <div>
+            <h1>📣 Enviar Avisos</h1>
+            <p>Cadastre avisos da dashboard com assunto curto, conteúdo completo em modal, escolha de público, prazo de expiração e leitura única.</p>
+        </div>
+        <div class="avisos-header-actions">
+            <button type="button" class="avisos-btn avisos-btn-secondary" onclick="abrirHistoricoAvisos()">Histórico e visualizações</button>
+        </div>
     </div>
 
     <?php if ($erro !== ''): ?>
@@ -397,30 +513,32 @@ ob_start();
         <div class="avisos-feedback success"><?= htmlspecialchars($sucesso) ?></div>
     <?php endif; ?>
 
-    <div class="avisos-admin-grid">
-        <section class="avisos-card">
-            <div class="avisos-card-header">
-                <h2>Novo aviso</h2>
-                <p>O assunto aparece em faixa curta na dashboard. O conteúdo completo abre em modal.</p>
+    <section class="avisos-main-card">
+        <div class="avisos-main-top">
+            <h2>Novo aviso</h2>
+            <p>O assunto aparece como faixa curta na dashboard. O conteúdo abaixo abre completo no modal do usuário.</p>
+        </div>
+
+        <form method="post" class="avisos-form" id="avisos-form">
+            <input type="hidden" name="action" value="criar_aviso">
+
+            <div class="avisos-form-group">
+                <label for="aviso-assunto">Assunto da faixa</label>
+                <input type="text" id="aviso-assunto" name="assunto" maxlength="180" value="<?= htmlspecialchars($formData['assunto']) ?>" placeholder="Ex.: Atualização importante do setor administrativo" required>
+                <div class="avisos-form-help">Use um texto direto. Esse é o único conteúdo mostrado na faixa da dashboard.</div>
             </div>
-            <div class="avisos-card-body">
-                <form method="post" class="avisos-form-grid" id="avisos-form">
-                    <input type="hidden" name="action" value="criar_aviso">
 
-                    <div class="avisos-form-group">
-                        <label for="aviso-assunto">Assunto</label>
-                        <input type="text" id="aviso-assunto" name="assunto" maxlength="180" value="<?= htmlspecialchars($formData['assunto']) ?>" placeholder="Ex.: Atualização importante sobre processos internos" required>
-                    </div>
+            <div class="avisos-grid-two">
+                <div class="avisos-form-group">
+                    <label for="aviso-conteudo">Conteúdo completo do aviso</label>
+                    <textarea id="aviso-conteudo" name="conteudo_html"><?= htmlspecialchars($formData['conteudo_html']) ?></textarea>
+                    <div class="avisos-form-help">Este editor suporta links, tabelas e envio de imagens, no mesmo padrão rico usado em outras áreas do sistema.</div>
+                </div>
 
-                    <div class="avisos-form-group">
-                        <label for="aviso-conteudo">Conteúdo do aviso</label>
-                        <textarea id="aviso-conteudo" name="conteudo_html" class="aviso-rich-editor"><?= htmlspecialchars($formData['conteudo_html']) ?></textarea>
-                        <div class="avisos-form-help">Use formatação rica para links, listas e destaques.</div>
-                    </div>
-
+                <aside class="avisos-side-panel">
                     <div class="avisos-form-group">
                         <label>Quem vai ver</label>
-                        <div class="avisos-toggle-row">
+                        <div class="avisos-inline-options">
                             <label class="avisos-choice">
                                 <input type="radio" name="modo_destino" value="selecionados" <?= $formData['modo_destino'] === 'selecionados' ? 'checked' : '' ?>>
                                 <span>Usuários selecionados</span>
@@ -451,7 +569,7 @@ ob_start();
                     <div class="avisos-form-group">
                         <label for="aviso-expira-em">Prazo de expiração</label>
                         <input type="datetime-local" id="aviso-expira-em" name="expira_em" value="<?= htmlspecialchars($formData['expira_em']) ?>">
-                        <div class="avisos-form-help">Deixe em branco para manter o aviso ativo até desativação manual ou leitura única.</div>
+                        <div class="avisos-form-help">Se deixar em branco, o aviso só sai quando for desativado manualmente ou quando a leitura única for consumida.</div>
                     </div>
 
                     <div class="avisos-form-group">
@@ -459,122 +577,122 @@ ob_start();
                             <input type="checkbox" name="visualizacao_unica" value="1" <?= $formData['visualizacao_unica'] ? 'checked' : '' ?>>
                             <span>Visualização única por usuário</span>
                         </label>
-                        <div class="avisos-form-help">Quando ativado, o aviso some da dashboard após a primeira abertura do modal por aquele usuário.</div>
+                        <div class="avisos-form-help">Ao abrir o modal, o usuário consome o aviso e ele deixa de aparecer na dashboard dele.</div>
                     </div>
-
-                    <div class="avisos-actions">
-                        <button type="submit" class="avisos-btn avisos-btn-primary">Publicar aviso</button>
-                    </div>
-                </form>
+                </aside>
             </div>
-        </section>
 
-        <section class="avisos-card">
-            <div class="avisos-card-header">
+            <div class="avisos-main-actions">
+                <button type="submit" class="avisos-btn avisos-btn-primary">Publicar aviso</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<div id="avisosHistoricoModal" class="avisos-history-modal" aria-hidden="true">
+    <div class="avisos-history-modal-card">
+        <div class="avisos-history-modal-header">
+            <div>
                 <h2>Histórico e visualizações</h2>
-                <p>Controle quem recebeu, quem abriu e em qual dia/horário cada aviso foi visualizado.</p>
+                <p>Veja cada aviso publicado, seus destinatários e o registro de quem visualizou com dia e hora.</p>
             </div>
-            <div class="avisos-card-body">
-                <?php if (empty($historico)): ?>
-                    <div class="avisos-empty">Nenhum aviso cadastrado até agora.</div>
-                <?php else: ?>
-                    <div class="avisos-history-list">
-                        <?php foreach ($historico as $aviso): ?>
-                            <?php
-                            $avisoId = (int)$aviso['id'];
-                            $destinatarios = $destinatariosPorAviso[$avisoId] ?? [];
-                            $visualizacoes = $visualizacoesPorAviso[$avisoId] ?? [];
-                            $totalDestinatarios = (int)($aviso['total_destinatarios'] ?? 0);
-                            $totalVisualizados = (int)($aviso['total_visualizados'] ?? 0);
-                            $expirado = !empty($aviso['expira_em']) && strtotime((string)$aviso['expira_em']) <= time();
-                            ?>
-                            <article class="avisos-history-item">
-                                <div class="avisos-history-top">
-                                    <div>
-                                        <h3><?= htmlspecialchars($aviso['assunto']) ?></h3>
-                                        <p>
-                                            Criado em <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$aviso['criado_em']))) ?>
-                                            <?php if (!empty($aviso['criador_nome'])): ?>
-                                                por <?= htmlspecialchars((string)$aviso['criador_nome']) ?>
-                                            <?php endif; ?>
-                                        </p>
-                                    </div>
-                                    <?php if (adminAvisosBoolValue($aviso['ativo'] ?? false) && !$expirado): ?>
-                                        <form method="post" onsubmit="return confirm('Desativar este aviso?');">
-                                            <input type="hidden" name="action" value="desativar_aviso">
-                                            <input type="hidden" name="aviso_id" value="<?= $avisoId ?>">
-                                            <button type="submit" class="avisos-btn avisos-btn-danger">Desativar</button>
-                                        </form>
-                                    <?php endif; ?>
-                                </div>
-
-                                <div class="avisos-badges">
-                                    <span class="avisos-badge"><?= $aviso['modo_destino'] === 'todos' ? 'Todos os usuários' : 'Usuários selecionados' ?></span>
-                                    <span class="avisos-badge neutral"><?= $totalVisualizados ?>/<?= $totalDestinatarios ?> visualizaram</span>
-                                    <?php if (adminAvisosBoolValue($aviso['visualizacao_unica'] ?? false)): ?>
-                                        <span class="avisos-badge warn">Visualização única</span>
-                                    <?php endif; ?>
-                                    <?php if (!empty($aviso['expira_em'])): ?>
-                                        <span class="avisos-badge <?= $expirado ? 'warn' : 'neutral' ?>">
-                                            <?= $expirado ? 'Expirado em ' : 'Expira em ' ?><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$aviso['expira_em']))) ?>
-                                        </span>
-                                    <?php endif; ?>
-                                    <?php if (!adminAvisosBoolValue($aviso['ativo'] ?? false)): ?>
-                                        <span class="avisos-badge warn">Desativado</span>
-                                    <?php endif; ?>
-                                </div>
-
-                                <div class="avisos-history-resumo"><?= htmlspecialchars(adminAvisosResumoHtml((string)$aviso['conteudo_html'])) ?></div>
-
-                                <div class="avisos-history-columns">
-                                    <div class="avisos-mini-panel">
-                                        <h4>Destinatários</h4>
-                                        <?php if ($aviso['modo_destino'] === 'todos'): ?>
-                                            <div class="avisos-empty">Este aviso foi liberado para todos os usuários ativos.</div>
-                                        <?php elseif (empty($destinatarios)): ?>
-                                            <div class="avisos-empty">Nenhum destinatário associado.</div>
-                                        <?php else: ?>
-                                            <div class="avisos-mini-list">
-                                                <?php foreach ($destinatarios as $destinatario): ?>
-                                                    <div class="avisos-mini-item">
-                                                        <strong><?= htmlspecialchars($destinatario['nome']) ?></strong><br>
-                                                        <span><?= htmlspecialchars((string)$destinatario['email']) ?></span>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
+            <button type="button" class="avisos-modal-close" onclick="fecharHistoricoAvisos()" aria-label="Fechar">&times;</button>
+        </div>
+        <div class="avisos-history-modal-body">
+            <?php if (empty($historico)): ?>
+                <div class="avisos-empty">Nenhum aviso cadastrado até agora.</div>
+            <?php else: ?>
+                <div class="avisos-history-list">
+                    <?php foreach ($historico as $aviso): ?>
+                        <?php
+                        $avisoId = (int)$aviso['id'];
+                        $destinatarios = $destinatariosPorAviso[$avisoId] ?? [];
+                        $visualizacoes = $visualizacoesPorAviso[$avisoId] ?? [];
+                        $totalDestinatarios = (int)($aviso['total_destinatarios'] ?? 0);
+                        $totalVisualizados = (int)($aviso['total_visualizados'] ?? 0);
+                        $expirado = !empty($aviso['expira_em']) && strtotime((string)$aviso['expira_em']) <= time();
+                        ?>
+                        <article class="avisos-history-item">
+                            <div class="avisos-history-top">
+                                <div>
+                                    <h3><?= htmlspecialchars($aviso['assunto']) ?></h3>
+                                    <p>
+                                        Criado em <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$aviso['criado_em']))) ?>
+                                        <?php if (!empty($aviso['criador_nome'])): ?>
+                                            por <?= htmlspecialchars((string)$aviso['criador_nome']) ?>
                                         <?php endif; ?>
-                                    </div>
-
-                                    <div class="avisos-mini-panel">
-                                        <h4>Quem visualizou</h4>
-                                        <?php if (empty($visualizacoes)): ?>
-                                            <div class="avisos-empty">Ainda não há visualizações registradas.</div>
-                                        <?php else: ?>
-                                            <div class="avisos-mini-list">
-                                                <?php foreach ($visualizacoes as $visualizacao): ?>
-                                                    <div class="avisos-mini-item">
-                                                        <strong><?= htmlspecialchars($visualizacao['nome']) ?></strong><br>
-                                                        <span>
-                                                            Primeiro acesso: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$visualizacao['visualizado_em']))) ?>
-                                                        </span><br>
-                                                        <?php if ((int)($visualizacao['total_visualizacoes'] ?? 1) > 1): ?>
-                                                            <span>
-                                                                Último acesso: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$visualizacao['ultima_visualizacao_em']))) ?>
-                                                                · <?= (int)$visualizacao['total_visualizacoes'] ?>x
-                                                            </span>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
+                                    </p>
                                 </div>
-                            </article>
-                        <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </section>
+                                <?php if (adminAvisosBoolValue($aviso['ativo'] ?? false) && !$expirado): ?>
+                                    <form method="post" onsubmit="return confirm('Desativar este aviso?');">
+                                        <input type="hidden" name="action" value="desativar_aviso">
+                                        <input type="hidden" name="aviso_id" value="<?= $avisoId ?>">
+                                        <button type="submit" class="avisos-btn avisos-btn-danger">Desativar</button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="avisos-badges">
+                                <span class="avisos-badge"><?= $aviso['modo_destino'] === 'todos' ? 'Todos os usuários' : 'Usuários selecionados' ?></span>
+                                <span class="avisos-badge neutral"><?= $totalVisualizados ?>/<?= $totalDestinatarios ?> visualizaram</span>
+                                <?php if (adminAvisosBoolValue($aviso['visualizacao_unica'] ?? false)): ?>
+                                    <span class="avisos-badge warn">Visualização única</span>
+                                <?php endif; ?>
+                                <?php if (!empty($aviso['expira_em'])): ?>
+                                    <span class="avisos-badge <?= $expirado ? 'warn' : 'neutral' ?>">
+                                        <?= $expirado ? 'Expirado em ' : 'Expira em ' ?><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$aviso['expira_em']))) ?>
+                                    </span>
+                                <?php endif; ?>
+                                <?php if (!adminAvisosBoolValue($aviso['ativo'] ?? false)): ?>
+                                    <span class="avisos-badge warn">Desativado</span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="avisos-history-resumo"><?= htmlspecialchars(adminAvisosResumoHtml((string)$aviso['conteudo_html'])) ?></div>
+
+                            <div class="avisos-history-columns">
+                                <div class="avisos-mini-panel">
+                                    <h4>Destinatários</h4>
+                                    <?php if ($aviso['modo_destino'] === 'todos'): ?>
+                                        <div class="avisos-empty">Este aviso foi liberado para todos os usuários ativos.</div>
+                                    <?php elseif (empty($destinatarios)): ?>
+                                        <div class="avisos-empty">Nenhum destinatário associado.</div>
+                                    <?php else: ?>
+                                        <div class="avisos-mini-list">
+                                            <?php foreach ($destinatarios as $destinatario): ?>
+                                                <div class="avisos-mini-item">
+                                                    <strong><?= htmlspecialchars($destinatario['nome']) ?></strong><br>
+                                                    <span><?= htmlspecialchars((string)$destinatario['email']) ?></span>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="avisos-mini-panel">
+                                    <h4>Quem visualizou</h4>
+                                    <?php if (empty($visualizacoes)): ?>
+                                        <div class="avisos-empty">Ainda não há visualizações registradas.</div>
+                                    <?php else: ?>
+                                        <div class="avisos-mini-list">
+                                            <?php foreach ($visualizacoes as $visualizacao): ?>
+                                                <div class="avisos-mini-item">
+                                                    <strong><?= htmlspecialchars($visualizacao['nome']) ?></strong><br>
+                                                    <span>Primeiro acesso: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$visualizacao['visualizado_em']))) ?></span><br>
+                                                    <?php if ((int)($visualizacao['total_visualizacoes'] ?? 1) > 1): ?>
+                                                        <span>Último acesso: <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$visualizacao['ultima_visualizacao_em']))) ?> · <?= (int)$visualizacao['total_visualizacoes'] ?>x</span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
     </div>
 </div>
 
@@ -586,6 +704,20 @@ function toggleAvisoDestinatarios() {
     const modoSelecionados = document.querySelector('input[name="modo_destino"][value="selecionados"]');
     if (!wrapper || !modoSelecionados) return;
     wrapper.style.display = modoSelecionados.checked ? 'grid' : 'none';
+}
+
+function abrirHistoricoAvisos() {
+    const modal = document.getElementById('avisosHistoricoModal');
+    if (!modal) return;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function fecharHistoricoAvisos() {
+    const modal = document.getElementById('avisosHistoricoModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
 }
 
 function loadAvisoTiny() {
@@ -608,14 +740,44 @@ function initAvisoTiny() {
     if (tinymce.get('aviso-conteudo')) return;
 
     tinymce.init({
-        target: textarea,
-        menubar: true,
-        branding: false,
-        promotion: false,
-        plugins: 'advlist autolink lists link table code fullscreen wordcount',
-        toolbar: 'undo redo | blocks | bold italic underline | alignleft aligncenter alignright | bullist numlist | link table | removeformat | code fullscreen',
-        height: 320,
-        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }'
+        selector: '#aviso-conteudo',
+        base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
+        suffix: '.min',
+        plugins: 'lists link image table code',
+        toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
+        menubar: false,
+        height: 420,
+        content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
+        paste_data_images: true,
+        automatic_uploads: true,
+        images_upload_handler: function(blobInfo) {
+            return new Promise(function(resolve, reject) {
+                const xhr = new XMLHttpRequest();
+                const formData = new FormData();
+                formData.append('file', blobInfo.blob(), blobInfo.filename());
+                xhr.open('POST', 'index.php?page=administrativo_avisos_upload');
+                xhr.onload = function() {
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        reject('Upload falhou: ' + xhr.status);
+                        return;
+                    }
+                    try {
+                        const payload = JSON.parse(xhr.responseText);
+                        if (payload.location) {
+                            resolve(payload.location);
+                        } else {
+                            reject(payload.error || 'Resposta inválida');
+                        }
+                    } catch (error) {
+                        reject('Resposta inválida');
+                    }
+                };
+                xhr.onerror = function() {
+                    reject('Erro de rede');
+                };
+                xhr.send(formData);
+            });
+        }
     });
 }
 
@@ -625,6 +787,13 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     toggleAvisoDestinatarios();
     loadAvisoTiny();
+
+    document.addEventListener('click', function(event) {
+        const modal = document.getElementById('avisosHistoricoModal');
+        if (modal && event.target === modal) {
+            fecharHistoricoAvisos();
+        }
+    });
 });
 </script>
 
