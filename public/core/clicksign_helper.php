@@ -56,23 +56,16 @@ if (!class_exists('ClicksignHelper')) {
 
             $envelopeName = trim((string)($input['envelope_name'] ?? 'Documento para assinatura'));
             $filename = trim((string)($input['filename'] ?? 'documento.pdf'));
-            $content = trim((string)($input['content'] ?? ''));
             $contentBase64 = trim((string)($input['content_base64'] ?? ''));
             $contentType = trim((string)($input['content_type'] ?? 'application/octet-stream'));
             $signerName = trim((string)($input['signer_name'] ?? ''));
             $signerEmail = trim((string)($input['signer_email'] ?? ''));
             $deadlineAt = trim((string)($input['deadline_at'] ?? ''));
-            $message = trim((string)($input['notification_message'] ?? 'Você possui um documento pendente para assinatura.'));
-
-            if ($content === '' && $contentBase64 !== '') {
-                if (stripos($contentBase64, 'data:') === 0) {
-                    $content = $contentBase64;
-                } else {
-                    $content = 'data:' . $contentType . ';base64,' . $contentBase64;
-                }
+            if ($contentBase64 !== '' && stripos($contentBase64, 'data:') !== 0) {
+                $contentBase64 = 'data:' . $contentType . ';base64,' . $contentBase64;
             }
 
-            if ($content === '' || $signerName === '' || $signerEmail === '') {
+            if ($contentBase64 === '' || $signerName === '' || $signerEmail === '') {
                 return [
                     'success' => false,
                     'error' => 'Dados obrigatórios para assinatura não informados (arquivo/signatário).',
@@ -113,7 +106,7 @@ if (!class_exists('ClicksignHelper')) {
                     'type' => 'documents',
                     'attributes' => [
                         'filename' => $filename,
-                        'content' => $content,
+                        'content_base64' => $contentBase64,
                     ],
                 ],
             ]);
@@ -136,14 +129,6 @@ if (!class_exists('ClicksignHelper')) {
                     'attributes' => [
                         'name' => $signerName,
                         'email' => $signerEmail,
-                        'has_documentation' => false,
-                        'refusable' => false,
-                        'group' => 1,
-                        'communicate_events' => [
-                            'signature_request' => 'email',
-                            'signature_reminder' => 'email',
-                            'document_signed' => 'email',
-                        ],
                     ],
                 ],
             ]);
@@ -187,6 +172,33 @@ if (!class_exists('ClicksignHelper')) {
                 return $resRequirement;
             }
 
+            $resAuthRequirement = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/requirements', [
+                'data' => [
+                    'type' => 'requirements',
+                    'attributes' => [
+                        'action' => 'provide_evidence',
+                        'auth' => 'email',
+                    ],
+                    'relationships' => [
+                        'document' => [
+                            'data' => [
+                                'type' => 'documents',
+                                'id' => $documentId,
+                            ],
+                        ],
+                        'signer' => [
+                            'data' => [
+                                'type' => 'signers',
+                                'id' => $signerId,
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+            if (!$resAuthRequirement['success']) {
+                return $resAuthRequirement;
+            }
+
             $resActivate = $this->request('PATCH', '/envelopes/' . rawurlencode($envelopeId), [
                 'data' => [
                     'id' => $envelopeId,
@@ -202,13 +214,11 @@ if (!class_exists('ClicksignHelper')) {
 
             $resNotify = $this->request(
                 'POST',
-                '/envelopes/' . rawurlencode($envelopeId) . '/signers/' . rawurlencode($signerId) . '/notifications',
+                '/envelopes/' . rawurlencode($envelopeId) . '/notifications',
                 [
                     'data' => [
                         'type' => 'notifications',
-                        'attributes' => [
-                            'message' => $message,
-                        ],
+                        'attributes' => new stdClass(),
                     ],
                 ]
             );
@@ -232,6 +242,7 @@ if (!class_exists('ClicksignHelper')) {
                     'document' => $resDocument['data'] ?? null,
                     'signer' => $resSigner['data'] ?? null,
                     'requirement' => $resRequirement['data'] ?? null,
+                    'auth_requirement' => $resAuthRequirement['data'] ?? null,
                     'activate' => $resActivate['data'] ?? null,
                     'notify' => $resNotify['data'] ?? null,
                 ],
@@ -271,19 +282,13 @@ if (!class_exists('ClicksignHelper')) {
                 ];
             }
 
-            if ($message === '') {
-                $message = 'Você possui um documento pendente para assinatura.';
-            }
-
             return $this->request(
                 'POST',
-                '/envelopes/' . rawurlencode($envelopeId) . '/signers/' . rawurlencode($signerId) . '/notifications',
+                '/envelopes/' . rawurlencode($envelopeId) . '/notifications',
                 [
                     'data' => [
                         'type' => 'notifications',
-                        'attributes' => [
-                            'message' => $message,
-                        ],
+                        'attributes' => new stdClass(),
                     ],
                 ]
             );
