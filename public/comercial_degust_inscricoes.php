@@ -50,7 +50,7 @@ $where = [];
 $params = [];
 
 if ($event_filter) {
-    $where[] = 'i.event_id = :event_id';
+    $where[] = 'i.degustacao_id = :event_id';
     $params[':event_id'] = $event_filter;
 }
 
@@ -354,14 +354,16 @@ includeSidebar('Todas as Inscrições - Comercial');
     background: #fff;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .table-header {
     display: grid;
-    grid-template-columns: 2fr 1.5fr 1fr 1fr 0.8fr 1fr 0.8fr;
+    grid-template-columns: minmax(220px, 2fr) minmax(180px, 1.5fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(110px, 0.8fr) minmax(170px, 1.1fr);
     gap: 1rem;
+    min-width: 1180px;
     padding: 0.85rem 1.25rem;
     background: #f8fafc;
     border-bottom: 2px solid #e2e8f0;
@@ -374,8 +376,9 @@ includeSidebar('Todas as Inscrições - Comercial');
 
 .table-row {
     display: grid;
-    grid-template-columns: 2fr 1.5fr 1fr 1fr 0.8fr 1fr 0.8fr;
+    grid-template-columns: minmax(220px, 2fr) minmax(180px, 1.5fr) minmax(120px, 1fr) minmax(110px, 1fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(110px, 0.8fr) minmax(170px, 1.1fr);
     gap: 1rem;
+    min-width: 1180px;
     padding: 0.85rem 1.25rem;
     border-bottom: 1px solid #f1f5f9;
     align-items: center;
@@ -398,6 +401,7 @@ includeSidebar('Todas as Inscrições - Comercial');
 .participant-email {
     font-size: 0.8rem;
     color: #64748b;
+    word-break: break-word;
 }
 
 .degustacao-name {
@@ -407,6 +411,10 @@ includeSidebar('Todas as Inscrições - Comercial');
 
 .degustacao-date {
     font-size: 0.8rem;
+    color: #64748b;
+}
+
+.table-cell-muted {
     color: #64748b;
 }
 
@@ -507,6 +515,7 @@ includeSidebar('Todas as Inscrições - Comercial');
     
     .table-row {
         grid-template-columns: 1fr;
+        min-width: 0;
         gap: 0.5rem;
         padding: 1rem;
         border-bottom: 1px solid #e2e8f0;
@@ -611,18 +620,19 @@ includeSidebar('Todas as Inscrições - Comercial');
                     <div class="filters-actions">
                         <button type="submit" class="btn-primary">🔍 Filtrar</button>
                         <a href="index.php?page=comercial_degust_inscricoes" class="btn-secondary">Limpar</a>
-                        <?php
-                        $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
-                        $tem_algum_teste = count(array_intersect($emails_teste, array_column($inscricoes, 'email'))) > 0;
-                        if ($tem_algum_teste): ?>
-                        <form method="POST" style="display:inline;" onsubmit="return confirm('Excluir todos os cadastros de teste?');">
-                            <input type="hidden" name="action" value="excluir_teste">
-                            <button type="submit" class="btn-secondary" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-left:0.5rem;">Excluir testes</button>
-                        </form>
-                        <?php endif; ?>
                     </div>
                 </form>
             </div>
+
+            <?php
+            $emails_teste = ['sdsd@mffmf.com', 'joao@email.com', 'maria@email.com', 'pedro@email.com'];
+            $tem_algum_teste = count(array_intersect($emails_teste, array_column($inscricoes, 'email'))) > 0;
+            if ($tem_algum_teste): ?>
+            <form method="POST" style="margin: -0.75rem 0 1rem 0;" onsubmit="return confirm('Excluir todos os cadastros de teste?');">
+                <input type="hidden" name="action" value="excluir_teste">
+                <button type="submit" class="btn-secondary" style="background:#dc2626;color:#fff;border-color:#dc2626;">Excluir testes</button>
+            </form>
+            <?php endif; ?>
 
             <?php if (!empty($_GET['excluido']) || !empty($_GET['msg'])): ?>
             <div class="alert alert-success" style="margin-bottom:1rem;padding:0.75rem;border-radius:8px;background:#d1fae5;color:#065f46;">
@@ -645,27 +655,27 @@ includeSidebar('Todas as Inscrições - Comercial');
                 
                 <?php foreach ($inscricoes as $inscricao): ?>
                     <div class="table-row">
-                        <div class="participant-info">
+                        <div class="participant-info" data-label="Participante">
                             <div class="participant-name"><?= h($inscricao['nome']) ?></div>
                             <div class="participant-email"><?= h($inscricao['email']) ?></div>
                         </div>
                         
-                        <div class="degustacao-info">
+                        <div class="degustacao-info" data-label="Degustação">
                             <div class="degustacao-name"><?= h($inscricao['degustacao_nome']) ?></div>
                             <div class="degustacao-date"><?php $d = $inscricao['degustacao_data'] ?? ''; echo $d !== '' && $d !== null ? date('d/m/Y', strtotime($d)) : '—'; ?></div>
                         </div>
                         
-                        <div><?= getStatusBadge($inscricao['status']) ?></div>
+                        <div data-label="Status"><?= getStatusBadge($inscricao['status']) ?></div>
                         
-                        <div><?= ucfirst((string)($inscricao['tipo_festa'] ?? '')) ?></div>
+                        <div data-label="Tipo de Festa"><?= h(ucfirst((string)($inscricao['tipo_festa'] ?? '—'))) ?></div>
                         
-                        <div><?= $inscricao['qtd_pessoas'] ?> pessoas</div>
+                        <div data-label="Pessoas"><?= (int)($inscricao['qtd_pessoas'] ?? 0) ?> pessoas</div>
                         
-                        <div><?= $inscricao['fechou_contrato_text'] ?></div>
+                        <div data-label="Fechou Contrato"><?= h($inscricao['fechou_contrato_text']) ?></div>
                         
-                        <div><?= $inscricao['pagamento_text'] ?></div>
+                        <div data-label="Pagamento"><?= h($inscricao['pagamento_text']) ?></div>
                         
-                        <div class="acoes-cell">
+                        <div class="acoes-cell" data-label="Ações">
                             <?php $event_id_degust = (int)($inscricao['degustacao_id'] ?? $inscricao['event_id'] ?? 0); if ($event_id_degust > 0): ?>
                             <a href="index.php?page=comercial_degust_inscritos&event_id=<?= $event_id_degust ?>" class="btn-ver-inscritos" title="Abrir degustação para gerar cobrança e adicionar pessoas">Ver inscritos</a>
                             <?php endif; ?>

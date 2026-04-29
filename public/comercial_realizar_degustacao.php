@@ -240,6 +240,102 @@ function dr_json_response(array $payload, int $status = 200): void
     exit;
 }
 
+function dr_checkin_schema_ensure(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS compareceu SMALLINT DEFAULT 0");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS checkin_qtd INTEGER NOT NULL DEFAULT 0");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS first_checkin_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS last_checkin_at TIMESTAMP NULL");
+        $pdo->exec("ALTER TABLE IF EXISTS comercial_inscricoes ADD COLUMN IF NOT EXISTS checkin_by_user_id INTEGER NULL");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_comercial_inscricoes_checkin_event_id ON comercial_inscricoes(event_id, status)");
+    } catch (Throwable $e) {
+        error_log('dr_checkin_schema_ensure: ' . $e->getMessage());
+    }
+
+    $ready = true;
+}
+
+function dr_descobrir_coluna_inscricao_degustacao(PDO $pdo): string
+{
+    static $coluna = null;
+    if ($coluna !== null) {
+        return $coluna;
+    }
+
+    try {
+        $check_col = $pdo->query("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'comercial_inscricoes'
+              AND column_name IN ('degustacao_id', 'event_id')
+            ORDER BY CASE WHEN column_name = 'degustacao_id' THEN 0 ELSE 1 END
+            LIMIT 1
+        ")->fetch(PDO::FETCH_ASSOC);
+        $coluna = $check_col ? (string)$check_col['column_name'] : 'degustacao_id';
+    } catch (Throwable $e) {
+        error_log('dr_descobrir_coluna_inscricao_degustacao: ' . $e->getMessage());
+        $coluna = 'degustacao_id';
+    }
+
+    return $coluna;
+}
+
+function dr_buscar_inscritos_confirmados(PDO $pdo, int $degustacao_id): array
+{
+    if ($degustacao_id <= 0) {
+        return [];
+    }
+
+    dr_checkin_schema_ensure($pdo);
+    $coluna_id = dr_descobrir_coluna_inscricao_degustacao($pdo);
+
+    $stmt = $pdo->prepare("
+        SELECT id, nome, email, qtd_pessoas, tipo_festa,
+               COALESCE(fechou_contrato, 'nao') as fechou_contrato,
+               COALESCE(compareceu, 0) as compareceu,
+               COALESCE(checkin_qtd, 0) as checkin_qtd,
+               first_checkin_at,
+               last_checkin_at,
+               checkin_by_user_id
+        FROM comercial_inscricoes
+        WHERE {$coluna_id} = :deg_id AND status = 'confirmado'
+        ORDER BY nome ASC
+    ");
+    $stmt->execute([':deg_id' => $degustacao_id]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+function dr_resumo_checkin(array $inscritos): array
+{
+    $resumo = [
+        'total_inscricoes' => 0,
+        'inscricoes_presentes' => 0,
+        'total_pessoas_esperadas' => 0,
+        'total_pessoas_presentes' => 0,
+        'total_pessoas_pendentes' => 0,
+    ];
+
+    foreach ($inscritos as $inscrito) {
+        $qtd_pessoas = max(1, (int)($inscrito['qtd_pessoas'] ?? 1));
+        $checkin_qtd = max(0, min($qtd_pessoas, (int)($inscrito['checkin_qtd'] ?? 0)));
+        $resumo['total_inscricoes']++;
+        $resumo['total_pessoas_esperadas'] += $qtd_pessoas;
+        $resumo['total_pessoas_presentes'] += $checkin_qtd;
+        $resumo['total_pessoas_pendentes'] += max(0, $qtd_pessoas - $checkin_qtd);
+        if ($checkin_qtd > 0) {
+            $resumo['inscricoes_presentes']++;
+        }
+    }
+
+    return $resumo;
+}
+
 function dr_layout_table_ensure(PDO $pdo): void
 {
     static $ready = false;
@@ -343,6 +439,9 @@ function dr_salvar_layout(PDO $pdo, int $degustacao_id, string $layout_json): st
     return $layout_validado;
 }
 
+$user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+dr_checkin_schema_ensure($pdo);
+
 $action = trim((string)($_POST['action'] ?? $_GET['action'] ?? ''));
 if ($action === 'salvar_layout_mesas') {
     if ($degustacao_id <= 0) {
@@ -379,6 +478,99 @@ if ($action === 'salvar_layout_mesas') {
     }
 }
 
+if ($action === 'atualizar_checkin_porta') {
+    if ($degustacao_id <= 0) {
+        dr_json_response([
+            'success' => false,
+            'message' => 'Degustação inválida.',
+        ], 400);
+    }
+
+    $inscricao_id = (int)($_POST['inscricao_id'] ?? 0);
+    $checkin_qtd = (int)($_POST['checkin_qtd'] ?? -1);
+    if ($inscricao_id <= 0) {
+        dr_json_response([
+            'success' => false,
+            'message' => 'Inscrição inválida.',
+        ], 400);
+    }
+
+    try {
+        $coluna_id = dr_descobrir_coluna_inscricao_degustacao($pdo);
+        $stmt = $pdo->prepare("
+            SELECT id, qtd_pessoas
+            FROM comercial_inscricoes
+            WHERE id = :id
+              AND {$coluna_id} = :degustacao_id
+              AND status = 'confirmado'
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':id' => $inscricao_id,
+            ':degustacao_id' => $degustacao_id,
+        ]);
+        $inscricao = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$inscricao) {
+            throw new RuntimeException('Inscrição não encontrada para esta degustação.');
+        }
+
+        $qtd_pessoas = max(1, (int)($inscricao['qtd_pessoas'] ?? 1));
+        $checkin_qtd = max(0, min($qtd_pessoas, $checkin_qtd));
+        $compareceu = $checkin_qtd > 0 ? 1 : 0;
+
+        $stmt = $pdo->prepare("
+            UPDATE comercial_inscricoes
+            SET checkin_qtd = :checkin_qtd,
+                compareceu = :compareceu,
+                first_checkin_at = CASE
+                    WHEN :checkin_qtd > 0 AND first_checkin_at IS NULL THEN NOW()
+                    WHEN :checkin_qtd = 0 THEN NULL
+                    ELSE first_checkin_at
+                END,
+                last_checkin_at = CASE
+                    WHEN :checkin_qtd > 0 THEN NOW()
+                    ELSE NULL
+                END,
+                checkin_by_user_id = CASE
+                    WHEN :checkin_qtd > 0 THEN :user_id
+                    ELSE NULL
+                END,
+                atualizado_em = NOW()
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':checkin_qtd' => $checkin_qtd,
+            ':compareceu' => $compareceu,
+            ':user_id' => $user_id > 0 ? $user_id : null,
+            ':id' => $inscricao_id,
+        ]);
+
+        $inscritos_atualizados = dr_buscar_inscritos_confirmados($pdo, $degustacao_id);
+        $resumo_checkin = dr_resumo_checkin($inscritos_atualizados);
+        $inscrito_atualizado = null;
+        foreach ($inscritos_atualizados as $item) {
+            if ((int)($item['id'] ?? 0) === $inscricao_id) {
+                $inscrito_atualizado = $item;
+                break;
+            }
+        }
+
+        dr_json_response([
+            'success' => true,
+            'message' => 'Check-in atualizado com sucesso.',
+            'inscrito' => $inscrito_atualizado,
+            'resumo_checkin' => $resumo_checkin,
+        ]);
+    } catch (Throwable $e) {
+        error_log('Erro ao atualizar check-in da degustação: ' . $e->getMessage());
+        dr_json_response([
+            'success' => false,
+            'message' => 'Erro ao atualizar check-in.',
+        ], 500);
+    }
+}
+
 // Buscar lista de degustações
 try {
     $degustacoes = $pdo->query("
@@ -398,27 +590,7 @@ if ($degustacao_id > 0) {
         $degustacao = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($degustacao) {
-            // Verificar qual coluna usar para inscrições
-            $check_col = $pdo->query("
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'comercial_inscricoes' 
-                AND column_name IN ('degustacao_id', 'event_id')
-                LIMIT 1
-            ")->fetch(PDO::FETCH_ASSOC);
-            
-            $coluna_id = $check_col ? $check_col['column_name'] : 'degustacao_id';
-            
-            // Buscar inscritos confirmados (incluindo fechou_contrato para PDF)
-            $stmt = $pdo->prepare("
-                SELECT id, nome, qtd_pessoas, tipo_festa, 
-                       COALESCE(fechou_contrato, 'nao') as fechou_contrato
-                FROM comercial_inscricoes 
-                WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
-                ORDER BY nome ASC
-            ");
-            $stmt->execute([':deg_id' => $degustacao_id]);
-            $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $inscritos = dr_buscar_inscritos_confirmados($pdo, $degustacao_id);
             if ($layout_json === '') {
                 $layout_json = dr_buscar_layout_salvo($pdo, $degustacao_id);
             }
@@ -445,26 +617,7 @@ if ($is_pdf_request && $degustacao_id > 0) {
         
         if ($degustacao) {
             error_log("✅ Degustação encontrada: " . ($degustacao['nome'] ?? 'sem nome'));
-            
-            // Buscar inscritos
-            $check_col = $pdo->query("
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'comercial_inscricoes' 
-                AND column_name IN ('degustacao_id', 'event_id')
-                LIMIT 1
-            ")->fetch(PDO::FETCH_ASSOC);
-            $coluna_id = $check_col ? $check_col['column_name'] : 'degustacao_id';
-            
-            $stmt = $pdo->prepare("
-                SELECT id, nome, qtd_pessoas, tipo_festa, 
-                       COALESCE(fechou_contrato, 'nao') as fechou_contrato
-                FROM comercial_inscricoes 
-                WHERE {$coluna_id} = :deg_id AND status = 'confirmado' 
-                ORDER BY nome ASC
-            ");
-            $stmt->execute([':deg_id' => $degustacao_id]);
-            $inscritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $inscritos = dr_buscar_inscritos_confirmados($pdo, $degustacao_id);
             if ($layout_json === '') {
                 $layout_json = dr_buscar_layout_salvo($pdo, $degustacao_id);
             }
@@ -850,12 +1003,20 @@ if ($degustacao_id > 0 && !empty($degustacao) && empty($mesas) && !empty($inscri
     $mesas = dr_construir_mesas($inscritos, $layout_json);
 }
 $resumo_mesas = dr_resumo_mesas($mesas);
+$resumo_checkin = dr_resumo_checkin($inscritos);
 $mesas_json = json_encode(
     $mesas,
     JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 );
 if ($mesas_json === false) {
     $mesas_json = '[]';
+}
+$inscritos_json = json_encode(
+    dr_normalizar_inscritos($inscritos),
+    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
+if ($inscritos_json === false) {
+    $inscritos_json = '[]';
 }
 ?>
 
@@ -894,11 +1055,14 @@ if ($mesas_json === false) {
             font-size: 2rem;
             font-weight: 700;
             margin-bottom: 0.5rem;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
         }
 
         .page-subtitle {
             font-size: 1rem;
-            opacity: 0.9;
+            color: rgba(255, 255, 255, 0.98);
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
         }
 
         .selection-card {
@@ -1001,6 +1165,224 @@ if ($mesas_json === false) {
             font-size: 0.875rem;
             color: #6b7280;
             font-weight: 500;
+        }
+
+        .checkin-card {
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            border: 1px solid #dbeafe;
+        }
+
+        .checkin-card .stat-value {
+            color: #0f766e;
+        }
+
+        .checkin-panel {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            margin-bottom: 2rem;
+            border: 1px solid #dbeafe;
+        }
+
+        .checkin-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.25rem;
+        }
+
+        .checkin-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.35rem;
+        }
+
+        .checkin-subtitle {
+            color: #475569;
+            font-size: 0.95rem;
+        }
+
+        .checkin-tools {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 260px;
+            padding: 0.85rem 1rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 10px;
+            font-size: 0.98rem;
+            color: #0f172a;
+            background: #fff;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #0ea5e9;
+            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.12);
+        }
+
+        .checkin-count {
+            color: #334155;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .checkin-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+
+        .checkin-item {
+            border: 1px solid #dbe5f0;
+            border-radius: 12px;
+            padding: 1rem;
+            background: #f8fafc;
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+
+        .checkin-item.is-present {
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+
+        .checkin-item.is-complete {
+            border-color: #14b8a6;
+            background: #ecfeff;
+        }
+
+        .checkin-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+        }
+
+        .checkin-item-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+
+        .checkin-name {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 0.3rem;
+        }
+
+        .checkin-meta {
+            font-size: 0.85rem;
+            color: #64748b;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .checkin-progress-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.4rem 0.7rem;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.86rem;
+            background: #e2e8f0;
+            color: #334155;
+            min-width: 86px;
+        }
+
+        .checkin-item.is-present .checkin-progress-badge {
+            background: #bbf7d0;
+            color: #166534;
+        }
+
+        .checkin-item.is-complete .checkin-progress-badge {
+            background: #99f6e4;
+            color: #115e59;
+        }
+
+        .checkin-last {
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.9rem;
+        }
+
+        .checkin-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .checkin-stepper {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.35rem;
+            border-radius: 999px;
+            background: #e2e8f0;
+        }
+
+        .step-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 1rem;
+            background: white;
+            color: #0f172a;
+        }
+
+        .step-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
+        .step-value {
+            min-width: 48px;
+            text-align: center;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .btn-checkin-total {
+            background: #0ea5e9;
+            color: white;
+        }
+
+        .btn-checkin-total:hover {
+            background: #0284c7;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(14, 165, 233, 0.28);
+        }
+
+        .btn-reset-checkin {
+            background: #fff;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+
+        .checkin-empty {
+            grid-column: 1 / -1;
+            padding: 1.25rem;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            text-align: center;
+            color: #64748b;
+            background: #f8fafc;
         }
 
         .relatorio-card {
@@ -1398,6 +1780,82 @@ if ($mesas_json === false) {
                     <div class="stat-value" id="statTotalPessoas"><?= (int)$resumo_mesas['total_pessoas'] ?></div>
                     <div class="stat-label">Total de Pessoas</div>
                 </div>
+                <div class="stat-card checkin-card">
+                    <div class="stat-value" id="statCheckinPresentes"><?= (int)$resumo_checkin['total_pessoas_presentes'] ?></div>
+                    <div class="stat-label">Pessoas no Check-in</div>
+                </div>
+                <div class="stat-card checkin-card">
+                    <div class="stat-value" id="statCheckinPendentes"><?= (int)$resumo_checkin['total_pessoas_pendentes'] ?></div>
+                    <div class="stat-label">Pessoas Pendentes</div>
+                </div>
+            </div>
+
+            <div class="checkin-panel">
+                <div class="checkin-panel-header">
+                    <div>
+                        <div class="checkin-title">Check-in na Porta</div>
+                        <div class="checkin-subtitle">Use a busca por nome e marque os convidados conforme forem chegando. A contagem respeita o total de pessoas de cada inscrição.</div>
+                    </div>
+                </div>
+
+                <div class="checkin-tools">
+                    <input type="search" id="checkinSearch" class="search-input" placeholder="Buscar inscrito por nome, e-mail ou tipo de festa...">
+                    <div class="checkin-count" id="checkinVisibleCount">0 inscrições exibidas</div>
+                </div>
+
+                <div class="checkin-list" id="checkinList">
+                    <?php foreach ($inscritos as $inscrito): ?>
+                        <?php
+                        $qtdPessoas = max(1, (int)($inscrito['qtd_pessoas'] ?? 1));
+                        $checkinQtd = max(0, min($qtdPessoas, (int)($inscrito['checkin_qtd'] ?? 0)));
+                        $fechou = strtolower((string)($inscrito['fechou_contrato'] ?? 'nao')) === 'sim' ? 'sim' : 'nao';
+                        $tipoFesta = trim((string)($inscrito['tipo_festa'] ?? ''));
+                        $lastCheckin = trim((string)($inscrito['last_checkin_at'] ?? ''));
+                        $checkinClasses = 'checkin-item';
+                        if ($checkinQtd > 0) {
+                            $checkinClasses .= ' is-present';
+                        }
+                        if ($checkinQtd >= $qtdPessoas) {
+                            $checkinClasses .= ' is-complete';
+                        }
+                        ?>
+                        <div class="<?= $checkinClasses ?>"
+                             data-checkin-item
+                             data-inscrito-id="<?= (int)$inscrito['id'] ?>"
+                             data-nome="<?= h(mb_strtolower((string)($inscrito['nome'] ?? ''), 'UTF-8')) ?>"
+                             data-email="<?= h(mb_strtolower((string)($inscrito['email'] ?? ''), 'UTF-8')) ?>"
+                             data-tipo="<?= h(mb_strtolower($tipoFesta, 'UTF-8')) ?>"
+                             data-qtd-total="<?= $qtdPessoas ?>"
+                             data-qtd-checkin="<?= $checkinQtd ?>"
+                             data-last-checkin="<?= h($lastCheckin) ?>">
+                            <div class="checkin-item-top">
+                                <div>
+                                    <div class="checkin-name"><?= h($inscrito['nome']) ?></div>
+                                    <div class="checkin-meta">
+                                        <?php if (!empty($inscrito['email'])): ?><span><?= h($inscrito['email']) ?></span><?php endif; ?>
+                                        <span><?= $qtdPessoas ?> <?= $qtdPessoas === 1 ? 'pessoa' : 'pessoas' ?></span>
+                                        <?php if ($tipoFesta !== ''): ?><span><?= h(ucfirst($tipoFesta)) ?></span><?php endif; ?>
+                                        <span><?= $fechou === 'sim' ? 'Fechou contrato' : 'Não fechou contrato' ?></span>
+                                    </div>
+                                </div>
+                                <span class="checkin-progress-badge" data-checkin-badge><?= $checkinQtd ?>/<?= $qtdPessoas ?></span>
+                            </div>
+                            <div class="checkin-last" data-checkin-last>
+                                <?= $lastCheckin !== '' ? 'Último check-in: ' . date('d/m/Y H:i', strtotime($lastCheckin)) : 'Ainda sem check-in registrado' ?>
+                            </div>
+                            <div class="checkin-actions">
+                                <div class="checkin-stepper">
+                                    <button type="button" class="step-btn" data-checkin-dec>-</button>
+                                    <span class="step-value" data-checkin-value><?= $checkinQtd ?></span>
+                                    <button type="button" class="step-btn" data-checkin-inc>+</button>
+                                </div>
+                                <button type="button" class="btn btn-checkin-total" data-checkin-full>Entrada total</button>
+                                <button type="button" class="btn btn-reset-checkin" data-checkin-reset>Zerar</button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    <div class="checkin-empty" id="checkinEmptyState" style="display:none;">Nenhum inscrito encontrado com esse filtro.</div>
+                </div>
             </div>
 
             <div class="relatorio-card">
@@ -1507,11 +1965,13 @@ if ($mesas_json === false) {
 
     <script>
         const initialMesas = <?= $mesas_json ?>;
+        const initialInscritos = <?= $inscritos_json ?>;
         const isViaRouter = <?= $is_via_router ? 'true' : 'false' ?>;
         const degustacaoId = <?= (int)$degustacao_id ?>;
         let draggedInscritoCard = null;
         let saveLayoutTimer = null;
         let ultimoLayoutSalvo = '';
+        let checkinRequestInFlight = false;
 
         function endpointAtual() {
             return isViaRouter
@@ -1528,6 +1988,148 @@ if ($mesas_json === false) {
             if (classe) {
                 statusEl.classList.add(classe);
             }
+        }
+
+        function formatarDataHora(valor) {
+            if (!valor) return '';
+            const data = new Date(valor);
+            if (Number.isNaN(data.getTime())) return '';
+            return data.toLocaleString('pt-BR');
+        }
+
+        function atualizarStatsCheckin(resumo) {
+            if (!resumo) return;
+            const presentes = document.getElementById('statCheckinPresentes');
+            const pendentes = document.getElementById('statCheckinPendentes');
+            if (presentes) presentes.textContent = String(resumo.total_pessoas_presentes ?? 0);
+            if (pendentes) pendentes.textContent = String(resumo.total_pessoas_pendentes ?? 0);
+        }
+
+        function atualizarCardCheckin(card, inscrito) {
+            if (!card || !inscrito) return;
+            const total = Math.max(1, Number(inscrito.qtd_pessoas || card.dataset.qtdTotal || 1));
+            const qtd = Math.max(0, Math.min(total, Number(inscrito.checkin_qtd || 0)));
+            const lastCheckinAt = inscrito.last_checkin_at || '';
+            card.dataset.qtdTotal = String(total);
+            card.dataset.qtdCheckin = String(qtd);
+            card.dataset.lastCheckin = lastCheckinAt;
+            card.classList.toggle('is-present', qtd > 0);
+            card.classList.toggle('is-complete', qtd >= total);
+
+            const badge = card.querySelector('[data-checkin-badge]');
+            const value = card.querySelector('[data-checkin-value]');
+            const last = card.querySelector('[data-checkin-last]');
+            const btnDec = card.querySelector('[data-checkin-dec]');
+            const btnInc = card.querySelector('[data-checkin-inc]');
+
+            if (badge) badge.textContent = `${qtd}/${total}`;
+            if (value) value.textContent = String(qtd);
+            if (last) {
+                const textoData = formatarDataHora(lastCheckinAt);
+                last.textContent = qtd > 0 && textoData
+                    ? `Último check-in: ${textoData}`
+                    : 'Ainda sem check-in registrado';
+            }
+            if (btnDec) btnDec.disabled = qtd <= 0 || checkinRequestInFlight;
+            if (btnInc) btnInc.disabled = qtd >= total || checkinRequestInFlight;
+        }
+
+        function atualizarContagemVisivelCheckin() {
+            const items = Array.from(document.querySelectorAll('[data-checkin-item]'));
+            const visiveis = items.filter((item) => item.style.display !== 'none').length;
+            const countEl = document.getElementById('checkinVisibleCount');
+            const emptyEl = document.getElementById('checkinEmptyState');
+            if (countEl) {
+                countEl.textContent = `${visiveis} ${visiveis === 1 ? 'inscrição exibida' : 'inscrições exibidas'}`;
+            }
+            if (emptyEl) {
+                emptyEl.style.display = visiveis === 0 ? 'block' : 'none';
+            }
+        }
+
+        function filtrarCheckin() {
+            const termo = (document.getElementById('checkinSearch')?.value || '').trim().toLowerCase();
+            document.querySelectorAll('[data-checkin-item]').forEach((item) => {
+                const base = `${item.dataset.nome || ''} ${item.dataset.email || ''} ${item.dataset.tipo || ''}`;
+                item.style.display = termo === '' || base.includes(termo) ? '' : 'none';
+            });
+            atualizarContagemVisivelCheckin();
+        }
+
+        async function salvarCheckin(inscricaoId, novoValor) {
+            if (!degustacaoId || !inscricaoId) return;
+            if (checkinRequestInFlight) return;
+            checkinRequestInFlight = true;
+
+            try {
+                const body = new URLSearchParams();
+                body.set('action', 'atualizar_checkin_porta');
+                body.set('degustacao_id', String(degustacaoId));
+                body.set('inscricao_id', String(inscricaoId));
+                body.set('checkin_qtd', String(novoValor));
+
+                const response = await fetch(endpointAtual(), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                    body: body.toString(),
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data?.success) {
+                    throw new Error(data?.message || 'Falha ao salvar check-in.');
+                }
+
+                const card = document.querySelector(`[data-checkin-item][data-inscrito-id="${inscricaoId}"]`);
+                if (card && data.inscrito) {
+                    atualizarCardCheckin(card, data.inscrito);
+                }
+                atualizarStatsCheckin(data.resumo_checkin || null);
+            } catch (error) {
+                alert(error.message || 'Não foi possível atualizar o check-in.');
+            } finally {
+                checkinRequestInFlight = false;
+                document.querySelectorAll('[data-checkin-item]').forEach((item) => {
+                    atualizarCardCheckin(item, {
+                        qtd_pessoas: item.dataset.qtdTotal,
+                        checkin_qtd: item.dataset.qtdCheckin,
+                        last_checkin_at: item.dataset.lastCheckin || '',
+                    });
+                });
+            }
+        }
+
+        function bindCheckinEvents() {
+            document.querySelectorAll('[data-checkin-item]').forEach((card) => {
+                const inscricaoId = Number(card.dataset.inscritoId || 0);
+                const total = Number(card.dataset.qtdTotal || 1);
+                atualizarCardCheckin(card, {
+                    qtd_pessoas: total,
+                    checkin_qtd: Number(card.dataset.qtdCheckin || 0),
+                    last_checkin_at: card.dataset.lastCheckin || '',
+                });
+
+                card.querySelector('[data-checkin-dec]')?.addEventListener('click', () => {
+                    const atual = Number(card.dataset.qtdCheckin || 0);
+                    salvarCheckin(inscricaoId, atual - 1);
+                });
+                card.querySelector('[data-checkin-inc]')?.addEventListener('click', () => {
+                    const atual = Number(card.dataset.qtdCheckin || 0);
+                    salvarCheckin(inscricaoId, atual + 1);
+                });
+                card.querySelector('[data-checkin-full]')?.addEventListener('click', () => {
+                    salvarCheckin(inscricaoId, total);
+                });
+                card.querySelector('[data-checkin-reset]')?.addEventListener('click', () => {
+                    salvarCheckin(inscricaoId, 0);
+                });
+            });
+
+            document.getElementById('checkinSearch')?.addEventListener('input', filtrarCheckin);
+            atualizarContagemVisivelCheckin();
         }
 
         async function persistirLayoutNoBanco() {
@@ -1768,6 +2370,9 @@ if ($mesas_json === false) {
                 const layoutInput = document.getElementById('layoutJsonInput');
                 ultimoLayoutSalvo = (layoutInput?.value || '').trim();
                 atualizarStatusPersistencia('Layout salvo.', 'is-saved');
+            }
+            if (Array.isArray(initialInscritos) && initialInscritos.length > 0) {
+                bindCheckinEvents();
             }
         });
     </script>
