@@ -42,6 +42,69 @@ function fetchRhCargos(PDO $pdo): array {
     return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
+function ensureUsuarioUnidadesTable(PDO $pdo): void {
+    static $initialized = false;
+    if ($initialized) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS usuarios_unidades (
+            usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            unidade_id INTEGER NOT NULL REFERENCES logistica_unidades(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            PRIMARY KEY (usuario_id, unidade_id)
+        )
+    ");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_usuarios_unidades_unidade ON usuarios_unidades (unidade_id)");
+
+    $initialized = true;
+}
+
+function fetchLogisticaUnidades(PDO $pdo): array {
+    $stmt = $pdo->query("SELECT id, nome FROM logistica_unidades WHERE ativo IS TRUE ORDER BY nome ASC");
+    return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+}
+
+function fetchUsuarioUnidades(PDO $pdo, int $usuarioId): array {
+    ensureUsuarioUnidadesTable($pdo);
+    $stmt = $pdo->prepare("SELECT unidade_id FROM usuarios_unidades WHERE usuario_id = :usuario_id ORDER BY unidade_id");
+    $stmt->execute([':usuario_id' => $usuarioId]);
+    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+}
+
+function saveUsuarioUnidades(PDO $pdo, int $usuarioId, array $unidadeIds): void {
+    ensureUsuarioUnidadesTable($pdo);
+
+    $normalizadas = [];
+    foreach ($unidadeIds as $unidadeId) {
+        $id = (int)$unidadeId;
+        if ($id > 0) {
+            $normalizadas[$id] = $id;
+        }
+    }
+
+    $pdo->prepare("DELETE FROM usuarios_unidades WHERE usuario_id = :usuario_id")
+        ->execute([':usuario_id' => $usuarioId]);
+
+    if (empty($normalizadas)) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO usuarios_unidades (usuario_id, unidade_id)
+        VALUES (:usuario_id, :unidade_id)
+        ON CONFLICT (usuario_id, unidade_id) DO NOTHING
+    ");
+
+    foreach ($normalizadas as $unidadeId) {
+        $stmt->execute([
+            ':usuario_id' => $usuarioId,
+            ':unidade_id' => $unidadeId,
+        ]);
+    }
+}
+
 // ============================================
 // PROCESSAMENTO DE AÇÕES (ANTES DE QUALQUER OUTPUT)
 // ============================================
@@ -73,6 +136,8 @@ if ($action === 'get_user' && $user_id > 0) {
                     $user[$key] = (bool)($value ?? false);
                 }
             }
+
+            $user['unidades_ids'] = fetchUsuarioUnidades($pdo, $user_id);
             
             
             header('Content-Type: application/json; charset=utf-8');
@@ -274,6 +339,11 @@ if ($action === 'save') {
         }
         
         $result = $manager->save($data, $user_id);
+
+        $savedUserId = (int)($result['id'] ?? $user_id);
+        if ($savedUserId > 0) {
+            saveUsuarioUnidades($pdo, $savedUserId, $_POST['unidades_ids'] ?? []);
+        }
         
         if (!empty($result['success'])) {
             header('Location: index.php?page=usuarios&success=' . urlencode($result['message'] ?? 'Usuário salvo com sucesso!'));
@@ -328,6 +398,13 @@ try {
 } catch (Exception $e) {
     error_log("Erro ao carregar cargos: " . $e->getMessage());
     $cargos = [];
+}
+
+try {
+    $unidadesDisponiveis = fetchLogisticaUnidades($pdo);
+} catch (Exception $e) {
+    error_log("Erro ao carregar unidades: " . $e->getMessage());
+    $unidadesDisponiveis = [];
 }
 
 // ============================================
@@ -1377,6 +1454,9 @@ ob_start();
                     <button type="button" class="modal-tab" onclick="switchTab('dados')" data-tab="dados">
                         📋 Dados Pessoais
                     </button>
+                    <button type="button" class="modal-tab" onclick="switchTab('unidade')" data-tab="unidade">
+                        🏢 Unidade
+                    </button>
                 </div>
                 
                 <!-- Aba Usuário -->
@@ -1677,6 +1757,27 @@ ob_start();
                         </div>
                     </div>
                 </div>
+
+                <div id="tab-unidade" class="modal-tab-content">
+                    <div class="form-group">
+                        <label class="form-label">Unidades vinculadas</label>
+                        <p style="margin: 0 0 1rem; color: #64748b; font-size: 0.875rem;">
+                            Selecione uma ou mais unidades em que este colaborador participa.
+                        </p>
+                        <div id="unidadesCheckboxList" class="permissions-grid">
+                            <?php if (empty($unidadesDisponiveis)): ?>
+                            <div class="empty-state" style="grid-column: 1 / -1;">Nenhuma unidade disponível no sistema.</div>
+                            <?php else: ?>
+                                <?php foreach ($unidadesDisponiveis as $unidade): ?>
+                                <label class="permission-item" style="align-items: flex-start;">
+                                    <input type="checkbox" name="unidades_ids[]" value="<?= (int)($unidade['id'] ?? 0) ?>">
+                                    <span><?= h($unidade['nome'] ?? '') ?></span>
+                                </label>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="modal-footer">
@@ -1757,6 +1858,7 @@ ob_start();
 
 <script>
 let cargoOptions = <?= json_encode($cargos, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+let unidadesOptions = <?= json_encode($unidadesDisponiveis, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -1786,6 +1888,25 @@ function populateCargoSelect(selectedValue = '') {
     if (!selectedValue) {
         cargoSelect.value = '';
     }
+}
+
+function renderUnidadesCheckboxes(selectedIds = []) {
+    const container = document.getElementById('unidadesCheckboxList');
+    if (!container) return;
+
+    const selectedSet = new Set((selectedIds || []).map(value => String(value)));
+
+    if (!Array.isArray(unidadesOptions) || unidadesOptions.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">Nenhuma unidade disponível no sistema.</div>';
+        return;
+    }
+
+    container.innerHTML = unidadesOptions.map(unidade => `
+        <label class="permission-item" style="align-items: flex-start;">
+            <input type="checkbox" name="unidades_ids[]" value="${Number(unidade.id || 0)}" ${selectedSet.has(String(unidade.id || '')) ? 'checked' : ''}>
+            <span>${escapeHtml(unidade.nome || '')}</span>
+        </label>
+    `).join('');
 }
 
 function renderCargoList() {
@@ -2153,6 +2274,7 @@ function openModal(userId = 0) {
         
         form.reset();
         refreshCargoOptions('');
+        renderUnidadesCheckboxes([]);
         // Limpar preview da foto e editor
         updateFotoPreview('');
         fotoOriginalBlob = null;
@@ -2446,6 +2568,7 @@ function loadUserData(userId) {
             if (bairroInput) bairroInput.value = user.endereco_bairro || '';
             if (cidadeInput) cidadeInput.value = user.endereco_cidade || '';
             if (estadoInput) estadoInput.value = user.endereco_estado || '';
+            renderUnidadesCheckboxes(Array.isArray(user.unidades_ids) ? user.unidades_ids : []);
             
             // Atualizar preview da foto
             if (user.foto) {
@@ -3202,6 +3325,7 @@ if (document.readyState === 'loading') {
 window.addEventListener('load', () => {
     renderCargoList();
     populateCargoSelect('');
+    renderUnidadesCheckboxes([]);
     setTimeout(initPreviewListeners, 200);
 });
 
