@@ -158,7 +158,7 @@ function painel_database_config_from_url(?string $databaseUrl = null): ?array
 
     $schemas = painel_normalize_schema_list(painel_env('DB_SCHEMA', 'smilee12_painel_smile,public'));
     $searchPath = implode(', ', $schemas);
-    $options = "-c client_encoding=UTF8 -c search_path={$searchPath}";
+    $searchPathDsn = implode(',', $schemas);
 
     return [
         'host' => (string)$parts['host'],
@@ -176,7 +176,7 @@ function painel_database_config_from_url(?string $databaseUrl = null): ?array
             isset($parts['port']) ? (int)$parts['port'] : 5432,
             ltrim((string)$parts['path'], '/'),
             $sslmode,
-            $searchPath
+            $searchPathDsn
         ),
     ];
 }
