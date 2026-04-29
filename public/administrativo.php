@@ -179,6 +179,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Enviar Avisos -->
+        <a href="index.php?page=administrativo_avisos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #0ea5e9);">
+                <span class="funcionalidade-card-icon">📣</span>
+                <div class="funcionalidade-card-title">Enviar Avisos</div>
+                <div class="funcionalidade-card-subtitle">Avisos na dashboard com leitura e expiração</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Pagamento Degustação -->
         <a href="index.php?page=pagamento_degustacao" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0891b2, #0e7490);">

@@ -186,6 +186,7 @@ $routes = [
   'cadastros' => 'cadastros.php',
   'financeiro' => 'financeiro.php',
   'administrativo' => 'administrativo.php',
+  'administrativo_avisos' => 'administrativo_avisos.php',
   'administrativo_gestao_documentos' => 'administrativo_gestao_documentos.php',
   'administrativo_juridico' => 'administrativo_juridico.php',
   'cartao_ofx_me' => 'cartao_ofx_me.php',
@@ -310,6 +311,7 @@ $routes = [
   'administrativo_auditoria' => 'verificacao_completa_erros.php',
   'administrativo_stats' => 'sistema_unificado.php',
   'administrativo_notificacoes' => 'administrativo_notificacoes.php',
+  'avisos_dashboard_api' => 'avisos_dashboard_api.php',
   
   // Scripts de migração/setup
   'apply_permissoes_sidebar_columns' => 'apply_permissoes_sidebar_columns.php',

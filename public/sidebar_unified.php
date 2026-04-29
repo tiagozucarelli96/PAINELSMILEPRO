@@ -21,6 +21,7 @@ if (!isset($pdo) && isset($GLOBALS['pdo'])) {
 
 require_once __DIR__ . '/notifications_bar.php';
 require_once __DIR__ . '/core/notification_dispatcher.php';
+require_once __DIR__ . '/administrativo_avisos_helper.php';
 
 try {
     if (isset($pdo) && $pdo instanceof PDO) {
@@ -85,9 +86,12 @@ $page_path = __DIR__ . '/' . $page_file . '.php';
 if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
+    adminAvisosEnsureSchema($pdo);
     
     $stats = [];
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
+    $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+    $avisos_dashboard = [];
     
     try {
         // 1. Inscritos em Degustações Ativas do Mês
@@ -206,17 +210,23 @@ if ($current_page === 'dashboard') {
             ");
             $stmt->execute();
             $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
-            $agenda_hoje = [];
-        }
+    } catch (Exception $e) {
+        error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
+        $agenda_hoje = [];
+    }
+
+    try {
+        $avisos_dashboard = adminAvisosBuscarParaDashboard($pdo, (int)($usuario_id_dashboard ?? 0), 8);
+    } catch (Exception $e) {
+        error_log("[SIDEBAR] Erro ao buscar avisos da dashboard: " . $e->getMessage());
+        $avisos_dashboard = [];
+    }
     }
     
     // Buscar demandas do dia atual (sistema Trello - demandas_cards)
     // IMPORTANTE: Sistema atual usa demandas_cards (Trello), não a tabela antiga 'demandas'
     // Removido fallback para tabela antiga - só mostra cards do sistema atual
     $demandas_hoje = [];
-    $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
     $is_admin_dashboard = (
         !empty($_SESSION['perm_superadmin']) ||
         !empty($_SESSION['perm_administrativo']) ||
@@ -351,6 +361,111 @@ if ($current_page === 'dashboard') {
         flex: 1;
         max-width: 100%;
     }
+    .avisos-list {
+        display: grid;
+        gap: 0.75rem;
+    }
+    .aviso-item-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        border: 1px solid #dbeafe;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #eff6ff, #f8fafc);
+        padding: 0.9rem 1rem;
+        cursor: pointer;
+        text-align: left;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    .aviso-item-btn:hover {
+        transform: translateY(-1px);
+        border-color: #93c5fd;
+        box-shadow: 0 12px 22px rgba(37, 99, 235, 0.10);
+    }
+    .aviso-item-icon {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 999px;
+        background: #2563eb;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        font-size: 1rem;
+    }
+    .aviso-item-content {
+        min-width: 0;
+        flex: 1;
+    }
+    .aviso-item-title {
+        color: #0f172a;
+        font-weight: 700;
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .dashboard-aviso-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 1300;
+    }
+    .dashboard-aviso-modal.open {
+        display: flex;
+    }
+    .dashboard-aviso-modal-card {
+        width: min(760px, 100%);
+        max-height: min(86vh, 820px);
+        overflow: auto;
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 24px 50px rgba(15, 23, 42, 0.24);
+    }
+    .dashboard-aviso-modal-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        padding: 1.1rem 1.25rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .dashboard-aviso-modal-header h3 {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1.2rem;
+    }
+    .dashboard-aviso-modal-meta {
+        margin-top: 0.3rem;
+        color: #64748b;
+        font-size: 0.84rem;
+    }
+    .dashboard-aviso-modal-close {
+        border: none;
+        background: transparent;
+        color: #475569;
+        font-size: 1.8rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .dashboard-aviso-modal-body {
+        padding: 1.25rem;
+        color: #1f2937;
+        line-height: 1.65;
+    }
+    .dashboard-aviso-modal-body img {
+        max-width: 100%;
+        height: auto;
+    }
+    .dashboard-aviso-modal-loading {
+        color: #64748b;
+    }
     @media (max-width: 1024px) {
         .dashboard-header-top {
             flex-direction: column;
@@ -406,8 +521,8 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
         
-        ' . ($can_view_dashboard_agenda ? '
-        <!-- Agenda do Dia -->
+	        ' . ($can_view_dashboard_agenda ? '
+	        <!-- Agenda do Dia -->
         <div class="dashboard-section">
             <div class="section-header">
                 <h2>📅 Agenda do Dia</h2>
@@ -438,11 +553,36 @@ if ($current_page === 'dashboard') {
                     }, $agenda_hoje))
                 ) . '
             </div>
-        </div>
-        ' : '') . '
+	        </div>
+	        ' : '') . '
 
-        <!-- Demandas do Dia -->
-        <div class="dashboard-section">
+            <!-- Avisos -->
+            <div class="dashboard-section" id="dashboard-avisos-section">
+                <div class="section-header">
+                    <h2>📣 Avisos</h2>
+                    <span class="section-badge" id="dashboard-avisos-count">' . count($avisos_dashboard) . ' avisos</span>
+                </div>
+                <div class="avisos-list">
+                    ' . (empty($avisos_dashboard) ?
+                        '<div class="empty-state">
+                            <div class="empty-icon">📣</div>
+                            <p>Nenhum aviso ativo para você</p>
+                        </div>' :
+                        implode('', array_map(function($aviso) {
+                            return '
+                            <button type="button" class="aviso-item-btn" data-aviso-id="' . (int)$aviso['id'] . '" data-aviso-unico="' . (adminAvisosBoolValue($aviso['visualizacao_unica'] ?? false) ? '1' : '0') . '" onclick="abrirAvisoDashboard(this)">
+                                <span class="aviso-item-icon">📣</span>
+                                <span class="aviso-item-content">
+                                    <span class="aviso-item-title">' . htmlspecialchars((string)$aviso['assunto']) . '</span>
+                                </span>
+                            </button>';
+                        }, $avisos_dashboard))
+                    ) . '
+                </div>
+            </div>
+
+	        <!-- Demandas do Dia -->
+	        <div class="dashboard-section">
             <div class="section-header">
                 <h2>📋 Demandas do Dia</h2>
                 <span class="section-badge">' . count($demandas_hoje) . ' demandas</span>
@@ -500,6 +640,21 @@ if ($current_page === 'dashboard') {
                         </div>
                         <button type="submit" class="btn-primary">Solicitar</button>
                     </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="dashboardAvisoModal" class="dashboard-aviso-modal" aria-hidden="true">
+            <div class="dashboard-aviso-modal-card">
+                <div class="dashboard-aviso-modal-header">
+                    <div>
+                        <h3 id="dashboardAvisoModalTitle">Aviso</h3>
+                        <div class="dashboard-aviso-modal-meta" id="dashboardAvisoModalMeta"></div>
+                    </div>
+                    <button type="button" class="dashboard-aviso-modal-close" onclick="fecharAvisoDashboard()" aria-label="Fechar">&times;</button>
+                </div>
+                <div class="dashboard-aviso-modal-body" id="dashboardAvisoModalBody">
+                    <div class="dashboard-aviso-modal-loading">Carregando aviso...</div>
                 </div>
             </div>
         </div>
@@ -1999,7 +2154,7 @@ if ($current_page === 'dashboard') {
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
                 // Minha conta e gestão de documentos (includeSidebar)
-                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos', 'administrativo_juridico',
+                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos', 'administrativo_juridico', 'administrativo_avisos',
                 // Contabilidade (páginas com modal/JS próprio)
                 'contabilidade_admin_guias'
             ];
@@ -2044,6 +2199,100 @@ if ($current_page === 'dashboard') {
             const modal = document.getElementById('paymentModal');
             if (e.target === modal) {
                 closePaymentModal();
+            }
+        });
+
+        const DASHBOARD_AVISOS_API = 'avisos_dashboard_api.php';
+
+        function formatarDataAvisoDashboard(dataTexto) {
+            if (!dataTexto) return '';
+            const data = new Date(dataTexto);
+            if (Number.isNaN(data.getTime())) return '';
+            return data.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        async function abrirAvisoDashboard(botao) {
+            const avisoId = Number(botao?.dataset?.avisoId || 0);
+            if (!avisoId) return;
+
+            const modal = document.getElementById('dashboardAvisoModal');
+            const titleEl = document.getElementById('dashboardAvisoModalTitle');
+            const metaEl = document.getElementById('dashboardAvisoModalMeta');
+            const bodyEl = document.getElementById('dashboardAvisoModalBody');
+            if (!modal || !titleEl || !metaEl || !bodyEl) return;
+
+            titleEl.textContent = 'Aviso';
+            metaEl.textContent = '';
+            bodyEl.innerHTML = '<div class="dashboard-aviso-modal-loading">Carregando aviso...</div>';
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+
+            try {
+                const response = await fetch(`${DASHBOARD_AVISOS_API}?action=detalhes&id=${avisoId}`, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success || !payload.data) {
+                    throw new Error(payload.error || 'Aviso indisponível');
+                }
+
+                const aviso = payload.data;
+                titleEl.textContent = aviso.assunto || 'Aviso';
+                const meta = [];
+                if (aviso.criador_nome) meta.push(`Por ${aviso.criador_nome}`);
+                if (aviso.criado_em) meta.push(`Publicado em ${formatarDataAvisoDashboard(aviso.criado_em)}`);
+                if (aviso.expira_em) meta.push(`Expira em ${formatarDataAvisoDashboard(aviso.expira_em)}`);
+                metaEl.textContent = meta.join(' • ');
+                bodyEl.innerHTML = aviso.conteudo_html || '<p>Sem conteúdo.</p>';
+
+                if (String(botao.dataset.avisoUnico || '') === '1') {
+                    botao.remove();
+                    atualizarContagemAvisosDashboard();
+                }
+            } catch (error) {
+                titleEl.textContent = 'Aviso';
+                metaEl.textContent = '';
+                bodyEl.innerHTML = `<div class="dashboard-aviso-modal-loading">${escapeHtml(error.message || 'Não foi possível carregar o aviso.')}</div>`;
+            }
+        }
+
+        function fecharAvisoDashboard() {
+            const modal = document.getElementById('dashboardAvisoModal');
+            if (!modal) return;
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function atualizarContagemAvisosDashboard() {
+            const lista = document.querySelector('#dashboard-avisos-section .avisos-list');
+            const badge = document.getElementById('dashboard-avisos-count');
+            if (!lista || !badge) return;
+
+            const total = lista.querySelectorAll('.aviso-item-btn').length;
+            badge.textContent = `${total} avisos`;
+
+            if (total === 0) {
+                lista.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📣</div>
+                        <p>Nenhum aviso ativo para você</p>
+                    </div>
+                `;
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('dashboardAvisoModal');
+            if (modal && e.target === modal) {
+                fecharAvisoDashboard();
             }
         });
         
