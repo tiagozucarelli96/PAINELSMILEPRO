@@ -81,6 +81,41 @@ function gd_disparar_push_documento(int $usuarioId, string $titulo, string $mens
     }
 }
 
+function gd_table_has_column(PDO $pdo, string $tableName, string $columnName): bool
+{
+    static $cache = [];
+    $cacheKey = $tableName . '.' . $columnName;
+    if (array_key_exists($cacheKey, $cache)) {
+        return $cache[$cacheKey];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = :table_name
+           AND column_name = :column_name
+         LIMIT 1'
+    );
+    $stmt->execute([
+        ':table_name' => $tableName,
+        ':column_name' => $columnName,
+    ]);
+
+    $cache[$cacheKey] = (bool)$stmt->fetchColumn();
+    return $cache[$cacheKey];
+}
+
+function gd_usuario_nome_assinatura_sql(PDO $pdo, string $alias = 'u'): string
+{
+    $alias = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'u';
+    if (gd_table_has_column($pdo, 'usuarios', 'nome_completo')) {
+        return "COALESCE(NULLIF(TRIM({$alias}.nome_completo), ''), {$alias}.nome)";
+    }
+
+    return "{$alias}.nome";
+}
+
 $mensagem = '';
 $erro = '';
 $clicksign = new ClicksignHelper();
@@ -124,7 +159,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Anexe um arquivo para o documento.');
             }
 
-            $stmtUsuario = $pdo->prepare('SELECT id, nome, email FROM usuarios WHERE id = :id LIMIT 1');
+            $usuarioNomeSql = gd_usuario_nome_assinatura_sql($pdo, 'u');
+            $stmtUsuario = $pdo->prepare("SELECT u.id, u.nome, {$usuarioNomeSql} AS nome_assinatura, u.email FROM usuarios u WHERE u.id = :id LIMIT 1");
             $stmtUsuario->execute([':id' => $usuarioId]);
             $usuario = $stmtUsuario->fetch(PDO::FETCH_ASSOC);
 
@@ -175,6 +211,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $erroAssinatura = $clicksign->getConfigurationError();
                 } elseif (empty($usuario['email']) || !filter_var($usuario['email'], FILTER_VALIDATE_EMAIL)) {
                     $erroAssinatura = 'Usuário sem e-mail válido para assinatura na Clicksign.';
+                } elseif (($nomeErro = ClicksignHelper::getSignerNameValidationError((string)($usuario['nome_assinatura'] ?? $usuario['nome'] ?? ''))) !== null) {
+                    $erroAssinatura = 'O cadastro do usuário precisa ter nome completo válido para assinatura na Clicksign. ' . $nomeErro;
                 } else {
                     $tmpPath = (string)($_FILES['arquivo']['tmp_name'] ?? '');
                     $raw = @file_get_contents($tmpPath);
@@ -185,11 +223,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $deadlineAt = (new DateTime('+20 days'))->format(DateTime::RFC3339);
 
                         $resAssinatura = $clicksign->criarFluxoAssinatura([
-                            'envelope_name' => $titulo . ' - ' . ($usuario['nome'] ?? 'Colaborador'),
+                            'envelope_name' => $titulo . ' - ' . ($usuario['nome_assinatura'] ?? $usuario['nome'] ?? 'Colaborador'),
                             'filename' => $arquivoNome,
                             'content_base64' => $conteudoBase64,
                             'content_type' => (string)($_FILES['arquivo']['type'] ?? 'application/pdf'),
-                            'signer_name' => (string)$usuario['nome'],
+                            'signer_name' => (string)($usuario['nome_assinatura'] ?? $usuario['nome'] ?? ''),
                             'signer_email' => (string)$usuario['email'],
                             'deadline_at' => $deadlineAt,
                             'notification_message' => 'Olá! Você possui um documento pendente para assinatura no Grupo Smile.',

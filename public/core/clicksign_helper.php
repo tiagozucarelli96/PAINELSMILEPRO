@@ -58,7 +58,7 @@ if (!class_exists('ClicksignHelper')) {
             $filename = trim((string)($input['filename'] ?? 'documento.pdf'));
             $contentBase64 = trim((string)($input['content_base64'] ?? ''));
             $contentType = trim((string)($input['content_type'] ?? 'application/octet-stream'));
-            $signerName = trim((string)($input['signer_name'] ?? ''));
+            $signerName = self::normalizeSignerName((string)($input['signer_name'] ?? ''));
             $signerEmail = trim((string)($input['signer_email'] ?? ''));
             $deadlineAt = trim((string)($input['deadline_at'] ?? ''));
             if ($contentBase64 !== '' && stripos($contentBase64, 'data:') !== 0) {
@@ -69,6 +69,14 @@ if (!class_exists('ClicksignHelper')) {
                 return [
                     'success' => false,
                     'error' => 'Dados obrigatórios para assinatura não informados (arquivo/signatário).',
+                ];
+            }
+
+            $signerNameError = self::getSignerNameValidationError($signerName);
+            if ($signerNameError !== null) {
+                return [
+                    'success' => false,
+                    'error' => $signerNameError,
                 ];
             }
 
@@ -311,6 +319,31 @@ if (!class_exists('ClicksignHelper')) {
             }
 
             return 'enviado';
+        }
+
+        public static function normalizeSignerName(string $name): string
+        {
+            $name = trim(preg_replace('/\s+/u', ' ', $name) ?? '');
+            return $name;
+        }
+
+        public static function getSignerNameValidationError(string $name): ?string
+        {
+            $name = self::normalizeSignerName($name);
+            if ($name === '') {
+                return 'O nome do signatário não foi informado.';
+            }
+
+            if (preg_match('/\p{N}/u', $name)) {
+                return 'O nome do signatário precisa ser o nome completo e não pode conter números.';
+            }
+
+            $parts = preg_split('/\s+/u', $name, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            if (count($parts) < 2) {
+                return 'O nome do signatário precisa ter pelo menos nome e sobrenome para a Clicksign.';
+            }
+
+            return null;
         }
 
         private function request(string $method, string $path, ?array $payload = null): array

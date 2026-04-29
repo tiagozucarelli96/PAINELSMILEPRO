@@ -59,6 +59,80 @@ function aj_base_url(): string
     return $scheme . '://' . $host;
 }
 
+function aj_table_has_column(PDO $pdo, string $tableName, string $columnName): bool
+{
+    static $cache = [];
+    $cacheKey = $tableName . '.' . $columnName;
+    if (array_key_exists($cacheKey, $cache)) {
+        return $cache[$cacheKey];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = :table_name
+           AND column_name = :column_name
+         LIMIT 1'
+    );
+    $stmt->execute([
+        ':table_name' => $tableName,
+        ':column_name' => $columnName,
+    ]);
+
+    $cache[$cacheKey] = (bool)$stmt->fetchColumn();
+    return $cache[$cacheKey];
+}
+
+function aj_usuario_nome_assinatura_sql(PDO $pdo, string $alias = 'u'): string
+{
+    $alias = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'u';
+    if (aj_table_has_column($pdo, 'usuarios', 'nome_completo')) {
+        return "COALESCE(NULLIF(TRIM({$alias}.nome_completo), ''), {$alias}.nome)";
+    }
+
+    return "{$alias}.nome";
+}
+
+function aj_signature_default_deadline_local(): string
+{
+    return (new DateTime('+20 days'))->format('Y-m-d\TH:i');
+}
+
+function aj_signature_envelope_name(string $documentTitle, string $signerName = ''): string
+{
+    $documentTitle = trim($documentTitle);
+    if ($documentTitle === '') {
+        $documentTitle = 'Documento';
+    }
+
+    $signerName = ClicksignHelper::normalizeSignerName($signerName);
+    if ($signerName !== '') {
+        return $documentTitle . ' - ' . $signerName;
+    }
+
+    return $documentTitle;
+}
+
+function aj_signature_deadline_payload(?string $deadlineInput): array
+{
+    $deadlineInput = trim((string)$deadlineInput);
+    if ($deadlineInput === '') {
+        $dt = new DateTime('+20 days');
+    } else {
+        try {
+            $dt = new DateTime($deadlineInput);
+        } catch (Exception $e) {
+            throw new Exception('Informe um prazo válido para assinatura.');
+        }
+    }
+
+    return [
+        'local' => $dt->format('Y-m-d\TH:i'),
+        'rfc3339' => $dt->format(DateTime::RFC3339),
+    ];
+}
+
 function aj_page_url(?int $folderId = null): string
 {
     $base = 'index.php?page=administrativo_juridico';
@@ -147,9 +221,12 @@ function aj_buscar_bytes_arquivo(array $arquivo): array
 $mensagem = '';
 $erro = '';
 $currentPastaId = (int)($_GET['pasta'] ?? 0);
+$signatureModalState = null;
+$lastPostAction = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = trim((string)($_POST['acao'] ?? ''));
+    $lastPostAction = $acao;
 
     try {
         if ($acao === 'criar_pasta') {
@@ -391,13 +468,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Arquivo inválido para solicitação de assinatura.');
             }
 
+            $colaboradorNomeSql = aj_usuario_nome_assinatura_sql($pdo, 'u');
             $stmtArquivo = $pdo->prepare(
-                'SELECT a.*, p.usuario_empresa_id, u.nome AS colaborador_nome, u.email AS colaborador_email
+                "SELECT a.*, p.usuario_empresa_id,
+                        {$colaboradorNomeSql} AS colaborador_nome_assinatura,
+                        u.nome AS colaborador_nome_cadastrado,
+                        u.email AS colaborador_email
                  FROM administrativo_juridico_arquivos a
                  INNER JOIN administrativo_juridico_pastas p ON p.id = a.pasta_id
                  LEFT JOIN usuarios u ON u.id = p.usuario_empresa_id
                  WHERE a.id = :id
-                 LIMIT 1'
+                 LIMIT 1"
             );
             $stmtArquivo->execute([':id' => $arquivoId]);
             $arquivo = $stmtArquivo->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -405,10 +486,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new Exception('Arquivo não encontrado.');
             }
 
-            $colaboradorEmail = trim((string)($arquivo['colaborador_email'] ?? ''));
-            $colaboradorNome = trim((string)($arquivo['colaborador_nome'] ?? ''));
+            $colaboradorEmailBase = trim((string)($arquivo['colaborador_email'] ?? ''));
+            $colaboradorNomeBase = ClicksignHelper::normalizeSignerName((string)($arquivo['colaborador_nome_assinatura'] ?? $arquivo['colaborador_nome_cadastrado'] ?? ''));
+            $colaboradorNome = ClicksignHelper::normalizeSignerName((string)($_POST['signer_name'] ?? $colaboradorNomeBase));
+            $colaboradorEmail = trim((string)($_POST['signer_email'] ?? $colaboradorEmailBase));
+            $envelopeName = trim((string)($_POST['envelope_name'] ?? ''));
+            if ($envelopeName === '') {
+                $envelopeName = aj_signature_envelope_name((string)($arquivo['titulo'] ?? 'Documento'), $colaboradorNome);
+            }
+            $deadlineInput = trim((string)($_POST['deadline_at'] ?? ''));
+            $signatureModalState = [
+                'arquivo_id' => $arquivoId,
+                'arquivo_titulo' => (string)($arquivo['titulo'] ?? 'Documento'),
+                'arquivo_nome' => (string)($arquivo['arquivo_nome'] ?? ''),
+                'signer_name' => $colaboradorNome,
+                'signer_email' => $colaboradorEmail,
+                'envelope_name' => $envelopeName,
+                'deadline_at' => $deadlineInput !== '' ? $deadlineInput : aj_signature_default_deadline_local(),
+            ];
+            $deadlinePayload = aj_signature_deadline_payload($deadlineInput);
+
             if ($colaboradorNome === '' || !filter_var($colaboradorEmail, FILTER_VALIDATE_EMAIL)) {
-                throw new Exception('A pasta precisa estar vinculada a um funcionário com e-mail válido para assinatura.');
+                throw new Exception('Informe nome completo e e-mail válido do signatário para gerar a assinatura.');
+            }
+
+            $nomeErro = ClicksignHelper::getSignerNameValidationError($colaboradorNome);
+            if ($nomeErro !== null) {
+                throw new Exception($nomeErro);
             }
 
             $payloadArquivo = aj_buscar_bytes_arquivo($arquivo);
@@ -418,14 +522,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $resAssinatura = $clicksign->criarFluxoAssinatura([
-                'envelope_name' => (string)($arquivo['titulo'] ?? 'Documento') . ' - ' . $colaboradorNome,
+                'envelope_name' => $envelopeName,
                 'filename' => (string)($arquivo['arquivo_nome'] ?? 'documento.pdf'),
                 'content_base64' => base64_encode((string)$payloadArquivo['body']),
                 'content_type' => (string)($payloadArquivo['content_type'] ?? $arquivo['mime_type'] ?? 'application/pdf'),
                 'signer_name' => $colaboradorNome,
                 'signer_email' => $colaboradorEmail,
-                'deadline_at' => (new DateTime('+20 days'))->format(DateTime::RFC3339),
-                'notification_message' => 'Você possui um documento jurídico pendente para assinatura.',
+                'deadline_at' => $deadlinePayload['rfc3339'],
             ]);
 
             if (!($resAssinatura['success'] ?? false)) {
@@ -683,6 +786,7 @@ if ($baseUrl === '') {
 }
 
 $folderOptionsHtml = aj_folder_option_tags($childrenByParent, $pastasById);
+$defaultSignatureDeadlineLocal = aj_signature_default_deadline_local();
 
 ob_start();
 ?>
@@ -1053,11 +1157,20 @@ ob_start();
                                                 <input type="hidden" name="arquivo_id" value="<?= (int)$arquivo['id'] ?>">
                                                 <button type="submit" class="aj-btn-outline">Excluir</button>
                                             </form>
-                                            <form method="POST" onsubmit="return confirm('Deseja solicitar assinatura deste arquivo para o funcionário vinculado à pasta?');">
-                                                <input type="hidden" name="acao" value="solicitar_assinatura">
-                                                <input type="hidden" name="arquivo_id" value="<?= (int)$arquivo['id'] ?>">
-                                                <button type="submit" class="aj-btn secondary">Solicitar assinatura</button>
-                                            </form>
+                                            <button
+                                                type="button"
+                                                class="aj-btn secondary"
+                                                onclick='openSignatureModal(
+                                                    <?= (int)$arquivo["id"] ?>,
+                                                    <?= json_encode((string)($arquivo["titulo"] ?? "Documento"), JSON_UNESCAPED_UNICODE) ?>,
+                                                    <?= json_encode((string)($arquivo["arquivo_nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
+                                                    <?= json_encode((string)($currentPasta["usuario_empresa_nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
+                                                    <?= json_encode((string)($currentPasta["usuario_empresa_email"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
+                                                    <?= json_encode(aj_signature_envelope_name((string)($arquivo["titulo"] ?? "Documento"), (string)($currentPasta["usuario_empresa_nome"] ?? "")), JSON_UNESCAPED_UNICODE) ?>,
+                                                    <?= json_encode($defaultSignatureDeadlineLocal, JSON_UNESCAPED_UNICODE) ?>
+                                                )'>
+                                                Solicitar assinatura
+                                            </button>
                                             <?php if (!empty($arquivo['clicksign_sign_url'])): ?>
                                                 <a href="<?= htmlspecialchars((string)$arquivo['clicksign_sign_url']) ?>" class="aj-btn-outline" target="_blank">Link assinatura</a>
                                             <?php endif; ?>
@@ -1070,6 +1183,51 @@ ob_start();
                 <?php endif; ?>
             </div>
     </main>
+</div>
+
+<div class="aj-modal" id="modalAssinatura" aria-hidden="true">
+    <div class="aj-modal-dialog">
+        <div class="aj-modal-header" style="background:#0f766e;">
+            <h3>Gerar assinatura</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalAssinatura')">×</button>
+        </div>
+        <div class="aj-modal-body">
+            <form method="POST">
+                <input type="hidden" name="acao" value="solicitar_assinatura">
+                <input type="hidden" name="arquivo_id" id="signatureArquivoId" value="">
+
+                <div class="aj-grid">
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Documento</label>
+                        <input type="text" id="signatureArquivoTitulo" readonly>
+                        <div class="aj-help" id="signatureArquivoNome"></div>
+                    </div>
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Nome do envelope *</label>
+                        <input type="text" name="envelope_name" id="signatureEnvelopeName" maxlength="255" required>
+                    </div>
+                    <div class="aj-field">
+                        <label>Nome do signatário *</label>
+                        <input type="text" name="signer_name" id="signatureSignerName" maxlength="255" required>
+                        <div class="aj-help">A Clicksign exige nome completo, com pelo menos nome e sobrenome.</div>
+                    </div>
+                    <div class="aj-field">
+                        <label>E-mail do signatário *</label>
+                        <input type="email" name="signer_email" id="signatureSignerEmail" maxlength="180" required>
+                    </div>
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Prazo para assinatura *</label>
+                        <input type="datetime-local" name="deadline_at" id="signatureDeadlineAt" required>
+                    </div>
+                </div>
+
+                <div class="aj-modal-actions">
+                    <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalAssinatura')">Cancelar</button>
+                    <button type="submit" class="aj-btn secondary">Gerar assinatura</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <div class="aj-modal" id="modalMoverArquivo" aria-hidden="true">
@@ -1329,6 +1487,30 @@ function openEditUserModal(id, nome, email) {
     openAjModal('modalEditarUsuario');
 }
 
+function applySignatureModalState(state) {
+    if (!state) return;
+    document.getElementById('signatureArquivoId').value = state.arquivo_id || '';
+    document.getElementById('signatureArquivoTitulo').value = state.arquivo_titulo || '';
+    document.getElementById('signatureArquivoNome').textContent = state.arquivo_nome || '';
+    document.getElementById('signatureEnvelopeName').value = state.envelope_name || '';
+    document.getElementById('signatureSignerName').value = state.signer_name || '';
+    document.getElementById('signatureSignerEmail').value = state.signer_email || '';
+    document.getElementById('signatureDeadlineAt').value = state.deadline_at || '';
+}
+
+function openSignatureModal(id, titulo, arquivoNome, signerName, signerEmail, envelopeName, deadlineAt) {
+    applySignatureModalState({
+        arquivo_id: id || '',
+        arquivo_titulo: titulo || '',
+        arquivo_nome: arquivoNome || '',
+        signer_name: signerName || '',
+        signer_email: signerEmail || '',
+        envelope_name: envelopeName || '',
+        deadline_at: deadlineAt || ''
+    });
+    openAjModal('modalAssinatura');
+}
+
 function openMoveFileModal(id, titulo, pastaIdAtual, pastaNomeAtual) {
     var selectNovaPasta = document.getElementById('moveNovaPastaId');
     document.getElementById('moveArquivoId').value = id || '';
@@ -1364,6 +1546,11 @@ function copyJuridicoLink() {
     input.select();
     document.execCommand('copy');
 }
+
+<?php if ($signatureModalState !== null && $erro !== '' && $lastPostAction === 'solicitar_assinatura'): ?>
+applySignatureModalState(<?= json_encode($signatureModalState, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>);
+openAjModal('modalAssinatura');
+<?php endif; ?>
 </script>
 
 <?php
