@@ -188,6 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'envelope_name' => $titulo . ' - ' . ($usuario['nome'] ?? 'Colaborador'),
                             'filename' => $arquivoNome,
                             'content_base64' => $conteudoBase64,
+                            'content_type' => (string)($_FILES['arquivo']['type'] ?? 'application/pdf'),
                             'signer_name' => (string)$usuario['nome'],
                             'signer_email' => (string)$usuario['email'],
                             'deadline_at' => $deadlineAt,

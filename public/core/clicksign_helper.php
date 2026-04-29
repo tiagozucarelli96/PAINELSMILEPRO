@@ -56,13 +56,23 @@ if (!class_exists('ClicksignHelper')) {
 
             $envelopeName = trim((string)($input['envelope_name'] ?? 'Documento para assinatura'));
             $filename = trim((string)($input['filename'] ?? 'documento.pdf'));
+            $content = trim((string)($input['content'] ?? ''));
             $contentBase64 = trim((string)($input['content_base64'] ?? ''));
+            $contentType = trim((string)($input['content_type'] ?? 'application/octet-stream'));
             $signerName = trim((string)($input['signer_name'] ?? ''));
             $signerEmail = trim((string)($input['signer_email'] ?? ''));
             $deadlineAt = trim((string)($input['deadline_at'] ?? ''));
             $message = trim((string)($input['notification_message'] ?? 'Você possui um documento pendente para assinatura.'));
 
-            if ($contentBase64 === '' || $signerName === '' || $signerEmail === '') {
+            if ($content === '' && $contentBase64 !== '') {
+                if (stripos($contentBase64, 'data:') === 0) {
+                    $content = $contentBase64;
+                } else {
+                    $content = 'data:' . $contentType . ';base64,' . $contentBase64;
+                }
+            }
+
+            if ($content === '' || $signerName === '' || $signerEmail === '') {
                 return [
                     'success' => false,
                     'error' => 'Dados obrigatórios para assinatura não informados (arquivo/signatário).',
@@ -103,7 +113,7 @@ if (!class_exists('ClicksignHelper')) {
                     'type' => 'documents',
                     'attributes' => [
                         'filename' => $filename,
-                        'content_base64' => $contentBase64,
+                        'content' => $content,
                     ],
                 ],
             ]);

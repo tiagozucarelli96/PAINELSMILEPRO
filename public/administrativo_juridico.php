@@ -421,6 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'envelope_name' => (string)($arquivo['titulo'] ?? 'Documento') . ' - ' . $colaboradorNome,
                 'filename' => (string)($arquivo['arquivo_nome'] ?? 'documento.pdf'),
                 'content_base64' => base64_encode((string)$payloadArquivo['body']),
+                'content_type' => (string)($payloadArquivo['content_type'] ?? $arquivo['mime_type'] ?? 'application/pdf'),
                 'signer_name' => $colaboradorNome,
                 'signer_email' => $colaboradorEmail,
                 'deadline_at' => (new DateTime('+20 days'))->format(DateTime::RFC3339),
