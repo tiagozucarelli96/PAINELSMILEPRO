@@ -33,18 +33,22 @@ try {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($errors)) {
     $defaults = eventos_reuniao_tipos_evento_real_defaults();
-    $tiposPermitidos = eventos_reuniao_tipos_evento_real_allowed();
+    $tiposAtuais = eventos_reuniao_tipos_evento_real_listar($pdo, true);
     $labels = $_POST['label'] ?? [];
-    $descricoes = $_POST['descricao'] ?? [];
     $ordens = $_POST['ordem'] ?? [];
     $ativos = $_POST['ativo'] ?? [];
+    $novoTipoLabel = trim((string)($_POST['novo_tipo_label'] ?? ''));
 
     $ativosCount = 0;
     $payload = [];
 
-    foreach ($tiposPermitidos as $tipoKey) {
+    foreach ($tiposAtuais as $tipoAtual) {
+        $tipoKey = (string)($tipoAtual['tipo_key'] ?? '');
+        if ($tipoKey === '') {
+            continue;
+        }
+
         $label = trim((string)($labels[$tipoKey] ?? ''));
-        $descricao = trim((string)($descricoes[$tipoKey] ?? ''));
         $ordem = isset($ordens[$tipoKey]) ? (int)$ordens[$tipoKey] : (int)($defaults[$tipoKey]['ordem'] ?? 0);
         $ativo = isset($ativos[$tipoKey]) && (string)$ativos[$tipoKey] === '1';
 
@@ -59,10 +63,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($errors)) {
 
         $payload[$tipoKey] = [
             'label' => mb_substr($label, 0, 80),
-            'descricao' => mb_substr($descricao, 0, 255),
             'ordem' => $ordem,
             'ativo' => $ativo,
         ];
+    }
+
+    if ($novoTipoLabel !== '') {
+        $novoTipoKey = eventos_reuniao_tipo_evento_real_slug($novoTipoLabel);
+        if ($novoTipoKey === '') {
+            $errors[] = 'Não foi possível gerar um código válido para o novo tipo.';
+        } elseif (isset($payload[$novoTipoKey])) {
+            $errors[] = 'Já existe um tipo com esse nome/código.';
+        } else {
+            $payload[$novoTipoKey] = [
+                'label' => mb_substr($novoTipoLabel, 0, 80),
+                'ordem' => empty($payload) ? 10 : (max(array_column($payload, 'ordem')) + 10),
+                'ativo' => true,
+            ];
+            $ativosCount++;
+        }
     }
 
     if (!$errors && $ativosCount <= 0) {
@@ -71,20 +90,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($errors)) {
 
     if (!$errors) {
         $stmt = $pdo->prepare("
-            UPDATE eventos_tipos_reais_config
-            SET label = :label,
-                descricao = :descricao,
-                ativo = :ativo,
-                ordem = :ordem,
+            INSERT INTO eventos_tipos_reais_config (tipo_key, label, descricao, ativo, ordem, updated_at)
+            VALUES (:tipo_key, :label, NULL, :ativo, :ordem, NOW())
+            ON CONFLICT (tipo_key) DO UPDATE SET
+                label = EXCLUDED.label,
+                descricao = NULL,
+                ativo = EXCLUDED.ativo,
+                ordem = EXCLUDED.ordem,
                 updated_at = NOW()
-            WHERE tipo_key = :tipo_key
         ");
 
         foreach ($payload as $tipoKey => $item) {
             $stmt->execute([
                 ':tipo_key' => $tipoKey,
                 ':label' => $item['label'],
-                ':descricao' => $item['descricao'] !== '' ? $item['descricao'] : null,
                 ':ativo' => $item['ativo'],
                 ':ordem' => $item['ordem'],
             ]);
@@ -233,6 +252,21 @@ includeSidebar('Configurações - Tipos de Evento');
     justify-content: flex-end;
 }
 
+.config-eventos-add {
+    margin-bottom: 1.2rem;
+    border: 1px dashed #93c5fd;
+    border-radius: 12px;
+    padding: 1rem;
+    background: #f8fbff;
+}
+
+.config-eventos-add-title {
+    margin: 0 0 0.8rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+
 .btn-save {
     border: none;
     border-radius: 10px;
@@ -262,7 +296,7 @@ includeSidebar('Configurações - Tipos de Evento');
     </div>
 
     <div class="config-eventos-note">
-        Esses tipos aparecem na seleção de <strong>tipo real do evento</strong> em <code>eventos_organizacao</code>. Aqui você pode ajustar nome de exibição, descrição, ordem e ativação.
+        Esses tipos aparecem na seleção de <strong>tipo real do evento</strong> em <code>eventos_organizacao</code>. Aqui você pode ajustar nome de exibição, ordem, ativação e adicionar novos tipos.
     </div>
 
     <?php foreach ($messages as $message): ?>
@@ -275,6 +309,40 @@ includeSidebar('Configurações - Tipos de Evento');
 
     <div class="config-eventos-panel">
         <form method="post">
+            <section class="config-eventos-add">
+                <h2 class="config-eventos-add-title">Adicionar tipo</h2>
+                <div class="config-eventos-fields">
+                    <div class="config-eventos-field">
+                        <label for="novo_tipo_label">Nome exibido</label>
+                        <input
+                            type="text"
+                            id="novo_tipo_label"
+                            name="novo_tipo_label"
+                            maxlength="80"
+                            placeholder="Ex.: Corporativo"
+                        >
+                    </div>
+
+                    <div class="config-eventos-field">
+                        <label>Código interno</label>
+                        <input
+                            type="text"
+                            value="Gerado automaticamente pelo nome"
+                            disabled
+                        >
+                    </div>
+
+                    <div class="config-eventos-field">
+                        <label>Status</label>
+                        <input
+                            type="text"
+                            value="Novo tipo entra ativo"
+                            disabled
+                        >
+                    </div>
+                </div>
+            </section>
+
             <div class="config-eventos-grid">
                 <?php foreach ($tipos as $tipo): ?>
                     <?php
@@ -304,23 +372,21 @@ includeSidebar('Configurações - Tipos de Evento');
                             </div>
 
                             <div class="config-eventos-field">
-                                <label for="descricao_<?= config_eventos_tipos_h($tipoKey) ?>">Descrição curta</label>
-                                <input
-                                    type="text"
-                                    id="descricao_<?= config_eventos_tipos_h($tipoKey) ?>"
-                                    name="descricao[<?= config_eventos_tipos_h($tipoKey) ?>]"
-                                    maxlength="255"
-                                    value="<?= config_eventos_tipos_h((string)($tipo['descricao'] ?? '')) ?>"
-                                >
-                            </div>
-
-                            <div class="config-eventos-field">
                                 <label for="ordem_<?= config_eventos_tipos_h($tipoKey) ?>">Ordem</label>
                                 <input
                                     type="number"
                                     id="ordem_<?= config_eventos_tipos_h($tipoKey) ?>"
                                     name="ordem[<?= config_eventos_tipos_h($tipoKey) ?>]"
                                     value="<?= (int)($tipo['ordem'] ?? 0) ?>"
+                                >
+                            </div>
+
+                            <div class="config-eventos-field">
+                                <label>Código interno</label>
+                                <input
+                                    type="text"
+                                    value="<?= config_eventos_tipos_h($tipoKey) ?>"
+                                    disabled
                                 >
                             </div>
                         </div>

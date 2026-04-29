@@ -624,6 +624,34 @@ function eventos_reuniao_tipos_evento_real_allowed(): array {
 }
 
 /**
+ * Normaliza a chave interna de um tipo real de evento.
+ */
+function eventos_reuniao_tipo_evento_real_slug(?string $value): string {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (function_exists('iconv')) {
+        $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+        if (is_string($ascii) && $ascii !== '') {
+            $value = $ascii;
+        }
+    }
+
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? '';
+    $value = trim($value, '_');
+    $value = substr($value, 0, 24);
+
+    if ($value === '' || !preg_match('/^[a-z0-9_]{1,24}$/', $value)) {
+        return '';
+    }
+
+    return $value;
+}
+
+/**
  * Metadados padrão dos tipos reais de evento.
  */
 function eventos_reuniao_tipos_evento_real_defaults(): array {
@@ -712,12 +740,11 @@ function eventos_reuniao_tipos_evento_real_listar(PDO $pdo, bool $includeInactiv
 
     $stmt = $pdo->query($sql);
     $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
-    $allowed = array_flip(eventos_reuniao_tipos_evento_real_allowed());
     $items = [];
 
     foreach ($rows as $row) {
-        $tipoKey = strtolower(trim((string)($row['tipo_key'] ?? '')));
-        if (!isset($allowed[$tipoKey])) {
+        $tipoKey = eventos_reuniao_tipo_evento_real_slug((string)($row['tipo_key'] ?? ''));
+        if ($tipoKey === '') {
             continue;
         }
         $items[] = [
@@ -752,8 +779,24 @@ function eventos_reuniao_tipos_evento_real_options(PDO $pdo, bool $includeInacti
 /**
  * Normaliza tipo real do evento.
  */
-function eventos_reuniao_normalizar_tipo_evento_real(?string $tipo_evento_real): string {
-    $tipo = strtolower(trim((string)$tipo_evento_real));
+function eventos_reuniao_normalizar_tipo_evento_real(?string $tipo_evento_real, ?PDO $pdo = null): string {
+    $tipo = eventos_reuniao_tipo_evento_real_slug($tipo_evento_real);
+    if ($tipo === '') {
+        return '';
+    }
+
+    try {
+        $pdoRef = $pdo instanceof PDO ? $pdo : ($GLOBALS['pdo'] ?? null);
+        if ($pdoRef instanceof PDO) {
+            $options = eventos_reuniao_tipos_evento_real_options($pdoRef, true);
+            if (isset($options[$tipo])) {
+                return $tipo;
+            }
+        }
+    } catch (Throwable $e) {
+        // fallback legado abaixo
+    }
+
     if (in_array($tipo, eventos_reuniao_tipos_evento_real_allowed(), true)) {
         return $tipo;
     }
