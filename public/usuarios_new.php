@@ -2647,9 +2647,14 @@ function loadUserData(userId) {
                 updateFotoPreview('');
             }
             
-            // Permissões - marcar checkboxes
+            // Permissões - marcar apenas checkboxes booleanos simples.
+            // Campos multi-seleção como spaces_visiveis[] já foram renderizados acima
+            // e não podem ser sobrescritos aqui, senão a seleção some ao reabrir o usuário.
             form.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                 const name = cb.name;
+                if (!name || name.endsWith('[]')) {
+                    return;
+                }
                 // Converter valor para boolean
                 const value = user[name];
                 cb.checked = value === true || value === 1 || value === '1' || value === 't' || value === 'true';

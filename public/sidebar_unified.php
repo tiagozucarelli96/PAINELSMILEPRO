@@ -23,6 +23,30 @@ require_once __DIR__ . '/notifications_bar.php';
 require_once __DIR__ . '/core/notification_dispatcher.php';
 require_once __DIR__ . '/administrativo_avisos_helper.php';
 
+if (!function_exists('dashboardEnsureConfigTable')) {
+    function dashboardEnsureConfigTable(PDO $pdo): void
+    {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS demandas_configuracoes (
+                id SERIAL PRIMARY KEY,
+                chave VARCHAR(100) UNIQUE NOT NULL,
+                valor TEXT,
+                descricao TEXT,
+                tipo VARCHAR(50) DEFAULT 'string' CHECK (tipo IN ('string', 'number', 'boolean', 'json')),
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        ");
+    }
+}
+
+if (!function_exists('dashboardGetManualSalesKey')) {
+    function dashboardGetManualSalesKey(DateTimeInterface $date): string
+    {
+        return 'dashboard_vendas_realizadas_' . $date->format('Y_m');
+    }
+}
+
 try {
     if (isset($pdo) && $pdo instanceof PDO) {
         $sidebarNotificationDispatcher = new NotificationDispatcher($pdo);
@@ -87,11 +111,44 @@ if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
     adminAvisosEnsureSchema($pdo);
+    $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
+    $dashboard_current_month = new DateTimeImmutable('now');
+    $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
+    $dashboard_manual_sales_feedback = null;
     
     $stats = [];
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
     $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
     $avisos_dashboard = [];
+
+    if (
+        $is_superadmin_dashboard &&
+        ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' &&
+        ($_POST['action'] ?? '') === 'save_manual_vendas_realizadas'
+    ) {
+        try {
+            dashboardEnsureConfigTable($pdo);
+            $manual_sales_value = max(0, (int)($_POST['vendas_realizadas_manual'] ?? 0));
+            $stmt = $pdo->prepare("
+                INSERT INTO demandas_configuracoes (chave, valor, descricao, tipo, updated_at)
+                VALUES (:chave, :valor, :descricao, 'number', NOW())
+                ON CONFLICT (chave) DO UPDATE
+                SET valor = EXCLUDED.valor,
+                    descricao = EXCLUDED.descricao,
+                    tipo = EXCLUDED.tipo,
+                    updated_at = NOW()
+            ");
+            $stmt->execute([
+                ':chave' => $dashboard_manual_sales_key,
+                ':valor' => (string)$manual_sales_value,
+                ':descricao' => 'Valor manual mensal do card Vendas Realizadas da dashboard',
+            ]);
+            $dashboard_manual_sales_feedback = 'saved';
+        } catch (Throwable $e) {
+            error_log('[SIDEBAR] Erro ao salvar vendas realizadas manualmente: ' . $e->getMessage());
+            $dashboard_manual_sales_feedback = 'error';
+        }
+    }
     
     try {
         // 1. Inscritos em Degustações Ativas do Mês
@@ -106,19 +163,17 @@ if ($current_page === 'dashboard') {
         $stmt->execute();
         $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
         
-        // 2. Eventos Criados via ME Eventos (webhook)
-        // Conta APENAS eventos event_created do mês atual
-        // Automaticamente zera no primeiro dia do mês (só conta eventos do mês atual)
+        // 2. Vendas Realizadas (valor manual mensal)
+        dashboardEnsureConfigTable($pdo);
         $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total 
-            FROM me_eventos_webhook 
-            WHERE webhook_tipo = 'created'
-            AND DATE_TRUNC('month', recebido_em) = DATE_TRUNC('month', CURRENT_DATE)
-            -- Filtra apenas eventos do mês atual, automaticamente zera no dia 1
+            SELECT valor
+            FROM demandas_configuracoes
+            WHERE chave = :chave
+            LIMIT 1
         ");
-        $stmt->execute();
-        $stats['eventos_criados'] = $stmt->fetchColumn() ?: 0;
-        
+        $stmt->execute([':chave' => $dashboard_manual_sales_key]);
+        $stats['vendas_realizadas'] = max(0, (int)($stmt->fetchColumn() ?: 0));
+
         // 3. Visitas Realizadas (Agenda + Google Calendar)
         $stmt = $pdo->prepare("
             SELECT COUNT(*) as total 
@@ -138,29 +193,16 @@ if ($current_page === 'dashboard') {
         $stmt->execute();
         $stats['visitas_realizadas'] = $stmt->fetchColumn() ?: 0;
         
-        // 4. Fechamentos Realizados (Agenda + Google Calendar)
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total 
-            FROM (
-                SELECT inicio 
-                FROM agenda_eventos 
-                WHERE fechou_contrato = true
-                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
-                UNION ALL
-                SELECT inicio 
-                FROM google_calendar_eventos 
-                WHERE contrato_fechado = true
-                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
-            ) as todos_contratos
-        ");
-        $stmt->execute();
-        $stats['fechamentos_realizados'] = $stmt->fetchColumn() ?: 0;
+        // 4. Fechamentos Realizados (% de conversão do mês = vendas / visitas)
+        $stats['fechamentos_realizados'] = $stats['visitas_realizadas'] > 0
+            ? round(($stats['vendas_realizadas'] / $stats['visitas_realizadas']) * 100, 1)
+            : 0;
         
     } catch (Exception $e) {
         // Se der erro, usar valores padrão
         $stats = [
             'inscritos_degustacao' => 0,
-            'eventos_criados' => 0,
+            'vendas_realizadas' => 0,
             'visitas_realizadas' => 0,
             'fechamentos_realizados' => 0
         ];
@@ -361,6 +403,46 @@ if ($current_page === 'dashboard') {
         flex: 1;
         max-width: 100%;
     }
+    .metric-card-form {
+        margin-top: 0.65rem;
+    }
+    .metric-card-form form {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .metric-card-form input[type="number"] {
+        width: 92px;
+        padding: 0.45rem 0.55rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 0.85rem;
+    }
+    .metric-card-form button {
+        border: none;
+        border-radius: 10px;
+        background: #1d4ed8;
+        color: #fff;
+        padding: 0.48rem 0.8rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .metric-card-form small {
+        display: block;
+        margin-top: 0.35rem;
+        color: #64748b;
+        font-size: 0.75rem;
+    }
+    .metric-card-feedback {
+        margin-top: 0.35rem;
+        font-size: 0.75rem;
+        color: #047857;
+    }
+    .metric-card-feedback.error {
+        color: #b91c1c;
+    }
     .avisos-list {
         display: grid;
         gap: 0.75rem;
@@ -499,8 +581,23 @@ if ($current_page === 'dashboard') {
             <div class="metric-card">
                 <div class="metric-icon">🎉</div>
                 <div class="metric-content">
-                    <h3>' . $stats['eventos_criados'] . '</h3>
-                    <p>Eventos Criados (ME Eventos)</p>
+                    <h3>' . $stats['vendas_realizadas'] . '</h3>
+                    <p>Vendas Realizadas</p>
+                    ' . ($is_superadmin_dashboard ? '
+                    <div class="metric-card-form">
+                        <form method="POST">
+                            <input type="hidden" name="action" value="save_manual_vendas_realizadas">
+                            <input type="number" name="vendas_realizadas_manual" min="0" step="1" value="' . (int)$stats['vendas_realizadas'] . '" aria-label="Vendas realizadas do mês">
+                            <button type="submit">Salvar</button>
+                        </form>
+                        <small>Valor manual de ' . htmlspecialchars($dashboard_current_month->format('m/Y')) . '.</small>
+                        ' . ($dashboard_manual_sales_feedback === 'saved'
+                            ? '<div class="metric-card-feedback">Valor atualizado.</div>'
+                            : ($dashboard_manual_sales_feedback === 'error'
+                                ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
+                                : '')) . '
+                    </div>
+                    ' : '') . '
                 </div>
             </div>
             
@@ -515,8 +612,9 @@ if ($current_page === 'dashboard') {
             <div class="metric-card">
                 <div class="metric-icon">✅</div>
                 <div class="metric-content">
-                    <h3>' . $stats['fechamentos_realizados'] . '</h3>
-                    <p>Fechamentos Realizados</p>
+                    <h3>' . number_format((float)$stats['fechamentos_realizados'], 1, ',', '.') . '%</h3>
+                    <p>Converssão</p>
+                    <small>Conversão do mês entre visitas e vendas.</small>
                 </div>
             </div>
         </div>
