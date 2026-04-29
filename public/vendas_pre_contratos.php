@@ -1202,8 +1202,16 @@ ob_start();
     gap: 1rem 1.25rem;
 }
 
+.modal-form-grid > * {
+    min-width: 0;
+}
+
 .modal-form-grid .full-width {
     grid-column: 1 / -1;
+}
+
+.modal-form-grid.single-column {
+    grid-template-columns: 1fr;
 }
 
 .modal-actions {
@@ -1499,25 +1507,26 @@ ob_start();
 
                     <div class="modal-secao">
                         <h3>Dados comerciais</h3>
-                        <div class="modal-form-grid">
+                        <div class="modal-form-grid single-column">
                             <div class="form-group">
                                 <label for="pacote_contratado">Pacote contratado</label>
+                                <input
+                                    type="text"
+                                    id="pacote_contratado"
+                                    name="pacote_contratado"
+                                    list="pacotes_evento_lista"
+                                    value="<?php echo htmlspecialchars($pre_contrato_editar['pacote_contratado'] ?? ''); ?>"
+                                    placeholder="Selecione ou digite o pacote contratado"
+                                >
                                 <?php if (!empty($pacotes_evento)): ?>
-                                    <select id="pacote_contratado" name="pacote_contratado">
-                                        <option value="">Selecione...</option>
+                                    <datalist id="pacotes_evento_lista">
                                         <?php if ($pacote_atual_edicao !== '' && !$pacote_atual_existe): ?>
-                                            <option value="<?php echo htmlspecialchars($pacote_atual_edicao); ?>" selected>
-                                                <?php echo htmlspecialchars($pacote_atual_edicao . ' (atual)'); ?>
-                                            </option>
+                                            <option value="<?php echo htmlspecialchars($pacote_atual_edicao); ?>">
                                         <?php endif; ?>
                                         <?php foreach ($pacotes_evento as $pacote_evento): ?>
-                                            <option value="<?php echo htmlspecialchars((string)$pacote_evento['nome']); ?>" <?php echo (($pre_contrato_editar['pacote_contratado'] ?? '') === (string)$pacote_evento['nome']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars((string)$pacote_evento['nome']); ?>
-                                            </option>
+                                            <option value="<?php echo htmlspecialchars((string)$pacote_evento['nome']); ?>">
                                         <?php endforeach; ?>
-                                    </select>
-                                <?php else: ?>
-                                    <input type="text" id="pacote_contratado" name="pacote_contratado" value="<?php echo htmlspecialchars($pre_contrato_editar['pacote_contratado'] ?? ''); ?>">
+                                    </datalist>
                                 <?php endif; ?>
                             </div>
 
