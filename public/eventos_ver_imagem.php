@@ -19,7 +19,10 @@ if ($key === false || $key === '' || strpos($key, '..') !== false) {
     exit;
 }
 
-if (strpos($key, 'eventos/reunioes/') !== 0) {
+if (
+    strpos($key, 'eventos/reunioes/') !== 0
+    && strpos($key, 'administrativo/avisos/') !== 0
+) {
     http_response_code(403);
     echo 'Key não permitida';
     exit;

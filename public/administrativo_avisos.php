@@ -11,6 +11,7 @@ if (empty($_SESSION['logado']) || (empty($_SESSION['perm_administrativo']) && em
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/administrativo_avisos_helper.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 $pdo = $GLOBALS['pdo'];
 adminAvisosEnsureSchema($pdo);
@@ -74,11 +75,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
             }
         }
-    } elseif ($action === 'desativar_aviso') {
+    } elseif ($action === 'excluir_aviso') {
         $avisoId = (int)($_POST['aviso_id'] ?? 0);
         if ($avisoId > 0) {
-            adminAvisosDesativar($pdo, $avisoId);
-            $sucesso = 'Aviso desativado.';
+            try {
+                $aviso = adminAvisosBuscarPorId($pdo, $avisoId);
+                if (!$aviso) {
+                    throw new RuntimeException('Aviso não encontrado.');
+                }
+
+                $storageKeys = adminAvisosExtrairStorageKeys((string)($aviso['conteudo_html'] ?? ''));
+                if (!empty($storageKeys)) {
+                    $uploader = new MagaluUpload();
+                    foreach ($storageKeys as $storageKey) {
+                        if (!$uploader->delete($storageKey)) {
+                            throw new RuntimeException('Não foi possível excluir uma das imagens do aviso no storage.');
+                        }
+                    }
+                }
+
+                adminAvisosExcluir($pdo, $avisoId);
+                $sucesso = 'Aviso excluído com sucesso.';
+            } catch (Throwable $e) {
+                $erro = $e->getMessage();
+            }
         }
     }
 }
@@ -624,10 +644,10 @@ ob_start();
                                     </p>
                                 </div>
                                 <?php if (adminAvisosBoolValue($aviso['ativo'] ?? false) && !$expirado): ?>
-                                    <form method="post" onsubmit="return confirm('Desativar este aviso?');">
-                                        <input type="hidden" name="action" value="desativar_aviso">
+                                    <form method="post" onsubmit="return confirm('Excluir este aviso? Esta ação também remove as imagens dele do storage.');">
+                                        <input type="hidden" name="action" value="excluir_aviso">
                                         <input type="hidden" name="aviso_id" value="<?= $avisoId ?>">
-                                        <button type="submit" class="avisos-btn avisos-btn-danger">Desativar</button>
+                                        <button type="submit" class="avisos-btn avisos-btn-danger">Excluir</button>
                                     </form>
                                 <?php endif; ?>
                             </div>

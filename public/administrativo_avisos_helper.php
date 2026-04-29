@@ -166,6 +166,87 @@ if (!function_exists('adminAvisosDesativar')) {
     }
 }
 
+if (!function_exists('adminAvisosBuscarPorId')) {
+    function adminAvisosBuscarPorId(PDO $pdo, int $avisoId): ?array
+    {
+        if ($avisoId <= 0) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM administrativo_avisos
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $avisoId]);
+
+        $aviso = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $aviso ?: null;
+    }
+}
+
+if (!function_exists('adminAvisosDecodeStorageKey')) {
+    function adminAvisosDecodeStorageKey(string $encodedKey): ?string
+    {
+        $encodedKey = trim($encodedKey);
+        if ($encodedKey === '') {
+            return null;
+        }
+
+        $decoded = base64_decode(strtr($encodedKey, '-_', '+/'), true);
+        if (!is_string($decoded) || $decoded === '' || strpos($decoded, '..') !== false) {
+            return null;
+        }
+
+        if (strpos($decoded, 'administrativo/avisos/') !== 0) {
+            return null;
+        }
+
+        return $decoded;
+    }
+}
+
+if (!function_exists('adminAvisosExtrairStorageKeys')) {
+    function adminAvisosExtrairStorageKeys(string $conteudoHtml): array
+    {
+        $keys = [];
+        if (trim($conteudoHtml) === '') {
+            return [];
+        }
+
+        if (preg_match_all('/<img\b[^>]*\bsrc=["\']([^"\']+)["\']/i', $conteudoHtml, $matches)) {
+            foreach ((array)($matches[1] ?? []) as $src) {
+                $src = html_entity_decode((string)$src, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $query = parse_url($src, PHP_URL_QUERY);
+                if (!is_string($query) || $query === '') {
+                    continue;
+                }
+
+                parse_str($query, $params);
+                $encodedKey = (string)($params['key'] ?? '');
+                $key = adminAvisosDecodeStorageKey(rawurldecode($encodedKey));
+                if ($key !== null) {
+                    $keys[$key] = $key;
+                }
+            }
+        }
+
+        return array_values($keys);
+    }
+}
+
+if (!function_exists('adminAvisosExcluir')) {
+    function adminAvisosExcluir(PDO $pdo, int $avisoId): void
+    {
+        $stmt = $pdo->prepare("
+            DELETE FROM administrativo_avisos
+            WHERE id = :id
+        ");
+        $stmt->execute([':id' => $avisoId]);
+    }
+}
+
 if (!function_exists('adminAvisosUsuarioPodeVer')) {
     function adminAvisosUsuarioPodeVer(PDO $pdo, int $avisoId, int $usuarioId): bool
     {
