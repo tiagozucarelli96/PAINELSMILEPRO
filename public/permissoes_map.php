@@ -41,6 +41,7 @@ return [
     // Agenda
     'agenda_config' => 'perm_superadmin',
     'agenda_relatorios' => 'perm_agenda',
+    'agenda_eventos' => 'perm_agenda_eventos',
     'google_calendar_config' => 'perm_superadmin',
     
     // Comercial

@@ -6,6 +6,7 @@
  * O sistema possui permissões da sidebar + superadmin:
  * - Dashboard: todos têm acesso (sem permissão específica)
  * - Agenda: perm_agenda
+ * - Agenda de eventos: perm_agenda_eventos
  * - Demandas: perm_demandas
  * - Comercial: perm_comercial
  * - Eventos: perm_eventos
@@ -24,6 +25,11 @@ define('SYSTEM_PERMISSIONS', [
         'label' => 'Agenda',
         'icon' => '📅',
         'description' => 'Acesso ao módulo de agenda e calendário'
+    ],
+    'perm_agenda_eventos' => [
+        'label' => 'Agenda de eventos',
+        'icon' => '🗓️',
+        'description' => 'Acesso ao calendário de eventos filtrado por unidade/space'
     ],
     'perm_demandas' => [
         'label' => 'Demandas',
@@ -129,6 +135,7 @@ function user_can_access(string $module): bool {
     // Mapear módulos para permissões
     $module_map = [
         'agenda' => 'perm_agenda',
+        'agenda_eventos' => 'perm_agenda_eventos',
         'demandas' => 'perm_demandas',
         'comercial' => 'perm_comercial',
         'eventos' => 'perm_eventos',

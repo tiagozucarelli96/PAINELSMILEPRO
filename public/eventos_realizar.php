@@ -69,6 +69,16 @@ function eventos_realizar_formatar_hora_curta(?string $value): string
     return $timestamp ? date('H:i', $timestamp) : $hora;
 }
 
+function eventos_realizar_snapshot_hora_fim(array $snapshot): string
+{
+    return eventos_realizar_formatar_hora_curta((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? $snapshot['hora_termino'] ?? ''));
+}
+
+function eventos_realizar_snapshot_convidados_previstos(array $snapshot): int
+{
+    return (int)($snapshot['convidados'] ?? $snapshot['nconvidados'] ?? $snapshot['num_convidados'] ?? $snapshot['numero_convidados'] ?? $snapshot['qtd_convidados'] ?? $snapshot['quantidade_convidados'] ?? 0);
+}
+
 function eventos_realizar_buscar_resumo_evento(PDO $pdo, int $meeting_id): ?array
 {
     if ($meeting_id <= 0) {
@@ -180,7 +190,7 @@ function eventos_realizar_linha_from_reuniao(array $reuniao): array
 
     $data_evento = trim((string)($snapshot['data'] ?? ''));
     $hora_inicio = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-    $hora_fim = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_fim'] ?? ''));
+    $hora_fim = eventos_realizar_snapshot_hora_fim($snapshot);
     $data_hora_evento = null;
     if ($data_evento !== '') {
         $data_hora_evento = trim($data_evento . ' ' . ($hora_inicio !== '' ? $hora_inicio : '00:00'));
@@ -307,13 +317,14 @@ $evento_nome = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
 $hora_inicio = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_fim'] ?? ''));
+$hora_fim = eventos_realizar_snapshot_hora_fim($snapshot);
 $horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
 if ($hora_inicio !== '' && $hora_fim !== '') {
     $horario_evento .= ' - ' . $hora_fim;
 }
 $local_evento = eventos_me_snapshot_local($snapshot, 'Local não informado');
 $cliente_nome = eventos_me_snapshot_cliente_nome($snapshot, 'Cliente não informado');
+$convidados_previstos_me = eventos_realizar_snapshot_convidados_previstos($snapshot);
 
 $checklist_resumo = $reuniao ? eventos_realizar_resumo_checklist($pdo, (int)$reuniao['id']) : ['total' => 0, 'concluidos' => 0];
 $checklist_total = (int)($checklist_resumo['total'] ?? 0);
@@ -722,6 +733,9 @@ includeSidebar('Realizar evento');
             <div>📅 <?= htmlspecialchars($data_evento_fmt) ?> • <?= htmlspecialchars($horario_evento) ?></div>
             <div>📍 <?= htmlspecialchars($local_evento) ?></div>
             <div>👤 <?= htmlspecialchars($cliente_nome) ?></div>
+            <?php if ($convidados_previstos_me > 0): ?>
+            <div>👥 <?= $convidados_previstos_me ?> convidados</div>
+            <?php endif; ?>
             <div>🆔 Reunião #<?= (int)$meeting_id ?></div>
         </div>
     </section>
@@ -782,8 +796,11 @@ includeSidebar('Realizar evento');
             <div class="card-actions">
                 <a href="index.php?page=eventos_lista_convidados&id=<?= (int)$meeting_id ?>&mode=recepcao&origin=realizar" class="btn btn-primary">Abrir Check-in</a>
             </div>
-            <div class="helper-note">
-                <?= (int)($convidados_resumo['checkin'] ?? 0) ?> check-ins de <?= (int)($convidados_resumo['total'] ?? 0) ?> convidados.
+            <div class="helper-note helper-note-stack">
+                <?php if ($convidados_previstos_me > 0): ?>
+                <span>ME: <?= $convidados_previstos_me ?> convidados previstos.</span>
+                <?php endif; ?>
+                <span><?= (int)($convidados_resumo['checkin'] ?? 0) ?> check-ins de <?= (int)($convidados_resumo['total'] ?? 0) ?> convidados.</span>
             </div>
         </article>
     </section>

@@ -560,10 +560,10 @@ function eventos_me_criar_snapshot(array $event): array {
         'nome' => eventos_me_pick_text($event, ['nomeevento', 'nome']),
         'data' => eventos_me_pick_text($event, ['dataevento', 'data']),
         'hora_inicio' => eventos_me_pick_text($event, ['horainicio', 'hora_inicio', 'horaevento']),
-        'hora_fim' => eventos_me_pick_text($event, ['horatermino', 'hora_fim', 'horafim']),
+        'hora_fim' => eventos_me_pick_text($event, ['horatermino', 'hora_fim', 'horafim', 'hora_termino']),
         'local' => eventos_me_pick_text($event, ['local', 'nomelocal', 'localevento', 'localEvento', 'endereco']),
         'unidade' => eventos_me_pick_text($event, ['unidade', 'tipoEvento', 'tipoevento']),
-        'convidados' => eventos_me_pick_int($event, ['nconvidados', 'convidados']),
+        'convidados' => eventos_me_pick_int($event, ['nconvidados', 'convidados', 'num_convidados', 'numero_convidados', 'qtd_convidados', 'quantidade_convidados']),
         'cliente' => [
             'id' => eventos_me_pick_int($event, ['idcliente', 'cliente.id']),
             'nome' => eventos_me_pick_text($event, ['nomecliente', 'nomeCliente', 'cliente.nome']),

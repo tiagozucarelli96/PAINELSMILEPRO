@@ -1597,6 +1597,15 @@ ob_start();
                     }
                 }
 
+                if (!isset($existing_perms['perm_agenda_eventos'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE");
+                        $existing_perms['perm_agenda_eventos'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_agenda_eventos: " . $e->getMessage());
+                    }
+                }
+
                 if (!isset($existing_perms['perm_vendas_administracao'])) {
                     try {
                         $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE");
@@ -1609,6 +1618,7 @@ ob_start();
                 // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [
                     'perm_agenda' => '📅 Agenda',
+                    'perm_agenda_eventos' => '🗓️ Agenda de eventos',
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
                     'perm_eventos' => '🎉 Eventos',
@@ -1624,6 +1634,7 @@ ob_start();
                 
                 $system_perms = [
                     'perm_agenda',
+                    'perm_agenda_eventos',
                     'perm_demandas',
                     'perm_comercial',
                     'perm_eventos',

@@ -1555,6 +1555,13 @@ if ($current_page === 'dashboard') {
                     Agenda
                 </a>
                 <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_agenda_eventos'])): ?>
+                <a href="index.php?page=agenda_eventos" class="nav-item <?= isActiveUnified('agenda_eventos') ?>">
+                    <span class="nav-item-icon">🗓️</span>
+                    Agenda de eventos
+                </a>
+                <?php endif; ?>
                 
                 <?php if (!empty($_SESSION['perm_demandas'])): ?>
                 <a href="index.php?page=demandas" class="nav-item <?= isActiveUnified('demandas') ?>">
