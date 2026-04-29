@@ -47,6 +47,99 @@ if (!function_exists('dashboardGetManualSalesKey')) {
     }
 }
 
+if (!function_exists('dashboardGetConfigTableColumns')) {
+    function dashboardGetConfigTableColumns(PDO $pdo): array
+    {
+        $stmt = $pdo->query("
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = CURRENT_SCHEMA()
+              AND table_name = 'demandas_configuracoes'
+        ");
+
+        $columns = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $column) {
+            $columns[(string)$column] = true;
+        }
+
+        return $columns;
+    }
+}
+
+if (!function_exists('dashboardSaveConfigValue')) {
+    function dashboardSaveConfigValue(PDO $pdo, string $key, string $value, ?string $description = null, ?string $type = null): void
+    {
+        $columns = dashboardGetConfigTableColumns($pdo);
+        $assignments = ['valor = :valor'];
+        $params = [
+            ':chave' => $key,
+            ':valor' => $value,
+        ];
+
+        if (isset($columns['descricao']) && $description !== null) {
+            $assignments[] = 'descricao = :descricao';
+            $params[':descricao'] = $description;
+        }
+
+        if (isset($columns['tipo']) && $type !== null) {
+            $assignments[] = 'tipo = :tipo';
+            $params[':tipo'] = $type;
+        }
+
+        if (isset($columns['updated_at'])) {
+            $assignments[] = 'updated_at = NOW()';
+        } elseif (isset($columns['atualizado_em'])) {
+            $assignments[] = 'atualizado_em = NOW()';
+        }
+
+        $updateSql = 'UPDATE demandas_configuracoes SET ' . implode(', ', $assignments) . ' WHERE chave = :chave';
+        $updateStmt = $pdo->prepare($updateSql);
+        $updateStmt->execute($params);
+
+        if ($updateStmt->rowCount() > 0) {
+            return;
+        }
+
+        $insertColumns = ['chave', 'valor'];
+        $insertValues = [':chave', ':valor'];
+
+        if (isset($columns['descricao']) && $description !== null) {
+            $insertColumns[] = 'descricao';
+            $insertValues[] = ':descricao';
+        }
+
+        if (isset($columns['tipo']) && $type !== null) {
+            $insertColumns[] = 'tipo';
+            $insertValues[] = ':tipo';
+        }
+
+        if (isset($columns['created_at'])) {
+            $insertColumns[] = 'created_at';
+            $insertValues[] = 'NOW()';
+        } elseif (isset($columns['criado_em'])) {
+            $insertColumns[] = 'criado_em';
+            $insertValues[] = 'NOW()';
+        }
+
+        if (isset($columns['updated_at'])) {
+            $insertColumns[] = 'updated_at';
+            $insertValues[] = 'NOW()';
+        } elseif (isset($columns['atualizado_em'])) {
+            $insertColumns[] = 'atualizado_em';
+            $insertValues[] = 'NOW()';
+        }
+
+        $insertSql = sprintf(
+            'INSERT INTO demandas_configuracoes (%s) VALUES (%s)',
+            implode(', ', $insertColumns),
+            implode(', ', $insertValues)
+        );
+
+        $insertStmt = $pdo->prepare($insertSql);
+        $insertStmt->execute($params);
+    }
+}
+
 try {
     if (isset($pdo) && $pdo instanceof PDO) {
         $sidebarNotificationDispatcher = new NotificationDispatcher($pdo);
@@ -129,20 +222,13 @@ if ($current_page === 'dashboard') {
         try {
             dashboardEnsureConfigTable($pdo);
             $manual_sales_value = max(0, (int)($_POST['vendas_realizadas_manual'] ?? 0));
-            $stmt = $pdo->prepare("
-                INSERT INTO demandas_configuracoes (chave, valor, descricao, tipo, updated_at)
-                VALUES (:chave, :valor, :descricao, 'number', NOW())
-                ON CONFLICT (chave) DO UPDATE
-                SET valor = EXCLUDED.valor,
-                    descricao = EXCLUDED.descricao,
-                    tipo = EXCLUDED.tipo,
-                    updated_at = NOW()
-            ");
-            $stmt->execute([
-                ':chave' => $dashboard_manual_sales_key,
-                ':valor' => (string)$manual_sales_value,
-                ':descricao' => 'Valor manual mensal do card Vendas Realizadas da dashboard',
-            ]);
+            dashboardSaveConfigValue(
+                $pdo,
+                $dashboard_manual_sales_key,
+                (string)$manual_sales_value,
+                'Valor manual mensal do card Vendas Realizadas da dashboard',
+                'number'
+            );
             $dashboard_manual_sales_feedback = 'saved';
         } catch (Throwable $e) {
             error_log('[SIDEBAR] Erro ao salvar vendas realizadas manualmente: ' . $e->getMessage());
