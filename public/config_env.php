@@ -29,7 +29,7 @@ define('ME_API_KEY', $_ENV['ME_API_KEY'] ?? '');
 
 // Configurações Clicksign
 define('CLICKSIGN_API_TOKEN', $_ENV['CLICKSIGN_API_TOKEN'] ?? getenv('CLICKSIGN_API_TOKEN') ?: '');
-define('CLICKSIGN_BASE_URL', $_ENV['CLICKSIGN_BASE_URL'] ?? getenv('CLICKSIGN_BASE_URL') ?: 'https://sandbox.clicksign.com/api/v3');
+define('CLICKSIGN_BASE_URL', $_ENV['CLICKSIGN_BASE_URL'] ?? getenv('CLICKSIGN_BASE_URL') ?: 'https://app.clicksign.com/api/v3');
 define('CLICKSIGN_TIMEOUT', $_ENV['CLICKSIGN_TIMEOUT'] ?? getenv('CLICKSIGN_TIMEOUT') ?: '30');
 
 // Configurações de Segurança

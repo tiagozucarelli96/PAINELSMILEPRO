@@ -116,40 +116,6 @@ function aj_folder_option_tags(array $childrenByParent, array $pastasById, int $
     return $html;
 }
 
-function aj_render_tree(array $childrenByParent, array $pastasById, int $currentId, int $parentId = 0): string
-{
-    $folders = $childrenByParent[$parentId] ?? [];
-    if (empty($folders)) {
-        return '';
-    }
-
-    $html = '<ul class="aj-tree">';
-    foreach ($folders as $folderId) {
-        $folder = $pastasById[$folderId] ?? null;
-        if (!$folder) {
-            continue;
-        }
-
-        $isCurrent = $folderId === $currentId;
-        $ownerName = trim((string)($folder['usuario_empresa_nome'] ?? ''));
-        $cssClass = $isCurrent ? ' class="current"' : '';
-
-        $html .= '<li>';
-        $html .= '<a' . $cssClass . ' href="' . htmlspecialchars(aj_page_url($folderId)) . '">';
-        $html .= '<span class="aj-tree-icon">📁</span>';
-        $html .= '<span>' . htmlspecialchars((string)$folder['nome']) . '</span>';
-        if ($ownerName !== '') {
-            $html .= '<small>' . htmlspecialchars($ownerName) . '</small>';
-        }
-        $html .= '</a>';
-        $html .= aj_render_tree($childrenByParent, $pastasById, $currentId, $folderId);
-        $html .= '</li>';
-    }
-    $html .= '</ul>';
-
-    return $html;
-}
-
 function aj_buscar_bytes_arquivo(array $arquivo): array
 {
     $chaveStorage = trim((string)($arquivo['chave_storage'] ?? ''));
@@ -715,7 +681,6 @@ if ($baseUrl === '') {
     $juridicoLoginLink = 'index.php?page=juridico_login';
 }
 
-$treeHtml = aj_render_tree($childrenByParent, $pastasById, $currentPastaId, 0);
 $folderOptionsHtml = aj_folder_option_tags($childrenByParent, $pastasById);
 
 ob_start();
@@ -751,41 +716,13 @@ ob_start();
     .aj-btn.danger:hover { background: #991b1b; }
     .aj-btn-outline { background: #fff; color: #0f172a; border: 1px solid #cbd5e1; }
 
-    .aj-workspace {
-        display: grid;
-        grid-template-columns: 290px minmax(0, 1fr);
-        gap: 1rem;
-        align-items: start;
-    }
     .aj-panel {
         background: #fff;
         border: 1px solid #e2e8f0;
         border-radius: 18px;
         box-shadow: 0 12px 30px rgba(15, 23, 42, .06);
     }
-    .aj-sidebar { padding: 1rem; position: sticky; top: 1rem; }
-    .aj-sidebar h2,
     .aj-main h2 { margin: 0 0 .85rem; color: #0f172a; font-size: 1.05rem; }
-    .aj-sidebar-note { color: #64748b; font-size: .84rem; line-height: 1.45; margin-bottom: .9rem; }
-
-    .aj-tree,
-    .aj-tree ul { list-style: none; margin: 0; padding-left: .8rem; }
-    .aj-tree { padding-left: 0; }
-    .aj-tree li { margin: .25rem 0; }
-    .aj-tree a {
-        display: flex;
-        flex-direction: column;
-        gap: .1rem;
-        padding: .48rem .58rem;
-        border-radius: 10px;
-        text-decoration: none;
-        color: #1e293b;
-    }
-    .aj-tree a:hover { background: #eff6ff; }
-    .aj-tree a.current { background: #dbeafe; color: #1d4ed8; }
-    .aj-tree a small { color: #64748b; font-size: .74rem; }
-    .aj-tree-icon { margin-right: .3rem; }
-
     .aj-main { padding: 1rem; }
     .aj-breadcrumbs {
         display: flex;
@@ -829,7 +766,6 @@ ob_start();
     .aj-folder-tile:hover { transform: translateY(-1px); }
     .aj-folder-icon { font-size: 2rem; margin-bottom: .7rem; display: block; }
     .aj-folder-name { font-size: 1rem; font-weight: 800; color: #0f172a; line-height: 1.25; }
-    .aj-folder-meta { margin-top: .45rem; color: #475569; font-size: .82rem; line-height: 1.4; }
     .aj-folder-actions {
         margin-top: .8rem;
         display: flex;
@@ -886,21 +822,6 @@ ob_start();
         background: #f8fafc;
         color: #64748b;
     }
-
-    .aj-meta-card {
-        margin-top: 1rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 1rem;
-        background: #f8fafc;
-    }
-    .aj-meta-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: .8rem;
-    }
-    .aj-meta-item strong { display: block; margin-bottom: .2rem; color: #0f172a; }
-    .aj-meta-item span { color: #475569; font-size: .9rem; }
 
     .aj-section { margin-top: 1rem; }
     .aj-users-list {
@@ -977,10 +898,6 @@ ob_start();
     .aj-copy-row { display: flex; gap: .5rem; margin-top: .45rem; }
     .aj-copy-row input { flex: 1; }
 
-    @media (max-width: 980px) {
-        .aj-workspace { grid-template-columns: 1fr; }
-        .aj-sidebar { position: static; }
-    }
     @media (max-width: 760px) {
         .aj-grid { grid-template-columns: 1fr; }
         .aj-file-table,
@@ -995,7 +912,7 @@ ob_start();
 
 <div class="aj-shell">
     <h1 class="aj-title">Jurídico</h1>
-    <p class="aj-subtitle">Explorador de documentos por funcionário, com subpastas, movimentação, exclusão e solicitação de assinatura.</p>
+    <p class="aj-subtitle">Explorador de documentos por funcionário, com subpastas, exclusão e solicitação de assinatura.</p>
 
     <?php if ($mensagem !== ''): ?>
         <div class="aj-alert ok"><?= htmlspecialchars($mensagem) ?></div>
@@ -1008,22 +925,9 @@ ob_start();
         <button type="button" class="aj-btn" onclick="openAjModal('modalPasta')">📁 Nova pasta</button>
         <button type="button" class="aj-btn secondary" onclick="openAjModal('modalArquivo')">📎 Novo arquivo</button>
         <button type="button" class="aj-btn dark" onclick="openAjModal('modalUsuario')">👤 Acesso do jurídico</button>
-        <?php if ($currentPastaId > 0): ?>
-            <button type="button" class="aj-btn secondary" onclick="openAjModal('modalMoverArquivo')">🔁 Mover arquivo</button>
-        <?php endif; ?>
     </div>
 
-    <div class="aj-workspace">
-        <aside class="aj-panel aj-sidebar">
-            <h2>Pastas</h2>
-            <div class="aj-sidebar-note">Estrutura alfabética. As pastas principais dos funcionários são criadas automaticamente e você pode criar subpastas dentro delas.</div>
-            <div style="margin-bottom:.7rem;">
-                <a href="<?= htmlspecialchars(aj_page_url()) ?>" class="aj-btn-outline" style="width:100%; justify-content:center;">🏠 Raiz</a>
-            </div>
-            <?= $treeHtml !== '' ? $treeHtml : '<div class="aj-empty">Nenhuma pasta disponível.</div>' ?>
-        </aside>
-
-        <main class="aj-panel aj-main">
+    <main class="aj-panel aj-main">
             <div class="aj-breadcrumbs">
                 <a href="<?= htmlspecialchars(aj_page_url()) ?>">Raiz</a>
                 <?php foreach ($breadcrumbs as $index => $item): ?>
@@ -1041,10 +945,9 @@ ob_start();
                     <h2><?= $currentPasta ? htmlspecialchars((string)$currentPasta['nome']) : 'Raiz do jurídico' ?></h2>
                     <div class="aj-main-meta">
                         <?php if ($currentPasta): ?>
-                            <?= !empty($currentPasta['usuario_empresa_nome']) ? 'Funcionário: ' . htmlspecialchars((string)$currentPasta['usuario_empresa_nome']) . ' • ' : '' ?>
                             <?= !empty($currentPasta['descricao']) ? nl2br(htmlspecialchars((string)$currentPasta['descricao'])) : 'Pasta ativa no explorador.' ?>
                         <?php else: ?>
-                            Escolha uma pasta do funcionário ou entre em uma pasta legada para ver arquivos e subpastas.
+                            Escolha uma pasta para entrar.
                         <?php endif; ?>
                     </div>
                 </div>
@@ -1063,44 +966,14 @@ ob_start();
                 </div>
             </div>
 
-            <?php if ($currentPasta): ?>
-                <div class="aj-meta-card">
-                    <div class="aj-meta-grid">
-                        <div class="aj-meta-item">
-                            <strong>Caminho</strong>
-                            <span><?= htmlspecialchars(aj_pasta_path_label($pastasById, $currentPastaId)) ?></span>
-                        </div>
-                        <div class="aj-meta-item">
-                            <strong>Funcionário</strong>
-                            <span><?= !empty($currentPasta['usuario_empresa_nome']) ? htmlspecialchars((string)$currentPasta['usuario_empresa_nome']) : 'Pasta geral/legada' ?></span>
-                        </div>
-                        <div class="aj-meta-item">
-                            <strong>Cargo</strong>
-                            <span><?= !empty($currentPasta['usuario_empresa_cargo']) ? htmlspecialchars((string)$currentPasta['usuario_empresa_cargo']) : '-' ?></span>
-                        </div>
-                        <div class="aj-meta-item">
-                            <strong>E-mail</strong>
-                            <span><?= !empty($currentPasta['usuario_empresa_email']) ? htmlspecialchars((string)$currentPasta['usuario_empresa_email']) : '-' ?></span>
-                        </div>
-                    </div>
-                </div>
-            <?php endif; ?>
-
-            <div class="aj-section">
-                <h2>Subpastas</h2>
-                <?php if (empty($pastasFilhas)): ?>
-                    <div class="aj-empty">Nenhuma subpasta neste nível.</div>
-                <?php else: ?>
+            <?php if (!empty($pastasFilhas)): ?>
+                <div class="aj-section">
                     <div class="aj-folder-grid">
                         <?php foreach ($pastasFilhas as $pasta): ?>
                             <div class="aj-folder-tile">
                                 <a href="<?= htmlspecialchars(aj_page_url((int)$pasta['id'])) ?>" style="text-decoration:none; color:inherit;">
                                     <span class="aj-folder-icon">📁</span>
                                     <div class="aj-folder-name"><?= htmlspecialchars((string)$pasta['nome']) ?></div>
-                                    <div class="aj-folder-meta">
-                                        <?= !empty($pasta['usuario_empresa_nome']) ? 'Funcionário: ' . htmlspecialchars((string)$pasta['usuario_empresa_nome']) . '<br>' : '' ?>
-                                        <?= (int)($pasta['total_arquivos'] ?? 0) ?> arquivo(s)
-                                    </div>
                                 </a>
                                 <div class="aj-folder-actions">
                                     <a href="<?= htmlspecialchars(aj_page_url((int)$pasta['id'])) ?>" class="aj-mini-btn secondary" style="text-decoration:none;">Abrir</a>
@@ -1115,15 +988,26 @@ ob_start();
                             </div>
                         <?php endforeach; ?>
                     </div>
-                <?php endif; ?>
-            </div>
+                </div>
+            <?php endif; ?>
 
             <div class="aj-section">
-                <h2>Arquivos da pasta</h2>
                 <?php if (!$currentPasta): ?>
-                    <div class="aj-empty">Entre em uma pasta para ver os arquivos dela.</div>
+                    <div class="aj-folder-grid">
+                        <?php foreach ($childrenByParent[0] ?? [] as $rootFolderId): ?>
+                            <?php if (!isset($pastasById[$rootFolderId])) continue; $pasta = $pastasById[$rootFolderId]; ?>
+                            <div class="aj-folder-tile">
+                                <a href="<?= htmlspecialchars(aj_page_url((int)$pasta['id'])) ?>" style="text-decoration:none; color:inherit;">
+                                    <span class="aj-folder-icon">📁</span>
+                                    <div class="aj-folder-name"><?= htmlspecialchars((string)$pasta['nome']) ?></div>
+                                </a>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 <?php elseif (empty($arquivosAtuais)): ?>
-                    <div class="aj-empty">Nenhum arquivo nesta pasta.</div>
+                    <?php if (empty($pastasFilhas)): ?>
+                        <div class="aj-empty">Esta pasta está vazia.</div>
+                    <?php endif; ?>
                 <?php else: ?>
                     <table class="aj-file-table">
                         <thead>
@@ -1184,32 +1068,44 @@ ob_start();
                     </table>
                 <?php endif; ?>
             </div>
-        </main>
-    </div>
+    </main>
+</div>
 
-    <div class="aj-section aj-panel" style="padding:1rem; margin-top:1rem;">
-        <h2>Acessos do jurídico</h2>
-        <?php if (empty($usuariosJuridico)): ?>
-            <div class="aj-empty">Nenhum usuário jurídico cadastrado.</div>
-        <?php else: ?>
-            <div class="aj-users-list">
-                <?php foreach ($usuariosJuridico as $user): ?>
-                    <div class="aj-user-card">
-                        <h3><?= htmlspecialchars((string)($user['nome'] ?? '')) ?></h3>
-                        <p><?= !empty($user['email']) ? htmlspecialchars((string)$user['email']) : 'Sem e-mail' ?></p>
-                        <p style="margin-top:.5rem;">Criado em: <?= !empty($user['criado_em']) ? date('d/m/Y H:i', strtotime((string)$user['criado_em'])) : '-' ?></p>
-                        <div style="margin-top:.7rem;">
-                            <button
-                                type="button"
-                                class="aj-btn-outline"
-                                onclick='openEditUserModal(<?= (int)($user["id"] ?? 0) ?>, <?= json_encode((string)($user["nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>, <?= json_encode((string)($user["email"] ?? ""), JSON_UNESCAPED_UNICODE) ?>)'>
-                                Editar acesso
-                            </button>
-                        </div>
+<div class="aj-modal" id="modalMoverArquivo" aria-hidden="true">
+    <div class="aj-modal-dialog">
+        <div class="aj-modal-header" style="background:#334155;">
+            <h3>Mover arquivo</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalMoverArquivo')">×</button>
+        </div>
+        <div class="aj-modal-body">
+            <form method="POST">
+                <input type="hidden" name="acao" value="mover_arquivo">
+                <input type="hidden" name="arquivo_id" id="moveArquivoId" value="">
+
+                <div class="aj-grid">
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Arquivo</label>
+                        <input type="text" id="moveArquivoTitulo" readonly>
                     </div>
-                <?php endforeach; ?>
-            </div>
-        <?php endif; ?>
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Pasta atual</label>
+                        <input type="text" id="moveArquivoPastaAtual" readonly>
+                    </div>
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Nova pasta *</label>
+                        <select name="nova_pasta_id" id="moveNovaPastaId" required>
+                            <option value="">Selecione a pasta</option>
+                            <?= $folderOptionsHtml ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="aj-modal-actions">
+                    <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalMoverArquivo')">Cancelar</button>
+                    <button type="submit" class="aj-btn dark">Mover arquivo</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -1288,51 +1184,32 @@ ob_start();
     </div>
 </div>
 
-<div class="aj-modal" id="modalMoverArquivo" aria-hidden="true">
-    <div class="aj-modal-dialog">
-        <div class="aj-modal-header" style="background:#334155;">
-            <h3>Mover arquivo</h3>
-            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalMoverArquivo')">×</button>
-        </div>
-        <div class="aj-modal-body">
-            <form method="POST">
-                <input type="hidden" name="acao" value="mover_arquivo">
-                <input type="hidden" name="arquivo_id" id="moveArquivoId" value="">
-
-                <div class="aj-grid">
-                    <div class="aj-field" style="grid-column: 1 / -1;">
-                        <label>Arquivo</label>
-                        <input type="text" id="moveArquivoTitulo" readonly>
-                    </div>
-                    <div class="aj-field" style="grid-column: 1 / -1;">
-                        <label>Pasta atual</label>
-                        <input type="text" id="moveArquivoPastaAtual" readonly>
-                    </div>
-                    <div class="aj-field" style="grid-column: 1 / -1;">
-                        <label>Nova pasta *</label>
-                        <select name="nova_pasta_id" id="moveNovaPastaId" required>
-                            <option value="">Selecione a pasta</option>
-                            <?= $folderOptionsHtml ?>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="aj-modal-actions">
-                    <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalMoverArquivo')">Cancelar</button>
-                    <button type="submit" class="aj-btn dark">Mover arquivo</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <div class="aj-modal" id="modalUsuario" aria-hidden="true">
     <div class="aj-modal-dialog">
         <div class="aj-modal-header" style="background:#334155;">
-            <h3>Novo acesso do jurídico</h3>
+            <h3>Acesso do jurídico</h3>
             <button type="button" class="aj-modal-close" onclick="closeAjModal('modalUsuario')">×</button>
         </div>
         <div class="aj-modal-body">
+            <?php if (!empty($usuariosJuridico)): ?>
+                <div class="aj-users-list" style="margin-bottom:1rem;">
+                    <?php foreach ($usuariosJuridico as $user): ?>
+                        <div class="aj-user-card">
+                            <h3><?= htmlspecialchars((string)($user['nome'] ?? '')) ?></h3>
+                            <p><?= !empty($user['email']) ? htmlspecialchars((string)$user['email']) : 'Sem e-mail' ?></p>
+                            <div style="margin-top:.7rem;">
+                                <button
+                                    type="button"
+                                    class="aj-btn-outline"
+                                    onclick='openEditUserModal(<?= (int)($user["id"] ?? 0) ?>, <?= json_encode((string)($user["nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>, <?= json_encode((string)($user["email"] ?? ""), JSON_UNESCAPED_UNICODE) ?>)'>
+                                    Editar acesso
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
             <form method="POST">
                 <input type="hidden" name="acao" value="cadastrar_usuario">
 

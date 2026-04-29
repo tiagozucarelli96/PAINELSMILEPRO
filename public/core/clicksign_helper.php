@@ -16,9 +16,15 @@ if (!class_exists('ClicksignHelper')) {
                 require_once __DIR__ . '/../config_env.php';
             }
 
-            $token = $_ENV['CLICKSIGN_API_TOKEN'] ?? getenv('CLICKSIGN_API_TOKEN') ?: '';
-            $base = $_ENV['CLICKSIGN_BASE_URL'] ?? getenv('CLICKSIGN_BASE_URL') ?: 'https://sandbox.clicksign.com/api/v3';
-            $timeout = (int)($_ENV['CLICKSIGN_TIMEOUT'] ?? getenv('CLICKSIGN_TIMEOUT') ?: 30);
+            $token = $_ENV['CLICKSIGN_API_TOKEN']
+                ?? getenv('CLICKSIGN_API_TOKEN')
+                ?: (defined('CLICKSIGN_API_TOKEN') ? CLICKSIGN_API_TOKEN : '');
+            $base = $_ENV['CLICKSIGN_BASE_URL']
+                ?? getenv('CLICKSIGN_BASE_URL')
+                ?: (defined('CLICKSIGN_BASE_URL') ? CLICKSIGN_BASE_URL : 'https://app.clicksign.com/api/v3');
+            $timeout = (int)($_ENV['CLICKSIGN_TIMEOUT']
+                ?? getenv('CLICKSIGN_TIMEOUT')
+                ?: (defined('CLICKSIGN_TIMEOUT') ? CLICKSIGN_TIMEOUT : 30));
 
             $this->apiToken = trim((string)$token);
             $this->baseUrl = rtrim(trim((string)$base), '/');
