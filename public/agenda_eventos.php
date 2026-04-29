@@ -106,7 +106,11 @@ $mesSeguinte = $mesAtual->modify('+1 month');
 $fimPeriodo = $mesSeguinte->modify('last day of this month');
 $hojeIso = (new DateTimeImmutable('today'))->format('Y-m-d');
 
-$months = [$mesAtual, $mesSeguinte];
+$mesSelecionadoParam = trim((string)($_GET['mes'] ?? 'atual'));
+$mesSelecionado = $mesSelecionadoParam === 'seguinte' ? $mesSeguinte : $mesAtual;
+$mesSelecionadoChave = $mesSelecionadoParam === 'seguinte' ? 'seguinte' : 'atual';
+$mesAnteriorLink = $mesSelecionadoChave === 'seguinte' ? 'atual' : null;
+$mesProximoLink = $mesSelecionadoChave === 'atual' ? 'seguinte' : null;
 $weekDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 $eventos = [];
 $eventosPorData = [];
@@ -276,10 +280,53 @@ includeSidebar('Agenda de eventos');
     border-left-color: #dc2626;
 }
 
-.agenda-calendars {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.25rem;
+.calendar-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.calendar-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.calendar-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    height: 42px;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    text-decoration: none;
+    background: #ffffff;
+    border: 1px solid #dbe3ef;
+    color: #1e293b;
+    font-weight: 700;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+}
+
+.calendar-nav-btn.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.calendar-toolbar-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.calendar-toolbar-subtitle {
+    margin: 0.2rem 0 0;
+    color: #64748b;
+    font-size: 0.86rem;
 }
 
 .calendar-card {
@@ -291,9 +338,6 @@ includeSidebar('Agenda de eventos');
 }
 
 .calendar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 1rem 1.1rem;
     background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
     border-bottom: 1px solid #e2e8f0;
@@ -528,15 +572,13 @@ includeSidebar('Agenda de eventos');
     word-break: break-word;
 }
 
-@media (max-width: 1100px) {
-    .agenda-calendars {
-        grid-template-columns: 1fr;
-    }
-}
-
 @media (max-width: 720px) {
     .agenda-eventos-page {
         padding: 1rem;
+    }
+
+    .calendar-toolbar {
+        align-items: flex-start;
     }
 
     .day-cell {
@@ -572,8 +614,15 @@ includeSidebar('Agenda de eventos');
     </div>
 
     <?php if (empty($errors)): ?>
-        <div class="agenda-alert">
-            Os eventos são exibidos com base no mapeamento <strong>ME → Unidade/Space</strong> da Logística e respeitam os checkboxes da aba <strong>Unidade</strong> no cadastro do usuário.
+        <div class="calendar-toolbar">
+            <div>
+                <h2 class="calendar-toolbar-title"><?= h(agenda_eventos_month_label($mesSelecionado)) ?></h2>
+                <p class="calendar-toolbar-subtitle">Exibindo um mês por vez.</p>
+            </div>
+            <div class="calendar-nav">
+                <a href="index.php?page=agenda_eventos<?= $mesAnteriorLink !== null ? '&mes=' . urlencode($mesAnteriorLink) : '' ?>" class="calendar-nav-btn<?= $mesAnteriorLink === null ? ' is-disabled' : '' ?>" aria-label="Mês anterior">←</a>
+                <a href="index.php?page=agenda_eventos<?= $mesProximoLink !== null ? '&mes=' . urlencode($mesProximoLink) : '' ?>" class="calendar-nav-btn<?= $mesProximoLink === null ? ' is-disabled' : '' ?>" aria-label="Próximo mês">→</a>
+            </div>
         </div>
     <?php endif; ?>
 
@@ -582,74 +631,69 @@ includeSidebar('Agenda de eventos');
     <?php endforeach; ?>
 
     <?php if (empty($errors)): ?>
-        <div class="agenda-calendars">
-            <?php foreach ($months as $monthDate): ?>
-                <?php
-                $monthStart = $monthDate->modify('first day of this month');
-                $daysInMonth = (int)$monthStart->format('t');
-                $firstWeekday = (int)$monthStart->format('N');
-                ?>
-                <section class="calendar-card">
-                    <div class="calendar-header">
-                        <h2 class="calendar-title"><?= h(agenda_eventos_month_label($monthStart)) ?></h2>
-                        <span class="calendar-caption">Somente eventos mapeados para este período</span>
-                    </div>
+        <?php
+        $monthStart = $mesSelecionado->modify('first day of this month');
+        $daysInMonth = (int)$monthStart->format('t');
+        $firstWeekday = (int)$monthStart->format('N');
+        ?>
+        <section class="calendar-card">
+            <div class="calendar-header">
+                <h2 class="calendar-title"><?= h(agenda_eventos_month_label($monthStart)) ?></h2>
+            </div>
 
-                    <div class="calendar-grid">
-                        <?php foreach ($weekDays as $weekDay): ?>
-                            <div class="weekday"><?= h($weekDay) ?></div>
-                        <?php endforeach; ?>
+            <div class="calendar-grid">
+                <?php foreach ($weekDays as $weekDay): ?>
+                    <div class="weekday"><?= h($weekDay) ?></div>
+                <?php endforeach; ?>
 
-                        <?php for ($blank = 1; $blank < $firstWeekday; $blank++): ?>
-                            <div class="day-cell is-empty"></div>
-                        <?php endfor; ?>
+                <?php for ($blank = 1; $blank < $firstWeekday; $blank++): ?>
+                    <div class="day-cell is-empty"></div>
+                <?php endfor; ?>
 
-                        <?php for ($day = 1; $day <= $daysInMonth; $day++): ?>
-                            <?php
-                            $dateObj = $monthStart->setDate((int)$monthStart->format('Y'), (int)$monthStart->format('m'), $day);
-                            $dateKey = $dateObj->format('Y-m-d');
-                            $dayEvents = $eventosPorData[$dateKey] ?? [];
-                            $isToday = $dateKey === $hojeIso;
-                            ?>
-                            <div class="day-cell<?= $isToday ? ' is-today' : '' ?>">
-                                <div class="day-number">
-                                    <span><?= $day ?></span>
-                                    <?php if ($isToday): ?>
-                                        <span class="today-pill">Hoje</span>
-                                    <?php endif; ?>
-                                </div>
+                <?php for ($day = 1; $day <= $daysInMonth; $day++): ?>
+                    <?php
+                    $dateObj = $monthStart->setDate((int)$monthStart->format('Y'), (int)$monthStart->format('m'), $day);
+                    $dateKey = $dateObj->format('Y-m-d');
+                    $dayEvents = $eventosPorData[$dateKey] ?? [];
+                    $isToday = $dateKey === $hojeIso;
+                    ?>
+                    <div class="day-cell<?= $isToday ? ' is-today' : '' ?>">
+                        <div class="day-number">
+                            <span><?= $day ?></span>
+                            <?php if ($isToday): ?>
+                                <span class="today-pill">Hoje</span>
+                            <?php endif; ?>
+                        </div>
 
-                                <?php if (!empty($dayEvents)): ?>
-                                    <div class="day-events">
-                                        <?php foreach (array_slice($dayEvents, 0, 3) as $evento): ?>
-                                            <?php
-                                            $eventoPayload = htmlspecialchars(json_encode($evento, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
-                                            $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
-                                            $horaFim = trim((string)($evento['hora_fim'] ?? ''));
-                                            $horario = $horaInicio !== '' ? $horaInicio : 'Sem horário';
-                                            if ($horaInicio !== '' && $horaFim !== '') {
-                                                $horario .= ' - ' . $horaFim;
-                                            }
-                                            ?>
-                                            <button type="button" class="event-chip" data-event='<?= $eventoPayload ?>'>
-                                                <div class="event-chip-time"><?= h($horario) ?></div>
-                                                <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
-                                                <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
-                                                <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
-                                            </button>
-                                        <?php endforeach; ?>
+                        <?php if (!empty($dayEvents)): ?>
+                            <div class="day-events">
+                                <?php foreach (array_slice($dayEvents, 0, 3) as $evento): ?>
+                                    <?php
+                                    $eventoPayload = htmlspecialchars(json_encode($evento, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+                                    $horaInicio = trim((string)($evento['hora_inicio'] ?? ''));
+                                    $horaFim = trim((string)($evento['hora_fim'] ?? ''));
+                                    $horario = $horaInicio !== '' ? $horaInicio : 'Sem horário';
+                                    if ($horaInicio !== '' && $horaFim !== '') {
+                                        $horario .= ' - ' . $horaFim;
+                                    }
+                                    ?>
+                                    <button type="button" class="event-chip" data-event='<?= $eventoPayload ?>'>
+                                        <div class="event-chip-time"><?= h($horario) ?></div>
+                                        <div class="event-chip-name"><?= h((string)($evento['nome_evento'] ?? 'Evento')) ?></div>
+                                        <div class="event-chip-meta"><?= h((string)($evento['local_evento'] ?? 'Local não informado')) ?></div>
+                                        <div class="event-chip-guests">Convidados: <?= (int)($evento['convidados'] ?? 0) ?></div>
+                                    </button>
+                                <?php endforeach; ?>
 
-                                        <?php if (count($dayEvents) > 3): ?>
-                                            <div class="event-more">+<?= count($dayEvents) - 3 ?> evento(s) neste dia</div>
-                                        <?php endif; ?>
-                                    </div>
+                                <?php if (count($dayEvents) > 3): ?>
+                                    <div class="event-more">+<?= count($dayEvents) - 3 ?> evento(s) neste dia</div>
                                 <?php endif; ?>
                             </div>
-                        <?php endfor; ?>
+                        <?php endif; ?>
                     </div>
-                </section>
-            <?php endforeach; ?>
-        </div>
+                <?php endfor; ?>
+            </div>
+        </section>
 
         <?php if (empty($eventos)): ?>
             <div class="agenda-empty">

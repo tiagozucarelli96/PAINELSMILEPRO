@@ -36,6 +36,7 @@ $current_page = $_GET['page'] ?? 'dashboard';
 $show_top_account_access = ($current_page === 'dashboard');
 $push_user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
 $local_production_banner_visible = painel_should_show_local_production_banner($GLOBALS['painel_database_config'] ?? null);
+$can_view_dashboard_agenda = !empty($_SESSION['perm_agenda']);
 
 // Buscar cargo do usuário logado do banco de dados
 $perfil = 'CONSULTA'; // Valor padrão
@@ -161,66 +162,99 @@ if ($current_page === 'dashboard') {
         ];
     }
     
-    // Buscar agenda do dia atual (incluindo eventos do Google Calendar)
+    // Buscar agenda do dia atual apenas para usuários com permissão de Agenda
     $agenda_hoje = [];
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                ae.id, 
-                ae.titulo, 
-                ae.inicio as data_inicio, 
-                ae.fim as data_fim, 
-                ae.tipo, 
-                ae.cor_evento as cor, 
-                ae.descricao as observacoes,
-                u.nome as responsavel_nome,
-                'interno' as origem
-            FROM agenda_eventos ae
-            LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
-            WHERE DATE(ae.inicio) = CURRENT_DATE
-            
-            UNION ALL
-            
-            SELECT 
-                gce.id, 
-                gce.titulo, 
-                gce.inicio as data_inicio, 
-                gce.fim as data_fim, 
-                'google' as tipo, 
-                '#10b981' as cor, 
-                gce.descricao as observacoes,
-                COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
-                'google' as origem
-            FROM google_calendar_eventos gce
-            WHERE DATE(gce.inicio) = CURRENT_DATE
-            AND EXISTS (
-                SELECT 1 FROM google_calendar_config gcc 
-                WHERE gcc.google_calendar_id = gce.google_calendar_id 
-                AND gcc.ativo = TRUE
-            )
-            
-            ORDER BY data_inicio ASC
-            LIMIT 10
-        ");
-        $stmt->execute();
-        $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
-        $agenda_hoje = [];
+    if ($can_view_dashboard_agenda) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    ae.id, 
+                    ae.titulo, 
+                    ae.inicio as data_inicio, 
+                    ae.fim as data_fim, 
+                    ae.tipo, 
+                    ae.cor_evento as cor, 
+                    ae.descricao as observacoes,
+                    u.nome as responsavel_nome,
+                    'interno' as origem
+                FROM agenda_eventos ae
+                LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
+                WHERE DATE(ae.inicio) = CURRENT_DATE
+                
+                UNION ALL
+                
+                SELECT 
+                    gce.id, 
+                    gce.titulo, 
+                    gce.inicio as data_inicio, 
+                    gce.fim as data_fim, 
+                    'google' as tipo, 
+                    '#10b981' as cor, 
+                    gce.descricao as observacoes,
+                    COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
+                    'google' as origem
+                FROM google_calendar_eventos gce
+                WHERE DATE(gce.inicio) = CURRENT_DATE
+                AND EXISTS (
+                    SELECT 1 FROM google_calendar_config gcc 
+                    WHERE gcc.google_calendar_id = gce.google_calendar_id 
+                    AND gcc.ativo = TRUE
+                )
+                
+                ORDER BY data_inicio ASC
+                LIMIT 10
+            ");
+            $stmt->execute();
+            $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
+            $agenda_hoje = [];
+        }
     }
     
     // Buscar demandas do dia atual (sistema Trello - demandas_cards)
     // IMPORTANTE: Sistema atual usa demandas_cards (Trello), não a tabela antiga 'demandas'
     // Removido fallback para tabela antiga - só mostra cards do sistema atual
     $demandas_hoje = [];
+    $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+    $is_admin_dashboard = (
+        !empty($_SESSION['perm_superadmin']) ||
+        !empty($_SESSION['perm_administrativo']) ||
+        (isset($_SESSION['permissao']) && strpos((string)$_SESSION['permissao'], 'admin') !== false)
+    );
     try {
+        $filtro_visibilidade_dashboard = "
+            db.ativo = TRUE
+            AND (
+                :is_admin = TRUE
+                OR (
+                    NOT EXISTS (
+                        SELECT 1
+                        FROM demandas_boards_usuarios dbu_all
+                        WHERE dbu_all.board_id = db.id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM demandas_boards_usuarios dbu_user
+                        WHERE dbu_user.board_id = db.id
+                          AND dbu_user.usuario_id = :user_id
+                    )
+                )
+            )
+        ";
+
+        $params_dashboard = [
+            ':is_admin' => $is_admin_dashboard,
+            ':user_id' => (int)($usuario_id_dashboard ?? 0),
+        ];
+
         // Primeiro tentar buscar cards com prazo de hoje
         $stmt = $pdo->prepare("
             SELECT DISTINCT ON (dc.id)
-                   dc.id, 
+                   dc.id,
                    dc.titulo,
                    dc.titulo as descricao,
-                   dc.prazo, 
+                   dc.prazo,
                    dc.status,
                    db.nome as quadro_nome,
                    u.nome as responsavel_nome
@@ -230,11 +264,12 @@ if ($current_page === 'dashboard') {
             LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
             LEFT JOIN usuarios u ON u.id = dcu.usuario_id
             WHERE DATE(dc.prazo) = CURRENT_DATE
-            AND dc.status NOT IN ('concluido', 'cancelado')
+              AND dc.status NOT IN ('concluido', 'cancelado')
+              AND {$filtro_visibilidade_dashboard}
             ORDER BY dc.id, dc.prazo ASC
             LIMIT 10
         ");
-        $stmt->execute();
+        $stmt->execute($params_dashboard);
         $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Se não encontrou cards com prazo de hoje, buscar os mais recentes ativos
@@ -243,10 +278,10 @@ if ($current_page === 'dashboard') {
             try {
                 $stmt = $pdo->prepare("
                     SELECT DISTINCT ON (dc.id)
-                           dc.id, 
+                           dc.id,
                            dc.titulo,
                            dc.titulo as descricao,
-                           dc.prazo, 
+                           dc.prazo,
                            dc.status,
                            db.nome as quadro_nome,
                            u.nome as responsavel_nome
@@ -256,11 +291,12 @@ if ($current_page === 'dashboard') {
                     LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
                     LEFT JOIN usuarios u ON u.id = dcu.usuario_id
                     WHERE dc.status NOT IN ('concluido', 'cancelado')
-                    AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
+                      AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
+                      AND {$filtro_visibilidade_dashboard}
                     ORDER BY dc.id, dc.criado_em DESC
                     LIMIT 5
                 ");
-                $stmt->execute();
+                $stmt->execute($params_dashboard);
                 $demandas_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
                 // Mostrar apenas se houver cards recentes, senão deixa vazio
@@ -278,7 +314,6 @@ if ($current_page === 'dashboard') {
     
     // Buscar notificações não lidas para o usuário atual
     $notificacoes_nao_lidas = 0;
-    $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
     if ($usuario_id_dashboard) {
         try {
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM demandas_notificacoes WHERE usuario_id = :user_id AND lida = FALSE");
@@ -371,6 +406,7 @@ if ($current_page === 'dashboard') {
             </div>
         </div>
         
+        ' . ($can_view_dashboard_agenda ? '
         <!-- Agenda do Dia -->
         <div class="dashboard-section">
             <div class="section-header">
@@ -403,7 +439,8 @@ if ($current_page === 'dashboard') {
                 ) . '
             </div>
         </div>
-        
+        ' : '') . '
+
         <!-- Demandas do Dia -->
         <div class="dashboard-section">
             <div class="section-header">
