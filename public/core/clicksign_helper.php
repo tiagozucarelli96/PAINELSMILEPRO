@@ -368,10 +368,11 @@ if (!class_exists('ClicksignHelper')) {
             );
 
             $envelopeStatus = (string)($resEnvelope['data']['data']['attributes']['status'] ?? '');
+            $statusLocal = $this->deriveLocalStatus($envelopeStatus, $signers);
             return [
                 'success' => true,
                 'status_clicksign' => $envelopeStatus,
-                'status_local' => self::mapStatusClicksignParaLocal($envelopeStatus),
+                'status_local' => $statusLocal,
                 'document_links' => $documentLinks,
                 'documents' => $documents,
                 'signers' => $signers,
@@ -402,6 +403,42 @@ if (!class_exists('ClicksignHelper')) {
             }
 
             return 'enviado';
+        }
+
+        private function deriveLocalStatus(string $envelopeStatus, array $signers): string
+        {
+            $fallback = self::mapStatusClicksignParaLocal($envelopeStatus);
+            if ($fallback === 'assinado' || $fallback === 'cancelado' || empty($signers)) {
+                return $fallback;
+            }
+
+            $total = count($signers);
+            $signed = 0;
+            $started = 0;
+            $refused = 0;
+
+            foreach ($signers as $signer) {
+                $status = (string)($signer['status'] ?? '');
+                if ($status === 'assinado') {
+                    $signed++;
+                } elseif ($status === 'em_andamento') {
+                    $started++;
+                } elseif ($status === 'recusado') {
+                    $refused++;
+                }
+            }
+
+            if ($refused > 0) {
+                return 'cancelado';
+            }
+            if ($signed === $total && $total > 0) {
+                return 'assinado';
+            }
+            if ($signed > 0 || $started > 0) {
+                return 'em_andamento';
+            }
+
+            return $fallback;
         }
 
         public static function normalizeSignerName(string $name): string
@@ -518,7 +555,15 @@ if (!class_exists('ClicksignHelper')) {
                 ];
             }
 
-            foreach ($events as $event) {
+            $orderedEvents = $events;
+            usort($orderedEvents, static function (array $a, array $b): int {
+                return strcmp(
+                    (string)($a['attributes']['created'] ?? ''),
+                    (string)($b['attributes']['created'] ?? '')
+                );
+            });
+
+            foreach ($orderedEvents as $event) {
                 $eventName = (string)($event['attributes']['name'] ?? '');
                 $eventCreated = (string)($event['attributes']['created'] ?? '');
                 $eventSigner = $event['attributes']['data']['signer'] ?? null;

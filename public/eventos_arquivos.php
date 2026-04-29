@@ -732,6 +732,7 @@ includeSidebar('Arquivos do Evento');
         </div>
     </section>
 
+    <?php if ($origin !== 'realizar'): ?>
     <section class="resumo-grid">
         <div class="resumo-card">
             <span class="valor"><?= (int)$resumo['arquivos_total'] ?></span>
@@ -758,7 +759,9 @@ includeSidebar('Arquivos do Evento');
             <span class="label">Pendências obrigatórias</span>
         </div>
     </section>
+    <?php endif; ?>
 
+    <?php if ($origin !== 'realizar'): ?>
     <section class="grid-two">
         <div class="panel" id="resumo-evento">
             <h3>📄 Resumo do evento (Contrato cliente)</h3>
@@ -824,6 +827,7 @@ includeSidebar('Arquivos do Evento');
         </div>
 
     </section>
+    <?php endif; ?>
 
     <section class="grid-two">
         <div class="panel">

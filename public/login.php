@@ -12,13 +12,25 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php'; // define $pdo / $db_error
+function resolve_post_login_redirect(): string
+{
+    $redirect = 'index.php?page=dashboard';
+    if (!empty($_SESSION['post_login_redirect'])) {
+        $candidate = (string)$_SESSION['post_login_redirect'];
+        $is_local = str_starts_with($candidate, 'index.php') || str_starts_with($candidate, '/');
+        if ($is_local && !str_contains($candidate, '://')) {
+            $redirect = $candidate;
+        }
+        unset($_SESSION['post_login_redirect']);
+    }
+    return $redirect;
+}
+
 $erro = '';
 
-
-
-// Se já logado, vai para o painel
+// Se já logado, leva para destino pendente ou dashboard
 if (!empty($_SESSION['logado']) && $_SESSION['logado'] == 1) {
-    header('Location: index.php?page=dashboard');
+    header('Location: ' . resolve_post_login_redirect());
     exit;
 }
 
@@ -146,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         // Permissões continuam sendo tratadas pelo permissoes_boot.php no index.php.
                         // Push é inicializado de forma não-bloqueante após o login.
                         
-                        header('Location: index.php?page=dashboard');
+                        header('Location: ' . resolve_post_login_redirect());
                         exit;
                     }
                 }

@@ -123,6 +123,8 @@ function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeti
     $section_key = trim($section) !== '' ? trim($section) : 'formulario';
     $draft_attachments = [];
     $submitted_attachments = [];
+    $submitted_payload = eventos_reuniao_extrair_payload_formulario((string)($link['content_html_snapshot'] ?? ''));
+    $draft_payload = eventos_reuniao_extrair_payload_formulario((string)($link['draft_content_html_snapshot'] ?? ''));
 
     if ($link_id > 0) {
         try {
@@ -155,6 +157,8 @@ function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeti
         'portal_configured' => !empty($link['portal_configured']),
         'draft_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['draft_content_html_snapshot'] ?? '')),
         'submitted_preview_text' => eventos_reuniao_resumir_snapshot_publico((string)($link['content_html_snapshot'] ?? '')),
+        'submitted_values' => is_array($submitted_payload['values'] ?? null) ? $submitted_payload['values'] : [],
+        'draft_values' => is_array($draft_payload['values'] ?? null) ? $draft_payload['values'] : [],
         'draft_attachments' => $draft_attachments,
         'submitted_attachments' => $submitted_attachments,
         'form_schema' => is_array($link['form_schema'] ?? null) ? $link['form_schema'] : [],
@@ -177,6 +181,254 @@ function eventos_reuniao_json_script($value, string $fallback = 'null'): string 
         return $fallback;
     }
     return $encoded;
+}
+
+function eventos_reuniao_formatar_hora_curta(?string $value): string {
+    $hora = trim((string)$value);
+    if ($hora === '') {
+        return '';
+    }
+    if (preg_match('/^\d{2}:\d{2}/', $hora, $matches)) {
+        return $matches[0];
+    }
+    $timestamp = strtotime($hora);
+    return $timestamp ? date('H:i', $timestamp) : $hora;
+}
+
+function eventos_reuniao_texto_equivalente(string $value): string {
+    $value = html_entity_decode($value, ENT_QUOTES, 'UTF-8');
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    $value = preg_replace('/[^[:alnum:]]+/u', '', $value) ?? $value;
+    return trim($value);
+}
+
+function eventos_reuniao_sanitizar_html_visualizacao(string $html): string {
+    $html = trim($html);
+    if ($html === '') {
+        return '';
+    }
+
+    if (!class_exists('DOMDocument')) {
+        $clean = preg_replace('#<script\b[^>]*>.*?</script>#is', '', $html) ?? $html;
+        $clean = preg_replace('#<(style|iframe|object|embed)\b[^>]*>.*?</\1>#is', '', $clean) ?? $clean;
+        return trim($clean);
+    }
+
+    $dom = new DOMDocument();
+    $prev = libxml_use_internal_errors(true);
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $html . '</body></html>';
+    $flags = 0;
+    if (defined('LIBXML_HTML_NOIMPLIED')) {
+        $flags |= LIBXML_HTML_NOIMPLIED;
+    }
+    if (defined('LIBXML_HTML_NODEFDTD')) {
+        $flags |= LIBXML_HTML_NODEFDTD;
+    }
+    $loaded = $dom->loadHTML($wrapped, $flags);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+    if (!$loaded) {
+        return '';
+    }
+
+    $removeTags = ['script', 'style', 'iframe', 'object', 'embed'];
+    foreach ($removeTags as $tag) {
+        while (($nodes = $dom->getElementsByTagName($tag)) && $nodes->length > 0) {
+            $node = $nodes->item(0);
+            if ($node && $node->parentNode) {
+                $node->parentNode->removeChild($node);
+            } else {
+                break;
+            }
+        }
+    }
+
+    $xpath = new DOMXPath($dom);
+    foreach ($xpath->query('//*') ?: [] as $node) {
+        if (!$node instanceof DOMElement) {
+            continue;
+        }
+        $attrs = [];
+        foreach ($node->attributes ?? [] as $attr) {
+            $attrs[] = $attr->name;
+        }
+        foreach ($attrs as $attrName) {
+            $attrValue = strtolower(trim((string)$node->getAttribute($attrName)));
+            if (str_starts_with(strtolower($attrName), 'on')) {
+                $node->removeAttribute($attrName);
+                continue;
+            }
+            if (($attrName === 'href' || $attrName === 'src') && str_starts_with($attrValue, 'javascript:')) {
+                $node->removeAttribute($attrName);
+            }
+        }
+    }
+
+    $body = $dom->getElementsByTagName('body')->item(0);
+    if (!$body) {
+        return '';
+    }
+    $result = '';
+    foreach ($body->childNodes as $child) {
+        $result .= $dom->saveHTML($child);
+    }
+    return trim($result);
+}
+
+function eventos_reuniao_valor_preenchido($value): bool {
+    if (is_array($value)) {
+        foreach ($value as $item) {
+            if (eventos_reuniao_valor_preenchido($item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return trim((string)$value) !== '';
+}
+
+function eventos_reuniao_normalizar_valor_campo(string $type, $value): string {
+    if (is_array($value)) {
+        $parts = [];
+        foreach ($value as $item) {
+            $itemText = trim((string)$item);
+            if ($itemText !== '') {
+                $parts[] = $itemText;
+            }
+        }
+        return implode(', ', $parts);
+    }
+
+    $text = trim((string)$value);
+    if ($text === '') {
+        return '';
+    }
+
+    if ($type === 'yesno') {
+        $lower = function_exists('mb_strtolower') ? mb_strtolower($text, 'UTF-8') : strtolower($text);
+        if (in_array($lower, ['1', 'sim', 'yes', 'true'], true)) {
+            return 'Sim';
+        }
+        if (in_array($lower, ['0', 'nao', 'não', 'no', 'false'], true)) {
+            return 'Não';
+        }
+    }
+
+    return $text;
+}
+
+function eventos_reuniao_render_formulario_readonly(array $schema, array $values, bool $showOnlyFilled = true): string {
+    $schema = eventos_form_template_normalizar_schema($schema);
+    $html = '';
+    $tem_conteudo = false;
+
+    foreach ($schema as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $type = strtolower(trim((string)($field['type'] ?? 'text')));
+        $label = trim((string)($field['label'] ?? ''));
+        $fieldId = trim((string)($field['id'] ?? ''));
+        $default = trim((string)($field['default_value'] ?? ''));
+        $rawValue = $fieldId !== '' && array_key_exists($fieldId, $values) ? $values[$fieldId] : $default;
+        $value = eventos_reuniao_normalizar_valor_campo($type, $rawValue);
+
+        if ($type === 'divider') {
+            $html .= '<hr class="readonly-divider">';
+            continue;
+        }
+        if ($type === 'section') {
+            $html .= '<div class="readonly-section-title">' . htmlspecialchars($label) . '</div>';
+            continue;
+        }
+        if ($type === 'note') {
+            $noteHtml = trim((string)($field['content_html'] ?? ''));
+            if ($noteHtml === '') {
+                $noteHtml = '<p>' . htmlspecialchars($label) . '</p>';
+            }
+            $html .= '<div class="readonly-note">' . eventos_reuniao_sanitizar_html_visualizacao($noteHtml) . '</div>';
+            continue;
+        }
+
+        if ($showOnlyFilled && $value === '') {
+            continue;
+        }
+
+        if ($value === '') {
+            $value = 'Não informado';
+        } else {
+            $tem_conteudo = true;
+        }
+
+        $html .= '<div class="readonly-field">';
+        $html .= '<div class="readonly-field-label">' . htmlspecialchars($label !== '' ? $label : 'Campo') . '</div>';
+        $html .= '<div class="readonly-field-value">' . nl2br(htmlspecialchars($value)) . '</div>';
+        $html .= '</div>';
+    }
+
+    if ($showOnlyFilled && !$tem_conteudo) {
+        return '<div class="readonly-empty">Nenhuma informação preenchida.</div>';
+    }
+
+    return $html !== '' ? $html : '<div class="readonly-empty">Nenhuma informação disponível.</div>';
+}
+
+function eventos_reuniao_extrair_blocos_observacoes(string $contentHtml): array {
+    $html = trim($contentHtml);
+    if ($html === '') {
+        return [];
+    }
+
+    if (!class_exists('DOMDocument')) {
+        return [['key' => 'legacy_text', 'html' => $html]];
+    }
+
+    $dom = new DOMDocument();
+    $prev = libxml_use_internal_errors(true);
+    $wrapped = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' . $html . '</body></html>';
+    $flags = 0;
+    if (defined('LIBXML_HTML_NOIMPLIED')) {
+        $flags |= LIBXML_HTML_NOIMPLIED;
+    }
+    if (defined('LIBXML_HTML_NODEFDTD')) {
+        $flags |= LIBXML_HTML_NODEFDTD;
+    }
+    $loaded = $dom->loadHTML($wrapped, $flags);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+    if (!$loaded) {
+        return [];
+    }
+
+    $xpath = new DOMXPath($dom);
+    $blocks = [];
+    foreach ($xpath->query('//*[@data-smile-observacoes-block]') ?: [] as $section) {
+        if (!$section instanceof DOMElement) {
+            continue;
+        }
+        $key = trim((string)$section->getAttribute('data-smile-observacoes-block'));
+        if ($key === '') {
+            continue;
+        }
+        $contentNode = null;
+        foreach ($xpath->query('.//*[@data-smile-observacoes-content]', $section) ?: [] as $candidate) {
+            if ($candidate instanceof DOMElement) {
+                $contentNode = $candidate;
+                break;
+            }
+        }
+        $target = $contentNode ?: $section;
+        $innerHtml = '';
+        foreach ($target->childNodes as $child) {
+            $innerHtml .= $dom->saveHTML($child);
+        }
+        $blocks[] = [
+            'key' => $key,
+            'html' => trim($innerHtml),
+        ];
+    }
+
+    return $blocks;
 }
 
 function eventos_reuniao_validar_senha_usuario(PDO $pdo, int $user_id, string $senha): array {
@@ -1026,6 +1278,17 @@ $dj_schema_saved = is_array($dj_schema_decoded) ? $dj_schema_decoded : [];
 $formulario_schema_raw = $secoes['formulario']['form_schema_json'] ?? '[]';
 $formulario_schema_decoded = json_decode((string)$formulario_schema_raw, true);
 $formulario_schema_saved = is_array($formulario_schema_decoded) ? $formulario_schema_decoded : [];
+$decoracao_payload = eventos_reuniao_extrair_payload_formulario((string)($secoes['decoracao']['content_html'] ?? ''));
+$decoracao_values = is_array($decoracao_payload['values'] ?? null) ? $decoracao_payload['values'] : [];
+$decoracao_legacy_html = trim((string)($decoracao_payload['legacy_html'] ?? ''));
+$observacoes_blocks_map = [];
+foreach (eventos_reuniao_extrair_blocos_observacoes((string)($secoes['observacoes_gerais']['content_html'] ?? '')) as $obsBlock) {
+    $obsKey = trim((string)($obsBlock['key'] ?? ''));
+    $obsHtml = trim((string)($obsBlock['html'] ?? ''));
+    if ($obsKey !== '' && $obsHtml !== '') {
+        $observacoes_blocks_map[$obsKey] = $obsHtml;
+    }
+}
 
 // Seções disponíveis
 $all_section_labels = [
@@ -1142,6 +1405,114 @@ includeSidebar($sidebar_title);
     
     .btn-success:hover {
         background: #10b981;
+    }
+
+    .readonly-stack {
+        display: grid;
+        gap: 0.9rem;
+    }
+
+    .readonly-panel {
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        background: #fff;
+        padding: 1rem;
+    }
+
+    .readonly-panel-title {
+        margin: 0 0 0.65rem 0;
+        font-size: 1rem;
+        color: #1f2937;
+    }
+
+    .readonly-section-title {
+        margin: 1rem 0 0.45rem 0;
+        color: #1e3a8a;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .readonly-field {
+        border-top: 1px solid #eef2f7;
+        padding-top: 0.75rem;
+        margin-top: 0.75rem;
+    }
+
+    .readonly-field:first-child {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 0;
+    }
+
+    .readonly-field-label {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 0.3rem;
+    }
+
+    .readonly-field-value {
+        color: #0f172a;
+        font-size: 0.92rem;
+        line-height: 1.55;
+        white-space: normal;
+    }
+
+    .readonly-note {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 0.8rem 0.9rem;
+        color: #475569;
+        font-size: 0.88rem;
+        line-height: 1.55;
+        margin-top: 0.75rem;
+    }
+
+    .readonly-divider {
+        border: 0;
+        border-top: 1px solid #e2e8f0;
+        margin: 0.9rem 0;
+    }
+
+    .readonly-empty {
+        color: #64748b;
+        font-size: 0.88rem;
+        font-style: italic;
+    }
+
+    .readonly-form-list {
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .readonly-form-card {
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        background: #fff;
+        padding: 0.95rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.8rem;
+    }
+
+    .readonly-form-meta {
+        color: #64748b;
+        font-size: 0.84rem;
+        margin-top: 0.25rem;
+        line-height: 1.45;
+    }
+
+    .readonly-rich-box {
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #f8fafc;
+        padding: 0.9rem;
+        color: #0f172a;
+        line-height: 1.6;
     }
     
     /* Seletor de Evento */
@@ -2450,8 +2821,8 @@ includeSidebar($sidebar_title);
     }
     $data_evento = $snapshot['data'] ?? '';
     $data_fmt = $data_evento ? date('d/m/Y', strtotime($data_evento)) : 'Sem data';
-    $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? $snapshot['horainicio'] ?? $snapshot['horario_inicio'] ?? ''));
-    $hora_fim = trim((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? $snapshot['hora_termino'] ?? ''));
+    $hora_inicio = eventos_reuniao_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? $snapshot['horainicio'] ?? $snapshot['horario_inicio'] ?? ''));
+    $hora_fim = eventos_reuniao_formatar_hora_curta((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? $snapshot['hora_termino'] ?? ''));
     $horario_evento = $hora_inicio !== '' ? $hora_inicio : 'Horário não informado';
     if ($hora_inicio !== '' && $hora_fim !== '') {
         $horario_evento .= ' - ' . $hora_fim;
@@ -2461,6 +2832,8 @@ includeSidebar($sidebar_title);
     $cliente_email = trim((string)($snapshot['cliente']['email'] ?? $snapshot['emailcliente'] ?? ''));
     $tipo_evento = trim((string)($snapshot['tipo_evento'] ?? $snapshot['tipoevento'] ?? ''));
     $unidade_evento = trim((string)($snapshot['unidade'] ?? ''));
+    $mostrar_tipo_evento = $tipo_evento !== ''
+        && eventos_reuniao_texto_equivalente($tipo_evento) !== eventos_reuniao_texto_equivalente($unidade_evento);
     $local_evento = trim((string)($snapshot['local'] ?? $snapshot['nomelocal'] ?? ''));
     if ($local_evento === '') {
         $local_evento = 'Local não definido';
@@ -2528,7 +2901,7 @@ includeSidebar($sidebar_title);
                 <span><?= htmlspecialchars($cliente_email) ?></span>
             </div>
             <?php endif; ?>
-            <?php if ($tipo_evento !== ''): ?>
+            <?php if ($mostrar_tipo_evento): ?>
             <div class="event-meta-item">
                 <span>🏷️</span>
                 <span><?= htmlspecialchars($tipo_evento) ?></span>
@@ -2570,6 +2943,7 @@ includeSidebar($sidebar_title);
                 <?php if ($is_locked): ?>
                 <span class="locked-badge">🔒</span>
                 <?php endif; ?>
+                <?php if (!$readonly_mode): ?>
                 <span class="tab-portal-icons" data-portal-icons="<?= htmlspecialchars((string)$key) ?>">
                     <span
                         class="tab-portal-toggle"
@@ -2602,6 +2976,7 @@ includeSidebar($sidebar_title);
                         >
                     </span>
                 </span>
+                <?php endif; ?>
             </button>
             <?php endforeach; ?>
         </div>
@@ -2622,7 +2997,90 @@ includeSidebar($sidebar_title);
             }
         ?>
         <div class="tab-content <?= $key === $default_tab_key ? 'active' : '' ?>" id="tab-<?= $key ?>">
-            
+            <?php if ($readonly_mode): ?>
+            <?php if ($key === 'decoracao'): ?>
+            <div class="readonly-stack">
+                <div class="readonly-panel">
+                    <h4 class="readonly-panel-title">Informações importantes para o evento</h4>
+                    <?= eventos_reuniao_render_formulario_readonly($decoracao_schema_saved, $decoracao_values, true) ?>
+                </div>
+                <?php if ($decoracao_legacy_html !== ''): ?>
+                <div class="readonly-panel">
+                    <h4 class="readonly-panel-title">Texto livre da decoração</h4>
+                    <div class="readonly-rich-box"><?= eventos_reuniao_sanitizar_html_visualizacao($decoracao_legacy_html) ?></div>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php elseif ($key === 'observacoes_gerais'): ?>
+            <div class="readonly-stack">
+                <?php foreach ($observacoes_editor_blocks as $obs_block): ?>
+                <?php
+                    $obsKey = trim((string)($obs_block['key'] ?? ''));
+                    $obsHtml = trim((string)($observacoes_blocks_map[$obsKey] ?? ''));
+                    if ($obsHtml === '') {
+                        continue;
+                    }
+                ?>
+                <div class="readonly-panel">
+                    <h4 class="readonly-panel-title"><?= htmlspecialchars((string)($obs_block['label'] ?? 'Observação')) ?></h4>
+                    <div class="readonly-rich-box"><?= eventos_reuniao_sanitizar_html_visualizacao($obsHtml) ?></div>
+                </div>
+                <?php endforeach; ?>
+                <?php if (empty($observacoes_blocks_map)): ?>
+                <div class="readonly-empty">Nenhuma observação geral preenchida.</div>
+                <?php endif; ?>
+            </div>
+            <?php elseif ($key === 'dj_protocolo' || $key === 'formulario'): ?>
+            <?php
+                $readonlyLinks = $key === 'dj_protocolo' ? $links_cliente_dj_payload : $links_cliente_formulario_payload;
+                $modalPrefix = $key === 'dj_protocolo' ? 'dj' : 'formulario';
+                $tituloLista = $key === 'dj_protocolo' ? 'DJ / Protocolos' : 'Formulários';
+            ?>
+            <div class="readonly-panel">
+                <h4 class="readonly-panel-title"><?= htmlspecialchars($tituloLista) ?></h4>
+                <div class="readonly-form-list">
+                    <?php
+                    $temReadonlyLinks = false;
+                    foreach ($readonlyLinks as $linkItem):
+                        $schemaAtual = eventos_form_template_normalizar_schema(is_array($linkItem['form_schema'] ?? null) ? $linkItem['form_schema'] : []);
+                        $valuesAtual = is_array($linkItem['submitted_values'] ?? null) && !empty($linkItem['submitted_values'])
+                            ? $linkItem['submitted_values']
+                            : (is_array($linkItem['draft_values'] ?? null) ? $linkItem['draft_values'] : []);
+                        $tituloAtual = trim((string)($linkItem['form_title'] ?? 'Formulário'));
+                        if ($tituloAtual === '') {
+                            $tituloAtual = 'Formulário';
+                        }
+                        $previewAtual = trim((string)($linkItem['submitted_preview_text'] ?? $linkItem['draft_preview_text'] ?? ''));
+                        if (empty($schemaAtual) && $previewAtual === '') {
+                            continue;
+                        }
+                        $temReadonlyLinks = true;
+                        $slotAtual = (int)($linkItem['slot_index'] ?? 1);
+                        $modalId = 'readonly-modal-' . $modalPrefix . '-' . $slotAtual;
+                        $stampRaw = trim((string)($linkItem['submitted_at'] ?? $linkItem['draft_saved_at'] ?? ''));
+                        $stampFmt = $stampRaw !== '' ? date('d/m/Y H:i', strtotime($stampRaw)) : '';
+                    ?>
+                    <article class="readonly-form-card">
+                        <div>
+                            <div><strong><?= htmlspecialchars($tituloAtual) ?></strong></div>
+                            <div class="readonly-form-meta">
+                                Quadro <?= $slotAtual ?>
+                                <?php if ($stampFmt !== ''): ?> • Atualizado em <?= htmlspecialchars($stampFmt) ?><?php endif; ?>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-mini" onclick="abrirModalConteudoReadonly('<?= htmlspecialchars($modalId) ?>', '<?= htmlspecialchars($tituloAtual, ENT_QUOTES) ?>')">Visualizar</button>
+                    </article>
+                    <div id="<?= htmlspecialchars($modalId) ?>" style="display:none;">
+                        <?= eventos_reuniao_render_formulario_readonly($schemaAtual, $valuesAtual, true) ?>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (!$temReadonlyLinks): ?>
+                    <div class="readonly-empty">Nenhum <?= $key === 'dj_protocolo' ? 'formulário de DJ / protocolos' : 'formulário' ?> disponível para visualização.</div>
+                    <?php endif; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+            <?php else: ?>
             <?php if ($key === 'dj_protocolo'): ?>
             <div class="dj-builder-shell">
                 <div class="dj-slots-controls">
@@ -2811,10 +3269,21 @@ includeSidebar($sidebar_title);
                 <button type="button" class="btn btn-secondary" onclick="verVersoes('<?= $key ?>')">📋 Histórico de Versões</button>
             </div>
             <?php endif; ?>
+            <?php endif; ?>
         </div>
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
+</div>
+
+<div class="modal-overlay" id="modalReadonlyConteudo">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalReadonlyConteudoTitle">Visualização</h3>
+            <button type="button" class="modal-close" onclick="fecharModalConteudoReadonly()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalReadonlyConteudoBody"></div>
+    </div>
 </div>
 
 <!-- TinyMCE carregado via script dinâmico (evita ficar travado em "Carregando editor...") -->
@@ -2985,6 +3454,25 @@ const sectionLockedState = <?= eventos_reuniao_json_script([
     'formulario' => !empty($secoes['formulario']['is_locked']),
 ], '{"decoracao":false,"observacoes_gerais":false,"dj_protocolo":false,"formulario":false}') ?>;
 const pageReadonly = <?= $readonly_mode ? 'true' : 'false' ?>;
+function abrirModalConteudoReadonly(sourceId, title) {
+    const modal = document.getElementById('modalReadonlyConteudo');
+    const body = document.getElementById('modalReadonlyConteudoBody');
+    const titleEl = document.getElementById('modalReadonlyConteudoTitle');
+    const source = document.getElementById(String(sourceId || ''));
+    if (!modal || !body || !titleEl || !source) return;
+    titleEl.textContent = String(title || 'Visualização');
+    body.innerHTML = source.innerHTML || '<div class="readonly-empty">Nenhuma informação disponível.</div>';
+    modal.classList.add('show');
+}
+
+function fecharModalConteudoReadonly() {
+    const modal = document.getElementById('modalReadonlyConteudo');
+    const body = document.getElementById('modalReadonlyConteudoBody');
+    if (!modal || !body) return;
+    modal.classList.remove('show');
+    body.innerHTML = '';
+}
+
 const sectionPortalIconSources = {
     visibleOn: 'olho-aberto.png',
     visibleOff: 'olho-fechado.png',
@@ -6965,9 +7453,12 @@ function emitirDocumentoReuniao(mode) {
 
 document.addEventListener('click', function(ev) {
     const modal = document.getElementById('modalImpressao');
-    if (!modal) return;
-    if (ev.target === modal) {
+    if (modal && ev.target === modal) {
         fecharModalImpressao();
+    }
+    const readonlyModal = document.getElementById('modalReadonlyConteudo');
+    if (readonlyModal && ev.target === readonlyModal) {
+        fecharModalConteudoReadonly();
     }
 });
 
@@ -6976,6 +7467,10 @@ document.addEventListener('keydown', function(ev) {
     const modal = document.getElementById('modalImpressao');
     if (modal && modal.classList.contains('show')) {
         fecharModalImpressao();
+    }
+    const readonlyModal = document.getElementById('modalReadonlyConteudo');
+    if (readonlyModal && readonlyModal.classList.contains('show')) {
+        fecharModalConteudoReadonly();
     }
 });
 

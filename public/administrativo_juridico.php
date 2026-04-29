@@ -196,6 +196,46 @@ function aj_signature_summary_from_payload(array $arquivo): array
     ];
 }
 
+function aj_signature_status_from_payload(array $arquivo, array $summary): string
+{
+    $fallback = (string)($summary['status_local'] ?? ($arquivo['status_assinatura'] ?? 'nao_solicitada'));
+    $signers = $summary['signers'] ?? [];
+    if (!is_array($signers) || empty($signers)) {
+        return $fallback;
+    }
+
+    if ($fallback === 'assinado' || $fallback === 'cancelado') {
+        return $fallback;
+    }
+
+    $total = count($signers);
+    $signed = 0;
+    $started = 0;
+    $refused = 0;
+    foreach ($signers as $signer) {
+        $status = (string)($signer['status'] ?? '');
+        if ($status === 'assinado') {
+            $signed++;
+        } elseif ($status === 'em_andamento') {
+            $started++;
+        } elseif ($status === 'recusado') {
+            $refused++;
+        }
+    }
+
+    if ($refused > 0) {
+        return 'cancelado';
+    }
+    if ($signed === $total && $total > 0) {
+        return 'assinado';
+    }
+    if ($signed > 0 || $started > 0) {
+        return 'em_andamento';
+    }
+
+    return $fallback;
+}
+
 function aj_signature_action_label(string $status): string
 {
     $status = trim($status);
@@ -215,7 +255,7 @@ function aj_signature_badge_class(string $status): string
     if ($status === 'erro' || $status === 'cancelado') {
         return 'error';
     }
-    if ($status === 'enviado' || $status === 'pendente_envio') {
+    if ($status === 'enviado' || $status === 'pendente_envio' || $status === 'em_andamento') {
         return 'warn';
     }
 
@@ -253,6 +293,7 @@ function aj_assinatura_label(string $status): string
     $map = [
         'nao_solicitada' => 'Sem assinatura',
         'enviado' => 'Assinatura enviada',
+        'em_andamento' => 'Em andamento',
         'pendente_envio' => 'Preparando envio',
         'assinado' => 'Assinado',
         'erro' => 'Erro na assinatura',
@@ -1232,6 +1273,14 @@ ob_start();
     .aj-status-title { font-weight: 800; color: #0f172a; }
     .aj-status-meta { color: #64748b; font-size: .8rem; }
     .aj-status-list { display: grid; gap: .55rem; margin-top: .8rem; }
+    .aj-status-list-title {
+        margin-top: .9rem;
+        margin-bottom: .15rem;
+        color: #334155;
+        font-size: .82rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
     .aj-status-item {
         display: flex;
         justify-content: space-between;
@@ -1240,6 +1289,13 @@ ob_start();
         padding-top: .55rem;
     }
     .aj-status-item:first-child { border-top: 0; padding-top: 0; }
+    .aj-status-item-main { min-width: 0; }
+    .aj-status-item-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: .4rem;
+    }
     .aj-status-timeline {
         margin-top: .8rem;
         display: grid;
@@ -1394,13 +1450,19 @@ ob_start();
                         <tbody>
                             <?php foreach ($arquivosAtuais as $arquivo): ?>
                                 <?php
-                                $signatureStatus = (string)($arquivo['status_assinatura'] ?? 'nao_solicitada');
-                                $signatureActionLabel = aj_signature_action_label($signatureStatus);
-                                $signatureBadgeClass = aj_signature_badge_class($signatureStatus);
                                 $signatureSummary = $arquivo['_signature_summary'] ?? [];
                                 $signatureSigners = $arquivo['_signers'] ?? [];
                                 $signatureEvents = $arquivo['_events'] ?? [];
                                 $signatureDocumentLinks = $signatureSummary['document_links'] ?? [];
+                                $signatureStatus = aj_signature_status_from_payload($arquivo, $signatureSummary);
+                                $signatureActionLabel = aj_signature_action_label($signatureStatus);
+                                $signatureBadgeClass = aj_signature_badge_class($signatureStatus);
+                                $signatureSignedCount = 0;
+                                foreach ($signatureSigners as $signatureSignerItem) {
+                                    if (($signatureSignerItem['status'] ?? '') === 'assinado') {
+                                        $signatureSignedCount++;
+                                    }
+                                }
                                 $prefillSigners = [];
                                 if (!empty($signatureSigners)) {
                                     foreach ($signatureSigners as $signerItem) {
@@ -1458,7 +1520,7 @@ ob_start();
                                         <span class="aj-badge sign <?= htmlspecialchars($signatureBadgeClass) ?>"><?= htmlspecialchars(aj_assinatura_label($signatureStatus)) ?></span>
                                         <?php if (!empty($signatureSigners)): ?>
                                             <div class="aj-file-subtitle" style="margin-top:.35rem;">
-                                                <?= count($signatureSigners) ?> signatário(s)
+                                                <?= $signatureSignedCount ?> de <?= count($signatureSigners) ?> assinado(s)
                                             </div>
                                         <?php endif; ?>
                                         <?php if (!empty($arquivo['clicksign_ultimo_erro'])): ?>
@@ -1588,6 +1650,7 @@ ob_start();
                         </div>
                         <span class="aj-badge sign" id="signatureStatusBadge">Sem assinatura</span>
                     </div>
+                    <div class="aj-status-list-title">Signatários</div>
                     <div class="aj-status-list" id="signatureStatusSigners"></div>
                     <div class="aj-link-list" id="signatureStatusLinks"></div>
                 </div>
@@ -1602,11 +1665,6 @@ ob_start();
                     <input type="hidden" name="acao" value="reenviar_assinatura">
                     <input type="hidden" name="arquivo_id" id="signatureStatusResendId" value="">
                     <button type="submit" class="aj-action-btn primary">Reenviar lembrete</button>
-                </form>
-                <form method="POST">
-                    <input type="hidden" name="acao" value="atualizar_assinatura">
-                    <input type="hidden" name="arquivo_id" id="signatureStatusRefreshId" value="">
-                    <button type="submit" class="aj-action-btn warn">Atualizar andamento</button>
                 </form>
                 <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalSignatureStatus')">Fechar</button>
             </div>
@@ -1963,7 +2021,6 @@ function openSignatureStatusModal(data) {
 
     document.getElementById('signatureStatusTitle').textContent = data.titulo || 'Documento';
     document.getElementById('signatureStatusMeta').textContent = data.envelope_id ? ('Envelope ' + data.envelope_id) : 'Envelope ainda não gerado';
-    document.getElementById('signatureStatusRefreshId').value = data.arquivo_id || '';
     document.getElementById('signatureStatusResendId').value = data.arquivo_id || '';
 
     if (badge) {
@@ -1978,9 +2035,9 @@ function openSignatureStatusModal(data) {
                 var item = document.createElement('div');
                 item.className = 'aj-status-item';
                 item.innerHTML =
-                    '<div><strong>' + escapeHtml(signer.name || 'Signatário') + '</strong><div class="aj-status-meta">' + escapeHtml(signer.email || '') + '</div></div>' +
-                    '<div style="text-align:right;"><span class="aj-badge sign ' + statusBadgeClassForSigner(signer.status || '') + '">' + escapeHtml(signer.status_label || 'Aguardando') + '</span>' +
-                    ((signer.signature_url || '') ? '<div style="margin-top:.4rem;"><a class="aj-action-btn primary" href="' + escapeAttribute(signer.signature_url) + '" target="_blank">Abrir assinatura</a></div>' : '') +
+                    '<div class=\"aj-status-item-main\"><strong>' + escapeHtml(signer.name || 'Signatário') + '</strong><div class=\"aj-status-meta\">' + escapeHtml(signer.email || '') + '</div></div>' +
+                    '<div class=\"aj-status-item-actions\"><span class=\"aj-badge sign ' + statusBadgeClassForSigner(signer.status || '') + '\">' + escapeHtml(signer.status_label || 'Aguardando') + '</span>' +
+                    ((signer.signature_url || '') ? '<a class=\"aj-action-btn primary\" href=\"' + escapeAttribute(signer.signature_url) + '\" target=\"_blank\">Abrir assinatura</a>' : '') +
                     '</div>';
                 signersList.appendChild(item);
             });

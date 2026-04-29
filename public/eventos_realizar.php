@@ -56,6 +56,35 @@ function eventos_realizar_resumo_checklist(PDO $pdo, int $meeting_id): array
     return ['total' => $total, 'concluidos' => $concluidos];
 }
 
+function eventos_realizar_formatar_hora_curta(?string $value): string
+{
+    $hora = trim((string)$value);
+    if ($hora === '') {
+        return '';
+    }
+    if (preg_match('/^\d{2}:\d{2}/', $hora, $matches)) {
+        return $matches[0];
+    }
+    $timestamp = strtotime($hora);
+    return $timestamp ? date('H:i', $timestamp) : $hora;
+}
+
+function eventos_realizar_buscar_resumo_evento(PDO $pdo, int $meeting_id): ?array
+{
+    if ($meeting_id <= 0) {
+        return null;
+    }
+
+    $campo = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
+    $campoId = (int)($campo['id'] ?? 0);
+    if ($campoId <= 0) {
+        return null;
+    }
+
+    $arquivos = eventos_arquivos_listar($pdo, $meeting_id, false, $campoId, true);
+    return !empty($arquivos) && is_array($arquivos[0]) ? $arquivos[0] : null;
+}
+
 function eventos_realizar_buscar_evento_cache_lista(PDO $pdo, int $me_event_id): ?array
 {
     if ($me_event_id <= 0) {
@@ -150,8 +179,8 @@ function eventos_realizar_linha_from_reuniao(array $reuniao): array
     }
 
     $data_evento = trim((string)($snapshot['data'] ?? ''));
-    $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-    $hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+    $hora_inicio = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+    $hora_fim = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_fim'] ?? ''));
     $data_hora_evento = null;
     if ($data_evento !== '') {
         $data_hora_evento = trim($data_evento . ' ' . ($hora_inicio !== '' ? $hora_inicio : '00:00'));
@@ -277,8 +306,8 @@ if (!$reuniao) {
 $evento_nome = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento_raw = trim((string)($snapshot['data'] ?? ''));
 $data_evento_fmt = $data_evento_raw !== '' ? date('d/m/Y', strtotime($data_evento_raw)) : '-';
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
+$hora_inicio = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
+$hora_fim = eventos_realizar_formatar_hora_curta((string)($snapshot['hora_fim'] ?? ''));
 $horario_evento = $hora_inicio !== '' ? $hora_inicio : '-';
 if ($hora_inicio !== '' && $hora_fim !== '') {
     $horario_evento .= ' - ' . $hora_fim;
@@ -298,6 +327,7 @@ $arquivos_resumo = $reuniao ? eventos_arquivos_resumo($pdo, (int)$reuniao['id'])
     'campos_pendentes' => 0,
     'arquivos_total' => 0,
 ];
+$resumo_evento_arquivo = $reuniao ? eventos_realizar_buscar_resumo_evento($pdo, (int)$reuniao['id']) : null;
 
 includeSidebar('Realizar evento');
 ?>
@@ -352,6 +382,11 @@ includeSidebar('Realizar evento');
 
     .btn-primary:hover {
         background: #254ac9;
+    }
+
+    .btn[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
     }
 
     .btn-secondary {
@@ -509,6 +544,65 @@ includeSidebar('Realizar evento');
         gap: 0.2rem;
     }
 
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.68);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        z-index: 1000;
+    }
+
+    .modal-overlay.show {
+        display: flex;
+    }
+
+    .modal-card {
+        width: min(960px, 100%);
+        max-height: 92vh;
+        background: #fff;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    }
+
+    .modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.95rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .modal-head h3 {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1rem;
+    }
+
+    .modal-close {
+        border: none;
+        background: transparent;
+        font-size: 1.6rem;
+        line-height: 1;
+        cursor: pointer;
+        color: #475569;
+    }
+
+    .modal-body {
+        padding: 0;
+        height: min(78vh, 900px);
+    }
+
+    .modal-body iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }
+
     .status-badge {
         display: inline-flex;
         align-items: center;
@@ -634,11 +728,11 @@ includeSidebar('Realizar evento');
 
         <article class="module-card">
             <h3>🍽️ Cardápio</h3>
-            <p>Acesso ao card de cardápio dentro dos anexos do evento.</p>
+            <p>Consulta rápida do cardápio definido para a execução do evento.</p>
             <div class="card-actions">
                 <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1#cardapio" class="btn btn-primary">Abrir Cardápio</a>
             </div>
-            <div class="helper-note">Usa a mesma estrutura já existente em Organização de eventos.</div>
+            <div class="helper-note">Mostra apenas o que já foi organizado para conferência operacional.</div>
         </article>
 
         <article class="module-card">
@@ -654,23 +748,22 @@ includeSidebar('Realizar evento');
 
         <article class="module-card">
             <h3>📄 Resumo do evento</h3>
-            <p>Contrato/PDF do cliente com o histórico de versão do anexo interno.</p>
+            <p>Contrato/PDF do evento para consulta rápida durante a execução.</p>
             <div class="card-actions">
-                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1#resumo-evento" class="btn btn-primary">Abrir Resumo</a>
+                <button type="button" class="btn btn-primary" onclick="abrirModalResumoEvento()" <?= !$resumo_evento_arquivo ? 'disabled' : '' ?>>Visualizar</button>
             </div>
-            <div class="helper-note">Acesso direto ao bloco interno de Resumo do evento.</div>
+            <div class="helper-note">
+                <?= $resumo_evento_arquivo ? htmlspecialchars((string)($resumo_evento_arquivo['original_name'] ?? 'Resumo disponível')) : 'Nenhum resumo do evento anexado.' ?>
+            </div>
         </article>
 
         <article class="module-card">
             <h3>📝 Reunião Final</h3>
-            <p>Acesso à reunião final completa, com as abas Decoração, Observações Gerais, DJ / Protocolos e Formulário.</p>
+            <p>Informações importantes para o evento, com visualização direta de decoração, observações, DJ / protocolos e formulários.</p>
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
-            <div class="helper-note helper-note-stack">
-                <div>Mesma tela da Organização, agora com DJ / Protocolos dentro da reunião final.</div>
-                <div>Os dados e integrações do DJ continuam os mesmos, apenas a entrada visual foi unificada.</div>
-            </div>
+            <div class="helper-note">Somente leitura, sem controles de edição e sem informações que não ajudam na execução.</div>
         </article>
 
         <article class="module-card">
@@ -686,5 +779,45 @@ includeSidebar('Realizar evento');
     </section>
     <?php endif; ?>
 </div>
+
+<?php if ($reuniao && $resumo_evento_arquivo): ?>
+<div class="modal-overlay" id="modalResumoEvento">
+    <div class="modal-card">
+        <div class="modal-head">
+            <h3>Resumo do evento</h3>
+            <button type="button" class="modal-close" onclick="fecharModalResumoEvento()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <iframe src="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" title="Resumo do evento"></iframe>
+        </div>
+    </div>
+</div>
+<script>
+function abrirModalResumoEvento() {
+    const modal = document.getElementById('modalResumoEvento');
+    if (!modal) return;
+    modal.classList.add('show');
+}
+
+function fecharModalResumoEvento() {
+    const modal = document.getElementById('modalResumoEvento');
+    if (!modal) return;
+    modal.classList.remove('show');
+}
+
+document.addEventListener('click', function(ev) {
+    const modal = document.getElementById('modalResumoEvento');
+    if (modal && ev.target === modal) {
+        fecharModalResumoEvento();
+    }
+});
+
+document.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Escape') {
+        fecharModalResumoEvento();
+    }
+});
+</script>
+<?php endif; ?>
 
 <?php endSidebar(); ?>
