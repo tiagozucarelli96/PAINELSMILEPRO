@@ -9,7 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/conexao.php';
 
-if (!function_exists('setupAdministrativoJuridico')) {
+if (!function_exists('administrativoJuridicoDescricaoPadraoPasta')) {
     function administrativoJuridicoDescricaoPadraoPasta(string $nomeUsuario): string
     {
         return 'Pasta automática do colaborador ' . $nomeUsuario . '.';
@@ -29,7 +29,6 @@ if (!function_exists('setupAdministrativoJuridico')) {
         );
         $stmtUsuario->execute([':id' => $usuarioId]);
         $usuario = $stmtUsuario->fetch(PDO::FETCH_ASSOC) ?: null;
-
         if (!$usuario) {
             return null;
         }
@@ -42,18 +41,19 @@ if (!function_exists('setupAdministrativoJuridico')) {
         $descricaoPadrao = administrativoJuridicoDescricaoPadraoPasta($nomeUsuario);
 
         $stmtPastaUsuario = $pdo->prepare(
-            'SELECT id, nome
+            'SELECT id
              FROM administrativo_juridico_pastas
              WHERE usuario_empresa_id = :usuario_id
              LIMIT 1'
         );
         $stmtPastaUsuario->execute([':usuario_id' => $usuarioId]);
-        $pastaUsuario = $stmtPastaUsuario->fetch(PDO::FETCH_ASSOC) ?: null;
+        $pastaUsuarioId = (int)($stmtPastaUsuario->fetchColumn() ?: 0);
 
         $stmtPastaNome = $pdo->prepare(
-            'SELECT id, usuario_empresa_id, descricao
+            'SELECT id, usuario_empresa_id
              FROM administrativo_juridico_pastas
-             WHERE LOWER(nome) = LOWER(:nome)
+             WHERE parent_id IS NULL
+               AND LOWER(nome) = LOWER(:nome)
              LIMIT 1'
         );
         $stmtPastaNome->execute([':nome' => $nomeUsuario]);
@@ -61,63 +61,55 @@ if (!function_exists('setupAdministrativoJuridico')) {
 
         if ($pastaMesmoNome) {
             $pastaMesmoNomeId = (int)($pastaMesmoNome['id'] ?? 0);
-            $pastaMesmoNomeUsuarioId = isset($pastaMesmoNome['usuario_empresa_id']) ? (int)$pastaMesmoNome['usuario_empresa_id'] : 0;
+            $pastaMesmoNomeUsuarioId = (int)($pastaMesmoNome['usuario_empresa_id'] ?? 0);
 
-            if ($pastaMesmoNomeUsuarioId > 0 && $pastaMesmoNomeUsuarioId !== $usuarioId) {
-                if ($pastaUsuario) {
-                    return (int)$pastaUsuario['id'];
-                }
-
-                error_log('Administrativo jurídico - conflito de pasta para colaborador ' . $usuarioId . ' com nome ' . $nomeUsuario);
+            if ($pastaMesmoNomeUsuarioId > 0 && $pastaMesmoNomeUsuarioId !== $usuarioId && $pastaUsuarioId <= 0) {
+                error_log('Administrativo jurídico - conflito de pasta raiz para colaborador ' . $usuarioId . ' com nome ' . $nomeUsuario);
                 return null;
-            }
-
-            if ($pastaUsuario && (int)$pastaUsuario['id'] !== $pastaMesmoNomeId) {
-                $stmtDesvincular = $pdo->prepare(
-                    'UPDATE administrativo_juridico_pastas
-                     SET usuario_empresa_id = NULL,
-                         atualizado_em = NOW()
-                     WHERE id = :id'
-                );
-                $stmtDesvincular->execute([':id' => (int)$pastaUsuario['id']]);
             }
 
             $stmtVincular = $pdo->prepare(
                 'UPDATE administrativo_juridico_pastas
-                 SET usuario_empresa_id = :usuario_id,
+                 SET nome = :nome,
                      descricao = COALESCE(NULLIF(descricao, \'\'), :descricao),
+                     usuario_empresa_id = :usuario_id,
+                     parent_id = NULL,
                      atualizado_em = NOW()
                  WHERE id = :id'
             );
             $stmtVincular->execute([
-                ':usuario_id' => $usuarioId,
+                ':nome' => $nomeUsuario,
                 ':descricao' => $descricaoPadrao,
+                ':usuario_id' => $usuarioId,
                 ':id' => $pastaMesmoNomeId,
             ]);
 
             return $pastaMesmoNomeId;
         }
 
-        if ($pastaUsuario) {
-            $stmtRenomear = $pdo->prepare(
+        if ($pastaUsuarioId > 0) {
+            $stmtAtualizar = $pdo->prepare(
                 'UPDATE administrativo_juridico_pastas
                  SET nome = :nome,
                      descricao = COALESCE(NULLIF(descricao, \'\'), :descricao),
+                     parent_id = NULL,
                      atualizado_em = NOW()
                  WHERE id = :id'
             );
-            $stmtRenomear->execute([
+            $stmtAtualizar->execute([
                 ':nome' => $nomeUsuario,
                 ':descricao' => $descricaoPadrao,
-                ':id' => (int)$pastaUsuario['id'],
+                ':id' => $pastaUsuarioId,
             ]);
 
-            return (int)$pastaUsuario['id'];
+            return $pastaUsuarioId;
         }
 
         $stmtCriar = $pdo->prepare(
-            'INSERT INTO administrativo_juridico_pastas (nome, descricao, usuario_empresa_id, criado_por_usuario_id)
-             VALUES (:nome, :descricao, :usuario_id, NULL)
+            'INSERT INTO administrativo_juridico_pastas
+             (nome, descricao, usuario_empresa_id, parent_id, criado_por_usuario_id)
+             VALUES
+             (:nome, :descricao, :usuario_id, NULL, NULL)
              RETURNING id'
         );
         $stmtCriar->execute([
@@ -135,7 +127,7 @@ if (!function_exists('setupAdministrativoJuridico')) {
             'SELECT id
              FROM usuarios
              WHERE ativo IS DISTINCT FROM FALSE
-             ORDER BY id ASC'
+             ORDER BY nome ASC'
         );
 
         $usuariosIds = $stmt ? ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
@@ -194,19 +186,18 @@ if (!function_exists('setupAdministrativoJuridico')) {
                 "
             );
 
-            $pdo->exec(
-                "
-                ALTER TABLE administrativo_juridico_pastas
-                ADD COLUMN IF NOT EXISTS usuario_juridico_id BIGINT NULL
-                "
-            );
+            $pdo->exec("ALTER TABLE administrativo_juridico_pastas ADD COLUMN IF NOT EXISTS usuario_juridico_id BIGINT NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_pastas ADD COLUMN IF NOT EXISTS usuario_empresa_id BIGINT NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_pastas ADD COLUMN IF NOT EXISTS parent_id BIGINT NULL");
 
-            $pdo->exec(
-                "
-                ALTER TABLE administrativo_juridico_pastas
-                ADD COLUMN IF NOT EXISTS usuario_empresa_id BIGINT NULL
-                "
-            );
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS status_assinatura VARCHAR(30) NOT NULL DEFAULT 'nao_solicitada'");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_envelope_id VARCHAR(120) NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_document_id VARCHAR(120) NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_signer_id VARCHAR(120) NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_sign_url TEXT NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_payload JSONB NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS clicksign_ultimo_erro TEXT NULL");
+            $pdo->exec("ALTER TABLE administrativo_juridico_arquivos ADD COLUMN IF NOT EXISTS enviado_assinatura_em TIMESTAMPTZ NULL");
 
             $pdo->exec(
                 "
@@ -248,14 +239,35 @@ if (!function_exists('setupAdministrativoJuridico')) {
                 "
             );
 
-            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_pastas_nome_unique ON administrativo_juridico_pastas (LOWER(nome))');
+            $pdo->exec(
+                "
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_admin_juridico_pastas_parent'
+                    ) THEN
+                        ALTER TABLE administrativo_juridico_pastas
+                        ADD CONSTRAINT fk_admin_juridico_pastas_parent
+                        FOREIGN KEY (parent_id)
+                        REFERENCES administrativo_juridico_pastas(id)
+                        ON DELETE CASCADE;
+                    END IF;
+                END
+                $$;
+                "
+            );
+
+            $pdo->exec('DROP INDEX IF EXISTS idx_admin_juridico_pastas_nome_unique');
+            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_pastas_nome_parent_unique ON administrativo_juridico_pastas (COALESCE(parent_id, 0), LOWER(nome))');
             $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_usuarios_nome_unique ON administrativo_juridico_usuarios (LOWER(nome))');
-            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_pastas_usuario_unique ON administrativo_juridico_pastas(usuario_juridico_id) WHERE usuario_juridico_id IS NOT NULL');
-            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_pastas_usuario_juridico ON administrativo_juridico_pastas(usuario_juridico_id)');
-            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_pastas_usuario_empresa_unique ON administrativo_juridico_pastas(usuario_empresa_id) WHERE usuario_empresa_id IS NOT NULL');
+            $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_juridico_pastas_usuario_empresa_unique ON administrativo_juridico_pastas(usuario_empresa_id) WHERE usuario_empresa_id IS NOT NULL AND parent_id IS NULL');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_pastas_parent ON administrativo_juridico_pastas(parent_id, nome)');
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_pastas_usuario_empresa ON administrativo_juridico_pastas(usuario_empresa_id)');
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_arquivos_pasta ON administrativo_juridico_arquivos(pasta_id)');
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_arquivos_criado_em ON administrativo_juridico_arquivos(criado_em DESC)');
+            $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_arquivos_status_assinatura ON administrativo_juridico_arquivos(status_assinatura)');
             $pdo->exec('CREATE INDEX IF NOT EXISTS idx_admin_juridico_usuarios_ativo ON administrativo_juridico_usuarios(ativo)');
 
             administrativoJuridicoSincronizarPastasColaboradores($pdo);
