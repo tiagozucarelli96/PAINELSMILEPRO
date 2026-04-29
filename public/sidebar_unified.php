@@ -1940,13 +1940,13 @@ if ($current_page === 'dashboard') {
     <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
             <?php if ($show_top_account_access): ?>
             <div class="top-account-access">
-                <a class="top-account-link" href="index.php?page=minha_conta" title="Minha Conta">
+                <a class="top-account-link" href="index.php?page=minha_conta" title="Meus dados">
                     <span class="top-account-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); color: transparent;" : '' ?>">
                         <?php if (!$foto_usuario): ?>
                             <?= strtoupper(substr($nomeUser, 0, 2)) ?>
                         <?php endif; ?>
                     </span>
-                    <span class="top-account-text">Minha Conta</span>
+                    <span class="top-account-text">Meus dados</span>
                 </a>
             </div>
             <?php endif; ?>
