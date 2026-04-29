@@ -617,10 +617,136 @@ function eventos_form_template_allowed_categories(): array {
 }
 
 /**
- * Tipos reais de evento suportados na organização.
+ * Tipos reais de evento suportados internamente.
  */
 function eventos_reuniao_tipos_evento_real_allowed(): array {
     return ['casamento', '15anos', 'infantil'];
+}
+
+/**
+ * Metadados padrão dos tipos reais de evento.
+ */
+function eventos_reuniao_tipos_evento_real_defaults(): array {
+    return [
+        'casamento' => [
+            'label' => 'Casamento',
+            'descricao' => 'Eventos de casamento e wedding.',
+            'ativo' => true,
+            'ordem' => 10,
+        ],
+        '15anos' => [
+            'label' => '15 anos',
+            'descricao' => 'Debutante, aniversário de 15 anos e variações.',
+            'ativo' => true,
+            'ordem' => 20,
+        ],
+        'infantil' => [
+            'label' => 'Infantil',
+            'descricao' => 'Festas infantis e eventos kids.',
+            'ativo' => true,
+            'ordem' => 30,
+        ],
+    ];
+}
+
+/**
+ * Garante a tabela de configuração dos tipos reais de evento.
+ */
+function eventos_reuniao_tipos_evento_real_ensure_schema(PDO $pdo): void {
+    static $done = false;
+    if ($done) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS eventos_tipos_reais_config (
+            tipo_key VARCHAR(24) PRIMARY KEY,
+            label VARCHAR(80) NOT NULL,
+            descricao VARCHAR(255),
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            ordem SMALLINT NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    ");
+
+    $defaults = eventos_reuniao_tipos_evento_real_defaults();
+    $stmt = $pdo->prepare("
+        INSERT INTO eventos_tipos_reais_config (tipo_key, label, descricao, ativo, ordem, updated_at)
+        VALUES (:tipo_key, :label, :descricao, :ativo, :ordem, NOW())
+        ON CONFLICT (tipo_key) DO UPDATE SET
+            label = COALESCE(NULLIF(TRIM(eventos_tipos_reais_config.label), ''), EXCLUDED.label),
+            descricao = COALESCE(eventos_tipos_reais_config.descricao, EXCLUDED.descricao),
+            ordem = CASE
+                WHEN eventos_tipos_reais_config.ordem = 0 THEN EXCLUDED.ordem
+                ELSE eventos_tipos_reais_config.ordem
+            END
+    ");
+
+    foreach ($defaults as $tipoKey => $meta) {
+        $stmt->execute([
+            ':tipo_key' => $tipoKey,
+            ':label' => (string)$meta['label'],
+            ':descricao' => (string)$meta['descricao'],
+            ':ativo' => !empty($meta['ativo']),
+            ':ordem' => (int)$meta['ordem'],
+        ]);
+    }
+
+    $done = true;
+}
+
+/**
+ * Lista os tipos reais configurados.
+ */
+function eventos_reuniao_tipos_evento_real_listar(PDO $pdo, bool $includeInactive = true): array {
+    eventos_reuniao_tipos_evento_real_ensure_schema($pdo);
+
+    $sql = "
+        SELECT tipo_key, label, descricao, ativo, ordem, updated_at
+        FROM eventos_tipos_reais_config
+    ";
+    if (!$includeInactive) {
+        $sql .= " WHERE ativo = TRUE";
+    }
+    $sql .= " ORDER BY ordem ASC, label ASC, tipo_key ASC";
+
+    $stmt = $pdo->query($sql);
+    $rows = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    $allowed = array_flip(eventos_reuniao_tipos_evento_real_allowed());
+    $items = [];
+
+    foreach ($rows as $row) {
+        $tipoKey = strtolower(trim((string)($row['tipo_key'] ?? '')));
+        if (!isset($allowed[$tipoKey])) {
+            continue;
+        }
+        $items[] = [
+            'tipo_key' => $tipoKey,
+            'label' => trim((string)($row['label'] ?? '')),
+            'descricao' => trim((string)($row['descricao'] ?? '')),
+            'ativo' => !empty($row['ativo']),
+            'ordem' => (int)($row['ordem'] ?? 0),
+            'updated_at' => (string)($row['updated_at'] ?? ''),
+        ];
+    }
+
+    return $items;
+}
+
+/**
+ * Retorna mapa tipo -> label para seleção em telas.
+ */
+function eventos_reuniao_tipos_evento_real_options(PDO $pdo, bool $includeInactive = false): array {
+    $items = eventos_reuniao_tipos_evento_real_listar($pdo, $includeInactive);
+    $map = [];
+    foreach ($items as $item) {
+        $tipoKey = (string)($item['tipo_key'] ?? '');
+        if ($tipoKey === '') {
+            continue;
+        }
+        $map[$tipoKey] = (string)($item['label'] ?? $tipoKey);
+    }
+    return $map;
 }
 
 /**
@@ -637,18 +763,26 @@ function eventos_reuniao_normalizar_tipo_evento_real(?string $tipo_evento_real):
 /**
  * Rótulo amigável do tipo real do evento.
  */
-function eventos_reuniao_tipo_evento_real_label(string $tipo_evento_real): string {
+function eventos_reuniao_tipo_evento_real_label(string $tipo_evento_real, ?PDO $pdo = null): string {
     $tipo = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
-    if ($tipo === 'casamento') {
-        return 'Casamento';
+    if ($tipo === '') {
+        return 'Não definido';
     }
-    if ($tipo === '15anos') {
-        return '15 anos';
+
+    try {
+        $pdoRef = $pdo instanceof PDO ? $pdo : ($GLOBALS['pdo'] ?? null);
+        if ($pdoRef instanceof PDO) {
+            $options = eventos_reuniao_tipos_evento_real_options($pdoRef, true);
+            if (!empty($options[$tipo])) {
+                return $options[$tipo];
+            }
+        }
+    } catch (Throwable $e) {
+        // fallback abaixo
     }
-    if ($tipo === 'infantil') {
-        return 'Infantil';
-    }
-    return 'Não definido';
+
+    $defaults = eventos_reuniao_tipos_evento_real_defaults();
+    return (string)($defaults[$tipo]['label'] ?? 'Não definido');
 }
 
 /**
