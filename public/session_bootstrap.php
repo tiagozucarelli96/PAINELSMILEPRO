@@ -1,0 +1,236 @@
+<?php
+declare(strict_types=1);
+
+if (defined('PAINEL_SESSION_BOOTSTRAPPED')) {
+    return;
+}
+define('PAINEL_SESSION_BOOTSTRAPPED', true);
+
+final class PainelPostgresSessionHandler implements SessionHandlerInterface
+{
+    private ?PDO $pdo = null;
+    private bool $tableReady = false;
+    private int $ttl;
+
+    public function __construct(int $ttl)
+    {
+        $this->ttl = $ttl;
+    }
+
+    public function open(string $path, string $name): bool
+    {
+        try {
+            $this->pdo = $this->connect();
+            if ($this->pdo === null) {
+                return false;
+            }
+            $this->ensureTable();
+            return true;
+        } catch (Throwable $e) {
+            error_log('Session open failed: ' . $e->getMessage());
+            $this->pdo = null;
+            return false;
+        }
+    }
+
+    public function close(): bool
+    {
+        $this->pdo = null;
+        return true;
+    }
+
+    public function read(string $id): string
+    {
+        if ($this->pdo === null) {
+            return '';
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'SELECT session_data
+                   FROM app_sessions
+                  WHERE session_id = :id
+                    AND expires_at > NOW()
+                  LIMIT 1'
+            );
+            $stmt->execute([':id' => $id]);
+            $encoded = $stmt->fetchColumn();
+
+            if (!is_string($encoded) || $encoded === '') {
+                return '';
+            }
+
+            $decoded = base64_decode($encoded, true);
+            return $decoded === false ? '' : $decoded;
+        } catch (Throwable $e) {
+            error_log('Session read failed: ' . $e->getMessage());
+            return '';
+        }
+    }
+
+    public function write(string $id, string $data): bool
+    {
+        if ($this->pdo === null) {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO app_sessions (session_id, session_data, last_activity, expires_at)
+                 VALUES (:id, :data, NOW(), NOW() + (:ttl || \' seconds\')::interval)
+                 ON CONFLICT (session_id) DO UPDATE
+                 SET session_data = EXCLUDED.session_data,
+                     last_activity = EXCLUDED.last_activity,
+                     expires_at = EXCLUDED.expires_at'
+            );
+
+            return $stmt->execute([
+                ':id' => $id,
+                ':data' => base64_encode($data),
+                ':ttl' => (string)$this->ttl,
+            ]);
+        } catch (Throwable $e) {
+            error_log('Session write failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function destroy(string $id): bool
+    {
+        if ($this->pdo === null) {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare('DELETE FROM app_sessions WHERE session_id = :id');
+            return $stmt->execute([':id' => $id]);
+        } catch (Throwable $e) {
+            error_log('Session destroy failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function gc(int $max_lifetime): int|false
+    {
+        if ($this->pdo === null) {
+            return false;
+        }
+
+        try {
+            $stmt = $this->pdo->prepare('DELETE FROM app_sessions WHERE expires_at <= NOW()');
+            $stmt->execute();
+            return $stmt->rowCount();
+        } catch (Throwable $e) {
+            error_log('Session GC failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    private function ensureTable(): void
+    {
+        if ($this->tableReady || $this->pdo === null) {
+            return;
+        }
+
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS app_sessions (
+                session_id VARCHAR(128) PRIMARY KEY,
+                session_data TEXT NOT NULL,
+                last_activity TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                expires_at TIMESTAMPTZ NOT NULL
+            )'
+        );
+        $this->pdo->exec(
+            'CREATE INDEX IF NOT EXISTS idx_app_sessions_expires_at
+                ON app_sessions (expires_at)'
+        );
+
+        $this->tableReady = true;
+    }
+
+    private function connect(): ?PDO
+    {
+        if ($this->pdo instanceof PDO) {
+            return $this->pdo;
+        }
+
+        $databaseUrl = getenv('DATABASE_URL') ?: '';
+
+        if ($databaseUrl !== '') {
+            $databaseUrl = preg_replace('#^postgresql://#', 'postgres://', $databaseUrl);
+            $parts = parse_url($databaseUrl);
+
+            if ($parts && !empty($parts['host']) && !empty($parts['path'])) {
+                $query = [];
+                if (!empty($parts['query'])) {
+                    parse_str($parts['query'], $query);
+                }
+
+                $sslmode = isset($query['sslmode']) ? strtolower((string)$query['sslmode']) : 'require';
+                $allowed = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'];
+                if (!in_array($sslmode, $allowed, true)) {
+                    $sslmode = 'require';
+                }
+
+                $dsn = sprintf(
+                    "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='-c client_encoding=UTF8 -c search_path=smilee12_painel_smile,public'",
+                    $parts['host'],
+                    isset($parts['port']) ? (int)$parts['port'] : 5432,
+                    ltrim((string)$parts['path'], '/'),
+                    $sslmode
+                );
+
+                $pdo = new PDO($dsn, urldecode($parts['user'] ?? ''), urldecode($parts['pass'] ?? ''), [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]);
+                $pdo->exec('SET search_path TO smilee12_painel_smile, public');
+
+                return $pdo;
+            }
+        }
+
+        $dsn = 'pgsql:host=localhost;port=5432;dbname=painel_smile;sslmode=disable';
+        return new PDO($dsn, 'tiagozucarelli', '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+    }
+}
+
+$https = false;
+if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+    $https = true;
+} elseif (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') {
+    $https = true;
+}
+
+$sessionLifetime = (int)(getenv('SESSION_LIFETIME_SECONDS') ?: 60 * 60 * 24 * 14);
+if ($sessionLifetime <= 0) {
+    $sessionLifetime = 60 * 60 * 24 * 14;
+}
+
+ini_set('session.use_strict_mode', '1');
+ini_set('session.use_only_cookies', '1');
+ini_set('session.gc_maxlifetime', (string)$sessionLifetime);
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_secure', $https ? '1' : '0');
+ini_set('session.cookie_samesite', 'Lax');
+session_name(getenv('SESSION_COOKIE_NAME') ?: 'PAINELSMILESESSID');
+session_set_cookie_params([
+    'lifetime' => $sessionLifetime,
+    'path' => '/',
+    'domain' => '',
+    'secure' => $https,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+
+try {
+    $handler = new PainelPostgresSessionHandler($sessionLifetime);
+    if (@session_set_save_handler($handler, true)) {
+        register_shutdown_function('session_write_close');
+    }
+} catch (Throwable $e) {
+    error_log('Session bootstrap fallback to default handler: ' . $e->getMessage());
+}

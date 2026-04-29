@@ -133,6 +133,111 @@ function aj_signature_deadline_payload(?string $deadlineInput): array
     ];
 }
 
+function aj_signature_modal_signers_from_post(): array
+{
+    $names = $_POST['signer_name'] ?? [];
+    $emails = $_POST['signer_email'] ?? [];
+    $groups = $_POST['signer_group'] ?? [];
+    if (!is_array($names)) {
+        $names = [$names];
+    }
+    if (!is_array($emails)) {
+        $emails = [$emails];
+    }
+    if (!is_array($groups)) {
+        $groups = [$groups];
+    }
+
+    $signers = [];
+    $max = max(count($names), count($emails), count($groups));
+    for ($i = 0; $i < $max; $i++) {
+        $name = ClicksignHelper::normalizeSignerName((string)($names[$i] ?? ''));
+        $email = trim((string)($emails[$i] ?? ''));
+        $group = max(1, (int)($groups[$i] ?? 1));
+        if ($name === '' && $email === '') {
+            continue;
+        }
+        $signers[] = [
+            'name' => $name,
+            'email' => $email,
+            'group' => $group,
+        ];
+    }
+
+    return $signers;
+}
+
+function aj_signature_summary_from_payload(array $arquivo): array
+{
+    $payloadRaw = $arquivo['clicksign_payload'] ?? null;
+    if (is_string($payloadRaw) && $payloadRaw !== '') {
+        $payload = json_decode($payloadRaw, true);
+    } elseif (is_array($payloadRaw)) {
+        $payload = $payloadRaw;
+    } else {
+        $payload = [];
+    }
+
+    $summaryData = $payload['summary'] ?? $payload;
+    $documentLinks = $summaryData['document_links'] ?? [];
+    $signers = $summaryData['signers'] ?? [];
+    $events = $summaryData['events'] ?? [];
+
+    return [
+        'document_links' => [
+            'original' => (string)($documentLinks['original'] ?? ''),
+            'signed' => (string)($documentLinks['signed'] ?? ''),
+            'ziped' => (string)($documentLinks['ziped'] ?? ''),
+        ],
+        'signers' => is_array($signers) ? $signers : [],
+        'events' => is_array($events) ? $events : [],
+        'status_clicksign' => (string)($summaryData['status_clicksign'] ?? ''),
+        'status_local' => (string)($summaryData['status_local'] ?? ($arquivo['status_assinatura'] ?? 'nao_solicitada')),
+    ];
+}
+
+function aj_signature_action_label(string $status): string
+{
+    $status = trim($status);
+    if ($status === 'nao_solicitada' || $status === 'erro' || $status === 'cancelado') {
+        return 'Solicitar assinatura';
+    }
+
+    return 'Acompanhar assinatura';
+}
+
+function aj_signature_badge_class(string $status): string
+{
+    $status = trim($status);
+    if ($status === 'assinado') {
+        return 'success';
+    }
+    if ($status === 'erro' || $status === 'cancelado') {
+        return 'error';
+    }
+    if ($status === 'enviado' || $status === 'pendente_envio') {
+        return 'warn';
+    }
+
+    return '';
+}
+
+function aj_signature_event_label(string $name): string
+{
+    $map = [
+        'upload' => 'Documento enviado',
+        'add_signer' => 'Signatário adicionado',
+        'signature_started' => 'Assinatura iniciada',
+        'sign' => 'Documento assinado',
+        'refuse' => 'Assinatura recusada',
+        'auto_close' => 'Envelope encerrado',
+        'document_closed' => 'Documento finalizado',
+    ];
+
+    $name = trim($name);
+    return $map[$name] ?? ucfirst(str_replace('_', ' ', $name));
+}
+
 function aj_page_url(?int $folderId = null): string
 {
     $base = 'index.php?page=administrativo_juridico';
@@ -148,8 +253,10 @@ function aj_assinatura_label(string $status): string
     $map = [
         'nao_solicitada' => 'Sem assinatura',
         'enviado' => 'Assinatura enviada',
+        'pendente_envio' => 'Preparando envio',
         'assinado' => 'Assinado',
         'erro' => 'Erro na assinatura',
+        'cancelado' => 'Assinatura cancelada',
     ];
 
     return $map[$status] ?? ucfirst(str_replace('_', ' ', $status));
@@ -488,32 +595,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $colaboradorEmailBase = trim((string)($arquivo['colaborador_email'] ?? ''));
             $colaboradorNomeBase = ClicksignHelper::normalizeSignerName((string)($arquivo['colaborador_nome_assinatura'] ?? $arquivo['colaborador_nome_cadastrado'] ?? ''));
-            $colaboradorNome = ClicksignHelper::normalizeSignerName((string)($_POST['signer_name'] ?? $colaboradorNomeBase));
-            $colaboradorEmail = trim((string)($_POST['signer_email'] ?? $colaboradorEmailBase));
             $envelopeName = trim((string)($_POST['envelope_name'] ?? ''));
+            $signers = aj_signature_modal_signers_from_post();
+            if (empty($signers)) {
+                $signers[] = [
+                    'name' => $colaboradorNomeBase,
+                    'email' => $colaboradorEmailBase,
+                    'group' => 1,
+                ];
+            }
+            $primarySignerName = ClicksignHelper::normalizeSignerName((string)($signers[0]['name'] ?? $colaboradorNomeBase));
             if ($envelopeName === '') {
-                $envelopeName = aj_signature_envelope_name((string)($arquivo['titulo'] ?? 'Documento'), $colaboradorNome);
+                $envelopeName = aj_signature_envelope_name((string)($arquivo['titulo'] ?? 'Documento'), $primarySignerName);
             }
             $deadlineInput = trim((string)($_POST['deadline_at'] ?? ''));
             $signatureModalState = [
                 'arquivo_id' => $arquivoId,
                 'arquivo_titulo' => (string)($arquivo['titulo'] ?? 'Documento'),
                 'arquivo_nome' => (string)($arquivo['arquivo_nome'] ?? ''),
-                'signer_name' => $colaboradorNome,
-                'signer_email' => $colaboradorEmail,
+                'signers' => $signers,
                 'envelope_name' => $envelopeName,
                 'deadline_at' => $deadlineInput !== '' ? $deadlineInput : aj_signature_default_deadline_local(),
             ];
             $deadlinePayload = aj_signature_deadline_payload($deadlineInput);
-
-            if ($colaboradorNome === '' || !filter_var($colaboradorEmail, FILTER_VALIDATE_EMAIL)) {
-                throw new Exception('Informe nome completo e e-mail válido do signatário para gerar a assinatura.');
-            }
-
-            $nomeErro = ClicksignHelper::getSignerNameValidationError($colaboradorNome);
-            if ($nomeErro !== null) {
-                throw new Exception($nomeErro);
-            }
 
             $payloadArquivo = aj_buscar_bytes_arquivo($arquivo);
             $clicksign = new ClicksignHelper();
@@ -526,8 +630,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'filename' => (string)($arquivo['arquivo_nome'] ?? 'documento.pdf'),
                 'content_base64' => base64_encode((string)$payloadArquivo['body']),
                 'content_type' => (string)($payloadArquivo['content_type'] ?? $arquivo['mime_type'] ?? 'application/pdf'),
-                'signer_name' => $colaboradorNome,
-                'signer_email' => $colaboradorEmail,
+                'signers' => $signers,
                 'deadline_at' => $deadlinePayload['rfc3339'],
             ]);
 
@@ -571,7 +674,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':id' => $arquivoId,
             ]);
 
-            $mensagem = 'Solicitação de assinatura enviada com sucesso para ' . $colaboradorNome . '.';
+            $mensagem = 'Solicitação de assinatura enviada com sucesso para ' . count($signers) . ' signatário(s).';
+            $currentPastaId = (int)($arquivo['pasta_id'] ?? 0);
+        }
+
+        if ($acao === 'atualizar_assinatura' || $acao === 'reenviar_assinatura') {
+            $arquivoId = (int)($_POST['arquivo_id'] ?? 0);
+            if ($arquivoId <= 0) {
+                throw new Exception('Arquivo inválido para acompanhamento de assinatura.');
+            }
+
+            $stmtArquivo = $pdo->prepare(
+                'SELECT id, pasta_id, clicksign_envelope_id, clicksign_document_id
+                 FROM administrativo_juridico_arquivos
+                 WHERE id = :id
+                 LIMIT 1'
+            );
+            $stmtArquivo->execute([':id' => $arquivoId]);
+            $arquivo = $stmtArquivo->fetch(PDO::FETCH_ASSOC) ?: null;
+            if (!$arquivo || empty($arquivo['clicksign_envelope_id'])) {
+                throw new Exception('Este arquivo ainda não possui envelope de assinatura vinculado.');
+            }
+
+            $clicksign = new ClicksignHelper();
+            if (!$clicksign->isConfigured()) {
+                throw new Exception($clicksign->getConfigurationError());
+            }
+
+            if ($acao === 'reenviar_assinatura') {
+                $resReenvio = $clicksign->reenviarNotificacao((string)$arquivo['clicksign_envelope_id'], '');
+                if (!($resReenvio['success'] ?? false)) {
+                    throw new Exception((string)($resReenvio['error'] ?? 'Não foi possível reenviar a notificação.'));
+                }
+            }
+
+            $resResumo = $clicksign->consultarFluxoAssinatura(
+                (string)$arquivo['clicksign_envelope_id'],
+                (string)($arquivo['clicksign_document_id'] ?? '')
+            );
+            if (!($resResumo['success'] ?? false)) {
+                throw new Exception((string)($resResumo['error'] ?? 'Falha ao atualizar andamento da assinatura.'));
+            }
+
+            $stmtAtualiza = $pdo->prepare(
+                'UPDATE administrativo_juridico_arquivos
+                 SET status_assinatura = :status,
+                     clicksign_sign_url = :sign_url,
+                     clicksign_payload = :payload::jsonb,
+                     clicksign_ultimo_erro = NULL,
+                     atualizado_em = NOW()
+                 WHERE id = :id'
+            );
+            $stmtAtualiza->execute([
+                ':status' => $resResumo['status_local'] ?? 'enviado',
+                ':sign_url' => $resResumo['signers'][0]['signature_url'] ?? null,
+                ':payload' => json_encode($resResumo, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ':id' => $arquivoId,
+            ]);
+
+            $mensagem = $acao === 'reenviar_assinatura'
+                ? 'Lembrete de assinatura reenviado e andamento atualizado.'
+                : 'Andamento da assinatura atualizado com sucesso.';
             $currentPastaId = (int)($arquivo['pasta_id'] ?? 0);
         }
 
@@ -744,6 +907,7 @@ if ($currentPastaId > 0) {
         $stmtArquivos = $pdo->prepare(
             'SELECT a.id, a.pasta_id, a.titulo, a.descricao, a.arquivo_nome, a.arquivo_url, a.chave_storage, a.mime_type,
                     a.criado_em, a.tamanho_bytes, a.status_assinatura, a.clicksign_sign_url, a.clicksign_ultimo_erro,
+                    a.clicksign_payload, a.clicksign_envelope_id, a.clicksign_document_id,
                     u.nome AS criado_por_nome
              FROM administrativo_juridico_arquivos a
              LEFT JOIN usuarios u ON u.id = a.criado_por_usuario_id
@@ -752,6 +916,16 @@ if ($currentPastaId > 0) {
         );
         $stmtArquivos->execute([':pasta_id' => $currentPastaId]);
         $arquivosAtuais = $stmtArquivos->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        foreach ($arquivosAtuais as &$arquivoAtual) {
+            $signatureSummary = aj_signature_summary_from_payload($arquivoAtual);
+            $arquivoAtual['_signature_summary'] = $signatureSummary;
+            $arquivoAtual['_signed_file_url'] = $signatureSummary['document_links']['signed'] ?? '';
+            $arquivoAtual['_original_file_url'] = $signatureSummary['document_links']['original'] ?? '';
+            $arquivoAtual['_zip_file_url'] = $signatureSummary['document_links']['ziped'] ?? '';
+            $arquivoAtual['_signers'] = $signatureSummary['signers'] ?? [];
+            $arquivoAtual['_events'] = $signatureSummary['events'] ?? [];
+        }
+        unset($arquivoAtual);
     } catch (Exception $e) {
         $erro = $erro !== '' ? $erro : 'Erro ao carregar arquivos da pasta.';
         error_log('Juridico - listar arquivos da pasta: ' . $e->getMessage());
@@ -800,7 +974,8 @@ ob_start();
 
     .aj-topbar { display: flex; flex-wrap: wrap; gap: .7rem; margin-bottom: 1rem; }
     .aj-btn,
-    .aj-btn-outline {
+    .aj-btn-outline,
+    .aj-action-btn {
         border-radius: 10px;
         padding: .68rem 1rem;
         font-weight: 800;
@@ -810,6 +985,7 @@ ob_start();
         align-items: center;
         gap: .45rem;
         border: 0;
+        transition: background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease;
     }
     .aj-btn { background: #1d4ed8; color: #fff; }
     .aj-btn:hover { background: #1e40af; }
@@ -820,6 +996,24 @@ ob_start();
     .aj-btn.danger { background: #b91c1c; }
     .aj-btn.danger:hover { background: #991b1b; }
     .aj-btn-outline { background: #fff; color: #0f172a; border: 1px solid #cbd5e1; }
+    .aj-btn-outline:hover { background: #f8fafc; }
+    .aj-action-btn {
+        font-size: .82rem;
+        padding: .58rem .82rem;
+        border: 1px solid transparent;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+    }
+    .aj-action-btn:hover { transform: translateY(-1px); }
+    .aj-action-btn.primary { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+    .aj-action-btn.primary:hover { background: #bfdbfe; }
+    .aj-action-btn.neutral { background: #f8fafc; color: #334155; border-color: #cbd5e1; }
+    .aj-action-btn.neutral:hover { background: #e2e8f0; }
+    .aj-action-btn.success { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+    .aj-action-btn.success:hover { background: #bbf7d0; }
+    .aj-action-btn.warn { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .aj-action-btn.warn:hover { background: #fde68a; }
+    .aj-action-btn.danger { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+    .aj-action-btn.danger:hover { background: #fecaca; }
 
     .aj-panel {
         background: #fff;
@@ -908,6 +1102,7 @@ ob_start();
     .aj-file-title { font-weight: 800; color: #0f172a; margin-bottom: .18rem; }
     .aj-file-subtitle { color: #64748b; font-size: .82rem; line-height: 1.35; }
     .aj-file-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+    .aj-file-actions form { margin: 0; }
     .aj-badge {
         display: inline-flex;
         align-items: center;
@@ -920,6 +1115,9 @@ ob_start();
     .aj-badge.owner { background: #dcfce7; color: #166534; }
     .aj-badge.legacy { background: #fef3c7; color: #92400e; }
     .aj-badge.sign { background: #e0f2fe; color: #075985; }
+    .aj-badge.sign.success { background: #dcfce7; color: #166534; }
+    .aj-badge.sign.warn { background: #fef3c7; color: #92400e; }
+    .aj-badge.sign.error { background: #fee2e2; color: #991b1b; }
     .aj-empty {
         padding: 1rem;
         border-radius: 14px;
@@ -992,6 +1190,76 @@ ob_start();
     .aj-field textarea { min-height: 100px; resize: vertical; }
     .aj-help { margin-top: .32rem; color: #64748b; font-size: .77rem; line-height: 1.35; }
     .aj-modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1rem; }
+    .aj-signers-stack { display: grid; gap: .75rem; }
+    .aj-signer-row {
+        border: 1px solid #dbe3ef;
+        border-radius: 14px;
+        padding: .85rem;
+        background: #f8fafc;
+    }
+    .aj-signer-row-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: .75rem;
+        gap: .75rem;
+    }
+    .aj-signer-row-title { font-size: .82rem; font-weight: 800; color: #334155; text-transform: uppercase; }
+    .aj-signer-row-remove {
+        background: transparent;
+        border: 0;
+        color: #b91c1c;
+        font-weight: 800;
+        cursor: pointer;
+    }
+    .aj-status-board {
+        display: grid;
+        gap: .8rem;
+    }
+    .aj-status-card {
+        border: 1px solid #dbe3ef;
+        border-radius: 14px;
+        padding: .85rem;
+        background: #fff;
+    }
+    .aj-status-head {
+        display: flex;
+        justify-content: space-between;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .aj-status-title { font-weight: 800; color: #0f172a; }
+    .aj-status-meta { color: #64748b; font-size: .8rem; }
+    .aj-status-list { display: grid; gap: .55rem; margin-top: .8rem; }
+    .aj-status-item {
+        display: flex;
+        justify-content: space-between;
+        gap: .75rem;
+        border-top: 1px solid #eef2f7;
+        padding-top: .55rem;
+    }
+    .aj-status-item:first-child { border-top: 0; padding-top: 0; }
+    .aj-status-timeline {
+        margin-top: .8rem;
+        display: grid;
+        gap: .5rem;
+        max-height: 220px;
+        overflow: auto;
+    }
+    .aj-status-event {
+        border-left: 3px solid #cbd5e1;
+        padding-left: .65rem;
+        color: #475569;
+        font-size: .8rem;
+    }
+    .aj-link-list {
+        margin-top: .8rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .55rem;
+    }
+    .aj-hidden-template { display: none !important; }
 
     .aj-link-box {
         margin-top: .9rem;
@@ -1071,7 +1339,7 @@ ob_start();
                 </div>
             </div>
 
-            <?php if (!empty($pastasFilhas)): ?>
+            <?php if ($currentPastaId > 0 && !empty($pastasFilhas)): ?>
                 <div class="aj-section">
                     <div class="aj-folder-grid">
                         <?php foreach ($pastasFilhas as $pasta): ?>
@@ -1125,6 +1393,56 @@ ob_start();
                         </thead>
                         <tbody>
                             <?php foreach ($arquivosAtuais as $arquivo): ?>
+                                <?php
+                                $signatureStatus = (string)($arquivo['status_assinatura'] ?? 'nao_solicitada');
+                                $signatureActionLabel = aj_signature_action_label($signatureStatus);
+                                $signatureBadgeClass = aj_signature_badge_class($signatureStatus);
+                                $signatureSummary = $arquivo['_signature_summary'] ?? [];
+                                $signatureSigners = $arquivo['_signers'] ?? [];
+                                $signatureEvents = $arquivo['_events'] ?? [];
+                                $signatureDocumentLinks = $signatureSummary['document_links'] ?? [];
+                                $prefillSigners = [];
+                                if (!empty($signatureSigners)) {
+                                    foreach ($signatureSigners as $signerItem) {
+                                        $prefillSigners[] = [
+                                            'name' => (string)($signerItem['name'] ?? ''),
+                                            'email' => (string)($signerItem['email'] ?? ''),
+                                            'group' => (int)($signerItem['group'] ?? 1),
+                                        ];
+                                    }
+                                }
+                                if (empty($prefillSigners)) {
+                                    $prefillSigners[] = [
+                                        'name' => (string)($currentPasta['usuario_empresa_nome'] ?? ''),
+                                        'email' => (string)($currentPasta['usuario_empresa_email'] ?? ''),
+                                        'group' => 1,
+                                    ];
+                                }
+                                $signatureOpenPayload = [
+                                    'arquivo_id' => (int)$arquivo['id'],
+                                    'arquivo_titulo' => (string)($arquivo['titulo'] ?? 'Documento'),
+                                    'arquivo_nome' => (string)($arquivo['arquivo_nome'] ?? ''),
+                                    'envelope_name' => aj_signature_envelope_name(
+                                        (string)($arquivo['titulo'] ?? 'Documento'),
+                                        (string)($prefillSigners[0]['name'] ?? '')
+                                    ),
+                                    'deadline_at' => $defaultSignatureDeadlineLocal,
+                                    'signers' => $prefillSigners,
+                                ];
+                                $signatureStatusPayload = [
+                                    'arquivo_id' => (int)$arquivo['id'],
+                                    'titulo' => (string)($arquivo['titulo'] ?? 'Documento'),
+                                    'status_label' => aj_assinatura_label($signatureStatus),
+                                    'status_class' => $signatureBadgeClass,
+                                    'envelope_id' => (string)($arquivo['clicksign_envelope_id'] ?? ''),
+                                    'document_id' => (string)($arquivo['clicksign_document_id'] ?? ''),
+                                    'original_url' => (string)($signatureDocumentLinks['original'] ?? ''),
+                                    'signed_url' => (string)($signatureDocumentLinks['signed'] ?? ''),
+                                    'zip_url' => (string)($signatureDocumentLinks['ziped'] ?? ''),
+                                    'signers' => $signatureSigners,
+                                    'events' => $signatureEvents,
+                                ];
+                                ?>
                                 <tr>
                                     <td>
                                         <div class="aj-file-title"><?= htmlspecialchars((string)($arquivo['titulo'] ?? 'Documento')) ?></div>
@@ -1137,7 +1455,12 @@ ob_start();
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="aj-badge sign"><?= htmlspecialchars(aj_assinatura_label((string)($arquivo['status_assinatura'] ?? 'nao_solicitada'))) ?></span>
+                                        <span class="aj-badge sign <?= htmlspecialchars($signatureBadgeClass) ?>"><?= htmlspecialchars(aj_assinatura_label($signatureStatus)) ?></span>
+                                        <?php if (!empty($signatureSigners)): ?>
+                                            <div class="aj-file-subtitle" style="margin-top:.35rem;">
+                                                <?= count($signatureSigners) ?> signatário(s)
+                                            </div>
+                                        <?php endif; ?>
                                         <?php if (!empty($arquivo['clicksign_ultimo_erro'])): ?>
                                             <div class="aj-file-subtitle" style="margin-top:.35rem; color:#991b1b;"><?= htmlspecialchars((string)$arquivo['clicksign_ultimo_erro']) ?></div>
                                         <?php endif; ?>
@@ -1150,29 +1473,27 @@ ob_start();
                                     </td>
                                     <td>
                                         <div class="aj-file-actions">
-                                            <a href="<?= htmlspecialchars('juridico_download.php?id=' . (int)$arquivo['id']) ?>" class="aj-btn-outline" target="_blank">Visualizar</a>
-                                            <button type="button" class="aj-btn-outline" onclick='openMoveFileModal(<?= (int)$arquivo["id"] ?>, <?= json_encode((string)($arquivo["titulo"] ?? "Arquivo"), JSON_UNESCAPED_UNICODE) ?>, <?= (int)$currentPastaId ?>, <?= json_encode((string)($currentPasta["nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>)'>Mover</button>
+                                            <a href="<?= htmlspecialchars('juridico_download.php?id=' . (int)$arquivo['id']) ?>" class="aj-action-btn neutral" target="_blank">Visualizar</a>
+                                            <button type="button" class="aj-action-btn primary" onclick='openMoveFileModal(<?= (int)$arquivo["id"] ?>, <?= json_encode((string)($arquivo["titulo"] ?? "Arquivo"), JSON_UNESCAPED_UNICODE) ?>, <?= (int)$currentPastaId ?>, <?= json_encode((string)($currentPasta["nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>)'>Mover</button>
                                             <form method="POST" onsubmit="return confirm('Deseja excluir este arquivo?');">
                                                 <input type="hidden" name="acao" value="excluir_arquivo">
                                                 <input type="hidden" name="arquivo_id" value="<?= (int)$arquivo['id'] ?>">
-                                                <button type="submit" class="aj-btn-outline">Excluir</button>
+                                                <button type="submit" class="aj-action-btn danger">Excluir</button>
                                             </form>
-                                            <button
-                                                type="button"
-                                                class="aj-btn secondary"
-                                                onclick='openSignatureModal(
-                                                    <?= (int)$arquivo["id"] ?>,
-                                                    <?= json_encode((string)($arquivo["titulo"] ?? "Documento"), JSON_UNESCAPED_UNICODE) ?>,
-                                                    <?= json_encode((string)($arquivo["arquivo_nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
-                                                    <?= json_encode((string)($currentPasta["usuario_empresa_nome"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
-                                                    <?= json_encode((string)($currentPasta["usuario_empresa_email"] ?? ""), JSON_UNESCAPED_UNICODE) ?>,
-                                                    <?= json_encode(aj_signature_envelope_name((string)($arquivo["titulo"] ?? "Documento"), (string)($currentPasta["usuario_empresa_nome"] ?? "")), JSON_UNESCAPED_UNICODE) ?>,
-                                                    <?= json_encode($defaultSignatureDeadlineLocal, JSON_UNESCAPED_UNICODE) ?>
-                                                )'>
-                                                Solicitar assinatura
-                                            </button>
-                                            <?php if (!empty($arquivo['clicksign_sign_url'])): ?>
-                                                <a href="<?= htmlspecialchars((string)$arquivo['clicksign_sign_url']) ?>" class="aj-btn-outline" target="_blank">Link assinatura</a>
+                                            <?php if ($signatureActionLabel === 'Solicitar assinatura'): ?>
+                                                <button type="button" class="aj-action-btn success" onclick='openSignatureModal(<?= json_encode($signatureOpenPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>)'>
+                                                    Solicitar assinatura
+                                                </button>
+                                            <?php else: ?>
+                                                <button type="button" class="aj-action-btn warn" onclick='openSignatureStatusModal(<?= json_encode($signatureStatusPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>)'>
+                                                    Acompanhar assinatura
+                                                </button>
+                                            <?php endif; ?>
+                                            <?php if (!empty($signatureDocumentLinks['signed'])): ?>
+                                                <a href="<?= htmlspecialchars((string)$signatureDocumentLinks['signed']) ?>" class="aj-action-btn success" target="_blank">Ver assinado</a>
+                                            <?php endif; ?>
+                                            <?php if (!empty($arquivo['clicksign_sign_url']) && $signatureActionLabel !== 'Solicitar assinatura'): ?>
+                                                <a href="<?= htmlspecialchars((string)$arquivo['clicksign_sign_url']) ?>" class="aj-action-btn primary" target="_blank">Abrir assinatura</a>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -1206,18 +1527,15 @@ ob_start();
                         <label>Nome do envelope *</label>
                         <input type="text" name="envelope_name" id="signatureEnvelopeName" maxlength="255" required>
                     </div>
-                    <div class="aj-field">
-                        <label>Nome do signatário *</label>
-                        <input type="text" name="signer_name" id="signatureSignerName" maxlength="255" required>
-                        <div class="aj-help">A Clicksign exige nome completo, com pelo menos nome e sobrenome.</div>
-                    </div>
-                    <div class="aj-field">
-                        <label>E-mail do signatário *</label>
-                        <input type="email" name="signer_email" id="signatureSignerEmail" maxlength="180" required>
-                    </div>
                     <div class="aj-field" style="grid-column: 1 / -1;">
                         <label>Prazo para assinatura *</label>
                         <input type="datetime-local" name="deadline_at" id="signatureDeadlineAt" required>
+                    </div>
+                    <div class="aj-field" style="grid-column: 1 / -1;">
+                        <label>Signatários *</label>
+                        <div class="aj-help" style="margin-bottom:.6rem;">Você pode adicionar mais pessoas. A ordem define a sequência da assinatura.</div>
+                        <div class="aj-signers-stack" id="signatureSignersStack"></div>
+                        <button type="button" class="aj-action-btn primary" style="margin-top:.75rem;" onclick="addSignatureSignerRow()">+ Adicionar pessoa</button>
                     </div>
                 </div>
 
@@ -1226,6 +1544,72 @@ ob_start();
                     <button type="submit" class="aj-btn secondary">Gerar assinatura</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<template id="signatureSignerRowTemplate">
+    <div class="aj-signer-row">
+        <div class="aj-signer-row-head">
+            <div class="aj-signer-row-title">Signatário <span class="signature-signer-index">1</span></div>
+            <button type="button" class="aj-signer-row-remove" onclick="removeSignatureSignerRow(this)">Remover</button>
+        </div>
+        <div class="aj-grid">
+            <div class="aj-field">
+                <label>Nome completo *</label>
+                <input type="text" name="signer_name[]" maxlength="255" required>
+            </div>
+            <div class="aj-field">
+                <label>E-mail *</label>
+                <input type="email" name="signer_email[]" maxlength="180" required>
+            </div>
+            <div class="aj-field" style="grid-column: 1 / -1;">
+                <label>Ordem de assinatura *</label>
+                <input type="number" name="signer_group[]" min="1" step="1" value="1" required>
+                <div class="aj-help">Use o mesmo número para assinarem em paralelo. Números diferentes criam ordem sequencial.</div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<div class="aj-modal" id="modalSignatureStatus" aria-hidden="true">
+    <div class="aj-modal-dialog">
+        <div class="aj-modal-header" style="background:#334155;">
+            <h3>Acompanhamento da assinatura</h3>
+            <button type="button" class="aj-modal-close" onclick="closeAjModal('modalSignatureStatus')">×</button>
+        </div>
+        <div class="aj-modal-body">
+            <div class="aj-status-board">
+                <div class="aj-status-card">
+                    <div class="aj-status-head">
+                        <div>
+                            <div class="aj-status-title" id="signatureStatusTitle">Documento</div>
+                            <div class="aj-status-meta" id="signatureStatusMeta">Envelope</div>
+                        </div>
+                        <span class="aj-badge sign" id="signatureStatusBadge">Sem assinatura</span>
+                    </div>
+                    <div class="aj-status-list" id="signatureStatusSigners"></div>
+                    <div class="aj-link-list" id="signatureStatusLinks"></div>
+                </div>
+                <div class="aj-status-card">
+                    <div class="aj-status-title">Linha do tempo</div>
+                    <div class="aj-status-timeline" id="signatureStatusTimeline"></div>
+                </div>
+            </div>
+
+            <div class="aj-modal-actions">
+                <form method="POST">
+                    <input type="hidden" name="acao" value="reenviar_assinatura">
+                    <input type="hidden" name="arquivo_id" id="signatureStatusResendId" value="">
+                    <button type="submit" class="aj-action-btn primary">Reenviar lembrete</button>
+                </form>
+                <form method="POST">
+                    <input type="hidden" name="acao" value="atualizar_assinatura">
+                    <input type="hidden" name="arquivo_id" id="signatureStatusRefreshId" value="">
+                    <button type="submit" class="aj-action-btn warn">Atualizar andamento</button>
+                </form>
+                <button type="button" class="aj-btn-outline" onclick="closeAjModal('modalSignatureStatus')">Fechar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1487,28 +1871,149 @@ function openEditUserModal(id, nome, email) {
     openAjModal('modalEditarUsuario');
 }
 
+function getSignatureSignersStack() {
+    return document.getElementById('signatureSignersStack');
+}
+
+function refreshSignatureSignerIndexes() {
+    var stack = getSignatureSignersStack();
+    if (!stack) return;
+    Array.prototype.forEach.call(stack.querySelectorAll('.aj-signer-row'), function (row, index) {
+        var indexLabel = row.querySelector('.signature-signer-index');
+        var removeButton = row.querySelector('.aj-signer-row-remove');
+        if (indexLabel) {
+            indexLabel.textContent = String(index + 1);
+        }
+        if (removeButton) {
+            removeButton.style.display = index === 0 && stack.children.length <= 1 ? 'none' : 'inline-flex';
+        }
+    });
+}
+
+function addSignatureSignerRow(data) {
+    var template = document.getElementById('signatureSignerRowTemplate');
+    var stack = getSignatureSignersStack();
+    if (!template || !stack) return;
+
+    var fragment = template.content.cloneNode(true);
+    var row = fragment.querySelector('.aj-signer-row');
+    if (!row) return;
+
+    var nameInput = row.querySelector('input[name="signer_name[]"]');
+    var emailInput = row.querySelector('input[name="signer_email[]"]');
+    var groupInput = row.querySelector('input[name="signer_group[]"]');
+
+    if (nameInput) nameInput.value = data && data.name ? data.name : '';
+    if (emailInput) emailInput.value = data && data.email ? data.email : '';
+    if (groupInput) groupInput.value = data && data.group ? data.group : String(stack.children.length + 1);
+
+    stack.appendChild(fragment);
+    refreshSignatureSignerIndexes();
+}
+
+function removeSignatureSignerRow(button) {
+    var stack = getSignatureSignersStack();
+    if (!stack) return;
+    var row = button && button.closest ? button.closest('.aj-signer-row') : null;
+    if (!row) return;
+    if (stack.children.length <= 1) {
+        row.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+        refreshSignatureSignerIndexes();
+        return;
+    }
+    row.remove();
+    refreshSignatureSignerIndexes();
+}
+
+function resetSignatureSignerRows(signers) {
+    var stack = getSignatureSignersStack();
+    if (!stack) return;
+    stack.innerHTML = '';
+    if (Array.isArray(signers) && signers.length) {
+        signers.forEach(function (signer) {
+            addSignatureSignerRow(signer || {});
+        });
+    } else {
+        addSignatureSignerRow({});
+    }
+}
+
 function applySignatureModalState(state) {
     if (!state) return;
     document.getElementById('signatureArquivoId').value = state.arquivo_id || '';
     document.getElementById('signatureArquivoTitulo').value = state.arquivo_titulo || '';
     document.getElementById('signatureArquivoNome').textContent = state.arquivo_nome || '';
     document.getElementById('signatureEnvelopeName').value = state.envelope_name || '';
-    document.getElementById('signatureSignerName').value = state.signer_name || '';
-    document.getElementById('signatureSignerEmail').value = state.signer_email || '';
     document.getElementById('signatureDeadlineAt').value = state.deadline_at || '';
+    resetSignatureSignerRows(state.signers || []);
 }
 
-function openSignatureModal(id, titulo, arquivoNome, signerName, signerEmail, envelopeName, deadlineAt) {
-    applySignatureModalState({
-        arquivo_id: id || '',
-        arquivo_titulo: titulo || '',
-        arquivo_nome: arquivoNome || '',
-        signer_name: signerName || '',
-        signer_email: signerEmail || '',
-        envelope_name: envelopeName || '',
-        deadline_at: deadlineAt || ''
-    });
+function openSignatureModal(data) {
+    applySignatureModalState(data || {});
     openAjModal('modalAssinatura');
+}
+
+function openSignatureStatusModal(data) {
+    data = data || {};
+
+    var badge = document.getElementById('signatureStatusBadge');
+    var signersList = document.getElementById('signatureStatusSigners');
+    var timeline = document.getElementById('signatureStatusTimeline');
+    var links = document.getElementById('signatureStatusLinks');
+
+    document.getElementById('signatureStatusTitle').textContent = data.titulo || 'Documento';
+    document.getElementById('signatureStatusMeta').textContent = data.envelope_id ? ('Envelope ' + data.envelope_id) : 'Envelope ainda não gerado';
+    document.getElementById('signatureStatusRefreshId').value = data.arquivo_id || '';
+    document.getElementById('signatureStatusResendId').value = data.arquivo_id || '';
+
+    if (badge) {
+        badge.className = 'aj-badge sign ' + (data.status_class || '');
+        badge.textContent = data.status_label || 'Sem assinatura';
+    }
+
+    if (signersList) {
+        signersList.innerHTML = '';
+        if (Array.isArray(data.signers) && data.signers.length) {
+            data.signers.forEach(function (signer) {
+                var item = document.createElement('div');
+                item.className = 'aj-status-item';
+                item.innerHTML =
+                    '<div><strong>' + escapeHtml(signer.name || 'Signatário') + '</strong><div class="aj-status-meta">' + escapeHtml(signer.email || '') + '</div></div>' +
+                    '<div style="text-align:right;"><span class="aj-badge sign ' + statusBadgeClassForSigner(signer.status || '') + '">' + escapeHtml(signer.status_label || 'Aguardando') + '</span>' +
+                    ((signer.signature_url || '') ? '<div style="margin-top:.4rem;"><a class="aj-action-btn primary" href="' + escapeAttribute(signer.signature_url) + '" target="_blank">Abrir assinatura</a></div>' : '') +
+                    '</div>';
+                signersList.appendChild(item);
+            });
+        } else {
+            signersList.innerHTML = '<div class="aj-status-meta">Ainda não há signatários sincronizados para este documento.</div>';
+        }
+    }
+
+    if (timeline) {
+        timeline.innerHTML = '';
+        if (Array.isArray(data.events) && data.events.length) {
+            data.events.forEach(function (eventItem) {
+                var item = document.createElement('div');
+                item.className = 'aj-status-event';
+                item.innerHTML =
+                    '<strong>' + escapeHtml(eventLabel(eventItem.name || '')) + '</strong>' +
+                    (eventItem.signer_name ? '<div>' + escapeHtml(eventItem.signer_name) + '</div>' : '') +
+                    (eventItem.created ? '<div class="aj-status-meta">' + escapeHtml(formatDateTime(eventItem.created)) + '</div>' : '');
+                timeline.appendChild(item);
+            });
+        } else {
+            timeline.innerHTML = '<div class="aj-status-meta">Nenhum evento retornado ainda pela Clicksign.</div>';
+        }
+    }
+
+    if (links) {
+        links.innerHTML = '';
+        appendStatusLink(links, data.original_url, 'Ver original', 'neutral');
+        appendStatusLink(links, data.signed_url, 'Ver assinado', 'success');
+        appendStatusLink(links, data.zip_url, 'Baixar pacote', 'primary');
+    }
+
+    openAjModal('modalSignatureStatus');
 }
 
 function openMoveFileModal(id, titulo, pastaIdAtual, pastaNomeAtual) {
@@ -1525,6 +2030,56 @@ function openMoveFileModal(id, titulo, pastaIdAtual, pastaNomeAtual) {
     }
 
     openAjModal('modalMoverArquivo');
+}
+
+function appendStatusLink(container, url, label, tone) {
+    if (!container || !url) return;
+    var link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.className = 'aj-action-btn ' + (tone || 'neutral');
+    link.textContent = label;
+    container.appendChild(link);
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value);
+}
+
+function formatDateTime(value) {
+    if (!value) return '';
+    var parsed = new Date(value);
+    if (isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString('pt-BR');
+}
+
+function eventLabel(name) {
+    var labels = {
+        upload: 'Documento enviado',
+        add_signer: 'Signatário adicionado',
+        signature_started: 'Assinatura iniciada',
+        sign: 'Documento assinado',
+        refuse: 'Assinatura recusada',
+        auto_close: 'Envelope encerrado',
+        document_closed: 'Documento finalizado'
+    };
+    return labels[name] || name || 'Evento';
+}
+
+function statusBadgeClassForSigner(status) {
+    if (status === 'assinado') return 'success';
+    if (status === 'recusado') return 'error';
+    if (status === 'em_andamento') return 'warn';
+    return '';
 }
 
 function copyJuridicoLink() {
@@ -1546,6 +2101,8 @@ function copyJuridicoLink() {
     input.select();
     document.execCommand('copy');
 }
+
+resetSignatureSignerRows([]);
 
 <?php if ($signatureModalState !== null && $erro !== '' && $lastPostAction === 'solicitar_assinatura'): ?>
 applySignatureModalState(<?= json_encode($signatureModalState, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>);

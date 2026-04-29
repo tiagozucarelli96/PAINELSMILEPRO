@@ -58,25 +58,16 @@ if (!class_exists('ClicksignHelper')) {
             $filename = trim((string)($input['filename'] ?? 'documento.pdf'));
             $contentBase64 = trim((string)($input['content_base64'] ?? ''));
             $contentType = trim((string)($input['content_type'] ?? 'application/octet-stream'));
-            $signerName = self::normalizeSignerName((string)($input['signer_name'] ?? ''));
-            $signerEmail = trim((string)($input['signer_email'] ?? ''));
             $deadlineAt = trim((string)($input['deadline_at'] ?? ''));
             if ($contentBase64 !== '' && stripos($contentBase64, 'data:') !== 0) {
                 $contentBase64 = 'data:' . $contentType . ';base64,' . $contentBase64;
             }
 
-            if ($contentBase64 === '' || $signerName === '' || $signerEmail === '') {
+            $signers = $this->normalizeSignersInput($input);
+            if ($contentBase64 === '' || empty($signers)) {
                 return [
                     'success' => false,
                     'error' => 'Dados obrigatórios para assinatura não informados (arquivo/signatário).',
-                ];
-            }
-
-            $signerNameError = self::getSignerNameValidationError($signerName);
-            if ($signerNameError !== null) {
-                return [
-                    'success' => false,
-                    'error' => $signerNameError,
                 ];
             }
 
@@ -131,80 +122,100 @@ if (!class_exists('ClicksignHelper')) {
                 ];
             }
 
-            $resSigner = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/signers', [
-                'data' => [
-                    'type' => 'signers',
-                    'attributes' => [
-                        'name' => $signerName,
-                        'email' => $signerEmail,
+            $createdSigners = [];
+            $createdRequirements = [];
+            foreach ($signers as $signer) {
+                $resSigner = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/signers', [
+                    'data' => [
+                        'type' => 'signers',
+                        'attributes' => [
+                            'name' => $signer['name'],
+                            'email' => $signer['email'],
+                            'group' => $signer['group'],
+                        ],
                     ],
-                ],
-            ]);
-            if (!$resSigner['success']) {
-                return $resSigner;
-            }
+                ]);
+                if (!$resSigner['success']) {
+                    return $resSigner;
+                }
 
-            $signerId = $this->extractResourceId($resSigner['data']);
-            if ($signerId === '') {
-                return [
-                    'success' => false,
-                    'error' => 'Clicksign não retornou o ID do signatário.',
-                    'response' => $resSigner['data'] ?? null,
+                $signerId = $this->extractResourceId($resSigner['data']);
+                if ($signerId === '') {
+                    return [
+                        'success' => false,
+                        'error' => 'Clicksign não retornou o ID do signatário.',
+                        'response' => $resSigner['data'] ?? null,
+                    ];
+                }
+
+                $resRequirement = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/requirements', [
+                    'data' => [
+                        'type' => 'requirements',
+                        'attributes' => [
+                            'action' => 'agree',
+                            'role' => $signer['role'],
+                        ],
+                        'relationships' => [
+                            'document' => [
+                                'data' => [
+                                    'type' => 'documents',
+                                    'id' => $documentId,
+                                ],
+                            ],
+                            'signer' => [
+                                'data' => [
+                                    'type' => 'signers',
+                                    'id' => $signerId,
+                                ],
+                            ],
+                        ],
+                    ],
+                ]);
+                if (!$resRequirement['success']) {
+                    return $resRequirement;
+                }
+
+                $resAuthRequirement = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/requirements', [
+                    'data' => [
+                        'type' => 'requirements',
+                        'attributes' => [
+                            'action' => 'provide_evidence',
+                            'auth' => $signer['auth'],
+                        ],
+                        'relationships' => [
+                            'document' => [
+                                'data' => [
+                                    'type' => 'documents',
+                                    'id' => $documentId,
+                                ],
+                            ],
+                            'signer' => [
+                                'data' => [
+                                    'type' => 'signers',
+                                    'id' => $signerId,
+                                ],
+                            ],
+                        ],
+                    ],
+                ]);
+                if (!$resAuthRequirement['success']) {
+                    return $resAuthRequirement;
+                }
+
+                $createdSigners[] = [
+                    'id' => $signerId,
+                    'name' => $signer['name'],
+                    'email' => $signer['email'],
+                    'group' => $signer['group'],
+                    'role' => $signer['role'],
+                    'auth' => $signer['auth'],
+                    'signer' => $resSigner['data'] ?? null,
                 ];
-            }
-
-            $resRequirement = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/requirements', [
-                'data' => [
-                    'type' => 'requirements',
-                    'attributes' => [
-                        'action' => 'agree',
-                        'role' => 'sign',
-                    ],
-                    'relationships' => [
-                        'document' => [
-                            'data' => [
-                                'type' => 'documents',
-                                'id' => $documentId,
-                            ],
-                        ],
-                        'signer' => [
-                            'data' => [
-                                'type' => 'signers',
-                                'id' => $signerId,
-                            ],
-                        ],
-                    ],
-                ],
-            ]);
-            if (!$resRequirement['success']) {
-                return $resRequirement;
-            }
-
-            $resAuthRequirement = $this->request('POST', '/envelopes/' . rawurlencode($envelopeId) . '/requirements', [
-                'data' => [
-                    'type' => 'requirements',
-                    'attributes' => [
-                        'action' => 'provide_evidence',
-                        'auth' => 'email',
-                    ],
-                    'relationships' => [
-                        'document' => [
-                            'data' => [
-                                'type' => 'documents',
-                                'id' => $documentId,
-                            ],
-                        ],
-                        'signer' => [
-                            'data' => [
-                                'type' => 'signers',
-                                'id' => $signerId,
-                            ],
-                        ],
-                    ],
-                ],
-            ]);
-            if (!$resAuthRequirement['success']) {
-                return $resAuthRequirement;
+                $createdRequirements[] = [
+                    'signer_id' => $signerId,
+                    'agree' => $resRequirement['data'] ?? null,
+                    'auth' => $resAuthRequirement['data'] ?? null,
+                ];
             }
 
             $resActivate = $this->request('PATCH', '/envelopes/' . rawurlencode($envelopeId), [
@@ -238,21 +249,31 @@ if (!class_exists('ClicksignHelper')) {
                 $notifyError = null;
             }
 
+            $resSummary = $this->consultarFluxoAssinatura($envelopeId, $documentId);
+            $summary = $resSummary['success'] ?? false ? $resSummary : null;
+            $primarySigner = $createdSigners[0] ?? null;
+
             return [
                 'success' => true,
                 'envelope_id' => $envelopeId,
                 'document_id' => $documentId,
-                'signer_id' => $signerId,
+                'signer_id' => $primarySigner['id'] ?? null,
+                'signers' => $createdSigners,
+                'document_links' => $summary['document_links'] ?? [],
+                'signed_file_url' => $summary['document_links']['signed'] ?? null,
+                'original_file_url' => $summary['document_links']['original'] ?? null,
+                'zip_file_url' => $summary['document_links']['ziped'] ?? null,
+                'sign_url' => $summary['signers'][0]['signature_url'] ?? null,
                 'status' => 'running',
                 'notify_error' => $notifyError,
                 'raw' => [
                     'envelope' => $resEnvelope['data'] ?? null,
                     'document' => $resDocument['data'] ?? null,
-                    'signer' => $resSigner['data'] ?? null,
-                    'requirement' => $resRequirement['data'] ?? null,
-                    'auth_requirement' => $resAuthRequirement['data'] ?? null,
+                    'signers' => $createdSigners,
+                    'requirements' => $createdRequirements,
                     'activate' => $resActivate['data'] ?? null,
                     'notify' => $resNotify['data'] ?? null,
+                    'summary' => $summary,
                 ],
             ];
         }
@@ -302,6 +323,68 @@ if (!class_exists('ClicksignHelper')) {
             );
         }
 
+        public function consultarFluxoAssinatura(string $envelopeId, ?string $documentId = null): array
+        {
+            $envelopeId = trim($envelopeId);
+            $documentId = trim((string)$documentId);
+            if ($envelopeId === '') {
+                return [
+                    'success' => false,
+                    'error' => 'Envelope inválido para consulta.',
+                ];
+            }
+
+            $resEnvelope = $this->request('GET', '/envelopes/' . rawurlencode($envelopeId));
+            if (!$resEnvelope['success']) {
+                return $resEnvelope;
+            }
+
+            $resDocuments = $this->request('GET', '/envelopes/' . rawurlencode($envelopeId) . '/documents');
+            if (!$resDocuments['success']) {
+                return $resDocuments;
+            }
+
+            $resSigners = $this->request('GET', '/envelopes/' . rawurlencode($envelopeId) . '/signers');
+            if (!$resSigners['success']) {
+                return $resSigners;
+            }
+
+            $documents = $resDocuments['data']['data'] ?? [];
+            $primaryDocument = $this->pickPrimaryDocument($documents, $documentId);
+            $documentLinks = $primaryDocument['links']['files'] ?? [];
+            $documentIdResolved = (string)($primaryDocument['id'] ?? $documentId);
+
+            $resEvents = ['success' => true, 'data' => ['data' => []]];
+            if ($documentIdResolved !== '') {
+                $resEvents = $this->request('GET', '/envelopes/' . rawurlencode($envelopeId) . '/documents/' . rawurlencode($documentIdResolved) . '/events');
+                if (!$resEvents['success']) {
+                    return $resEvents;
+                }
+            }
+
+            $signers = $this->summarizeSigners(
+                $resSigners['data']['data'] ?? [],
+                $resEvents['data']['data'] ?? []
+            );
+
+            $envelopeStatus = (string)($resEnvelope['data']['data']['attributes']['status'] ?? '');
+            return [
+                'success' => true,
+                'status_clicksign' => $envelopeStatus,
+                'status_local' => self::mapStatusClicksignParaLocal($envelopeStatus),
+                'document_links' => $documentLinks,
+                'documents' => $documents,
+                'signers' => $signers,
+                'events' => $this->normalizeEvents($resEvents['data']['data'] ?? []),
+                'data' => [
+                    'envelope' => $resEnvelope['data'] ?? null,
+                    'documents' => $resDocuments['data'] ?? null,
+                    'signers' => $resSigners['data'] ?? null,
+                    'events' => $resEvents['data'] ?? null,
+                ],
+            ];
+        }
+
         public static function mapStatusClicksignParaLocal(string $status): string
         {
             $status = strtolower(trim($status));
@@ -344,6 +427,161 @@ if (!class_exists('ClicksignHelper')) {
             }
 
             return null;
+        }
+
+        private function normalizeSignersInput(array $input): array
+        {
+            $signers = [];
+            if (!empty($input['signers']) && is_array($input['signers'])) {
+                $candidates = $input['signers'];
+            } else {
+                $candidates = [[
+                    'name' => $input['signer_name'] ?? '',
+                    'email' => $input['signer_email'] ?? '',
+                    'group' => $input['signer_group'] ?? 1,
+                    'role' => $input['signer_role'] ?? 'sign',
+                    'auth' => $input['signer_auth'] ?? 'email',
+                ]];
+            }
+
+            foreach ($candidates as $candidate) {
+                if (!is_array($candidate)) {
+                    continue;
+                }
+
+                $name = self::normalizeSignerName((string)($candidate['name'] ?? ''));
+                $email = trim((string)($candidate['email'] ?? ''));
+                if ($name === '' && $email === '') {
+                    continue;
+                }
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    throw new InvalidArgumentException('Informe um e-mail válido para todos os signatários.');
+                }
+
+                $nameError = self::getSignerNameValidationError($name);
+                if ($nameError !== null) {
+                    throw new InvalidArgumentException($nameError);
+                }
+
+                $group = max(1, (int)($candidate['group'] ?? 1));
+                $role = trim((string)($candidate['role'] ?? 'sign'));
+                if (!in_array($role, ['sign', 'agree', 'intervene', 'approve', 'receipt', 'witness', 'party'], true)) {
+                    $role = 'sign';
+                }
+
+                $auth = trim((string)($candidate['auth'] ?? 'email'));
+                if (!in_array($auth, ['email', 'sms', 'whatsapp', 'handwritten', 'selfie', 'official_document', 'liveness', 'facial_biometrics', 'icp_brasil', 'pix'], true)) {
+                    $auth = 'email';
+                }
+
+                $signers[] = [
+                    'name' => $name,
+                    'email' => $email,
+                    'group' => $group,
+                    'role' => $role,
+                    'auth' => $auth,
+                ];
+            }
+
+            return $signers;
+        }
+
+        private function pickPrimaryDocument(array $documents, string $documentId): array
+        {
+            foreach ($documents as $document) {
+                if ((string)($document['id'] ?? '') === $documentId && $documentId !== '') {
+                    return $document;
+                }
+            }
+
+            return $documents[0] ?? [];
+        }
+
+        private function summarizeSigners(array $signers, array $events): array
+        {
+            $result = [];
+            foreach ($signers as $signer) {
+                $signerId = (string)($signer['id'] ?? '');
+                if ($signerId === '') {
+                    continue;
+                }
+
+                $result[$signerId] = [
+                    'id' => $signerId,
+                    'name' => (string)($signer['attributes']['name'] ?? ''),
+                    'email' => (string)($signer['attributes']['email'] ?? ''),
+                    'group' => (int)($signer['attributes']['group'] ?? 1),
+                    'status' => 'aguardando',
+                    'status_label' => 'Aguardando assinatura',
+                    'signature_url' => null,
+                    'last_event_at' => null,
+                ];
+            }
+
+            foreach ($events as $event) {
+                $eventName = (string)($event['attributes']['name'] ?? '');
+                $eventCreated = (string)($event['attributes']['created'] ?? '');
+                $eventSigner = $event['attributes']['data']['signer'] ?? null;
+                $eventSignerId = (string)($eventSigner['key'] ?? '');
+                if ($eventSignerId === '' || !isset($result[$eventSignerId])) {
+                    if ($eventName === 'add_signer' && !empty($event['attributes']['data']['signers'])) {
+                        foreach ((array)$event['attributes']['data']['signers'] as $addedSigner) {
+                            $addedSignerId = (string)($addedSigner['key'] ?? '');
+                            if ($addedSignerId !== '' && isset($result[$addedSignerId])) {
+                                $result[$addedSignerId]['signature_url'] = $addedSigner['url'] ?? $result[$addedSignerId]['signature_url'];
+                                $result[$addedSignerId]['last_event_at'] = $eventCreated;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                $result[$eventSignerId]['last_event_at'] = $eventCreated;
+                if (!empty($eventSigner['url'])) {
+                    $result[$eventSignerId]['signature_url'] = (string)$eventSigner['url'];
+                }
+
+                if ($eventName === 'signature_started') {
+                    $result[$eventSignerId]['status'] = 'em_andamento';
+                    $result[$eventSignerId]['status_label'] = 'Assinatura iniciada';
+                } elseif ($eventName === 'sign') {
+                    $result[$eventSignerId]['status'] = 'assinado';
+                    $result[$eventSignerId]['status_label'] = 'Assinado';
+                } elseif ($eventName === 'refuse') {
+                    $result[$eventSignerId]['status'] = 'recusado';
+                    $result[$eventSignerId]['status_label'] = 'Recusado';
+                } elseif ($eventName === 'add_signer') {
+                    $result[$eventSignerId]['status'] = 'aguardando';
+                    $result[$eventSignerId]['status_label'] = 'Aguardando assinatura';
+                }
+            }
+
+            $items = array_values($result);
+            usort($items, static function (array $a, array $b): int {
+                $groupCompare = ((int)($a['group'] ?? 1)) <=> ((int)($b['group'] ?? 1));
+                if ($groupCompare !== 0) {
+                    return $groupCompare;
+                }
+
+                return strcasecmp((string)($a['name'] ?? ''), (string)($b['name'] ?? ''));
+            });
+
+            return $items;
+        }
+
+        private function normalizeEvents(array $events): array
+        {
+            $timeline = [];
+            foreach ($events as $event) {
+                $timeline[] = [
+                    'id' => (string)($event['id'] ?? ''),
+                    'name' => (string)($event['attributes']['name'] ?? ''),
+                    'created' => (string)($event['attributes']['created'] ?? ''),
+                    'signer_name' => (string)($event['attributes']['data']['signer']['name'] ?? ''),
+                ];
+            }
+
+            return $timeline;
         }
 
         private function request(string $method, string $path, ?array $payload = null): array

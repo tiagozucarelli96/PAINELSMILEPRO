@@ -16,6 +16,14 @@ if (strpos($request_uri, 'asaas_webhook.php') !== false ||
     exit;
 }
 
+// Webhook Clicksign: servir diretamente sem sessão
+if (strpos($request_uri, 'clicksign_webhook.php') !== false ||
+    strpos($script_name, 'clicksign_webhook.php') !== false ||
+    (isset($_SERVER['PHP_SELF']) && strpos($_SERVER['PHP_SELF'], 'clicksign_webhook.php') !== false)) {
+    require_once __DIR__ . '/clicksign_webhook.php';
+    exit;
+}
+
 // Galeria pública: responder sem sessão para permitir cache HTTP do HTML.
 $earlyPage = $_GET['page'] ?? '';
 if ($earlyPage === 'eventos_galeria_public') {

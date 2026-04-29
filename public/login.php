@@ -139,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                     if (!$is_ativo) {
                         $erro = 'Usuário desativado.';
                     } else {
+                        session_regenerate_id(true);
                         $_SESSION['logado'] = 1;
                         $_SESSION['id']     = (int)($u['id'] ?? 0);
                         $_SESSION['nome']   = $u['nome'] ?? ($u['nome_completo'] ?? ($u['name'] ?? 'Usuário'));

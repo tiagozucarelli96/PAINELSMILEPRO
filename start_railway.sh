@@ -24,6 +24,7 @@ fi
 
 # Iniciar servidor PHP embutido
 php \
+  -d auto_prepend_file="$APP_ROOT/public/session_bootstrap.php" \
   -d upload_max_filesize=100M \
   -d post_max_size=110M \
   -d memory_limit=256M \
