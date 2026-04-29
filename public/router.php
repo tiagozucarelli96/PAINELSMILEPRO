@@ -8,6 +8,7 @@
 // ============================================
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($request_uri, PHP_URL_PATH) ?: '/';
+$sessionBootstrap = __DIR__ . '/session_bootstrap.php';
 
 // Se for callback OAuth do Google, servir DIRETAMENTE sem passar por nada
 if ($path === '/google/callback' || strpos($path, '/google/callback') !== false) {
@@ -87,6 +88,7 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
     }
     
     // Injeção de conexão (idempotente)
+    if (is_file($sessionBootstrap)) { require_once $sessionBootstrap; }
     $conn = __DIR__ . '/conexao.php';
     if (is_file($conn)) { require_once $conn; }
     require $file;
@@ -94,4 +96,5 @@ if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
 }
 
 // Caso contrário, cai no index.php (front controller)
+if (is_file($sessionBootstrap)) { require_once $sessionBootstrap; }
 require __DIR__ . '/index.php';

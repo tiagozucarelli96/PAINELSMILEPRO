@@ -4,6 +4,8 @@
 // se vier incluído por engano após alguma saída, limpa buffers
 while (ob_get_level()) { ob_end_clean(); }
 
+require_once __DIR__ . '/session_bootstrap.php';
+
 if (session_status() !== PHP_SESSION_ACTIVE) { session_start(); }
 $_SESSION = [];
 

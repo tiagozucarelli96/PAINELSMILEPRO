@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/session_bootstrap.php';
+
 // ============================================
 // CRÍTICO: Verificar webhooks ANTES de iniciar sessão
 // ============================================
@@ -441,11 +443,7 @@ if (empty($_SESSION['logado']) && !$is_public_page) {
     require __DIR__ . '/login.php';
     exit;
   }
-  $redirect_after_login = $_GET;
-  $redirect_after_login['page'] = $page;
-  $post_login_redirect = 'index.php?' . http_build_query($redirect_after_login, '', '&', PHP_QUERY_RFC3986);
-  $_SESSION['post_login_redirect'] = $post_login_redirect;
-  header('Location: index.php?page=login&next=' . urlencode($post_login_redirect));
+  header('Location: index.php?page=login');
   exit;
 }
 

@@ -2,6 +2,8 @@
 // public/login.php — layout original + lógica compatível (sem mexer no fluxo)
 declare(strict_types=1);
 
+require_once __DIR__ . '/session_bootstrap.php';
+
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 $debug = getenv('APP_DEBUG') === '1';
@@ -12,46 +14,12 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php'; // define $pdo / $db_error
-function is_local_redirect(string $candidate): bool
-{
-    if ($candidate === '') {
-        return false;
-    }
-    if (str_starts_with($candidate, 'http://') || str_starts_with($candidate, 'https://')) {
-        return false;
-    }
-    return str_starts_with($candidate, 'index.php') || str_starts_with($candidate, '/');
-}
-
-function resolve_post_login_redirect(): string
-{
-    $redirect = 'index.php?page=dashboard';
-
-    $candidate = $_POST['next'] ?? '';
-    if (empty($candidate)) {
-        $candidate = $_GET['next'] ?? '';
-    }
-    if (empty($candidate) && !empty($_SESSION['post_login_redirect'])) {
-        $candidate = (string)$_SESSION['post_login_redirect'];
-    }
-    if (is_local_redirect($candidate)) {
-        $redirect = $candidate;
-    } elseif (!empty($_SESSION['post_login_redirect'])) {
-        $candidate = (string)$_SESSION['post_login_redirect'];
-        if (is_local_redirect($candidate)) {
-            $redirect = $candidate;
-        }
-    }
-
-    unset($_SESSION['post_login_redirect']);
-    return $redirect;
-}
 
 $erro = '';
 
-// Se já logado, leva para destino pendente ou dashboard
+// Se já logado, vai para o painel
 if (!empty($_SESSION['logado']) && $_SESSION['logado'] == 1) {
-    header('Location: ' . resolve_post_login_redirect());
+    header('Location: index.php?page=dashboard');
     exit;
 }
 
@@ -179,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($erro)) {
                         // Permissões continuam sendo tratadas pelo permissoes_boot.php no index.php.
                         // Push é inicializado de forma não-bloqueante após o login.
                         
-                        header('Location: ' . resolve_post_login_redirect());
+                        header('Location: index.php?page=dashboard');
                         exit;
                     }
                 }
@@ -311,9 +279,6 @@ select.login-field{
       <?php endif; ?>
 
       <form method="post" autocomplete="off">
-        <?php if (!empty($_GET['next'])): ?>
-        <input type="hidden" name="next" value="<?php echo h((string)$_GET['next']); ?>">
-        <?php endif; ?>
         <?php if (!empty($usuarios_login)): ?>
         <select class="login-field" name="login" required>
           <option value="">Selecione o usuário</option>
