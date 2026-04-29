@@ -2,7 +2,7 @@
 // comercial_clientes.php — Funil de conversão: quem foi × quem fechou
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/conexao.php';
-require_once __DIR__ . '/sidebar_unified.php';
+require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
 
@@ -134,10 +134,6 @@ if ($action === 'marcar_fechou_contrato' && $inscricao_id > 0) {
         // Recarregar página para atualizar dados
         header("Location: " . $_SERVER['REQUEST_URI']);
         exit;
-
-// Iniciar sidebar
-includeSidebar();
-setPageTitle('Comercial clientes');
         
     } catch (Exception $e) {
         $error_message = "Erro ao atualizar contrato: " . $e->getMessage();
@@ -147,20 +143,443 @@ setPageTitle('Comercial clientes');
 
 ?>
 
-<div class="page-container">
-    
-    
-    <div class="main-content">
-        <div class="conversao-container">
+<?php includeSidebar('Comercial clientes'); ?>
+
+<style>
+    .conversao-page {
+        padding: 32px 24px 40px;
+    }
+
+    .conversao-container {
+        max-width: 1320px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 28px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    }
+
+    .page-header-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .back-link {
+        color: #2563eb;
+        text-decoration: none;
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .page-title {
+        margin: 0;
+        font-size: clamp(2rem, 3vw, 2.6rem);
+        line-height: 1.05;
+        color: #1e293b;
+    }
+
+    .page-subtitle {
+        margin-top: 0.5rem;
+        color: #64748b;
+        font-size: 0.98rem;
+    }
+
+    .alert {
+        padding: 16px 18px;
+        border-radius: 16px;
+        font-weight: 600;
+        border: 1px solid transparent;
+    }
+
+    .alert-success {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+    }
+
+    .alert-error {
+        background: #fef2f2;
+        color: #b91c1c;
+        border-color: #fecaca;
+    }
+
+    .conversion-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .stat-card {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid #dbeafe;
+        border-radius: 22px;
+        padding: 22px;
+        box-shadow: 0 16px 32px rgba(37, 99, 235, 0.08);
+    }
+
+    .stat-value {
+        font-size: clamp(2rem, 3vw, 2.8rem);
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1;
+    }
+
+    .stat-label {
+        margin-top: 10px;
+        color: #475569;
+        font-weight: 600;
+    }
+
+    .stat-percentage {
+        margin-top: 12px;
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 0.9rem;
+        font-weight: 700;
+    }
+
+    .degustacoes-stats,
+    .filters,
+    .inscricoes-table {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+    }
+
+    .degustacoes-title {
+        margin: 0 0 18px;
+        font-size: 1.5rem;
+        color: #1e293b;
+    }
+
+    .degustacoes-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+    }
+
+    .degustacao-stat {
+        padding: 18px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .degustacao-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .degustacao-details {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        color: #475569;
+        font-size: 0.92rem;
+    }
+
+    .degustacao-conversion {
+        color: #2563eb;
+        font-weight: 700;
+    }
+
+    .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 16px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .form-label {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .form-input,
+    .form-select {
+        width: 100%;
+        min-height: 46px;
+        padding: 0 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        background: #fff;
+        color: #0f172a;
+        font: inherit;
+    }
+
+    .form-input:focus,
+    .form-select:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+    }
+
+    .filters-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+
+    .btn-primary,
+    .btn-secondary,
+    .btn-cancel,
+    .btn-save,
+    .btn-sm {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 0 16px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        text-decoration: none;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+
+    .btn-primary,
+    .btn-save {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: #fff;
+        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
+    }
+
+    .btn-secondary,
+    .btn-cancel {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+
+    .btn-sm {
+        min-height: 38px;
+        padding: 0 12px;
+        font-size: 0.9rem;
+    }
+
+    .btn-success {
+        background: #dcfce7;
+        color: #166534;
+        border-color: #bbf7d0;
+    }
+
+    .btn-primary:hover,
+    .btn-secondary:hover,
+    .btn-cancel:hover,
+    .btn-save:hover,
+    .btn-sm:hover {
+        transform: translateY(-1px);
+    }
+
+    .inscricoes-table {
+        overflow: hidden;
+        padding: 0;
+    }
+
+    .table-header,
+    .table-row {
+        display: grid;
+        grid-template-columns: minmax(220px, 2fr) minmax(180px, 1.45fr) 140px 150px 120px 150px 150px;
+        gap: 16px;
+        align-items: center;
+        padding: 18px 24px;
+    }
+
+    .table-header {
+        background: #eff6ff;
+        color: #1e3a8a;
+        font-size: 0.84rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .table-row {
+        border-top: 1px solid #e2e8f0;
+        background: #ffffff;
+    }
+
+    .table-row:nth-child(even) {
+        background: #f8fafc;
+    }
+
+    .participant-name,
+    .degustacao-name {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .participant-email,
+    .degustacao-date {
+        margin-top: 4px;
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        padding: 24px;
+        z-index: 1300;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal.active {
+        display: flex;
+    }
+
+    .modal-content {
+        width: min(100%, 560px);
+        background: #ffffff;
+        border-radius: 24px;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.3);
+        padding: 24px;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .modal-title {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #0f172a;
+    }
+
+    .close-btn {
+        border: 0;
+        background: transparent;
+        font-size: 1.8rem;
+        line-height: 1;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .form-radio-group {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+    }
+
+    .form-radio {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #334155;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+    }
+
+    @media (max-width: 1200px) {
+        .filters-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .conversion-stats {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .inscricoes-table {
+            overflow-x: auto;
+        }
+
+        .table-header,
+        .table-row {
+            min-width: 1120px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .conversao-page {
+            padding: 20px 14px 28px;
+        }
+
+        .page-header {
+            padding: 20px;
+        }
+
+        .page-header-actions,
+        .filters-actions,
+        .form-actions {
+            width: 100%;
+        }
+
+        .page-header-actions > *,
+        .filters-actions > *,
+        .form-actions > * {
+            flex: 1 1 100%;
+        }
+
+        .conversion-stats,
+        .filters-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="conversao-page">
+    <div class="conversao-container">
             <!-- Header -->
-            <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div class="page-header">
                 <div>
-                    <a href="index.php?page=comercial" style="color: #3b82f6; text-decoration: none; font-size: 0.875rem; margin-bottom: 0.5rem; display: inline-block;">← Voltar para Comercial</a>
-                    <h1 class="page-title" style="margin: 0;">📊 Funil de Conversão</h1>
+                    <a href="index.php?page=comercial" class="back-link">← Voltar para Comercial</a>
+                    <h1 class="page-title">📊 Funil de Conversão</h1>
+                    <p class="page-subtitle">Acompanhe inscrições, contratos fechados e desempenho por degustação.</p>
                 </div>
-                <div style="display: flex; gap: 0.75rem;">
-                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #374151; border-radius: 8px; text-decoration: none; font-weight: 500;">🍽️ Degustações</a>
-                    <button class="btn-primary" onclick="exportCSV()" style="padding: 0.75rem 1.5rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500;">📊 Exportar CSV</button>
+                <div class="page-header-actions">
+                    <a href="index.php?page=comercial_degustacoes" class="btn-secondary">🍽️ Degustações</a>
+                    <button class="btn-primary" onclick="exportCSV()">📊 Exportar CSV</button>
                 </div>
             </div>
             
@@ -193,13 +612,13 @@ setPageTitle('Comercial clientes');
                 <div class="stat-card">
                     <div class="stat-value"><?= $nao_fechou_contrato ?></div>
                     <div class="stat-label">Não Fecharam</div>
-                    <div class="stat-percentage"><?= number_format(($nao_fechou_contrato / $total_inscricoes) * 100, 1) ?>%</div>
+                    <div class="stat-percentage"><?= number_format($total_inscricoes > 0 ? ($nao_fechou_contrato / $total_inscricoes) * 100 : 0, 1) ?>%</div>
                 </div>
                 
                 <div class="stat-card">
                     <div class="stat-value"><?= $indefinido ?></div>
                     <div class="stat-label">Indefinido</div>
-                    <div class="stat-percentage"><?= number_format(($indefinido / $total_inscricoes) * 100, 1) ?>%</div>
+                    <div class="stat-percentage"><?= number_format($total_inscricoes > 0 ? ($indefinido / $total_inscricoes) * 100 : 0, 1) ?>%</div>
                 </div>
             </div>
             
@@ -275,7 +694,7 @@ setPageTitle('Comercial clientes');
                     
                     <div class="filters-actions">
                         <button type="submit" class="btn-primary">🔍 Filtrar</button>
-                        <a href="comercial_clientes.php" class="btn-secondary">Limpar</a>
+                        <a href="index.php?page=comercial_clientes" class="btn-secondary">Limpar</a>
                     </div>
                 </form>
             </div>
@@ -327,7 +746,6 @@ setPageTitle('Comercial clientes');
                     <p>Experimente ajustar os filtros de pesquisa</p>
                 </div>
             <?php endif; ?>
-        </div>
     </div>
     
     <!-- Modal de Contrato -->
@@ -433,11 +851,6 @@ setPageTitle('Comercial clientes');
         });
     </script>
 </div>
-
-<!-- Custom Modals CSS -->
-<link rel="stylesheet" href="assets/css/custom_modals.css">
-<!-- Custom Modals JS -->
-<script src="assets/js/custom_modals.js"></script>
 
 <?php
 // Finalizar sidebar

@@ -51,12 +51,12 @@ if (empty($erro) && isset($pdo) && $pdo) {
         }
         if ($loginCol) {
             // Sem filtro ativo: listar todos; login ainda bloqueia inativos
-            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios ORDER BY nome";
+            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios ORDER BY " . $loginCol;
             $stmt = $pdo->query($sql);
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $usuarios_login[] = [
                     'valor' => (string)$row['login_val'],
-                    'nome'  => $row['nome'] ?? $row['login_val'],
+                    'nome'  => (string)$row['login_val'],
                 ];
             }
         }

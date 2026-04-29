@@ -628,17 +628,7 @@ includeSidebar('Comercial');
             <div class="funcionalidade-card-content">
                 <div class="funcionalidade-card-item">
                     <span class="funcionalidade-item-icon">📈</span>
-                    <span class="funcionalidade-item-text">Taxa de Conversão</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">✅</span>
-                    <span class="funcionalidade-item-text">Contratos Fechados</span>
-                    <span class="funcionalidade-item-arrow">→</span>
-                </div>
-                <div class="funcionalidade-card-item">
-                    <span class="funcionalidade-item-icon">📋</span>
-                    <span class="funcionalidade-item-text">Relatórios Detalhados</span>
+                    <span class="funcionalidade-item-text">Abrir funil de conversão</span>
                     <span class="funcionalidade-item-arrow">→</span>
                 </div>
             </div>
