@@ -11,6 +11,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/vendas_me_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
+require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
@@ -176,6 +177,9 @@ function vendas_collect_comercial_payload_from_post(): array {
     $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
     $itens_adicionais = trim((string)($_POST['itens_adicionais'] ?? ''));
     $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
+    $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($_POST['tipo_evento_real'] ?? ''), $GLOBALS['pdo'] ?? null);
+    $pacote_evento_raw = trim((string)($_POST['pacote_evento_id'] ?? ''));
+    $pacote_evento_id = ctype_digit($pacote_evento_raw) && (int)$pacote_evento_raw > 0 ? (int)$pacote_evento_raw : 0;
     $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
     $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
 
@@ -198,6 +202,8 @@ function vendas_collect_comercial_payload_from_post(): array {
         'forma_pagamento' => $forma_pagamento_detalhada,
         'itens_adicionais' => $itens_adicionais,
         'observacoes_internas' => $observacoes_internas,
+        'tipo_evento_real' => $tipo_evento_real,
+        'pacote_evento_id' => $pacote_evento_id,
         'valor_negociado' => $valor_negociado,
         'desconto' => $desconto,
         'valor_total' => $valor_negociado + array_sum(array_column($adicionais, 'valor')) - $desconto,
@@ -227,6 +233,7 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
     $stmt = $pdo->prepare("
         UPDATE vendas_pre_contratos
         SET pacote_contratado = ?, forma_pagamento = ?, itens_adicionais = ?, observacoes_internas = ?,
+            tipo_evento_real = ?, pacote_evento_id = ?,
             valor_negociado = ?, desconto = ?, valor_total = ?,
             atualizado_em = NOW(), atualizado_por = ?, status = ?,
             responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
@@ -237,6 +244,8 @@ function vendas_salvar_dados_comerciais(PDO $pdo, int $pre_contrato_id, array $p
         $payload['forma_pagamento'] !== '' ? $payload['forma_pagamento'] : null,
         $payload['itens_adicionais'] !== '' ? $payload['itens_adicionais'] : null,
         $payload['observacoes_internas'] !== '' ? $payload['observacoes_internas'] : null,
+        $payload['tipo_evento_real'] !== '' ? $payload['tipo_evento_real'] : null,
+        $payload['pacote_evento_id'] > 0 ? $payload['pacote_evento_id'] : null,
         $payload['valor_negociado'],
         $payload['desconto'],
         $payload['valor_total'],
@@ -297,6 +306,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $payload = vendas_collect_comercial_payload_from_post();
         
         try {
+            if ($admin_context) {
+                if ($payload['tipo_evento_real'] === '') {
+                    throw new Exception('Selecione o tipo de evento para a organização.');
+                }
+                if ($payload['pacote_evento_id'] <= 0) {
+                    throw new Exception('Selecione o pacote do evento para a organização.');
+                }
+            }
             $pdo->beginTransaction();
             $save_result = vendas_salvar_dados_comerciais($pdo, $pre_contrato_id, $payload, $usuario_id, true);
             
@@ -393,6 +410,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             if ($idvendedor <= 0) {
                 throw new Exception('Selecione o vendedor (ME) para criar o evento.');
+            }
+            if ($payload_comercial['tipo_evento_real'] === '') {
+                throw new Exception('Selecione o tipo de evento para a organização.');
+            }
+            if ($payload_comercial['pacote_evento_id'] <= 0) {
+                throw new Exception('Selecione o pacote do evento para a organização.');
             }
 
             $pdo->beginTransaction();
@@ -834,6 +857,7 @@ $stmt->execute($params);
 $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $locais_curto_map = vendas_locais_curto_map($pdo);
 $pacotes_evento = pacotes_evento_listar($pdo, false);
+$tipos_evento_real_options = eventos_reuniao_tipos_evento_real_options($pdo, false);
 
 // Base de URL para manter o contexto correto (listagem vs administração)
 $page_param = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
@@ -1571,6 +1595,8 @@ ob_start();
             $itens_adicionais_valor = trim((string)($pre_contrato_editar['itens_adicionais'] ?? ''));
             $itens_adicionais_label = 'Itens adicionais';
             $pacote_atual_edicao = trim((string)($pre_contrato_editar['pacote_contratado'] ?? ''));
+            $tipo_evento_real_edicao = eventos_reuniao_normalizar_tipo_evento_real((string)($pre_contrato_editar['tipo_evento_real'] ?? ''), $pdo);
+            $pacote_evento_id_edicao = (int)($pre_contrato_editar['pacote_evento_id'] ?? 0);
             $pacote_atual_existe = false;
             foreach ($pacotes_evento as $pacote_evento_item) {
                 if (trim((string)($pacote_evento_item['nome'] ?? '')) === $pacote_atual_edicao) {
@@ -1618,6 +1644,31 @@ ob_start();
                     <div class="modal-secao">
                         <h3>Dados comerciais</h3>
                         <div class="modal-form-grid single-column">
+                            <div class="form-group">
+                                <label for="tipo_evento_real">Tipo de evento da organização <?php echo $admin_context ? '<span class="required">*</span>' : ''; ?></label>
+                                <select id="tipo_evento_real" name="tipo_evento_real" <?php echo $admin_context ? 'required' : ''; ?>>
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($tipos_evento_real_options as $tipo_key => $tipo_label): ?>
+                                        <option value="<?php echo htmlspecialchars((string)$tipo_key); ?>" <?php echo $tipo_evento_real_edicao === (string)$tipo_key ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars((string)$tipo_label); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="pacote_evento_id">Pacote da organização <?php echo $admin_context ? '<span class="required">*</span>' : ''; ?></label>
+                                <select id="pacote_evento_id" name="pacote_evento_id" <?php echo $admin_context ? 'required' : ''; ?>>
+                                    <option value="">Selecione...</option>
+                                    <?php foreach ($pacotes_evento as $pacote_evento): ?>
+                                        <?php $pacote_item_id = (int)($pacote_evento['id'] ?? 0); ?>
+                                        <option value="<?php echo $pacote_item_id; ?>" <?php echo $pacote_evento_id_edicao === $pacote_item_id ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars((string)($pacote_evento['nome'] ?? '')); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
                             <div class="form-group">
                                 <label for="pacote_contratado">Pacote contratado</label>
                                 <input

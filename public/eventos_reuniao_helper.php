@@ -7,6 +7,46 @@
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_me_helper.php';
 
+function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id): array
+{
+    if ($me_event_id <= 0 || !eventos_reuniao_has_table($pdo, 'vendas_pre_contratos')) {
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+    }
+
+    $has_tipo = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'tipo_evento_real');
+    $has_pacote = eventos_reuniao_has_column($pdo, 'vendas_pre_contratos', 'pacote_evento_id');
+    if (!$has_tipo && !$has_pacote) {
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+    }
+
+    $cols = ['id'];
+    if ($has_tipo) {
+        $cols[] = 'tipo_evento_real';
+    }
+    if ($has_pacote) {
+        $cols[] = 'pacote_evento_id';
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT " . implode(', ', $cols) . "
+            FROM vendas_pre_contratos
+            WHERE me_event_id = :me_event_id
+            ORDER BY aprovado_em DESC NULLS LAST, atualizado_em DESC NULLS LAST, id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([':me_event_id' => $me_event_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        return ['tipo_evento_real' => '', 'pacote_evento_id' => 0];
+    }
+
+    return [
+        'tipo_evento_real' => $has_tipo ? eventos_reuniao_normalizar_tipo_evento_real((string)($row['tipo_evento_real'] ?? ''), $pdo) : '',
+        'pacote_evento_id' => $has_pacote ? (int)($row['pacote_evento_id'] ?? 0) : 0,
+    ];
+}
+
 // Carregar notificações (se existir)
 if (file_exists(__DIR__ . '/eventos_notificacoes.php')) {
     require_once __DIR__ . '/eventos_notificacoes.php';
@@ -1576,8 +1616,13 @@ eventos_reuniao_ensure_schema($pdo);
  * Buscar ou criar reunião para um evento ME
  */
 function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id, ?string $tipo_evento_real = null): array {
-    $tipo_evento_real_norm = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real);
+    $defaults_pre_contrato = eventos_reuniao_buscar_defaults_pre_contrato($pdo, $me_event_id);
+    $tipo_evento_real_norm = eventos_reuniao_normalizar_tipo_evento_real($tipo_evento_real, $pdo);
+    if ($tipo_evento_real_norm === '') {
+        $tipo_evento_real_norm = (string)($defaults_pre_contrato['tipo_evento_real'] ?? '');
+    }
     $has_tipo_evento_real_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes', 'tipo_evento_real');
+    $has_pacote_evento_col = eventos_reuniao_has_column($pdo, 'eventos_reunioes', 'pacote_evento_id');
 
     // Verificar se já existe
     $stmt = $pdo->prepare("
@@ -1699,6 +1744,23 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
             );
         }
 
+        $pacote_default = (int)($defaults_pre_contrato['pacote_evento_id'] ?? 0);
+        $pacote_atual = (int)($reuniao['pacote_evento_id'] ?? 0);
+        if ($has_pacote_evento_col && $pacote_default > 0 && $pacote_atual <= 0) {
+            $stmt_pacote = $pdo->prepare("
+                UPDATE eventos_reunioes
+                SET pacote_evento_id = :pacote_evento_id,
+                    updated_at = NOW()
+                WHERE id = :id
+                RETURNING *
+            ");
+            $stmt_pacote->execute([
+                ':pacote_evento_id' => $pacote_default,
+                ':id' => (int)$reuniao['id'],
+            ]);
+            $reuniao = $stmt_pacote->fetch(PDO::FETCH_ASSOC) ?: $reuniao;
+        }
+
         return ['ok' => true, 'reuniao' => $reuniao, 'created' => false];
     }
     
@@ -1725,6 +1787,11 @@ function eventos_reuniao_get_or_create(PDO $pdo, int $me_event_id, int $user_id,
         $insert_cols[] = 'tipo_evento_real';
         $insert_vals[] = ':tipo_evento_real';
         $insert_params[':tipo_evento_real'] = $tipo_evento_real_norm !== '' ? $tipo_evento_real_norm : null;
+    }
+    if ($has_pacote_evento_col && (int)($defaults_pre_contrato['pacote_evento_id'] ?? 0) > 0) {
+        $insert_cols[] = 'pacote_evento_id';
+        $insert_vals[] = ':pacote_evento_id';
+        $insert_params[':pacote_evento_id'] = (int)$defaults_pre_contrato['pacote_evento_id'];
     }
 
     $stmt = $pdo->prepare("
