@@ -120,6 +120,7 @@ return [
     // 'config_itens' => 'perm_configuracoes',
     // 'config_itens_fixos' => 'perm_configuracoes',
     'config_sistema' => 'perm_configuracoes',
+    'config_eventos_tipos' => 'perm_configuracoes',
     'formularios_eventos' => 'perm_configuracoes',
     'checklists_operacionais' => 'perm_configuracoes',
     

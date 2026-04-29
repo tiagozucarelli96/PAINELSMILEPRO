@@ -402,12 +402,11 @@ if (!empty($cardapio_summary['has_pacote'])) {
     }
 }
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
-$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
-$tipos_evento_real_options = [
-    'casamento' => 'Casamento',
-    '15anos' => '15 anos',
-    'infantil' => 'Infantil',
-];
+$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real, $pdo);
+$tipos_evento_real_options = eventos_reuniao_tipos_evento_real_options($pdo, false);
+if ($tipo_evento_real !== '' && !isset($tipos_evento_real_options[$tipo_evento_real])) {
+    $tipos_evento_real_options[$tipo_evento_real] = $tipo_evento_real_label;
+}
 $pacote_evento_id = (int)($reuniao['pacote_evento_id'] ?? 0);
 $pacotes_evento_raw = pacotes_evento_listar($pdo, true);
 $pacotes_evento_options = [];

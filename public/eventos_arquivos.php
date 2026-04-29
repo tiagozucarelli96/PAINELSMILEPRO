@@ -91,7 +91,7 @@ $hora_evento = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente'));
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
-$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real);
+$tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real, $pdo);
 
 $seed_result = ['ok' => false, 'inserted' => 0];
 $seed_campos_sistema_result = ['ok' => false, 'inserted' => 0];

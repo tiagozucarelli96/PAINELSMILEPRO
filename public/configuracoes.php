@@ -167,6 +167,15 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <a href="index.php?page=config_eventos_tipos" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <span class="funcionalidade-card-icon">🏷️</span>
+                <div class="funcionalidade-card-title">Tipos de Evento</div>
+                <div class="funcionalidade-card-subtitle">Administra os tipos usados em Organização de Eventos</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <a href="index.php?page=checklists_operacionais" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
                 <span class="funcionalidade-card-icon">✅</span>
