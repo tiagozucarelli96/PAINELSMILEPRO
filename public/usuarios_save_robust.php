@@ -113,6 +113,7 @@ class UsuarioSaveManager {
             $nome = trim($data['nome'] ?? '');
             $email = trim($data['email'] ?? '');
             $senha = trim($data['senha'] ?? '');
+            $alterarSenha = isset($data['alterar_senha']) && (string)$data['alterar_senha'] === '1';
             
             // Login: usar email como fallback se coluna login não existir
             $hasLoginColumn = $this->columnExists('login');
@@ -363,7 +364,7 @@ class UsuarioSaveManager {
             }
             
             if ($userId > 0) {
-                return $this->update($userId, $nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
+                return $this->update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
             } else {
                 return $this->insert($nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns);
             }
@@ -377,7 +378,7 @@ class UsuarioSaveManager {
     /**
      * Atualizar usuário existente
      */
-    private function update($userId, $nome, $email, $senha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
+    private function update($userId, $nome, $email, $senha, $alterarSenha, $login, $optionalFields, $requiredFields, $permissions, $data, $columns) {
         $sql = "UPDATE usuarios SET nome = :nome";
         $params = [':nome' => $nome];
         
@@ -394,7 +395,7 @@ class UsuarioSaveManager {
         }
         
         // Adicionar senha se fornecida e coluna existir
-        if (!empty($senha) && $this->columnExists('senha')) {
+        if ($alterarSenha && !empty($senha) && $this->columnExists('senha')) {
             $sql .= ", senha = :senha";
             $params[':senha'] = password_hash($senha, PASSWORD_DEFAULT);
         }

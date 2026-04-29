@@ -1501,7 +1501,12 @@ ob_start();
                     
                     <div class="form-group">
                         <label class="form-label" id="senhaLabel">Senha *</label>
-                        <input type="password" name="senha" id="senhaInput" class="form-input" required>
+                        <input type="password" name="senha" id="senhaInput" class="form-input" required autocomplete="new-password">
+                        <input type="hidden" name="alterar_senha" id="alterarSenhaInput" value="0">
+                        <label id="alterarSenhaToggleWrap" style="display: none; margin-top: 0.6rem; color: #475569; font-size: 0.85rem;">
+                            <input type="checkbox" id="alterarSenhaToggle" value="1">
+                            Alterar senha deste usuário
+                        </label>
                         <small style="color: #64748b; font-size: 0.75rem; display: none;" id="senhaHint">(deixe em branco para não alterar)</small>
                     </div>
                     
@@ -2240,6 +2245,12 @@ function openModal(userId = 0) {
     const form = document.getElementById('userForm');
     const title = document.getElementById('modalTitle');
     const userIdInput = document.getElementById('userId');
+    const senhaLabel = document.getElementById('senhaLabel');
+    const senhaInput = document.getElementById('senhaInput');
+    const senhaHint = document.getElementById('senhaHint');
+    const alterarSenhaInput = document.getElementById('alterarSenhaInput');
+    const alterarSenhaToggle = document.getElementById('alterarSenhaToggle');
+    const alterarSenhaToggleWrap = document.getElementById('alterarSenhaToggleWrap');
     
     if (!modal || !form || !title || !userIdInput) {
         console.error('Elementos do modal não encontrados');
@@ -2250,15 +2261,20 @@ function openModal(userId = 0) {
     userId = parseInt(userId) || 0;
     
     if (userId > 0) {
+        form.reset();
         title.textContent = 'Editar Usuário';
         userIdInput.value = userId;
+        form.dataset.mode = 'edit';
         
-        // Ajustar label e required da senha
-        const senhaLabel = document.getElementById('senhaLabel');
-        const senhaInput = document.getElementById('senhaInput');
-        const senhaHint = document.getElementById('senhaHint');
-        if (senhaLabel) senhaLabel.textContent = 'Senha (deixe em branco para não alterar)';
-        if (senhaInput) senhaInput.removeAttribute('required');
+        if (alterarSenhaInput) alterarSenhaInput.value = '0';
+        if (alterarSenhaToggle) alterarSenhaToggle.checked = false;
+        if (alterarSenhaToggleWrap) alterarSenhaToggleWrap.style.display = 'inline-flex';
+        if (senhaLabel) senhaLabel.textContent = 'Nova senha';
+        if (senhaInput) {
+            senhaInput.value = '';
+            senhaInput.disabled = true;
+            senhaInput.removeAttribute('required');
+        }
         if (senhaHint) senhaHint.style.display = 'block';
         
         // Mostrar modal PRIMEIRO (antes de carregar dados)
@@ -2268,16 +2284,20 @@ function openModal(userId = 0) {
     } else {
         title.textContent = 'Novo Usuário';
         userIdInput.value = 0;
-        
-        // Ajustar label e required da senha
-        const senhaLabel = document.getElementById('senhaLabel');
-        const senhaInput = document.getElementById('senhaInput');
-        const senhaHint = document.getElementById('senhaHint');
-        if (senhaLabel) senhaLabel.textContent = 'Senha *';
-        if (senhaInput) senhaInput.setAttribute('required', 'required');
-        if (senhaHint) senhaHint.style.display = 'none';
-        
+        form.dataset.mode = 'create';
         form.reset();
+        
+        if (alterarSenhaInput) alterarSenhaInput.value = '1';
+        if (alterarSenhaToggle) alterarSenhaToggle.checked = false;
+        if (alterarSenhaToggleWrap) alterarSenhaToggleWrap.style.display = 'none';
+        if (senhaLabel) senhaLabel.textContent = 'Senha *';
+        if (senhaInput) {
+            senhaInput.disabled = false;
+            senhaInput.value = '';
+            senhaInput.setAttribute('required', 'required');
+        }
+        if (senhaHint) senhaHint.style.display = 'none';
+
         refreshCargoOptions('');
         renderUnidadesCheckboxes([]);
         // Limpar preview da foto e editor
@@ -2416,6 +2436,40 @@ function updateFotoPreview(fotoPath) {
         if (overlay) overlay.style.display = 'none';
     }
 }
+
+(() => {
+    const form = document.getElementById('userForm');
+    const senhaInput = document.getElementById('senhaInput');
+    const alterarSenhaInput = document.getElementById('alterarSenhaInput');
+    const alterarSenhaToggle = document.getElementById('alterarSenhaToggle');
+
+    if (!form || !senhaInput || !alterarSenhaInput || !alterarSenhaToggle) {
+        return;
+    }
+
+    alterarSenhaToggle.addEventListener('change', () => {
+        const enabled = alterarSenhaToggle.checked;
+        alterarSenhaInput.value = enabled ? '1' : '0';
+        senhaInput.value = '';
+
+        if (form.dataset.mode === 'edit') {
+            senhaInput.disabled = !enabled;
+            if (enabled) {
+                senhaInput.setAttribute('required', 'required');
+                senhaInput.focus();
+            } else {
+                senhaInput.removeAttribute('required');
+            }
+        }
+    });
+
+    form.addEventListener('submit', () => {
+        if (form.dataset.mode === 'edit' && alterarSenhaInput.value !== '1') {
+            senhaInput.value = '';
+            senhaInput.disabled = true;
+        }
+    });
+})();
 
 function closeModal() {
     document.getElementById('userModal').classList.remove('active');
