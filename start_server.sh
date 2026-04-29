@@ -22,12 +22,22 @@ echo "   Acesse: http://localhost:8000"
 echo "   Para parar: Ctrl+C"
 echo ""
 
+APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
+
+if [ ! -f "$APP_ROOT/.env" ]; then
+    echo "❌ Arquivo .env não encontrado em $APP_ROOT"
+    echo "   Crie a partir de .env.example e defina DATABASE_URL localmente."
+    exit 1
+fi
+
 # Iniciar servidor PHP
 php \
+  -d auto_prepend_file="$APP_ROOT/public/session_bootstrap.php" \
   -d upload_max_filesize=80M \
   -d post_max_size=90M \
   -d memory_limit=256M \
   -d max_execution_time=300 \
   -d max_input_time=300 \
   -d log_errors=1 \
-  -S localhost:8000 -t public
+  -d error_log=php://stderr \
+  -S localhost:8000 -t "$APP_ROOT/public" "$APP_ROOT/public/router.php"

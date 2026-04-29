@@ -13,7 +13,11 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
-if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
+$can_eventos = !empty($_SESSION['perm_eventos']);
+$can_realizar_evento = !empty($_SESSION['perm_eventos_realizar']);
+$is_superadmin = !empty($_SESSION['perm_superadmin']);
+
+if (!$can_eventos && !$can_realizar_evento && !$is_superadmin) {
     header('Location: index.php?page=dashboard');
     exit;
 }
@@ -21,6 +25,18 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 logistica_cardapio_ensure_schema($pdo);
 
 $meeting_id = (int)($_GET['id'] ?? 0);
+$origin = strtolower(trim((string)($_GET['origin'] ?? 'organizacao')));
+if ($origin !== 'realizar' && $origin !== 'organizacao') {
+    $origin = 'organizacao';
+}
+$somente_realizar = (!$is_superadmin && !$can_eventos && $can_realizar_evento);
+if ($somente_realizar) {
+    $origin = 'realizar';
+}
+$back_href = $origin === 'realizar'
+    ? 'index.php?page=eventos_realizar&id=' . $meeting_id
+    : 'index.php?page=eventos_organizacao&id=' . $meeting_id;
+$back_label = $origin === 'realizar' ? '← Voltar para Realizar Evento' : '← Voltar para Organização';
 $error = '';
 $reuniao = null;
 $portal = null;
@@ -323,7 +339,7 @@ includeSidebar('Cardápio do Evento');
             <p class="page-subtitle">Acompanhe o que o pacote libera para o cliente e o status da seleção no portal.</p>
         </div>
         <div class="actions">
-            <a href="index.php?page=eventos_organizacao&id=<?= $meeting_id ?>" class="btn-secondary">← Voltar para Organização</a>
+            <a href="<?= cardapio_evento_e($back_href) ?>" class="btn-secondary"><?= cardapio_evento_e($back_label) ?></a>
             <?php if ($portal_url !== ''): ?>
                 <a href="<?= cardapio_evento_e($portal_url) ?>" class="btn-primary" target="_blank" rel="noopener noreferrer">Abrir Portal do Cliente</a>
             <?php endif; ?>

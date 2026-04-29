@@ -166,6 +166,15 @@ ob_start();
             </div>
             <div class="funcionalidade-card-content"></div>
         </a>
+
+        <a href="index.php?page=checklists_operacionais" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+                <span class="funcionalidade-card-icon">✅</span>
+                <div class="funcionalidade-card-title">Checklists Operacionais</div>
+                <div class="funcionalidade-card-subtitle">Modelos internos por cargo, unidade, pacote e momento do evento</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
         
         <!-- Sistema -->
         <a href="index.php?page=configuracoes" class="funcionalidade-card">

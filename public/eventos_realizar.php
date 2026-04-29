@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $can_realizar_evento = !empty($_SESSION['perm_eventos_realizar']);
 $is_superadmin = !empty($_SESSION['perm_superadmin']);
@@ -332,6 +333,16 @@ $checklist_concluidos = (int)($checklist_resumo['concluidos'] ?? 0);
 $checklist_percentual = $checklist_total > 0 ? (int)round(($checklist_concluidos / $checklist_total) * 100) : 0;
 
 $convidados_resumo = $reuniao ? eventos_convidados_resumo($pdo, (int)$reuniao['id']) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
+$cardapio_contexto = $reuniao ? logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']) : ['ok' => false];
+$cardapio_summary = !empty($cardapio_contexto['ok']) && !empty($cardapio_contexto['summary']) && is_array($cardapio_contexto['summary'])
+    ? $cardapio_contexto['summary']
+    : [];
+$cardapio_has_pacote = !empty($cardapio_summary['has_pacote']);
+$cardapio_enviado = trim((string)($cardapio_summary['submitted_at'] ?? '')) !== '';
+$cardapio_secoes_total = (int)($cardapio_summary['secoes_total'] ?? 0);
+$cardapio_itens_total = (int)($cardapio_summary['itens_total'] ?? 0);
+$cardapio_selecionados_total = (int)($cardapio_summary['selecionados_total'] ?? 0);
+$cardapio_pacote_nome = trim((string)($cardapio_summary['pacote_nome'] ?? ''));
 $arquivos_resumo = $reuniao ? eventos_arquivos_resumo($pdo, (int)$reuniao['id']) : [
     'campos_total' => 0,
     'campos_obrigatorios' => 0,
@@ -756,7 +767,18 @@ includeSidebar('Realizar evento');
             <h3>🍽️ Cardápio</h3>
             <p>Consulta rápida do cardápio definido para a execução do evento.</p>
             <div class="card-actions">
-                <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1#cardapio" class="btn btn-primary">Abrir Cardápio</a>
+                <a href="index.php?page=eventos_cardapio&id=<?= (int)$meeting_id ?>&origin=realizar" class="btn btn-primary">Abrir Cardápio</a>
+            </div>
+            <div class="helper-note helper-note-stack">
+                <?php if (!$cardapio_has_pacote): ?>
+                <span>Nenhum pacote/cardápio vinculado ao evento.</span>
+                <?php elseif ($cardapio_enviado): ?>
+                <span><?= $cardapio_selecionados_total ?> item(ns) escolhido(s) pelo cliente.</span>
+                <span><?= $cardapio_pacote_nome !== '' ? htmlspecialchars($cardapio_pacote_nome) . ' • ' : '' ?>cardápio concluído.</span>
+                <?php else: ?>
+                <span><?= $cardapio_pacote_nome !== '' ? htmlspecialchars($cardapio_pacote_nome) . ' • ' : '' ?><?= $cardapio_secoes_total ?> seção(ões) e <?= $cardapio_itens_total ?> opção(ões).</span>
+                <span>Cliente ainda não concluiu a escolha.</span>
+                <?php endif; ?>
             </div>
         </article>
 

@@ -299,6 +299,7 @@ $routes = [
   // 'config_itens_fixos' => 'config_itens_fixos.php',
   'config_sistema' => 'configuracoes.php',
   'formularios_eventos' => 'formularios_eventos.php',
+  'checklists_operacionais' => 'checklists_operacionais.php',
   'cron_diagnostico' => 'cron_diagnostico.php',
 
   // Financeiro

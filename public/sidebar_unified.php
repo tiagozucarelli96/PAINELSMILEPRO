@@ -1,6 +1,7 @@
 <?php
 // sidebar_unified.php — Sistema unificado de sidebar para todas as páginas
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once __DIR__ . '/env_bootstrap.php';
 
 // Headers para evitar cache na dashboard (especialmente demandas do dia)
 if (isset($_GET['page']) && $_GET['page'] === 'dashboard') {
@@ -34,6 +35,7 @@ $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';
 $show_top_account_access = ($current_page === 'dashboard');
 $push_user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$local_production_banner_visible = painel_should_show_local_production_banner($GLOBALS['painel_database_config'] ?? null);
 
 // Buscar cargo do usuário logado do banco de dados
 $perfil = 'CONSULTA'; // Valor padrão
@@ -909,6 +911,24 @@ if ($current_page === 'dashboard') {
             content: none !important;
             display: none !important;
         }
+
+        .local-production-banner {
+            margin: 16px 24px 0;
+            padding: 12px 16px;
+            border-left: 4px solid #b45309;
+            border-radius: 12px;
+            background: #fff7ed;
+            color: #9a3412;
+            font-size: 0.95rem;
+            font-weight: 700;
+            box-shadow: 0 10px 24px rgba(180, 83, 9, 0.12);
+        }
+
+        .local-production-banner strong {
+            display: block;
+            margin-bottom: 2px;
+            color: #7c2d12;
+        }
         
         /* Toggle Button */
         .sidebar-toggle {
@@ -1669,6 +1689,12 @@ if ($current_page === 'dashboard') {
                     </span>
                     <span class="top-account-text">Minha Conta</span>
                 </a>
+            </div>
+            <?php endif; ?>
+            <?php if ($local_production_banner_visible): ?>
+            <div class="local-production-banner" role="alert">
+                <strong>Aviso de ambiente</strong>
+                Ambiente local conectado ao banco de produção
             </div>
             <?php endif; ?>
             <div id="pageContent">

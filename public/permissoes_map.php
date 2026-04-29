@@ -121,6 +121,7 @@ return [
     // 'config_itens_fixos' => 'perm_configuracoes',
     'config_sistema' => 'perm_configuracoes',
     'formularios_eventos' => 'perm_configuracoes',
+    'checklists_operacionais' => 'perm_configuracoes',
     
     // Cadastros (módulos removidos)
     

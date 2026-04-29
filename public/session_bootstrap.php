@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/env_bootstrap.php';
+
 if (defined('PAINEL_SESSION_BOOTSTRAPPED')) {
     return;
 }
@@ -154,44 +156,28 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
             return $this->pdo;
         }
 
-        $databaseUrl = getenv('DATABASE_URL') ?: '';
-
-        if ($databaseUrl !== '') {
-            $databaseUrl = preg_replace('#^postgresql://#', 'postgres://', $databaseUrl);
-            $parts = parse_url($databaseUrl);
-
-            if ($parts && !empty($parts['host']) && !empty($parts['path'])) {
-                $query = [];
-                if (!empty($parts['query'])) {
-                    parse_str($parts['query'], $query);
-                }
-
-                $sslmode = isset($query['sslmode']) ? strtolower((string)$query['sslmode']) : 'require';
-                $allowed = ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'];
-                if (!in_array($sslmode, $allowed, true)) {
-                    $sslmode = 'require';
-                }
-
-                $dsn = sprintf(
-                    "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='-c client_encoding=UTF8 -c search_path=smilee12_painel_smile,public'",
-                    $parts['host'],
-                    isset($parts['port']) ? (int)$parts['port'] : 5432,
-                    ltrim((string)$parts['path'], '/'),
-                    $sslmode
-                );
-
-                $pdo = new PDO($dsn, urldecode($parts['user'] ?? ''), urldecode($parts['pass'] ?? ''), [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                ]);
-                $pdo->exec('SET search_path TO smilee12_painel_smile, public');
-
-                return $pdo;
-            }
+        $databaseConfig = painel_database_config_from_url();
+        if ($databaseConfig !== null) {
+            $pdo = new PDO($databaseConfig['dsn'], $databaseConfig['user'], $databaseConfig['pass'], [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+            $pdo->exec($databaseConfig['search_path_sql']);
+            return $pdo;
         }
 
-        $dsn = 'pgsql:host=localhost;port=5432;dbname=painel_smile;sslmode=disable';
-        return new PDO($dsn, 'tiagozucarelli', '', [
+        if (painel_is_local_request()) {
+            throw new RuntimeException('DATABASE_URL não definido no ambiente local para inicialização de sessão.');
+        }
+
+        $dsn = sprintf(
+            'pgsql:host=%s;port=%s;dbname=%s;sslmode=disable',
+            painel_env('DB_HOST', 'localhost'),
+            painel_env('DB_PORT', '5432'),
+            painel_env('DB_NAME', 'painel_smile')
+        );
+
+        return new PDO($dsn, painel_env('DB_USER', 'tiagozucarelli'), painel_env('DB_PASS', ''), [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
@@ -205,7 +191,7 @@ if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
     $https = true;
 }
 
-$sessionLifetime = (int)(getenv('SESSION_LIFETIME_SECONDS') ?: 60 * 60 * 24 * 14);
+$sessionLifetime = (int)(painel_env('SESSION_LIFETIME_SECONDS', (string)(60 * 60 * 24 * 14)) ?? (string)(60 * 60 * 24 * 14));
 if ($sessionLifetime <= 0) {
     $sessionLifetime = 60 * 60 * 24 * 14;
 }
@@ -216,7 +202,7 @@ ini_set('session.gc_maxlifetime', (string)$sessionLifetime);
 ini_set('session.cookie_httponly', '1');
 ini_set('session.cookie_secure', $https ? '1' : '0');
 ini_set('session.cookie_samesite', 'Lax');
-session_name(getenv('SESSION_COOKIE_NAME') ?: 'PAINELSMILESESSID');
+session_name(painel_env('SESSION_COOKIE_NAME', 'PAINELSMILESESSID') ?? 'PAINELSMILESESSID');
 session_set_cookie_params([
     'lifetime' => $sessionLifetime,
     'path' => '/',
