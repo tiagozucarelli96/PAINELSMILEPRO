@@ -443,8 +443,9 @@ if (empty($_SESSION['logado']) && !$is_public_page) {
   }
   $redirect_after_login = $_GET;
   $redirect_after_login['page'] = $page;
-  $_SESSION['post_login_redirect'] = 'index.php?' . http_build_query($redirect_after_login, '', '&', PHP_QUERY_RFC3986);
-  header('Location: index.php?page=login');
+  $post_login_redirect = 'index.php?' . http_build_query($redirect_after_login, '', '&', PHP_QUERY_RFC3986);
+  $_SESSION['post_login_redirect'] = $post_login_redirect;
+  header('Location: index.php?page=login&next=' . urlencode($post_login_redirect));
   exit;
 }
 

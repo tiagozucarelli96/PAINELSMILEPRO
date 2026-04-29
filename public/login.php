@@ -12,17 +12,38 @@ error_reporting($debug ? E_ALL : (E_ALL & ~E_NOTICE));
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php'; // define $pdo / $db_error
+function is_local_redirect(string $candidate): bool
+{
+    if ($candidate === '') {
+        return false;
+    }
+    if (str_starts_with($candidate, 'http://') || str_starts_with($candidate, 'https://')) {
+        return false;
+    }
+    return str_starts_with($candidate, 'index.php') || str_starts_with($candidate, '/');
+}
+
 function resolve_post_login_redirect(): string
 {
     $redirect = 'index.php?page=dashboard';
-    if (!empty($_SESSION['post_login_redirect'])) {
+
+    $candidate = $_POST['next'] ?? '';
+    if (empty($candidate)) {
+        $candidate = $_GET['next'] ?? '';
+    }
+    if (empty($candidate) && !empty($_SESSION['post_login_redirect'])) {
         $candidate = (string)$_SESSION['post_login_redirect'];
-        $is_local = str_starts_with($candidate, 'index.php') || str_starts_with($candidate, '/');
-        if ($is_local && !str_contains($candidate, '://')) {
+    }
+    if (is_local_redirect($candidate)) {
+        $redirect = $candidate;
+    } elseif (!empty($_SESSION['post_login_redirect'])) {
+        $candidate = (string)$_SESSION['post_login_redirect'];
+        if (is_local_redirect($candidate)) {
             $redirect = $candidate;
         }
-        unset($_SESSION['post_login_redirect']);
     }
+
+    unset($_SESSION['post_login_redirect']);
     return $redirect;
 }
 
@@ -290,6 +311,9 @@ select.login-field{
       <?php endif; ?>
 
       <form method="post" autocomplete="off">
+        <?php if (!empty($_GET['next'])): ?>
+        <input type="hidden" name="next" value="<?php echo h((string)$_GET['next']); ?>">
+        <?php endif; ?>
         <?php if (!empty($usuarios_login)): ?>
         <select class="login-field" name="login" required>
           <option value="">Selecione o usuário</option>
