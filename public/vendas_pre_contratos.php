@@ -1084,6 +1084,8 @@ ob_start();
     border-radius: 6px;
     border: none;
     cursor: pointer;
+    font: inherit;
+    font-size: 0.95rem;
     font-weight: 500;
     text-decoration: none;
     display: inline-flex;
@@ -1091,6 +1093,12 @@ ob_start();
     justify-content: center;
     min-height: 42px;
     line-height: 1;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    transition: background-color .18s ease, transform .18s ease, box-shadow .18s ease;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .vendas-container .btn-primary,
@@ -1342,6 +1350,7 @@ ob_start();
     width: 100%;
     margin-top: 1rem;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
 .adicionais-toolbar {
@@ -1351,8 +1360,8 @@ ob_start();
 }
 
 .adicionais-toolbar .btn {
-    min-width: 0;
-    padding: 0.7rem 1rem;
+    min-width: 170px;
+    padding: 0.8rem 1.1rem;
     font-weight: 600;
 }
 
@@ -1373,8 +1382,45 @@ ob_start();
     color: #0f172a;
 }
 
+.adicionais-table th:nth-child(2),
+.adicionais-table td:nth-child(2) {
+    width: 220px;
+}
+
+.adicionais-table th:last-child,
+.adicionais-table td:last-child {
+    width: 140px;
+    text-align: right;
+}
+
+.adicionais-table .item-base-label {
+    font-weight: 600;
+}
+
+.adicionais-table .adicional-item-input,
+.adicionais-table .adicional-valor-input,
 .adicionais-table input[type="text"] {
-    min-height: 42px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    font: inherit;
+    color: #0f172a;
+    background: #fff;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.adicionais-table .adicional-item-input:focus,
+.adicionais-table .adicional-valor-input:focus,
+.adicionais-table input[type="text"]:focus,
+.vendas-modal-content .btn:focus,
+.btn-remove:focus {
+    outline: none;
+    border-color: #93c5fd;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 .vendas-empty-state {
@@ -1399,12 +1445,17 @@ ob_start();
     padding: 0.65rem 0.9rem;
     border-radius: 8px;
     cursor: pointer;
+    font: inherit;
     font-size: 0.9rem;
     font-weight: 600;
     min-height: 42px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .totais-grid {
@@ -1738,12 +1789,12 @@ ob_start();
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td>Pacote/Plano principal</td>
+                                    <td><span class="item-base-label">Pacote/Plano principal</span></td>
                                     <td>
                                         <input
                                             type="text"
                                             inputmode="numeric"
-                                            class="money-input"
+                                            class="money-input adicional-valor-input"
                                             id="valor_negociado"
                                             name="valor_negociado"
                                             value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['valor_negociado'] ?? 0)); ?>"
@@ -1754,13 +1805,13 @@ ob_start();
                                 </tr>
                                 <?php foreach ($adicionais_editar as $idx => $adicional): ?>
                                     <tr>
-                                        <td><input type="text" name="adicionais[<?php echo $idx; ?>][item]" 
+                                        <td><input type="text" class="adicional-item-input" name="adicionais[<?php echo $idx; ?>][item]" 
                                                    value="<?php echo htmlspecialchars($adicional['item']); ?>" required></td>
                                         <td>
                                             <input
                                                 type="text"
                                                 inputmode="numeric"
-                                                class="money-input"
+                                                class="money-input adicional-valor-input"
                                                 name="adicionais[<?php echo $idx; ?>][valor]"
                                                 value="<?php echo htmlspecialchars(vendas_format_money_brl($adicional['valor'])); ?>"
                                                 required
@@ -2062,8 +2113,8 @@ function adicionarItem() {
     const tbody = document.querySelector('#tabelaAdicionais tbody');
     const row = document.createElement('tr');
     row.innerHTML = `
-        <td><input type="text" name="adicionais[${itemIndex}][item]" required></td>
-        <td><input type="text" inputmode="numeric" class="money-input" name="adicionais[${itemIndex}][valor]" required></td>
+        <td><input type="text" class="adicional-item-input" name="adicionais[${itemIndex}][item]" required></td>
+        <td><input type="text" inputmode="numeric" class="money-input adicional-valor-input" name="adicionais[${itemIndex}][valor]" required></td>
         <td><button type="button" class="btn-remove" onclick="removerItem(this)">Remover</button></td>
     `;
     tbody.appendChild(row);
