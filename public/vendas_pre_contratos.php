@@ -11,6 +11,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/vendas_me_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
 if (empty($_SESSION['logado'])) {
@@ -134,6 +135,42 @@ function vendas_build_list_url(string $baseUrl, array $params = []): string {
     return $baseUrl . '&' . http_build_query($query);
 }
 
+function vendas_locais_curto_map(PDO $pdo): array {
+    try {
+        $stmt = $pdo->query("
+            SELECT me_local_nome, space_visivel
+            FROM logistica_me_locais
+            WHERE status_mapeamento = 'MAPEADO'
+        ");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Throwable $e) {
+        return [];
+    }
+
+    $map = [];
+    foreach ($rows as $row) {
+        $nome = trim((string)($row['me_local_nome'] ?? ''));
+        if ($nome === '') {
+            continue;
+        }
+        $curto = trim((string)($row['space_visivel'] ?? ''));
+        $key = function_exists('mb_strtolower') ? mb_strtolower($nome) : strtolower($nome);
+        $map[$key] = $curto !== '' ? $curto : $nome;
+    }
+
+    return $map;
+}
+
+function vendas_unidade_curta(array $map, ?string $unidade): string {
+    $nome = trim((string)$unidade);
+    if ($nome === '') {
+        return '';
+    }
+
+    $key = function_exists('mb_strtolower') ? mb_strtolower($nome) : strtolower($nome);
+    return $map[$key] ?? $nome;
+}
+
 // Processar ações
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -142,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pre_contrato_id = (int)($_POST['pre_contrato_id'] ?? 0);
         $pacote = trim($_POST['pacote_contratado'] ?? '');
         $forma_pagamento_detalhada = trim((string)($_POST['forma_pagamento_detalhada'] ?? ''));
+        $itens_adicionais = trim((string)($_POST['itens_adicionais'] ?? ''));
         $observacoes_internas = trim((string)($_POST['observacoes_internas'] ?? ''));
         $valor_negociado = vendas_parse_money($_POST['valor_negociado'] ?? 0);
         $desconto = vendas_parse_money($_POST['desconto'] ?? 0);
@@ -186,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Atualizar pré-contrato
             $stmt = $pdo->prepare("
                 UPDATE vendas_pre_contratos 
-                SET pacote_contratado = ?, forma_pagamento = ?, observacoes_internas = ?,
+                SET pacote_contratado = ?, forma_pagamento = ?, observacoes = ?, observacoes_internas = ?,
                     valor_negociado = ?, desconto = ?, valor_total = ?,
                     atualizado_em = NOW(), atualizado_por = ?, status = 'pronto_aprovacao',
                     responsavel_comercial_id = COALESCE(responsavel_comercial_id, ?)
@@ -195,6 +233,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 $pacote,
                 $forma_pagamento_detalhada !== '' ? $forma_pagamento_detalhada : null,
+                $itens_adicionais !== '' ? $itens_adicionais : null,
                 $observacoes_internas !== '' ? $observacoes_internas : null,
                 $valor_negociado,
                 $desconto,
@@ -768,6 +807,8 @@ $sql .= " ORDER BY v.criado_em DESC LIMIT 200";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $pre_contratos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$locais_curto_map = vendas_locais_curto_map($pdo);
+$pacotes_evento = pacotes_evento_listar($pdo, false);
 
 // Base de URL para manter o contexto correto (listagem vs administração)
 $page_param = $admin_context ? 'vendas_administracao' : 'vendas_pre_contratos';
@@ -906,15 +947,58 @@ ob_start();
 
 .vendas-table th,
 .vendas-table td {
-    padding: 0.75rem;
+    padding: 0.85rem 0.75rem;
     text-align: left;
     border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
 }
 
 .vendas-table th {
     background: #f9fafb;
     font-weight: 600;
     color: #374151;
+}
+
+.vendas-table .col-id { width: 56px; }
+.vendas-table .col-cliente { width: 24%; }
+.vendas-table .col-tipo { width: 110px; }
+.vendas-table .col-data { width: 120px; }
+.vendas-table .col-unidade { width: 180px; }
+.vendas-table .col-valor { width: 130px; }
+.vendas-table .col-status { width: 170px; }
+.vendas-table .col-acoes { width: 148px; }
+
+.cliente-cell strong {
+    display: block;
+    color: #0f172a;
+    line-height: 1.35;
+}
+
+.cliente-cell small,
+.unidade-cell small {
+    display: block;
+    margin-top: 0.2rem;
+    color: #64748b;
+}
+
+.tipo-cell,
+.data-cell,
+.valor-cell {
+    white-space: nowrap;
+}
+
+.unidade-cell {
+    color: #0f172a;
+    font-weight: 600;
+}
+
+.acoes-cell {
+    white-space: nowrap;
+}
+
+.acoes-cell .btn {
+    min-width: 86px;
+    text-align: center;
 }
 
 .status-badge {
@@ -1046,12 +1130,87 @@ ob_start();
     background: white;
     border-radius: 12px;
     padding: 2rem;
-    max-width: 600px;
-    width: 90%;
+    max-width: 960px;
+    width: min(960px, 94vw);
     max-height: 90vh;
     overflow-y: auto;
     position: relative;
     z-index: 5001;
+}
+
+.modal-header {
+    margin-bottom: 1.5rem;
+}
+
+.modal-header h2 {
+    color: #0f172a;
+    font-size: 1.8rem;
+    margin-bottom: 0.25rem;
+}
+
+.modal-header p {
+    color: #64748b;
+    margin: 0;
+}
+
+.modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.modal-field {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 0.85rem 1rem;
+}
+
+.modal-field-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 0.35rem;
+}
+
+.modal-field-value {
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.modal-secao {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.modal-secao h3 {
+    margin: 0 0 1rem;
+    color: #1e3a8a;
+    font-size: 1.1rem;
+}
+
+.modal-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+}
+
+.modal-form-grid .full-width {
+    grid-column: 1 / -1;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
 }
 
 .vendas-container .form-group {
@@ -1084,6 +1243,7 @@ ob_start();
 .adicionais-table {
     width: 100%;
     margin-top: 1rem;
+    border-collapse: collapse;
 }
 
 .adicionais-table th,
@@ -1114,6 +1274,13 @@ ob_start();
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     cursor: pointer;
+}
+
+@media (max-width: 900px) {
+    .modal-grid,
+    .modal-form-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 
@@ -1224,17 +1391,11 @@ ob_start();
                 <?php endif; ?>
                 <?php foreach ($pre_contratos as $pc): ?>
                     <tr>
-                        <td><?php echo $pc['id']; ?></td>
-                        <td>
-                            <?php $cliente_telefone_lista = vendas_format_phone_display($pc['telefone'] ?? ''); ?>
-                            <strong><?php echo htmlspecialchars((string)($pc['nome_completo'] ?? 'Sem nome')); ?></strong><br>
-                            <small style="color: #6b7280;"><?php echo htmlspecialchars((string)($pc['email'] ?? '')); ?></small>
-                            <?php if ($cliente_telefone_lista !== ''): ?>
-                                <br>
-                                <small style="color: #6b7280;"><?php echo htmlspecialchars($cliente_telefone_lista); ?></small>
-                            <?php endif; ?>
+                        <td class="col-id"><?php echo $pc['id']; ?></td>
+                        <td class="col-cliente cliente-cell">
+                            <strong><?php echo htmlspecialchars((string)($pc['nome_completo'] ?? 'Sem nome')); ?></strong>
                         </td>
-                        <td>
+                        <td class="col-tipo tipo-cell">
                             <?php
                                 $tipo = (string)($pc['tipo_evento'] ?? '');
                                 if ($tipo === '15anos') {
@@ -1246,22 +1407,31 @@ ob_start();
                                 }
                             ?>
                         </td>
-                        <td><?php echo htmlspecialchars(vendas_format_date_display($pc['data_evento'] ?? null)); ?></td>
-                        <td><?php echo htmlspecialchars((string)($pc['unidade'] ?? '')); ?></td>
-                        <td>R$ <?php echo number_format($pc['valor_total'] ?? 0, 2, ',', '.'); ?></td>
-                        <td>
+                        <td class="col-data data-cell"><?php echo htmlspecialchars(vendas_format_date_display($pc['data_evento'] ?? null)); ?></td>
+                        <td class="col-unidade unidade-cell">
+                            <?php
+                                $unidade_original = (string)($pc['unidade'] ?? '');
+                                $unidade_curta = vendas_unidade_curta($locais_curto_map, $unidade_original);
+                                echo htmlspecialchars($unidade_curta);
+                                if ($unidade_curta !== $unidade_original && $unidade_original !== ''):
+                            ?>
+                                <small><?php echo htmlspecialchars($unidade_original); ?></small>
+                            <?php endif; ?>
+                        </td>
+                        <td class="col-valor valor-cell">R$ <?php echo number_format($pc['valor_total'] ?? 0, 2, ',', '.'); ?></td>
+                        <td class="col-status">
                             <?php
                             $status_meta = vendas_status_meta((string)($pc['status_normalizado'] ?? vendas_normalize_pre_contrato_status($pc)));
                             ?>
                             <span class="status-badge <?php echo htmlspecialchars($status_meta['class']); ?>"><?php echo htmlspecialchars($status_meta['text']); ?></span>
                         </td>
-                        <td>
+                        <td class="col-acoes acoes-cell">
                             <?php
                                 $status_normalizado = (string)($pc['status_normalizado'] ?? vendas_normalize_pre_contrato_status($pc));
                                 $abrir_aprovacao = ($is_admin && $status_normalizado === 'pronto_aprovacao') ? '&abrir_aprovacao=1' : '';
                             ?>
                             <a href="<?php echo htmlspecialchars($base_query . '&editar=' . (int)$pc['id'] . $abrir_aprovacao); ?>" class="btn btn-primary" style="font-size: 0.875rem;">
-                                Editar
+                                Visualizar
                             </a>
                             <?php if ($perm_comercial || $is_admin): ?>
                             <form id="formApagar<?php echo (int)$pc['id']; ?>" method="POST" style="display:inline-block; margin-left:6px;">
@@ -1282,51 +1452,94 @@ ob_start();
         <?php
             $observacoes_internas_valor = trim((string)($pre_contrato_editar['observacoes_internas'] ?? ''));
             if ($observacoes_internas_valor === '') {
-                $observacoes_internas_valor = trim((string)($pre_contrato_editar['observacoes'] ?? ''));
+                $observacoes_internas_valor = '';
+            }
+            $itens_adicionais_valor = trim((string)($pre_contrato_editar['observacoes'] ?? ''));
+            $tipo_pre_contrato = (string)($pre_contrato_editar['tipo_evento'] ?? '');
+            $itens_adicionais_label = $tipo_pre_contrato === 'pj' ? 'Observações do cliente' : 'Itens adicionais';
+            $pacote_atual_edicao = trim((string)($pre_contrato_editar['pacote_contratado'] ?? ''));
+            $pacote_atual_existe = false;
+            foreach ($pacotes_evento as $pacote_evento_item) {
+                if (trim((string)($pacote_evento_item['nome'] ?? '')) === $pacote_atual_edicao) {
+                    $pacote_atual_existe = true;
+                    break;
+                }
             }
         ?>
         <!-- Modal de Edição -->
         <div class="vendas-modal active" id="modalEditar">
             <div class="vendas-modal-content">
-                <h2>Editar Pré-contrato #<?php echo $pre_contrato_editar['id']; ?></h2>
+                <div class="modal-header">
+                    <h2>Visualizar Pré-contrato #<?php echo $pre_contrato_editar['id']; ?></h2>
+                    <p>Revise os dados preenchidos pelo cliente, ajuste o comercial e siga para a aprovação na ME.</p>
+                </div>
                 
                 <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="action" value="salvar_comercial">
                     <input type="hidden" name="pre_contrato_id" value="<?php echo $pre_contrato_editar['id']; ?>">
-                    
-                    <div class="form-group">
-                        <label>Cliente:</label>
-                        <input type="text" value="<?php echo htmlspecialchars($pre_contrato_editar['nome_completo']); ?>" disabled>
-                        <?php if ($pre_contrato_telefone_exibicao !== ''): ?>
-                            <span class="cliente-contato-texto">Telefone: <?php echo htmlspecialchars($pre_contrato_telefone_exibicao); ?></span>
-                        <?php else: ?>
-                            <span class="cliente-contato-texto">Telefone: não informado</span>
-                        <?php endif; ?>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Data do Evento:</label>
-                        <input type="text" value="<?php echo date('d/m/Y', strtotime($pre_contrato_editar['data_evento'])); ?>" disabled>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="pacote_contratado">Pacote Contratado:</label>
-                        <input type="text" id="pacote_contratado" name="pacote_contratado" 
-                               value="<?php echo htmlspecialchars($pre_contrato_editar['pacote_contratado'] ?? ''); ?>">
+
+                    <div class="modal-grid">
+                        <div class="modal-field">
+                            <span class="modal-field-label">Cliente</span>
+                            <div class="modal-field-value"><?php echo htmlspecialchars((string)$pre_contrato_editar['nome_completo']); ?></div>
+                        </div>
+                        <div class="modal-field">
+                            <span class="modal-field-label">Data do evento</span>
+                            <div class="modal-field-value"><?php echo htmlspecialchars(vendas_format_date_display($pre_contrato_editar['data_evento'] ?? null)); ?></div>
+                        </div>
+                        <div class="modal-field">
+                            <span class="modal-field-label">Telefone</span>
+                            <div class="modal-field-value"><?php echo htmlspecialchars($pre_contrato_telefone_exibicao !== '' ? $pre_contrato_telefone_exibicao : 'Não informado'); ?></div>
+                        </div>
+                        <div class="modal-field">
+                            <span class="modal-field-label">Unidade</span>
+                            <div class="modal-field-value"><?php echo htmlspecialchars(vendas_unidade_curta($locais_curto_map, $pre_contrato_editar['unidade'] ?? '')); ?></div>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="forma_pagamento_detalhada">Forma de pagamento detalhada (interno):</label>
-                        <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($pre_contrato_editar['forma_pagamento'] ?? ''); ?></textarea>
-                    </div>
+                    <div class="modal-secao">
+                        <h3>Dados comerciais</h3>
+                        <div class="modal-form-grid">
+                            <div class="form-group">
+                                <label for="pacote_contratado">Pacote contratado</label>
+                                <?php if (!empty($pacotes_evento)): ?>
+                                    <select id="pacote_contratado" name="pacote_contratado">
+                                        <option value="">Selecione...</option>
+                                        <?php if ($pacote_atual_edicao !== '' && !$pacote_atual_existe): ?>
+                                            <option value="<?php echo htmlspecialchars($pacote_atual_edicao); ?>" selected>
+                                                <?php echo htmlspecialchars($pacote_atual_edicao . ' (atual)'); ?>
+                                            </option>
+                                        <?php endif; ?>
+                                        <?php foreach ($pacotes_evento as $pacote_evento): ?>
+                                            <option value="<?php echo htmlspecialchars((string)$pacote_evento['nome']); ?>" <?php echo (($pre_contrato_editar['pacote_contratado'] ?? '') === (string)$pacote_evento['nome']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars((string)$pacote_evento['nome']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php else: ?>
+                                    <input type="text" id="pacote_contratado" name="pacote_contratado" value="<?php echo htmlspecialchars($pre_contrato_editar['pacote_contratado'] ?? ''); ?>">
+                                <?php endif; ?>
+                            </div>
 
-                    <div class="form-group">
-                        <label for="observacoes_internas">Observação (interno):</label>
-                        <textarea id="observacoes_internas" name="observacoes_internas" rows="3" placeholder="Observações internas da equipe comercial"><?php echo htmlspecialchars($observacoes_internas_valor); ?></textarea>
+                            <div class="form-group">
+                                <label for="forma_pagamento_detalhada">Forma de pagamento</label>
+                                <textarea id="forma_pagamento_detalhada" name="forma_pagamento_detalhada" rows="3" placeholder="Ex.: Entrada de 30% + saldo em 3x no cartão"><?php echo htmlspecialchars($pre_contrato_editar['forma_pagamento'] ?? ''); ?></textarea>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="itens_adicionais"><?php echo htmlspecialchars($itens_adicionais_label); ?></label>
+                                <textarea id="itens_adicionais" name="itens_adicionais" rows="3" placeholder="Itens adicionais solicitados pelo cliente"><?php echo htmlspecialchars($itens_adicionais_valor); ?></textarea>
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="observacoes_internas">Observação interna</label>
+                                <textarea id="observacoes_internas" name="observacoes_internas" rows="3" placeholder="Observações internas da equipe comercial"><?php echo htmlspecialchars($observacoes_internas_valor); ?></textarea>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label>Itens e valores:</label>
+                    <div class="modal-secao">
+                        <h3>Itens e valores</h3>
                         <small style="display:block;color:#64748b;margin:.2rem 0 .6rem;">Preencha item e valor por linha. O total considera todas as linhas e aplica desconto, se houver.</small>
                         <button type="button" class="btn btn-secondary" onclick="adicionarItem()">+ Adicionar linha</button>
                         <table class="adicionais-table" id="tabelaAdicionais">
@@ -1374,36 +1587,40 @@ ob_start();
                         </table>
                     </div>
 
-                    <div class="form-group">
-                        <label for="desconto">Desconto aplicado (R$):</label>
-                        <input
-                            type="text"
-                            inputmode="numeric"
-                            class="money-input"
-                            id="desconto"
-                            name="desconto"
-                            value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['desconto'] ?? 0)); ?>"
-                        >
-                    </div>
+                    <div class="modal-secao">
+                        <div class="modal-form-grid">
+                            <div class="form-group">
+                                <label for="desconto">Desconto aplicado (R$)</label>
+                                <input
+                                    type="text"
+                                    inputmode="numeric"
+                                    class="money-input"
+                                    id="desconto"
+                                    name="desconto"
+                                    value="<?php echo htmlspecialchars(vendas_format_money_brl($pre_contrato_editar['desconto'] ?? 0)); ?>"
+                                >
+                            </div>
 
-                    <div class="form-group">
-                        <label>Subtotal das linhas:</label>
-                        <input type="text" id="valor_subtotal_display" value="R$ 0,00" disabled>
-                    </div>
+                            <div class="form-group">
+                                <label>Subtotal das linhas</label>
+                                <input type="text" id="valor_subtotal_display" value="R$ 0,00" disabled>
+                            </div>
 
-                    <div class="form-group">
-                        <label>Desconto:</label>
-                        <input type="text" id="desconto_display" value="R$ 0,00" disabled>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Total final:</label>
-                        <input type="text" id="valor_total_display" value="R$ 0,00" disabled style="font-weight: bold; font-size: 1.2rem;">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="anexo_orcamento">Orçamento/Proposta (PDF, DOC, etc):</label>
-                        <input type="file" id="anexo_orcamento" name="anexo_orcamento" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                            <div class="form-group">
+                                <label>Desconto</label>
+                                <input type="text" id="desconto_display" value="R$ 0,00" disabled>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Total final</label>
+                                <input type="text" id="valor_total_display" value="R$ 0,00" disabled style="font-weight: bold; font-size: 1.2rem;">
+                            </div>
+                            
+                            <div class="form-group full-width">
+                                <label for="anexo_orcamento">Orçamento/Proposta (PDF, DOC, etc)</label>
+                                <input type="file" id="anexo_orcamento" name="anexo_orcamento" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                            </div>
+                        </div>
                     </div>
                     
                     <?php if (!empty($anexos_editar)): ?>
@@ -1421,7 +1638,7 @@ ob_start();
                         </div>
                     <?php endif; ?>
                     
-                    <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <div class="modal-actions">
                         <button type="submit" class="btn btn-success">Salvar Dados Comerciais</button>
                         <button type="button" class="btn btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
                         
