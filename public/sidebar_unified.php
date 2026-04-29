@@ -252,9 +252,10 @@ if ($current_page === 'dashboard') {
             ");
             $stmt->execute();
             $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
-        $agenda_hoje = [];
+        } catch (Exception $e) {
+            error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
+            $agenda_hoje = [];
+        }
     }
 
     try {
@@ -262,7 +263,6 @@ if ($current_page === 'dashboard') {
     } catch (Exception $e) {
         error_log("[SIDEBAR] Erro ao buscar avisos da dashboard: " . $e->getMessage());
         $avisos_dashboard = [];
-    }
     }
     
     // Buscar demandas do dia atual (sistema Trello - demandas_cards)
