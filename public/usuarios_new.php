@@ -14,6 +14,34 @@ if (!isset($pdo)) {
     global $pdo;
 }
 
+function ensureRhCargosTable(PDO $pdo): void {
+    static $initialized = false;
+    if ($initialized) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS rh_cargos (
+            id SERIAL PRIMARY KEY,
+            nome VARCHAR(100) NOT NULL,
+            descricao TEXT,
+            salario_base DECIMAL(10,2) DEFAULT 0,
+            ativo BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+    ");
+    $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rh_cargos_nome_unique ON rh_cargos (LOWER(nome))");
+
+    $initialized = true;
+}
+
+function fetchRhCargos(PDO $pdo): array {
+    ensureRhCargosTable($pdo);
+    $stmt = $pdo->query("SELECT id, nome, descricao FROM rh_cargos WHERE ativo = TRUE ORDER BY nome ASC");
+    return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+}
+
 // ============================================
 // PROCESSAMENTO DE AÇÕES (ANTES DE QUALQUER OUTPUT)
 // ============================================
@@ -53,6 +81,146 @@ if ($action === 'get_user' && $user_id > 0) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['success' => false, 'message' => 'Usuário não encontrado']);
         }
+    } catch (Exception $e) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'get_cargos') {
+    while (ob_get_level() > 0) { ob_end_clean(); }
+
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada. Recarregue a página.']);
+        exit;
+    }
+
+    try {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => true, 'cargos' => fetchRhCargos($pdo)], JSON_UNESCAPED_UNICODE);
+    } catch (Exception $e) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'save_cargo') {
+    while (ob_get_level() > 0) { ob_end_clean(); }
+
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada. Recarregue a página.']);
+        exit;
+    }
+
+    try {
+        ensureRhCargosTable($pdo);
+
+        $cargoId = (int)($_POST['cargo_id'] ?? 0);
+        $nome = trim((string)($_POST['nome'] ?? ''));
+        $descricao = trim((string)($_POST['descricao'] ?? ''));
+
+        if ($nome === '') {
+            throw new Exception('Nome do cargo é obrigatório');
+        }
+
+        $stmtCheck = $pdo->prepare("
+            SELECT id
+            FROM rh_cargos
+            WHERE LOWER(nome) = LOWER(:nome) AND id <> :id
+            LIMIT 1
+        ");
+        $stmtCheck->execute([
+            ':nome' => $nome,
+            ':id' => $cargoId,
+        ]);
+
+        if ($stmtCheck->fetchColumn()) {
+            throw new Exception('Já existe um cargo com este nome');
+        }
+
+        if ($cargoId > 0) {
+            $stmt = $pdo->prepare("
+                UPDATE rh_cargos
+                SET nome = :nome,
+                    descricao = :descricao,
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':id' => $cargoId,
+                ':nome' => $nome,
+                ':descricao' => $descricao !== '' ? $descricao : null,
+            ]);
+            $message = 'Cargo atualizado com sucesso!';
+        } else {
+            $stmt = $pdo->prepare("
+                INSERT INTO rh_cargos (nome, descricao, ativo)
+                VALUES (:nome, :descricao, TRUE)
+            ");
+            $stmt->execute([
+                ':nome' => $nome,
+                ':descricao' => $descricao !== '' ? $descricao : null,
+            ]);
+            $message = 'Cargo criado com sucesso!';
+        }
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => true,
+            'message' => $message,
+            'cargos' => fetchRhCargos($pdo),
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Exception $e) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'delete_cargo') {
+    while (ob_get_level() > 0) { ob_end_clean(); }
+
+    if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Sessão expirada. Recarregue a página.']);
+        exit;
+    }
+
+    try {
+        ensureRhCargosTable($pdo);
+
+        $cargoId = (int)($_POST['cargo_id'] ?? 0);
+        if ($cargoId <= 0) {
+            throw new Exception('Cargo inválido');
+        }
+
+        $stmtNome = $pdo->prepare("SELECT nome FROM rh_cargos WHERE id = :id LIMIT 1");
+        $stmtNome->execute([':id' => $cargoId]);
+        $cargoNome = (string)($stmtNome->fetchColumn() ?: '');
+
+        if ($cargoNome === '') {
+            throw new Exception('Cargo não encontrado');
+        }
+
+        $stmtUso = $pdo->prepare("SELECT COUNT(*) FROM usuarios WHERE cargo = :cargo");
+        $stmtUso->execute([':cargo' => $cargoNome]);
+        if ((int)$stmtUso->fetchColumn() > 0) {
+            throw new Exception('Não é possível excluir este cargo porque ele está vinculado a usuários');
+        }
+
+        $stmtDelete = $pdo->prepare("DELETE FROM rh_cargos WHERE id = :id");
+        $stmtDelete->execute([':id' => $cargoId]);
+
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => true,
+            'message' => 'Cargo excluído com sucesso!',
+            'cargos' => fetchRhCargos($pdo),
+        ], JSON_UNESCAPED_UNICODE);
     } catch (Exception $e) {
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
@@ -153,6 +321,13 @@ if (empty($_SESSION['logado']) || empty($_SESSION['perm_configuracoes'])) {
           </div>';
     endSidebar();
     exit;
+}
+
+try {
+    $cargos = fetchRhCargos($pdo);
+} catch (Exception $e) {
+    error_log("Erro ao carregar cargos: " . $e->getMessage());
+    $cargos = [];
 }
 
 // ============================================
@@ -358,6 +533,12 @@ ob_start();
         color: #64748b;
         font-size: 0.875rem;
         margin-top: 0.25rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
     }
     
     .btn-primary {
@@ -719,6 +900,69 @@ ob_start();
     .btn-secondary:hover {
         background: #e2e8f0;
     }
+
+    .cargo-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .cargo-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        background: #f8fafc;
+    }
+
+    .cargo-item strong {
+        display: block;
+        color: #1e293b;
+        margin-bottom: 0.25rem;
+    }
+
+    .cargo-item p {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.875rem;
+    }
+
+    .cargo-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .btn-small {
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .btn-small-edit {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+    .btn-small-delete {
+        background: #fee2e2;
+        color: #b91c1c;
+    }
+
+    .empty-state {
+        padding: 1rem;
+        border: 1px dashed #cbd5e1;
+        border-radius: 10px;
+        color: #64748b;
+        text-align: center;
+        background: #f8fafc;
+    }
     
     /* Estilos para abas */
     .modal-tabs {
@@ -952,6 +1196,15 @@ ob_start();
             padding: 0.75rem;
         }
 
+        .header-actions {
+            width: 100%;
+        }
+
+        .header-actions button {
+            flex: 1;
+            justify-content: center;
+        }
+
         .foto-editor-content {
             width: 100%;
             height: calc(100vh - 1.5rem);
@@ -970,6 +1223,15 @@ ob_start();
             flex: 1 1 calc(50% - 0.25rem);
             text-align: center;
         }
+
+        .cargo-item {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .cargo-actions {
+            justify-content: flex-end;
+        }
     }
 </style>
 
@@ -979,10 +1241,16 @@ ob_start();
             <h1 class="page-title">Usuários e Colaboradores</h1>
             <p class="page-subtitle">Gerencie usuários, permissões e colaboradores do sistema</p>
         </div>
-        <button class="btn-primary" onclick="openModal(0)">
-            <span>+</span>
-            <span>Novo Usuário</span>
-        </button>
+        <div class="header-actions">
+            <button class="btn-secondary" type="button" onclick="openCargoModal()">
+                <span>🏷️</span>
+                <span>Cargos</span>
+            </button>
+            <button class="btn-primary" type="button" onclick="openModal(0)">
+                <span>+</span>
+                <span>Novo Usuário</span>
+            </button>
+        </div>
     </div>
     
     <?php if (isset($_GET['success'])): ?>
@@ -1154,7 +1422,12 @@ ob_start();
                     
                     <div class="form-group">
                         <label class="form-label">Cargo</label>
-                        <input type="text" name="cargo" class="form-input">
+                        <select name="cargo" id="cargoSelect" class="form-input">
+                            <option value="">Selecione um cargo</option>
+                            <?php foreach ($cargos as $cargo): ?>
+                            <option value="<?= h($cargo['nome'] ?? '') ?>"><?= h($cargo['nome'] ?? '') ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                 
                 <?php
@@ -1414,6 +1687,53 @@ ob_start();
     </div>
 </div>
 
+<div id="cargoModal" class="modal-overlay">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 class="modal-title">Gerenciar Cargos</h2>
+            <button type="button" class="modal-close" onclick="closeCargoModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="cargoForm" onsubmit="saveCargo(event)">
+                <input type="hidden" id="cargoId" value="0">
+                <div class="form-group">
+                    <label class="form-label">Nome do cargo</label>
+                    <input type="text" id="cargoNome" class="form-input" placeholder="Ex.: Coordenador Financeiro">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descrição</label>
+                    <textarea id="cargoDescricao" class="form-input" rows="3" placeholder="Opcional"></textarea>
+                </div>
+                <div class="modal-footer" style="padding: 1rem 0 0; border-top: none;">
+                    <button type="button" class="btn-secondary" onclick="resetCargoForm()">Limpar</button>
+                    <button type="submit" class="btn-primary">Salvar cargo</button>
+                </div>
+            </form>
+
+            <div style="margin-top: 1.5rem;">
+                <h3 style="margin: 0 0 0.75rem; color: #1e293b; font-size: 1rem;">Cargos cadastrados</h3>
+                <div id="cargoList" class="cargo-list">
+                    <?php if (empty($cargos)): ?>
+                    <div class="empty-state">Nenhum cargo cadastrado.</div>
+                    <?php else: ?>
+                        <?php foreach ($cargos as $cargo): ?>
+                        <div class="cargo-item" data-cargo-id="<?= (int)($cargo['id'] ?? 0) ?>" data-cargo-nome="<?= h($cargo['nome'] ?? '') ?>" data-cargo-descricao="">
+                            <div>
+                                <strong><?= h($cargo['nome'] ?? '') ?></strong>
+                            </div>
+                            <div class="cargo-actions">
+                                <button type="button" class="btn-small btn-small-edit" onclick="editCargoFromElement(this)">Editar</button>
+                                <button type="button" class="btn-small btn-small-delete" onclick="deleteCargoFromElement(this)">Excluir</button>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Modal editor/crop de foto -->
 <div id="fotoEditorModal" class="foto-editor-modal">
     <div class="foto-editor-content">
@@ -1436,6 +1756,199 @@ ob_start();
 </div>
 
 <script>
+let cargoOptions = <?= json_encode($cargos, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function populateCargoSelect(selectedValue = '') {
+    const cargoSelect = document.getElementById('cargoSelect');
+    if (!cargoSelect) return;
+
+    cargoSelect.innerHTML = '<option value="">Selecione um cargo</option>';
+
+    cargoOptions.forEach(cargo => {
+        const option = document.createElement('option');
+        option.value = cargo.nome || '';
+        option.textContent = cargo.nome || '';
+        if ((cargo.nome || '') === selectedValue) {
+            option.selected = true;
+        }
+        cargoSelect.appendChild(option);
+    });
+
+    if (!selectedValue) {
+        cargoSelect.value = '';
+    }
+}
+
+function renderCargoList() {
+    const cargoList = document.getElementById('cargoList');
+    if (!cargoList) return;
+
+    if (!Array.isArray(cargoOptions) || cargoOptions.length === 0) {
+        cargoList.innerHTML = '<div class="empty-state">Nenhum cargo cadastrado.</div>';
+        return;
+    }
+
+    cargoList.innerHTML = cargoOptions.map(cargo => `
+        <div class="cargo-item" data-cargo-id="${Number(cargo.id || 0)}" data-cargo-nome="${escapeHtml(cargo.nome || '')}" data-cargo-descricao="${escapeHtml(cargo.descricao || '')}">
+            <div>
+                <strong>${escapeHtml(cargo.nome || '')}</strong>
+                ${cargo.descricao ? `<p>${escapeHtml(cargo.descricao)}</p>` : ''}
+            </div>
+            <div class="cargo-actions">
+                <button type="button" class="btn-small btn-small-edit" onclick="editCargoFromElement(this)">Editar</button>
+                <button type="button" class="btn-small btn-small-delete" onclick="deleteCargoFromElement(this)">Excluir</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function refreshCargoOptions(selectedValue = '') {
+    try {
+        const response = await fetch('index.php?page=usuarios&action=get_cargos', {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (data.success) {
+            cargoOptions = Array.isArray(data.cargos) ? data.cargos : [];
+        }
+    } catch (error) {
+        console.error('Erro ao atualizar cargos:', error);
+    }
+
+    renderCargoList();
+    populateCargoSelect(selectedValue);
+}
+
+function openCargoModal() {
+    document.getElementById('cargoModal').classList.add('active');
+    resetCargoForm();
+    refreshCargoOptions();
+}
+
+function closeCargoModal() {
+    document.getElementById('cargoModal').classList.remove('active');
+}
+
+function resetCargoForm() {
+    const cargoId = document.getElementById('cargoId');
+    const cargoNome = document.getElementById('cargoNome');
+    const cargoDescricao = document.getElementById('cargoDescricao');
+    if (cargoId) cargoId.value = '0';
+    if (cargoNome) cargoNome.value = '';
+    if (cargoDescricao) cargoDescricao.value = '';
+}
+
+function editCargoFromElement(button) {
+    const item = button.closest('.cargo-item');
+    if (!item) return;
+
+    const cargoId = document.getElementById('cargoId');
+    const cargoNome = document.getElementById('cargoNome');
+    const cargoDescricao = document.getElementById('cargoDescricao');
+
+    if (cargoId) cargoId.value = item.dataset.cargoId || '0';
+    if (cargoNome) cargoNome.value = item.dataset.cargoNome || '';
+    if (cargoDescricao) cargoDescricao.value = item.dataset.cargoDescricao || '';
+}
+
+async function deleteCargoFromElement(button) {
+    const item = button.closest('.cargo-item');
+    if (!item) return;
+
+    const cargoId = Number(item.dataset.cargoId || 0);
+    const cargoNome = item.dataset.cargoNome || '';
+    if (cargoId <= 0) return;
+
+    if (!confirm(`Excluir o cargo "${cargoNome}"?`)) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'delete_cargo');
+    formData.append('cargo_id', String(cargoId));
+
+    try {
+        const response = await fetch('index.php?page=usuarios', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Erro ao excluir cargo');
+        }
+
+        cargoOptions = Array.isArray(data.cargos) ? data.cargos : [];
+        renderCargoList();
+        populateCargoSelect('');
+        resetCargoForm();
+        alert(data.message || 'Cargo excluído com sucesso!');
+    } catch (error) {
+        alert(error.message || 'Erro ao excluir cargo');
+    }
+}
+
+async function saveCargo(event) {
+    event.preventDefault();
+
+    const cargoId = document.getElementById('cargoId');
+    const cargoNome = document.getElementById('cargoNome');
+    const cargoDescricao = document.getElementById('cargoDescricao');
+
+    const nome = (cargoNome?.value || '').trim();
+    if (!nome) {
+        alert('Informe o nome do cargo.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'save_cargo');
+    formData.append('cargo_id', cargoId?.value || '0');
+    formData.append('nome', nome);
+    formData.append('descricao', cargoDescricao?.value || '');
+
+    try {
+        const response = await fetch('index.php?page=usuarios', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Erro ao salvar cargo');
+        }
+
+        cargoOptions = Array.isArray(data.cargos) ? data.cargos : [];
+        renderCargoList();
+        populateCargoSelect(nome);
+        resetCargoForm();
+        alert(data.message || 'Cargo salvo com sucesso!');
+    } catch (error) {
+        alert(error.message || 'Erro ao salvar cargo');
+    }
+}
+
 // Função para trocar entre abas
 function switchTab(tabName) {
     // Esconder todas as abas
@@ -1639,6 +2152,7 @@ function openModal(userId = 0) {
         if (senhaHint) senhaHint.style.display = 'none';
         
         form.reset();
+        refreshCargoOptions('');
         // Limpar preview da foto e editor
         updateFotoPreview('');
         fotoOriginalBlob = null;
@@ -1900,6 +2414,7 @@ function loadUserData(userId) {
             
             if (loginInput) loginInput.value = user.login || user.email || '';
             if (emailInput) emailInput.value = user.email || '';
+            populateCargoSelect(user.cargo || '');
             if (cargoInput) cargoInput.value = user.cargo || '';
             if (fotoAtualInput) fotoAtualInput.value = user.foto || '';
             const fotoUrlInput = document.getElementById('fotoUrl');
@@ -2685,6 +3200,8 @@ if (document.readyState === 'loading') {
 }
 
 window.addEventListener('load', () => {
+    renderCargoList();
+    populateCargoSelect('');
     setTimeout(initPreviewListeners, 200);
 });
 
@@ -2696,6 +3213,15 @@ if (userModal) {
     userModal.addEventListener('click', function(e) {
         if (e.target === this) {
             closeModal();
+        }
+    });
+}
+
+const cargoModal = document.getElementById('cargoModal');
+if (cargoModal) {
+    cargoModal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeCargoModal();
         }
     });
 }

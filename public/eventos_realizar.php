@@ -603,6 +603,18 @@ includeSidebar('Realizar evento');
         border: 0;
     }
 
+    .modal-body-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        padding: 2rem;
+        text-align: center;
+        color: #475569;
+        gap: 0.9rem;
+    }
+
     .status-badge {
         display: inline-flex;
         align-items: center;
@@ -732,7 +744,6 @@ includeSidebar('Realizar evento');
             <div class="card-actions">
                 <a href="index.php?page=eventos_arquivos&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1#cardapio" class="btn btn-primary">Abrir Cardápio</a>
             </div>
-            <div class="helper-note">Mostra apenas o que já foi organizado para conferência operacional.</div>
         </article>
 
         <article class="module-card">
@@ -763,7 +774,6 @@ includeSidebar('Realizar evento');
             <div class="card-actions">
                 <a href="index.php?page=eventos_reuniao_final&id=<?= (int)$meeting_id ?>&origin=realizar&readonly=1" class="btn btn-primary">Abrir Reunião Final</a>
             </div>
-            <div class="helper-note">Somente leitura, sem controles de edição e sem informações que não ajudam na execução.</div>
         </article>
 
         <article class="module-card">
@@ -785,24 +795,38 @@ includeSidebar('Realizar evento');
     <div class="modal-card">
         <div class="modal-head">
             <h3>Resumo do evento</h3>
-            <button type="button" class="modal-close" onclick="fecharModalResumoEvento()">&times;</button>
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <a class="btn btn-secondary" href="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" target="_blank" rel="noopener noreferrer">Abrir em nova guia</a>
+                <button type="button" class="modal-close" onclick="fecharModalResumoEvento()">&times;</button>
+            </div>
         </div>
         <div class="modal-body">
-            <iframe src="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" title="Resumo do evento"></iframe>
+            <iframe id="modalResumoEventoFrame" data-pdf-url="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" title="Resumo do evento"></iframe>
         </div>
     </div>
 </div>
 <script>
 function abrirModalResumoEvento() {
     const modal = document.getElementById('modalResumoEvento');
+    const frame = document.getElementById('modalResumoEventoFrame');
     if (!modal) return;
+    if (frame && !frame.getAttribute('src')) {
+        const rawUrl = String(frame.getAttribute('data-pdf-url') || '').trim();
+        if (rawUrl !== '') {
+            frame.setAttribute('src', 'https://docs.google.com/gview?embedded=1&url=' + encodeURIComponent(rawUrl));
+        }
+    }
     modal.classList.add('show');
 }
 
 function fecharModalResumoEvento() {
     const modal = document.getElementById('modalResumoEvento');
+    const frame = document.getElementById('modalResumoEventoFrame');
     if (!modal) return;
     modal.classList.remove('show');
+    if (frame) {
+        frame.removeAttribute('src');
+    }
 }
 
 document.addEventListener('click', function(ev) {
