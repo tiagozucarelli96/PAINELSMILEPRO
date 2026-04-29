@@ -20,6 +20,7 @@ $label_nome_noivos = $label_nome_noivos ?? 'Nome dos Noivos';
 $placeholder_nome_noivos = $placeholder_nome_noivos ?? 'Ex: João e Maria';
 $erro_nome_noivos = $erro_nome_noivos ?? 'Nome dos noivos é obrigatório';
 $log_prefix = $log_prefix ?? $tipo_evento;
+$logo_size = (int)($logo_size ?? 150);
 
 // Buscar locais mapeados para dropdown
 $locais_mapeados = vendas_buscar_locais_mapeados();
@@ -712,7 +713,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$rate_limit_excedido) {
     <div class="container">
         <div class="brand-header">
             <div class="brand-row">
-                <img src="logo.png" alt="Logo do Grupo Smile">
+                <img src="logo.png" alt="Logo do Grupo Smile" style="width: <?php echo $logo_size; ?>px; height: <?php echo $logo_size; ?>px;">
             </div>
             <h1><?php echo htmlspecialchars($titulo); ?></h1>
             <p class="subtitle">Preencha o formulário abaixo para darmos andamento ao seu contrato</p>
