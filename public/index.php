@@ -231,6 +231,7 @@ $routes = [
   'google_calendar_config' => 'google_calendar_config.php',
   'google_calendar_debug' => 'google_calendar_debug.php',
   'agenda' => 'agenda.php',
+  'agenda_eventos' => 'agenda_eventos.php',
   'demandas' => 'demandas_trello.php',
   'demandas_old' => 'demandas.php', // Versão antiga mantida
     'demandas_fixas' => 'demandas_fixas_ui.php',
