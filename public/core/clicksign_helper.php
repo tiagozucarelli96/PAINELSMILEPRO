@@ -363,10 +363,10 @@ if (!class_exists('ClicksignHelper')) {
         private function normalizedAuthorization(): string
         {
             if (stripos($this->apiToken, 'Bearer ') === 0) {
-                return $this->apiToken;
+                return trim(substr($this->apiToken, 7));
             }
 
-            return 'Bearer ' . $this->apiToken;
+            return $this->apiToken;
         }
 
         private function extractResourceId(?array $response): string
