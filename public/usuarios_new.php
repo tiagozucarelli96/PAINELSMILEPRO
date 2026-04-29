@@ -42,49 +42,54 @@ function fetchRhCargos(PDO $pdo): array {
     return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
-function ensureUsuarioUnidadesTable(PDO $pdo): void {
+function ensureUsuarioSpacesTable(PDO $pdo): void {
     static $initialized = false;
     if ($initialized) {
         return;
     }
 
     $pdo->exec("
-        CREATE TABLE IF NOT EXISTS usuarios_unidades (
+        CREATE TABLE IF NOT EXISTS usuarios_spaces_visiveis (
             usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-            unidade_id INTEGER NOT NULL REFERENCES logistica_unidades(id) ON DELETE CASCADE,
+            space_visivel VARCHAR(120) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
-            PRIMARY KEY (usuario_id, unidade_id)
+            PRIMARY KEY (usuario_id, space_visivel)
         )
     ");
-    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_usuarios_unidades_unidade ON usuarios_unidades (unidade_id)");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_usuarios_spaces_visiveis_space ON usuarios_spaces_visiveis (space_visivel)");
 
     $initialized = true;
 }
 
-function fetchLogisticaUnidades(PDO $pdo): array {
-    $stmt = $pdo->query("SELECT id, nome FROM logistica_unidades WHERE ativo IS TRUE ORDER BY nome ASC");
+function fetchSpacesVisiveis(PDO $pdo): array {
+    $stmt = $pdo->query("
+        SELECT DISTINCT TRIM(space_visivel) AS nome
+        FROM logistica_me_locais
+        WHERE TRIM(COALESCE(space_visivel, '')) <> ''
+        ORDER BY TRIM(space_visivel) ASC
+    ");
     return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
 }
 
-function fetchUsuarioUnidades(PDO $pdo, int $usuarioId): array {
-    ensureUsuarioUnidadesTable($pdo);
-    $stmt = $pdo->prepare("SELECT unidade_id FROM usuarios_unidades WHERE usuario_id = :usuario_id ORDER BY unidade_id");
+function fetchUsuarioSpaces(PDO $pdo, int $usuarioId): array {
+    ensureUsuarioSpacesTable($pdo);
+    $stmt = $pdo->prepare("SELECT space_visivel FROM usuarios_spaces_visiveis WHERE usuario_id = :usuario_id ORDER BY space_visivel");
     $stmt->execute([':usuario_id' => $usuarioId]);
-    return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+    return array_values(array_filter(array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [])));
 }
 
-function saveUsuarioUnidades(PDO $pdo, int $usuarioId, array $unidadeIds): void {
-    ensureUsuarioUnidadesTable($pdo);
+function saveUsuarioSpaces(PDO $pdo, int $usuarioId, array $spaces): void {
+    ensureUsuarioSpacesTable($pdo);
 
     $normalizadas = [];
-    foreach ($unidadeIds as $unidadeId) {
-        $id = (int)$unidadeId;
-        if ($id > 0) {
-            $normalizadas[$id] = $id;
+    foreach ($spaces as $space) {
+        $nome = trim((string)$space);
+        if ($nome !== '') {
+            $normalizadas[$nome] = $nome;
         }
     }
 
-    $pdo->prepare("DELETE FROM usuarios_unidades WHERE usuario_id = :usuario_id")
+    $pdo->prepare("DELETE FROM usuarios_spaces_visiveis WHERE usuario_id = :usuario_id")
         ->execute([':usuario_id' => $usuarioId]);
 
     if (empty($normalizadas)) {
@@ -92,15 +97,15 @@ function saveUsuarioUnidades(PDO $pdo, int $usuarioId, array $unidadeIds): void 
     }
 
     $stmt = $pdo->prepare("
-        INSERT INTO usuarios_unidades (usuario_id, unidade_id)
-        VALUES (:usuario_id, :unidade_id)
-        ON CONFLICT (usuario_id, unidade_id) DO NOTHING
+        INSERT INTO usuarios_spaces_visiveis (usuario_id, space_visivel)
+        VALUES (:usuario_id, :space_visivel)
+        ON CONFLICT (usuario_id, space_visivel) DO NOTHING
     ");
 
-    foreach ($normalizadas as $unidadeId) {
+    foreach ($normalizadas as $space) {
         $stmt->execute([
             ':usuario_id' => $usuarioId,
-            ':unidade_id' => $unidadeId,
+            ':space_visivel' => $space,
         ]);
     }
 }
@@ -137,7 +142,7 @@ if ($action === 'get_user' && $user_id > 0) {
                 }
             }
 
-            $user['unidades_ids'] = fetchUsuarioUnidades($pdo, $user_id);
+            $user['spaces_visiveis'] = fetchUsuarioSpaces($pdo, $user_id);
             
             
             header('Content-Type: application/json; charset=utf-8');
@@ -342,7 +347,7 @@ if ($action === 'save') {
 
         $savedUserId = (int)($result['id'] ?? $user_id);
         if ($savedUserId > 0) {
-            saveUsuarioUnidades($pdo, $savedUserId, $_POST['unidades_ids'] ?? []);
+            saveUsuarioSpaces($pdo, $savedUserId, $_POST['spaces_visiveis'] ?? []);
         }
         
         if (!empty($result['success'])) {
@@ -401,7 +406,7 @@ try {
 }
 
 try {
-    $unidadesDisponiveis = fetchLogisticaUnidades($pdo);
+    $unidadesDisponiveis = fetchSpacesVisiveis($pdo);
 } catch (Exception $e) {
     error_log("Erro ao carregar unidades: " . $e->getMessage());
     $unidadesDisponiveis = [];
@@ -1760,17 +1765,17 @@ ob_start();
 
                 <div id="tab-unidade" class="modal-tab-content">
                     <div class="form-group">
-                        <label class="form-label">Unidades vinculadas</label>
+                        <label class="form-label">Spaces visíveis vinculados</label>
                         <p style="margin: 0 0 1rem; color: #64748b; font-size: 0.875rem;">
-                            Selecione uma ou mais unidades em que este colaborador participa.
+                            Selecione um ou mais spaces visíveis cadastrados em Logística > Conexão.
                         </p>
                         <div id="unidadesCheckboxList" class="permissions-grid">
                             <?php if (empty($unidadesDisponiveis)): ?>
-                            <div class="empty-state" style="grid-column: 1 / -1;">Nenhuma unidade disponível no sistema.</div>
+                            <div class="empty-state" style="grid-column: 1 / -1;">Nenhum space visível disponível no sistema.</div>
                             <?php else: ?>
                                 <?php foreach ($unidadesDisponiveis as $unidade): ?>
                                 <label class="permission-item" style="align-items: flex-start;">
-                                    <input type="checkbox" name="unidades_ids[]" value="<?= (int)($unidade['id'] ?? 0) ?>">
+                                    <input type="checkbox" name="spaces_visiveis[]" value="<?= h($unidade['nome'] ?? '') ?>">
                                     <span><?= h($unidade['nome'] ?? '') ?></span>
                                 </label>
                                 <?php endforeach; ?>
@@ -1897,13 +1902,13 @@ function renderUnidadesCheckboxes(selectedIds = []) {
     const selectedSet = new Set((selectedIds || []).map(value => String(value)));
 
     if (!Array.isArray(unidadesOptions) || unidadesOptions.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">Nenhuma unidade disponível no sistema.</div>';
+        container.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">Nenhum space visível disponível no sistema.</div>';
         return;
     }
 
     container.innerHTML = unidadesOptions.map(unidade => `
         <label class="permission-item" style="align-items: flex-start;">
-            <input type="checkbox" name="unidades_ids[]" value="${Number(unidade.id || 0)}" ${selectedSet.has(String(unidade.id || '')) ? 'checked' : ''}>
+            <input type="checkbox" name="spaces_visiveis[]" value="${escapeHtml(unidade.nome || '')}" ${selectedSet.has(String(unidade.nome || '')) ? 'checked' : ''}>
             <span>${escapeHtml(unidade.nome || '')}</span>
         </label>
     `).join('');
@@ -2568,7 +2573,7 @@ function loadUserData(userId) {
             if (bairroInput) bairroInput.value = user.endereco_bairro || '';
             if (cidadeInput) cidadeInput.value = user.endereco_cidade || '';
             if (estadoInput) estadoInput.value = user.endereco_estado || '';
-            renderUnidadesCheckboxes(Array.isArray(user.unidades_ids) ? user.unidades_ids : []);
+            renderUnidadesCheckboxes(Array.isArray(user.spaces_visiveis) ? user.spaces_visiveis : []);
             
             // Atualizar preview da foto
             if (user.foto) {
