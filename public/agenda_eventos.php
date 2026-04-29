@@ -19,32 +19,36 @@ if (empty($_SESSION['perm_agenda_eventos']) && empty($_SESSION['perm_superadmin'
 
 function agenda_eventos_has_table(PDO $pdo, string $table): bool
 {
-    $stmt = $pdo->prepare("
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name = :table
-        LIMIT 1
-    ");
-    $stmt->execute([':table' => $table]);
-    return (bool)$stmt->fetchColumn();
+    try {
+        // Respeita o search_path ativo da aplicação em produção.
+        $stmt = $pdo->prepare("SELECT to_regclass(:table)");
+        $stmt->execute([':table' => $table]);
+        $reg = $stmt->fetchColumn();
+        return is_string($reg) && trim($reg) !== '';
+    } catch (Throwable $e) {
+        return false;
+    }
 }
 
 function agenda_eventos_has_column(PDO $pdo, string $table, string $column): bool
 {
-    $stmt = $pdo->prepare("
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = :table
-          AND column_name = :column
-        LIMIT 1
-    ");
-    $stmt->execute([
-        ':table' => $table,
-        ':column' => $column,
-    ]);
-    return (bool)$stmt->fetchColumn();
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM pg_attribute
+            WHERE attrelid = to_regclass(:table)
+              AND attname = :column
+              AND NOT attisdropped
+            LIMIT 1
+        ");
+        $stmt->execute([
+            ':table' => $table,
+            ':column' => $column,
+        ]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
 }
 
 function agenda_eventos_fetch_user_spaces(PDO $pdo, int $usuarioId): array
