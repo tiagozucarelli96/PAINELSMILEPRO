@@ -191,6 +191,13 @@ function cartao_ofx_detect_parcela(string $texto): ?array {
     ];
 }
 
+function cartao_ofx_strip_indicador_parcela(string $descricao, ?array $parcelaInfo): string {
+    if (!$parcelaInfo || empty($parcelaInfo['indicador'])) {
+        return trim($descricao);
+    }
+    return trim(str_replace($parcelaInfo['indicador'], '', $descricao));
+}
+
 function cartao_ofx_parse_fatura_texto(string $texto): array {
     $linhas = preg_split('/\r\n|\r|\n/', $texto) ?: [];
     $itens = [];
@@ -323,11 +330,7 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         $descricaoParte = trim(implode(' ', $blk['linhas']));
         $parcelaInfo = cartao_ofx_detect_parcela($descricaoParte);
         if ($parcelaInfo) {
-            if ($parcelaInfo['total'] > 1 && $parcelaInfo['atual'] >= $parcelaInfo['total']) {
-                $parcelaInfo = null; // última parcela vira 1x
-            } else {
-                $descricaoParte = trim(str_replace($parcelaInfo['indicador'], '', $descricaoParte));
-            }
+            $descricaoParte = cartao_ofx_strip_indicador_parcela($descricaoParte, $parcelaInfo);
         }
         $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
         if ($descricaoNormalizada === '') {
@@ -413,6 +416,11 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
             }
         }
 
+        if ($parcelaInfo === null) {
+            $parcelaInfo = cartao_ofx_detect_parcela($descricao);
+        }
+        $descricao = cartao_ofx_strip_indicador_parcela($descricao, $parcelaInfo);
+
         $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
         if ($descricaoNormalizada === '') {
             $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
@@ -449,36 +457,97 @@ function cartao_ofx_split_parcelas(float $valorTotal, int $totalParcelas): array
     return $parcelas;
 }
 
-function cartao_ofx_hash_base(int $cartaoId, string $descricaoNorm, float $valorTotal, ?string $indicador, string $competencia): string {
+function cartao_ofx_hash_base(int $cartaoId, string $descricaoNorm, float $valorReferencia, int $totalParcelas, bool $isCredito): string {
     $payload = implode('|', [
+        'v2',
         $cartaoId,
         $descricaoNorm,
-        number_format($valorTotal, 2, '.', ''),
-        $indicador ?? '',
-        $competencia,
+        number_format(abs($valorReferencia), 2, '.', ''),
+        max(1, $totalParcelas),
+        $isCredito ? 'C' : 'D',
     ]);
     return hash('sha256', $payload);
 }
 
-function cartao_ofx_hash_parcela(string $hashBase, int $parcelaNumero, string $dataVencimento, float $valorParcela): string {
+function cartao_ofx_hash_parcela(string $hashBase, int $parcelaNumero, int $totalParcelas, string $dataVencimento, float $valorParcela): string {
     $payload = implode('|', [
+        'v2',
         $hashBase,
         $parcelaNumero,
+        max(1, $totalParcelas),
         $dataVencimento,
         number_format($valorParcela, 2, '.', ''),
     ]);
     return hash('sha256', $payload);
 }
 
-function cartao_ofx_existing_parcel_hashes(PDO $pdo, array $hashes): array {
-    $hashes = array_values(array_unique(array_filter($hashes)));
-    if (empty($hashes)) {
-        return [];
+function cartao_ofx_existing_parcel_hashes(PDO $pdo, int $cartaoId): array {
+    $stmt = $pdo->prepare('
+        SELECT
+            cb.cartao_id,
+            cb.descricao_normalizada,
+            cb.valor_total,
+            p.numero_parcela,
+            p.total_parcelas,
+            p.data_vencimento,
+            p.valor_parcela,
+            p.hash_parcela AS hash_parcela_legacy
+        FROM cartao_ofx_parcelas p
+        INNER JOIN cartao_ofx_compra_base cb ON cb.id = p.compra_base_id
+        WHERE cb.cartao_id = ?
+    ');
+    $stmt->execute([$cartaoId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $hashes = [];
+    foreach ($rows as $row) {
+        $totalParcelas = max(1, (int)($row['total_parcelas'] ?? 1));
+        $valorParcela = (float)($row['valor_parcela'] ?? 0);
+        $baseHash = cartao_ofx_hash_base(
+            (int)$row['cartao_id'],
+            (string)($row['descricao_normalizada'] ?? ''),
+            (float)($row['valor_total'] ?? 0),
+            $totalParcelas,
+            $valorParcela >= 0
+        );
+        $dataVencimento = '';
+        if (!empty($row['data_vencimento'])) {
+            $dt = DateTimeImmutable::createFromFormat('Y-m-d', (string)$row['data_vencimento']);
+            $dataVencimento = $dt instanceof DateTimeImmutable ? $dt->format('Ymd') : preg_replace('/[^0-9]/', '', (string)$row['data_vencimento']);
+        }
+        if ($dataVencimento === '') {
+            continue;
+        }
+        $stableHash = cartao_ofx_hash_parcela(
+            $baseHash,
+            max(1, (int)($row['numero_parcela'] ?? 1)),
+            $totalParcelas,
+            $dataVencimento,
+            $valorParcela
+        );
+        $hashes[$stableHash] = [
+            'hash_parcela_legacy' => $row['hash_parcela_legacy'] ?? null,
+            'data_vencimento' => $dataVencimento,
+        ];
     }
-    $placeholders = implode(',', array_fill(0, count($hashes), '?'));
-    $stmt = $pdo->prepare("SELECT hash_parcela FROM cartao_ofx_parcelas WHERE hash_parcela IN ($placeholders)");
-    $stmt->execute($hashes);
-    return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+    return $hashes;
+}
+
+function cartao_ofx_compact_tx_for_history(array $tx, string $status, ?string $motivo = null): array {
+    $item = [
+        'data' => $tx['data_vencimento'] ?? '',
+        'descricao' => $tx['descricao'] ?? '',
+        'valor' => (float)($tx['valor'] ?? 0),
+        'hash' => $tx['hash_parcela'] ?? '',
+        'status' => $status,
+        'parcela_numero' => (int)($tx['parcela_numero'] ?? 1),
+        'total_parcelas' => (int)($tx['total_parcelas'] ?? 1),
+    ];
+    if ($motivo !== null && $motivo !== '') {
+        $item['motivo'] = $motivo;
+    }
+    return $item;
 }
 
 function cartao_ofx_get_ocr_usage(PDO $pdo, string $mes): int {
@@ -689,9 +758,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($itensBase)) {
                     $erros[] = 'Nenhum lancamento identificado. Verifique o formato Descricao | Valor | Parcela(opcional).';
                 } else {
-                    $hashesParcelas = [];
                     $transacoes = [];
                     $tz = new DateTimeZone('America/Sao_Paulo');
+                    $existingParcelHashes = cartao_ofx_existing_parcel_hashes($pdo, $cartaoId);
+                    $batchSeen = [];
 
                     foreach ($itensBase as $index => $item) {
                         $dt = null;
@@ -716,12 +786,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $cartaoId,
                             $item['descricao_normalizada'],
                             $item['valor_total'],
-                            $item['indicador_parcela'],
-                            $competenciaItem
+                            $totalParcelas,
+                            !empty($item['is_credito'])
                         );
                         $valorAssinado = $item['valor_total'] * ($item['is_credito'] ? 1 : -1);
-                        $hashParcela = cartao_ofx_hash_parcela($baseHash, $parcelaNumero, $dataVencStr, $valorAssinado);
-                        $hashesParcelas[] = $hashParcela;
+                        $hashParcela = cartao_ofx_hash_parcela($baseHash, $parcelaNumero, $totalParcelas, $dataVencStr, $valorAssinado);
+
+                        $motivosDuplicidade = [];
+                        if (isset($existingParcelHashes[$hashParcela])) {
+                            $motivosDuplicidade[] = 'ja lancada';
+                        }
+                        if (isset($batchSeen[$hashParcela])) {
+                            $motivosDuplicidade[] = 'duplicada no texto';
+                        } else {
+                            $batchSeen[$hashParcela] = true;
+                        }
 
                         $transacoes[] = [
                             'idx' => $index,
@@ -737,15 +816,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'hash_parcela' => $hashParcela,
                             'is_credito' => $item['is_credito'],
                             'competencia_base' => $competenciaItem,
+                            'duplicado' => !empty($motivosDuplicidade),
+                            'motivo_duplicidade' => !empty($motivosDuplicidade) ? implode(' / ', $motivosDuplicidade) : '',
                         ];
                     }
 
-                    $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesParcelas);
-                    $duplicados = array_flip($duplicados);
-
                     $previewTransacoes = [];
                     foreach ($transacoes as $tx) {
-                        $tx['duplicado'] = isset($duplicados[$tx['hash_parcela']]);
                         $previewTransacoes[] = $tx;
                     }
 
@@ -790,15 +867,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $txRows = $_POST['tx'] ?? [];
         error_log('[CARTAO_OFX] Confirmar: linhas recebidas=' . count($txRows) . ' cartao=' . $cartaoId);
         $selecionadas = [];
-        $hashesSelecionadas = [];
+        $ignoradasUsuario = [];
 
         foreach ($txRows as $row) {
-            $isExcluded = isset($row['include']); // agora checkbox significa excluir
             $hashParcela = $row['hash_parcela'] ?? '';
             if ($hashParcela === '') {
-                continue;
-            }
-            if ($isExcluded) {
                 continue;
             }
             $descricao = trim($row['descricao'] ?? '');
@@ -806,7 +879,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $descricao = 'SEM DESCRICAO';
             }
             $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
-            $selecionadas[] = [
+            $tx = [
                 'hash_parcela' => $hashParcela,
                 'base_hash' => $row['base_hash'] ?? '',
                 'descricao' => $descricao,
@@ -819,68 +892,117 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'valor' => (float)($row['valor'] ?? 0),
                 'is_credito' => !empty($row['is_credito']),
                 'competencia_base' => $row['competencia_base'] ?? '',
+                'duplicado_preview' => !empty($row['duplicado']),
+                'motivo_duplicidade' => trim((string)($row['motivo_duplicidade'] ?? '')),
             ];
-            $hashesSelecionadas[] = $hashParcela;
+            if (isset($row['include'])) {
+                $ignoradasUsuario[] = cartao_ofx_compact_tx_for_history($tx, 'ignorado_usuario', 'marcado para nao incluir');
+                continue;
+            }
+            $selecionadas[] = $tx;
         }
 
         if (empty($selecionadas)) {
-            $erros[] = 'Nenhuma transacao selecionada (todas marcadas para excluir?).';
+            $erros[] = 'Nenhuma transacao disponivel para gerar OFX.';
             error_log('[CARTAO_OFX] Confirmar: nenhuma transacao selecionada');
         }
 
         if (empty($erros)) {
             error_log('[CARTAO_OFX] Confirmar: selecionadas=' . count($selecionadas));
-            $duplicados = cartao_ofx_existing_parcel_hashes($pdo, $hashesSelecionadas);
-            $duplicados = array_flip($duplicados);
-            $incluirDuplicados = !empty($_POST['incluir_duplicados']);
-            $confirmouDecisaoDuplicados = !empty($_POST['confirmou_decisao_duplicados']);
-            $duplicadosSelecionados = 0;
-            foreach ($selecionadas as $txCheck) {
-                if (isset($duplicados[$txCheck['hash_parcela']])) {
-                    $duplicadosSelecionados++;
+            $transacoesFinal = [];
+            $transacoesGeradasHistorico = [];
+            $ignoradasDuplicidade = [];
+            $competenciaGeracao = $selecionadas[0]['competencia_base'] ?? ($_POST['competencia'] ?? '');
+            $existingParcelHashes = cartao_ofx_existing_parcel_hashes($pdo, $cartaoId);
+            $batchSeen = [];
+            foreach ($selecionadas as $tx) {
+                $motivosDuplicidade = [];
+                if (!empty($tx['duplicado_preview'])) {
+                    $motivosDuplicidade[] = $tx['motivo_duplicidade'] ?: 'ja lancada';
                 }
-            }
-            error_log('[CARTAO_OFX] Confirmar: duplicados selecionados=' . $duplicadosSelecionados . ' incluirDuplicados=' . ($incluirDuplicados ? '1' : '0'));
-            if ($duplicadosSelecionados > 0 && !$confirmouDecisaoDuplicados) {
-                $erros[] = 'Foram encontrados lançamentos duplicados. Confirme se deseja gerar incluindo ou ignorando os duplicados.';
-                error_log('[CARTAO_OFX] Confirmar: decisão sobre duplicados não informada, geração bloqueada');
+                if (isset($existingParcelHashes[$tx['hash_parcela']])) {
+                    $motivosDuplicidade[] = 'ja lancada';
+                }
+                if (isset($batchSeen[$tx['hash_parcela']])) {
+                    $motivosDuplicidade[] = 'duplicada no lote de confirmacao';
+                } else {
+                    $batchSeen[$tx['hash_parcela']] = true;
+                }
+
+                if (!empty($motivosDuplicidade)) {
+                    $motivo = implode(' / ', array_values(array_unique(array_filter($motivosDuplicidade))));
+                    $ignoradasDuplicidade[] = cartao_ofx_compact_tx_for_history($tx, 'ignorado_duplicidade', $motivo);
+                    continue;
+                }
+
+                $descFinal = $tx['descricao'];
+                if (!empty($tx['total_parcelas']) && (int)$tx['total_parcelas'] > 1) {
+                    $descFinal .= ' (' . (int)$tx['parcela_numero'] . '/' . (int)$tx['total_parcelas'] . ')';
+                }
+                $trnType = $tx['valor'] >= 0 ? 'CREDIT' : 'DEBIT';
+                $transacoesFinal[] = [
+                    'trntype' => $trnType,
+                    'data_vencimento' => $tx['data_vencimento'],
+                    'valor' => $tx['valor'],
+                    'fitid' => $tx['hash_parcela'],
+                    'nome' => $descFinal,
+                    'hash_parcela' => $tx['hash_parcela'],
+                    'base_hash' => $tx['base_hash'],
+                    'parcela_numero' => $tx['parcela_numero'],
+                    'total_parcelas' => $tx['total_parcelas'],
+                ];
+                $transacoesGeradasHistorico[] = cartao_ofx_compact_tx_for_history($tx, 'gerado');
             }
 
-            $transacoesFinal = [];
-            $transacoesJson = [];
-            $competenciaGeracao = $selecionadas[0]['competencia_base'] ?? ($_POST['competencia'] ?? '');
-            foreach ($selecionadas as $tx) {
-                        if (isset($duplicados[$tx['hash_parcela']]) && !$incluirDuplicados) {
-                            continue;
-                        }
-                        $descFinal = $tx['descricao'];
-                        if (!empty($tx['total_parcelas']) && (int)$tx['total_parcelas'] > 1) {
-                            $descFinal .= ' (' . (int)$tx['parcela_numero'] . '/' . (int)$tx['total_parcelas'] . ')';
-                        }
-                        $trnType = $tx['valor'] >= 0 ? 'CREDIT' : 'DEBIT';
-                        $transacoesFinal[] = [
-                            'trntype' => $trnType,
-                            'data_vencimento' => $tx['data_vencimento'],
-                            'valor' => $tx['valor'],
-                            'fitid' => $tx['hash_parcela'],
-                            'nome' => $descFinal,
-                            'hash_parcela' => $tx['hash_parcela'],
-                            'base_hash' => $tx['base_hash'],
-                            'parcela_numero' => $tx['parcela_numero'],
-                            'total_parcelas' => $tx['total_parcelas'],
-                        ];
-                $transacoesJson[] = [
-                    'data' => $tx['data_vencimento'],
-                    'descricao' => $tx['descricao'],
-                    'valor' => $tx['valor'],
-                    'hash' => $tx['hash_parcela'],
-                ];
-            }
+            $historicoPayload = [
+                'versao' => 2,
+                'geradas' => $transacoesGeradasHistorico,
+                'ignoradas_duplicidade' => $ignoradasDuplicidade,
+                'ignoradas_usuario' => $ignoradasUsuario,
+                'resumo' => [
+                    'geradas' => count($transacoesGeradasHistorico),
+                    'ignoradas_duplicidade' => count($ignoradasDuplicidade),
+                    'ignoradas_usuario' => count($ignoradasUsuario),
+                ],
+            ];
 
             if (empty($transacoesFinal)) {
-                $erros[] = 'Todas as transacoes selecionadas ja existiam.';
-                error_log('[CARTAO_OFX] Confirmar: todas selecionadas ja existiam');
-            } else {
+                try {
+                    $stmtGeracao = $pdo->prepare('
+                        INSERT INTO cartao_ofx_geracoes
+                        (cartao_id, competencia, gerado_em, usuario_id, quantidade_transacoes, arquivo_url, arquivo_key, status, transacoes_json)
+                        VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?)
+                        RETURNING id
+                    ');
+                    $stmtGeracao->execute([
+                        $cartaoId,
+                        $competenciaGeracao,
+                        $_SESSION['id'] ?? null,
+                        0,
+                        null,
+                        null,
+                        'sem_novos',
+                        json_encode($historicoPayload),
+                    ]);
+                    $geracaoRow = $stmtGeracao->fetch(PDO::FETCH_ASSOC);
+                    $geracaoId = $geracaoRow ? (int)$geracaoRow['id'] : (int)$pdo->lastInsertId();
+
+                    $_SESSION['cartao_ofx_flash'] = [
+                        'quantidade' => 0,
+                        'geracao_id' => $geracaoId,
+                        'mensagem' => 'Nenhum novo lancamento foi gerado. As parcelas duplicadas ficaram registradas no historico.',
+                    ];
+                    unset($_SESSION['cartao_ofx_preview']);
+                    $preview = null;
+                    header('Location: index.php?page=cartao_ofx_me');
+                    exit;
+                } catch (Exception $e) {
+                    error_log('[CARTAO_OFX] ERRO ao registrar tentativa sem novos lancamentos: ' . $e->getMessage());
+                    $erros[] = 'Todos os lancamentos ja existiam e nao foi possivel registrar o historico.';
+                }
+            }
+
+            if (!empty($transacoesFinal)) {
                 try {
                     $ofxContent = cartao_ofx_generate_ofx($transacoesFinal);
                     $tmpFile = tempnam(sys_get_temp_dir(), 'ofx_');
@@ -966,7 +1088,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $arquivoUrl,
                         $arquivoKey,
                         'gerado',
-                        json_encode($transacoesJson),
+                        json_encode($historicoPayload),
                     ]);
                     $geracaoRow = $stmtGeracao->fetch(PDO::FETCH_ASSOC);
                     $geracaoId = $geracaoRow ? (int)$geracaoRow['id'] : (int)$pdo->lastInsertId();
@@ -1237,10 +1359,20 @@ ob_start();
             <div class="ofx-alert success ofx-success-banner" style="display: block !important; visibility: visible !important;">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                     <div>
-                        <strong style="font-size: 1.1rem;">✓ Arquivo gerado com sucesso!</strong>
+                        <strong style="font-size: 1.1rem;">
+                            <?php if (!empty($successData['mensagem']) && (int)($successData['quantidade'] ?? 0) === 0): ?>
+                                ✓ Processamento concluido
+                            <?php else: ?>
+                                ✓ Arquivo gerado com sucesso!
+                            <?php endif; ?>
+                        </strong>
                         <div style="margin-top: 0.5rem; color: #166534;">
                             <?php if ($successData): ?>
-                                <?php echo (int)($successData['quantidade'] ?? 0); ?> transação(ões) processada(s).
+                                <?php if (!empty($successData['mensagem'])): ?>
+                                    <?php echo htmlspecialchars($successData['mensagem']); ?>
+                                <?php else: ?>
+                                    <?php echo (int)($successData['quantidade'] ?? 0); ?> transação(ões) processada(s).
+                                <?php endif; ?>
                             <?php else: ?>
                                 Arquivo OFX gerado com sucesso.
                             <?php endif; ?>
@@ -1303,14 +1435,25 @@ ob_start();
     <?php if ($preview): ?>
         <div class="ofx-card">
             <h3>Previa de Lancamentos</h3>
-            <p class="ofx-muted">Edite a descricao (NAME) e remova linhas antes de gerar.</p>
+            <p class="ofx-muted">Edite a descricao (NAME) e remova linhas antes de gerar. Parcelas ja lancadas ficam marcadas e sao ignoradas automaticamente.</p>
 
             <form method="post">
                 <input type="hidden" name="action" value="confirmar">
                 <input type="hidden" name="cartao_id" value="<?php echo (int)$preview['cartao_id']; ?>">
                 <input type="hidden" name="competencia" value="<?php echo htmlspecialchars($preview['competencia']); ?>">
-                <input type="hidden" name="incluir_duplicados" value="0">
-                <input type="hidden" name="confirmou_decisao_duplicados" value="0">
+
+                <?php
+                $totalDuplicadosPreview = 0;
+                foreach (($preview['transacoes'] ?? []) as $txResumo) {
+                    if (!empty($txResumo['duplicado'])) {
+                        $totalDuplicadosPreview++;
+                    }
+                }
+                $totalNovosPreview = count($preview['transacoes'] ?? []) - $totalDuplicadosPreview;
+                ?>
+                <div class="ofx-muted" style="margin-bottom:0.75rem;">
+                    <?php echo $totalNovosPreview; ?> novo(s) para OFX, <?php echo $totalDuplicadosPreview; ?> duplicado(s) ja identificado(s).
+                </div>
 
                 <table class="ofx-table">
                     <thead>
@@ -1339,18 +1482,30 @@ ob_start();
                                     <input type="hidden" name="tx[<?php echo $idx; ?>][hash_parcela]" value="<?php echo htmlspecialchars($tx['hash_parcela']); ?>">
                                     <input type="hidden" name="tx[<?php echo $idx; ?>][is_credito]" value="<?php echo $tx['is_credito'] ? '1' : ''; ?>">
                                     <input type="hidden" name="tx[<?php echo $idx; ?>][competencia_base]" value="<?php echo htmlspecialchars($tx['competencia_base'] ?? ''); ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][duplicado]" value="<?php echo $tx['duplicado'] ? '1' : '0'; ?>">
+                                    <input type="hidden" name="tx[<?php echo $idx; ?>][motivo_duplicidade]" value="<?php echo htmlspecialchars($tx['motivo_duplicidade'] ?? ''); ?>">
                                 </td>
                                 <td>R$ <?php echo number_format($tx['valor'], 2, ',', '.'); ?></td>
                                 <td>
                                     <span class="ofx-tag status-tag <?php echo $tx['duplicado'] ? 'duplicado' : 'novo'; ?>">
-                                        <?php echo $tx['duplicado'] ? 'Duplicado' : 'Novo'; ?>
+                                        <?php echo $tx['duplicado'] ? 'Duplicada / ja lancada' : 'Novo'; ?>
                                     </span>
+                                    <?php if (!empty($tx['motivo_duplicidade'])): ?>
+                                        <div class="ofx-muted"><?php echo htmlspecialchars($tx['motivo_duplicidade']); ?></div>
+                                    <?php endif; ?>
                                 </td>
                                 <td>
-                                    <label class="ofx-inline">
-                                        <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]">
-                                        Nao incluir
-                                    </label>
+                                    <?php if ($tx['duplicado']): ?>
+                                        <label class="ofx-inline">
+                                            <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]" checked>
+                                            Ignorado automaticamente
+                                        </label>
+                                    <?php else: ?>
+                                        <label class="ofx-inline">
+                                            <input type="checkbox" class="tx-include" name="tx[<?php echo $idx; ?>][include]">
+                                            Nao incluir
+                                        </label>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -1397,47 +1552,24 @@ ob_start();
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    var confirmFormAction = document.querySelector('form input[name="action"][value="confirmar"]');
-    var confirmForm = confirmFormAction ? confirmFormAction.closest('form') : null;
-    if (confirmForm) {
-        confirmForm.addEventListener('submit', function() {
-            var inputIncluirDuplicados = confirmForm.querySelector('input[name="incluir_duplicados"]');
-            var inputConfirmouDecisao = confirmForm.querySelector('input[name="confirmou_decisao_duplicados"]');
-            if (!inputIncluirDuplicados || !inputConfirmouDecisao) return;
-            inputIncluirDuplicados.value = '0';
-            inputConfirmouDecisao.value = '0';
-
-            var duplicadosSelecionados = 0;
-            confirmForm.querySelectorAll('tbody tr[data-duplicado="1"]').forEach(function(row) {
-                var excluirCheckbox = row.querySelector('.tx-include');
-                if (excluirCheckbox && !excluirCheckbox.checked) {
-                    duplicadosSelecionados++;
-                }
-            });
-
-            if (duplicadosSelecionados > 0) {
-                var msg = 'Foram encontrados ' + duplicadosSelecionados + ' lançamento(ões) duplicado(s). Clique "OK" para gerar o OFX incluindo os duplicados ou "Cancelar" para gerar ignorando os duplicados.';
-                var incluir = window.confirm(msg);
-                inputConfirmouDecisao.value = '1';
-                if (incluir) {
-                    inputIncluirDuplicados.value = '1';
-                }
-            }
-        });
-    }
-
     document.querySelectorAll('.tx-include').forEach(function(checkbox) {
         checkbox.addEventListener('change', function() {
             var row = this.closest('tr');
             if (!row) return;
             var tag = row.querySelector('.status-tag');
             if (!tag) return;
+            if (row.getAttribute('data-duplicado') === '1') {
+                this.checked = true;
+                tag.textContent = 'Duplicada / ja lancada';
+                tag.classList.remove('ignorado');
+                return;
+            }
             if (this.checked) {
                 tag.textContent = 'Ignorado';
                 tag.classList.add('ignorado');
             } else {
                 if (tag.classList.contains('duplicado')) {
-                    tag.textContent = 'Duplicado';
+                    tag.textContent = 'Duplicada / ja lancada';
                 } else {
                     tag.textContent = 'Novo';
                 }

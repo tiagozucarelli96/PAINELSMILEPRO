@@ -33,7 +33,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $viewId = (int)($_GET['view'] ?? 0);
-$viewTransacoes = [];
+$viewGeradas = [];
+$viewIgnoradasDuplicidade = [];
+$viewIgnoradasUsuario = [];
+$viewResumo = ['geradas' => 0, 'ignoradas_duplicidade' => 0, 'ignoradas_usuario' => 0];
 $downloadId = (int)($_GET['download'] ?? 0);
 $downloadError = null;
 
@@ -92,7 +95,15 @@ if ($viewId > 0) {
     if ($json) {
         $decoded = json_decode($json, true);
         if (is_array($decoded)) {
-            $viewTransacoes = $decoded;
+            if (isset($decoded['versao']) && (int)$decoded['versao'] >= 2) {
+                $viewGeradas = is_array($decoded['geradas'] ?? null) ? $decoded['geradas'] : [];
+                $viewIgnoradasDuplicidade = is_array($decoded['ignoradas_duplicidade'] ?? null) ? $decoded['ignoradas_duplicidade'] : [];
+                $viewIgnoradasUsuario = is_array($decoded['ignoradas_usuario'] ?? null) ? $decoded['ignoradas_usuario'] : [];
+                $viewResumo = is_array($decoded['resumo'] ?? null) ? array_merge($viewResumo, $decoded['resumo']) : $viewResumo;
+            } else {
+                $viewGeradas = $decoded;
+                $viewResumo['geradas'] = count($viewGeradas);
+            }
         }
     }
 }
@@ -113,6 +124,20 @@ $stmt = $pdo->query('
     LIMIT 500
 ');
 $geracoes = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+foreach ($geracoes as &$geracao) {
+    $geracao['historico_resumo'] = ['geradas' => 0, 'ignoradas_duplicidade' => 0, 'ignoradas_usuario' => 0];
+    $decoded = json_decode((string)($geracao['transacoes_json'] ?? ''), true);
+    if (!is_array($decoded)) {
+        $geracao['historico_resumo']['geradas'] = (int)($geracao['quantidade_transacoes'] ?? 0);
+        continue;
+    }
+    if (isset($decoded['versao']) && (int)$decoded['versao'] >= 2) {
+        $geracao['historico_resumo'] = array_merge($geracao['historico_resumo'], (array)($decoded['resumo'] ?? []));
+    } else {
+        $geracao['historico_resumo']['geradas'] = count($decoded);
+    }
+}
+unset($geracao);
 error_log('[CARTAO_OFX_HIST] Total de geracoes encontradas: ' . count($geracoes));
 if (!empty($geracoes)) {
     error_log('[CARTAO_OFX_HIST] Primeira geracao: ID=' . $geracoes[0]['id'] . ', Data=' . $geracoes[0]['gerado_em'] . ', Status=' . $geracoes[0]['status']);
@@ -193,6 +218,11 @@ ob_start();
     color: #991b1b;
 }
 
+.ofx-tag.sem_novos {
+    background: #e2e8f0;
+    color: #334155;
+}
+
 .ofx-button {
     background: #2563eb;
     color: #fff;
@@ -235,27 +265,80 @@ ob_start();
         <div class="ofx-alert error"><?php echo htmlspecialchars($downloadError); ?></div>
     <?php endif; ?>
 
-    <?php if (!empty($viewTransacoes)): ?>
+    <?php if ($viewId > 0): ?>
         <div class="ofx-card">
             <h3>Previa</h3>
-            <table class="ofx-table">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Descricao</th>
-                        <th>Valor</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($viewTransacoes as $tx): ?>
+            <p>Geradas: <?php echo (int)$viewResumo['geradas']; ?> | Ignoradas por duplicidade: <?php echo (int)$viewResumo['ignoradas_duplicidade']; ?> | Ignoradas manualmente: <?php echo (int)$viewResumo['ignoradas_usuario']; ?></p>
+
+            <?php if (!empty($viewGeradas)): ?>
+                <h4>Geradas</h4>
+                <table class="ofx-table">
+                    <thead>
                         <tr>
-                            <td><?php echo htmlspecialchars(cartao_ofx_hist_format_date($tx['data'] ?? '')); ?></td>
-                            <td><?php echo htmlspecialchars($tx['descricao'] ?? ''); ?></td>
-                            <td>R$ <?php echo number_format((float)($tx['valor'] ?? 0), 2, ',', '.'); ?></td>
+                            <th>Data</th>
+                            <th>Descricao</th>
+                            <th>Valor</th>
                         </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($viewGeradas as $tx): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars(cartao_ofx_hist_format_date($tx['data'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($tx['descricao'] ?? ''); ?></td>
+                                <td>R$ <?php echo number_format((float)($tx['valor'] ?? 0), 2, ',', '.'); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
+            <?php if (!empty($viewIgnoradasDuplicidade)): ?>
+                <h4>Ignoradas por duplicidade</h4>
+                <table class="ofx-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Descricao</th>
+                            <th>Valor</th>
+                            <th>Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($viewIgnoradasDuplicidade as $tx): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars(cartao_ofx_hist_format_date($tx['data'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($tx['descricao'] ?? ''); ?></td>
+                                <td>R$ <?php echo number_format((float)($tx['valor'] ?? 0), 2, ',', '.'); ?></td>
+                                <td><?php echo htmlspecialchars($tx['motivo'] ?? ''); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+
+            <?php if (!empty($viewIgnoradasUsuario)): ?>
+                <h4>Ignoradas manualmente</h4>
+                <table class="ofx-table">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Descricao</th>
+                            <th>Valor</th>
+                            <th>Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($viewIgnoradasUsuario as $tx): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars(cartao_ofx_hist_format_date($tx['data'] ?? '')); ?></td>
+                                <td><?php echo htmlspecialchars($tx['descricao'] ?? ''); ?></td>
+                                <td>R$ <?php echo number_format((float)($tx['valor'] ?? 0), 2, ',', '.'); ?></td>
+                                <td><?php echo htmlspecialchars($tx['motivo'] ?? ''); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
@@ -271,6 +354,7 @@ ob_start();
                         <th>Competencia</th>
                         <th>Cartao</th>
                         <th>Transacoes</th>
+                        <th>Ignoradas Dup.</th>
                         <th>Usuario</th>
                         <th>Status</th>
                         <th>Acoes</th>
@@ -282,10 +366,19 @@ ob_start();
                             <td><?php echo htmlspecialchars($geracao['gerado_em']); ?></td>
                             <td><?php echo htmlspecialchars($geracao['competencia']); ?></td>
                             <td><?php echo htmlspecialchars($geracao['nome_cartao'] ?? ''); ?></td>
-                            <td><?php echo (int)$geracao['quantidade_transacoes']; ?></td>
+                            <td><?php echo (int)($geracao['historico_resumo']['geradas'] ?? $geracao['quantidade_transacoes']); ?></td>
+                            <td><?php echo (int)($geracao['historico_resumo']['ignoradas_duplicidade'] ?? 0); ?></td>
                             <td><?php echo htmlspecialchars($geracao['usuario_nome'] ?? ''); ?></td>
                             <td>
-                                <span class="ofx-tag <?php echo $geracao['status'] === 'excluido' ? 'excluido' : 'gerado'; ?>">
+                                <?php
+                                $statusClass = 'gerado';
+                                if (($geracao['status'] ?? '') === 'excluido') {
+                                    $statusClass = 'excluido';
+                                } elseif (($geracao['status'] ?? '') === 'sem_novos') {
+                                    $statusClass = 'sem_novos';
+                                }
+                                ?>
+                                <span class="ofx-tag <?php echo $statusClass; ?>">
                                     <?php echo htmlspecialchars($geracao['status']); ?>
                                 </span>
                             </td>
