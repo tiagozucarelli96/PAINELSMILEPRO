@@ -291,6 +291,27 @@ function eventos_cliente_parse_allowed_sections($raw): array {
 }
 
 /**
+ * Seções válidas por tipo de link público.
+ */
+function eventos_cliente_sections_for_link_type(string $link_type): array {
+    $link_type = strtolower(trim($link_type));
+
+    if ($link_type === 'cliente_dj') {
+        return ['dj_protocolo'];
+    }
+
+    if ($link_type === 'cliente_observacoes') {
+        return ['decoracao', 'observacoes_gerais'];
+    }
+
+    if ($link_type === 'cliente_formulario') {
+        return ['formulario'];
+    }
+
+    return ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
+}
+
+/**
  * Resolve todas as seções permitidas pelo token público.
  */
 function eventos_cliente_resolver_secoes_link(array $link): array {
@@ -310,16 +331,8 @@ function eventos_cliente_resolver_secoes_link(array $link): array {
         return $sections;
     }
 
-    if ($link_type === 'cliente_dj') {
-        return ['dj_protocolo'];
-    }
-
-    if ($link_type === 'cliente_formulario') {
-        return ['formulario'];
-    }
-
     $sections = [];
-    foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $section) {
+    foreach (eventos_cliente_sections_for_link_type($link_type) as $section) {
         if (in_array($section, $allowed, true)) {
             $sections[] = $section;
         }
@@ -940,7 +953,8 @@ if (empty($token)) {
 
         $ordered_sections = [];
         $section_permissions = [];
-        foreach (['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'] as $candidate_section) {
+        $candidate_sections = eventos_cliente_sections_for_link_type($link_type_current);
+        foreach ($candidate_sections as $candidate_section) {
             if (!in_array($candidate_section, $link_sections, true)) {
                 continue;
             }
@@ -977,7 +991,7 @@ if (empty($token)) {
         }
 
         $link_sections = array_values(array_unique($ordered_sections));
-        if ($requested_section !== '' && in_array($requested_section, ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'], true)) {
+        if ($requested_section !== '' && in_array($requested_section, $candidate_sections, true)) {
             if (!in_array($requested_section, $link_sections, true)) {
                 $error = 'Esta seção não está disponível no portal do cliente no momento.';
             } else {
