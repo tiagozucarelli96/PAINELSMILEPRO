@@ -658,6 +658,19 @@ function portal_dj_extrair_secao_publica_snapshot(string $content_html, string $
     return $content_html;
 }
 
+function portal_dj_conteudo_tem_marcador_decoracao(string $content_html): bool
+{
+    $haystack = strtolower(trim($content_html));
+    if ($haystack === '') {
+        return false;
+    }
+
+    return str_contains($haystack, 'data-smile-public-section="decoracao"')
+        || str_contains($haystack, "data-smile-public-section='decoracao'")
+        || str_contains($haystack, '>decoração<')
+        || str_contains($haystack, '>decoracao<');
+}
+
 /**
  * Definição fixa dos blocos de Observações Gerais da reunião final.
  */
@@ -911,6 +924,16 @@ if (!empty($_GET['evento'])) {
                 if (!empty($dj_resolvido['resolved'])) {
                     $secao_dj = $dj_resolvido['secao'] ?? $secao_dj;
                     $anexos_dj = $dj_resolvido['anexos'] ?? [];
+                }
+                if (is_array($secao_observacoes)) {
+                    $obs_html = trim((string)($secao_observacoes['content_html'] ?? ''));
+                    if ($obs_html !== '') {
+                        $obs_filtrado = portal_dj_extrair_secao_publica_snapshot($obs_html, 'observacoes_gerais');
+                        if (!portal_dj_conteudo_tem_marcador_decoracao($obs_filtrado)) {
+                            $secao_observacoes['content_html'] = $obs_filtrado;
+                            $secao_observacoes['content_text'] = trim(strip_tags($obs_filtrado));
+                        }
+                    }
                 }
                 $observacoes_blocos = portal_dj_montar_observacoes_blocos((string)($secao_observacoes['content_html'] ?? ''));
                 $quadros_observacoes = portal_dj_resolver_quadros_observacoes($pdo, $evento_id);
@@ -1892,79 +1915,6 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
                 <?php endif; ?>
             </div>
 
-            <div class="anexos-list">
-                <h3 style="font-size: 0.95rem; color: #374151; margin-bottom: 0.75rem;">📁 Arquivos anexados do evento</h3>
-                <?php if (empty($arquivos_evento)): ?>
-                <p style="color: #64748b; font-style: italic;">Nenhum arquivo anexado neste evento.</p>
-                <?php else: ?>
-                <?php foreach ($arquivos_evento as $arquivo_evento): ?>
-                <?php
-                    $anexo_url = trim((string)($arquivo_evento['public_url'] ?? ''));
-                    $anexo_nome = trim((string)($arquivo_evento['original_name'] ?? 'arquivo'));
-                    $anexo_mime = strtolower(trim((string)($arquivo_evento['mime_type'] ?? 'application/octet-stream')));
-                    $anexo_kind = strtolower(trim((string)($arquivo_evento['file_kind'] ?? 'outros')));
-                    $anexo_size = (int)($arquivo_evento['size_bytes'] ?? 0);
-                    $anexo_note = trim((string)($arquivo_evento['descricao'] ?? ''));
-                    $anexo_campo = trim((string)($arquivo_evento['campo_titulo'] ?? ''));
-                    $anexo_visivel_cliente = !empty($arquivo_evento['visivel_cliente']);
-                    $anexo_upload_raw = trim((string)($arquivo_evento['uploaded_at'] ?? ''));
-                    $anexo_upload_fmt = $anexo_upload_raw !== '' ? date('d/m/Y H:i', strtotime($anexo_upload_raw)) : '-';
-                    $anexo_autor = trim((string)($arquivo_evento['uploaded_by_type'] ?? 'interno'));
-                    $anexo_icon = '📎';
-                    if ($anexo_kind === 'imagem') {
-                        $anexo_icon = '🖼️';
-                    } elseif ($anexo_kind === 'video') {
-                        $anexo_icon = '🎬';
-                    } elseif ($anexo_kind === 'audio') {
-                        $anexo_icon = '🎵';
-                    } elseif ($anexo_kind === 'pdf') {
-                        $anexo_icon = '📄';
-                    }
-                ?>
-                <div class="anexo-item">
-                    <div class="anexo-main">
-                        <span class="anexo-icon"><?= $anexo_icon ?></span>
-                        <div class="anexo-info">
-                            <div class="anexo-name"><?= htmlspecialchars($anexo_nome !== '' ? $anexo_nome : 'arquivo') ?></div>
-                            <div class="anexo-meta">
-                                <?= htmlspecialchars($anexo_mime !== '' ? $anexo_mime : 'application/octet-stream') ?>
-                                • <?= $anexo_size > 0 ? htmlspecialchars(number_format($anexo_size / 1024, 1, ',', '.')) . ' KB' : '-' ?>
-                                • Enviado em <?= htmlspecialchars($anexo_upload_fmt) ?>
-                                • Origem: <?= htmlspecialchars($anexo_autor) ?>
-                            </div>
-                            <div class="anexo-note">
-                                <?= $anexo_campo !== '' ? '<strong>Campo:</strong> ' . htmlspecialchars($anexo_campo) . ' • ' : '' ?>
-                                <?= $anexo_visivel_cliente ? 'Visível no portal do cliente' : 'Uso interno da equipe' ?>
-                            </div>
-                            <?php if ($anexo_note !== ''): ?>
-                            <div class="anexo-note"><strong>Descrição:</strong> <?= htmlspecialchars($anexo_note) ?></div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    <div class="anexo-actions">
-                        <?php if ($anexo_url !== ''): ?>
-                        <button type="button"
-                                class="btn btn-secondary btn-small"
-                                data-open-anexo-modal="1"
-                                data-url="<?= htmlspecialchars($anexo_url, ENT_QUOTES, 'UTF-8') ?>"
-                                data-name="<?= htmlspecialchars($anexo_nome, ENT_QUOTES, 'UTF-8') ?>"
-                                data-mime="<?= htmlspecialchars($anexo_mime, ENT_QUOTES, 'UTF-8') ?>"
-                                data-kind="<?= htmlspecialchars($anexo_kind, ENT_QUOTES, 'UTF-8') ?>">
-                            Visualizar
-                        </button>
-                        <a href="<?= htmlspecialchars($anexo_url) ?>"
-                           target="_blank"
-                           rel="noopener noreferrer"
-                           download
-                           class="btn btn-primary btn-small">Download</a>
-                        <?php else: ?>
-                        <span class="anexo-meta">Arquivo sem URL pública.</span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
         </div>
         
         <?php else: ?>
