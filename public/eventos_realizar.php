@@ -582,12 +582,15 @@ includeSidebar('Realizar evento');
     }
 
     .modal-card {
-        width: min(960px, 100%);
-        max-height: 92vh;
+        width: min(1080px, 100%);
+        height: min(86vh, 860px);
         background: #fff;
-        border-radius: 14px;
+        border-radius: 16px;
+        border: 1px solid #dbe3ef;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
         overflow: hidden;
-        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+        display: grid;
+        grid-template-rows: auto 1fr;
     }
 
     .modal-head {
@@ -595,8 +598,9 @@ includeSidebar('Realizar evento');
         align-items: center;
         justify-content: space-between;
         gap: 1rem;
-        padding: 0.95rem 1rem;
+        padding: 0.9rem 1rem;
         border-bottom: 1px solid #e2e8f0;
+        background: #fff;
     }
 
     .modal-head h3 {
@@ -605,24 +609,40 @@ includeSidebar('Realizar evento');
         font-size: 1rem;
     }
 
+    .modal-head-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
     .modal-close {
-        border: none;
-        background: transparent;
-        font-size: 1.6rem;
+        width: 38px;
+        height: 38px;
+        border: 1px solid #dbe3ef;
+        border-radius: 10px;
+        background: #fff;
+        font-size: 1.45rem;
         line-height: 1;
         cursor: pointer;
         color: #475569;
     }
 
     .modal-body {
-        padding: 0;
-        height: min(78vh, 900px);
+        padding: 0.9rem;
+        background: #f8fafc;
+        overflow: auto;
     }
 
-    .modal-body iframe {
+    .modal-pdf-frame {
         width: 100%;
         height: 100%;
+        min-height: 520px;
         border: 0;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px #e2e8f0;
     }
 
     .modal-body-empty {
@@ -665,6 +685,23 @@ includeSidebar('Realizar evento');
         .event-item {
             flex-direction: column;
             align-items: flex-start;
+        }
+
+        .modal-card {
+            height: min(92vh, 860px);
+        }
+
+        .modal-head {
+            align-items: flex-start;
+        }
+
+        .modal-head-actions {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        .modal-pdf-frame {
+            min-height: 420px;
         }
     }
 </style>
@@ -834,13 +871,17 @@ includeSidebar('Realizar evento');
     <div class="modal-card">
         <div class="modal-head">
             <h3>Resumo do evento</h3>
-            <div style="display:flex; align-items:center; gap:0.75rem;">
+            <div class="modal-head-actions">
                 <a class="btn btn-secondary" href="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" target="_blank" rel="noopener noreferrer">Abrir em nova guia</a>
                 <button type="button" class="modal-close" onclick="fecharModalResumoEvento()">&times;</button>
             </div>
         </div>
         <div class="modal-body">
-            <iframe id="modalResumoEventoFrame" data-pdf-url="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>" title="Resumo do evento"></iframe>
+            <iframe id="modalResumoEventoFrame"
+                    class="modal-pdf-frame"
+                    data-pdf-url="<?= htmlspecialchars((string)($resumo_evento_arquivo['public_url'] ?? '')) ?>"
+                    title="Resumo do evento">
+            </iframe>
         </div>
     </div>
 </div>
@@ -852,9 +893,11 @@ function abrirModalResumoEvento() {
     if (frame && !frame.getAttribute('src')) {
         const rawUrl = String(frame.getAttribute('data-pdf-url') || '').trim();
         if (rawUrl !== '') {
-            frame.setAttribute('src', 'https://docs.google.com/gview?embedded=1&url=' + encodeURIComponent(rawUrl));
+            const sep = rawUrl.includes('?') ? '&' : '?';
+            frame.setAttribute('src', rawUrl + sep + 'inline=1#toolbar=1&navpanes=0&view=FitH');
         }
     }
+    document.body.style.overflow = 'hidden';
     modal.classList.add('show');
 }
 
@@ -863,6 +906,7 @@ function fecharModalResumoEvento() {
     const frame = document.getElementById('modalResumoEventoFrame');
     if (!modal) return;
     modal.classList.remove('show');
+    document.body.style.overflow = '';
     if (frame) {
         frame.removeAttribute('src');
     }
