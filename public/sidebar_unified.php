@@ -1856,7 +1856,7 @@ if ($current_page === 'dashboard') {
                 </a>
                 <?php endif; ?>
 
-                <?php if (!empty($_SESSION['perm_marketing'])): ?>
+                <?php if (!empty($_SESSION['perm_marketing']) || !empty($_SESSION['perm_superadmin'])): ?>
                 <a href="index.php?page=marketing" class="nav-item <?= isActiveUnified('marketing') ?>">
                     <span class="nav-item-icon">📣</span>
                     Marketing
