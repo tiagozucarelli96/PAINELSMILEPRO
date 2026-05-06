@@ -5,6 +5,7 @@ ALTER TABLE usuarios
 ADD COLUMN IF NOT EXISTS perm_agenda BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_comercial BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_eventos BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_logistico BOOLEAN DEFAULT FALSE,
@@ -18,6 +19,7 @@ ADD COLUMN IF NOT EXISTS perm_rh BOOLEAN DEFAULT FALSE;
 COMMENT ON COLUMN usuarios.perm_agenda IS 'Permissão para acessar o módulo Agenda';
 COMMENT ON COLUMN usuarios.perm_agenda_eventos IS 'Permissão para acessar o módulo Agenda de eventos';
 COMMENT ON COLUMN usuarios.perm_comercial IS 'Permissão para acessar o módulo Comercial';
+COMMENT ON COLUMN usuarios.perm_marketing IS 'Permissão para acessar o módulo Marketing';
 COMMENT ON COLUMN usuarios.perm_eventos IS 'Permissão para acessar o módulo Eventos';
 COMMENT ON COLUMN usuarios.perm_eventos_realizar IS 'Permissão para acessar a página Realizar evento';
 COMMENT ON COLUMN usuarios.perm_logistico IS 'Permissão para acessar o módulo Logístico';
@@ -31,6 +33,7 @@ COMMENT ON COLUMN usuarios.perm_rh IS 'Permissão para acessar o módulo RH';
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda ON usuarios(perm_agenda) WHERE perm_agenda = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda_eventos ON usuarios(perm_agenda_eventos) WHERE perm_agenda_eventos = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_comercial ON usuarios(perm_comercial) WHERE perm_comercial = TRUE;
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_marketing ON usuarios(perm_marketing) WHERE perm_marketing = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos ON usuarios(perm_eventos) WHERE perm_eventos = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_eventos_realizar ON usuarios(perm_eventos_realizar) WHERE perm_eventos_realizar = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_logistico ON usuarios(perm_logistico) WHERE perm_logistico = TRUE;
@@ -39,4 +42,3 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_perm_cadastros ON usuarios(perm_cadastro
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_financeiro ON usuarios(perm_financeiro) WHERE perm_financeiro = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_administrativo ON usuarios(perm_administrativo) WHERE perm_administrativo = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_rh ON usuarios(perm_rh) WHERE perm_rh = TRUE;
-

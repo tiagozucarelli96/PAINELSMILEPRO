@@ -235,6 +235,7 @@ $routes = [
   'agenda' => 'agenda.php',
   'agenda_eventos' => 'agenda_eventos.php',
   'demandas' => 'demandas_trello.php',
+  'marketing' => 'marketing.php',
   'demandas_old' => 'demandas.php', // Versão antiga mantida
     'demandas_fixas' => 'demandas_fixas_ui.php',
     'test_magalu_buckets' => 'test_magalu_buckets.php',

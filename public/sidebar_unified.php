@@ -1855,6 +1855,13 @@ if ($current_page === 'dashboard') {
                     Comercial
                 </a>
                 <?php endif; ?>
+
+                <?php if (!empty($_SESSION['perm_marketing'])): ?>
+                <a href="index.php?page=marketing" class="nav-item <?= isActiveUnified('marketing') ?>">
+                    <span class="nav-item-icon">📣</span>
+                    Marketing
+                </a>
+                <?php endif; ?>
                 
                 <?php if (!empty($_SESSION['perm_eventos'])): ?>
                 <a href="index.php?page=eventos" class="nav-item <?= isActiveUnified('eventos') ?>">

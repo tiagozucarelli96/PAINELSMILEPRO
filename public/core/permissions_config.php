@@ -9,6 +9,7 @@
  * - Agenda de eventos: perm_agenda_eventos
  * - Demandas: perm_demandas
  * - Comercial: perm_comercial
+ * - Marketing: perm_marketing
  * - Eventos: perm_eventos
  * - Realizar evento: perm_eventos_realizar
  * - Logística: perm_logistico
@@ -40,6 +41,11 @@ define('SYSTEM_PERMISSIONS', [
         'label' => 'Comercial',
         'icon' => '📋',
         'description' => 'Acesso ao módulo comercial (degustações, vendas, etc)'
+    ],
+    'perm_marketing' => [
+        'label' => 'Marketing',
+        'icon' => '📣',
+        'description' => 'Acesso ao módulo de marketing'
     ],
     'perm_eventos' => [
         'label' => 'Eventos',
@@ -138,6 +144,7 @@ function user_can_access(string $module): bool {
         'agenda_eventos' => 'perm_agenda_eventos',
         'demandas' => 'perm_demandas',
         'comercial' => 'perm_comercial',
+        'marketing' => 'perm_marketing',
         'eventos' => 'perm_eventos',
         'eventos_realizar' => 'perm_eventos_realizar',
         'logistica' => 'perm_logistico',

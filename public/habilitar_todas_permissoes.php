@@ -29,6 +29,7 @@ $todas_permissoes = [
     // Módulos da sidebar
     'perm_agenda',
     'perm_comercial',
+    'perm_marketing',
     'perm_eventos',
     'perm_eventos_realizar',
     // 'perm_logistico', // REMOVIDO: Módulo desativado

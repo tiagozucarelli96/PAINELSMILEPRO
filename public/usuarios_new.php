@@ -1359,7 +1359,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
+            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
@@ -1614,6 +1614,15 @@ ob_start();
                         error_log("Erro ao adicionar perm_vendas_administracao: " . $e->getMessage());
                     }
                 }
+
+                if (!isset($existing_perms['perm_marketing'])) {
+                    try {
+                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE");
+                        $existing_perms['perm_marketing'] = true;
+                    } catch (Exception $e) {
+                        error_log("Erro ao adicionar perm_marketing: " . $e->getMessage());
+                    }
+                }
                 
                 // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [
@@ -1621,6 +1630,7 @@ ob_start();
                     'perm_agenda_eventos' => '🗓️ Agenda de eventos',
                     'perm_demandas' => '📝 Demandas',
                     'perm_comercial' => '📋 Comercial',
+                    'perm_marketing' => '📣 Marketing',
                     'perm_eventos' => '🎉 Eventos',
                     'perm_eventos_realizar' => '✅ Realizar evento',
                     'perm_logistico' => '📦 Logística',
@@ -1637,6 +1647,7 @@ ob_start();
                     'perm_agenda_eventos',
                     'perm_demandas',
                     'perm_comercial',
+                    'perm_marketing',
                     'perm_eventos',
                     'perm_eventos_realizar',
                     'perm_logistico',
