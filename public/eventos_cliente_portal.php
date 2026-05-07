@@ -122,8 +122,8 @@ if ($token === '') {
             $editavel_convidados = !empty($portal['editavel_convidados']);
             $visivel_arquivos = !empty($portal['visivel_arquivos']);
             $editavel_arquivos = !empty($portal['editavel_arquivos']);
-            $visivel_cardapio = !empty($portal['visivel_cardapio']);
-            $editavel_cardapio = !empty($portal['editavel_cardapio']);
+            $visivel_cardapio = false;
+            $editavel_cardapio = false;
 
             if ($visivel_reuniao || $editavel_reuniao) {
                 try {

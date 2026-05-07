@@ -44,7 +44,7 @@ if ($token === '') {
                 $error = (string)($contexto_cardapio['error'] ?? 'Não foi possível carregar o cardápio.');
             }
 
-            if ($error === '' && empty($portal['visivel_cardapio'])) {
+            if ($error === '') {
                 $error = 'O cardápio não está disponível para este portal.';
             }
 
@@ -86,9 +86,7 @@ $local_evento = trim((string)($snapshot['local'] ?? 'Local não informado'));
 $pacote_nome = trim((string)($contexto_cardapio['pacote']['nome'] ?? ''));
 $submitted_at = trim((string)($contexto_cardapio['summary']['submitted_at'] ?? ''));
 $submitted_fmt = $submitted_at !== '' ? date('d/m/Y H:i', strtotime($submitted_at)) : '';
-$pode_editar = $error === ''
-    && !empty($portal['editavel_cardapio'])
-    && empty($contexto_cardapio['locked']);
+$pode_editar = false;
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
