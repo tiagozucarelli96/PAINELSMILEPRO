@@ -1583,16 +1583,21 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             border-radius: 8px;
             width: 100%;
             max-width: 100%;
-            overflow-x: auto;
-            overflow-y: hidden;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .client-content-view {
             width: 100%;
             max-width: 100%;
+            min-width: 0;
             color: #1e293b;
             overflow-wrap: anywhere;
             word-break: break-word;
+        }
+
+        .editor-content {
+            min-width: 0;
         }
 
         .client-content-view > *:first-child {
@@ -1611,6 +1616,8 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         .client-content-view h6,
         .client-content-view p,
         .client-content-view div,
+        .client-content-view span,
+        .client-content-view figure,
         .client-content-view blockquote,
         .client-content-view ul,
         .client-content-view ol,
@@ -1622,6 +1629,13 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         .client-content-view th,
         .client-content-view td {
             max-width: 100%;
+        }
+
+        .client-content-view [style*="width"],
+        .client-content-view [width],
+        .editor-content [style*="width"],
+        .editor-content [width] {
+            max-width: 100% !important;
         }
 
         .client-content-view table {
@@ -1645,8 +1659,17 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         .client-content-view object,
         .client-content-view embed,
         .client-content-view canvas,
-        .client-content-view svg {
+        .client-content-view svg,
+        .editor-content img,
+        .editor-content video,
+        .editor-content iframe,
+        .editor-content object,
+        .editor-content embed,
+        .editor-content canvas,
+        .editor-content svg {
+            display: block;
             max-width: 100% !important;
+            width: auto !important;
             height: auto !important;
         }
 
