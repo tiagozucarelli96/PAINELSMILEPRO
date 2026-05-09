@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
@@ -23,7 +24,7 @@ if (!$can_manage) {
     exit;
 }
 
-logistica_cardapio_ensure_schema($pdo);
+logistica_cardapio_ensure_schema($pdo, false);
 
 $errors = [];
 $messages = [];

@@ -24,6 +24,11 @@ class NotificationDispatcher {
             return;
         }
 
+        if ($this->isSchemaMarkerFresh()) {
+            $this->schemaEnsured = true;
+            return;
+        }
+
         $this->safeExec("
             CREATE TABLE IF NOT EXISTS demandas_notificacoes (
                 id BIGSERIAL PRIMARY KEY,
@@ -48,6 +53,23 @@ class NotificationDispatcher {
         if ($dateColumn !== null) {
             $this->safeExec("CREATE INDEX IF NOT EXISTS idx_demandas_notificacoes_{$dateColumn}_desc ON demandas_notificacoes({$dateColumn} DESC)");
         }
+        $this->touchSchemaMarker();
+    }
+
+    private function isSchemaMarkerFresh(): bool
+    {
+        $ttl = max(300, (int)(painel_env('NOTIFICATION_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
+        $mtime = @filemtime('/tmp/demandas_notificacoes_schema_ready');
+        if ($mtime === false) {
+            return false;
+        }
+
+        return (time() - $mtime) < $ttl;
+    }
+
+    private function touchSchemaMarker(): void
+    {
+        @touch('/tmp/demandas_notificacoes_schema_ready');
     }
 
     public function dispatch(array $recipients, array $payload = [], array $channels = []): array {

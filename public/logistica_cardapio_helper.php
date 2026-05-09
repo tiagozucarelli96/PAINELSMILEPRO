@@ -4,8 +4,15 @@
  * Estrutura de seções, pacotes, vínculos de cardápio e escolhas do cliente.
  */
 
-require_once __DIR__ . '/pacotes_evento_helper.php';
-require_once __DIR__ . '/eventos_reuniao_helper.php';
+function logistica_cardapio_require_pacotes_helper(): void
+{
+    require_once __DIR__ . '/pacotes_evento_helper.php';
+}
+
+function logistica_cardapio_require_eventos_reuniao_helper(): void
+{
+    require_once __DIR__ . '/eventos_reuniao_helper.php';
+}
 
 function logistica_cardapio_has_table(PDO $pdo, string $table_name): bool
 {
@@ -162,15 +169,48 @@ function logistica_cardapio_resposta_normalizar(?array $row): ?array
     return $row;
 }
 
-function logistica_cardapio_ensure_schema(PDO $pdo): void
+function logistica_cardapio_schema_marker_path(bool $withMeetingSchema): string
 {
-    static $done = false;
-    if ($done) {
+    return $withMeetingSchema
+        ? '/tmp/logistica_cardapio_schema_full_ready'
+        : '/tmp/logistica_cardapio_schema_basic_ready';
+}
+
+function logistica_cardapio_schema_marker_is_fresh(bool $withMeetingSchema): bool
+{
+    $ttl = max(300, (int)(painel_env('LOGISTICA_CARDAPIO_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
+    $mtime = @filemtime(logistica_cardapio_schema_marker_path($withMeetingSchema));
+    if ($mtime === false) {
+        return false;
+    }
+
+    return (time() - $mtime) < $ttl;
+}
+
+function logistica_cardapio_touch_schema_marker(bool $withMeetingSchema): void
+{
+    @touch(logistica_cardapio_schema_marker_path($withMeetingSchema));
+}
+
+function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = true): void
+{
+    static $done = [];
+    $cacheKey = $withMeetingSchema ? 'full' : 'basic';
+    if (!empty($done[$cacheKey])) {
         return;
     }
 
+    if (logistica_cardapio_schema_marker_is_fresh($withMeetingSchema)) {
+        $done[$cacheKey] = true;
+        return;
+    }
+
+    logistica_cardapio_require_pacotes_helper();
     pacotes_evento_ensure_schema($pdo);
-    if (function_exists('eventos_reuniao_ensure_schema')) {
+    if ($withMeetingSchema) {
+        logistica_cardapio_require_eventos_reuniao_helper();
+    }
+    if ($withMeetingSchema && function_exists('eventos_reuniao_ensure_schema')) {
         eventos_reuniao_ensure_schema($pdo);
     }
 
@@ -324,12 +364,13 @@ function logistica_cardapio_ensure_schema(PDO $pdo): void
         error_log('logistica_cardapio_ensure_schema resposta itens: ' . $e->getMessage());
     }
 
-    $done = true;
+    $done[$cacheKey] = true;
+    logistica_cardapio_touch_schema_marker($withMeetingSchema);
 }
 
 function logistica_cardapio_listar_secoes(PDO $pdo, bool $incluir_inativas = false): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     $where_ativo = $incluir_inativas ? '' : 'AND ativo = TRUE';
 
     try {
@@ -352,7 +393,7 @@ function logistica_cardapio_listar_secoes(PDO $pdo, bool $incluir_inativas = fal
 
 function logistica_cardapio_secao_get(PDO $pdo, int $secao_id): ?array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     if ($secao_id <= 0) {
         return null;
     }
@@ -384,7 +425,7 @@ function logistica_cardapio_secao_salvar(
     bool $ativo = true,
     int $user_id = 0
 ): array {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
 
     $nome = trim($nome);
     if ($nome === '') {
@@ -451,7 +492,7 @@ function logistica_cardapio_secao_salvar(
 
 function logistica_cardapio_secao_alterar_status(PDO $pdo, int $secao_id, bool $ativo): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     if ($secao_id <= 0) {
         return ['ok' => false, 'error' => 'Seção inválida.'];
     }
@@ -482,7 +523,7 @@ function logistica_cardapio_secao_alterar_status(PDO $pdo, int $secao_id, bool $
 
 function logistica_cardapio_secao_excluir(PDO $pdo, int $secao_id, int $user_id = 0): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     if ($secao_id <= 0) {
         return ['ok' => false, 'error' => 'Seção inválida.'];
     }
@@ -514,7 +555,7 @@ function logistica_cardapio_secao_excluir(PDO $pdo, int $secao_id, int $user_id 
 
 function logistica_cardapio_item_relacoes_get(PDO $pdo, string $item_tipo, int $item_id): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     $item_tipo = logistica_cardapio_validar_item_tipo($item_tipo);
     if ($item_tipo === '' || $item_id <= 0) {
         return ['pacote_ids' => [], 'secao_ids' => []];
@@ -563,7 +604,7 @@ function logistica_cardapio_item_relacoes_get(PDO $pdo, string $item_tipo, int $
 
 function logistica_cardapio_item_salvar_relacoes(PDO $pdo, string $item_tipo, int $item_id, array $pacote_ids, array $secao_ids): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     $item_tipo = logistica_cardapio_validar_item_tipo($item_tipo);
     if ($item_tipo === '' || $item_id <= 0) {
         return ['ok' => false, 'error' => 'Item inválido para vínculo de cardápio.'];
@@ -668,7 +709,7 @@ function logistica_cardapio_item_salvar_relacoes(PDO $pdo, string $item_tipo, in
 
 function logistica_cardapio_pacote_regras_listar(PDO $pdo, int $pacote_id): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     if ($pacote_id <= 0) {
         return [];
     }
@@ -697,11 +738,12 @@ function logistica_cardapio_pacote_regras_listar(PDO $pdo, int $pacote_id): arra
 
 function logistica_cardapio_pacote_regras_salvar(PDO $pdo, int $pacote_id, array $rules): array
 {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
     if ($pacote_id <= 0) {
         return ['ok' => false, 'error' => 'Pacote inválido para configuração de seções.'];
     }
 
+    logistica_cardapio_require_pacotes_helper();
     $pacote = pacotes_evento_get($pdo, $pacote_id);
     if (!$pacote) {
         return ['ok' => false, 'error' => 'Pacote não encontrado.'];

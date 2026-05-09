@@ -6,12 +6,33 @@
 
 require_once __DIR__ . '/conexao.php';
 
+function pacotes_evento_schema_marker_is_fresh(): bool
+{
+    $ttl = max(300, (int)(painel_env('PACOTES_EVENTO_SCHEMA_TTL_SECONDS', '3600') ?? '3600'));
+    $mtime = @filemtime('/tmp/pacotes_evento_schema_ready');
+    if ($mtime === false) {
+        return false;
+    }
+
+    return (time() - $mtime) < $ttl;
+}
+
+function pacotes_evento_touch_schema_marker(): void
+{
+    @touch('/tmp/pacotes_evento_schema_ready');
+}
+
 /**
  * Garante estrutura de pacotes de evento e vínculo na reunião.
  */
 function pacotes_evento_ensure_schema(PDO $pdo): void {
     static $done = false;
     if ($done) {
+        return;
+    }
+
+    if (pacotes_evento_schema_marker_is_fresh()) {
+        $done = true;
         return;
     }
 
@@ -51,6 +72,7 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
     }
 
     $done = true;
+    pacotes_evento_touch_schema_marker();
 }
 
 /**
