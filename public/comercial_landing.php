@@ -9,7 +9,6 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/lc_permissions_enhanced.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/vendas_helper.php';
 
 // Verificar permissões
 if (!lc_can_access_comercial()) {

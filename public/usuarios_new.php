@@ -14,9 +14,127 @@ if (!isset($pdo)) {
     global $pdo;
 }
 
+function usuariosSchemaMarkerFresh(string $markerName, int $ttl = 900): bool {
+    $mtime = @filemtime(sys_get_temp_dir() . '/' . $markerName);
+    return $mtime !== false && (time() - $mtime) < $ttl;
+}
+
+function usuariosTouchSchemaMarker(string $markerName): void {
+    @touch(sys_get_temp_dir() . '/' . $markerName);
+}
+
+function usuariosPermissionColumnsCachePath(): string {
+    return sys_get_temp_dir() . '/usuarios_perm_columns_cache.json';
+}
+
+function usuariosFetchPermissionColumns(PDO $pdo, bool $forceRefresh = false): array {
+    static $memoized = null;
+
+    if (!$forceRefresh && is_array($memoized)) {
+        return $memoized;
+    }
+
+    $cachePath = usuariosPermissionColumnsCachePath();
+    if (!$forceRefresh && is_file($cachePath)) {
+        $payload = json_decode((string)@file_get_contents($cachePath), true);
+        if (
+            is_array($payload)
+            && isset($payload['generated_at'], $payload['columns'])
+            && (time() - (int)$payload['generated_at']) < 900
+            && is_array($payload['columns'])
+        ) {
+            $memoized = array_values(array_filter(array_map('strval', $payload['columns'])));
+            return $memoized;
+        }
+    }
+
+    $queries = [
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'usuarios' AND column_name LIKE 'perm_%' ORDER BY column_name",
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name LIKE 'perm_%' ORDER BY column_name",
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'usuarios' ORDER BY column_name",
+    ];
+
+    $columns = [];
+    foreach ($queries as $index => $sql) {
+        try {
+            $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            $rows = array_values(array_filter(array_map('strval', $rows)));
+            if ($index === 2) {
+                $rows = array_values(array_filter($rows, static function ($column) {
+                    return strpos($column, 'perm_') === 0;
+                }));
+            }
+            if (!empty($rows)) {
+                $columns = $rows;
+                break;
+            }
+        } catch (Throwable $e) {
+            error_log('Erro ao buscar permissões de usuarios: ' . $e->getMessage());
+        }
+    }
+
+    $memoized = $columns;
+    @file_put_contents($cachePath, json_encode([
+        'generated_at' => time(),
+        'columns' => $columns,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+    return $memoized;
+}
+
+function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): void {
+    $requiredColumns = [
+        'perm_superadmin',
+        'perm_portao',
+        'perm_eventos_realizar',
+        'perm_agenda_eventos',
+        'perm_vendas_administracao',
+        'perm_marketing',
+    ];
+
+    $missing = array_values(array_filter($requiredColumns, static function ($column) use ($existingPerms) {
+        return !isset($existingPerms[$column]);
+    }));
+
+    if (empty($missing)) {
+        return;
+    }
+
+    if (!usuariosSchemaMarkerFresh('usuarios_known_permissions_schema_ready')) {
+        $updates = [
+            'perm_superadmin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE",
+            'perm_portao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_portao BOOLEAN DEFAULT FALSE",
+            'perm_eventos_realizar' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE",
+            'perm_agenda_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE",
+            'perm_vendas_administracao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE",
+            'perm_marketing' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE",
+        ];
+
+        foreach ($missing as $column) {
+            try {
+                $pdo->exec($updates[$column]);
+                if ($column === 'perm_eventos_realizar') {
+                    $pdo->exec("UPDATE usuarios SET perm_eventos_realizar = COALESCE(perm_eventos, FALSE)");
+                }
+            } catch (Throwable $e) {
+                error_log('Erro ao garantir coluna ' . $column . ': ' . $e->getMessage());
+            }
+        }
+
+        usuariosTouchSchemaMarker('usuarios_known_permissions_schema_ready');
+    }
+
+    $existingPerms = array_flip(usuariosFetchPermissionColumns($pdo, true));
+}
+
 function ensureRhCargosTable(PDO $pdo): void {
     static $initialized = false;
     if ($initialized) {
+        return;
+    }
+
+    if (usuariosSchemaMarkerFresh('usuarios_rh_cargos_schema_ready')) {
+        $initialized = true;
         return;
     }
 
@@ -33,6 +151,7 @@ function ensureRhCargosTable(PDO $pdo): void {
     ");
     $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_rh_cargos_nome_unique ON rh_cargos (LOWER(nome))");
 
+    usuariosTouchSchemaMarker('usuarios_rh_cargos_schema_ready');
     $initialized = true;
 }
 
@@ -48,6 +167,11 @@ function ensureUsuarioSpacesTable(PDO $pdo): void {
         return;
     }
 
+    if (usuariosSchemaMarkerFresh('usuarios_spaces_schema_ready')) {
+        $initialized = true;
+        return;
+    }
+
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS usuarios_spaces_visiveis (
             usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -58,6 +182,7 @@ function ensureUsuarioSpacesTable(PDO $pdo): void {
     ");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_usuarios_spaces_visiveis_space ON usuarios_spaces_visiveis (space_visivel)");
 
+    usuariosTouchSchemaMarker('usuarios_spaces_schema_ready');
     $initialized = true;
 }
 
@@ -434,64 +559,23 @@ if (!isset($pdo) || !$pdo) {
 }
 
 try {
-    // Primeiro tentar com schema atual
-    error_log("Buscando permissões - Estratégia 1: Com schema atual");
-    $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                         WHERE table_schema = current_schema() AND table_name = 'usuarios' 
-                         AND column_name LIKE 'perm_%' 
-                         ORDER BY column_name");
-    $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    error_log("Estratégia 1 retornou: " . count($perms_array) . " permissões");
-    
-    // Se não encontrar, tentar sem especificar schema
-    if (empty($perms_array)) {
-        error_log("Tentando buscar permissões sem especificar schema...");
-        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                             WHERE table_name = 'usuarios' 
-                             AND column_name LIKE 'perm_%' 
-                             ORDER BY column_name");
-        $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        error_log("Estratégia 2 retornou: " . count($perms_array) . " permissões");
-    }
-    
-    // Se ainda não encontrar, tentar buscar diretamente da tabela
-    if (empty($perms_array)) {
-        error_log("Tentando buscar colunas diretamente da tabela usuarios...");
-        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                             WHERE table_name = 'usuarios' 
-                             ORDER BY column_name");
-        $all_cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        error_log("Total de colunas encontradas: " . count($all_cols));
-        $perms_array = array_filter($all_cols, function($col) {
-            return strpos($col, 'perm_') === 0;
-        });
-        $perms_array = array_values($perms_array); // Reindexar array
-        error_log("Estratégia 3 retornou: " . count($perms_array) . " permissões");
-    }
-    
+    $perms_array = usuariosFetchPermissionColumns($pdo);
     if (!empty($perms_array)) {
         $existing_perms = array_flip($perms_array);
-        error_log("SUCCESS: Permissões encontradas: " . count($existing_perms) . " - Primeiras 3: " . implode(', ', array_slice($perms_array, 0, 3)));
-        error_log("DEBUG: existing_perms é array? " . (is_array($existing_perms) ? 'SIM' : 'NÃO'));
-        error_log("DEBUG: existing_perms está vazio? " . (empty($existing_perms) ? 'SIM' : 'NÃO'));
-        error_log("DEBUG: count de existing_perms: " . count($existing_perms));
-        
-        // Adicionar colunas de permissões ao SELECT
         foreach ($perms_array as $perm) {
             $sql .= ", $perm";
         }
-    } else {
-        error_log("AVISO: Nenhuma permissão encontrada no banco de dados após todas as tentativas");
-        error_log("DEBUG: perms_array está vazio, count: " . count($perms_array ?? []));
     }
 } catch (Exception $e) {
     error_log("ERRO ao verificar permissões: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
     $existing_perms = [];
-} catch (Error $e) {
-    error_log("ERRO FATAL ao verificar permissões: " . $e->getMessage());
-    error_log("Stack trace: " . $e->getTraceAsString());
-    $existing_perms = [];
+}
+
+usuariosEnsureKnownPermissionColumns($pdo, $existing_perms);
+foreach (array_keys($existing_perms) as $perm) {
+    if (strpos($perm, 'perm_') === 0 && strpos($sql, ', ' . $perm) === false) {
+        $sql .= ", $perm";
+    }
 }
 
 $sql .= " FROM usuarios WHERE 1=1";
@@ -536,44 +620,12 @@ try {
 
 // Garantir que $existing_perms está definido e disponível
 if (!isset($existing_perms) || !is_array($existing_perms) || empty($existing_perms)) {
-    error_log("AVISO: existing_perms não está definido ou está vazio antes de ob_start(), recriando...");
     try {
-        // Tentar múltiplas estratégias
-        $perms_array = [];
-        
-        // Estratégia 1: Com schema 'public'
-        $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                             WHERE table_schema = 'public' AND table_name = 'usuarios' 
-                             AND column_name LIKE 'perm_%' 
-                             ORDER BY column_name");
-        $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        // Estratégia 2: Sem especificar schema
-        if (empty($perms_array)) {
-            $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                 WHERE table_name = 'usuarios' 
-                                 AND column_name LIKE 'perm_%' 
-                                 ORDER BY column_name");
-            $perms_array = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        }
-        
-        // Estratégia 3: Buscar todas as colunas e filtrar
-        if (empty($perms_array)) {
-            $stmt = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                 WHERE table_name = 'usuarios' 
-                                 ORDER BY column_name");
-            $all_cols = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            $perms_array = array_values(array_filter($all_cols, function($col) {
-                return strpos($col, 'perm_') === 0;
-            }));
-        }
-        
+        $perms_array = usuariosFetchPermissionColumns($pdo, true);
         if (!empty($perms_array)) {
             $existing_perms = array_flip($perms_array);
-            error_log("Permissões recriadas: " . count($existing_perms) . " - Primeiras: " . implode(', ', array_slice($perms_array, 0, 3)));
         } else {
             $existing_perms = [];
-            error_log("AVISO: Nenhuma permissão encontrada no banco após todas as estratégias!");
         }
     } catch (Exception $e) {
         error_log("Erro ao recriar existing_perms: " . $e->getMessage());
@@ -1521,108 +1573,10 @@ ob_start();
                     </div>
                 
                 <?php
-                // DEBUG: Verificar se $existing_perms está disponível e não vazio
                 if (!isset($existing_perms) || !is_array($existing_perms) || empty($existing_perms)) {
-                    // Se não estiver disponível ou vazio, buscar novamente com múltiplas estratégias
-                    try {
-                        $perms_array_debug = [];
-                        
-                        // Estratégia 1: Com schema 'public'
-                        $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                                     WHERE table_schema = 'public' AND table_name = 'usuarios' 
-                                                     AND column_name LIKE 'perm_%' 
-                                                     ORDER BY column_name");
-                        $perms_array_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
-                        
-                        // Estratégia 2: Sem especificar schema
-                        if (empty($perms_array_debug)) {
-                            $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                                         WHERE table_name = 'usuarios' 
-                                                         AND column_name LIKE 'perm_%' 
-                                                         ORDER BY column_name");
-                            $perms_array_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
-                        }
-                        
-                        // Estratégia 3: Buscar todas e filtrar
-                        if (empty($perms_array_debug)) {
-                            $stmt_debug = $pdo->query("SELECT column_name FROM information_schema.columns 
-                                                         WHERE table_name = 'usuarios' 
-                                                         ORDER BY column_name");
-                            $all_cols_debug = $stmt_debug->fetchAll(PDO::FETCH_COLUMN);
-                            $perms_array_debug = array_values(array_filter($all_cols_debug, function($col) {
-                                return strpos($col, 'perm_') === 0;
-                            }));
-                        }
-                        
-                        if (!empty($perms_array_debug)) {
-                            $existing_perms = array_flip($perms_array_debug);
-                            error_log("Permissões encontradas no modal: " . count($existing_perms));
-                        } else {
-                            $existing_perms = [];
-                            error_log("Erro: Nenhuma permissão encontrada no modal após todas as estratégias");
-                        }
-                    } catch (Exception $e) {
-                        error_log("Erro ao buscar permissões no modal: " . $e->getMessage());
-                        $existing_perms = [];
-                    }
+                    $existing_perms = array_flip(usuariosFetchPermissionColumns($pdo, true));
                 }
-
-                // Garantir que perm_superadmin exista no banco (auto-heal seguro)
-                if (!isset($existing_perms['perm_superadmin'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE");
-                        $existing_perms['perm_superadmin'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_superadmin: " . $e->getMessage());
-                    }
-                }
-
-                if (!isset($existing_perms['perm_portao'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_portao BOOLEAN DEFAULT FALSE");
-                        $existing_perms['perm_portao'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_portao: " . $e->getMessage());
-                    }
-                }
-
-                if (!isset($existing_perms['perm_eventos_realizar'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE");
-                        // Compatibilidade: ao criar a coluna, replica perm_eventos para evitar perda de acesso.
-                        $pdo->exec("UPDATE usuarios SET perm_eventos_realizar = COALESCE(perm_eventos, FALSE)");
-                        $existing_perms['perm_eventos_realizar'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_eventos_realizar: " . $e->getMessage());
-                    }
-                }
-
-                if (!isset($existing_perms['perm_agenda_eventos'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE");
-                        $existing_perms['perm_agenda_eventos'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_agenda_eventos: " . $e->getMessage());
-                    }
-                }
-
-                if (!isset($existing_perms['perm_vendas_administracao'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE");
-                        $existing_perms['perm_vendas_administracao'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_vendas_administracao: " . $e->getMessage());
-                    }
-                }
-
-                if (!isset($existing_perms['perm_marketing'])) {
-                    try {
-                        $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE");
-                        $existing_perms['perm_marketing'] = true;
-                    } catch (Exception $e) {
-                        error_log("Erro ao adicionar perm_marketing: " . $e->getMessage());
-                    }
-                }
+                usuariosEnsureKnownPermissionColumns($pdo, $existing_perms);
                 
                 // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [

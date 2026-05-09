@@ -8,7 +8,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
-require_once __DIR__ . '/upload_magalu.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
@@ -216,6 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (!empty($_FILES['foto_file']['tmp_name']) && is_uploaded_file($_FILES['foto_file']['tmp_name'])) {
                 try {
+                    require_once __DIR__ . '/upload_magalu.php';
                     $uploader = new MagaluUpload();
                     $result = $uploader->upload($_FILES['foto_file'], 'logistica/insumos');
                     $foto_url = $result['url'] ?? null;
