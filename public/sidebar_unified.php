@@ -199,9 +199,9 @@ if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
     require_once __DIR__ . '/administrativo_avisos_helper.php';
-    require_once __DIR__ . '/notifications_bar.php';
     adminAvisosEnsureSchema($pdo);
     $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
+    $dashboard_can_view_logistica_alertas = $is_superadmin_dashboard || !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_logistico_divergencias']);
     $dashboard_current_month = new DateTimeImmutable('now');
     $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
     $dashboard_manual_sales_feedback = null;
@@ -447,20 +447,6 @@ if ($current_page === 'dashboard') {
         $demandas_hoje = [];
     }
     
-    // Buscar notificações não lidas para o usuário atual
-    $notificacoes_nao_lidas = 0;
-    if ($usuario_id_dashboard) {
-        try {
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM demandas_notificacoes WHERE usuario_id = :user_id AND lida = FALSE");
-            $stmt->execute([':user_id' => $usuario_id_dashboard]);
-            $notificacoes_nao_lidas = (int)$stmt->fetchColumn();
-        } catch (Exception $e) {
-            error_log("Erro ao contar notificações: " . $e->getMessage());
-        }
-    }
-    
-    $notificacoes_html = function_exists('build_logistica_notifications_bar') ? build_logistica_notifications_bar($pdo) : '';
-    
     $dashboard_content = '
     <style>
     .dashboard-header-container {
@@ -485,6 +471,15 @@ if ($current_page === 'dashboard') {
     .dashboard-notifications-wrapper {
         flex: 1;
         max-width: 100%;
+    }
+    .dashboard-alertas-loading {
+        padding: 1rem 1.25rem;
+        border-radius: 14px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        color: #64748b;
+        font-size: 0.9rem;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
     }
     .metric-card-form {
         margin-top: 0.65rem;
@@ -648,7 +643,11 @@ if ($current_page === 'dashboard') {
                     <p>Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
                 </div>
             </div>
-            ' . (!empty($notificacoes_html) ? '<div class="dashboard-notifications-wrapper">' . $notificacoes_html . '</div>' : '') . '
+            ' . ($dashboard_can_view_logistica_alertas ? '
+            <div class="dashboard-notifications-wrapper" id="dashboard-logistica-alertas-wrapper" hidden>
+                <div class="dashboard-alertas-loading">Carregando alertas logísticos...</div>
+            </div>
+            ' : '') . '
         </div>
         
         <!-- Métricas Principais -->
@@ -2257,6 +2256,7 @@ if ($current_page === 'dashboard') {
         }
         
         const DASHBOARD_AVISOS_API = 'avisos_dashboard_api.php';
+        const DASHBOARD_LOGISTICA_ALERTAS_API = 'dashboard_logistica_alertas.php';
 
         function formatarDataAvisoDashboard(dataTexto) {
             if (!dataTexto) return '';
@@ -2356,16 +2356,48 @@ if ($current_page === 'dashboard') {
         let dashboardNotificacoes = [];
         let dashboardNotificacoesNaoLidas = 0;
         const DASHBOARD_API_BASE = 'demandas_trello_api.php';
-        
+
         // Carregar notificações ao entrar na dashboard
         <?php if ($current_page === 'dashboard'): ?>
         document.addEventListener('DOMContentLoaded', function() {
+            carregarDashboardLogisticaAlertas();
             carregarDashboardNotificacoes();
             // Polling a cada 30 segundos
             setInterval(carregarDashboardNotificacoes, 30000);
+            setInterval(carregarDashboardLogisticaAlertas, 120000);
         });
         <?php endif; ?>
-        
+
+        async function carregarDashboardLogisticaAlertas() {
+            const wrapper = document.getElementById('dashboard-logistica-alertas-wrapper');
+            if (!wrapper) return;
+
+            try {
+                const response = await fetch(DASHBOARD_LOGISTICA_ALERTAS_API, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'text/html' }
+                });
+
+                if (!response.ok) {
+                    wrapper.hidden = true;
+                    return;
+                }
+
+                const html = (await response.text()).trim();
+                if (!html) {
+                    wrapper.hidden = true;
+                    wrapper.innerHTML = '';
+                    return;
+                }
+
+                wrapper.hidden = false;
+                wrapper.innerHTML = html;
+            } catch (error) {
+                console.error('Erro ao carregar alertas logísticos:', error);
+                wrapper.hidden = true;
+            }
+        }
+
         async function carregarDashboardNotificacoes() {
             try {
                 const response = await fetch(DASHBOARD_API_BASE + '?action=notificacoes', {
