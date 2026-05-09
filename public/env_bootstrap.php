@@ -192,6 +192,44 @@ function painel_has_remote_database(?array $databaseConfig = null): bool
     return $host !== '' && !in_array($host, ['localhost', '127.0.0.1', '::1'], true);
 }
 
+function painel_set_shared_pdo(?PDO $pdo, ?array $databaseConfig = null): void
+{
+    if ($pdo instanceof PDO) {
+        $GLOBALS['painel_shared_pdo'] = $pdo;
+    } else {
+        unset($GLOBALS['painel_shared_pdo']);
+    }
+
+    if (is_array($databaseConfig)) {
+        $GLOBALS['painel_shared_pdo_config'] = $databaseConfig;
+    } else {
+        unset($GLOBALS['painel_shared_pdo_config']);
+    }
+}
+
+function painel_get_shared_pdo(?array $databaseConfig = null): ?PDO
+{
+    $pdo = $GLOBALS['painel_shared_pdo'] ?? null;
+    if (!$pdo instanceof PDO) {
+        return null;
+    }
+
+    if ($databaseConfig === null) {
+        return $pdo;
+    }
+
+    $sharedConfig = $GLOBALS['painel_shared_pdo_config'] ?? null;
+    if (!is_array($sharedConfig)) {
+        return null;
+    }
+
+    if (($sharedConfig['dsn'] ?? null) !== ($databaseConfig['dsn'] ?? null)) {
+        return null;
+    }
+
+    return $pdo;
+}
+
 function painel_is_admin_session(): bool
 {
     return !empty($_SESSION['perm_superadmin'])

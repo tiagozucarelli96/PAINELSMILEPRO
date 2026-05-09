@@ -10,6 +10,7 @@ define('PAINEL_SESSION_BOOTSTRAPPED', true);
 
 final class PainelPostgresSessionHandler implements SessionHandlerInterface
 {
+    private const SCHEMA_MARKER_FILE = '/tmp/painel_app_sessions_schema_ready';
     private ?PDO $pdo = null;
     private bool $tableReady = false;
     private int $ttl;
@@ -134,6 +135,11 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
             return;
         }
 
+        if ($this->isSchemaMarkerFresh()) {
+            $this->tableReady = true;
+            return;
+        }
+
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS app_sessions (
                 session_id VARCHAR(128) PRIMARY KEY,
@@ -148,6 +154,18 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
         );
 
         $this->tableReady = true;
+        @touch(self::SCHEMA_MARKER_FILE);
+    }
+
+    private function isSchemaMarkerFresh(): bool
+    {
+        $ttl = max(60, (int)(painel_env('SESSION_SCHEMA_CHECK_TTL_SECONDS', '300') ?? '300'));
+        $mtime = @filemtime(self::SCHEMA_MARKER_FILE);
+        if ($mtime === false) {
+            return false;
+        }
+
+        return (time() - $mtime) < $ttl;
     }
 
     private function connect(): ?PDO
@@ -163,6 +181,7 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
             $pdo->exec($databaseConfig['search_path_sql']);
+            painel_set_shared_pdo($pdo, $databaseConfig);
             return $pdo;
         }
 
@@ -177,10 +196,12 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
             painel_env('DB_NAME', 'painel_smile')
         );
 
-        return new PDO($dsn, painel_env('DB_USER', 'tiagozucarelli'), painel_env('DB_PASS', ''), [
+        $pdo = new PDO($dsn, painel_env('DB_USER', 'tiagozucarelli'), painel_env('DB_PASS', ''), [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+        painel_set_shared_pdo($pdo);
+        return $pdo;
     }
 }
 

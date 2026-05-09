@@ -153,8 +153,12 @@ if ((!empty($action) || $is_ajax_request) && !empty($_GET['page'])) {
     }
 }
 
+// Com worker interno ativo, evita sincronização no request do usuário.
+$googleWorkerEnabled = painel_env_bool('GOOGLE_WORKER_ENABLED', false);
+$googleSyncOnRequest = painel_env_bool('GOOGLE_SYNC_ON_REQUEST', !$googleWorkerEnabled);
+
 // Auto-sync Google Calendar em qualquer página autenticada (com throttling)
-if (!empty($_SESSION['logado']) && empty($action) && !$is_ajax_request) {
+if (!empty($_SESSION['logado']) && empty($action) && !$is_ajax_request && $googleSyncOnRequest) {
     if (empty($GLOBALS['pdo'])) {
         require_once __DIR__ . '/conexao.php';
     }
@@ -167,7 +171,7 @@ if ($page === '' || $page === null) {
   if (!empty($_SESSION['logado'])) {
     header('Location: index.php?page=dashboard');
   } else {
-    header('Location: index.php?page=login');
+    require __DIR__ . '/login.php';
   }
   exit;
 }

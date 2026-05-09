@@ -17,11 +17,15 @@ $databaseConfig = null;
 try {
     $databaseConfig = painel_database_config_from_url();
     if ($databaseConfig !== null) {
-        $pdo = new PDO($databaseConfig['dsn'], $databaseConfig['user'], $databaseConfig['pass'], [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-        $pdo->exec($databaseConfig['search_path_sql']);
+        $pdo = painel_get_shared_pdo($databaseConfig);
+        if (!$pdo instanceof PDO) {
+            $pdo = new PDO($databaseConfig['dsn'], $databaseConfig['user'], $databaseConfig['pass'], [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+            $pdo->exec($databaseConfig['search_path_sql']);
+            painel_set_shared_pdo($pdo, $databaseConfig);
+        }
     } else {
         if (painel_is_local_request()) {
             throw new RuntimeException('DATABASE_URL não definido no ambiente local. Configure o arquivo .env local antes de iniciar o servidor.');
@@ -44,6 +48,7 @@ try {
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+        painel_set_shared_pdo($pdo);
     }
 } catch (Throwable $e) {
     $db_error = $e->getMessage();
