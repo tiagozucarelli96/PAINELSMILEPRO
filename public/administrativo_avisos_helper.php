@@ -22,6 +22,12 @@ if (!function_exists('adminAvisosBoolValue')) {
 if (!function_exists('adminAvisosEnsureSchema')) {
     function adminAvisosEnsureSchema(PDO $pdo): void
     {
+        $markerPath = sys_get_temp_dir() . '/administrativo_avisos_schema_ready';
+        $markerMtime = @filemtime($markerPath);
+        if ($markerMtime !== false && (time() - $markerMtime) < 900) {
+            return;
+        }
+
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS administrativo_avisos (
                 id BIGSERIAL PRIMARY KEY,
@@ -65,6 +71,8 @@ if (!function_exists('adminAvisosEnsureSchema')) {
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_admin_avisos_usuarios_usuario ON administrativo_avisos_usuarios(usuario_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_admin_avisos_views_aviso ON administrativo_avisos_visualizacoes(aviso_id)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_admin_avisos_views_usuario ON administrativo_avisos_visualizacoes(usuario_id)");
+
+        @touch($markerPath);
     }
 }
 

@@ -19,13 +19,15 @@ if (!isset($pdo) && isset($GLOBALS['pdo'])) {
     $pdo = $GLOBALS['pdo'];
 }
 
-require_once __DIR__ . '/notifications_bar.php';
-require_once __DIR__ . '/core/notification_dispatcher.php';
-require_once __DIR__ . '/administrativo_avisos_helper.php';
-
 if (!function_exists('dashboardEnsureConfigTable')) {
     function dashboardEnsureConfigTable(PDO $pdo): void
     {
+        $markerPath = sys_get_temp_dir() . '/dashboard_config_schema_ready';
+        $markerMtime = @filemtime($markerPath);
+        if ($markerMtime !== false && (time() - $markerMtime) < 900) {
+            return;
+        }
+
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS demandas_configuracoes (
                 id SERIAL PRIMARY KEY,
@@ -37,6 +39,8 @@ if (!function_exists('dashboardEnsureConfigTable')) {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         ");
+
+        @touch($markerPath);
     }
 }
 
@@ -140,15 +144,6 @@ if (!function_exists('dashboardSaveConfigValue')) {
     }
 }
 
-try {
-    if (isset($pdo) && $pdo instanceof PDO) {
-        $sidebarNotificationDispatcher = new NotificationDispatcher($pdo);
-        $sidebarNotificationDispatcher->ensureInternalSchema();
-    }
-} catch (Throwable $e) {
-    error_log('[SIDEBAR] Falha ao garantir schema de notificações: ' . $e->getMessage());
-}
-
 $nomeUser = $_SESSION['nome'] ?? 'Usuário';
 $current_page = $_GET['page'] ?? 'dashboard';
 $show_top_account_access = ($current_page === 'dashboard');
@@ -203,6 +198,8 @@ $page_path = __DIR__ . '/' . $page_file . '.php';
 if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
+    require_once __DIR__ . '/administrativo_avisos_helper.php';
+    require_once __DIR__ . '/notifications_bar.php';
     adminAvisosEnsureSchema($pdo);
     $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
     $dashboard_current_month = new DateTimeImmutable('now');
