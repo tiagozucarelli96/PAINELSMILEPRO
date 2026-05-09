@@ -23,8 +23,28 @@ if (!$canView) {
     exit;
 }
 
+$cacheContext = implode(':', [
+    !empty($_SESSION['perm_superadmin']) ? '1' : '0',
+    !empty($_SESSION['perm_logistico']) ? '1' : '0',
+    !empty($_SESSION['perm_logistico_divergencias']) ? '1' : '0',
+    (string)($_SESSION['unidade_scope'] ?? 'todas'),
+    (string)((int)($_SESSION['unidade_id'] ?? 0)),
+]);
+$cachePath = sys_get_temp_dir() . '/dashboard_logistica_alertas_' . md5($cacheContext) . '.html';
+$cacheTtl = 120;
+$cacheMtime = @filemtime($cachePath);
+if ($cacheMtime !== false && (time() - $cacheMtime) < $cacheTtl) {
+    $cachedHtml = @file_get_contents($cachePath);
+    if (is_string($cachedHtml)) {
+        echo $cachedHtml;
+        exit;
+    }
+}
+
 try {
-    echo build_logistica_notifications_bar($GLOBALS['pdo']);
+    $html = build_logistica_notifications_bar($GLOBALS['pdo']);
+    @file_put_contents($cachePath, $html, LOCK_EX);
+    echo $html;
 } catch (Throwable $e) {
     error_log('[DASHBOARD_LOGISTICA_ALERTAS] ' . $e->getMessage());
 }

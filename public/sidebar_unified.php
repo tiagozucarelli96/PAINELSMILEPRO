@@ -44,6 +44,39 @@ if (!function_exists('dashboardEnsureConfigTable')) {
     }
 }
 
+if (!function_exists('dashboardCachePath')) {
+    function dashboardCachePath(string $key): string
+    {
+        return sys_get_temp_dir() . '/dashboard_cache_' . md5($key) . '.tmp';
+    }
+}
+
+if (!function_exists('dashboardCacheRead')) {
+    function dashboardCacheRead(string $key, int $ttl)
+    {
+        $path = dashboardCachePath($key);
+        $mtime = @filemtime($path);
+        if ($mtime === false || (time() - $mtime) > $ttl) {
+            return null;
+        }
+
+        $raw = @file_get_contents($path);
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+
+        $value = @unserialize($raw);
+        return $value === false && $raw !== serialize(false) ? null : $value;
+    }
+}
+
+if (!function_exists('dashboardCacheWrite')) {
+    function dashboardCacheWrite(string $key, $value): void
+    {
+        @file_put_contents(dashboardCachePath($key), serialize($value), LOCK_EX);
+    }
+}
+
 if (!function_exists('dashboardGetManualSalesKey')) {
     function dashboardGetManualSalesKey(DateTimeInterface $date): string
     {
@@ -205,6 +238,7 @@ if ($current_page === 'dashboard') {
     $dashboard_current_month = new DateTimeImmutable('now');
     $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
     $dashboard_manual_sales_feedback = null;
+    $dashboard_bypass_cache = false;
     
     $stats = [];
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
@@ -227,125 +261,142 @@ if ($current_page === 'dashboard') {
                 'number'
             );
             $dashboard_manual_sales_feedback = 'saved';
+            $dashboard_bypass_cache = true;
         } catch (Throwable $e) {
             error_log('[SIDEBAR] Erro ao salvar vendas realizadas manualmente: ' . $e->getMessage());
             $dashboard_manual_sales_feedback = 'error';
+            $dashboard_bypass_cache = true;
         }
     }
-    
-    try {
-        // 1. Inscritos em Degustações Ativas do Mês
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total 
-            FROM comercial_inscricoes ci
-            JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
-            WHERE cd.status = 'publicado'
-            AND DATE_TRUNC('month', ci.criado_em) = DATE_TRUNC('month', CURRENT_DATE)
-            AND ci.status IN ('confirmado', 'lista_espera')
-        ");
-        $stmt->execute();
-        $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
-        
-        // 2. Vendas Realizadas (valor manual mensal)
-        dashboardEnsureConfigTable($pdo);
-        $stmt = $pdo->prepare("
-            SELECT valor
-            FROM demandas_configuracoes
-            WHERE chave = :chave
-            LIMIT 1
-        ");
-        $stmt->execute([':chave' => $dashboard_manual_sales_key]);
-        $stats['vendas_realizadas'] = max(0, (int)($stmt->fetchColumn() ?: 0));
 
-        // 3. Visitas Realizadas (Agenda + Google Calendar)
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) as total 
-            FROM (
-                SELECT inicio 
-                FROM agenda_eventos 
-                WHERE tipo = 'visita'
-                AND status = 'realizado'
-                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
-                UNION ALL
-                SELECT inicio 
-                FROM google_calendar_eventos 
-                WHERE eh_visita_agendada = true
-                AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
-            ) as todas_visitas
-        ");
-        $stmt->execute();
-        $stats['visitas_realizadas'] = $stmt->fetchColumn() ?: 0;
-        
-        // 4. Fechamentos Realizados (% de conversão do mês = vendas / visitas)
-        $stats['fechamentos_realizados'] = $stats['visitas_realizadas'] > 0
-            ? round(($stats['vendas_realizadas'] / $stats['visitas_realizadas']) * 100, 1)
-            : 0;
-        
-    } catch (Exception $e) {
-        // Se der erro, usar valores padrão
-        $stats = [
-            'inscritos_degustacao' => 0,
-            'vendas_realizadas' => 0,
-            'visitas_realizadas' => 0,
-            'fechamentos_realizados' => 0
-        ];
+    $dashboard_stats_cache_key = 'stats:' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
+    $cached_stats = $dashboard_bypass_cache ? null : dashboardCacheRead($dashboard_stats_cache_key, 60);
+    if (is_array($cached_stats)) {
+        $stats = $cached_stats;
+    } else {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as total 
+                FROM comercial_inscricoes ci
+                JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
+                WHERE cd.status = 'publicado'
+                AND DATE_TRUNC('month', ci.criado_em) = DATE_TRUNC('month', CURRENT_DATE)
+                AND ci.status IN ('confirmado', 'lista_espera')
+            ");
+            $stmt->execute();
+            $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
+
+            dashboardEnsureConfigTable($pdo);
+            $stmt = $pdo->prepare("
+                SELECT valor
+                FROM demandas_configuracoes
+                WHERE chave = :chave
+                LIMIT 1
+            ");
+            $stmt->execute([':chave' => $dashboard_manual_sales_key]);
+            $stats['vendas_realizadas'] = max(0, (int)($stmt->fetchColumn() ?: 0));
+
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) as total 
+                FROM (
+                    SELECT inicio 
+                    FROM agenda_eventos 
+                    WHERE tipo = 'visita'
+                    AND status = 'realizado'
+                    AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+                    UNION ALL
+                    SELECT inicio 
+                    FROM google_calendar_eventos 
+                    WHERE eh_visita_agendada = true
+                    AND DATE_TRUNC('month', inicio) = DATE_TRUNC('month', CURRENT_DATE)
+                ) as todas_visitas
+            ");
+            $stmt->execute();
+            $stats['visitas_realizadas'] = $stmt->fetchColumn() ?: 0;
+
+            $stats['fechamentos_realizados'] = $stats['visitas_realizadas'] > 0
+                ? round(($stats['vendas_realizadas'] / $stats['visitas_realizadas']) * 100, 1)
+                : 0;
+            dashboardCacheWrite($dashboard_stats_cache_key, $stats);
+        } catch (Exception $e) {
+            $stats = [
+                'inscritos_degustacao' => 0,
+                'vendas_realizadas' => 0,
+                'visitas_realizadas' => 0,
+                'fechamentos_realizados' => 0
+            ];
+        }
     }
     
     // Buscar agenda do dia atual apenas para usuários com permissão de Agenda
     $agenda_hoje = [];
     if ($can_view_dashboard_agenda) {
-        try {
-            $stmt = $pdo->prepare("
-                SELECT 
-                    ae.id, 
-                    ae.titulo, 
-                    ae.inicio as data_inicio, 
-                    ae.fim as data_fim, 
-                    ae.tipo, 
-                    ae.cor_evento as cor, 
-                    ae.descricao as observacoes,
-                    u.nome as responsavel_nome,
-                    'interno' as origem
-                FROM agenda_eventos ae
-                LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
-                WHERE DATE(ae.inicio) = CURRENT_DATE
-                
-                UNION ALL
-                
-                SELECT 
-                    gce.id, 
-                    gce.titulo, 
-                    gce.inicio as data_inicio, 
-                    gce.fim as data_fim, 
-                    'google' as tipo, 
-                    '#10b981' as cor, 
-                    gce.descricao as observacoes,
-                    COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
-                    'google' as origem
-                FROM google_calendar_eventos gce
-                WHERE DATE(gce.inicio) = CURRENT_DATE
-                AND EXISTS (
-                    SELECT 1 FROM google_calendar_config gcc 
-                    WHERE gcc.google_calendar_id = gce.google_calendar_id 
-                    AND gcc.ativo = TRUE
-                )
-                
-                ORDER BY data_inicio ASC
-                LIMIT 10
-            ");
-            $stmt->execute();
-            $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
-            $agenda_hoje = [];
+        $agenda_cache_key = 'agenda:' . date('Y-m-d') . ':' . ((int)($usuario_id_dashboard ?? 0)) . ':' . ($can_view_dashboard_agenda ? '1' : '0');
+        $cached_agenda = $dashboard_bypass_cache ? null : dashboardCacheRead($agenda_cache_key, 60);
+        if (is_array($cached_agenda)) {
+            $agenda_hoje = $cached_agenda;
+        } else {
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        ae.id, 
+                        ae.titulo, 
+                        ae.inicio as data_inicio, 
+                        ae.fim as data_fim, 
+                        ae.tipo, 
+                        ae.cor_evento as cor, 
+                        ae.descricao as observacoes,
+                        u.nome as responsavel_nome,
+                        'interno' as origem
+                    FROM agenda_eventos ae
+                    LEFT JOIN usuarios u ON u.id = ae.responsavel_usuario_id
+                    WHERE DATE(ae.inicio) = CURRENT_DATE
+                    
+                    UNION ALL
+                    
+                    SELECT 
+                        gce.id, 
+                        gce.titulo, 
+                        gce.inicio as data_inicio, 
+                        gce.fim as data_fim, 
+                        'google' as tipo, 
+                        '#10b981' as cor, 
+                        gce.descricao as observacoes,
+                        COALESCE(gce.organizador_email, 'Google Calendar') as responsavel_nome,
+                        'google' as origem
+                    FROM google_calendar_eventos gce
+                    WHERE DATE(gce.inicio) = CURRENT_DATE
+                    AND EXISTS (
+                        SELECT 1 FROM google_calendar_config gcc 
+                        WHERE gcc.google_calendar_id = gce.google_calendar_id 
+                        AND gcc.ativo = TRUE
+                    )
+                    
+                    ORDER BY data_inicio ASC
+                    LIMIT 10
+                ");
+                $stmt->execute();
+                $agenda_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                dashboardCacheWrite($agenda_cache_key, $agenda_hoje);
+            } catch (Exception $e) {
+                error_log("[SIDEBAR] Erro ao buscar agenda do dia: " . $e->getMessage());
+                $agenda_hoje = [];
+            }
         }
     }
 
-    try {
-        $avisos_dashboard = adminAvisosBuscarParaDashboard($pdo, (int)($usuario_id_dashboard ?? 0), 8);
-    } catch (Exception $e) {
-        error_log("[SIDEBAR] Erro ao buscar avisos da dashboard: " . $e->getMessage());
-        $avisos_dashboard = [];
+    $avisos_cache_key = 'avisos:' . ((int)($usuario_id_dashboard ?? 0));
+    $cached_avisos = $dashboard_bypass_cache ? null : dashboardCacheRead($avisos_cache_key, 60);
+    if (is_array($cached_avisos)) {
+        $avisos_dashboard = $cached_avisos;
+    } else {
+        try {
+            $avisos_dashboard = adminAvisosBuscarParaDashboard($pdo, (int)($usuario_id_dashboard ?? 0), 8);
+            dashboardCacheWrite($avisos_cache_key, $avisos_dashboard);
+        } catch (Exception $e) {
+            error_log("[SIDEBAR] Erro ao buscar avisos da dashboard: " . $e->getMessage());
+            $avisos_dashboard = [];
+        }
     }
     
     // Buscar demandas do dia atual (sistema Trello - demandas_cards)
@@ -357,94 +408,96 @@ if ($current_page === 'dashboard') {
         !empty($_SESSION['perm_administrativo']) ||
         (isset($_SESSION['permissao']) && strpos((string)$_SESSION['permissao'], 'admin') !== false)
     );
-    try {
-        $filtro_visibilidade_dashboard = "
-            db.ativo = TRUE
-            AND (
-                :is_admin = TRUE
-                OR (
-                    NOT EXISTS (
-                        SELECT 1
-                        FROM demandas_boards_usuarios dbu_all
-                        WHERE dbu_all.board_id = db.id
-                    )
-                    OR EXISTS (
-                        SELECT 1
-                        FROM demandas_boards_usuarios dbu_user
-                        WHERE dbu_user.board_id = db.id
-                          AND dbu_user.usuario_id = :user_id
+    $demandas_cache_key = 'demandas:' . date('Y-m-d-H') . ':' . ((int)($usuario_id_dashboard ?? 0)) . ':' . ($is_admin_dashboard ? '1' : '0');
+    $cached_demandas = $dashboard_bypass_cache ? null : dashboardCacheRead($demandas_cache_key, 60);
+    if (is_array($cached_demandas)) {
+        $demandas_hoje = $cached_demandas;
+    } else {
+        try {
+            $filtro_visibilidade_dashboard = "
+                db.ativo = TRUE
+                AND (
+                    :is_admin = TRUE
+                    OR (
+                        NOT EXISTS (
+                            SELECT 1
+                            FROM demandas_boards_usuarios dbu_all
+                            WHERE dbu_all.board_id = db.id
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                            FROM demandas_boards_usuarios dbu_user
+                            WHERE dbu_user.board_id = db.id
+                              AND dbu_user.usuario_id = :user_id
+                        )
                     )
                 )
-            )
-        ";
+            ";
 
-        $params_dashboard = [
-            ':is_admin' => $is_admin_dashboard ? 't' : 'f',
-            ':user_id' => (int)($usuario_id_dashboard ?? 0),
-        ];
+            $params_dashboard = [
+                ':is_admin' => $is_admin_dashboard ? 't' : 'f',
+                ':user_id' => (int)($usuario_id_dashboard ?? 0),
+            ];
 
-        // Primeiro tentar buscar cards com prazo de hoje
-        $stmt = $pdo->prepare("
-            SELECT DISTINCT ON (dc.id)
-                   dc.id,
-                   dc.titulo,
-                   dc.titulo as descricao,
-                   dc.prazo,
-                   dc.status,
-                   db.nome as quadro_nome,
-                   u.nome as responsavel_nome
-            FROM demandas_cards dc
-            JOIN demandas_listas dl ON dl.id = dc.lista_id
-            JOIN demandas_boards db ON db.id = dl.board_id
-            LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
-            LEFT JOIN usuarios u ON u.id = dcu.usuario_id
-            WHERE DATE(dc.prazo) = CURRENT_DATE
-              AND dc.status NOT IN ('concluido', 'cancelado')
-              AND {$filtro_visibilidade_dashboard}
-            ORDER BY dc.id, dc.prazo ASC
-            LIMIT 10
-        ");
-        $stmt->execute($params_dashboard);
-        $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Se não encontrou cards com prazo de hoje, buscar os mais recentes ativos
-        // (mostra cards pendentes criados recentemente sem prazo definido)
-        if (empty($demandas_hoje)) {
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT DISTINCT ON (dc.id)
-                           dc.id,
-                           dc.titulo,
-                           dc.titulo as descricao,
-                           dc.prazo,
-                           dc.status,
-                           db.nome as quadro_nome,
-                           u.nome as responsavel_nome
-                    FROM demandas_cards dc
-                    JOIN demandas_listas dl ON dl.id = dc.lista_id
-                    JOIN demandas_boards db ON db.id = dl.board_id
-                    LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
-                    LEFT JOIN usuarios u ON u.id = dcu.usuario_id
-                    WHERE dc.status NOT IN ('concluido', 'cancelado')
-                      AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
-                      AND {$filtro_visibilidade_dashboard}
-                    ORDER BY dc.id, dc.criado_em DESC
-                    LIMIT 5
-                ");
-                $stmt->execute($params_dashboard);
-                $demandas_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                // Mostrar apenas se houver cards recentes, senão deixa vazio
-                if (!empty($demandas_recentes)) {
-                    $demandas_hoje = $demandas_recentes;
+            $stmt = $pdo->prepare("
+                SELECT DISTINCT ON (dc.id)
+                       dc.id,
+                       dc.titulo,
+                       dc.titulo as descricao,
+                       dc.prazo,
+                       dc.status,
+                       db.nome as quadro_nome,
+                       u.nome as responsavel_nome
+                FROM demandas_cards dc
+                JOIN demandas_listas dl ON dl.id = dc.lista_id
+                JOIN demandas_boards db ON db.id = dl.board_id
+                LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
+                LEFT JOIN usuarios u ON u.id = dcu.usuario_id
+                WHERE DATE(dc.prazo) = CURRENT_DATE
+                  AND dc.status NOT IN ('concluido', 'cancelado')
+                  AND {$filtro_visibilidade_dashboard}
+                ORDER BY dc.id, dc.prazo ASC
+                LIMIT 10
+            ");
+            $stmt->execute($params_dashboard);
+            $demandas_hoje = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($demandas_hoje)) {
+                try {
+                    $stmt = $pdo->prepare("
+                        SELECT DISTINCT ON (dc.id)
+                               dc.id,
+                               dc.titulo,
+                               dc.titulo as descricao,
+                               dc.prazo,
+                               dc.status,
+                               db.nome as quadro_nome,
+                               u.nome as responsavel_nome
+                        FROM demandas_cards dc
+                        JOIN demandas_listas dl ON dl.id = dc.lista_id
+                        JOIN demandas_boards db ON db.id = dl.board_id
+                        LEFT JOIN demandas_cards_usuarios dcu ON dcu.card_id = dc.id
+                        LEFT JOIN usuarios u ON u.id = dcu.usuario_id
+                        WHERE dc.status NOT IN ('concluido', 'cancelado')
+                          AND DATE(dc.criado_em) >= CURRENT_DATE - INTERVAL '7 days'
+                          AND {$filtro_visibilidade_dashboard}
+                        ORDER BY dc.id, dc.criado_em DESC
+                        LIMIT 5
+                    ");
+                    $stmt->execute($params_dashboard);
+                    $demandas_recentes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($demandas_recentes)) {
+                        $demandas_hoje = $demandas_recentes;
+                    }
+                } catch (Exception $e2) {
+                    error_log("Erro ao buscar demandas recentes: " . $e2->getMessage());
                 }
-            } catch (Exception $e2) {
-                error_log("Erro ao buscar demandas recentes: " . $e2->getMessage());
             }
+            dashboardCacheWrite($demandas_cache_key, $demandas_hoje);
+        } catch (Exception $e) {
+            error_log("Erro ao buscar demandas do dia (Trello): " . $e->getMessage());
+            $demandas_hoje = [];
         }
-    } catch (Exception $e) {
-        error_log("Erro ao buscar demandas do dia (Trello): " . $e->getMessage());
-        $demandas_hoje = [];
     }
     
     $dashboard_content = '
