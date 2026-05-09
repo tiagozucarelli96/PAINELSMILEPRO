@@ -92,7 +92,27 @@ function cartao_ofx_parse_valor(string $valor): ?float {
     return null;
 }
 
-function cartao_ofx_normalize_descricao(string $descricao): string {
+function cartao_ofx_strip_parcela_suffix(string $descricao, int $totalParcelas = 1): string {
+    $descricao = trim($descricao);
+    if ($descricao === '' || $totalParcelas <= 1) {
+        return $descricao;
+    }
+
+    // Compatibilidade com registros legados que salvaram "PARCELA 2 4" na descrição base.
+    $limpa = preg_replace('/\s+PARCELA(?:\s+\d{1,2}){0,2}$/', '', $descricao);
+    if ($limpa !== null) {
+        $descricao = $limpa;
+    }
+
+    $limpa = preg_replace('/\s+/', ' ', $descricao);
+    if ($limpa !== null) {
+        $descricao = $limpa;
+    }
+
+    return trim($descricao);
+}
+
+function cartao_ofx_normalize_descricao(string $descricao, int $totalParcelas = 1): string {
     $descricao = trim($descricao);
     if ($descricao === '') {
         return '';
@@ -104,7 +124,7 @@ function cartao_ofx_normalize_descricao(string $descricao): string {
     }
     $descricao = preg_replace('/[^A-Z0-9 ]+/', ' ', $descricao);
     $descricao = preg_replace('/\s+/', ' ', $descricao);
-    return trim($descricao);
+    return cartao_ofx_strip_parcela_suffix(trim($descricao), $totalParcelas);
 }
 
 function cartao_ofx_identificar_cobranca(string $descricaoNormalizada): ?string {
@@ -195,7 +215,28 @@ function cartao_ofx_strip_indicador_parcela(string $descricao, ?array $parcelaIn
     if (!$parcelaInfo || empty($parcelaInfo['indicador'])) {
         return trim($descricao);
     }
-    return trim(str_replace($parcelaInfo['indicador'], '', $descricao));
+
+    $indicador = preg_quote((string)$parcelaInfo['indicador'], '/');
+    $limpa = preg_replace([
+        '/\(\s*PARCELA\s*' . $indicador . '\s*\)/iu',
+        '/\bPARCELA\s*' . $indicador . '\b/iu',
+    ], ' ', $descricao);
+
+    if (!is_string($limpa) || $limpa === $descricao) {
+        $limpa = str_replace((string)$parcelaInfo['indicador'], ' ', $descricao);
+    }
+
+    $semParenteses = preg_replace('/\(\s*\)/', ' ', $limpa);
+    if ($semParenteses !== null) {
+        $limpa = $semParenteses;
+    }
+
+    $normalizada = preg_replace('/\s+/', ' ', $limpa);
+    if ($normalizada !== null) {
+        $limpa = $normalizada;
+    }
+
+    return trim($limpa);
 }
 
 function cartao_ofx_parse_fatura_texto(string $texto): array {
@@ -332,7 +373,7 @@ function cartao_ofx_parse_fatura_texto(string $texto): array {
         if ($parcelaInfo) {
             $descricaoParte = cartao_ofx_strip_indicador_parcela($descricaoParte, $parcelaInfo);
         }
-        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte);
+        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricaoParte, $parcelaInfo['total'] ?? 1);
         if ($descricaoNormalizada === '') {
             $descartados[] = ['linha' => $descricaoParte, 'motivo' => 'formato inválido'];
             continue;
@@ -421,7 +462,7 @@ function cartao_ofx_parse_manual_texto(string $texto): array {
         }
         $descricao = cartao_ofx_strip_indicador_parcela($descricao, $parcelaInfo);
 
-        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
+        $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao, $parcelaInfo['total'] ?? 1);
         if ($descricaoNormalizada === '') {
             $descartados[] = ['linha' => $linha, 'motivo' => 'formato inválido'];
             continue;
@@ -505,7 +546,7 @@ function cartao_ofx_existing_parcel_hashes(PDO $pdo, int $cartaoId): array {
         $valorParcela = (float)($row['valor_parcela'] ?? 0);
         $baseHash = cartao_ofx_hash_base(
             (int)$row['cartao_id'],
-            (string)($row['descricao_normalizada'] ?? ''),
+            cartao_ofx_normalize_descricao((string)($row['descricao_normalizada'] ?? ''), $totalParcelas),
             (float)($row['valor_total'] ?? 0),
             $totalParcelas,
             $valorParcela >= 0
@@ -878,7 +919,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($descricao === '') {
                 $descricao = 'SEM DESCRICAO';
             }
-            $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao);
+            $descricaoNormalizada = cartao_ofx_normalize_descricao($descricao, (int)($row['total_parcelas'] ?? 1));
             $tx = [
                 'hash_parcela' => $hashParcela,
                 'base_hash' => $row['base_hash'] ?? '',
