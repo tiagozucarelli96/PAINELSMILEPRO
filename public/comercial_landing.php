@@ -35,94 +35,74 @@ $stats = [
 ];
 
 try {
-    // Total de degustações (apenas para referência)
-    $stats['degustacoes_total'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_degustacoes")->fetchColumn();
-    $stats['degustacoes_publicadas'] = (int)$pdo->query("SELECT COUNT(*) FROM comercial_degustacoes WHERE status = 'publicado'")->fetchColumn();
-    
-    // Inscritos confirmados APENAS de degustações ATIVAS (publicado)
-    $stats['inscritos_confirmados'] = (int)$pdo->query("
-        SELECT COUNT(*) 
-        FROM comercial_inscricoes ci
-        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
-        WHERE cd.status = 'publicado'
-        AND ci.status = 'confirmado'
-    ")->fetchColumn();
-    
-    $stats['inscritos_total'] = (int)$pdo->query("
-        SELECT COUNT(*) 
-        FROM comercial_inscricoes ci
-        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
-        WHERE cd.status = 'publicado'
-    ")->fetchColumn();
-    
-    $stats['inscritos_lista_espera'] = (int)$pdo->query("
-        SELECT COUNT(*) 
-        FROM comercial_inscricoes ci
-        JOIN comercial_degustacoes cd ON ci.degustacao_id = cd.id
-        WHERE cd.status = 'publicado'
-        AND ci.status = 'lista_espera'
-    ")->fetchColumn();
-    
-    // Contratos fechados: Calcular conversão das 3 ÚLTIMAS degustações realizadas
-    // Considerando apenas inscritos que NÃO fecharam (excluir quem já fechou antes)
-    $ultimas_3_degustacoes = $pdo->query("
-        SELECT d.id, d.nome, d.data
-        FROM comercial_degustacoes d
-        WHERE d.status IN ('publicado', 'encerrado')
-        AND d.data IS NOT NULL
-        ORDER BY d.data DESC
-        LIMIT 3
-    ")->fetchAll(PDO::FETCH_ASSOC);
-    
-    $total_inscritos_sem_contrato = 0;
-    $total_fecharam_contrato = 0;
-    
-    foreach ($ultimas_3_degustacoes as $deg) {
-        // Total de inscritos confirmados desta degustação que NÃO fecharam contrato ainda
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM comercial_inscricoes 
-            WHERE degustacao_id = :deg_id 
-            AND status = 'confirmado'
-            AND (fechou_contrato IS NULL OR fechou_contrato = 'nao' OR fechou_contrato = '')
-        ");
-        $stmt->execute([':deg_id' => $deg['id']]);
-        $inscritos_sem_contrato = (int)$stmt->fetchColumn();
-        
-        // Inscritos desta degustação que FECHARAM contrato
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM comercial_inscricoes 
-            WHERE degustacao_id = :deg_id 
-            AND status = 'confirmado'
-            AND fechou_contrato = 'sim'
-        ");
-        $stmt->execute([':deg_id' => $deg['id']]);
-        $fecharam = (int)$stmt->fetchColumn();
-        
-        $total_inscritos_sem_contrato += $inscritos_sem_contrato;
-        $total_fecharam_contrato += $fecharam;
-    }
-    
-    $stats['fecharam_contrato'] = $total_fecharam_contrato;
-    $stats['nao_fecharam_contrato'] = $total_inscritos_sem_contrato;
+    $statsStmt = $pdo->query("
+        WITH degustacoes AS (
+            SELECT status
+            FROM comercial_degustacoes
+        ),
+        inscricoes_publicadas AS (
+            SELECT ci.status, ci.fechou_contrato
+            FROM comercial_inscricoes ci
+            JOIN comercial_degustacoes cd ON cd.id = ci.degustacao_id
+            WHERE cd.status = 'publicado'
+        ),
+        ultimas_tres AS (
+            SELECT id
+            FROM comercial_degustacoes
+            WHERE status IN ('publicado', 'encerrado')
+              AND data IS NOT NULL
+            ORDER BY data DESC
+            LIMIT 3
+        ),
+        contratos_tres AS (
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE ci.status = 'confirmado'
+                      AND ci.fechou_contrato = 'sim'
+                ) AS fecharam_contrato,
+                COUNT(*) FILTER (
+                    WHERE ci.status = 'confirmado'
+                      AND (ci.fechou_contrato IS NULL OR ci.fechou_contrato = 'nao' OR ci.fechou_contrato = '')
+                ) AS nao_fecharam_contrato
+            FROM comercial_inscricoes ci
+            WHERE ci.degustacao_id IN (SELECT id FROM ultimas_tres)
+        )
+        SELECT
+            (SELECT COUNT(*) FROM degustacoes) AS degustacoes_total,
+            (SELECT COUNT(*) FROM degustacoes WHERE status = 'publicado') AS degustacoes_publicadas,
+            (SELECT COUNT(*) FROM inscricoes_publicadas) AS inscritos_total,
+            (SELECT COUNT(*) FROM inscricoes_publicadas WHERE status = 'confirmado') AS inscritos_confirmados,
+            (SELECT COUNT(*) FROM inscricoes_publicadas WHERE status = 'lista_espera') AS inscritos_lista_espera,
+            COALESCE((SELECT fecharam_contrato FROM contratos_tres), 0) AS fecharam_contrato,
+            COALESCE((SELECT nao_fecharam_contrato FROM contratos_tres), 0) AS nao_fecharam_contrato
+    ");
+    $statsRow = $statsStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $stats['degustacoes_total'] = (int)($statsRow['degustacoes_total'] ?? 0);
+    $stats['degustacoes_publicadas'] = (int)($statsRow['degustacoes_publicadas'] ?? 0);
+    $stats['inscritos_total'] = (int)($statsRow['inscritos_total'] ?? 0);
+    $stats['inscritos_confirmados'] = (int)($statsRow['inscritos_confirmados'] ?? 0);
+    $stats['inscritos_lista_espera'] = (int)($statsRow['inscritos_lista_espera'] ?? 0);
+    $stats['fecharam_contrato'] = (int)($statsRow['fecharam_contrato'] ?? 0);
+    $stats['nao_fecharam_contrato'] = (int)($statsRow['nao_fecharam_contrato'] ?? 0);
     
     // Taxa de conversão baseada apenas nos que NÃO fecharam (denominador correto)
     // Total relevante = inscritos que não fecharam + inscritos que fecharam
-    $total_relevante = $total_inscritos_sem_contrato + $total_fecharam_contrato;
+    $total_relevante = $stats['nao_fecharam_contrato'] + $stats['fecharam_contrato'];
     if ($total_relevante > 0) {
-        $stats['taxa_conversao'] = round(($total_fecharam_contrato / $total_relevante) * 100, 1);
+        $stats['taxa_conversao'] = round(($stats['fecharam_contrato'] / $total_relevante) * 100, 1);
     } else {
         $stats['taxa_conversao'] = 0;
     }
     
     // Degustações recentes (próximas 5)
     $degustacoes_recentes = $pdo->query("
-        SELECT d.*, 
-               (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id AND status = 'confirmado') as inscritos_confirmados,
-               (SELECT COUNT(*) FROM comercial_inscricoes WHERE degustacao_id = d.id) as total_inscritos
+        SELECT d.*,
+               COALESCE(COUNT(ci.id) FILTER (WHERE ci.status = 'confirmado'), 0) AS inscritos_confirmados,
+               COALESCE(COUNT(ci.id), 0) AS total_inscritos
         FROM comercial_degustacoes d
+        LEFT JOIN comercial_inscricoes ci ON ci.degustacao_id = d.id
         WHERE d.status = 'publicado'
+        GROUP BY d.id
         ORDER BY d.data ASC
         LIMIT 5
     ")->fetchAll(PDO::FETCH_ASSOC);

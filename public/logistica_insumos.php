@@ -9,6 +9,7 @@ require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/logistica_cardapio_helper.php';
 
 $is_modal = !empty($_GET['modal']) || !empty($_POST['modal']);
@@ -25,7 +26,7 @@ if (!$can_manage) {
 }
 
 if (!$is_quick_modal) {
-    logistica_cardapio_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo, false);
 }
 
 $errors = [];
@@ -174,6 +175,16 @@ function gerarUrlPreviewMagalu(?string $chave_storage, ?string $fallback_url): ?
         $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
         $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
         return rtrim($endpoint, '/') . '/' . strtolower($bucket) . '/' . ltrim($chave_storage, '/');
+    }
+
+    return $fallback_url ?: null;
+}
+
+function gerarUrlStoragePublicaMagalu(?string $chave_storage, ?string $fallback_url): ?string {
+    if (!empty($chave_storage)) {
+        $bucket = $_ENV['MAGALU_BUCKET'] ?? getenv('MAGALU_BUCKET') ?: 'smilepainel';
+        $endpoint = $_ENV['MAGALU_ENDPOINT'] ?? getenv('MAGALU_ENDPOINT') ?: 'https://br-se1.magaluobjects.com';
+        return rtrim((string)$endpoint, '/') . '/' . strtolower((string)$bucket) . '/' . ltrim((string)$chave_storage, '/');
     }
 
     return $fallback_url ?: null;
@@ -435,7 +446,7 @@ if ($form_item && $is_clone) {
 $prefill_barcode = trim((string)($_GET['barcode'] ?? ''));
 $edit_foto_url = null;
 if ($form_item) {
-    $edit_foto_url = gerarUrlPreviewMagalu($form_item['foto_chave_storage'] ?? null, $form_item['foto_url'] ?? null);
+    $edit_foto_url = gerarUrlStoragePublicaMagalu($form_item['foto_chave_storage'] ?? null, $form_item['foto_url'] ?? null);
 }
 $form_cardapio_pacote_ids = $_SERVER['REQUEST_METHOD'] === 'POST'
     ? logistica_cardapio_normalizar_ids($_POST['cardapio_pacote_ids'] ?? [])
@@ -1038,7 +1049,7 @@ body {
         </thead>
         <tbody>
             <?php foreach ($insumos as $insumo): ?>
-                <?php $thumb_url = gerarUrlPreviewMagalu($insumo['foto_chave_storage'] ?? null, $insumo['foto_url'] ?? null); ?>
+                <?php $thumb_url = gerarUrlStoragePublicaMagalu($insumo['foto_chave_storage'] ?? null, $insumo['foto_url'] ?? null); ?>
                 <tr>
                     <td>
                         <?php if (!empty($thumb_url)): ?>
