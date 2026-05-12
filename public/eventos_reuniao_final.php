@@ -7780,6 +7780,10 @@ document.addEventListener('click', function(ev) {
     if (readonlyModal && ev.target === readonlyModal) {
         fecharModalConteudoReadonly();
     }
+    const cropModal = document.getElementById('tinyReuniaoCropModal');
+    if (cropModal && ev.target === cropModal) {
+        closeTinyReuniaoCropModal();
+    }
 });
 
 document.addEventListener('keydown', function(ev) {
@@ -7791,6 +7795,10 @@ document.addEventListener('keydown', function(ev) {
     const readonlyModal = document.getElementById('modalReadonlyConteudo');
     if (readonlyModal && readonlyModal.classList.contains('show')) {
         fecharModalConteudoReadonly();
+    }
+    const cropModal = document.getElementById('tinyReuniaoCropModal');
+    if (cropModal && cropModal.classList.contains('show')) {
+        closeTinyReuniaoCropModal();
     }
 });
 
@@ -8083,6 +8091,11 @@ function exposeInlineHandlersToWindow() {
     if (typeof toggleLegacyEditor === 'function') window.toggleLegacyEditor = toggleLegacyEditor;
     if (typeof toggleObservacoesBlock === 'function') window.toggleObservacoesBlock = toggleObservacoesBlock;
     if (typeof salvarSecao === 'function') window.salvarSecao = salvarSecao;
+    if (typeof closeTinyReuniaoCropModal === 'function') window.closeTinyReuniaoCropModal = closeTinyReuniaoCropModal;
+    if (typeof tinyReuniaoCropZoomIn === 'function') window.tinyReuniaoCropZoomIn = tinyReuniaoCropZoomIn;
+    if (typeof tinyReuniaoCropZoomOut === 'function') window.tinyReuniaoCropZoomOut = tinyReuniaoCropZoomOut;
+    if (typeof tinyReuniaoCropReset === 'function') window.tinyReuniaoCropReset = tinyReuniaoCropReset;
+    if (typeof applyTinyReuniaoCrop === 'function') window.applyTinyReuniaoCrop = applyTinyReuniaoCrop;
     if (typeof verVersoes === 'function') window.verVersoes = verVersoes;
     if (typeof fecharModal === 'function') window.fecharModal = fecharModal;
     if (typeof restaurarVersao === 'function') window.restaurarVersao = restaurarVersao;
@@ -8165,6 +8178,18 @@ function bindMeetingActionButtons() {
         addFormularioBtn.dataset.bound = '1';
         addFormularioBtn.addEventListener('click', function () {
             addFormularioSlot();
+        });
+    }
+
+    const localImageInput = document.getElementById('tinyReuniaoLocalImageInput');
+    if (localImageInput && localImageInput.dataset.bound !== '1') {
+        localImageInput.dataset.bound = '1';
+        localImageInput.addEventListener('change', function () {
+            const file = this.files && this.files[0] ? this.files[0] : null;
+            if (file) {
+                openTinyReuniaoCropModalWithFile(file, tinyReuniaoCropTargetEditorId);
+            }
+            this.value = '';
         });
     }
 }
