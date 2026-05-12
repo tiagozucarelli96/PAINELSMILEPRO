@@ -135,6 +135,30 @@ if (!function_exists('marketingFormatBytes')) {
     }
 }
 
+if (!function_exists('marketingParseIniSizeBytes')) {
+    function marketingParseIniSizeBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        $number = (float)$value;
+
+        switch ($unit) {
+            case 'g':
+                return (int)round($number * 1024 * 1024 * 1024);
+            case 'm':
+                return (int)round($number * 1024 * 1024);
+            case 'k':
+                return (int)round($number * 1024);
+            default:
+                return (int)round((float)$value);
+        }
+    }
+}
+
 if (!function_exists('marketingListArquivos')) {
     function marketingListArquivos(PDO $pdo): array
     {
@@ -178,6 +202,12 @@ if (!function_exists('marketingNormalizeUploadedFiles')) {
 }
 
 marketingEnsureArquivosTable($pdo);
+
+$requestContentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+$postMaxSizeBytes = marketingParseIniSizeBytes((string)ini_get('post_max_size'));
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $requestContentLength > 0 && empty($_POST) && empty($_FILES) && $postMaxSizeBytes > 0 && $requestContentLength > $postMaxSizeBytes) {
+    $feedbackErro = 'O lote selecionado passou do limite total de upload do servidor (' . marketingFormatBytes($postMaxSizeBytes) . '). Envie menos arquivos por vez ou reduza o tamanho total.';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = (string)($_POST['acao'] ?? '');

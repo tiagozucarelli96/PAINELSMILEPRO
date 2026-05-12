@@ -33,10 +33,10 @@ fi
 # Iniciar servidor PHP
 php \
   -d auto_prepend_file="$APP_ROOT/public/session_bootstrap.php" \
-  -d upload_max_filesize=80M \
-  -d post_max_size=90M \
+  -d upload_max_filesize=200M \
+  -d post_max_size=350M \
   -d max_file_uploads=100 \
-  -d memory_limit=256M \
+  -d memory_limit=512M \
   -d max_execution_time=300 \
   -d max_input_time=300 \
   -d log_errors=1 \
