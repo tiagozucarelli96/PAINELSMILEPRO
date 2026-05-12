@@ -7,9 +7,11 @@ set -euo pipefail
 # Obter porta do Railway ou usar padrão
 PORT=${PORT:-8080}
 GOOGLE_WORKER_ENABLED=${GOOGLE_WORKER_ENABLED:-1}
+PHP_CLI_SERVER_WORKERS=${PHP_CLI_SERVER_WORKERS:-4}
 APP_ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 echo "🚀 Iniciando servidor PHP na porta $PORT"
+echo "👷 PHP_CLI_SERVER_WORKERS=$PHP_CLI_SERVER_WORKERS"
 
 # Iniciar worker interno de Google Calendar (sem cron externo), se habilitado
 WORKER_PID=""
@@ -23,6 +25,8 @@ else
 fi
 
 # Iniciar servidor PHP embutido
+export PHP_CLI_SERVER_WORKERS
+export GOOGLE_WORKER_ENABLED
 php \
   -d auto_prepend_file="$APP_ROOT/public/session_bootstrap.php" \
   -d upload_max_filesize=100M \

@@ -16,7 +16,9 @@ require_once __DIR__ . '/core/clicksign_helper.php';
 require_once __DIR__ . '/core/push_helper.php';
 require_once __DIR__ . '/sidebar_integration.php';
 
-setupGestaoDocumentos($pdo);
+if (painel_runtime_schema_setup_enabled()) {
+    setupGestaoDocumentos($pdo);
+}
 
 function gd_usuario_logado_id(): int
 {

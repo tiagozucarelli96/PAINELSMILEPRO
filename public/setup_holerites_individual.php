@@ -20,6 +20,10 @@ if (!isset($pdo) || !$pdo instanceof PDO) {
     return;
 }
 
+if (!painel_runtime_schema_setup_enabled()) {
+    return;
+}
+
 try {
     if (tabelaHoleritesIndividualExiste($pdo)) {
         return;

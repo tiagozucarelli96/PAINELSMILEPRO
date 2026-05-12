@@ -53,6 +53,6 @@ if (!function_exists('setupGestaoDocumentos')) {
     }
 }
 
-if (isset($pdo) && $pdo instanceof PDO) {
+if (painel_runtime_schema_setup_enabled() && isset($pdo) && $pdo instanceof PDO) {
     setupGestaoDocumentos($pdo);
 }

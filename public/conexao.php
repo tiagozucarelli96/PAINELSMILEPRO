@@ -38,10 +38,11 @@ try {
         $password = painel_env('DB_PASS', '');
 
         $dsn = sprintf(
-            'pgsql:host=%s;port=%s;dbname=%s;sslmode=disable',
+            'pgsql:host=%s;port=%s;dbname=%s;sslmode=disable;connect_timeout=%s',
             $host,
             $port,
-            $dbname
+            $dbname,
+            painel_env('DB_CONNECT_TIMEOUT', '3')
         );
 
         $pdo = new PDO($dsn, $user, $password, [

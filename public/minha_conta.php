@@ -24,7 +24,9 @@ if ($usuario_id <= 0) {
     exit;
 }
 
-setupGestaoDocumentos($pdo);
+if (painel_runtime_schema_setup_enabled()) {
+    setupGestaoDocumentos($pdo);
+}
 
 $documentos = [];
 try {
@@ -98,7 +100,7 @@ function minhaContaStatusAssinaturaClass(string $status): string
 }
 
 $nome_user = $_SESSION['nome'] ?? 'Usuário';
-includeSidebar('Minha conta');
+includeSidebar('Pessoal');
 ?>
 
 <style>
@@ -132,8 +134,8 @@ includeSidebar('Minha conta');
 </style>
 
 <div class="minha-conta">
-    <h1 class="page-title">Minha conta</h1>
-    <p class="page-subtitle">Olá, <?= htmlspecialchars($nome_user) ?>. Aqui você acessa seus documentos disponibilizados pelo administrativo.</p>
+    <h1 class="page-title">Pessoal</h1>
+    <p class="page-subtitle">Olá, <?= htmlspecialchars($nome_user) ?>. Aqui você acessa seus dados e documentos disponibilizados pelo administrativo.</p>
 
     <div class="cards-grid">
         <div class="card-box">

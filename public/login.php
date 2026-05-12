@@ -28,9 +28,11 @@ if (!empty($db_error ?? '')) {
     $erro = $db_error;
 }
 
-// Listar usuários para o dropdown (todos os cadastrados; inativos continuam bloqueados no login)
+// Opcional: listar usuários para dropdown.
+// Por padrão fica desativado para evitar consulta extra antes da tela abrir.
+$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', false);
 $usuarios_login = [];
-if (empty($erro) && isset($pdo) && $pdo) {
+if ($showLoginDropdown && empty($erro) && isset($pdo) && $pdo) {
     try {
         // Descobrir schema (PostgreSQL: public ou current_schema)
         $cols = [];

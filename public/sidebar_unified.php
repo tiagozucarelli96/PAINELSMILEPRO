@@ -219,6 +219,10 @@ $administrativo_content = '';
 if (!function_exists('isActiveUnified')) {
     function isActiveUnified($page) {
         global $current_page;
+        if (is_array($page)) {
+            return in_array($current_page, $page, true) ? 'active' : '';
+        }
+
         return $current_page === $page ? 'active' : '';
     }
 }
@@ -1029,6 +1033,7 @@ if ($current_page === 'dashboard') {
     <!-- Sidebar fixa -->
     <div class="sidebar" id="sidebar" style="position: fixed !important; top: 0 !important; left: 0 !important; width: 280px !important; height: 100vh !important; z-index: 1200 !important;">
             <div class="sidebar-header">
+                <a class="user-info-link" href="index.php?page=pessoal" title="Abrir Pessoal">
                 <div class="user-info">
                     <div class="user-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); background-size: cover; background-position: center; color: transparent;" : '' ?>">
                         <?php if (!$foto_usuario): ?>
@@ -1038,6 +1043,7 @@ if ($current_page === 'dashboard') {
                     <div class="user-name"><?= htmlspecialchars($nomeUser) ?></div>
                     <div class="user-plan"><?= strtoupper($perfil) ?></div>
                 </div>
+                </a>
             </div>
             
             <div class="sidebar-controls">
@@ -1048,6 +1054,11 @@ if ($current_page === 'dashboard') {
                 <a href="index.php?page=dashboard" class="nav-item <?= isActiveUnified('dashboard') ?>">
                     <span class="nav-item-icon">🏠</span>
                     Dashboard
+                </a>
+
+                <a href="index.php?page=pessoal" class="nav-item <?= isActiveUnified(['pessoal', 'minha_conta']) ?>">
+                    <span class="nav-item-icon">👤</span>
+                    Pessoal
                 </a>
                 
                 <?php if (!empty($_SESSION['perm_agenda'])): ?>
@@ -1169,13 +1180,13 @@ if ($current_page === 'dashboard') {
     <div class="main-content" id="mainContent" style="margin-left: 280px !important; width: calc(100% - 280px) !important; position: relative !important; top: 0 !important;">
             <?php if ($show_top_account_access): ?>
             <div class="top-account-access">
-                <a class="top-account-link" href="index.php?page=minha_conta" title="Meus dados">
+                <a class="top-account-link" href="index.php?page=pessoal" title="Pessoal">
                     <span class="top-account-avatar" style="<?= $foto_usuario ? "background-image: url('" . htmlspecialchars($foto_usuario) . "'); color: transparent;" : '' ?>">
                         <?php if (!$foto_usuario): ?>
                             <?= strtoupper(substr($nomeUser, 0, 2)) ?>
                         <?php endif; ?>
                     </span>
-                    <span class="top-account-text">Meus dados</span>
+                    <span class="top-account-text">Pessoal</span>
                 </a>
             </div>
             <?php endif; ?>

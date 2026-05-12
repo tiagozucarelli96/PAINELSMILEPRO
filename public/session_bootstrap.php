@@ -8,6 +8,23 @@ if (defined('PAINEL_SESSION_BOOTSTRAPPED')) {
 }
 define('PAINEL_SESSION_BOOTSTRAPPED', true);
 
+function painel_is_public_auth_request(): bool
+{
+    $path = (string)parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+    if ($path === '') {
+        return false;
+    }
+
+    $publicAuthPaths = [
+        '/login.php',
+        '/contabilidade_login.php',
+        '/portal_dj_login.php',
+        '/portal_decoracao_login.php',
+    ];
+
+    return in_array($path, $publicAuthPaths, true);
+}
+
 final class PainelPostgresSessionHandler implements SessionHandlerInterface
 {
     private const SCHEMA_MARKER_FILE = '/tmp/painel_app_sessions_schema_ready';
@@ -176,13 +193,20 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
 
         $databaseConfig = painel_database_config_from_url();
         if ($databaseConfig !== null) {
+            $shared = painel_get_shared_pdo($databaseConfig);
+            if ($shared instanceof PDO) {
+                $this->pdo = $shared;
+                return $this->pdo;
+            }
+
             $pdo = new PDO($databaseConfig['dsn'], $databaseConfig['user'], $databaseConfig['pass'], [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
             $pdo->exec($databaseConfig['search_path_sql']);
             painel_set_shared_pdo($pdo, $databaseConfig);
-            return $pdo;
+            $this->pdo = $pdo;
+            return $this->pdo;
         }
 
         if (painel_is_local_request()) {
@@ -190,10 +214,11 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
         }
 
         $dsn = sprintf(
-            'pgsql:host=%s;port=%s;dbname=%s;sslmode=disable',
+            'pgsql:host=%s;port=%s;dbname=%s;sslmode=disable;connect_timeout=%s',
             painel_env('DB_HOST', 'localhost'),
             painel_env('DB_PORT', '5432'),
-            painel_env('DB_NAME', 'painel_smile')
+            painel_env('DB_NAME', 'painel_smile'),
+            painel_env('DB_CONNECT_TIMEOUT', '3')
         );
 
         $pdo = new PDO($dsn, painel_env('DB_USER', 'tiagozucarelli'), painel_env('DB_PASS', ''), [
@@ -201,7 +226,8 @@ final class PainelPostgresSessionHandler implements SessionHandlerInterface
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
         painel_set_shared_pdo($pdo);
-        return $pdo;
+        $this->pdo = $pdo;
+        return $this->pdo;
     }
 }
 
@@ -234,9 +260,15 @@ session_set_cookie_params([
 ]);
 
 try {
-    $handler = new PainelPostgresSessionHandler($sessionLifetime);
-    if (@session_set_save_handler($handler, true)) {
-        register_shutdown_function('session_write_close');
+    $useDatabaseSessions = !painel_is_local_request() || painel_env_bool('SESSION_USE_DATABASE_ON_LOCAL', false);
+    if (painel_is_public_auth_request() && !painel_env_bool('SESSION_USE_DATABASE_ON_PUBLIC_AUTH', false)) {
+        $useDatabaseSessions = false;
+    }
+    if ($useDatabaseSessions) {
+        $handler = new PainelPostgresSessionHandler($sessionLifetime);
+        if (@session_set_save_handler($handler, true)) {
+            register_shutdown_function('session_write_close');
+        }
     }
 } catch (Throwable $e) {
     error_log('Session bootstrap fallback to default handler: ' . $e->getMessage());

@@ -24,8 +24,10 @@ if (!$can_manage) {
     exit;
 }
 
-pacotes_evento_ensure_schema($pdo);
-logistica_cardapio_ensure_schema($pdo);
+if (painel_runtime_schema_setup_enabled()) {
+    pacotes_evento_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo);
+}
 
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $errors = [];

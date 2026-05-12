@@ -69,8 +69,10 @@ if (empty($_SESSION['perm_eventos']) && empty($_SESSION['perm_superadmin'])) {
 $user_id = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 $meeting_id = (int)($_GET['id'] ?? $_POST['meeting_id'] ?? 0);
 $action = trim((string)($_POST['action'] ?? ''));
-pacotes_evento_ensure_schema($pdo);
-logistica_cardapio_ensure_schema($pdo);
+if (painel_runtime_schema_setup_enabled()) {
+    pacotes_evento_ensure_schema($pdo);
+    logistica_cardapio_ensure_schema($pdo);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['upload_resumo_evento_card', 'excluir_resumo_evento_card'], true)) {
     if ($meeting_id <= 0) {

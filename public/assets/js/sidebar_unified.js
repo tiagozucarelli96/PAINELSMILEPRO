@@ -205,7 +205,7 @@
                 // Eventos (módulo com includeSidebar — não carregar via AJAX)
                 'eventos', 'eventos_reuniao_final', 'eventos_rascunhos', 'eventos_calendario', 'eventos_galeria', 'eventos_fornecedores',
                 // Minha conta e gestão de documentos (includeSidebar)
-                'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos', 'administrativo_juridico', 'administrativo_avisos',
+                'pessoal', 'minha_conta', 'contabilidade_holerite_individual', 'administrativo_gestao_documentos', 'administrativo_juridico', 'administrativo_avisos',
                 // Contabilidade (páginas com modal/JS próprio)
                 'contabilidade_admin_guias'
             ];

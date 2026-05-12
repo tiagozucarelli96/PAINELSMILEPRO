@@ -5,6 +5,7 @@
 return [
     // Dashboard - sempre permitido (todos logados podem acessar)
     'dashboard' => null,
+    'pessoal' => null,
     'minha_conta' => null, // Qualquer usuário logado (acesso ao clicar no nome na sidebar)
 
     // Scripts de setup - sempre permitido para usuários logados

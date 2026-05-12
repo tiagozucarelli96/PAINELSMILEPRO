@@ -22,7 +22,9 @@ if (!$can_eventos && !$can_realizar_evento && !$is_superadmin) {
     exit;
 }
 
-logistica_cardapio_ensure_schema($pdo);
+if (painel_runtime_schema_setup_enabled()) {
+    logistica_cardapio_ensure_schema($pdo);
+}
 
 $meeting_id = (int)($_GET['id'] ?? 0);
 $origin = strtolower(trim((string)($_GET['origin'] ?? 'organizacao')));

@@ -106,6 +106,16 @@ function painel_is_local_request(): bool
     return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
 }
 
+function painel_runtime_schema_setup_enabled(): bool
+{
+    $override = painel_env('RUNTIME_SCHEMA_SETUP');
+    if ($override !== null) {
+        return painel_env_bool('RUNTIME_SCHEMA_SETUP', false);
+    }
+
+    return painel_is_local_request();
+}
+
 function painel_normalize_schema_list(?string $schemaList): array
 {
     $schemaList = trim((string)$schemaList);
@@ -159,6 +169,10 @@ function painel_database_config_from_url(?string $databaseUrl = null): ?array
     $schemas = painel_normalize_schema_list(painel_env('DB_SCHEMA', 'smilee12_painel_smile,public'));
     $searchPath = implode(', ', $schemas);
     $searchPathDsn = implode(',', $schemas);
+    $connectTimeout = (int)(painel_env('DB_CONNECT_TIMEOUT', '3') ?? '3');
+    if ($connectTimeout <= 0) {
+        $connectTimeout = 3;
+    }
 
     return [
         'host' => (string)$parts['host'],
@@ -167,15 +181,17 @@ function painel_database_config_from_url(?string $databaseUrl = null): ?array
         'user' => urldecode((string)($parts['user'] ?? '')),
         'pass' => urldecode((string)($parts['pass'] ?? '')),
         'sslmode' => $sslmode,
+        'connect_timeout' => $connectTimeout,
         'schemas' => $schemas,
         'search_path' => $searchPath,
         'search_path_sql' => 'SET search_path TO ' . $searchPath,
         'dsn' => sprintf(
-            "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;options='-c client_encoding=UTF8 -c search_path=%s'",
+            "pgsql:host=%s;port=%d;dbname=%s;sslmode=%s;connect_timeout=%d;options='-c client_encoding=UTF8 -c search_path=%s'",
             (string)$parts['host'],
             isset($parts['port']) ? (int)$parts['port'] : 5432,
             ltrim((string)$parts['path'], '/'),
             $sslmode,
+            $connectTimeout,
             $searchPathDsn
         ),
     ];
