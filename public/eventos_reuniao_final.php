@@ -13,6 +13,7 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 require_once __DIR__ . '/eventos_me_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
+require_once __DIR__ . '/eventos_galeria_helper.php';
 
 // Verificar permissão
 $can_eventos = !empty($_SESSION['perm_eventos']);
@@ -116,6 +117,27 @@ function eventos_reuniao_serializar_lista_anexos(array $anexos): array {
         $serialized[] = eventos_reuniao_serializar_anexo($anexo);
     }
     return $serialized;
+}
+
+function eventos_reuniao_tiny_galeria_source_url(array $row): string
+{
+    $publicUrl = trim((string)($row['public_url'] ?? ''));
+    if ($publicUrl !== '') {
+        return $publicUrl;
+    }
+
+    $storageKey = trim((string)($row['storage_key'] ?? ''));
+    return (string)(eventosGaleriaStoragePublicUrl($storageKey) ?? '');
+}
+
+function eventos_reuniao_tiny_galeria_preview_url(array $row): string
+{
+    $thumbPublicUrl = trim((string)($row['thumb_public_url'] ?? ''));
+    if ($thumbPublicUrl !== '') {
+        return $thumbPublicUrl;
+    }
+
+    return eventos_reuniao_tiny_galeria_source_url($row);
 }
 
 function eventos_reuniao_serializar_link_formulario_payload(PDO $pdo, int $meeting_id, array $link, string $section = 'formulario'): array {
@@ -1281,6 +1303,37 @@ $formulario_schema_saved = is_array($formulario_schema_decoded) ? $formulario_sc
 $decoracao_payload = eventos_reuniao_extrair_payload_formulario((string)($secoes['decoracao']['content_html'] ?? ''));
 $decoracao_values = is_array($decoracao_payload['values'] ?? null) ? $decoracao_payload['values'] : [];
 $decoracao_legacy_html = trim((string)($decoracao_payload['legacy_html'] ?? ''));
+$tiny_reuniao_gallery_items = [];
+try {
+    $tinyThumbSelect = eventosGaleriaThumbColumns($pdo)['thumb_public_url']
+        ? ', thumb_public_url'
+        : ", NULL::text AS thumb_public_url";
+    $tinyGalleryStmt = $pdo->query("
+        SELECT id, categoria, nome, descricao, tags, public_url, storage_key{$tinyThumbSelect}
+        FROM eventos_galeria
+        WHERE deleted_at IS NULL
+        ORDER BY uploaded_at DESC
+        LIMIT 96
+    ");
+    foreach (($tinyGalleryStmt ? $tinyGalleryStmt->fetchAll(PDO::FETCH_ASSOC) : []) as $galleryRow) {
+        $previewUrl = eventos_reuniao_tiny_galeria_preview_url($galleryRow);
+        $sourceUrl = eventos_reuniao_tiny_galeria_source_url($galleryRow);
+        if ($previewUrl === '' || $sourceUrl === '') {
+            continue;
+        }
+        $tiny_reuniao_gallery_items[] = [
+            'id' => (int)($galleryRow['id'] ?? 0),
+            'categoria' => (string)($galleryRow['categoria'] ?? ''),
+            'nome' => (string)($galleryRow['nome'] ?? ''),
+            'descricao' => (string)($galleryRow['descricao'] ?? ''),
+            'tags' => (string)($galleryRow['tags'] ?? ''),
+            'preview_url' => $previewUrl,
+            'source_url' => $sourceUrl,
+        ];
+    }
+} catch (Throwable $e) {
+    error_log('eventos_reuniao_final tiny gallery preload: ' . $e->getMessage());
+}
 $observacoes_blocks_map = [];
 foreach (eventos_reuniao_extrair_blocos_observacoes((string)($secoes['observacoes_gerais']['content_html'] ?? '')) as $obsBlock) {
     $obsKey = trim((string)($obsBlock['key'] ?? ''));
@@ -2714,6 +2767,126 @@ includeSidebar($sidebar_title);
         gap: 0.6rem;
         margin-top: auto;
     }
+
+    .tiny-reuniao-gallery-modal-panel {
+        width: min(1240px, 100%);
+        max-height: 90vh;
+    }
+
+    .tiny-reuniao-gallery-filters {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #e5edf7;
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(180px, 220px);
+        gap: 0.75rem;
+    }
+
+    .tiny-reuniao-gallery-input,
+    .tiny-reuniao-gallery-select {
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        padding: 11px 13px;
+        font-size: 0.95rem;
+        outline: none;
+    }
+
+    .tiny-reuniao-gallery-grid {
+        padding: 1.25rem;
+        overflow: auto;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .tiny-reuniao-gallery-item {
+        border: 1px solid #dde6f1;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        min-height: 340px;
+        cursor: pointer;
+    }
+
+    .tiny-reuniao-gallery-item[hidden] {
+        display: none;
+    }
+
+    .tiny-reuniao-gallery-thumb {
+        aspect-ratio: 4 / 3;
+        background: #f5f9ff;
+    }
+
+    .tiny-reuniao-gallery-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .tiny-reuniao-gallery-body {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+    }
+
+    .tiny-reuniao-gallery-badge {
+        align-self: flex-start;
+        background: #edf4ff;
+        color: #123b84;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .tiny-reuniao-gallery-title {
+        margin: 0;
+        color: #142c58;
+        font-size: 0.97rem;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .tiny-reuniao-gallery-text {
+        margin: 0;
+        color: #66758d;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .tiny-reuniao-gallery-action {
+        margin-top: auto;
+    }
+
+    .tiny-reuniao-gallery-action .btn {
+        width: 100%;
+    }
+
+    .tiny-reuniao-gallery-empty {
+        padding: 1.25rem 1.25rem 1.75rem;
+        text-align: center;
+        color: #66758d;
+        display: none;
+    }
+
+    .tiny-reuniao-gallery-empty.is-visible {
+        display: block;
+    }
     
     .version-item {
         border: 1px solid #e5e7eb;
@@ -2833,6 +3006,10 @@ includeSidebar($sidebar_title);
         .tiny-reuniao-cropper-stage,
         .tiny-reuniao-cropper-sidebar {
             min-height: 320px;
+        }
+
+        .tiny-reuniao-gallery-filters {
+            grid-template-columns: 1fr;
         }
     }
 </style>
@@ -3468,6 +3645,51 @@ includeSidebar($sidebar_title);
     </div>
 </div>
 
+<div class="modal-overlay" id="tinyReuniaoGalleryModal">
+    <div class="modal-content tiny-reuniao-gallery-modal-panel">
+        <div class="modal-header">
+            <h3>Selecionar imagem da galeria</h3>
+            <button type="button" class="modal-close" onclick="closeTinyReuniaoGalleryModal()">&times;</button>
+        </div>
+        <div class="tiny-reuniao-gallery-filters">
+            <input type="search" id="tinyReuniaoGallerySearch" class="tiny-reuniao-gallery-input" placeholder="Buscar por nome, descrição ou tags">
+            <select id="tinyReuniaoGalleryCategory" class="tiny-reuniao-gallery-select">
+                <option value="">Todas as categorias</option>
+                <option value="casamento">Casamento</option>
+                <option value="15_anos">15 anos</option>
+                <option value="infantil">Infantil</option>
+                <option value="geral">Geral</option>
+            </select>
+        </div>
+        <div class="tiny-reuniao-gallery-grid" id="tinyReuniaoGalleryGrid">
+            <?php foreach ($tiny_reuniao_gallery_items as $galleryItem): ?>
+                <?php $gallerySearchBlob = mb_strtolower(trim($galleryItem['nome'] . ' ' . $galleryItem['descricao'] . ' ' . $galleryItem['tags'])); ?>
+                <article
+                    class="tiny-reuniao-gallery-item"
+                    data-id="<?= (int)$galleryItem['id'] ?>"
+                    data-name="<?= htmlspecialchars($galleryItem['nome'], ENT_QUOTES, 'UTF-8') ?>"
+                    data-source-url="<?= htmlspecialchars($galleryItem['source_url'], ENT_QUOTES, 'UTF-8') ?>"
+                    data-category="<?= htmlspecialchars($galleryItem['categoria'], ENT_QUOTES, 'UTF-8') ?>"
+                    data-search="<?= htmlspecialchars($gallerySearchBlob, ENT_QUOTES, 'UTF-8') ?>"
+                >
+                    <div class="tiny-reuniao-gallery-thumb">
+                        <img src="<?= htmlspecialchars($galleryItem['preview_url'], ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($galleryItem['nome'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+                    </div>
+                    <div class="tiny-reuniao-gallery-body">
+                        <span class="tiny-reuniao-gallery-badge"><?= htmlspecialchars(str_replace('_', ' ', $galleryItem['categoria']), ENT_QUOTES, 'UTF-8') ?></span>
+                        <h4 class="tiny-reuniao-gallery-title"><?= htmlspecialchars($galleryItem['nome'], ENT_QUOTES, 'UTF-8') ?></h4>
+                        <p class="tiny-reuniao-gallery-text"><?= htmlspecialchars($galleryItem['descricao'] !== '' ? $galleryItem['descricao'] : $galleryItem['tags'], ENT_QUOTES, 'UTF-8') ?></p>
+                        <div class="tiny-reuniao-gallery-action">
+                            <button type="button" class="btn btn-primary js-tiny-reuniao-gallery-use">Usar esta imagem</button>
+                        </div>
+                    </div>
+                </article>
+            <?php endforeach; ?>
+        </div>
+        <div class="tiny-reuniao-gallery-empty" id="tinyReuniaoGalleryEmpty">Nenhuma imagem corresponde aos filtros atuais.</div>
+    </div>
+</div>
+
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 const legacyDjSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
@@ -3493,6 +3715,7 @@ const initialFormularioLinks = <?= eventos_reuniao_json_script($links_cliente_fo
 const initialDjAnexos = <?= eventos_reuniao_json_script(array_map(static function(array $anexo): array {
     return eventos_reuniao_serializar_anexo($anexo);
 }, $anexos_dj), '[]') ?>;
+const initialTinyReuniaoGalleryItems = <?= eventos_reuniao_json_script($tiny_reuniao_gallery_items, '[]') ?>;
 const initialSectionPortalConfig = <?= eventos_reuniao_json_script($portal_section_config, '{"decoracao":{"visivel":true,"editavel":false},"observacoes_gerais":{"visivel":true,"editavel":false},"dj_protocolo":{"visivel":true,"editavel":false},"formulario":{"visivel":true,"editavel":false}}') ?>;
 let selectedEventId = null;
 let selectedEventData = null;
@@ -3599,6 +3822,7 @@ var tinyReuniaoCropperLoadPromise = null;
 var tinyReuniaoCropper = null;
 var tinyReuniaoCropTargetEditorId = '';
 var tinyReuniaoCropObjectUrl = '';
+var tinyReuniaoCropTargetImageName = '';
 
 function showEditorLoadError(msg, src) {
     var firstWrap = document.querySelector('.editor-wrapper');
@@ -3674,7 +3898,7 @@ function initEditoresReuniao() {
             base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
             suffix: '.min',
             plugins: 'lists link image table code',
-            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link smileImageLocal table | removeformat',
+            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link imagemComputador galeriaSmile table | removeformat',
             menubar: false,
             height: height,
             content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
@@ -3682,11 +3906,18 @@ function initEditoresReuniao() {
             paste_data_images: true,
             automatic_uploads: true,
             setup: function(editor) {
-                editor.ui.registry.addButton('smileImageLocal', {
-                    icon: 'image',
+                editor.ui.registry.addButton('imagemComputador', {
+                    text: 'Imagem do computador',
                     tooltip: 'Inserir imagem do computador com recorte',
                     onAction: function() {
                         openTinyReuniaoLocalImagePicker(editor.id);
+                    }
+                });
+                editor.ui.registry.addButton('galeriaSmile', {
+                    text: 'Galeria Smile',
+                    tooltip: 'Inserir imagem da galeria com recorte',
+                    onAction: function() {
+                        openTinyReuniaoGalleryModal(editor.id);
                     }
                 });
             },
@@ -3792,23 +4023,25 @@ function openTinyReuniaoLocalImagePicker(editorId) {
     var input = document.getElementById('tinyReuniaoLocalImageInput');
     if (!input) return;
     tinyReuniaoCropTargetEditorId = String(editorId || '');
+    tinyReuniaoCropTargetImageName = '';
     input.value = '';
     input.click();
 }
 
-function openTinyReuniaoCropModalWithFile(file, editorId) {
-    if (!file || !String(file.type || '').match(/^image\//i)) {
-        alert('Selecione uma imagem válida.');
+function openTinyReuniaoCropModalWithImageSource(source, options) {
+    var opts = options || {};
+    if (!source) {
+        alert('Fonte de imagem inválida.');
         return;
     }
-    tinyReuniaoCropTargetEditorId = String(editorId || tinyReuniaoCropTargetEditorId || '');
+    tinyReuniaoCropTargetEditorId = String(opts.editorId || tinyReuniaoCropTargetEditorId || '');
+    tinyReuniaoCropTargetImageName = String(opts.imageName || '');
     loadTinyReuniaoCropperLibrary()
         .then(function() {
-            if (tinyReuniaoCropObjectUrl) {
+            if (tinyReuniaoCropObjectUrl && String(opts.releaseObjectUrl || '') === '1') {
                 URL.revokeObjectURL(tinyReuniaoCropObjectUrl);
                 tinyReuniaoCropObjectUrl = '';
             }
-            tinyReuniaoCropObjectUrl = URL.createObjectURL(file);
             var modal = document.getElementById('tinyReuniaoCropModal');
             var image = document.getElementById('tinyReuniaoCropImage');
             var preview = document.getElementById('tinyReuniaoCropPreview');
@@ -3837,12 +4070,88 @@ function openTinyReuniaoCropModalWithFile(file, editorId) {
                     cropBoxResizable: true
                 });
             };
-            image.src = tinyReuniaoCropObjectUrl;
+            image.src = source;
             modal.classList.add('show');
         })
         .catch(function(err) {
             alert(err && err.message ? err.message : 'Erro ao abrir recorte.');
         });
+}
+
+function openTinyReuniaoCropModalWithFile(file, editorId) {
+    if (!file || !String(file.type || '').match(/^image\//i)) {
+        alert('Selecione uma imagem válida.');
+        return;
+    }
+    if (tinyReuniaoCropObjectUrl) {
+        URL.revokeObjectURL(tinyReuniaoCropObjectUrl);
+        tinyReuniaoCropObjectUrl = '';
+    }
+    tinyReuniaoCropObjectUrl = URL.createObjectURL(file);
+    openTinyReuniaoCropModalWithImageSource(tinyReuniaoCropObjectUrl, {
+        editorId: editorId,
+        imageName: file.name || '',
+        releaseObjectUrl: '1'
+    });
+}
+
+function openTinyReuniaoGalleryModal(editorId) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
+    tinyReuniaoCropTargetEditorId = String(editorId || '');
+    var modal = document.getElementById('tinyReuniaoGalleryModal');
+    if (!modal) return;
+    modal.classList.add('show');
+    applyTinyReuniaoGalleryFilters();
+}
+
+function closeTinyReuniaoGalleryModal() {
+    var modal = document.getElementById('tinyReuniaoGalleryModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+function normalizeTinyReuniaoGalleryText(value) {
+    return String(value || '').toLocaleLowerCase('pt-BR').trim();
+}
+
+function applyTinyReuniaoGalleryFilters() {
+    var searchEl = document.getElementById('tinyReuniaoGallerySearch');
+    var categoryEl = document.getElementById('tinyReuniaoGalleryCategory');
+    var emptyEl = document.getElementById('tinyReuniaoGalleryEmpty');
+    var items = Array.from(document.querySelectorAll('.tiny-reuniao-gallery-item'));
+    var term = normalizeTinyReuniaoGalleryText(searchEl ? searchEl.value : '');
+    var category = normalizeTinyReuniaoGalleryText(categoryEl ? categoryEl.value : '');
+    var visibleCount = 0;
+    items.forEach(function(item) {
+        var itemCategory = normalizeTinyReuniaoGalleryText(item.getAttribute('data-category'));
+        var itemSearch = normalizeTinyReuniaoGalleryText(item.getAttribute('data-search'));
+        var visible = (term === '' || itemSearch.indexOf(term) !== -1) && (category === '' || itemCategory === category);
+        item.hidden = !visible;
+        if (visible) visibleCount += 1;
+    });
+    if (emptyEl) {
+        emptyEl.classList.toggle('is-visible', visibleCount === 0);
+    }
+}
+
+function openTinyReuniaoCropFromGalleryCard(card) {
+    if (!card) return;
+    var sourceUrl = String(card.getAttribute('data-source-url') || '');
+    var imageName = String(card.getAttribute('data-name') || '');
+    if (!sourceUrl) {
+        alert('Imagem da galeria sem origem disponível.');
+        return;
+    }
+    closeTinyReuniaoGalleryModal();
+    openTinyReuniaoCropModalWithImageSource(sourceUrl, {
+        editorId: tinyReuniaoCropTargetEditorId,
+        imageName: imageName,
+        releaseObjectUrl: ''
+    });
 }
 
 function closeTinyReuniaoCropModal() {
@@ -3863,6 +4172,7 @@ function closeTinyReuniaoCropModal() {
     if (preview) {
         preview.innerHTML = '';
     }
+    tinyReuniaoCropTargetImageName = '';
     if (modal) {
         modal.classList.remove('show');
     }
@@ -3947,7 +4257,8 @@ function applyTinyReuniaoCrop() {
             }
             uploadTinyReuniaoImageBlob(blob, 'reuniao-recorte.png')
                 .then(function(location) {
-                    editor.insertContent('<p><img src="' + location + '" alt="" style="max-width:100%;height:auto;border-radius:8px;" /></p>');
+                    var safeAlt = String(tinyReuniaoCropTargetImageName || '').replace(/"/g, '&quot;');
+                    editor.insertContent('<p><img src="' + location + '" alt="' + safeAlt + '" style="max-width:100%;height:auto;border-radius:8px;" /></p>');
                     closeTinyReuniaoCropModal();
                 })
                 .catch(function(err) {
@@ -7784,6 +8095,10 @@ document.addEventListener('click', function(ev) {
     if (cropModal && ev.target === cropModal) {
         closeTinyReuniaoCropModal();
     }
+    const galleryModal = document.getElementById('tinyReuniaoGalleryModal');
+    if (galleryModal && ev.target === galleryModal) {
+        closeTinyReuniaoGalleryModal();
+    }
 });
 
 document.addEventListener('keydown', function(ev) {
@@ -7799,6 +8114,10 @@ document.addEventListener('keydown', function(ev) {
     const cropModal = document.getElementById('tinyReuniaoCropModal');
     if (cropModal && cropModal.classList.contains('show')) {
         closeTinyReuniaoCropModal();
+    }
+    const galleryModal = document.getElementById('tinyReuniaoGalleryModal');
+    if (galleryModal && galleryModal.classList.contains('show')) {
+        closeTinyReuniaoGalleryModal();
     }
 });
 
@@ -8091,6 +8410,8 @@ function exposeInlineHandlersToWindow() {
     if (typeof toggleLegacyEditor === 'function') window.toggleLegacyEditor = toggleLegacyEditor;
     if (typeof toggleObservacoesBlock === 'function') window.toggleObservacoesBlock = toggleObservacoesBlock;
     if (typeof salvarSecao === 'function') window.salvarSecao = salvarSecao;
+    if (typeof openTinyReuniaoGalleryModal === 'function') window.openTinyReuniaoGalleryModal = openTinyReuniaoGalleryModal;
+    if (typeof closeTinyReuniaoGalleryModal === 'function') window.closeTinyReuniaoGalleryModal = closeTinyReuniaoGalleryModal;
     if (typeof closeTinyReuniaoCropModal === 'function') window.closeTinyReuniaoCropModal = closeTinyReuniaoCropModal;
     if (typeof tinyReuniaoCropZoomIn === 'function') window.tinyReuniaoCropZoomIn = tinyReuniaoCropZoomIn;
     if (typeof tinyReuniaoCropZoomOut === 'function') window.tinyReuniaoCropZoomOut = tinyReuniaoCropZoomOut;
@@ -8192,6 +8513,33 @@ function bindMeetingActionButtons() {
             this.value = '';
         });
     }
+
+    const gallerySearch = document.getElementById('tinyReuniaoGallerySearch');
+    if (gallerySearch && gallerySearch.dataset.bound !== '1') {
+        gallerySearch.dataset.bound = '1';
+        gallerySearch.addEventListener('input', applyTinyReuniaoGalleryFilters);
+    }
+
+    const galleryCategory = document.getElementById('tinyReuniaoGalleryCategory');
+    if (galleryCategory && galleryCategory.dataset.bound !== '1') {
+        galleryCategory.dataset.bound = '1';
+        galleryCategory.addEventListener('change', applyTinyReuniaoGalleryFilters);
+    }
+
+    document.querySelectorAll('.tiny-reuniao-gallery-item').forEach(function(card) {
+        if (card.dataset.bound === '1') return;
+        card.dataset.bound = '1';
+        card.addEventListener('click', function() {
+            openTinyReuniaoCropFromGalleryCard(card);
+        });
+        const button = card.querySelector('.js-tiny-reuniao-gallery-use');
+        if (button) {
+            button.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                openTinyReuniaoCropFromGalleryCard(card);
+            });
+        }
+    });
 }
 
 // Inicializar editores ricos quando existir reunião (carrega TinyMCE dinamicamente)
