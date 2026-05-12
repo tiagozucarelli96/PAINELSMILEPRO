@@ -87,6 +87,23 @@ foreach ($arquivos as $arquivo) {
             box-shadow: 0 28px 60px rgba(15, 45, 117, 0.25);
         }
 
+        .hero-inner {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(220px, .8fr);
+            gap: 22px;
+            align-items: end;
+        }
+
+        .hero-copy {
+            min-width: 0;
+        }
+
+        .hero-side {
+            display: grid;
+            gap: 10px;
+            justify-items: stretch;
+        }
+
         .eyebrow {
             display: inline-flex;
             align-items: center;
@@ -115,18 +132,19 @@ foreach ($arquivos as $arquivo) {
 
         .hero-stats {
             margin-top: 18px;
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 10px;
         }
 
         .hero-stats span {
-            display: inline-flex;
+            display: grid;
             align-items: center;
             padding: 10px 14px;
-            border-radius: 999px;
+            border-radius: 16px;
             background: rgba(255,255,255,0.12);
             font-weight: 700;
+            min-height: 68px;
         }
 
         .shell {
@@ -136,7 +154,7 @@ foreach ($arquivos as $arquivo) {
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 18px;
         }
 
@@ -159,6 +177,7 @@ foreach ($arquivos as $arquivo) {
 
         .preview {
             min-height: 240px;
+            aspect-ratio: 16 / 10;
             background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
             display: flex;
             align-items: center;
@@ -168,7 +187,7 @@ foreach ($arquivos as $arquivo) {
         .preview img,
         .preview video {
             width: 100%;
-            max-height: 380px;
+            height: 100%;
             object-fit: cover;
             display: block;
             background: #000;
@@ -230,7 +249,8 @@ foreach ($arquivos as $arquivo) {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 10px 14px;
+            min-height: 46px;
+            padding: 10px 16px;
             border-radius: 12px;
             text-decoration: none;
             font-weight: 800;
@@ -242,18 +262,153 @@ foreach ($arquivos as $arquivo) {
         .btn:hover {
             background: #f8fbff;
         }
+
+        @media (max-width: 1100px) {
+            .hero-inner {
+                grid-template-columns: 1fr;
+                align-items: start;
+            }
+
+            .hero-side {
+                max-width: 620px;
+            }
+
+            .grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 820px) {
+            .hero,
+            .shell {
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+
+            .hero {
+                padding-top: 18px;
+                padding-bottom: 12px;
+            }
+
+            .hero-card {
+                padding: 22px;
+                border-radius: 20px;
+            }
+
+            .hero h1 {
+                font-size: clamp(1.7rem, 8vw, 2.5rem);
+                line-height: 1.05;
+            }
+
+            .hero p {
+                font-size: .96rem;
+                line-height: 1.6;
+            }
+
+            .hero-stats {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .hero-stats span {
+                padding: 10px 12px;
+                min-height: 62px;
+                font-size: .92rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+
+            .card,
+            .empty {
+                border-radius: 18px;
+            }
+
+            .preview {
+                min-height: 210px;
+            }
+
+            .body {
+                padding: 14px;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .hero-card {
+                padding: 18px;
+            }
+
+            .eyebrow {
+                font-size: .74rem;
+                padding: 7px 10px;
+            }
+
+            .hero h1 {
+                margin-top: 12px;
+                margin-bottom: 8px;
+            }
+
+            .hero-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-stats span {
+                min-height: 0;
+                padding: 11px 12px;
+            }
+
+            .shell {
+                padding-top: 0;
+                padding-bottom: 22px;
+            }
+
+            .preview {
+                min-height: 190px;
+                aspect-ratio: 4 / 3;
+            }
+
+            .topline {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .name {
+                font-size: .98rem;
+            }
+
+            .meta {
+                flex-direction: column;
+                gap: 5px;
+                font-size: .86rem;
+            }
+
+            .actions {
+                margin-top: 12px;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
     <header class="hero">
         <div class="hero-card">
-            <span class="eyebrow">Marketing Smile</span>
-            <h1>Galeria publica de materiais</h1>
-            <p>Imagens e videos disponibilizados para consulta e uso do time de marketing.</p>
-            <div class="hero-stats">
-                <span><?= (int)$totalArquivos ?> arquivos</span>
-                <span><?= (int)$totalImagens ?> imagens</span>
-                <span><?= (int)$totalVideos ?> videos</span>
+            <div class="hero-inner">
+                <div class="hero-copy">
+                    <span class="eyebrow">Marketing Smile</span>
+                    <h1>Galeria publica de materiais</h1>
+                    <p>Imagens e videos disponibilizados para consulta e uso do time de marketing.</p>
+                </div>
+                <div class="hero-side">
+                    <div class="hero-stats">
+                        <span><?= (int)$totalArquivos ?> arquivos</span>
+                        <span><?= (int)$totalImagens ?> imagens</span>
+                        <span><?= (int)$totalVideos ?> videos</span>
+                    </div>
+                </div>
             </div>
         </div>
     </header>
