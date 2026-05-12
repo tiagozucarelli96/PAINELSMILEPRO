@@ -112,10 +112,23 @@ if ($isAjax && $action === 'import_gallery_image') {
         tinyGaleriaTesteJson(['ok' => false, 'message' => 'A imagem selecionada não possui origem disponível.'], 422);
     }
 
+    $uploadedFile = null;
+    foreach (['file', 'cropped_file'] as $fileKey) {
+        if (!empty($_FILES[$fileKey]) && (int)($_FILES[$fileKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $uploadedFile = $_FILES[$fileKey];
+            break;
+        }
+    }
+
     $tmpPath = '';
     try {
-        $tmpPath = eventosGaleriaDownloadSourceToTemp($sourceUrl);
-        $mimeType = eventosGaleriaDetectMimeLocal($tmpPath);
+        if ($uploadedFile) {
+            $tmpPath = (string)($uploadedFile['tmp_name'] ?? '');
+            $mimeType = eventosGaleriaDetectMimeLocal($tmpPath) ?: (string)($uploadedFile['type'] ?? '');
+        } else {
+            $tmpPath = eventosGaleriaDownloadSourceToTemp($sourceUrl);
+            $mimeType = eventosGaleriaDetectMimeLocal($tmpPath);
+        }
         if (strpos($mimeType, 'image/') !== 0) {
             throw new RuntimeException('O arquivo selecionado não é uma imagem válida.');
         }
@@ -140,7 +153,7 @@ if ($isAjax && $action === 'import_gallery_image') {
             'message' => $e->getMessage(),
         ], 500);
     } finally {
-        if ($tmpPath !== '' && file_exists($tmpPath)) {
+        if (!$uploadedFile && $tmpPath !== '' && file_exists($tmpPath)) {
             @unlink($tmpPath);
         }
     }
@@ -473,6 +486,78 @@ includeSidebar('Teste Tiny + Galeria');
         display: block;
     }
 
+    .tiny-galeria-cropper-wrap {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+        gap: 18px;
+        align-items: start;
+        overflow: auto;
+    }
+
+    .tiny-galeria-cropper-stage {
+        min-height: 480px;
+        background:
+            linear-gradient(45deg, #eef4ff 25%, transparent 25%, transparent 75%, #eef4ff 75%, #eef4ff),
+            linear-gradient(45deg, #eef4ff 25%, transparent 25%, transparent 75%, #eef4ff 75%, #eef4ff);
+        background-size: 22px 22px;
+        background-position: 0 0, 11px 11px;
+        border: 1px solid #dbe3ef;
+        border-radius: 18px;
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    .tiny-galeria-cropper-stage img {
+        display: block;
+        max-width: 100%;
+    }
+
+    .tiny-galeria-cropper-sidebar {
+        border: 1px solid #dbe3ef;
+        border-radius: 18px;
+        padding: 16px;
+        background: #fbfdff;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .tiny-galeria-cropper-sidebar h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: #122e5c;
+    }
+
+    .tiny-galeria-cropper-sidebar p {
+        margin: 0;
+        color: #66758d;
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    .tiny-galeria-cropper-actions {
+        display: grid;
+        gap: 10px;
+        margin-top: auto;
+    }
+
+    .tiny-galeria-cropper-preview {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #eaf1fb;
+        border: 1px solid #dbe3ef;
+    }
+
+    .tiny-galeria-cropper-preview img {
+        max-width: 100%;
+    }
+
     @media (max-width: 900px) {
         .tiny-galeria-page {
             padding: 16px;
@@ -480,6 +565,14 @@ includeSidebar('Teste Tiny + Galeria');
 
         .tiny-galeria-filters {
             grid-template-columns: 1fr;
+        }
+
+        .tiny-galeria-cropper-wrap {
+            grid-template-columns: 1fr;
+        }
+
+        .tiny-galeria-cropper-stage {
+            min-height: 320px;
         }
     }
 </style>
@@ -586,18 +679,56 @@ includeSidebar('Teste Tiny + Galeria');
     </div>
 </div>
 
+<div class="tiny-galeria-modal" id="tinyGaleriaCropModal" aria-hidden="true">
+    <div class="tiny-galeria-modal-panel" role="dialog" aria-modal="true" aria-labelledby="tinyGaleriaCropTitle">
+        <div class="tiny-galeria-modal-header">
+            <h2 id="tinyGaleriaCropTitle">Recortar imagem antes de inserir</h2>
+            <button type="button" class="tiny-galeria-modal-close" id="closeTinyGaleriaCropModal" aria-label="Fechar">×</button>
+        </div>
+
+        <div class="tiny-galeria-cropper-wrap">
+            <div class="tiny-galeria-cropper-stage">
+                <img id="tinyGaleriaCropImage" alt="Imagem para recorte">
+            </div>
+
+            <aside class="tiny-galeria-cropper-sidebar">
+                <h3 id="tinyGaleriaCropName">Imagem selecionada</h3>
+                <p>Faça o enquadramento, ajuste zoom se precisar e confirme. Só o recorte final será enviado para o storage de teste.</p>
+                <div class="tiny-galeria-cropper-preview" id="tinyGaleriaCropPreview"></div>
+                <div class="tiny-galeria-cropper-actions">
+                    <button type="button" class="tiny-galeria-btn tiny-galeria-btn-secondary" id="cropZoomOut">Zoom -</button>
+                    <button type="button" class="tiny-galeria-btn tiny-galeria-btn-secondary" id="cropZoomIn">Zoom +</button>
+                    <button type="button" class="tiny-galeria-btn tiny-galeria-btn-secondary" id="cropReset">Resetar</button>
+                    <button type="button" class="tiny-galeria-btn tiny-galeria-btn-primary" id="applyCropAndInsert">Aplicar recorte e inserir</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>
+
 <script>
 (() => {
     const pageUrl = 'index.php?page=eventos_tiny_galeria_teste';
     const statusEl = document.getElementById('tinyGaleriaStatus');
     const modalEl = document.getElementById('tinyGaleriaModal');
+    const cropModalEl = document.getElementById('tinyGaleriaCropModal');
     const gridEl = document.getElementById('tinyGaleriaGrid');
     const searchEl = document.getElementById('tinyGaleriaSearch');
     const categoryEl = document.getElementById('tinyGaleriaCategory');
     const emptyEl = document.getElementById('tinyGaleriaEmpty');
     const openOutsideBtn = document.getElementById('openGalleryOutside');
     const closeModalBtn = document.getElementById('closeTinyGaleriaModal');
+    const closeCropModalBtn = document.getElementById('closeTinyGaleriaCropModal');
+    const cropImageEl = document.getElementById('tinyGaleriaCropImage');
+    const cropPreviewEl = document.getElementById('tinyGaleriaCropPreview');
+    const cropNameEl = document.getElementById('tinyGaleriaCropName');
+    const applyCropBtn = document.getElementById('applyCropAndInsert');
+    const cropZoomInBtn = document.getElementById('cropZoomIn');
+    const cropZoomOutBtn = document.getElementById('cropZoomOut');
+    const cropResetBtn = document.getElementById('cropReset');
     let activeEditor = null;
+    let activeCropper = null;
+    let cropTarget = null;
 
     function setStatus(message, type = '') {
         statusEl.textContent = message || '';
@@ -615,6 +746,25 @@ includeSidebar('Teste Tiny + Galeria');
     function closeModal() {
         modalEl.classList.remove('is-open');
         modalEl.setAttribute('aria-hidden', 'true');
+    }
+
+    function openCropModal() {
+        cropModalEl.classList.add('is-open');
+        cropModalEl.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeCropModal() {
+        cropModalEl.classList.remove('is-open');
+        cropModalEl.setAttribute('aria-hidden', 'true');
+        if (activeCropper) {
+            activeCropper.destroy();
+            activeCropper = null;
+        }
+        cropImageEl.removeAttribute('src');
+        cropPreviewEl.innerHTML = '';
+        cropTarget = null;
+        applyCropBtn.disabled = false;
+        applyCropBtn.textContent = 'Aplicar recorte e inserir';
     }
 
     function normalize(value) {
@@ -640,7 +790,74 @@ includeSidebar('Teste Tiny + Galeria');
         emptyEl.classList.toggle('is-visible', visibleCount === 0);
     }
 
-    async function importGalleryImage(imageId, imageName, button) {
+    function loadCropper() {
+        return new Promise((resolve, reject) => {
+            if (window.Cropper) {
+                resolve(window.Cropper);
+                return;
+            }
+
+            if (!document.querySelector('link[data-cropper-style="1"]')) {
+                const cssLink = document.createElement('link');
+                cssLink.rel = 'stylesheet';
+                cssLink.href = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css';
+                cssLink.setAttribute('data-cropper-style', '1');
+                document.head.appendChild(cssLink);
+            }
+
+            const existingScript = document.querySelector('script[data-cropper-script="1"]');
+            if (existingScript) {
+                existingScript.addEventListener('load', () => resolve(window.Cropper), { once: true });
+                existingScript.addEventListener('error', () => reject(new Error('Não foi possível carregar o editor de recorte.')), { once: true });
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js';
+            script.setAttribute('data-cropper-script', '1');
+            script.onload = () => resolve(window.Cropper);
+            script.onerror = () => reject(new Error('Não foi possível carregar o editor de recorte.'));
+            document.body.appendChild(script);
+        });
+    }
+
+    async function openCropperForImage(imageId, imageName, imageUrl) {
+        try {
+            setStatus('Abrindo editor de recorte...');
+            await loadCropper();
+            cropTarget = { imageId, imageName, imageUrl };
+            cropNameEl.textContent = imageName || 'Imagem selecionada';
+            cropPreviewEl.innerHTML = '';
+            cropImageEl.onload = () => {
+                if (activeCropper) {
+                    activeCropper.destroy();
+                    activeCropper = null;
+                }
+                activeCropper = new window.Cropper(cropImageEl, {
+                    viewMode: 1,
+                    dragMode: 'move',
+                    autoCropArea: 0.9,
+                    responsive: true,
+                    background: false,
+                    preview: cropPreviewEl,
+                    movable: true,
+                    zoomable: true,
+                    rotatable: false,
+                    scalable: false,
+                    cropBoxMovable: true,
+                    cropBoxResizable: true
+                });
+            };
+            cropImageEl.src = imageUrl;
+            openCropModal();
+            closeModal();
+            setStatus('Ajuste o recorte e confirme para inserir.', 'success');
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : 'Falha ao abrir o recorte.', 'error');
+        }
+    }
+
+    async function importGalleryImage(imageId, imageName, button, croppedBlob = null) {
         if (!activeEditor) {
             setStatus('Editor Tiny ainda não está pronto.', 'error');
             return;
@@ -648,21 +865,23 @@ includeSidebar('Teste Tiny + Galeria');
 
         const originalLabel = button.textContent;
         button.disabled = true;
-        button.textContent = 'Importando...';
-        setStatus('Copiando a imagem da galeria para o storage de teste...');
+        button.textContent = croppedBlob ? 'Enviando recorte...' : 'Importando...';
+        setStatus(croppedBlob ? 'Enviando recorte para o storage de teste...' : 'Copiando a imagem da galeria para o storage de teste...');
 
         try {
-            const body = new URLSearchParams();
+            const body = new FormData();
             body.set('action', 'import_gallery_image');
             body.set('image_id', String(imageId));
+            if (croppedBlob) {
+                body.set('cropped_file', croppedBlob, 'recorte-galeria.png');
+            }
 
             const response = await fetch(pageUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                body: body.toString()
+                body
             });
 
             const data = await response.json();
@@ -676,6 +895,7 @@ includeSidebar('Teste Tiny + Galeria');
             );
 
             setStatus(data.message || 'Imagem inserida com sucesso.', 'success');
+            closeCropModal();
             closeModal();
         } catch (error) {
             setStatus(error instanceof Error ? error.message : 'Erro ao importar imagem.', 'error');
@@ -689,7 +909,12 @@ includeSidebar('Teste Tiny + Galeria');
         document.querySelectorAll('.js-import-gallery-image').forEach((button) => {
             button.addEventListener('click', (event) => {
                 event.stopPropagation();
-                importGalleryImage(button.getAttribute('data-id'), button.getAttribute('data-name'), button);
+                const item = button.closest('.tiny-galeria-item');
+                openCropperForImage(
+                    button.getAttribute('data-id'),
+                    button.getAttribute('data-name'),
+                    item && item.querySelector('img') ? item.querySelector('img').src : ''
+                );
             });
         });
 
@@ -697,7 +922,11 @@ includeSidebar('Teste Tiny + Galeria');
             item.addEventListener('click', () => {
                 const button = item.querySelector('.js-import-gallery-image');
                 if (!button) return;
-                importGalleryImage(item.getAttribute('data-id'), item.getAttribute('data-name'), button);
+                openCropperForImage(
+                    item.getAttribute('data-id'),
+                    item.getAttribute('data-name'),
+                    item.querySelector('img') ? item.querySelector('img').src : ''
+                );
             });
         });
     }
@@ -722,12 +951,61 @@ includeSidebar('Teste Tiny + Galeria');
     categoryEl.addEventListener('change', applyFilters);
     openOutsideBtn.addEventListener('click', openModal);
     closeModalBtn.addEventListener('click', closeModal);
+    closeCropModalBtn.addEventListener('click', closeCropModal);
+    cropZoomInBtn.addEventListener('click', () => {
+        if (activeCropper) activeCropper.zoom(0.1);
+    });
+    cropZoomOutBtn.addEventListener('click', () => {
+        if (activeCropper) activeCropper.zoom(-0.1);
+    });
+    cropResetBtn.addEventListener('click', () => {
+        if (activeCropper) activeCropper.reset();
+    });
+    applyCropBtn.addEventListener('click', async () => {
+        if (!activeCropper || !cropTarget) {
+            setStatus('Nenhuma imagem pronta para recorte.', 'error');
+            return;
+        }
+
+        applyCropBtn.disabled = true;
+        applyCropBtn.textContent = 'Processando recorte...';
+        try {
+            const canvas = activeCropper.getCroppedCanvas({
+                maxWidth: 1600,
+                maxHeight: 1600,
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high'
+            });
+            if (!canvas) {
+                throw new Error('Não foi possível gerar o recorte.');
+            }
+
+            const blob = await new Promise((resolve, reject) => {
+                canvas.toBlob((result) => {
+                    if (result) resolve(result);
+                    else reject(new Error('Falha ao converter o recorte.'));
+                }, 'image/png', 0.95);
+            });
+
+            await importGalleryImage(cropTarget.imageId, cropTarget.imageName, applyCropBtn, blob);
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : 'Erro ao aplicar recorte.', 'error');
+            applyCropBtn.disabled = false;
+            applyCropBtn.textContent = 'Aplicar recorte e inserir';
+        }
+    });
     modalEl.addEventListener('click', (event) => {
         if (event.target === modalEl) closeModal();
+    });
+    cropModalEl.addEventListener('click', (event) => {
+        if (event.target === cropModalEl) closeCropModal();
     });
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && modalEl.classList.contains('is-open')) {
             closeModal();
+        }
+        if (event.key === 'Escape' && cropModalEl.classList.contains('is-open')) {
+            closeCropModal();
         }
     });
 
