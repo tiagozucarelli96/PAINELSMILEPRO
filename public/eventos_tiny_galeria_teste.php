@@ -374,6 +374,7 @@ includeSidebar('Teste Tiny + Galeria');
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
         gap: 16px;
+        align-items: start;
     }
 
     .tiny-galeria-item {
@@ -383,7 +384,8 @@ includeSidebar('Teste Tiny + Galeria');
         background: #fff;
         display: flex;
         flex-direction: column;
-        min-height: 280px;
+        min-height: 340px;
+        cursor: pointer;
         transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
     }
 
@@ -415,6 +417,7 @@ includeSidebar('Teste Tiny + Galeria');
         flex-direction: column;
         gap: 8px;
         flex: 1;
+        min-height: 0;
     }
 
     .tiny-galeria-badge {
@@ -433,6 +436,11 @@ includeSidebar('Teste Tiny + Galeria');
         margin: 0;
         color: #142c58;
         font-size: 0.97rem;
+        line-height: 1.35;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
     }
 
     .tiny-galeria-item-text {
@@ -448,6 +456,10 @@ includeSidebar('Teste Tiny + Galeria');
 
     .tiny-galeria-item-action {
         margin-top: auto;
+    }
+
+    .tiny-galeria-item-button {
+        width: 100%;
     }
 
     .tiny-galeria-empty {
@@ -538,6 +550,7 @@ includeSidebar('Teste Tiny + Galeria');
                 <article
                     class="tiny-galeria-item"
                     data-id="<?= (int)$item['id'] ?>"
+                    data-name="<?= htmlspecialchars($item['nome'], ENT_QUOTES, 'UTF-8') ?>"
                     data-category="<?= htmlspecialchars($item['categoria'], ENT_QUOTES, 'UTF-8') ?>"
                     data-search="<?= htmlspecialchars($searchBlob, ENT_QUOTES, 'UTF-8') ?>"
                 >
@@ -555,7 +568,7 @@ includeSidebar('Teste Tiny + Galeria');
                         <div class="tiny-galeria-item-action">
                             <button
                                 type="button"
-                                class="tiny-galeria-btn tiny-galeria-btn-primary js-import-gallery-image"
+                                class="tiny-galeria-btn tiny-galeria-btn-primary tiny-galeria-item-button js-import-gallery-image"
                                 data-id="<?= (int)$item['id'] ?>"
                                 data-name="<?= htmlspecialchars($item['nome'], ENT_QUOTES, 'UTF-8') ?>"
                             >
@@ -674,8 +687,17 @@ includeSidebar('Teste Tiny + Galeria');
 
     function bindGalleryButtons() {
         document.querySelectorAll('.js-import-gallery-image').forEach((button) => {
-            button.addEventListener('click', () => {
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
                 importGalleryImage(button.getAttribute('data-id'), button.getAttribute('data-name'), button);
+            });
+        });
+
+        document.querySelectorAll('.tiny-galeria-item').forEach((item) => {
+            item.addEventListener('click', () => {
+                const button = item.querySelector('.js-import-gallery-image');
+                if (!button) return;
+                importGalleryImage(item.getAttribute('data-id'), item.getAttribute('data-name'), button);
             });
         });
     }
