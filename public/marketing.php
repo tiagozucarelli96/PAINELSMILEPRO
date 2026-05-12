@@ -6,86 +6,780 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/core/helpers.php';
 require_once __DIR__ . '/sidebar_integration.php';
+require_once __DIR__ . '/upload_magalu.php';
 
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
-@ini_set('display_errors', 0);
+@ini_set('display_errors', '0');
+
+if (!$pdo instanceof PDO) {
+    http_response_code(500);
+    echo 'Conexao com o banco indisponivel.';
+    exit;
+}
+
+$usuarioId = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? 0);
+$podeAcessarMarketing = !empty($_SESSION['perm_marketing']) || !empty($_SESSION['perm_superadmin']);
+
+if ($usuarioId <= 0) {
+    header('Location: login.php');
+    exit;
+}
+
+if (!$podeAcessarMarketing) {
+    http_response_code(403);
+    echo 'Acesso negado ao modulo Marketing.';
+    exit;
+}
+
+$marketingPublicUrl = 'https://painelpro.smileeventos.com.br/';
+$uploadPrefix = 'marketing/arquivos';
+$feedbackOk = '';
+$feedbackErro = '';
+
+if (!function_exists('marketingUploadErrorMessage')) {
+    function marketingUploadErrorMessage(int $code): string
+    {
+        switch ($code) {
+            case UPLOAD_ERR_OK:
+                return '';
+            case UPLOAD_ERR_INI_SIZE:
+            case UPLOAD_ERR_FORM_SIZE:
+                return 'Arquivo excede o limite permitido pelo servidor.';
+            case UPLOAD_ERR_PARTIAL:
+                return 'Upload incompleto. Tente novamente.';
+            case UPLOAD_ERR_NO_FILE:
+                return 'Selecione um arquivo para enviar.';
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return 'Pasta temporaria de upload indisponivel.';
+            case UPLOAD_ERR_CANT_WRITE:
+                return 'Falha ao gravar o arquivo temporario.';
+            case UPLOAD_ERR_EXTENSION:
+                return 'Upload bloqueado por extensao do servidor.';
+            default:
+                return 'Erro desconhecido no upload.';
+        }
+    }
+}
+
+if (!function_exists('marketingEnsureArquivosTable')) {
+    function marketingEnsureArquivosTable(PDO $pdo): void
+    {
+        static $ready = false;
+        if ($ready) {
+            return;
+        }
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS marketing_arquivos (
+                id BIGSERIAL PRIMARY KEY,
+                original_name VARCHAR(255) NOT NULL,
+                mime_type VARCHAR(120) NOT NULL,
+                size_bytes BIGINT NOT NULL DEFAULT 0,
+                storage_key VARCHAR(500) NOT NULL,
+                public_url TEXT NOT NULL,
+                descricao TEXT NULL,
+                media_kind VARCHAR(20) NOT NULL CHECK (media_kind IN ('imagem', 'video')),
+                uploaded_by_user_id INTEGER NULL,
+                uploaded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMP NULL,
+                deleted_by_user_id INTEGER NULL
+            )
+        ");
+
+        $pdo->exec("
+            CREATE INDEX IF NOT EXISTS idx_marketing_arquivos_ativos
+            ON marketing_arquivos (deleted_at, uploaded_at DESC)
+        ");
+
+        $pdo->exec("
+            CREATE INDEX IF NOT EXISTS idx_marketing_arquivos_tipo
+            ON marketing_arquivos (media_kind, deleted_at, uploaded_at DESC)
+        ");
+
+        $ready = true;
+    }
+}
+
+if (!function_exists('marketingDetectMediaKind')) {
+    function marketingDetectMediaKind(string $mimeType): ?string
+    {
+        $mimeType = strtolower(trim($mimeType));
+        if (strpos($mimeType, 'image/') === 0) {
+            return 'imagem';
+        }
+        if (strpos($mimeType, 'video/') === 0) {
+            return 'video';
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('marketingFormatBytes')) {
+    function marketingFormatBytes(int $bytes): string
+    {
+        if ($bytes < 1024) {
+            return $bytes . ' B';
+        }
+
+        $units = ['KB', 'MB', 'GB', 'TB'];
+        $value = $bytes / 1024;
+        $unitIndex = 0;
+
+        while ($value >= 1024 && $unitIndex < count($units) - 1) {
+            $value /= 1024;
+            $unitIndex++;
+        }
+
+        return number_format($value, $value >= 10 ? 1 : 2, ',', '.') . ' ' . $units[$unitIndex];
+    }
+}
+
+if (!function_exists('marketingListArquivos')) {
+    function marketingListArquivos(PDO $pdo): array
+    {
+        $stmt = $pdo->query("
+            SELECT ma.*, COALESCE(u.nome, 'Usuario removido') AS uploaded_by_name
+            FROM marketing_arquivos ma
+            LEFT JOIN usuarios u ON u.id = ma.uploaded_by_user_id
+            WHERE ma.deleted_at IS NULL
+            ORDER BY ma.uploaded_at DESC, ma.id DESC
+        ");
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+}
+
+marketingEnsureArquivosTable($pdo);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $acao = (string)($_POST['acao'] ?? '');
+
+    if ($acao === 'upload_arquivo') {
+        $arquivo = $_FILES['arquivo'] ?? null;
+        $descricao = trim((string)($_POST['descricao'] ?? ''));
+
+        if (!$arquivo || !is_array($arquivo)) {
+            $feedbackErro = 'Selecione um arquivo para enviar.';
+        } else {
+            $uploadError = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($uploadError !== UPLOAD_ERR_OK) {
+                $feedbackErro = marketingUploadErrorMessage($uploadError);
+            } elseif ((int)($arquivo['size'] ?? 0) > 500 * 1024 * 1024) {
+                $feedbackErro = 'Arquivo muito grande. Limite maximo: 500MB.';
+            } else {
+                try {
+                    $mimeTypeDetectado = (string)(mime_content_type((string)($arquivo['tmp_name'] ?? '')) ?: '');
+                    $mediaKind = marketingDetectMediaKind($mimeTypeDetectado);
+                    if ($mediaKind === null) {
+                        throw new RuntimeException('Somente imagens e videos sao aceitos nesta area.');
+                    }
+
+                    $uploader = new MagaluUpload(500);
+                    $uploadResult = $uploader->upload($arquivo, $uploadPrefix);
+
+                    $stmt = $pdo->prepare("
+                        INSERT INTO marketing_arquivos (
+                            original_name,
+                            mime_type,
+                            size_bytes,
+                            storage_key,
+                            public_url,
+                            descricao,
+                            media_kind,
+                            uploaded_by_user_id,
+                            uploaded_at
+                        ) VALUES (
+                            :original_name,
+                            :mime_type,
+                            :size_bytes,
+                            :storage_key,
+                            :public_url,
+                            :descricao,
+                            :media_kind,
+                            :uploaded_by_user_id,
+                            NOW()
+                        )
+                    ");
+                    $stmt->execute([
+                        ':original_name' => (string)($uploadResult['nome_original'] ?? ($arquivo['name'] ?? 'arquivo')),
+                        ':mime_type' => (string)($uploadResult['mime_type'] ?? ''),
+                        ':size_bytes' => (int)($uploadResult['tamanho_bytes'] ?? ($arquivo['size'] ?? 0)),
+                        ':storage_key' => (string)($uploadResult['chave_storage'] ?? ''),
+                        ':public_url' => (string)($uploadResult['url'] ?? ''),
+                        ':descricao' => $descricao !== '' ? $descricao : null,
+                        ':media_kind' => $mediaKind,
+                        ':uploaded_by_user_id' => $usuarioId > 0 ? $usuarioId : null,
+                    ]);
+
+                    $feedbackOk = 'Arquivo enviado com sucesso.';
+                } catch (Throwable $e) {
+                    error_log('marketing upload: ' . $e->getMessage());
+                    $feedbackErro = $e->getMessage() !== '' ? $e->getMessage() : 'Falha ao enviar o arquivo.';
+                }
+            }
+        }
+    } elseif ($acao === 'excluir_arquivo') {
+        $arquivoId = (int)($_POST['arquivo_id'] ?? 0);
+
+        if ($arquivoId <= 0) {
+            $feedbackErro = 'Arquivo invalido para exclusao.';
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE marketing_arquivos
+                SET deleted_at = NOW(),
+                    deleted_by_user_id = :deleted_by_user_id
+                WHERE id = :id
+                  AND deleted_at IS NULL
+            ");
+            $stmt->execute([
+                ':deleted_by_user_id' => $usuarioId,
+                ':id' => $arquivoId,
+            ]);
+
+            if ($stmt->rowCount() > 0) {
+                $feedbackOk = 'Arquivo removido com sucesso.';
+            } else {
+                $feedbackErro = 'Arquivo nao encontrado ou ja removido.';
+            }
+        }
+    }
+}
+
+$arquivos = marketingListArquivos($pdo);
+$totalArquivos = count($arquivos);
+$totalImagens = 0;
+$totalVideos = 0;
+$totalBytes = 0;
+
+foreach ($arquivos as $arquivoItem) {
+    $tipo = (string)($arquivoItem['media_kind'] ?? '');
+    if ($tipo === 'imagem') {
+        $totalImagens++;
+    } elseif ($tipo === 'video') {
+        $totalVideos++;
+    }
+    $totalBytes += (int)($arquivoItem['size_bytes'] ?? 0);
+}
 
 ob_start();
 ?>
 
 <style>
-.page-marketing-landing {
+.marketing-page {
     width: 100%;
-    max-width: 1400px;
+    max-width: 1380px;
     margin: 0 auto;
     padding: 1.5rem;
 }
 
-.page-marketing-header {
-    text-align: center;
-    margin-bottom: 2rem;
+.marketing-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
 }
 
-.page-marketing-header h1 {
-    font-size: 2rem;
-    font-weight: 700;
-    color: #1e3a8a;
-    margin: 0 0 0.5rem 0;
-}
-
-.page-marketing-header p {
-    font-size: 1.125rem;
-    color: #64748b;
-    margin: 0;
-}
-
-.marketing-card {
-    max-width: 720px;
-    margin: 0 auto;
+.marketing-panel {
     background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 22px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.07);
 }
 
-.marketing-card-header {
-    background: linear-gradient(135deg, #ec4899, #db2777);
-    color: #fff;
-    padding: 1.5rem;
+.marketing-panel.primary {
+    padding: 1.8rem;
+    background:
+        radial-gradient(circle at top right, rgba(244, 114, 182, 0.18), transparent 28%),
+        linear-gradient(135deg, #ffffff 0%, #fff6fb 100%);
 }
 
-.marketing-card-header h2 {
+.marketing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .45rem .8rem;
+    border-radius: 999px;
+    background: rgba(190, 24, 93, 0.1);
+    color: #9d174d;
+    font-size: .9rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+.marketing-title {
+    margin: 1rem 0 .65rem;
+    font-size: 2rem;
+    line-height: 1.1;
+    color: #0f172a;
+}
+
+.marketing-subtitle {
     margin: 0;
-    font-size: 1.4rem;
+    color: #475569;
+    font-size: 1rem;
+    line-height: 1.7;
+    max-width: 62ch;
 }
 
-.marketing-card-body {
+.marketing-link-box {
+    margin-top: 1.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    align-items: center;
+}
+
+.marketing-link-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .65rem;
+    padding: .9rem 1rem;
+    border-radius: 14px;
+    background: #0f172a;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    word-break: break-all;
+}
+
+.marketing-link-pill:hover {
+    background: #1e293b;
+}
+
+.marketing-link-copy {
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: .9rem 1rem;
+    background: #fff;
+    color: #0f172a;
+    font-weight: 600;
+}
+
+.marketing-stats {
     padding: 1.5rem;
+    display: grid;
+    gap: .9rem;
+    background:
+        linear-gradient(180deg, #172554 0%, #0f172a 100%);
+    color: #fff;
+}
+
+.marketing-stats h2 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.marketing-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.marketing-stat-card {
+    padding: 1rem;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.marketing-stat-card strong {
+    display: block;
+    font-size: 1.5rem;
+    margin-bottom: .25rem;
+}
+
+.marketing-stat-card span {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: .92rem;
+}
+
+.marketing-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap: 1.25rem;
+}
+
+.marketing-upload-card {
+    padding: 1.4rem;
+}
+
+.marketing-upload-card h2,
+.marketing-library-card h2 {
+    margin: 0 0 1rem;
+    color: #0f172a;
+    font-size: 1.2rem;
+}
+
+.marketing-note {
+    margin: -.35rem 0 1rem;
+    color: #64748b;
+    font-size: .95rem;
+    line-height: 1.6;
+}
+
+.marketing-alert {
+    border-radius: 14px;
+    padding: .95rem 1rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.marketing-alert.ok {
+    background: #ecfdf5;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.marketing-alert.error {
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.marketing-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.marketing-field {
+    display: grid;
+    gap: .45rem;
+}
+
+.marketing-field label {
+    color: #334155;
+    font-weight: 700;
+    font-size: .92rem;
+}
+
+.marketing-field input[type="file"],
+.marketing-field textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: .85rem 1rem;
+    background: #fff;
+    font: inherit;
+}
+
+.marketing-field textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
+.marketing-actions {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+.marketing-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    border: none;
+    border-radius: 12px;
+    padding: .9rem 1.15rem;
+    text-decoration: none;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.marketing-btn.primary {
+    background: linear-gradient(135deg, #db2777, #be185d);
+    color: #fff;
+}
+
+.marketing-btn.secondary {
+    background: #fff;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+}
+
+.marketing-library-card {
+    padding: 1.4rem;
+}
+
+.marketing-library-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.marketing-library-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.marketing-empty {
+    padding: 2.4rem 1rem;
+    text-align: center;
+    border: 1px dashed #cbd5e1;
+    border-radius: 18px;
+    color: #64748b;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.marketing-media-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.marketing-media-preview {
+    background:
+        linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.marketing-media-preview img,
+.marketing-media-preview video {
+    display: block;
+    width: 100%;
+    max-height: 360px;
+    object-fit: cover;
+    background: #000;
+}
+
+.marketing-media-body {
+    padding: 1rem;
+    display: grid;
+    gap: .8rem;
+}
+
+.marketing-media-top {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    align-items: flex-start;
+}
+
+.marketing-media-name {
+    margin: 0;
+    font-size: 1rem;
+    color: #0f172a;
+    word-break: break-word;
+}
+
+.marketing-media-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    color: #64748b;
+    font-size: .9rem;
+}
+
+.marketing-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: .38rem .7rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 700;
+    background: #fdf2f8;
+    color: #9d174d;
+}
+
+.marketing-description {
+    margin: 0;
     color: #475569;
     line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.marketing-media-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+}
+
+.marketing-delete-form {
+    margin: 0;
+}
+
+@media (max-width: 1080px) {
+    .marketing-hero,
+    .marketing-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .marketing-page {
+        padding: 1rem;
+    }
+
+    .marketing-title {
+        font-size: 1.6rem;
+    }
+
+    .marketing-stat-grid {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 </style>
 
-<div class="page-marketing-landing">
-    <div class="page-marketing-header">
-        <h1>📣 Marketing</h1>
-        <p>Área inicial do módulo de marketing</p>
-    </div>
+<div class="marketing-page">
+    <section class="marketing-hero">
+        <div class="marketing-panel primary">
+            <span class="marketing-badge">Marketing</span>
+            <h1 class="marketing-title">Link publico e biblioteca de midias</h1>
+            <p class="marketing-subtitle">
+                Esta area logada serve para subir imagens e videos que o time de marketing vai usar.
+                O site publico fica disponivel no link abaixo.
+            </p>
 
-    <div class="marketing-card">
-        <div class="marketing-card-header">
-            <h2>Módulo liberado</h2>
+            <div class="marketing-link-box">
+                <a class="marketing-link-pill" href="<?= h($marketingPublicUrl) ?>" target="_blank" rel="noopener noreferrer">
+                    Abrir pagina publica
+                </a>
+                <div class="marketing-link-copy"><?= h($marketingPublicUrl) ?></div>
+            </div>
         </div>
-        <div class="marketing-card-body">
-            Esta página foi criada para receber as funcionalidades de marketing.
+
+        <aside class="marketing-panel marketing-stats">
+            <h2>Resumo da biblioteca</h2>
+            <div class="marketing-stat-grid">
+                <div class="marketing-stat-card">
+                    <strong><?= (int)$totalArquivos ?></strong>
+                    <span>Arquivos ativos</span>
+                </div>
+                <div class="marketing-stat-card">
+                    <strong><?= (int)$totalImagens ?></strong>
+                    <span>Imagens</span>
+                </div>
+                <div class="marketing-stat-card">
+                    <strong><?= (int)$totalVideos ?></strong>
+                    <span>Videos</span>
+                </div>
+                <div class="marketing-stat-card">
+                    <strong><?= h(marketingFormatBytes($totalBytes)) ?></strong>
+                    <span>Armazenado</span>
+                </div>
+            </div>
+        </aside>
+    </section>
+
+    <section class="marketing-grid">
+        <div class="marketing-panel marketing-upload-card">
+            <h2>Anexar imagem ou video</h2>
+            <p class="marketing-note">
+                Envie somente arquivos de imagem ou video. Limite por arquivo: 500MB.
+            </p>
+
+            <?php if ($feedbackOk !== ''): ?>
+            <div class="marketing-alert ok"><?= h($feedbackOk) ?></div>
+            <?php endif; ?>
+
+            <?php if ($feedbackErro !== ''): ?>
+            <div class="marketing-alert error"><?= h($feedbackErro) ?></div>
+            <?php endif; ?>
+
+            <form class="marketing-form" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="acao" value="upload_arquivo">
+
+                <div class="marketing-field">
+                    <label for="arquivo">Arquivo</label>
+                    <input id="arquivo" type="file" name="arquivo" accept="image/*,video/*" required>
+                </div>
+
+                <div class="marketing-field">
+                    <label for="descricao">Descricao</label>
+                    <textarea id="descricao" name="descricao" placeholder="Ex.: video institucional maio 2026, fotos da campanha de buffet, reels para instagram..."></textarea>
+                </div>
+
+                <div class="marketing-actions">
+                    <button class="marketing-btn primary" type="submit">Enviar arquivo</button>
+                    <a class="marketing-btn secondary" href="<?= h($marketingPublicUrl) ?>" target="_blank" rel="noopener noreferrer">Abrir pagina publica</a>
+                </div>
+            </form>
         </div>
-    </div>
+
+        <div class="marketing-panel marketing-library-card">
+            <div class="marketing-library-header">
+                <div>
+                    <h2>Arquivos enviados</h2>
+                    <p class="marketing-note">Tudo que estiver aqui fica centralizado para o marketing acessar.</p>
+                </div>
+            </div>
+
+            <?php if (empty($arquivos)): ?>
+            <div class="marketing-empty">
+                Nenhum arquivo enviado ainda. Use o formulario ao lado para montar a biblioteca.
+            </div>
+            <?php else: ?>
+            <div class="marketing-library-list">
+                <?php foreach ($arquivos as $arquivo): ?>
+                    <?php
+                    $arquivoUrl = trim((string)($arquivo['public_url'] ?? ''));
+                    $mimeType = trim((string)($arquivo['mime_type'] ?? ''));
+                    $mediaKind = trim((string)($arquivo['media_kind'] ?? ''));
+                    ?>
+                    <article class="marketing-media-item">
+                        <div class="marketing-media-preview">
+                            <?php if ($mediaKind === 'imagem' && $arquivoUrl !== ''): ?>
+                            <img src="<?= h($arquivoUrl) ?>" alt="<?= h($arquivo['original_name'] ?? 'Imagem marketing') ?>" loading="lazy">
+                            <?php elseif ($mediaKind === 'video' && $arquivoUrl !== ''): ?>
+                            <video controls preload="metadata">
+                                <source src="<?= h($arquivoUrl) ?>" type="<?= h($mimeType) ?>">
+                                Seu navegador nao suporta video incorporado.
+                            </video>
+                            <?php else: ?>
+                            <div class="marketing-empty">Preview indisponivel</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <div class="marketing-media-body">
+                            <div class="marketing-media-top">
+                                <div>
+                                    <h3 class="marketing-media-name"><?= h($arquivo['original_name'] ?? 'Arquivo') ?></h3>
+                                </div>
+                                <span class="marketing-tag"><?= h(ucfirst($mediaKind)) ?></span>
+                            </div>
+
+                            <div class="marketing-media-meta">
+                                <span><?= h(marketingFormatBytes((int)($arquivo['size_bytes'] ?? 0))) ?></span>
+                                <span><?= h(brDate((string)($arquivo['uploaded_at'] ?? ''))) ?></span>
+                                <span>Por <?= h($arquivo['uploaded_by_name'] ?? 'Usuario') ?></span>
+                            </div>
+
+                            <?php if (trim((string)($arquivo['descricao'] ?? '')) !== ''): ?>
+                            <p class="marketing-description"><?= h((string)$arquivo['descricao']) ?></p>
+                            <?php endif; ?>
+
+                            <div class="marketing-media-actions">
+                                <?php if ($arquivoUrl !== ''): ?>
+                                <a class="marketing-btn secondary" href="<?= h($arquivoUrl) ?>" target="_blank" rel="noopener noreferrer">Abrir arquivo</a>
+                                <a class="marketing-btn secondary" href="<?= h($arquivoUrl) ?>" target="_blank" rel="noopener noreferrer" download>Download</a>
+                                <?php endif; ?>
+
+                                <form class="marketing-delete-form" method="post" onsubmit="return confirm('Excluir este arquivo da biblioteca de marketing?');">
+                                    <input type="hidden" name="acao" value="excluir_arquivo">
+                                    <input type="hidden" name="arquivo_id" value="<?= (int)($arquivo['id'] ?? 0) ?>">
+                                    <button class="marketing-btn primary" type="submit">Excluir</button>
+                                </form>
+                            </div>
+                        </div>
+                    </article>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </section>
 </div>
 
 <?php
 error_reporting(E_ALL);
-@ini_set('display_errors', 0);
+@ini_set('display_errors', '0');
 
 $conteudo = ob_get_clean();
 

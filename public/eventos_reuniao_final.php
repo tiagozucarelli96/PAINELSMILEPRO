@@ -2660,6 +2660,60 @@ includeSidebar($sidebar_title);
     .modal-body {
         padding: 1.5rem;
     }
+
+    .tiny-reuniao-cropper-wrap {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 260px;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .tiny-reuniao-cropper-stage {
+        min-height: 480px;
+        border: 1px solid #dbe3ef;
+        border-radius: 16px;
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background:
+            linear-gradient(45deg, #eef4ff 25%, transparent 25%, transparent 75%, #eef4ff 75%, #eef4ff),
+            linear-gradient(45deg, #eef4ff 25%, transparent 25%, transparent 75%, #eef4ff 75%, #eef4ff);
+        background-size: 22px 22px;
+        background-position: 0 0, 11px 11px;
+    }
+
+    .tiny-reuniao-cropper-stage img {
+        display: block;
+        max-width: 100%;
+    }
+
+    .tiny-reuniao-cropper-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        border: 1px solid #dbe3ef;
+        border-radius: 16px;
+        background: #fbfdff;
+        padding: 1rem;
+        min-height: 480px;
+    }
+
+    .tiny-reuniao-cropper-preview {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border: 1px solid #dbe3ef;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #eef4ff;
+    }
+
+    .tiny-reuniao-cropper-actions {
+        display: grid;
+        gap: 0.6rem;
+        margin-top: auto;
+    }
     
     .version-item {
         border: 1px solid #e5e7eb;
@@ -2770,6 +2824,15 @@ includeSidebar($sidebar_title);
 
         .cronograma-row-actions .btn {
             width: 100%;
+        }
+
+        .tiny-reuniao-cropper-wrap {
+            grid-template-columns: 1fr;
+        }
+
+        .tiny-reuniao-cropper-stage,
+        .tiny-reuniao-cropper-sidebar {
+            min-height: 320px;
         }
     }
 </style>
@@ -3377,6 +3440,34 @@ includeSidebar($sidebar_title);
     </div>
 </div>
 
+<input type="file" id="tinyReuniaoLocalImageInput" accept="image/*" hidden>
+
+<div class="modal-overlay" id="tinyReuniaoCropModal">
+    <div class="modal-content" style="max-width: 1120px; width: calc(100% - 32px);">
+        <div class="modal-header">
+            <h3 id="tinyReuniaoCropTitle">Recortar imagem antes de inserir</h3>
+            <button type="button" class="modal-close" onclick="closeTinyReuniaoCropModal()">&times;</button>
+        </div>
+        <div class="modal-body tiny-reuniao-cropper-wrap">
+            <div class="tiny-reuniao-cropper-stage">
+                <img id="tinyReuniaoCropImage" alt="Imagem para recorte">
+            </div>
+            <aside class="tiny-reuniao-cropper-sidebar">
+                <p style="margin:0; color:#64748b; line-height:1.5;">
+                    Selecione o enquadramento desejado. Só a imagem recortada será enviada e inserida no texto.
+                </p>
+                <div class="tiny-reuniao-cropper-preview" id="tinyReuniaoCropPreview"></div>
+                <div class="tiny-reuniao-cropper-actions">
+                    <button type="button" class="btn btn-secondary" onclick="tinyReuniaoCropZoomOut()">Zoom -</button>
+                    <button type="button" class="btn btn-secondary" onclick="tinyReuniaoCropZoomIn()">Zoom +</button>
+                    <button type="button" class="btn btn-secondary" onclick="tinyReuniaoCropReset()">Resetar</button>
+                    <button type="button" class="btn btn-primary" id="tinyReuniaoApplyCropBtn" onclick="applyTinyReuniaoCrop()">Aplicar recorte e inserir</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>
+
 <script>
 const meetingId = <?= $meeting_id ?: 'null' ?>;
 const legacyDjSectionLocked = <?= !empty($secoes['dj_protocolo']['is_locked']) ? 'true' : 'false' ?>;
@@ -3504,6 +3595,10 @@ var TINYMCE_CDNS = [
     'https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js',
     'https://unpkg.com/tinymce@6/tinymce.min.js'
 ];
+var tinyReuniaoCropperLoadPromise = null;
+var tinyReuniaoCropper = null;
+var tinyReuniaoCropTargetEditorId = '';
+var tinyReuniaoCropObjectUrl = '';
 
 function showEditorLoadError(msg, src) {
     var firstWrap = document.querySelector('.editor-wrapper');
@@ -3579,13 +3674,22 @@ function initEditoresReuniao() {
             base_url: 'https://cdn.jsdelivr.net/npm/tinymce@6',
             suffix: '.min',
             plugins: 'lists link image table code',
-            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link image table | removeformat',
+            toolbar: 'undo redo | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright justify | bullist numlist outdent indent | link smileImageLocal table | removeformat',
             menubar: false,
             height: height,
             content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; }',
             readonly: isReadonly,
             paste_data_images: true,
             automatic_uploads: true,
+            setup: function(editor) {
+                editor.ui.registry.addButton('smileImageLocal', {
+                    icon: 'image',
+                    tooltip: 'Inserir imagem do computador com recorte',
+                    onAction: function() {
+                        openTinyReuniaoLocalImagePicker(editor.id);
+                    }
+                });
+            },
             images_upload_handler: function (blobInfo, progress) {
                 return new Promise(function (resolve, reject) {
                     var xhr = new XMLHttpRequest();
@@ -3645,6 +3749,222 @@ function getCronogramaBuilderState() {
         builder,
         readonly: !!(readonlyByDom || pageReadonly || sectionLockedState.observacoes_gerais)
     };
+}
+
+function loadTinyReuniaoCropperLibrary() {
+    if (window.Cropper) {
+        return Promise.resolve(window.Cropper);
+    }
+    if (tinyReuniaoCropperLoadPromise) {
+        return tinyReuniaoCropperLoadPromise;
+    }
+    tinyReuniaoCropperLoadPromise = new Promise(function(resolve, reject) {
+        if (!document.querySelector('link[data-tiny-reuniao-cropper-style="1"]')) {
+            var cssLink = document.createElement('link');
+            cssLink.rel = 'stylesheet';
+            cssLink.href = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css';
+            cssLink.setAttribute('data-tiny-reuniao-cropper-style', '1');
+            document.head.appendChild(cssLink);
+        }
+
+        var existingScript = document.querySelector('script[data-tiny-reuniao-cropper-script="1"]');
+        if (existingScript) {
+            existingScript.addEventListener('load', function() { resolve(window.Cropper); }, { once: true });
+            existingScript.addEventListener('error', function() { reject(new Error('Não foi possível carregar o recorte de imagem.')); }, { once: true });
+            return;
+        }
+
+        var script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js';
+        script.setAttribute('data-tiny-reuniao-cropper-script', '1');
+        script.onload = function() { resolve(window.Cropper); };
+        script.onerror = function() { reject(new Error('Não foi possível carregar o recorte de imagem.')); };
+        document.body.appendChild(script);
+    });
+    return tinyReuniaoCropperLoadPromise;
+}
+
+function openTinyReuniaoLocalImagePicker(editorId) {
+    if (pageReadonly) {
+        alert('Modo somente leitura.');
+        return;
+    }
+    var input = document.getElementById('tinyReuniaoLocalImageInput');
+    if (!input) return;
+    tinyReuniaoCropTargetEditorId = String(editorId || '');
+    input.value = '';
+    input.click();
+}
+
+function openTinyReuniaoCropModalWithFile(file, editorId) {
+    if (!file || !String(file.type || '').match(/^image\//i)) {
+        alert('Selecione uma imagem válida.');
+        return;
+    }
+    tinyReuniaoCropTargetEditorId = String(editorId || tinyReuniaoCropTargetEditorId || '');
+    loadTinyReuniaoCropperLibrary()
+        .then(function() {
+            if (tinyReuniaoCropObjectUrl) {
+                URL.revokeObjectURL(tinyReuniaoCropObjectUrl);
+                tinyReuniaoCropObjectUrl = '';
+            }
+            tinyReuniaoCropObjectUrl = URL.createObjectURL(file);
+            var modal = document.getElementById('tinyReuniaoCropModal');
+            var image = document.getElementById('tinyReuniaoCropImage');
+            var preview = document.getElementById('tinyReuniaoCropPreview');
+            var button = document.getElementById('tinyReuniaoApplyCropBtn');
+            if (!modal || !image || !preview || !button) return;
+            preview.innerHTML = '';
+            button.disabled = false;
+            button.textContent = 'Aplicar recorte e inserir';
+            image.onload = function() {
+                if (tinyReuniaoCropper) {
+                    tinyReuniaoCropper.destroy();
+                    tinyReuniaoCropper = null;
+                }
+                tinyReuniaoCropper = new window.Cropper(image, {
+                    viewMode: 1,
+                    dragMode: 'move',
+                    autoCropArea: 0.9,
+                    responsive: true,
+                    background: false,
+                    preview: preview,
+                    movable: true,
+                    zoomable: true,
+                    rotatable: false,
+                    scalable: false,
+                    cropBoxMovable: true,
+                    cropBoxResizable: true
+                });
+            };
+            image.src = tinyReuniaoCropObjectUrl;
+            modal.classList.add('show');
+        })
+        .catch(function(err) {
+            alert(err && err.message ? err.message : 'Erro ao abrir recorte.');
+        });
+}
+
+function closeTinyReuniaoCropModal() {
+    var modal = document.getElementById('tinyReuniaoCropModal');
+    var image = document.getElementById('tinyReuniaoCropImage');
+    var preview = document.getElementById('tinyReuniaoCropPreview');
+    if (tinyReuniaoCropper) {
+        tinyReuniaoCropper.destroy();
+        tinyReuniaoCropper = null;
+    }
+    if (tinyReuniaoCropObjectUrl) {
+        URL.revokeObjectURL(tinyReuniaoCropObjectUrl);
+        tinyReuniaoCropObjectUrl = '';
+    }
+    if (image) {
+        image.removeAttribute('src');
+    }
+    if (preview) {
+        preview.innerHTML = '';
+    }
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+function tinyReuniaoCropZoomIn() {
+    if (tinyReuniaoCropper) tinyReuniaoCropper.zoom(0.1);
+}
+
+function tinyReuniaoCropZoomOut() {
+    if (tinyReuniaoCropper) tinyReuniaoCropper.zoom(-0.1);
+}
+
+function tinyReuniaoCropReset() {
+    if (tinyReuniaoCropper) tinyReuniaoCropper.reset();
+}
+
+function uploadTinyReuniaoImageBlob(blob, filename) {
+    return new Promise(function(resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        var formData = new FormData();
+        formData.append('meeting_id', String(meetingId));
+        formData.append('file', blob, filename || 'imagem-recortada.png');
+        var uploadUrl = (window.location.origin || '') + (window.location.pathname || '/') + '?page=eventos_upload_imagem';
+        xhr.open('POST', uploadUrl);
+        xhr.onload = function() {
+            if (xhr.status < 200 || xhr.status >= 300) {
+                reject(new Error('Upload falhou: ' + xhr.status));
+                return;
+            }
+            try {
+                var j = JSON.parse(xhr.responseText);
+                if (j.location) {
+                    resolve(j.location);
+                } else {
+                    reject(new Error(j.error || 'Resposta inválida'));
+                }
+            } catch (e) {
+                reject(new Error('Resposta inválida'));
+            }
+        };
+        xhr.onerror = function() {
+            reject(new Error('Erro de rede'));
+        };
+        xhr.send(formData);
+    });
+}
+
+function applyTinyReuniaoCrop() {
+    if (!tinyReuniaoCropper || !tinyReuniaoCropTargetEditorId) {
+        alert('Nenhuma imagem pronta para inserção.');
+        return;
+    }
+    var editor = typeof tinymce !== 'undefined' ? tinymce.get(tinyReuniaoCropTargetEditorId) : null;
+    if (!editor) {
+        alert('Editor não encontrado.');
+        return;
+    }
+    var button = document.getElementById('tinyReuniaoApplyCropBtn');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Enviando...';
+    }
+    try {
+        var canvas = tinyReuniaoCropper.getCroppedCanvas({
+            maxWidth: 1600,
+            maxHeight: 1600,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high'
+        });
+        if (!canvas) {
+            throw new Error('Não foi possível gerar o recorte.');
+        }
+        canvas.toBlob(function(blob) {
+            if (!blob) {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = 'Aplicar recorte e inserir';
+                }
+                alert('Não foi possível converter a imagem.');
+                return;
+            }
+            uploadTinyReuniaoImageBlob(blob, 'reuniao-recorte.png')
+                .then(function(location) {
+                    editor.insertContent('<p><img src="' + location + '" alt="" style="max-width:100%;height:auto;border-radius:8px;" /></p>');
+                    closeTinyReuniaoCropModal();
+                })
+                .catch(function(err) {
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = 'Aplicar recorte e inserir';
+                    }
+                    alert(err && err.message ? err.message : 'Erro ao enviar a imagem.');
+                });
+        }, 'image/png', 0.95);
+    } catch (err) {
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Aplicar recorte e inserir';
+        }
+        alert(err && err.message ? err.message : 'Erro ao aplicar recorte.');
+    }
 }
 
 function nextCronogramaRowId() {
