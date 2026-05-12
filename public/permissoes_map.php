@@ -165,6 +165,7 @@ return [
     'eventos_rascunhos' => 'perm_eventos',
     'eventos_reunioes' => 'perm_eventos',
     'eventos_calendario' => 'perm_eventos',
+    'eventos_tiny_galeria_teste' => ['perm_eventos', 'perm_comercial'],
     'eventos_fornecedores' => 'perm_eventos',
     'eventos_pdf' => 'perm_eventos',
     // Endpoint de imagem também usado por portais públicos.

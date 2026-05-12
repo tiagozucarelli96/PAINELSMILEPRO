@@ -342,6 +342,7 @@ $routes = [
   'eventos_calendario' => 'eventos_calendario.php',
   'eventos_galeria' => 'eventos_galeria.php',
   'eventos_galeria_public' => 'eventos_galeria_public.php',
+  'eventos_tiny_galeria_teste' => 'eventos_tiny_galeria_teste.php',
   'eventos_fornecedores' => 'eventos_fornecedores.php',
   'eventos_pdf' => 'eventos_pdf.php',
   'eventos_me_proxy' => 'eventos_me_proxy.php',
