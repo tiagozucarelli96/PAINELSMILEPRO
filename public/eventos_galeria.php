@@ -611,6 +611,9 @@ $where_sql = implode(' AND ', $where);
 $thumbSelect = !empty($thumbColumns['thumb_public_url'])
     ? ', thumb_public_url'
     : ", NULL::text AS thumb_public_url";
+$orderBySql = $categoria_filter === 'infantil'
+    ? 'LOWER(TRIM(nome)) ASC, id ASC'
+    : 'uploaded_at DESC';
 
 $stmt = $pdo->prepare("
     SELECT COUNT(*)
@@ -629,7 +632,7 @@ $stmt = $pdo->prepare("
     SELECT id, categoria, nome, descricao, tags, transform_css, size_bytes, uploaded_at, public_url{$thumbSelect}
     FROM eventos_galeria
     WHERE {$where_sql}
-    ORDER BY uploaded_at DESC
+    ORDER BY {$orderBySql}
     LIMIT :limit OFFSET :offset
 ");
 $stmt->bindValue(':limit', $itensPorPagina, PDO::PARAM_INT);

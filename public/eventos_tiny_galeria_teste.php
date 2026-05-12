@@ -83,6 +83,49 @@ function tinyGaleriaTesteExtensionFromMime(string $mimeType): string
 $isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
 $action = (string)($_POST['action'] ?? $_GET['action'] ?? '');
 
+if ($isAjax && $action === 'upload_local_image') {
+    $uploadedFile = null;
+    foreach (['file', 'cropped_file'] as $fileKey) {
+        if (!empty($_FILES[$fileKey]) && (int)($_FILES[$fileKey]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $uploadedFile = $_FILES[$fileKey];
+            break;
+        }
+    }
+
+    if (!$uploadedFile) {
+        tinyGaleriaTesteJson(['ok' => false, 'message' => 'Nenhum arquivo recebido.'], 400);
+    }
+
+    try {
+        $tmpPath = (string)($uploadedFile['tmp_name'] ?? '');
+        $mimeType = eventosGaleriaDetectMimeLocal($tmpPath) ?: (string)($uploadedFile['type'] ?? '');
+        if (strpos($mimeType, 'image/') !== 0) {
+            throw new RuntimeException('O arquivo selecionado não é uma imagem válida.');
+        }
+
+        $baseName = pathinfo((string)($uploadedFile['name'] ?? 'imagem-computador'), PATHINFO_FILENAME);
+        $filename = tinyGaleriaTesteSlug($baseName) . '.' . tinyGaleriaTesteExtensionFromMime($mimeType);
+        $uploader = new MagaluUpload();
+        $upload = $uploader->uploadFromPath($tmpPath, 'eventos/tiny-galeria-teste', $filename, $mimeType);
+        $location = trim((string)($upload['url'] ?? ''));
+        if ($location === '') {
+            throw new RuntimeException('Upload concluído sem URL pública de retorno.');
+        }
+
+        tinyGaleriaTesteJson([
+            'ok' => true,
+            'location' => $location,
+            'name' => $baseName,
+            'message' => 'Imagem do computador enviada com sucesso.'
+        ]);
+    } catch (Throwable $e) {
+        tinyGaleriaTesteJson([
+            'ok' => false,
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
+
 if ($isAjax && $action === 'import_gallery_image') {
     $imageId = (int)($_POST['image_id'] ?? 0);
     if ($imageId <= 0) {
@@ -596,6 +639,9 @@ includeSidebar('Teste Tiny + Galeria');
                 <button type="button" class="tiny-galeria-btn tiny-galeria-btn-secondary" id="openGalleryOutside">
                     Inserir da Galeria
                 </button>
+                <button type="button" class="tiny-galeria-btn tiny-galeria-btn-secondary" id="openLocalImageOutside">
+                    Inserir do Computador
+                </button>
             </div>
         </div>
 
@@ -611,6 +657,8 @@ includeSidebar('Teste Tiny + Galeria');
         </div>
     </section>
 </div>
+
+<input type="file" id="tinyGaleriaLocalInput" accept="image/*" hidden>
 
 <div class="tiny-galeria-modal" id="tinyGaleriaModal" aria-hidden="true">
     <div class="tiny-galeria-modal-panel" role="dialog" aria-modal="true" aria-labelledby="tinyGaleriaModalTitle">
@@ -717,6 +765,8 @@ includeSidebar('Teste Tiny + Galeria');
     const categoryEl = document.getElementById('tinyGaleriaCategory');
     const emptyEl = document.getElementById('tinyGaleriaEmpty');
     const openOutsideBtn = document.getElementById('openGalleryOutside');
+    const openLocalOutsideBtn = document.getElementById('openLocalImageOutside');
+    const localInputEl = document.getElementById('tinyGaleriaLocalInput');
     const closeModalBtn = document.getElementById('closeTinyGaleriaModal');
     const closeCropModalBtn = document.getElementById('closeTinyGaleriaCropModal');
     const cropImageEl = document.getElementById('tinyGaleriaCropImage');
@@ -825,7 +875,7 @@ includeSidebar('Teste Tiny + Galeria');
         try {
             setStatus('Abrindo editor de recorte...');
             await loadCropper();
-            cropTarget = { imageId, imageName, imageUrl };
+            cropTarget = { type: 'gallery', imageId, imageName, imageUrl };
             cropNameEl.textContent = imageName || 'Imagem selecionada';
             cropPreviewEl.innerHTML = '';
             cropImageEl.onload = () => {
@@ -851,6 +901,54 @@ includeSidebar('Teste Tiny + Galeria');
             cropImageEl.src = imageUrl;
             openCropModal();
             closeModal();
+            setStatus('Ajuste o recorte e confirme para inserir.', 'success');
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : 'Falha ao abrir o recorte.', 'error');
+        }
+    }
+
+    async function openCropperForLocalFile(file) {
+        if (!file) return;
+        if (!String(file.type || '').startsWith('image/')) {
+            setStatus('Selecione uma imagem válida do computador.', 'error');
+            return;
+        }
+
+        try {
+            setStatus('Abrindo editor de recorte...');
+            await loadCropper();
+            const imageUrl = URL.createObjectURL(file);
+            cropTarget = {
+                type: 'local',
+                imageId: null,
+                imageName: file.name || 'imagem-computador',
+                imageUrl,
+                file
+            };
+            cropNameEl.textContent = file.name || 'Imagem do computador';
+            cropPreviewEl.innerHTML = '';
+            cropImageEl.onload = () => {
+                if (activeCropper) {
+                    activeCropper.destroy();
+                    activeCropper = null;
+                }
+                activeCropper = new window.Cropper(cropImageEl, {
+                    viewMode: 1,
+                    dragMode: 'move',
+                    autoCropArea: 0.9,
+                    responsive: true,
+                    background: false,
+                    preview: cropPreviewEl,
+                    movable: true,
+                    zoomable: true,
+                    rotatable: false,
+                    scalable: false,
+                    cropBoxMovable: true,
+                    cropBoxResizable: true
+                });
+            };
+            cropImageEl.src = imageUrl;
+            openCropModal();
             setStatus('Ajuste o recorte e confirme para inserir.', 'success');
         } catch (error) {
             setStatus(error instanceof Error ? error.message : 'Falha ao abrir o recorte.', 'error');
@@ -905,6 +1003,50 @@ includeSidebar('Teste Tiny + Galeria');
         }
     }
 
+    async function uploadLocalImage(imageName, button, croppedBlob) {
+        if (!activeEditor) {
+            setStatus('Editor Tiny ainda não está pronto.', 'error');
+            return;
+        }
+
+        const originalLabel = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Enviando recorte...';
+        setStatus('Enviando imagem do computador para o storage de teste...');
+
+        try {
+            const body = new FormData();
+            body.set('action', 'upload_local_image');
+            body.set('cropped_file', croppedBlob, imageName || 'imagem-computador.png');
+
+            const response = await fetch(pageUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.ok || !data.location) {
+                throw new Error(data.message || 'Falha ao enviar imagem do computador.');
+            }
+
+            const safeAlt = String(imageName || '').replace(/"/g, '&quot;');
+            activeEditor.insertContent(
+                '<p><img src="' + data.location + '" alt="' + safeAlt + '" style="max-width:100%;height:auto;border-radius:8px;" /></p>'
+            );
+
+            setStatus(data.message || 'Imagem inserida com sucesso.', 'success');
+            closeCropModal();
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : 'Erro ao enviar imagem do computador.', 'error');
+        } finally {
+            button.disabled = false;
+            button.textContent = originalLabel;
+        }
+    }
+
     function bindGalleryButtons() {
         document.querySelectorAll('.js-import-gallery-image').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -950,8 +1092,16 @@ includeSidebar('Teste Tiny + Galeria');
     searchEl.addEventListener('input', applyFilters);
     categoryEl.addEventListener('change', applyFilters);
     openOutsideBtn.addEventListener('click', openModal);
+    openLocalOutsideBtn.addEventListener('click', () => localInputEl.click());
     closeModalBtn.addEventListener('click', closeModal);
     closeCropModalBtn.addEventListener('click', closeCropModal);
+    localInputEl.addEventListener('change', () => {
+        const file = localInputEl.files && localInputEl.files[0] ? localInputEl.files[0] : null;
+        if (file) {
+            openCropperForLocalFile(file);
+        }
+        localInputEl.value = '';
+    });
     cropZoomInBtn.addEventListener('click', () => {
         if (activeCropper) activeCropper.zoom(0.1);
     });
@@ -987,7 +1137,11 @@ includeSidebar('Teste Tiny + Galeria');
                 }, 'image/png', 0.95);
             });
 
-            await importGalleryImage(cropTarget.imageId, cropTarget.imageName, applyCropBtn, blob);
+            if (cropTarget.type === 'gallery') {
+                await importGalleryImage(cropTarget.imageId, cropTarget.imageName, applyCropBtn, blob);
+            } else {
+                await uploadLocalImage(cropTarget.imageName, applyCropBtn, blob);
+            }
         } catch (error) {
             setStatus(error instanceof Error ? error.message : 'Erro ao aplicar recorte.', 'error');
             applyCropBtn.disabled = false;
@@ -1017,12 +1171,17 @@ includeSidebar('Teste Tiny + Galeria');
             tinymce.init({
                 selector: '#tinyGaleriaTesteEditor',
                 plugins: 'lists link image table code',
-                toolbar: 'undo redo | bold italic underline | alignleft aligncenter alignright | bullist numlist | link image table | galeriaSmile | removeformat code',
+                toolbar: 'undo redo | bold italic underline | alignleft aligncenter alignright | bullist numlist | link table | imagemComputador galeriaSmile | removeformat code',
                 menubar: false,
                 height: 540,
                 content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.55; }',
                 setup: (editor) => {
                     activeEditor = editor;
+                    editor.ui.registry.addButton('imagemComputador', {
+                        icon: 'image',
+                        tooltip: 'Inserir imagem do computador com recorte',
+                        onAction: () => localInputEl.click()
+                    });
                     editor.ui.registry.addButton('galeriaSmile', {
                         text: 'Galeria Smile',
                         tooltip: 'Inserir imagem da galeria interna',

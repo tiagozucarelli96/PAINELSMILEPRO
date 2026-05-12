@@ -44,6 +44,9 @@ $where_sql = implode(' AND ', $where);
 $thumbSelect = $thumbColumns['thumb_public_url']
     ? ', thumb_public_url'
     : ", NULL::text AS thumb_public_url";
+$orderBySql = $categoria_filter === 'infantil'
+    ? 'LOWER(TRIM(nome)) ASC, id ASC'
+    : 'uploaded_at DESC';
 
 $stmt = $pdo->prepare("
     SELECT COUNT(*)
@@ -62,7 +65,7 @@ $stmt = $pdo->prepare("
     SELECT id, categoria, nome, descricao, tags, transform_css, public_url{$thumbSelect}
     FROM eventos_galeria
     WHERE {$where_sql}
-    ORDER BY uploaded_at DESC
+    ORDER BY {$orderBySql}
     LIMIT :limit OFFSET :offset
 ");
 $stmt->bindValue(':limit', $itensPorPagina, PDO::PARAM_INT);
@@ -582,13 +585,7 @@ function eventosGaleriaPublicPageUrl(int $pagina, string $categoriaFilter, strin
                     $img_id = (int)$img['id'];
                     $img_categoria = (string)($img['categoria'] ?? '');
                     $img_name = trim((string)($img['nome'] ?? ''));
-                    if ($img_categoria === 'infantil') {
-                        $img_name = 'Infantil';
-                    } elseif ($img_categoria === 'casamento') {
-                        $img_name = 'Casamento';
-                    } elseif ($img_categoria === '15_anos') {
-                        $img_name = '15 anos';
-                    } elseif ($img_name === '') {
+                    if ($img_name === '') {
                         $img_name = (string)($categorias[$img_categoria]['label'] ?? 'Imagem');
                     }
                     $img_desc = (string)($img['descricao'] ?? '');
