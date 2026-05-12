@@ -56,10 +56,7 @@ if ($meeting_id <= 0) {
         if (!is_array($snapshot)) {
             $snapshot = [];
         }
-        $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, (int)($_SESSION['id'] ?? 0));
-        if (!empty($portal_result['ok']) && !empty($portal_result['portal'])) {
-            $portal = $portal_result['portal'];
-        }
+        $portal = eventos_cliente_portal_get($pdo, $meeting_id);
         $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, $meeting_id);
         if (empty($contexto_cardapio['ok'])) {
             $error = (string)($contexto_cardapio['error'] ?? 'Não foi possível carregar o cardápio do evento.');

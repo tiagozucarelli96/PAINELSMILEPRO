@@ -316,41 +316,7 @@ if ($meeting_id > 0) {
             $snapshot = [];
         }
 
-        $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
-        if (!empty($portal_result['ok']) && !empty($portal_result['portal'])) {
-            $portal = $portal_result['portal'];
-            $portal_secoes_cfg = eventos_cliente_portal_obter_config_secoes($portal);
-            $sync_reuniao_visivel = !empty($portal['visivel_reuniao'])
-                && (
-                    !empty($portal_secoes_cfg['decoracao']['visivel'])
-                    || !empty($portal_secoes_cfg['observacoes_gerais']['visivel'])
-                );
-            $sync_reuniao_editavel = !empty($portal_secoes_cfg['decoracao']['editavel'])
-                || !empty($portal_secoes_cfg['observacoes_gerais']['editavel']);
-            if ($sync_reuniao_editavel) {
-                $sync_reuniao_visivel = true;
-            }
-            if ($sync_reuniao_visivel || $sync_reuniao_editavel) {
-                eventos_cliente_portal_sincronizar_link_reuniao(
-                    $pdo,
-                    $meeting_id,
-                    $sync_reuniao_visivel,
-                    $sync_reuniao_editavel,
-                    (int)$user_id
-                );
-            }
-            $sync_dj_visivel = !empty($portal_secoes_cfg['dj_protocolo']['visivel']);
-            $sync_dj_editavel = !empty($portal_secoes_cfg['dj_protocolo']['editavel']);
-            if ($sync_dj_visivel || $sync_dj_editavel) {
-                eventos_cliente_portal_sincronizar_link_dj(
-                    $pdo,
-                    $meeting_id,
-                    $sync_dj_visivel,
-                    $sync_dj_editavel,
-                    (int)$user_id
-                );
-            }
-        }
+        $portal = eventos_cliente_portal_get($pdo, $meeting_id);
 
         $links_cliente_dj = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj');
         $links_cliente_observacoes = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes');
@@ -389,8 +355,8 @@ $arquivos_resumo = $meeting_id > 0 ? eventos_arquivos_resumo($pdo, $meeting_id) 
     'arquivos_visiveis_cliente' => 0,
     'arquivos_cliente' => 0,
 ];
-$cardapio_context = $meeting_id > 0 ? logistica_cardapio_evento_contexto($pdo, $meeting_id) : ['ok' => false];
-$cardapio_summary = !empty($cardapio_context['ok']) ? ($cardapio_context['summary'] ?? []) : [];
+$cardapio_summary_result = $meeting_id > 0 ? logistica_cardapio_evento_resumo($pdo, $meeting_id) : ['ok' => false, 'summary' => []];
+$cardapio_summary = $cardapio_summary_result['summary'] ?? [];
 $cardapio_submitted_at = trim((string)($cardapio_summary['submitted_at'] ?? ''));
 $cardapio_submitted_fmt = $cardapio_submitted_at !== '' ? date('d/m/Y H:i', strtotime($cardapio_submitted_at)) : '';
 $cardapio_helper_note = 'Selecione um pacote do evento para montar o cardápio.';
@@ -435,7 +401,6 @@ $flash_message = is_array($flash) ? trim((string)($flash['message'] ?? '')) : ''
 $resumo_evento_arquivo_atual = null;
 
 if ($meeting_id > 0 && $reuniao) {
-    eventos_arquivos_seed_campos_sistema($pdo, $meeting_id, $user_id);
     $campo_resumo_evento = eventos_arquivos_buscar_campo_por_chave($pdo, $meeting_id, 'resumo_evento', true);
     $campo_resumo_evento_id = (int)($campo_resumo_evento['id'] ?? 0);
     if ($campo_resumo_evento_id > 0) {

@@ -920,6 +920,127 @@ function logistica_cardapio_resposta_get(PDO $pdo, int $meeting_id): ?array
     }
 }
 
+function logistica_cardapio_evento_resumo(PDO $pdo, int $meeting_id): array
+{
+    logistica_cardapio_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return [
+            'ok' => false,
+            'error' => 'Reunião inválida.',
+            'summary' => [
+                'has_pacote' => false,
+                'pacote_nome' => '',
+                'secoes_total' => 0,
+                'itens_total' => 0,
+                'selecionados_total' => 0,
+                'submitted_at' => '',
+            ],
+        ];
+    }
+
+    $emptySummary = [
+        'has_pacote' => false,
+        'pacote_nome' => '',
+        'secoes_total' => 0,
+        'itens_total' => 0,
+        'selecionados_total' => 0,
+        'submitted_at' => '',
+    ];
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT r.id,
+                   r.pacote_evento_id,
+                   p.nome AS pacote_nome
+            FROM eventos_reunioes r
+            LEFT JOIN logistica_pacotes_evento p
+                ON p.id = r.pacote_evento_id
+               AND p.deleted_at IS NULL
+            WHERE r.id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $meeting = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$meeting) {
+            return ['ok' => false, 'error' => 'Reunião não encontrada.', 'summary' => $emptySummary];
+        }
+
+        $pacoteId = (int)($meeting['pacote_evento_id'] ?? 0);
+        $summary = $emptySummary;
+        $summary['has_pacote'] = $pacoteId > 0;
+        $summary['pacote_nome'] = trim((string)($meeting['pacote_nome'] ?? ''));
+
+        if ($pacoteId > 0) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)::int AS secoes_total
+                FROM logistica_pacotes_evento_secoes ps
+                JOIN logistica_cardapio_secoes s ON s.id = ps.secao_cardapio_id
+                WHERE ps.pacote_evento_id = :pacote_id
+                  AND s.deleted_at IS NULL
+                  AND s.ativo = TRUE
+            ");
+            $stmt->execute([':pacote_id' => $pacoteId]);
+            $summary['secoes_total'] = (int)($stmt->fetchColumn() ?: 0);
+
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)::int
+                FROM (
+                    SELECT DISTINCT ps.secao_cardapio_id, ip.item_tipo, ip.item_id
+                    FROM logistica_pacotes_evento_secoes ps
+                    JOIN logistica_cardapio_item_pacotes ip
+                        ON ip.pacote_evento_id = ps.pacote_evento_id
+                    JOIN logistica_cardapio_item_secoes isec
+                        ON isec.item_tipo = ip.item_tipo
+                       AND isec.item_id = ip.item_id
+                       AND isec.secao_cardapio_id = ps.secao_cardapio_id
+                    LEFT JOIN logistica_insumos i
+                        ON ip.item_tipo = 'insumo'
+                       AND i.id = ip.item_id
+                    LEFT JOIN logistica_receitas r
+                        ON ip.item_tipo = 'receita'
+                       AND r.id = ip.item_id
+                    WHERE ps.pacote_evento_id = :pacote_id
+                      AND (
+                          (ip.item_tipo = 'insumo' AND i.ativo = TRUE AND COALESCE(i.visivel_na_lista, TRUE) = TRUE)
+                          OR
+                          (ip.item_tipo = 'receita' AND r.ativo = TRUE AND COALESCE(r.visivel_na_lista, TRUE) = TRUE)
+                      )
+                ) itens_validos
+            ");
+            $stmt->execute([':pacote_id' => $pacoteId]);
+            $summary['itens_total'] = (int)($stmt->fetchColumn() ?: 0);
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT submitted_at
+            FROM eventos_cardapio_respostas
+            WHERE meeting_id = :meeting_id
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $submittedAt = $stmt->fetchColumn();
+        $summary['submitted_at'] = is_string($submittedAt) ? $submittedAt : '';
+
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)::int
+            FROM eventos_cardapio_resposta_itens ri
+            JOIN eventos_cardapio_respostas rr ON rr.id = ri.resposta_id
+            WHERE rr.meeting_id = :meeting_id
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $summary['selecionados_total'] = (int)($stmt->fetchColumn() ?: 0);
+
+        return [
+            'ok' => true,
+            'meeting_id' => $meeting_id,
+            'summary' => $summary,
+        ];
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_evento_resumo: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao carregar resumo do cardápio.', 'summary' => $emptySummary];
+    }
+}
+
 function logistica_cardapio_evento_contexto(PDO $pdo, int $meeting_id): array
 {
     logistica_cardapio_ensure_schema($pdo);
