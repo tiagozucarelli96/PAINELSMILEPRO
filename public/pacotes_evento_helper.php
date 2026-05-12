@@ -31,6 +31,11 @@ function pacotes_evento_ensure_schema(PDO $pdo): void {
         return;
     }
 
+    if (!painel_runtime_schema_setup_enabled()) {
+        $done = true;
+        return;
+    }
+
     if (pacotes_evento_schema_marker_is_fresh()) {
         $done = true;
         return;

@@ -109,6 +109,11 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         return;
     }
 
+    if (!painel_runtime_schema_setup_enabled()) {
+        $done = true;
+        return;
+    }
+
     try {
         if (eventos_reuniao_has_table($pdo, 'eventos_reunioes_secoes')) {
             $pdo->exec("ALTER TABLE eventos_reunioes_secoes ADD COLUMN IF NOT EXISTS form_schema_json JSONB");

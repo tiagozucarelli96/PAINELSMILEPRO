@@ -200,6 +200,11 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
         return;
     }
 
+    if (!painel_runtime_schema_setup_enabled()) {
+        $done[$cacheKey] = true;
+        return;
+    }
+
     if (logistica_cardapio_schema_marker_is_fresh($withMeetingSchema)) {
         $done[$cacheKey] = true;
         return;
