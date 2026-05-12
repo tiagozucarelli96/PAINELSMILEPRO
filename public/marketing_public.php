@@ -40,14 +40,15 @@ foreach ($arquivos as $arquivo) {
     <title>Marketing Smile</title>
     <style>
         :root {
-            --brand-1: #831843;
-            --brand-2: #be185d;
-            --brand-3: #f472b6;
+            --brand-1: #0f2d75;
+            --brand-2: #1e3a8a;
+            --brand-3: #3b82f6;
+            --brand-accent: #2dd4bf;
             --ink: #0f172a;
             --muted: #64748b;
-            --line: #e2e8f0;
+            --line: #dbe3ef;
             --card: #ffffff;
-            --bg: #fffafc;
+            --bg: #f8fbff;
         }
 
         * { box-sizing: border-box; }
@@ -57,8 +58,8 @@ foreach ($arquivos as $arquivo) {
             font-family: "Manrope", "Segoe UI", sans-serif;
             color: var(--ink);
             background:
-                radial-gradient(1000px 500px at 10% -10%, rgba(244, 114, 182, 0.18), transparent 50%),
-                radial-gradient(900px 480px at 100% 0%, rgba(190, 24, 93, 0.12), transparent 55%),
+                radial-gradient(1000px 500px at 10% -10%, rgba(45, 212, 191, 0.12), transparent 50%),
+                radial-gradient(900px 480px at 100% 0%, rgba(59, 130, 246, 0.14), transparent 55%),
                 linear-gradient(180deg, var(--bg) 0%, #fff 100%);
             min-height: 100vh;
         }
@@ -82,8 +83,8 @@ foreach ($arquivos as $arquivo) {
             color: #fff;
             background:
                 radial-gradient(circle at top right, rgba(255,255,255,0.16), transparent 28%),
-                linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 72%, #db2777 100%);
-            box-shadow: 0 28px 60px rgba(131, 24, 67, 0.28);
+                linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 72%, #224ec7 100%);
+            box-shadow: 0 28px 60px rgba(15, 45, 117, 0.25);
         }
 
         .eyebrow {
@@ -140,7 +141,7 @@ foreach ($arquivos as $arquivo) {
         }
 
         .empty {
-            border: 1px dashed #d8b4c8;
+            border: 1px dashed #c6d6ec;
             border-radius: 22px;
             padding: 42px 18px;
             text-align: center;
@@ -158,7 +159,7 @@ foreach ($arquivos as $arquivo) {
 
         .preview {
             min-height: 240px;
-            background: linear-gradient(135deg, #fdf2f8 0%, #f8fafc 100%);
+            background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -197,7 +198,7 @@ foreach ($arquivos as $arquivo) {
             border-radius: 999px;
             font-size: .78rem;
             font-weight: 800;
-            background: #fdf2f8;
+            background: #dbeafe;
             color: var(--brand-2);
             white-space: nowrap;
         }
@@ -233,13 +234,13 @@ foreach ($arquivos as $arquivo) {
             border-radius: 12px;
             text-decoration: none;
             font-weight: 800;
-            border: 1px solid #f3c4d9;
+            border: 1px solid #c6d6ec;
             color: var(--brand-1);
             background: #fff;
         }
 
         .btn:hover {
-            background: #fff5f9;
+            background: #f8fbff;
         }
     </style>
 </head>

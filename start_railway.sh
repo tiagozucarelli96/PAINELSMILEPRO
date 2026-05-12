@@ -31,6 +31,7 @@ php \
   -d auto_prepend_file="$APP_ROOT/public/session_bootstrap.php" \
   -d upload_max_filesize=100M \
   -d post_max_size=110M \
+  -d max_file_uploads=100 \
   -d memory_limit=256M \
   -d max_execution_time=300 \
   -d max_input_time=300 \
