@@ -25,6 +25,12 @@ function painel_is_public_auth_request(): bool
     return in_array($path, $publicAuthPaths, true);
 }
 
+function painel_has_session_cookie(): bool
+{
+    $cookieName = painel_env('SESSION_COOKIE_NAME', 'PAINELSMILESESSID') ?? 'PAINELSMILESESSID';
+    return isset($_COOKIE[$cookieName]) && trim((string)$_COOKIE[$cookieName]) !== '';
+}
+
 final class PainelPostgresSessionHandler implements SessionHandlerInterface
 {
     private const SCHEMA_MARKER_FILE = '/tmp/painel_app_sessions_schema_ready';
@@ -261,7 +267,11 @@ session_set_cookie_params([
 
 try {
     $useDatabaseSessions = !painel_is_local_request() || painel_env_bool('SESSION_USE_DATABASE_ON_LOCAL', false);
-    if (painel_is_public_auth_request() && !painel_env_bool('SESSION_USE_DATABASE_ON_PUBLIC_AUTH', false)) {
+    $isAnonymousPublicAuthGet = painel_is_public_auth_request()
+        && strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET'
+        && !painel_has_session_cookie();
+
+    if ($isAnonymousPublicAuthGet && !painel_env_bool('SESSION_USE_DATABASE_ON_PUBLIC_AUTH', false)) {
         $useDatabaseSessions = false;
     }
     if ($useDatabaseSessions) {
