@@ -77,10 +77,39 @@ if (!function_exists('dashboardCacheWrite')) {
     }
 }
 
+if (!function_exists('dashboardGetMonthlyConfigKey')) {
+    function dashboardGetMonthlyConfigKey(string $prefix, DateTimeInterface $date): string
+    {
+        return $prefix . '_' . $date->format('Y_m');
+    }
+}
+
 if (!function_exists('dashboardGetManualSalesKey')) {
     function dashboardGetManualSalesKey(DateTimeInterface $date): string
     {
-        return 'dashboard_vendas_realizadas_' . $date->format('Y_m');
+        return dashboardGetMonthlyConfigKey('dashboard_vendas_realizadas', $date);
+    }
+}
+
+if (!function_exists('dashboardGetSalesGoalKey')) {
+    function dashboardGetSalesGoalKey(DateTimeInterface $date): string
+    {
+        return dashboardGetMonthlyConfigKey('dashboard_meta_vendas', $date);
+    }
+}
+
+if (!function_exists('dashboardReadConfigIntValue')) {
+    function dashboardReadConfigIntValue(PDO $pdo, string $key, int $default = 0): int
+    {
+        $stmt = $pdo->prepare("
+            SELECT valor
+            FROM demandas_configuracoes
+            WHERE chave = :chave
+            LIMIT 1
+        ");
+        $stmt->execute([':chave' => $key]);
+
+        return max(0, (int)($stmt->fetchColumn() ?: $default));
     }
 }
 
@@ -241,7 +270,9 @@ if ($current_page === 'dashboard') {
     $dashboard_can_view_logistica_alertas = $is_superadmin_dashboard || !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_logistico_divergencias']);
     $dashboard_current_month = new DateTimeImmutable('now');
     $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
+    $dashboard_sales_goal_key = dashboardGetSalesGoalKey($dashboard_current_month);
     $dashboard_manual_sales_feedback = null;
+    $dashboard_sales_goal_feedback = null;
     $dashboard_bypass_cache = false;
     
     $stats = [];
@@ -273,10 +304,37 @@ if ($current_page === 'dashboard') {
         }
     }
 
-    $dashboard_stats_cache_key = 'stats:' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
+    if (
+        $is_superadmin_dashboard &&
+        ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST' &&
+        ($_POST['action'] ?? '') === 'save_meta_vendas'
+    ) {
+        try {
+            dashboardEnsureConfigTable($pdo);
+            $sales_goal_value = max(0, (int)($_POST['meta_vendas_manual'] ?? 0));
+            dashboardSaveConfigValue(
+                $pdo,
+                $dashboard_sales_goal_key,
+                (string)$sales_goal_value,
+                'Valor manual mensal do card Meta de Vendas da dashboard',
+                'number'
+            );
+            $dashboard_sales_goal_feedback = 'saved';
+            $dashboard_bypass_cache = true;
+        } catch (Throwable $e) {
+            error_log('[SIDEBAR] Erro ao salvar meta de vendas manualmente: ' . $e->getMessage());
+            $dashboard_sales_goal_feedback = 'error';
+            $dashboard_bypass_cache = true;
+        }
+    }
+
+    $dashboard_stats_cache_key = 'stats:v2:' . $dashboard_current_month->format('Y-m') . ':' . ($is_superadmin_dashboard ? '1' : '0');
     $cached_stats = $dashboard_bypass_cache ? null : dashboardCacheRead($dashboard_stats_cache_key, 60);
     if (is_array($cached_stats)) {
         $stats = $cached_stats;
+        $stats['meta_vendas'] = max(0, (int)($stats['meta_vendas'] ?? 0));
+        $stats['visitas_realizadas'] = max(0, (int)($stats['visitas_realizadas'] ?? 0));
+        $stats['fechamentos_realizados'] = (float)($stats['fechamentos_realizados'] ?? 0);
     } else {
         try {
             $stmt = $pdo->prepare("
@@ -291,14 +349,8 @@ if ($current_page === 'dashboard') {
             $stats['inscritos_degustacao'] = $stmt->fetchColumn() ?: 0;
 
             dashboardEnsureConfigTable($pdo);
-            $stmt = $pdo->prepare("
-                SELECT valor
-                FROM demandas_configuracoes
-                WHERE chave = :chave
-                LIMIT 1
-            ");
-            $stmt->execute([':chave' => $dashboard_manual_sales_key]);
-            $stats['vendas_realizadas'] = max(0, (int)($stmt->fetchColumn() ?: 0));
+            $stats['vendas_realizadas'] = dashboardReadConfigIntValue($pdo, $dashboard_manual_sales_key);
+            $stats['meta_vendas'] = dashboardReadConfigIntValue($pdo, $dashboard_sales_goal_key);
 
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) as total 
@@ -326,6 +378,7 @@ if ($current_page === 'dashboard') {
             $stats = [
                 'inscritos_degustacao' => 0,
                 'vendas_realizadas' => 0,
+                'meta_vendas' => 0,
                 'visitas_realizadas' => 0,
                 'fechamentos_realizados' => 0
             ];
@@ -741,10 +794,27 @@ if ($current_page === 'dashboard') {
             </div>
             
             <div class="metric-card">
-                <div class="metric-icon">📅</div>
+                <div class="metric-icon">🎯</div>
                 <div class="metric-content">
-                    <h3>' . $stats['visitas_realizadas'] . '</h3>
-                    <p>Visitas Realizadas</p>
+                    <h3>' . $stats['meta_vendas'] . '</h3>
+                    <p>Meta de Vendas</p>
+                    ' . ($is_superadmin_dashboard ? '
+                    <div class="metric-card-form">
+                        <form method="POST">
+                            <input type="hidden" name="action" value="save_meta_vendas">
+                            <input type="number" name="meta_vendas_manual" min="0" step="1" value="' . (int)$stats['meta_vendas'] . '" aria-label="Meta de vendas do mês">
+                            <button type="submit">Salvar</button>
+                        </form>
+                        <small>Valor manual de ' . htmlspecialchars($dashboard_current_month->format('m/Y')) . '.</small>
+                        ' . ($dashboard_sales_goal_feedback === 'saved'
+                            ? '<div class="metric-card-feedback">Valor atualizado.</div>'
+                            : ($dashboard_sales_goal_feedback === 'error'
+                                ? '<div class="metric-card-feedback error">Erro ao salvar.</div>'
+                                : '')) . '
+                    </div>
+                    ' : '
+                    <small>Valor mensal definido pela administração.</small>
+                    ') . '
                 </div>
             </div>
             
