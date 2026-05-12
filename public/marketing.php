@@ -31,7 +31,7 @@ if (!$podeAcessarMarketing) {
     exit;
 }
 
-$marketingPublicUrl = 'https://painelpro.smileeventos.com.br/';
+$marketingPublicUrl = 'https://painelpro.smileeventos.com.br/?page=marketing_public';
 $uploadPrefix = 'marketing/arquivos';
 $feedbackOk = '';
 $feedbackErro = '';
@@ -150,73 +150,130 @@ if (!function_exists('marketingListArquivos')) {
     }
 }
 
+if (!function_exists('marketingNormalizeUploadedFiles')) {
+    function marketingNormalizeUploadedFiles(?array $fileBag): array
+    {
+        if (!$fileBag || !isset($fileBag['name'])) {
+            return [];
+        }
+
+        if (!is_array($fileBag['name'])) {
+            return [$fileBag];
+        }
+
+        $files = [];
+        $total = count($fileBag['name']);
+        for ($i = 0; $i < $total; $i++) {
+            $files[] = [
+                'name' => $fileBag['name'][$i] ?? '',
+                'type' => $fileBag['type'][$i] ?? '',
+                'tmp_name' => $fileBag['tmp_name'][$i] ?? '',
+                'error' => $fileBag['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+                'size' => $fileBag['size'][$i] ?? 0,
+            ];
+        }
+
+        return $files;
+    }
+}
+
 marketingEnsureArquivosTable($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $acao = (string)($_POST['acao'] ?? '');
 
     if ($acao === 'upload_arquivo') {
-        $arquivo = $_FILES['arquivo'] ?? null;
+        $arquivosUpload = marketingNormalizeUploadedFiles($_FILES['arquivo'] ?? null);
         $descricao = trim((string)($_POST['descricao'] ?? ''));
 
-        if (!$arquivo || !is_array($arquivo)) {
-            $feedbackErro = 'Selecione um arquivo para enviar.';
+        if (empty($arquivosUpload)) {
+            $feedbackErro = 'Selecione pelo menos um arquivo para enviar.';
         } else {
-            $uploadError = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
-            if ($uploadError !== UPLOAD_ERR_OK) {
-                $feedbackErro = marketingUploadErrorMessage($uploadError);
-            } elseif ((int)($arquivo['size'] ?? 0) > 500 * 1024 * 1024) {
-                $feedbackErro = 'Arquivo muito grande. Limite maximo: 500MB.';
-            } else {
-                try {
+            $enviadosComSucesso = 0;
+            $falhas = [];
+
+            try {
+                $uploader = new MagaluUpload(500);
+                $stmt = $pdo->prepare("
+                    INSERT INTO marketing_arquivos (
+                        original_name,
+                        mime_type,
+                        size_bytes,
+                        storage_key,
+                        public_url,
+                        descricao,
+                        media_kind,
+                        uploaded_by_user_id,
+                        uploaded_at
+                    ) VALUES (
+                        :original_name,
+                        :mime_type,
+                        :size_bytes,
+                        :storage_key,
+                        :public_url,
+                        :descricao,
+                        :media_kind,
+                        :uploaded_by_user_id,
+                        NOW()
+                    )
+                ");
+
+                foreach ($arquivosUpload as $arquivo) {
+                    $nomeArquivo = trim((string)($arquivo['name'] ?? 'arquivo'));
+                    $uploadError = (int)($arquivo['error'] ?? UPLOAD_ERR_NO_FILE);
+
+                    if ($uploadError !== UPLOAD_ERR_OK) {
+                        $falhas[] = $nomeArquivo . ': ' . marketingUploadErrorMessage($uploadError);
+                        continue;
+                    }
+
+                    if ((int)($arquivo['size'] ?? 0) > 500 * 1024 * 1024) {
+                        $falhas[] = $nomeArquivo . ': arquivo muito grande. Limite maximo: 500MB.';
+                        continue;
+                    }
+
                     $mimeTypeDetectado = (string)(mime_content_type((string)($arquivo['tmp_name'] ?? '')) ?: '');
                     $mediaKind = marketingDetectMediaKind($mimeTypeDetectado);
                     if ($mediaKind === null) {
-                        throw new RuntimeException('Somente imagens e videos sao aceitos nesta area.');
+                        $falhas[] = $nomeArquivo . ': somente imagens e videos sao aceitos.';
+                        continue;
                     }
 
-                    $uploader = new MagaluUpload(500);
-                    $uploadResult = $uploader->upload($arquivo, $uploadPrefix);
-
-                    $stmt = $pdo->prepare("
-                        INSERT INTO marketing_arquivos (
-                            original_name,
-                            mime_type,
-                            size_bytes,
-                            storage_key,
-                            public_url,
-                            descricao,
-                            media_kind,
-                            uploaded_by_user_id,
-                            uploaded_at
-                        ) VALUES (
-                            :original_name,
-                            :mime_type,
-                            :size_bytes,
-                            :storage_key,
-                            :public_url,
-                            :descricao,
-                            :media_kind,
-                            :uploaded_by_user_id,
-                            NOW()
-                        )
-                    ");
-                    $stmt->execute([
-                        ':original_name' => (string)($uploadResult['nome_original'] ?? ($arquivo['name'] ?? 'arquivo')),
-                        ':mime_type' => (string)($uploadResult['mime_type'] ?? ''),
-                        ':size_bytes' => (int)($uploadResult['tamanho_bytes'] ?? ($arquivo['size'] ?? 0)),
-                        ':storage_key' => (string)($uploadResult['chave_storage'] ?? ''),
-                        ':public_url' => (string)($uploadResult['url'] ?? ''),
-                        ':descricao' => $descricao !== '' ? $descricao : null,
-                        ':media_kind' => $mediaKind,
-                        ':uploaded_by_user_id' => $usuarioId > 0 ? $usuarioId : null,
-                    ]);
-
-                    $feedbackOk = 'Arquivo enviado com sucesso.';
-                } catch (Throwable $e) {
-                    error_log('marketing upload: ' . $e->getMessage());
-                    $feedbackErro = $e->getMessage() !== '' ? $e->getMessage() : 'Falha ao enviar o arquivo.';
+                    try {
+                        $uploadResult = $uploader->upload($arquivo, $uploadPrefix);
+                        $stmt->execute([
+                            ':original_name' => (string)($uploadResult['nome_original'] ?? $nomeArquivo),
+                            ':mime_type' => (string)($uploadResult['mime_type'] ?? ''),
+                            ':size_bytes' => (int)($uploadResult['tamanho_bytes'] ?? ($arquivo['size'] ?? 0)),
+                            ':storage_key' => (string)($uploadResult['chave_storage'] ?? ''),
+                            ':public_url' => (string)($uploadResult['url'] ?? ''),
+                            ':descricao' => $descricao !== '' ? $descricao : null,
+                            ':media_kind' => $mediaKind,
+                            ':uploaded_by_user_id' => $usuarioId > 0 ? $usuarioId : null,
+                        ]);
+                        $enviadosComSucesso++;
+                    } catch (Throwable $e) {
+                        error_log('marketing upload arquivo: ' . $e->getMessage());
+                        $falhas[] = $nomeArquivo . ': falha ao enviar.';
+                    }
                 }
+
+                if ($enviadosComSucesso > 0) {
+                    $feedbackOk = $enviadosComSucesso === 1
+                        ? '1 arquivo enviado com sucesso.'
+                        : $enviadosComSucesso . ' arquivos enviados com sucesso.';
+                }
+
+                if (!empty($falhas)) {
+                    $feedbackErro = implode(' ', $falhas);
+                }
+
+                if ($enviadosComSucesso === 0 && $feedbackErro === '') {
+                    $feedbackErro = 'Nenhum arquivo foi enviado.';
+                }
+            } catch (Throwable $e) {
+                error_log('marketing upload lote: ' . $e->getMessage());
+                $feedbackErro = 'Falha ao preparar o envio dos arquivos.';
             }
         }
     } elseif ($acao === 'excluir_arquivo') {
@@ -468,6 +525,12 @@ ob_start();
     resize: vertical;
 }
 
+.marketing-file-summary {
+    color: #64748b;
+    font-size: .9rem;
+    line-height: 1.5;
+}
+
 .marketing-actions {
     display: flex;
     gap: .75rem;
@@ -689,7 +752,10 @@ ob_start();
 
                 <div class="marketing-field">
                     <label for="arquivo">Arquivo</label>
-                    <input id="arquivo" type="file" name="arquivo" accept="image/*,video/*" required>
+                    <input id="arquivo" type="file" name="arquivo[]" accept="image/*,video/*" multiple required>
+                    <div id="marketingFileSummary" class="marketing-file-summary">
+                        Ao escolher arquivo, voce pode selecionar varios de uma vez.
+                    </div>
                 </div>
 
                 <div class="marketing-field">
@@ -776,6 +842,31 @@ ob_start();
         </div>
     </section>
 </div>
+
+<script>
+(function() {
+    const input = document.getElementById('arquivo');
+    const summary = document.getElementById('marketingFileSummary');
+    if (!input || !summary) {
+        return;
+    }
+
+    input.addEventListener('change', function() {
+        const files = Array.from(input.files || []);
+        if (files.length === 0) {
+            summary.textContent = 'Ao escolher arquivo, voce pode selecionar varios de uma vez.';
+            return;
+        }
+
+        if (files.length === 1) {
+            summary.textContent = '1 arquivo selecionado: ' + files[0].name;
+            return;
+        }
+
+        summary.textContent = files.length + ' arquivos selecionados.';
+    });
+})();
+</script>
 
 <?php
 error_reporting(E_ALL);

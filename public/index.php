@@ -32,6 +32,10 @@ if ($earlyPage === 'eventos_galeria_public') {
     require_once __DIR__ . '/eventos_galeria_public.php';
     exit;
 }
+if ($earlyPage === 'marketing_public') {
+    require_once __DIR__ . '/marketing_public.php';
+    exit;
+}
 
 session_start();
 
@@ -342,6 +346,7 @@ $routes = [
   'eventos_calendario' => 'eventos_calendario.php',
   'eventos_galeria' => 'eventos_galeria.php',
   'eventos_galeria_public' => 'eventos_galeria_public.php',
+  'marketing_public' => 'marketing_public.php',
   'eventos_tiny_galeria_teste' => 'eventos_tiny_galeria_teste.php',
   'eventos_fornecedores' => 'eventos_fornecedores.php',
   'eventos_pdf' => 'eventos_pdf.php',
@@ -429,6 +434,7 @@ $public_pages = [
   'eventos_cliente_cardapio',
   // Galeria pública para clientes
   'eventos_galeria_public',
+  'marketing_public',
   // Portal Jurídico (acesso externo por usuário/senha próprios)
   'juridico_login',
   'juridico_portal',
