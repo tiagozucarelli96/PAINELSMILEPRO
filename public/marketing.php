@@ -347,8 +347,8 @@ ob_start();
 .marketing-panel.primary {
     padding: 1.8rem;
     background:
-        radial-gradient(circle at top right, rgba(244, 114, 182, 0.18), transparent 28%),
-        linear-gradient(135deg, #ffffff 0%, #fff6fb 100%);
+        radial-gradient(circle at top right, rgba(45, 212, 191, 0.12), transparent 28%),
+        linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
 }
 
 .marketing-badge {
@@ -357,8 +357,8 @@ ob_start();
     gap: .45rem;
     padding: .45rem .8rem;
     border-radius: 999px;
-    background: rgba(190, 24, 93, 0.1);
-    color: #9d174d;
+    background: rgba(30, 58, 138, 0.1);
+    color: #1e3a8a;
     font-size: .9rem;
     font-weight: 700;
     letter-spacing: .02em;
@@ -552,7 +552,7 @@ ob_start();
 }
 
 .marketing-btn.primary {
-    background: linear-gradient(135deg, #db2777, #be185d);
+    background: linear-gradient(135deg, #1e3a8a, #224ec7);
     color: #fff;
 }
 
@@ -648,8 +648,8 @@ ob_start();
     border-radius: 999px;
     font-size: .8rem;
     font-weight: 700;
-    background: #fdf2f8;
-    color: #9d174d;
+    background: #dbeafe;
+    color: #1e3a8a;
 }
 
 .marketing-description {
