@@ -63,6 +63,7 @@ return [
     'vendas_kanban' => 'perm_comercial',
     'vendas_links_publicos' => 'perm_comercial',
     'eventos_galeria' => 'perm_comercial',
+    'eventos_galeria_wordpress_preview' => 'perm_comercial',
     // Formulários públicos não precisam de permissão
     'vendas_form_casamento' => null,
     'vendas_form_infantil' => null,

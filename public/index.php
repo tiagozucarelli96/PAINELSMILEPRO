@@ -345,6 +345,7 @@ $routes = [
   'eventos_reunioes' => 'eventos_reunioes.php',
   'eventos_calendario' => 'eventos_calendario.php',
   'eventos_galeria' => 'eventos_galeria.php',
+  'eventos_galeria_wordpress_preview' => 'eventos_galeria_wordpress_preview.php',
   'eventos_galeria_public' => 'eventos_galeria_public.php',
   'marketing_public' => 'marketing_public.php',
   'eventos_tiny_galeria_teste' => 'eventos_tiny_galeria_teste.php',
