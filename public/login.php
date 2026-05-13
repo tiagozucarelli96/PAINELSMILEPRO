@@ -29,8 +29,8 @@ if (!empty($db_error ?? '')) {
 }
 
 // Opcional: listar usuários para dropdown.
-// Por padrão fica desativado para evitar consulta extra antes da tela abrir.
-$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', false);
+// Mantemos ativado por padrão para restaurar o fluxo de seleção de usuário.
+$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', true);
 $usuarios_login = [];
 if ($showLoginDropdown && empty($erro) && isset($pdo) && $pdo) {
     try {
