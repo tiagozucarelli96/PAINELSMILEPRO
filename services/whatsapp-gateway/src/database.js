@@ -48,10 +48,10 @@ export async function withTransaction(callback) {
 }
 
 export async function ensureSchema() {
-  const migrationFiles = [
-    path.join(config.repoRoot, "sql", "060_atendimento_whatsapp_base.sql"),
-    path.join(config.repoRoot, "sql", "061_atendimento_whatsapp_gateway_runtime.sql"),
-  ];
+  const migrationFiles = await Promise.all([
+    resolveMigrationPath("060_atendimento_whatsapp_base.sql"),
+    resolveMigrationPath("061_atendimento_whatsapp_gateway_runtime.sql"),
+  ]);
 
   for (const filePath of migrationFiles) {
     const sql = await fs.readFile(filePath, "utf8");
@@ -65,4 +65,24 @@ export async function ensureSchema() {
 export async function pingDatabase() {
   const result = await pool.query("SELECT NOW() AS now");
   return result.rows[0]?.now ?? null;
+}
+
+async function resolveMigrationPath(filename) {
+  const candidates = [
+    path.join(config.serviceRoot, "migrations", filename),
+    path.join(config.repoRoot, "sql", filename),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Migration file nao encontrado: ${filename}. Caminhos verificados: ${candidates.join(", ")}`
+  );
 }
