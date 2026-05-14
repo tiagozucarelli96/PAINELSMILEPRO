@@ -1,5 +1,6 @@
 -- Adicionar permissões da sidebar que faltam no banco
 ALTER TABLE usuarios 
+ADD COLUMN IF NOT EXISTS perm_pessoal BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_agenda BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_comercial BOOLEAN DEFAULT FALSE,
@@ -14,6 +15,7 @@ ADD COLUMN IF NOT EXISTS perm_administrativo BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_rh BOOLEAN DEFAULT FALSE;
 
 -- Comentários para documentação
+COMMENT ON COLUMN usuarios.perm_pessoal IS 'Permissão para acessar o módulo Pessoal';
 COMMENT ON COLUMN usuarios.perm_agenda IS 'Permissão para acessar o módulo Agenda';
 COMMENT ON COLUMN usuarios.perm_agenda_eventos IS 'Permissão para acessar o módulo Agenda de eventos';
 COMMENT ON COLUMN usuarios.perm_comercial IS 'Permissão para acessar o módulo Comercial';

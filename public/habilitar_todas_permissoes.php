@@ -27,6 +27,7 @@ if ($user_id != $_SESSION['id']) {
 // Lista de todas as permissões do sistema
 $todas_permissoes = [
     // Módulos da sidebar
+    'perm_pessoal',
     'perm_agenda',
     'perm_comercial',
     'perm_marketing',

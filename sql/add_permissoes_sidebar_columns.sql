@@ -2,6 +2,7 @@
 -- Este script adiciona as novas permissões correspondentes aos itens da sidebar
 
 ALTER TABLE usuarios 
+ADD COLUMN IF NOT EXISTS perm_pessoal BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_agenda BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_comercial BOOLEAN DEFAULT FALSE,
@@ -16,6 +17,7 @@ ADD COLUMN IF NOT EXISTS perm_administrativo BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS perm_rh BOOLEAN DEFAULT FALSE;
 
 -- Adicionar comentários nas colunas para documentação
+COMMENT ON COLUMN usuarios.perm_pessoal IS 'Permissão para acessar o módulo Pessoal';
 COMMENT ON COLUMN usuarios.perm_agenda IS 'Permissão para acessar o módulo Agenda';
 COMMENT ON COLUMN usuarios.perm_agenda_eventos IS 'Permissão para acessar o módulo Agenda de eventos';
 COMMENT ON COLUMN usuarios.perm_comercial IS 'Permissão para acessar o módulo Comercial';
@@ -30,6 +32,7 @@ COMMENT ON COLUMN usuarios.perm_administrativo IS 'Permissão para acessar o mó
 COMMENT ON COLUMN usuarios.perm_rh IS 'Permissão para acessar o módulo RH';
 
 -- Criar índices para melhor performance em consultas de permissões
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_pessoal ON usuarios(perm_pessoal) WHERE perm_pessoal = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda ON usuarios(perm_agenda) WHERE perm_agenda = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda_eventos ON usuarios(perm_agenda_eventos) WHERE perm_agenda_eventos = TRUE;
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_comercial ON usuarios(perm_comercial) WHERE perm_comercial = TRUE;

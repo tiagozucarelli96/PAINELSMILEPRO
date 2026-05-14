@@ -1126,10 +1126,12 @@ if ($current_page === 'dashboard') {
                     Dashboard
                 </a>
 
-                <a href="index.php?page=pessoal" class="nav-item <?= isActiveUnified(['pessoal', 'minha_conta']) ?>">
+                <?php if (!empty($_SESSION['perm_pessoal']) || !empty($_SESSION['perm_superadmin'])): ?>
+                <a href="index.php?page=pessoal_modulo" class="nav-item <?= isActiveUnified('pessoal_modulo') ?>">
                     <span class="nav-item-icon">👤</span>
                     Pessoal
                 </a>
+                <?php endif; ?>
                 
                 <?php if (!empty($_SESSION['perm_agenda'])): ?>
                 <a href="index.php?page=agenda" class="nav-item <?= isActiveUnified('agenda') ?>">

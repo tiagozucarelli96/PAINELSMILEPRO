@@ -46,6 +46,7 @@ try {
 echo "<h2>🎯 Permissões em Uso no Sistema</h2>";
 
 $permissoes_sistema = [
+    'perm_pessoal' => 'Pessoal',
     'perm_tarefas' => 'Tarefas',
     'perm_lista' => 'Lista de Compras', 
     'perm_demandas' => 'Solicitar Pagamento',

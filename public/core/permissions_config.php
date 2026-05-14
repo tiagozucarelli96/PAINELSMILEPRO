@@ -5,6 +5,7 @@
  * 
  * O sistema possui permissões da sidebar + superadmin:
  * - Dashboard: todos têm acesso (sem permissão específica)
+ * - Pessoal: perm_pessoal
  * - Agenda: perm_agenda
  * - Agenda de eventos: perm_agenda_eventos
  * - Demandas: perm_demandas
@@ -22,6 +23,11 @@
 
 // Lista das permissões válidas do sistema
 define('SYSTEM_PERMISSIONS', [
+    'perm_pessoal' => [
+        'label' => 'Pessoal',
+        'icon' => '👤',
+        'description' => 'Acesso à área pessoal do colaborador'
+    ],
     'perm_agenda' => [
         'label' => 'Agenda',
         'icon' => '📅',
@@ -140,6 +146,7 @@ function user_can_access(string $module): bool {
     
     // Mapear módulos para permissões
     $module_map = [
+        'pessoal_modulo' => 'perm_pessoal',
         'agenda' => 'perm_agenda',
         'agenda_eventos' => 'perm_agenda_eventos',
         'demandas' => 'perm_demandas',

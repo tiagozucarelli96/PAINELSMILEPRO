@@ -85,6 +85,7 @@ function usuariosFetchPermissionColumns(PDO $pdo, bool $forceRefresh = false): a
 function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): void {
     $requiredColumns = [
         'perm_superadmin',
+        'perm_pessoal',
         'perm_portao',
         'perm_eventos_realizar',
         'perm_agenda_eventos',
@@ -103,6 +104,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
     if (!usuariosSchemaMarkerFresh('usuarios_known_permissions_schema_ready')) {
         $updates = [
             'perm_superadmin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE",
+            'perm_pessoal' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_pessoal BOOLEAN DEFAULT FALSE",
             'perm_portao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_portao BOOLEAN DEFAULT FALSE",
             'perm_eventos_realizar' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE",
             'perm_agenda_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE",
@@ -1411,7 +1413,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
+            'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
@@ -1580,6 +1582,7 @@ ob_start();
                 
                 // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [
+                    'perm_pessoal' => '👤 Pessoal',
                     'perm_agenda' => '📅 Agenda',
                     'perm_agenda_eventos' => '🗓️ Agenda de eventos',
                     'perm_demandas' => '📝 Demandas',
@@ -1597,6 +1600,7 @@ ob_start();
                 ];
                 
                 $system_perms = [
+                    'perm_pessoal',
                     'perm_agenda',
                     'perm_agenda_eventos',
                     'perm_demandas',

@@ -10,6 +10,7 @@ echo "=== VERIFICAÇÃO DE PERMISSÕES ===\n\n";
 // Permissões do formulário
 $form_permissions = [
     // Módulos da sidebar
+    'perm_pessoal',
     'perm_agenda',
     'perm_comercial',
     'perm_eventos',

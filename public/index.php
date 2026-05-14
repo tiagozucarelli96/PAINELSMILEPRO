@@ -209,6 +209,7 @@ $routes = [
   'contabilidade_admin_colaboradores' => 'contabilidade_admin_colaboradores.php',
   'contabilidade_holerite_individual' => 'administrativo_gestao_documentos.php',
   'pessoal' => 'minha_conta.php',
+  'pessoal_modulo' => 'pessoal_modulo.php',
   'minha_conta' => 'minha_conta.php',
   'config_email_global' => 'config_email_global.php',
   'config_logistica' => 'config_logistica.php',

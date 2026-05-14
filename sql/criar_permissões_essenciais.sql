@@ -2,6 +2,7 @@
 -- Criar apenas as permissões que são realmente necessárias
 
 -- Permissões principais (módulos)
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_pessoal BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_comercial BOOLEAN DEFAULT FALSE;
@@ -17,6 +18,7 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_banco_smile BOOLEAN DEFAULT F
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_usuarios BOOLEAN DEFAULT FALSE;
 
 -- Criar índices para melhor performance
+CREATE INDEX IF NOT EXISTS idx_usuarios_perm_pessoal ON usuarios(perm_pessoal);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda ON usuarios(perm_agenda);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_agenda_eventos ON usuarios(perm_agenda_eventos);
 CREATE INDEX IF NOT EXISTS idx_usuarios_perm_comercial ON usuarios(perm_comercial);

@@ -6,7 +6,8 @@ return [
     // Dashboard - sempre permitido (todos logados podem acessar)
     'dashboard' => null,
     'pessoal' => null,
-    'minha_conta' => null, // Qualquer usuário logado (acesso ao clicar no nome na sidebar)
+    'minha_conta' => null, // Área atual liberada para qualquer usuário logado
+    'pessoal_modulo' => 'perm_pessoal',
 
     // Scripts de setup - sempre permitido para usuários logados
     'apply_permissoes_sidebar_columns' => null,

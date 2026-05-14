@@ -166,6 +166,7 @@ require_once __DIR__ . '/permissoes_boot.php';
         echo "<h2>1️⃣ Verificação de Colunas no Banco de Dados</h2>";
         
         $permissoes_sidebar = [
+            'perm_pessoal' => 'Pessoal',
             'perm_agenda' => 'Agenda',
             'perm_demandas' => 'Demandas',
             'perm_comercial' => 'Comercial',

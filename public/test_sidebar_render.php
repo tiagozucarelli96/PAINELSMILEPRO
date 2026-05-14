@@ -22,6 +22,7 @@ require_once __DIR__ . '/permissoes_boot.php';
 function testarSidebar($permissoes_sessao) {
     $modulos = [
         'Dashboard' => null, // Sempre visível
+        'Pessoal' => 'perm_pessoal',
         'Agenda' => 'perm_agenda',
         'Demandas' => 'perm_demandas',
         'Comercial' => 'perm_comercial',
@@ -65,7 +66,7 @@ function testarSidebar($permissoes_sessao) {
 // Testar com as permissões atuais
 $permissoes_atual = [];
 $permissoes_sidebar = [
-    'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar',
+    'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_eventos', 'perm_eventos_realizar',
     // 'perm_logistico', // REMOVIDO: Módulo desativado
     'perm_configuracoes', 'perm_cadastros', 'perm_financeiro',
     'perm_administrativo', 'perm_portao'
