@@ -33,6 +33,7 @@ try {
     'perm_pessoal','perm_agenda','perm_agenda_eventos','perm_comercial','perm_marketing','perm_configuracoes',
     'perm_cadastros','perm_financeiro','perm_administrativo',
     'perm_vendas_administracao',
+    'perm_smile_chat','perm_smile_chat_admin',
     // Eventos (Organização)
     'perm_eventos',
     // Eventos (Realizar evento)

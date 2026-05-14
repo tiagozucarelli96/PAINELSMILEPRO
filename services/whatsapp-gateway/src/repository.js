@@ -170,7 +170,10 @@ async function upsertConversation(client, inbox, contactId, preview, assignedUse
         UPDATE wa_conversations
         SET department_id = COALESCE($2, department_id),
             assigned_user_id = COALESCE($3, assigned_user_id),
-            status = 'open',
+            status = CASE
+              WHEN assigned_user_id IS NULL THEN 'waiting'
+              ELSE status
+            END,
             last_message_preview = $4,
             unread_count = unread_count + 1,
             last_message_at = NOW(),
@@ -199,7 +202,7 @@ async function upsertConversation(client, inbox, contactId, preview, assignedUse
         created_at,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, 'open', 'normal', $5, $6, 1, NOW(), NOW(), NOW(), NOW())
+      VALUES ($1, $2, $3, $4, 'waiting', 'normal', $5, $6, 1, NOW(), NOW(), NOW(), NOW())
       RETURNING id
     `,
     [

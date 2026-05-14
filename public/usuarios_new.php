@@ -91,6 +91,8 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         'perm_agenda_eventos',
         'perm_vendas_administracao',
         'perm_marketing',
+        'perm_smile_chat',
+        'perm_smile_chat_admin',
     ];
 
     $missing = array_values(array_filter($requiredColumns, static function ($column) use ($existingPerms) {
@@ -110,6 +112,8 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
             'perm_agenda_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE",
             'perm_vendas_administracao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE",
             'perm_marketing' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE",
+            'perm_smile_chat' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_smile_chat BOOLEAN DEFAULT FALSE",
+            'perm_smile_chat_admin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_smile_chat_admin BOOLEAN DEFAULT FALSE",
         ];
 
         foreach ($missing as $column) {
@@ -1582,6 +1586,8 @@ ob_start();
                 
                 // Mapeamento de permissões exibidas no cadastro de usuários.
                 $perm_labels = [
+                    'perm_smile_chat' => '💬 Smile Chat',
+                    'perm_smile_chat_admin' => '⚙️ Smile Chat Admin',
                     'perm_pessoal' => '👤 Pessoal',
                     'perm_agenda' => '📅 Agenda',
                     'perm_agenda_eventos' => '🗓️ Agenda de eventos',
@@ -1600,6 +1606,8 @@ ob_start();
                 ];
                 
                 $system_perms = [
+                    'perm_smile_chat',
+                    'perm_smile_chat_admin',
                     'perm_pessoal',
                     'perm_agenda',
                     'perm_agenda_eventos',
