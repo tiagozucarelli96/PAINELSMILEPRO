@@ -3,5 +3,6 @@
 .env.*
 !.env.example
 /vendor/
+node_modules/
 composer.lock
 composer.phar

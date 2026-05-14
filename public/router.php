@@ -41,6 +41,15 @@ if (strpos($path, 'asaas_webhook.php') !== false || strpos($request_uri, 'asaas_
 
 $file = realpath(__DIR__ . $path);
 
+// Diretórios com index.php próprio (ex: apps isolados dentro de /public)
+if ($path !== '/' && $file && is_dir($file)) {
+    $dirIndex = realpath($file . '/index.php');
+    if ($dirIndex && is_file($dirIndex)) {
+        require $dirIndex;
+        exit;
+    }
+}
+
 // Se for arquivo estático existente (css, js, imagens), serve direto
 if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
     return false;
@@ -48,6 +57,12 @@ if ($path !== '/' && $file && is_file($file) && !str_ends_with($file, '.php')) {
 
 // Se for um .php existente, injeta conexao e inclui o arquivo
 if ($path !== '/' && $file && is_file($file) && str_ends_with($file, '.php')) {
+    $isolatedAppsRoot = realpath(__DIR__ . '/atendimento');
+    if ($isolatedAppsRoot && str_starts_with($file, $isolatedAppsRoot . DIRECTORY_SEPARATOR)) {
+        require $file;
+        exit;
+    }
+
     // Arquivos de cron, webhook, endpoints e páginas públicas devem ser servidos diretamente SEM redirecionamento
     $public_files = ['comercial_degust_public.php', 'asaas_webhook.php', 'webhook_me_eventos.php', 'cron.php', 'upload_foto_usuario_endpoint.php',
                      'contabilidade_login.php', 'contabilidade_painel.php', 'contabilidade_guias.php', 'contabilidade_holerites.php',
