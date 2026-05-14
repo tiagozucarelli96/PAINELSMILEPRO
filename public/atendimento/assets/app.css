@@ -454,6 +454,31 @@ a {
     color: var(--muted);
 }
 
+.code-chip {
+    display: inline-flex;
+    margin-top: 10px;
+    padding: 7px 10px;
+    border-radius: 12px;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.qr-preview {
+    margin-top: 12px;
+}
+
+.qr-preview img {
+    width: 132px;
+    height: 132px;
+    object-fit: contain;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 8px;
+}
+
 @media (max-width: 1080px) {
     .app-shell {
         grid-template-columns: 1fr;

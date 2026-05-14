@@ -60,6 +60,16 @@ try {
                 wa_flash('success', 'Inbox salvo.');
                 wa_redirect('index.php?page=inboxes');
 
+            case 'connect_inbox':
+                wa_connect_inbox_session((string)($_POST['session_key'] ?? ''));
+                wa_flash('success', 'Solicitação de conexão enviada para a inbox.');
+                wa_redirect('index.php?page=inboxes');
+
+            case 'disconnect_inbox':
+                wa_disconnect_inbox_session((string)($_POST['session_key'] ?? ''));
+                wa_flash('success', 'Solicitação de desconexão enviada para a inbox.');
+                wa_redirect('index.php?page=inboxes');
+
             case 'save_quick_reply':
                 wa_save_quick_reply($_POST);
                 wa_flash('success', 'Atalho salvo.');
@@ -241,6 +251,7 @@ $users = wa_fetch_users();
 $inboxes = wa_fetch_inboxes();
 $quickReplies = wa_fetch_quick_replies();
 $conversations = wa_fetch_conversations();
+$gatewayHealth = wa_gateway_health();
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -317,6 +328,7 @@ $conversations = wa_fetch_conversations();
                 <article class="card"><div class="card-body"><p class="stat-label">Departamentos ativos</p><p class="stat-value"><?= (int)$counts['departments'] ?></p></div></article>
                 <article class="card"><div class="card-body"><p class="stat-label">Atendentes ativos</p><p class="stat-value"><?= (int)$counts['users'] ?></p></div></article>
                 <article class="card"><div class="card-body"><p class="stat-label">Inboxes cadastrados</p><p class="stat-value"><?= (int)$counts['inboxes'] ?></p></div></article>
+                <article class="card"><div class="card-body"><p class="stat-label">Inboxes conectadas</p><p class="stat-value"><?= (int)$counts['inboxes_connected'] ?></p></div></article>
                 <article class="card"><div class="card-body"><p class="stat-label">Conversas abertas</p><p class="stat-value"><?= (int)$counts['conversations_open'] ?></p></div></article>
                 <article class="card"><div class="card-body"><p class="stat-label">Conversas aguardando</p><p class="stat-value"><?= (int)$counts['conversations_waiting'] ?></p></div></article>
                 <article class="card"><div class="card-body"><p class="stat-label">Atalhos ativos</p><p class="stat-value"><?= (int)$counts['quick_replies'] ?></p></div></article>
@@ -335,12 +347,27 @@ $conversations = wa_fetch_conversations();
                 </article>
                 <article class="card">
                     <div class="section-header">
-                        <h3 class="section-title">Próximo incremento</h3>
+                        <h3 class="section-title">Gateway de sessão</h3>
                     </div>
                     <div class="card-body stack">
-                        <div class="topbar-card"><strong>1.</strong><p class="small">Serviço Node separado para sessão WhatsApp não-oficial.</p></div>
-                        <div class="topbar-card"><strong>2.</strong><p class="small">Persistência dos eventos recebidos e abertura automática de conversa.</p></div>
-                        <div class="topbar-card"><strong>3.</strong><p class="small">Tela realtime com transferência, notas internas e mensagens rápidas.</p></div>
+                        <?php if (is_array($gatewayHealth) && !empty($gatewayHealth['ok'])): ?>
+                            <div class="topbar-card">
+                                <strong>Gateway online</strong>
+                                <p class="small">Serviço respondendo em <code><?= wa_e(wa_gateway_base_url()) ?></code>.</p>
+                            </div>
+                            <div class="topbar-card">
+                                <strong>Conectadas agora</strong>
+                                <p class="small"><?= (int)($gatewayHealth['overview']['connected_inboxes'] ?? 0) ?> inboxes conectadas no gateway.</p>
+                            </div>
+                            <div class="topbar-card">
+                                <strong>Mensagens 24h</strong>
+                                <p class="small"><?= (int)($gatewayHealth['overview']['messages_last_day'] ?? 0) ?> eventos entregues pelo gateway nas últimas 24 horas.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="topbar-card"><strong>Gateway indisponível</strong><p class="small"><?= wa_e((string)($gatewayHealth['error'] ?? 'Serviço não respondeu.')) ?></p></div>
+                            <div class="topbar-card"><strong>URL esperada</strong><p class="small"><code><?= wa_e(wa_gateway_base_url()) ?></code></p></div>
+                            <div class="topbar-card"><strong>Próximo incremento</strong><p class="small">Quando o gateway estiver online, as inboxes passam a exibir QR, status e ações de conectar/desconectar.</p></div>
+                        <?php endif; ?>
                     </div>
                 </article>
             </section>
@@ -517,6 +544,7 @@ $conversations = wa_fetch_conversations();
                             <div>
                                 <label class="label">Provider</label>
                                 <select class="select" name="provider">
+                                    <option value="mock">Mock / Homologação</option>
                                     <option value="baileys">Baileys</option>
                                     <option value="whatsapp-web.js">whatsapp-web.js</option>
                                     <option value="wppconnect">WPPConnect</option>
@@ -550,19 +578,71 @@ $conversations = wa_fetch_conversations();
                 </article>
                 <article class="card">
                     <div class="section-header"><h3 class="section-title">Inboxes cadastradas</h3></div>
+                    <div class="card-body">
+                        <?php if (is_array($gatewayHealth) && !empty($gatewayHealth['ok'])): ?>
+                            <div class="flash flash-info">
+                                Gateway online em <code><?= wa_e(wa_gateway_base_url()) ?></code>.
+                                Conectadas agora: <strong><?= (int)($gatewayHealth['overview']['connected_inboxes'] ?? 0) ?></strong>.
+                            </div>
+                        <?php else: ?>
+                            <div class="flash flash-error">
+                                Gateway indisponível em <code><?= wa_e(wa_gateway_base_url()) ?></code>.
+                                <?= wa_e((string)($gatewayHealth['error'] ?? 'Sem resposta do serviço.')) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                     <?php if ($inboxes === []): ?>
                         <div class="empty">Nenhuma inbox cadastrada ainda.</div>
                     <?php else: ?>
                         <div class="table-wrap">
                             <table class="table">
-                                <thead><tr><th>Inbox</th><th>Departamento</th><th>Engine</th><th>Status</th></tr></thead>
+                                <thead><tr><th>Inbox</th><th>Departamento</th><th>Engine</th><th>Status</th><th>Operação</th></tr></thead>
                                 <tbody>
                                 <?php foreach ($inboxes as $inbox): ?>
+                                    <?php
+                                    $runtimeMeta = is_array($inbox['runtime_meta'] ?? null) ? $inbox['runtime_meta'] : [];
+                                    $uiStatus = (string)($inbox['gateway_status'] ?: $inbox['status']);
+                                    $statusClass = $uiStatus === 'connected'
+                                        ? 'badge-success'
+                                        : ($uiStatus === 'error' ? 'badge-danger' : 'badge-warning');
+                                    ?>
                                     <tr>
-                                        <td><strong><?= wa_e($inbox['name']) ?></strong><br><span class="small"><?= wa_e($inbox['session_key']) ?><?= $inbox['phone_number'] ? ' • ' . wa_e($inbox['phone_number']) : '' ?></span></td>
+                                        <td>
+                                            <strong><?= wa_e($inbox['name']) ?></strong><br>
+                                            <span class="small"><?= wa_e($inbox['session_key']) ?><?= $inbox['phone_number'] ? ' • ' . wa_e($inbox['phone_number']) : '' ?></span>
+                                            <?php if (!empty($runtimeMeta['pairingCode'])): ?>
+                                                <div class="code-chip">Pairing code: <?= wa_e((string)$runtimeMeta['pairingCode']) ?></div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($runtimeMeta['qrImage'])): ?>
+                                                <div class="qr-preview">
+                                                    <img src="<?= wa_e((string)$runtimeMeta['qrImage']) ?>" alt="QR da sessão <?= wa_e($inbox['session_key']) ?>">
+                                                </div>
+                                            <?php endif; ?>
+                                        </td>
                                         <td><?= wa_e($inbox['department_name'] ?: 'Sem vínculo') ?></td>
                                         <td><?= wa_e($inbox['provider']) ?><br><span class="small"><?= wa_e($inbox['connection_mode']) ?></span></td>
-                                        <td><span class="badge <?= $inbox['status'] === 'connected' ? 'badge-success' : ($inbox['status'] === 'error' ? 'badge-danger' : 'badge-warning') ?>"><?= wa_e(wa_status_label((string)$inbox['status'])) ?></span></td>
+                                        <td>
+                                            <span class="badge <?= $statusClass ?>"><?= wa_e(wa_status_label($uiStatus)) ?></span>
+                                            <?php if (!empty($inbox['credential_updated_at'])): ?>
+                                                <div class="small">Runtime: <?= wa_e((string)$inbox['credential_updated_at']) ?></div>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div class="stack">
+                                                <form method="post">
+                                                    <input type="hidden" name="action" value="connect_inbox">
+                                                    <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                                                    <input type="hidden" name="session_key" value="<?= wa_e($inbox['session_key']) ?>">
+                                                    <button class="button-secondary" type="submit">Conectar</button>
+                                                </form>
+                                                <form method="post">
+                                                    <input type="hidden" name="action" value="disconnect_inbox">
+                                                    <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                                                    <input type="hidden" name="session_key" value="<?= wa_e($inbox['session_key']) ?>">
+                                                    <button class="button-danger" type="submit">Desconectar</button>
+                                                </form>
+                                            </div>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>

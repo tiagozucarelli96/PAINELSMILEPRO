@@ -180,6 +180,150 @@ function wa_url(string $path = ''): string
     return $path === '' ? $base . '/' : $base . '/' . $path;
 }
 
+function wa_gateway_base_url(): string
+{
+    $value = trim((string)(painel_env('WHATSAPP_GATEWAY_BASE_URL', 'http://127.0.0.1:8787') ?? 'http://127.0.0.1:8787'));
+    return rtrim($value, '/');
+}
+
+function wa_gateway_is_enabled(): bool
+{
+    return wa_gateway_base_url() !== '';
+}
+
+function wa_http_json_request(string $method, string $url, ?array $payload = null, int $timeoutSeconds = 8): array
+{
+    $headers = [
+        'Accept: application/json',
+    ];
+
+    $content = null;
+    if ($payload !== null) {
+        $headers[] = 'Content-Type: application/json';
+        $content = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($content)) {
+            throw new RuntimeException('Falha ao serializar payload JSON.');
+        }
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => strtoupper($method),
+            'header' => implode("\r\n", $headers),
+            'content' => $content,
+            'timeout' => $timeoutSeconds,
+            'ignore_errors' => true,
+        ],
+    ]);
+
+    $result = @file_get_contents($url, false, $context);
+    $responseHeaders = $http_response_header ?? [];
+    $statusLine = $responseHeaders[0] ?? '';
+    preg_match('/\s(\d{3})\s/', $statusLine, $matches);
+    $statusCode = isset($matches[1]) ? (int)$matches[1] : 0;
+
+    $decoded = null;
+    if (is_string($result) && trim($result) !== '') {
+        $decoded = json_decode($result, true);
+    }
+
+    return [
+        'status' => $statusCode,
+        'ok' => $statusCode >= 200 && $statusCode < 300,
+        'body' => is_array($decoded) ? $decoded : null,
+        'raw' => is_string($result) ? $result : '',
+    ];
+}
+
+function wa_gateway_request(string $method, string $path, ?array $payload = null, int $timeoutSeconds = 8): array
+{
+    if (!wa_gateway_is_enabled()) {
+        throw new RuntimeException('WHATSAPP_GATEWAY_BASE_URL não configurado.');
+    }
+
+    $url = wa_gateway_base_url() . '/' . ltrim($path, '/');
+    $response = wa_http_json_request($method, $url, $payload, $timeoutSeconds);
+
+    if (!$response['ok']) {
+        $bodyMessage = is_array($response['body']) ? (string)($response['body']['error'] ?? '') : '';
+        $fallback = $bodyMessage !== '' ? $bodyMessage : ('Gateway respondeu com HTTP ' . $response['status'] . '.');
+        throw new RuntimeException($fallback);
+    }
+
+    return $response['body'] ?? [];
+}
+
+function wa_gateway_health(): ?array
+{
+    static $cached = false;
+    static $data = null;
+
+    if ($cached) {
+        return $data;
+    }
+
+    $cached = true;
+
+    if (!wa_gateway_is_enabled()) {
+        $data = null;
+        return $data;
+    }
+
+    try {
+        $data = wa_gateway_request('GET', '/health', null, 4);
+    } catch (Throwable $e) {
+        $data = [
+            'ok' => false,
+            'error' => $e->getMessage(),
+        ];
+    }
+
+    return $data;
+}
+
+function wa_gateway_sessions(): array
+{
+    static $cached = false;
+    static $items = [];
+
+    if ($cached) {
+        return $items;
+    }
+
+    $cached = true;
+
+    if (!wa_gateway_is_enabled()) {
+        $items = [];
+        return $items;
+    }
+
+    try {
+        $response = wa_gateway_request('GET', '/api/sessions', null, 6);
+        $items = isset($response['items']) && is_array($response['items']) ? $response['items'] : [];
+    } catch (Throwable $e) {
+        $items = [];
+    }
+
+    return $items;
+}
+
+function wa_gateway_sessions_by_key(): array
+{
+    $indexed = [];
+    foreach (wa_gateway_sessions() as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $sessionKey = (string)($item['session_key'] ?? '');
+        if ($sessionKey === '') {
+            continue;
+        }
+        $indexed[$sessionKey] = $item;
+    }
+
+    return $indexed;
+}
+
 function wa_page(): string
 {
     $page = trim((string)($_GET['page'] ?? 'dashboard'));
@@ -323,7 +467,25 @@ function wa_fetch_inboxes(): array
         ORDER BY i.name ASC
     ";
 
-    return wa_pdo()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    $rows = wa_pdo()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    $gatewaySessions = wa_gateway_sessions_by_key();
+
+    foreach ($rows as &$row) {
+        $sessionKey = (string)($row['session_key'] ?? '');
+        $gateway = $gatewaySessions[$sessionKey] ?? null;
+        if (!is_array($gateway)) {
+            $row['gateway_status'] = null;
+            $row['runtime_meta'] = null;
+            continue;
+        }
+
+        $row['gateway_status'] = (string)($gateway['status'] ?? '');
+        $row['runtime_meta'] = is_array($gateway['runtime_meta'] ?? null) ? $gateway['runtime_meta'] : null;
+        $row['credential_updated_at'] = $gateway['credential_updated_at'] ?? null;
+    }
+    unset($row);
+
+    return $rows;
 }
 
 function wa_fetch_quick_replies(): array
@@ -385,6 +547,7 @@ function wa_fetch_dashboard_counts(): array
         'departments' => 0,
         'users' => 0,
         'inboxes' => 0,
+        'inboxes_connected' => 0,
         'conversations_open' => 0,
         'conversations_waiting' => 0,
         'quick_replies' => 0,
@@ -397,6 +560,7 @@ function wa_fetch_dashboard_counts(): array
     $counts['departments'] = (int)wa_pdo()->query('SELECT COUNT(*) FROM wa_departments WHERE is_active = TRUE')->fetchColumn();
     $counts['users'] = (int)wa_pdo()->query('SELECT COUNT(*) FROM wa_users WHERE is_active = TRUE')->fetchColumn();
     $counts['inboxes'] = (int)wa_pdo()->query('SELECT COUNT(*) FROM wa_inboxes')->fetchColumn();
+    $counts['inboxes_connected'] = (int)wa_pdo()->query("SELECT COUNT(*) FROM wa_inboxes WHERE status = 'connected'")->fetchColumn();
     $counts['conversations_open'] = (int)wa_pdo()->query("SELECT COUNT(*) FROM wa_conversations WHERE status = 'open'")->fetchColumn();
     $counts['conversations_waiting'] = (int)wa_pdo()->query("SELECT COUNT(*) FROM wa_conversations WHERE status = 'waiting'")->fetchColumn();
     $counts['quick_replies'] = (int)wa_pdo()->query('SELECT COUNT(*) FROM wa_quick_replies WHERE is_active = TRUE')->fetchColumn();
@@ -580,7 +744,7 @@ function wa_save_inbox(array $input): void
     $name = trim((string)($input['name'] ?? ''));
     $sessionKey = trim((string)($input['session_key'] ?? ''));
     $phoneNumber = trim((string)($input['phone_number'] ?? ''));
-    $provider = trim((string)($input['provider'] ?? 'baileys'));
+    $provider = trim((string)($input['provider'] ?? 'mock'));
     $connectionMode = trim((string)($input['connection_mode'] ?? 'qr'));
     $departmentId = (int)($input['department_id'] ?? 0);
     $notes = trim((string)($input['notes'] ?? ''));
@@ -593,7 +757,7 @@ function wa_save_inbox(array $input): void
         ':name' => $name,
         ':session_key' => $sessionKey,
         ':phone_number' => $phoneNumber !== '' ? $phoneNumber : null,
-        ':provider' => $provider !== '' ? $provider : 'baileys',
+        ':provider' => $provider !== '' ? $provider : 'mock',
         ':connection_mode' => $connectionMode !== '' ? $connectionMode : 'qr',
         ':department_id' => $departmentId > 0 ? $departmentId : null,
         ':notes' => $notes !== '' ? $notes : null,
@@ -666,4 +830,14 @@ function wa_save_quick_reply(array $input): void
          VALUES (:title, :shortcut, :body, :department_id, TRUE)'
     );
     $stmt->execute($params);
+}
+
+function wa_connect_inbox_session(string $sessionKey): array
+{
+    return wa_gateway_request('POST', '/api/sessions/' . rawurlencode($sessionKey) . '/connect');
+}
+
+function wa_disconnect_inbox_session(string $sessionKey): array
+{
+    return wa_gateway_request('POST', '/api/sessions/' . rawurlencode($sessionKey) . '/disconnect');
 }
