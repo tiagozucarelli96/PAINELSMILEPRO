@@ -22,7 +22,8 @@ O servico le `DATABASE_URL` e `DB_SCHEMA` do `.env` na raiz do repositorio.
 
 ## Variaveis opcionais
 
-- `WHATSAPP_GATEWAY_PORT` default `8787`
+- `PORT` porta injetada pela plataforma quando houver proxy publico
+- `WHATSAPP_GATEWAY_PORT` fallback local default `8787`
 - `WHATSAPP_GATEWAY_HOST` default `0.0.0.0`
 - `WHATSAPP_GATEWAY_DEFAULT_PROVIDER` default `mock`
 - `WHATSAPP_GATEWAY_SOCKET_CORS_ORIGIN` default `*`

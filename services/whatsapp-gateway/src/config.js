@@ -23,7 +23,7 @@ export const config = {
   serviceRoot,
   repoRoot,
   host: process.env.WHATSAPP_GATEWAY_HOST || "0.0.0.0",
-  port: Number.parseInt(process.env.WHATSAPP_GATEWAY_PORT || "8787", 10),
+  port: Number.parseInt(process.env.PORT || process.env.WHATSAPP_GATEWAY_PORT || "8787", 10),
   databaseUrl: process.env.DATABASE_URL || "",
   dbSchema: process.env.DB_SCHEMA || "public",
   defaultProvider: process.env.WHATSAPP_GATEWAY_DEFAULT_PROVIDER || "mock",
