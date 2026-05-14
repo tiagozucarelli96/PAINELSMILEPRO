@@ -3,12 +3,71 @@
 // - Injeta conexao.php antes de servir qualquer .php
 // - Deixa arquivos estáticos irem direto
 
+require_once __DIR__ . '/env_bootstrap.php';
+
+function painel_router_normalize_host(?string $host): string
+{
+    $host = strtolower(trim((string)$host));
+    if ($host === '') {
+        return '';
+    }
+
+    return explode(':', $host)[0];
+}
+
+function painel_router_output_file(string $file): void
+{
+    $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+    $contentTypes = [
+        'css' => 'text/css; charset=UTF-8',
+        'js' => 'application/javascript; charset=UTF-8',
+        'json' => 'application/json; charset=UTF-8',
+        'svg' => 'image/svg+xml',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+        'ico' => 'image/x-icon',
+    ];
+
+    if (isset($contentTypes[$extension])) {
+        header('Content-Type: ' . $contentTypes[$extension]);
+    }
+
+    header('Content-Length: ' . (string)filesize($file));
+    readfile($file);
+    exit;
+}
+
 // ============================================
 // CRÍTICO: Verificar webhooks ANTES de qualquer coisa
 // ============================================
 $request_uri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($request_uri, PHP_URL_PATH) ?: '/';
 $sessionBootstrap = __DIR__ . '/session_bootstrap.php';
+$requestHost = painel_router_normalize_host($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '');
+$smileChatHost = painel_router_normalize_host(painel_env('SMILE_CHAT_HOST', 'smilechat.smileeventos.com.br'));
+$isSmileChatHost = $smileChatHost !== '' && $requestHost === $smileChatHost;
+$smileChatRoot = realpath(__DIR__ . '/atendimento');
+$smileChatIndex = $smileChatRoot ? realpath($smileChatRoot . '/index.php') : false;
+
+if ($isSmileChatHost && $smileChatRoot) {
+    if ($path === '/' || $path === '/index.php') {
+        require $smileChatIndex;
+        exit;
+    }
+
+    if (str_starts_with($path, '/assets/')) {
+        $assetFile = realpath($smileChatRoot . $path);
+        if ($assetFile && is_file($assetFile) && str_starts_with($assetFile, $smileChatRoot . DIRECTORY_SEPARATOR)) {
+            painel_router_output_file($assetFile);
+        }
+    }
+}
 
 // Se for callback OAuth do Google, servir DIRETAMENTE sem passar por nada
 if ($path === '/google/callback' || strpos($path, '/google/callback') !== false) {

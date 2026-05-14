@@ -70,8 +70,27 @@ function wa_cookie_path(): string
     return $basePath === '/' ? '/' : rtrim($basePath, '/');
 }
 
+function wa_request_host(): string
+{
+    $host = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '')));
+    if ($host === '') {
+        return '';
+    }
+
+    return explode(':', $host)[0];
+}
+
+function wa_chat_host(): string
+{
+    return strtolower(trim((string)(painel_env('SMILE_CHAT_HOST', 'smilechat.smileeventos.com.br') ?? 'smilechat.smileeventos.com.br')));
+}
+
 function wa_base_path(): string
 {
+    if (wa_chat_host() !== '' && wa_request_host() === wa_chat_host()) {
+        return '/';
+    }
+
     $configured = trim((string)(painel_env('SMILE_CHAT_BASE_PATH', WA_DEFAULT_BASE_PATH) ?? WA_DEFAULT_BASE_PATH));
     if ($configured === '' || $configured === '/') {
         return '/';
