@@ -4038,10 +4038,6 @@ function openTinyReuniaoCropModalWithImageSource(source, options) {
     tinyReuniaoCropTargetImageName = String(opts.imageName || '');
     loadTinyReuniaoCropperLibrary()
         .then(function() {
-            if (tinyReuniaoCropObjectUrl && String(opts.releaseObjectUrl || '') === '1') {
-                URL.revokeObjectURL(tinyReuniaoCropObjectUrl);
-                tinyReuniaoCropObjectUrl = '';
-            }
             var modal = document.getElementById('tinyReuniaoCropModal');
             var image = document.getElementById('tinyReuniaoCropImage');
             var preview = document.getElementById('tinyReuniaoCropPreview');
@@ -4050,6 +4046,18 @@ function openTinyReuniaoCropModalWithImageSource(source, options) {
             preview.innerHTML = '';
             button.disabled = false;
             button.textContent = 'Aplicar recorte e inserir';
+            image.onerror = function() {
+                if (tinyReuniaoCropper) {
+                    tinyReuniaoCropper.destroy();
+                    tinyReuniaoCropper = null;
+                }
+                if (preview) {
+                    preview.innerHTML = '';
+                }
+                button.disabled = false;
+                button.textContent = 'Aplicar recorte e inserir';
+                alert('Não foi possível carregar a imagem selecionada.');
+            };
             image.onload = function() {
                 if (tinyReuniaoCropper) {
                     tinyReuniaoCropper.destroy();
@@ -4167,6 +4175,8 @@ function closeTinyReuniaoCropModal() {
         tinyReuniaoCropObjectUrl = '';
     }
     if (image) {
+        image.onload = null;
+        image.onerror = null;
         image.removeAttribute('src');
     }
     if (preview) {
