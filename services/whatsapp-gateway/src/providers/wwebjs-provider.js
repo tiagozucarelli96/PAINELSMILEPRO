@@ -20,7 +20,16 @@ function buildChatId(phoneE164) {
 }
 
 function isSupportedDirectChatId(chatId) {
-  return typeof chatId === "string" && chatId.endsWith("@c.us");
+  if (typeof chatId !== "string" || !chatId.endsWith("@c.us")) {
+    return false;
+  }
+
+  const digits = extractDigitsFromChatId(chatId);
+  if (!digits || /^0+$/.test(digits)) {
+    return false;
+  }
+
+  return digits.length >= 8 && digits.length <= 15;
 }
 
 function extractDigitsFromChatId(chatId) {
@@ -86,6 +95,11 @@ function shouldIgnoreMessage(message) {
   return extractMessagePreview(message) === "";
 }
 
+function isProtocolTimeoutError(error) {
+  const message = String(error?.message || "");
+  return error?.name === "ProtocolError" && message.includes("Runtime.callFunctionOn timed out");
+}
+
 export class WhatsAppWebJsProvider {
   constructor({ sessionKey, callbacks, logger }) {
     this.sessionKey = sessionKey;
@@ -96,6 +110,9 @@ export class WhatsAppWebJsProvider {
     this.initializing = null;
     this.stopRequested = false;
     this.syncTimer = null;
+    this.processedInboundIds = new Map();
+    this.historySyncAttempts = 0;
+    this.historySyncCompleted = false;
   }
 
   async connect({ phoneNumber } = {}) {
@@ -222,36 +239,17 @@ export class WhatsAppWebJsProvider {
         phoneNumber: digits ? `+${digits}` : phoneNumber,
       });
 
+      this.historySyncAttempts = 0;
+      this.historySyncCompleted = false;
       this.scheduleRecentChatSync(client);
     });
 
     client.on("message", async (message) => {
-      if (client !== this.client || message.fromMe) {
-        return;
-      }
+      await this.handleInboundMessage(client, message);
+    });
 
-      if (shouldIgnoreMessage(message)) {
-        return;
-      }
-
-      const digits = extractDigitsFromChatId(message.from);
-      if (!digits) {
-        return;
-      }
-
-      await this.callbacks.onInboundMessage({
-        sessionKey: this.sessionKey,
-        phoneE164: `+${digits}`,
-        contactName: message._data?.notifyName || message._data?.pushname || `+${digits}`,
-        body: extractMessagePreview(message),
-        messageType: detectMessageType(message),
-        externalMessageId: message.id?._serialized || null,
-        rawPayload: {
-          from: message.from,
-          type: message.type,
-          timestamp: message.timestamp,
-        },
-      });
+    client.on("message_create", async (message) => {
+      await this.handleInboundMessage(client, message);
     });
 
     client.on("auth_failure", async (message) => {
@@ -361,6 +359,10 @@ export class WhatsAppWebJsProvider {
   }
 
   scheduleRecentChatSync(client) {
+    this.scheduleRecentChatSyncAfter(client, 15000);
+  }
+
+  scheduleRecentChatSyncAfter(client, delayMs) {
     if (this.syncTimer) {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
@@ -369,18 +371,93 @@ export class WhatsAppWebJsProvider {
     this.syncTimer = setTimeout(() => {
       this.syncTimer = null;
 
-      if (client !== this.client || !this.connected || this.stopRequested) {
+      if (client !== this.client || !this.connected || this.stopRequested || this.historySyncCompleted) {
         return;
       }
 
+      this.historySyncAttempts += 1;
+
       this.syncRecentChats(client)
         .then(() => {
+          this.historySyncCompleted = true;
           this.logger.info({ sessionKey: this.sessionKey }, "Sincronizacao inicial de chats concluida");
         })
         .catch((error) => {
-          this.logger.warn({ err: error, sessionKey: this.sessionKey }, "Falha na sincronizacao inicial de chats");
+          if (isProtocolTimeoutError(error)) {
+            this.logger.info(
+              { err: error, sessionKey: this.sessionKey, attempt: this.historySyncAttempts },
+              "Sincronizacao inicial ainda nao terminou no WhatsApp Web; nova tentativa sera feita em background"
+            );
+            this.scheduleRecentChatSyncAfter(client, 60000);
+            return;
+          }
+
+          this.logger.warn(
+            { err: error, sessionKey: this.sessionKey, attempt: this.historySyncAttempts },
+            "Falha na sincronizacao inicial de chats"
+          );
+          if (this.historySyncAttempts < 10) {
+            this.scheduleRecentChatSyncAfter(client, 90000);
+          }
         });
-    }, 15000);
+    }, delayMs);
+  }
+
+  async handleInboundMessage(client, message) {
+    if (client !== this.client || message.fromMe) {
+      return;
+    }
+
+    if (shouldIgnoreMessage(message)) {
+      return;
+    }
+
+    const externalMessageId = message.id?._serialized || null;
+    if (externalMessageId && this.wasInboundProcessed(externalMessageId)) {
+      return;
+    }
+
+    const digits = extractDigitsFromChatId(message.from);
+    if (!digits || /^0+$/.test(digits)) {
+      return;
+    }
+
+    if (externalMessageId) {
+      this.markInboundProcessed(externalMessageId);
+    }
+
+    await this.callbacks.onInboundMessage({
+      sessionKey: this.sessionKey,
+      phoneE164: `+${digits}`,
+      contactName: message._data?.notifyName || message._data?.pushname || `+${digits}`,
+      body: extractMessagePreview(message),
+      messageType: detectMessageType(message),
+      externalMessageId,
+      rawPayload: {
+        from: message.from,
+        type: message.type,
+        timestamp: message.timestamp,
+      },
+    });
+  }
+
+  wasInboundProcessed(externalMessageId) {
+    return this.processedInboundIds.has(externalMessageId);
+  }
+
+  markInboundProcessed(externalMessageId) {
+    this.processedInboundIds.set(externalMessageId, Date.now());
+
+    if (this.processedInboundIds.size <= 500) {
+      return;
+    }
+
+    const threshold = Date.now() - 1000 * 60 * 30;
+    for (const [messageId, processedAt] of this.processedInboundIds.entries()) {
+      if (processedAt < threshold) {
+        this.processedInboundIds.delete(messageId);
+      }
+    }
   }
 
   async teardownClient(emitStatus = true) {
@@ -391,6 +468,10 @@ export class WhatsAppWebJsProvider {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
+
+    this.processedInboundIds.clear();
+    this.historySyncAttempts = 0;
+    this.historySyncCompleted = false;
 
     if (!client) {
       return;

@@ -572,6 +572,7 @@ export async function purgeSessionNoiseConversations(sessionKey) {
               AND (
                 gd.payload->>'type' = 'notification_template'
                 OR gd.payload->>'from' LIKE '%@lid'
+                OR gd.payload->>'from' = '0@c.us'
               )
             )
             OR ct.phone_e164 IN (
@@ -582,8 +583,10 @@ export async function purgeSessionNoiseConversations(sessionKey) {
                 AND (
                   payload->>'type' = 'notification_template'
                   OR payload->>'from' LIKE '%@lid'
+                  OR payload->>'from' = '0@c.us'
                 )
             )
+            OR ct.phone_e164 = '+0'
           )
       `,
       [inboxId, sessionKey]
@@ -603,6 +606,7 @@ export async function purgeSessionNoiseConversations(sessionKey) {
           AND (
             payload->>'type' = 'notification_template'
             OR payload->>'from' LIKE '%@lid'
+            OR payload->>'from' = '0@c.us'
           )
       `,
       [sessionKey]
