@@ -551,6 +551,78 @@ function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $event
     }
 }
 
+function client_app_api_find_meeting_via_local_event_and_me_cpf(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
+{
+    try {
+        if (!client_app_api_me_available()) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT
+                r.id AS meeting_id,
+                r.me_event_id,
+                r.me_event_snapshot,
+                le.idlocalevento,
+                le.localevento,
+                COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
+                    le.data_evento
+                ) AS event_date
+            FROM eventos_reunioes r
+            LEFT JOIN logistica_eventos_espelho le
+                ON le.me_event_id = r.me_event_id
+            WHERE COALESCE(
+                    NULLIF(TRIM(r.me_event_snapshot->>'data'), '')::date,
+                    le.data_evento
+                  ) = :event_date
+              AND (
+                    le.idlocalevento = :location_id
+                    OR EXISTS (
+                        SELECT 1
+                        FROM logistica_me_locais lm
+                        WHERE lm.status_mapeamento = 'MAPEADO'
+                          AND lm.me_local_id = :location_id
+                          AND LOWER(TRIM(lm.me_local_nome)) = LOWER(TRIM(COALESCE(le.localevento, r.me_event_snapshot->>'local', r.me_event_snapshot->>'nomelocal', '')))
+                    )
+                  )
+            ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
+            LIMIT 5
+        ");
+        $stmt->execute([
+            ':event_date' => $eventDate,
+            ':location_id' => $locationId,
+        ]);
+        $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!$candidates) {
+            return null;
+        }
+
+        foreach ($candidates as $candidate) {
+            $meEventId = (int)($candidate['me_event_id'] ?? 0);
+            if ($meEventId <= 0) {
+                continue;
+            }
+
+            $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
+            if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
+                continue;
+            }
+
+            $eventCpf = client_app_api_me_client_cpf($pdo, $eventResult['event']);
+            if ($eventCpf !== '' && $eventCpf === $cpf) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    } catch (Throwable $e) {
+        error_log('client_app_api_find_meeting_via_local_event_and_me_cpf: ' . $e->getMessage());
+        return null;
+    }
+}
+
 function client_app_api_find_meeting(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
 {
     $commercialHasCpf = client_app_api_has_column($pdo, 'comercial_inscricoes', 'me_cliente_cpf');
@@ -626,6 +698,10 @@ function client_app_api_find_meeting(PDO $pdo, string $cpf, string $eventDate, i
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     if (count($rows) !== 1) {
+        $localMeetingMatch = client_app_api_find_meeting_via_local_event_and_me_cpf($pdo, $cpf, $eventDate, $locationId);
+        if ($localMeetingMatch) {
+            return $localMeetingMatch;
+        }
         return client_app_api_find_meeting_via_me($pdo, $cpf, $eventDate, $locationId);
     }
 
