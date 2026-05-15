@@ -562,13 +562,28 @@ export async function purgeSessionNoiseConversations(sessionKey) {
       `
         SELECT DISTINCT c.id, c.contact_id
         FROM wa_conversations c
-        JOIN wa_messages m ON m.conversation_id = c.id
-        JOIN wa_gateway_deliveries gd ON gd.external_message_id = m.external_message_id
+        JOIN wa_contacts ct ON ct.id = c.contact_id
+        LEFT JOIN wa_messages m ON m.conversation_id = c.id
+        LEFT JOIN wa_gateway_deliveries gd ON gd.external_message_id = m.external_message_id
         WHERE c.inbox_id = $1
-          AND gd.session_key = $2
           AND (
-            gd.payload->>'type' = 'notification_template'
-            OR gd.payload->>'from' LIKE '%@lid'
+            (
+              gd.session_key = $2
+              AND (
+                gd.payload->>'type' = 'notification_template'
+                OR gd.payload->>'from' LIKE '%@lid'
+              )
+            )
+            OR ct.phone_e164 IN (
+              SELECT DISTINCT
+                CONCAT('+', REGEXP_REPLACE(SPLIT_PART(payload->>'from', '@', 1), '\D', '', 'g'))
+              FROM wa_gateway_deliveries
+              WHERE session_key = $2
+                AND (
+                  payload->>'type' = 'notification_template'
+                  OR payload->>'from' LIKE '%@lid'
+                )
+            )
           )
       `,
       [inboxId, sessionKey]
@@ -581,6 +596,17 @@ export async function purgeSessionNoiseConversations(sessionKey) {
     const conversationIds = conversationRows.rows.map((row) => row.id);
     const contactIds = conversationRows.rows.map((row) => row.contact_id);
 
+    await client.query(
+      `
+        DELETE FROM wa_gateway_deliveries
+        WHERE session_key = $1
+          AND (
+            payload->>'type' = 'notification_template'
+            OR payload->>'from' LIKE '%@lid'
+          )
+      `,
+      [sessionKey]
+    );
     await client.query(`DELETE FROM wa_messages WHERE conversation_id = ANY($1::bigint[])`, [conversationIds]);
     await client.query(`DELETE FROM wa_conversations WHERE id = ANY($1::bigint[])`, [conversationIds]);
     await client.query(
