@@ -455,11 +455,12 @@ export async function syncChatSnapshot({
           SET department_id = COALESCE($2, department_id),
               status = CASE
                 WHEN COALESCE(assigned_user_id, 0) = 0 AND $3 > 0 THEN 'waiting'
+                WHEN COALESCE(assigned_user_id, 0) = 0 AND $3 = 0 AND status = 'waiting' THEN 'pending'
                 WHEN status = 'closed' AND $3 > 0 THEN 'waiting'
                 ELSE status
               END,
               last_message_preview = $4,
-              unread_count = GREATEST($3, unread_count),
+              unread_count = $3,
               last_message_at = $5,
               updated_at = NOW()
           WHERE id = $1

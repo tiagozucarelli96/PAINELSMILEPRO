@@ -28,5 +28,20 @@ Por padrão, a interface consome:
 ## Próximos passos
 
 - integrar as telas reais de `Reunião Final`, `Convidados` e `Arquivos`
-- adicionar `Capacitor`
-- gerar `android/` e `ios/`
+- gerar `android/` e `ios/` com `npx cap add android` e `npx cap add ios`
+- sincronizar assets com `npm run cap:sync`
+- abrir o projeto nativo com `npm run cap:open:ios` ou `npm run cap:open:android`
+
+## Capacitor
+
+Configuração atual:
+
+- app id: `com.smileeventos.cliente`
+- nome do app: `Smile Eventos`
+- web dir: `dist`
+
+Status da base nativa:
+
+- `android/` gerado e sincronizado
+- `ios/` gerado e com assets copiados
+- para concluir a preparação iOS nesta máquina ainda falta `Xcode` completo e `CocoaPods`

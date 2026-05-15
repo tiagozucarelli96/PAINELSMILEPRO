@@ -4,5 +4,9 @@
 !.env.example
 /vendor/
 node_modules/
+mobile-app/node_modules/
+mobile-app/dist/
+mobile-app/android/app/build/
+mobile-app/ios/App/build/
 composer.lock
 composer.phar

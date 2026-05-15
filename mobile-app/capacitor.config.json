@@ -1,0 +1,19 @@
+{
+  "appId": "com.smileeventos.cliente",
+  "appName": "Smile Eventos",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1000,
+      "backgroundColor": "#f4efe7",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#f4efe7"
+    }
+  }
+}

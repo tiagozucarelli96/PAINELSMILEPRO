@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Smile Eventos</string>
+    <string name="title_activity_main">Smile Eventos</string>
+    <string name="package_name">com.smileeventos.cliente</string>
+    <string name="custom_url_scheme">com.smileeventos.cliente</string>
+</resources>

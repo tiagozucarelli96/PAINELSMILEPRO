@@ -838,6 +838,7 @@ function wa_fetch_conversations(): array
             c.unread_count,
             c.last_message_at,
             ct.full_name AS contact_name,
+            ct.phone_e164,
             d.name AS department_name,
             u.display_name AS assigned_name,
             i.name AS inbox_name

@@ -289,7 +289,7 @@ $gatewayHealth = wa_gateway_health();
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= wa_url('assets/app.css') ?>">
 </head>
-<body>
+<body class="<?= $page === 'conversations' ? 'mode-conversations' : '' ?>">
 <div class="app-shell">
     <aside class="sidebar">
         <div class="brand-block">
@@ -728,13 +728,13 @@ $gatewayHealth = wa_gateway_health();
                                 $conversationBucket = ($conversation['status'] ?? '') === 'waiting' ? 'waiting' : 'active';
                                 ?>
                                 <a class="conversation-item <?= $isSelected ? 'active' : '' ?>" href="<?= wa_url('index.php?page=conversations&bucket=' . $conversationBucket . '&conversation_id=' . (int)$conversation['id']) ?>">
-                                    <div class="conversation-avatar"><?= wa_e(mb_substr((string)$conversation['contact_name'], 0, 1)) ?></div>
+                                    <div class="conversation-avatar"><?= wa_e(mb_strtoupper(mb_substr(trim((string)$conversation['contact_name']), 0, 1))) ?></div>
                                     <div class="conversation-meta">
                                         <div class="conversation-row">
                                             <strong><?= wa_e($conversation['contact_name']) ?></strong>
                                             <span class="small"><?= wa_e(date('H:i', strtotime((string)($conversation['last_message_at'] ?? 'now')))) ?></span>
                                         </div>
-                                        <div class="small"><?= wa_e($conversation['department_name'] ?: 'Sem departamento') ?></div>
+                                        <div class="small"><?= wa_e($conversation['phone_e164'] ?: 'Sem telefone') ?> • <?= wa_e($conversation['department_name'] ?: 'Sem departamento') ?></div>
                                         <div class="conversation-preview"><?= wa_e($conversation['last_message_preview'] ?: 'Sem mensagens ainda.') ?></div>
                                     </div>
                                     <?php if ((int)$conversation['unread_count'] > 0): ?>
@@ -754,7 +754,7 @@ $gatewayHealth = wa_gateway_health();
                         </div>
                     <?php else: ?>
                         <header class="conversation-header">
-                            <div>
+                            <div class="conversation-headline">
                                 <h3 class="section-title"><?= wa_e($selectedConversation['contact_name']) ?></h3>
                                 <p class="small">
                                     <?= wa_e($selectedConversation['phone_e164']) ?> •
@@ -773,38 +773,42 @@ $gatewayHealth = wa_gateway_health();
                                 <?php endif; ?>
 
                                 <?php if (($selectedConversation['status'] ?? '') !== 'closed'): ?>
-                                    <form method="post" class="inline-form">
-                                        <input type="hidden" name="action" value="transfer_conversation">
-                                        <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
-                                        <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
-                                        <select class="select compact-select" name="target_user_id" required>
-                                            <option value="">Transferir para</option>
-                                            <?php foreach ($transferTargets as $targetUser): ?>
-                                                <option value="<?= (int)$targetUser['id'] ?>"><?= wa_e($targetUser['display_name']) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <select class="select compact-select" name="target_department_id">
-                                            <option value="0">Mesmo departamento</option>
-                                            <?php foreach ($departments as $department): ?>
-                                                <option value="<?= (int)$department['id'] ?>"><?= wa_e($department['name']) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <button class="button-secondary" type="submit">Transferir</button>
-                                    </form>
+                                    <div class="action-stack">
+                                        <form method="post" class="inline-form inline-form-transfer">
+                                            <input type="hidden" name="action" value="transfer_conversation">
+                                            <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                                            <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
+                                            <select class="select compact-select" name="target_user_id" required>
+                                                <option value="">Transferir para</option>
+                                                <?php foreach ($transferTargets as $targetUser): ?>
+                                                    <option value="<?= (int)$targetUser['id'] ?>"><?= wa_e($targetUser['display_name']) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <select class="select compact-select" name="target_department_id">
+                                                <option value="0">Mesmo departamento</option>
+                                                <?php foreach ($departments as $department): ?>
+                                                    <option value="<?= (int)$department['id'] ?>"><?= wa_e($department['name']) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button class="button-secondary" type="submit">Transferir</button>
+                                        </form>
 
-                                    <form method="post">
-                                        <input type="hidden" name="action" value="finalize_conversation">
-                                        <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
-                                        <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
-                                        <button class="button-secondary" type="submit">Finalizar conversa</button>
-                                    </form>
+                                        <div class="action-row">
+                                            <form method="post">
+                                                <input type="hidden" name="action" value="finalize_conversation">
+                                                <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                                                <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
+                                                <button class="button-secondary" type="submit">Finalizar conversa</button>
+                                            </form>
 
-                                    <form method="post">
-                                        <input type="hidden" name="action" value="end_conversation">
-                                        <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
-                                        <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
-                                        <button class="button-danger" type="submit">Encerrar atendimento</button>
-                                    </form>
+                                            <form method="post">
+                                                <input type="hidden" name="action" value="end_conversation">
+                                                <input type="hidden" name="csrf_token" value="<?= wa_e(wa_csrf_token()) ?>">
+                                                <input type="hidden" name="conversation_id" value="<?= (int)$selectedConversation['id'] ?>">
+                                                <button class="button-danger" type="submit">Encerrar atendimento</button>
+                                            </form>
+                                        </div>
+                                    </div>
                                 <?php else: ?>
                                     <form method="post">
                                         <input type="hidden" name="action" value="reopen_conversation">
