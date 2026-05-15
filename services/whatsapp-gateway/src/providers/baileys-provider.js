@@ -292,7 +292,19 @@ export class BaileysProvider {
   }
 
   bindEvents(socket) {
+    socket.ws?.on?.("error", (error) => {
+      if (socket !== this.socket) {
+        return;
+      }
+
+      this.logger.warn({ err: error, sessionKey: this.sessionKey }, "WebSocket do Baileys reportou erro");
+    });
+
     socket.ev.on("creds.update", async (creds) => {
+      if (socket !== this.socket) {
+        return;
+      }
+
       try {
         await this.authStore?.updateCreds(creds);
       } catch (error) {
@@ -301,6 +313,10 @@ export class BaileysProvider {
     });
 
     socket.ev.on("connection.update", async (update) => {
+      if (socket !== this.socket) {
+        return;
+      }
+
       try {
         if (update.qr) {
           await this.callbacks.onQr(update.qr);
@@ -356,6 +372,10 @@ export class BaileysProvider {
     });
 
     socket.ev.on("messages.upsert", async (event) => {
+      if (socket !== this.socket) {
+        return;
+      }
+
       if (!event?.messages?.length) {
         return;
       }
@@ -427,7 +447,9 @@ export class BaileysProvider {
     this.socket = null;
 
     try {
-      socket.end(new Error("Smile Chat session reset"));
+      if (socket.ws?.isConnecting || socket.ws?.isOpen) {
+        await socket.ws.close();
+      }
     } catch (error) {
       this.logger.warn({ err: error, sessionKey: this.sessionKey }, "Falha ao encerrar socket Baileys");
     }
