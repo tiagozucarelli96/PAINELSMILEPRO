@@ -75,6 +75,20 @@ if ($path === '/api' || str_starts_with($path, '/api/')) {
     exit;
 }
 
+// Primeira carga anônima do painel vai direto para o login para evitar o bootstrap completo do index.
+$sessionCookieName = painel_env('SESSION_COOKIE_NAME', 'PAINELSMILESESSID') ?? 'PAINELSMILESESSID';
+$hasSessionCookie = isset($_COOKIE[$sessionCookieName]) && trim((string)$_COOKIE[$sessionCookieName]) !== '';
+$isAnonymousLanding = ($path === '/' || $path === '/index.php')
+    && strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET'
+    && !$hasSessionCookie
+    && empty($_GET)
+    && empty($_POST);
+
+if ($isAnonymousLanding) {
+    require __DIR__ . '/login.php';
+    exit;
+}
+
 // Se for callback OAuth do Google, servir DIRETAMENTE sem passar por nada
 if ($path === '/google/callback' || strpos($path, '/google/callback') !== false) {
     $callback_file = realpath(__DIR__ . '/google_callback.php');

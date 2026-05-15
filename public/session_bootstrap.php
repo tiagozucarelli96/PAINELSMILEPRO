@@ -16,11 +16,17 @@ function painel_is_public_auth_request(): bool
     }
 
     $publicAuthPaths = [
+        '/',
+        '/index.php',
         '/login.php',
         '/contabilidade_login.php',
         '/portal_dj_login.php',
         '/portal_decoracao_login.php',
     ];
+
+    if (($path === '/' || $path === '/index.php') && isset($_GET['page']) && trim((string)$_GET['page']) !== '') {
+        return false;
+    }
 
     return in_array($path, $publicAuthPaths, true);
 }

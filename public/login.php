@@ -29,8 +29,8 @@ if (!empty($db_error ?? '')) {
 }
 
 // Opcional: listar usuários para dropdown.
-// Mantemos ativado por padrão para restaurar o fluxo de seleção de usuário.
-$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', true);
+// Em produção, a consulta extra degrada bastante o TTFB do login.
+$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', false);
 $usuarios_login = [];
 if ($showLoginDropdown && empty($erro) && isset($pdo) && $pdo) {
     try {
