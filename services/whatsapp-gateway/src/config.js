@@ -26,8 +26,10 @@ export const config = {
   port: Number.parseInt(process.env.PORT || process.env.WHATSAPP_GATEWAY_PORT || "8787", 10),
   databaseUrl: process.env.DATABASE_URL || "",
   dbSchema: process.env.DB_SCHEMA || "public",
-  defaultProvider: process.env.WHATSAPP_GATEWAY_DEFAULT_PROVIDER || "baileys",
+  defaultProvider: process.env.WHATSAPP_GATEWAY_DEFAULT_PROVIDER || "whatsapp-web.js",
   socketCorsOrigin: process.env.WHATSAPP_GATEWAY_SOCKET_CORS_ORIGIN || "*",
+  wwebjsAuthDir: process.env.WWEBJS_AUTH_DIR || path.join(serviceRoot, ".wwebjs_auth"),
+  wwebjsCacheDir: process.env.WWEBJS_CACHE_DIR || path.join(serviceRoot, ".wwebjs_cache"),
 };
 
 if (!config.databaseUrl) {

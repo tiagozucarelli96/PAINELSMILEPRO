@@ -10,13 +10,6 @@ if (client_app_api_method() === 'OPTIONS') {
     exit;
 }
 
-try {
-    $pdo = client_app_api_pdo();
-    client_app_api_ensure_schema($pdo);
-} catch (Throwable $e) {
-    client_app_api_error(500, $e->getMessage());
-}
-
 $path = rtrim(client_app_api_request_path(), '/');
 if ($path === '') {
     $path = '/';
@@ -31,8 +24,8 @@ try {
             'date' => gmdate('c'),
         ]);
     }
-
     if ($method === 'GET' && $path === '/v1/client/locations') {
+        $pdo = client_app_api_pdo();
         client_app_api_json(200, [
             'ok' => true,
             'items' => client_app_api_locations($pdo),
@@ -40,12 +33,14 @@ try {
     }
 
     if ($method === 'POST' && $path === '/v1/auth/login') {
+        $pdo = client_app_api_pdo();
+        client_app_api_ensure_schema($pdo);
         $body = client_app_api_request_body();
         $cpf = client_app_api_normalize_cpf((string)($body['cpf'] ?? ''));
         $eventDate = trim((string)($body['event_date'] ?? ''));
         $locationId = (int)($body['event_location_id'] ?? 0);
 
-        if ($cpf === '' || strlen($cpf) !== 11 || !vendas_validar_cpf($cpf)) {
+        if ($cpf === '' || strlen($cpf) !== 11 || !client_app_api_validate_cpf($cpf)) {
             client_app_api_error(422, 'CPF inválido.');
         }
         if ($eventDate === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eventDate)) {
@@ -91,6 +86,7 @@ try {
     }
 
     if ($method === 'GET' && $path === '/v1/auth/me') {
+        $pdo = client_app_api_pdo();
         $session = client_app_api_require_session($pdo);
         client_app_api_json(200, [
             'ok' => true,
@@ -104,6 +100,7 @@ try {
     }
 
     if ($method === 'POST' && $path === '/v1/auth/logout') {
+        $pdo = client_app_api_pdo();
         $session = client_app_api_require_session($pdo);
         $stmt = $pdo->prepare("UPDATE cliente_app_sessoes SET revoked_at = NOW() WHERE id = :id");
         $stmt->execute([':id' => (int)$session['id']]);
@@ -114,6 +111,7 @@ try {
     }
 
     if ($method === 'GET' && $path === '/v1/client/event/summary') {
+        $pdo = client_app_api_pdo();
         $session = client_app_api_require_session($pdo);
         client_app_api_json(200, [
             'ok' => true,

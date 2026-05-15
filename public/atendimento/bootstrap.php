@@ -1177,14 +1177,14 @@ function wa_save_inbox(array $input): void
     $id = (int)($input['id'] ?? 0);
     $name = trim((string)($input['name'] ?? ''));
     $phoneNumber = trim((string)($input['phone_number'] ?? ''));
-    $provider = trim((string)($input['provider'] ?? 'baileys'));
+    $provider = trim((string)($input['provider'] ?? 'whatsapp-web.js'));
     $connectionMode = trim((string)($input['connection_mode'] ?? 'qr'));
     $departmentId = (int)($input['department_id'] ?? 0);
     $notes = trim((string)($input['notes'] ?? ''));
     $existingInbox = wa_fetch_inbox_row($id);
 
-    if (!in_array($provider, ['baileys', 'mock'], true)) {
-        $provider = 'baileys';
+    if (!in_array($provider, ['whatsapp-web.js', 'baileys', 'mock'], true)) {
+        $provider = 'whatsapp-web.js';
     }
 
     if (!in_array($connectionMode, ['qr', 'pairing_code'], true)) {

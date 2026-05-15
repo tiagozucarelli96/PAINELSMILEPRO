@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 function client_app_api_pdo(): PDO
 {
+    if (!isset($GLOBALS['pdo']) || !$GLOBALS['pdo'] instanceof PDO) {
+        require_once dirname(__DIR__) . '/conexao.php';
+    }
     $pdo = $GLOBALS['pdo'] ?? null;
     if (!$pdo instanceof PDO) {
         throw new RuntimeException('Conexão com banco indisponível.');
@@ -92,6 +95,30 @@ function client_app_api_bearer_token(): string
 function client_app_api_normalize_cpf(?string $cpf): string
 {
     return preg_replace('/\D+/', '', (string)$cpf);
+}
+
+function client_app_api_validate_cpf(string $cpf): bool
+{
+    $cpf = client_app_api_normalize_cpf($cpf);
+    if (strlen($cpf) !== 11) {
+        return false;
+    }
+    if (preg_match('/(\d)\1{10}/', $cpf)) {
+        return false;
+    }
+
+    for ($t = 9; $t < 11; $t++) {
+        $sum = 0;
+        for ($c = 0; $c < $t; $c++) {
+            $sum += ((int)$cpf[$c]) * (($t + 1) - $c);
+        }
+        $digit = ((10 * $sum) % 11) % 10;
+        if ((int)$cpf[$t] !== $digit) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function client_app_api_uuid_token(): string
@@ -228,7 +255,7 @@ function client_app_api_record_login_attempt(
         ':data_evento_digitada' => $eventDate,
         ':local_digitado' => $locationId,
         ':meeting_id_encontrado' => $meetingId,
-        ':sucesso' => $success,
+        ':sucesso' => $success ? 'true' : 'false',
         ':motivo' => $reason,
         ':ip' => client_app_api_client_ip(),
         ':user_agent' => client_app_api_user_agent(),
@@ -417,30 +444,306 @@ function client_app_api_load_session(PDO $pdo, string $token): ?array
     return $session;
 }
 
+function client_app_api_fetch_portal(PDO $pdo, int $meetingId): ?array
+{
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM eventos_cliente_portais
+        WHERE meeting_id = :meeting_id
+        LIMIT 1
+    ");
+    $stmt->execute([
+        ':meeting_id' => $meetingId,
+    ]);
+    $portal = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$portal) {
+        return null;
+    }
+
+    $boolColumns = [
+        'is_active',
+        'visivel_reuniao',
+        'editavel_reuniao',
+        'visivel_dj',
+        'editavel_dj',
+        'visivel_convidados',
+        'editavel_convidados',
+        'visivel_arquivos',
+        'editavel_arquivos',
+        'visivel_secao_decoracao',
+        'editavel_secao_decoracao',
+        'visivel_secao_observacoes_gerais',
+        'editavel_secao_observacoes_gerais',
+        'visivel_secao_dj_protocolo',
+        'editavel_secao_dj_protocolo',
+        'visivel_secao_formulario',
+        'editavel_secao_formulario',
+    ];
+    foreach ($boolColumns as $column) {
+        if (array_key_exists($column, $portal) && $portal[$column] !== null) {
+            $portal[$column] = !empty($portal[$column]);
+        }
+    }
+
+    $portal['secoes'] = client_app_api_portal_sections($portal);
+    return $portal;
+}
+
+function client_app_api_portal_sections(?array $portal): array
+{
+    $map = [
+        'decoracao' => [
+            'visivel_col' => 'visivel_secao_decoracao',
+            'editavel_col' => 'editavel_secao_decoracao',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'observacoes_gerais' => [
+            'visivel_col' => 'visivel_secao_observacoes_gerais',
+            'editavel_col' => 'editavel_secao_observacoes_gerais',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'dj_protocolo' => [
+            'visivel_col' => 'visivel_secao_dj_protocolo',
+            'editavel_col' => 'editavel_secao_dj_protocolo',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+        'formulario' => [
+            'visivel_col' => 'visivel_secao_formulario',
+            'editavel_col' => 'editavel_secao_formulario',
+            'fallback_visivel_col' => 'visivel_reuniao',
+            'fallback_editavel_col' => 'editavel_reuniao',
+        ],
+    ];
+
+    $sections = [];
+    foreach ($map as $section => $meta) {
+        $fallbackVisible = is_array($portal) ? !empty($portal[$meta['fallback_visivel_col']]) : false;
+        $fallbackEditable = is_array($portal) ? !empty($portal[$meta['fallback_editavel_col']]) : false;
+        $visible = is_array($portal) && array_key_exists($meta['visivel_col'], $portal) && $portal[$meta['visivel_col']] !== null
+            ? !empty($portal[$meta['visivel_col']])
+            : $fallbackVisible;
+        $editable = is_array($portal) && array_key_exists($meta['editavel_col'], $portal) && $portal[$meta['editavel_col']] !== null
+            ? !empty($portal[$meta['editavel_col']])
+            : $fallbackEditable;
+        if ($editable) {
+            $visible = true;
+        }
+
+        $sections[$section] = [
+            'visivel' => $visible,
+            'editavel' => $editable,
+        ];
+    }
+
+    return $sections;
+}
+
+function client_app_api_guest_summary(PDO $pdo, int $meetingId): array
+{
+    $hasDraftColumn = client_app_api_has_column($pdo, 'eventos_convidados', 'is_draft');
+    $sql = $hasDraftColumn
+        ? "
+            SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin,
+                COALESCE(SUM(CASE WHEN COALESCE(is_draft, FALSE) THEN 1 ELSE 0 END), 0)::int AS rascunho
+            FROM eventos_convidados
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+        "
+        : "
+            SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(CASE WHEN checkin_at IS NOT NULL THEN 1 ELSE 0 END), 0)::int AS checkin,
+                0::int AS rascunho
+            FROM eventos_convidados
+            WHERE meeting_id = :meeting_id
+              AND deleted_at IS NULL
+        ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':meeting_id' => $meetingId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $total = (int)($row['total'] ?? 0);
+    $checkin = (int)($row['checkin'] ?? 0);
+    $rascunho = (int)($row['rascunho'] ?? 0);
+
+    return [
+        'total' => $total,
+        'checkin' => $checkin,
+        'pendentes' => max(0, $total - $checkin),
+        'rascunho' => $rascunho,
+        'publicados' => max(0, $total - $rascunho),
+    ];
+}
+
+function client_app_api_file_summary(PDO $pdo, int $meetingId): array
+{
+    $empty = [
+        'campos_total' => 0,
+        'campos_obrigatorios' => 0,
+        'campos_pendentes' => 0,
+        'arquivos_total' => 0,
+        'arquivos_visiveis_cliente' => 0,
+        'arquivos_cliente' => 0,
+    ];
+
+    $stmtCampos = $pdo->prepare("
+        SELECT
+            COUNT(*)::int AS campos_total,
+            COALESCE(SUM(CASE WHEN obrigatorio_cliente THEN 1 ELSE 0 END), 0)::int AS campos_obrigatorios
+        FROM eventos_arquivos_campos
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+          AND COALESCE(interno_only, FALSE) = FALSE
+          AND COALESCE(chave_sistema, '') = ''
+          AND ativo = TRUE
+    ");
+    $stmtCampos->execute([':meeting_id' => $meetingId]);
+    $campos = $stmtCampos->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    $stmtPendentes = $pdo->prepare("
+        SELECT COUNT(*)::int
+        FROM eventos_arquivos_campos c
+        WHERE c.meeting_id = :meeting_id
+          AND c.deleted_at IS NULL
+          AND COALESCE(c.interno_only, FALSE) = FALSE
+          AND COALESCE(c.chave_sistema, '') = ''
+          AND c.ativo = TRUE
+          AND c.obrigatorio_cliente = TRUE
+          AND NOT EXISTS (
+              SELECT 1
+              FROM eventos_arquivos_itens i
+              WHERE i.campo_id = c.id
+                AND i.deleted_at IS NULL
+          )
+    ");
+    $stmtPendentes->execute([':meeting_id' => $meetingId]);
+
+    $stmtArquivos = $pdo->prepare("
+        SELECT
+            COUNT(*)::int AS arquivos_total,
+            COALESCE(SUM(CASE WHEN visivel_cliente THEN 1 ELSE 0 END), 0)::int AS arquivos_visiveis_cliente,
+            COALESCE(SUM(CASE WHEN uploaded_by_type = 'cliente' THEN 1 ELSE 0 END), 0)::int AS arquivos_cliente
+        FROM eventos_arquivos_itens
+        WHERE meeting_id = :meeting_id
+          AND deleted_at IS NULL
+    ");
+    $stmtArquivos->execute([':meeting_id' => $meetingId]);
+    $arquivos = $stmtArquivos->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    return [
+        'campos_total' => (int)($campos['campos_total'] ?? $empty['campos_total']),
+        'campos_obrigatorios' => (int)($campos['campos_obrigatorios'] ?? $empty['campos_obrigatorios']),
+        'campos_pendentes' => (int)($stmtPendentes->fetchColumn() ?: $empty['campos_pendentes']),
+        'arquivos_total' => (int)($arquivos['arquivos_total'] ?? $empty['arquivos_total']),
+        'arquivos_visiveis_cliente' => (int)($arquivos['arquivos_visiveis_cliente'] ?? $empty['arquivos_visiveis_cliente']),
+        'arquivos_cliente' => (int)($arquivos['arquivos_cliente'] ?? $empty['arquivos_cliente']),
+    ];
+}
+
 function client_app_api_snapshot(array $sessionOrMeetingRow): array
 {
     $snapshot = json_decode((string)($sessionOrMeetingRow['me_event_snapshot'] ?? '{}'), true);
     return is_array($snapshot) ? $snapshot : [];
 }
 
+function client_app_api_snapshot_pick_text(array $snapshot, array $paths, string $default = ''): string
+{
+    foreach ($paths as $path) {
+        $value = $snapshot;
+        foreach (explode('.', $path) as $part) {
+            if (!is_array($value)) {
+                $value = null;
+                break;
+            }
+
+            if (array_key_exists($part, $value)) {
+                $value = $value[$part];
+                continue;
+            }
+
+            $found = false;
+            foreach ($value as $key => $candidate) {
+                if (is_string($key) && strcasecmp($key, $part) === 0) {
+                    $value = $candidate;
+                    $found = true;
+                    break;
+                }
+            }
+            if (!$found) {
+                $value = null;
+                break;
+            }
+        }
+
+        if (is_scalar($value)) {
+            $text = trim((string)$value);
+            if ($text !== '') {
+                return $text;
+            }
+        }
+    }
+
+    return $default;
+}
+
+function client_app_api_snapshot_client_name(array $snapshot, string $default = ''): string
+{
+    return client_app_api_snapshot_pick_text($snapshot, [
+        'cliente.nome',
+        'nomecliente',
+        'nomeCliente',
+        'client_name',
+    ], $default);
+}
+
+function client_app_api_snapshot_local(array $snapshot, string $default = ''): string
+{
+    return client_app_api_snapshot_pick_text($snapshot, [
+        'local',
+        'nomelocal',
+        'localevento',
+        'localEvento',
+        'endereco',
+    ], $default);
+}
+
+function client_app_api_fetch_meeting(PDO $pdo, int $meetingId): ?array
+{
+    $stmt = $pdo->prepare("SELECT * FROM eventos_reunioes WHERE id = :id LIMIT 1");
+    $stmt->execute([':id' => $meetingId]);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
 function client_app_api_event_payload(PDO $pdo, int $meetingId): array
 {
-    $meeting = eventos_reuniao_get($pdo, $meetingId);
+    $meeting = client_app_api_fetch_meeting($pdo, $meetingId);
     if (!$meeting) {
         throw new RuntimeException('Evento não encontrado.');
     }
 
     $snapshot = client_app_api_snapshot($meeting);
-    $portal = eventos_cliente_portal_get($pdo, $meetingId);
+    $portal = client_app_api_fetch_portal($pdo, $meetingId);
 
-    $clientName = eventos_me_snapshot_cliente_nome($snapshot, 'Cliente');
+    $clientName = client_app_api_snapshot_client_name($snapshot, 'Cliente');
     $eventName = trim((string)($snapshot['nome'] ?? 'Seu Evento'));
     $eventDate = trim((string)($snapshot['data'] ?? ''));
     $eventStart = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
     $eventEnd = trim((string)($snapshot['hora_fim'] ?? ''));
-    $eventLocation = eventos_me_snapshot_local($snapshot, 'Local não informado');
+    $eventLocation = client_app_api_snapshot_local($snapshot, 'Local não informado');
 
-    $sections = $portal['secoes'] ?? eventos_cliente_portal_obter_config_secoes($portal);
+    $sections = is_array($portal) && isset($portal['secoes']) && is_array($portal['secoes'])
+        ? $portal['secoes']
+        : [
+            'decoracao' => ['visivel' => false, 'editavel' => false],
+            'observacoes_gerais' => ['visivel' => false, 'editavel' => false],
+            'dj_protocolo' => ['visivel' => false, 'editavel' => false],
+            'formulario' => ['visivel' => false, 'editavel' => false],
+        ];
     $summary = [
         'convidados' => ['total' => 0, 'checkin' => 0, 'pendentes' => 0],
         'arquivos' => [
@@ -454,10 +757,10 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
     ];
 
     if (!empty($portal['visivel_convidados'])) {
-        $summary['convidados'] = eventos_convidados_resumo($pdo, $meetingId);
+        $summary['convidados'] = client_app_api_guest_summary($pdo, $meetingId);
     }
     if (!empty($portal['visivel_arquivos'])) {
-        $summary['arquivos'] = eventos_arquivos_resumo($pdo, $meetingId);
+        $summary['arquivos'] = client_app_api_file_summary($pdo, $meetingId);
     }
 
     return [
@@ -470,16 +773,16 @@ function client_app_api_event_payload(PDO $pdo, int $meetingId): array
         'time_end' => $eventEnd,
         'location' => $eventLocation,
         'cards' => [
-            'reuniao_final' => !empty($portal['visivel_reuniao']),
-            'convidados' => !empty($portal['visivel_convidados']),
-            'arquivos' => !empty($portal['visivel_arquivos']),
+            'reuniao_final' => is_array($portal) && !empty($portal['visivel_reuniao']),
+            'convidados' => is_array($portal) && !empty($portal['visivel_convidados']),
+            'arquivos' => is_array($portal) && !empty($portal['visivel_arquivos']),
             'dj' => !empty($sections['dj_protocolo']['visivel']),
             'formulario' => !empty($sections['formulario']['visivel']),
         ],
         'permissions' => [
-            'reuniao_editavel' => !empty($portal['editavel_reuniao']),
-            'convidados_editavel' => !empty($portal['editavel_convidados']),
-            'arquivos_editavel' => !empty($portal['editavel_arquivos']),
+            'reuniao_editavel' => is_array($portal) && !empty($portal['editavel_reuniao']),
+            'convidados_editavel' => is_array($portal) && !empty($portal['editavel_convidados']),
+            'arquivos_editavel' => is_array($portal) && !empty($portal['editavel_arquivos']),
         ],
         'summary' => $summary,
     ];
@@ -494,4 +797,3 @@ function client_app_api_require_session(PDO $pdo): array
 
     return $session;
 }
-

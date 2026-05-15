@@ -548,7 +548,7 @@ $gatewayHealth = wa_gateway_health();
                                 <div class="full">
                                     <div class="topbar-card">
                                         <strong>O que é realmente necessário</strong>
-                                        <p class="small">O sistema agora gera a <code>session_key</code> automaticamente e usa <code>Baileys</code> como engine padrão. O telefone só é obrigatório se você optar por <strong>Pairing Code</strong>.</p>
+                                        <p class="small">O sistema agora gera a <code>session_key</code> automaticamente e usa <code>WhatsApp Web</code> como engine padrão. O telefone só é obrigatório se você optar por <strong>Pairing Code</strong>.</p>
                                     </div>
                                 </div>
                                 <div class="full">
@@ -601,7 +601,14 @@ $gatewayHealth = wa_gateway_health();
                                                 <?php endif; ?>
                                             </td>
                                             <td><?= wa_e($inbox['department_name'] ?: 'Sem vínculo') ?></td>
-                                            <td><?= wa_e($inbox['provider'] === 'baileys' ? 'Baileys' : $inbox['provider']) ?><br><span class="small"><?= wa_e($inbox['connection_mode'] === 'pairing_code' ? 'pairing code' : 'qr') ?></span></td>
+                                            <td><?php
+                                                $engineLabel = match ((string)$inbox['provider']) {
+                                                    'whatsapp-web.js' => 'WhatsApp Web',
+                                                    'baileys' => 'Baileys',
+                                                    'mock' => 'Mock',
+                                                    default => (string)$inbox['provider'],
+                                                };
+                                                ?><?= wa_e($engineLabel) ?><br><span class="small"><?= wa_e($inbox['connection_mode'] === 'pairing_code' ? 'pairing code' : 'qr') ?></span></td>
                                             <td>
                                                 <span class="badge <?= $statusClass ?>"><?= wa_e(wa_status_label($uiStatus)) ?></span>
                                                 <?php if (!empty($inbox['credential_updated_at'])): ?>
