@@ -95,6 +95,7 @@ export class WhatsAppWebJsProvider {
     this.connected = false;
     this.initializing = null;
     this.stopRequested = false;
+    this.syncTimer = null;
   }
 
   async connect({ phoneNumber } = {}) {
@@ -156,6 +157,7 @@ export class WhatsAppWebJsProvider {
       puppeteer: {
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        protocolTimeout: Number.parseInt(process.env.PUPPETEER_PROTOCOL_TIMEOUT || "120000", 10),
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -203,8 +205,12 @@ export class WhatsAppWebJsProvider {
       this.connected = true;
       const wid = client.info?.wid?._serialized || "";
       const digits = wid.replace(/@.+$/, "");
-      await purgeSessionNoiseConversations(this.sessionKey);
-      await this.syncRecentChats(client);
+      try {
+        await purgeSessionNoiseConversations(this.sessionKey);
+      } catch (error) {
+        this.logger.warn({ err: error, sessionKey: this.sessionKey }, "Falha ao limpar conversas de ruido da sessao");
+      }
+
       await this.callbacks.onConnected({
         provider: "whatsapp-web.js",
         sessionKey: this.sessionKey,
@@ -215,6 +221,8 @@ export class WhatsAppWebJsProvider {
         connectedAt: new Date(),
         phoneNumber: digits ? `+${digits}` : phoneNumber,
       });
+
+      this.scheduleRecentChatSync(client);
     });
 
     client.on("message", async (message) => {
@@ -352,9 +360,37 @@ export class WhatsAppWebJsProvider {
     }
   }
 
+  scheduleRecentChatSync(client) {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+
+      if (client !== this.client || !this.connected || this.stopRequested) {
+        return;
+      }
+
+      this.syncRecentChats(client)
+        .then(() => {
+          this.logger.info({ sessionKey: this.sessionKey }, "Sincronizacao inicial de chats concluida");
+        })
+        .catch((error) => {
+          this.logger.warn({ err: error, sessionKey: this.sessionKey }, "Falha na sincronizacao inicial de chats");
+        });
+    }, 15000);
+  }
+
   async teardownClient(emitStatus = true) {
     const client = this.client;
     this.client = null;
+
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
 
     if (!client) {
       return;
