@@ -293,6 +293,29 @@ export async function ingestInboundMessage({
   rawPayload = {},
 }) {
   return withTransaction(async (client) => {
+    if (externalMessageId) {
+      const existingMessage = await client.query(
+        `
+          SELECT m.id, m.conversation_id, c.contact_id
+          FROM wa_messages m
+          JOIN wa_conversations c ON c.id = m.conversation_id
+          JOIN wa_inboxes i ON i.id = c.inbox_id
+          WHERE i.session_key = $1
+            AND m.external_message_id = $2
+          LIMIT 1
+        `,
+        [sessionKey, externalMessageId]
+      );
+
+      if (existingMessage.rows[0]?.id) {
+        return {
+          conversationId: existingMessage.rows[0].conversation_id,
+          messageId: existingMessage.rows[0].id,
+          contactId: existingMessage.rows[0].contact_id,
+        };
+      }
+    }
+
     const inboxResult = await client.query(
       `
         SELECT i.id, i.name, i.session_key, i.department_id, d.name AS department_name

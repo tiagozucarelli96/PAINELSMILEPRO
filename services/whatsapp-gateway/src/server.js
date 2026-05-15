@@ -176,6 +176,10 @@ async function bootstrap() {
       },
       "Smile WhatsApp Gateway iniciado"
     );
+
+    sessionManager.restoreConnectedSessions().catch((error) => {
+      logger.warn({ err: error }, "Falha ao iniciar restauracao automatica de sessoes");
+    });
   });
 }
 

@@ -110,6 +110,7 @@ export class WhatsAppWebJsProvider {
     this.initializing = null;
     this.stopRequested = false;
     this.syncTimer = null;
+    this.chatSyncTimers = new Map();
     this.processedInboundIds = new Map();
     this.historySyncAttempts = 0;
     this.historySyncCompleted = false;
@@ -252,6 +253,24 @@ export class WhatsAppWebJsProvider {
       await this.handleInboundMessage(client, message);
     });
 
+    client.on("message_ciphertext", async (message) => {
+      const chatId = String(message?.from || "");
+      if (!isSupportedDirectChatId(chatId)) {
+        return;
+      }
+
+      this.scheduleSingleChatSync(client, chatId, 8000);
+    });
+
+    client.on("unread_count", async (chat) => {
+      const chatId = String(chat?.id?._serialized || "");
+      if (!isSupportedDirectChatId(chatId)) {
+        return;
+      }
+
+      this.scheduleSingleChatSync(client, chatId, 4000);
+    });
+
     client.on("auth_failure", async (message) => {
       if (client !== this.client) {
         return;
@@ -358,6 +377,59 @@ export class WhatsAppWebJsProvider {
     }
   }
 
+  async syncSingleChat(client, chatId) {
+    const chat = await client.getChatById(chatId);
+    if (!chat || chat.isGroup) {
+      return;
+    }
+
+    const serialized = String(chat.id?._serialized || chatId || "");
+    if (!isSupportedDirectChatId(serialized)) {
+      return;
+    }
+
+    const digits = extractDigitsFromChatId(serialized);
+    if (!digits) {
+      return;
+    }
+
+    const contact = await chat.getContact().catch(() => null);
+    const fetched = await chat.fetchMessages({ limit: 5 });
+    const messages = [...fetched].sort((left, right) => (left.timestamp || 0) - (right.timestamp || 0));
+
+    for (const message of messages) {
+      if (message.fromMe || shouldIgnoreMessage(message)) {
+        continue;
+      }
+
+      const externalMessageId = message.id?._serialized || null;
+      if (externalMessageId && this.wasInboundProcessed(externalMessageId)) {
+        continue;
+      }
+
+      if (externalMessageId) {
+        this.markInboundProcessed(externalMessageId);
+      }
+
+      await this.callbacks.onInboundMessage({
+        sessionKey: this.sessionKey,
+        phoneE164: `+${digits}`,
+        contactName: contact?.name || contact?.pushname || `+${digits}`,
+        body: extractMessagePreview(message),
+        messageType: detectMessageType(message),
+        externalMessageId,
+        rawPayload: {
+          from: message.from,
+          to: message.to,
+          type: message.type,
+          timestamp: message.timestamp,
+          source: "chat_resync",
+          chatId: serialized,
+        },
+      });
+    }
+  }
+
   scheduleRecentChatSync(client) {
     this.scheduleRecentChatSyncAfter(client, 15000);
   }
@@ -401,6 +473,30 @@ export class WhatsAppWebJsProvider {
           }
         });
     }, delayMs);
+  }
+
+  scheduleSingleChatSync(client, chatId, delayMs) {
+    const existingTimer = this.chatSyncTimers.get(chatId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.chatSyncTimers.delete(chatId);
+
+      if (client !== this.client || !this.connected || this.stopRequested) {
+        return;
+      }
+
+      this.syncSingleChat(client, chatId).catch((error) => {
+        this.logger.info(
+          { err: error, sessionKey: this.sessionKey, chatId },
+          "Falha ao sincronizar chat especifico em background"
+        );
+      });
+    }, delayMs);
+
+    this.chatSyncTimers.set(chatId, timer);
   }
 
   async handleInboundMessage(client, message) {
@@ -468,6 +564,11 @@ export class WhatsAppWebJsProvider {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
+
+    for (const timer of this.chatSyncTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.chatSyncTimers.clear();
 
     this.processedInboundIds.clear();
     this.historySyncAttempts = 0;

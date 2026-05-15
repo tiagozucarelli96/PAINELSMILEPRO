@@ -146,6 +146,32 @@ export class SessionManager {
     return fetchOverview();
   }
 
+  async restoreConnectedSessions() {
+    const inboxes = await listInboxes();
+    const candidates = inboxes.filter((inbox) => {
+      if (inbox.provider === "mock") {
+        return false;
+      }
+
+      return inbox.status === "connected" || inbox.status === "connecting";
+    });
+
+    for (const inbox of candidates) {
+      try {
+        await this.connect(inbox.session_key, {
+          phoneNumber: inbox.phone_number || null,
+          mode: inbox.connection_mode || "qr",
+        });
+        this.logger.info({ sessionKey: inbox.session_key }, "Sessao restaurada automaticamente apos restart");
+      } catch (error) {
+        this.logger.warn(
+          { err: error, sessionKey: inbox.session_key },
+          "Falha ao restaurar sessao automaticamente apos restart"
+        );
+      }
+    }
+  }
+
   createSessionRuntime(inbox) {
     const callbacks = {
       onStatus: async (status, extra = {}) => {
