@@ -69,6 +69,12 @@ if ($isSmileChatHost && $smileChatRoot) {
     }
 }
 
+if ($path === '/api' || str_starts_with($path, '/api/')) {
+    $_SERVER['PAINEL_API_PATH_INFO'] = $path === '/api' ? '/' : substr($path, 4);
+    require __DIR__ . '/api/index.php';
+    exit;
+}
+
 // Se for callback OAuth do Google, servir DIRETAMENTE sem passar por nada
 if ($path === '/google/callback' || strpos($path, '/google/callback') !== false) {
     $callback_file = realpath(__DIR__ . '/google_callback.php');

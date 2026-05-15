@@ -1,4 +1,5 @@
 import { Boom } from "@hapi/boom";
+import nodeCrypto from "node:crypto";
 import baileys from "@whiskeysockets/baileys";
 import {
   WAProto,
@@ -14,6 +15,10 @@ import {
   normalizeMessageContent,
 } from "@whiskeysockets/baileys";
 import { clearSessionAuthState, getSessionRuntime, saveSessionAuthState } from "../repository.js";
+
+if (!globalThis.crypto && nodeCrypto.webcrypto) {
+  globalThis.crypto = nodeCrypto.webcrypto;
+}
 
 const makeWASocket =
   baileys?.default || baileys?.makeWASocket || baileys;

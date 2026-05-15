@@ -145,19 +145,35 @@ Ordem sugerida:
 4. se sobrar um único evento, autentica
 5. se houver mais de um, retornar uma etapa extra de escolha do evento
 
-## Pré-requisito de dados
+## Fontes de dados encontradas no projeto
 
-Antes de implementar o login, validar onde o `CPF do cliente` está salvo para os eventos já contratados.
+### Local do evento
 
-Sinais encontrados no projeto:
+O mapeamento de local já existe no projeto e pode alimentar diretamente o `select` do login:
 
-- há referência a `me_cliente_cpf` em [`sql/add_me_contrato_columns.sql`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/sql/add_me_contrato_columns.sql:39)
-- há referência a `cpf_3_digitos` e validações comerciais já existentes
+- tabela [`logistica_me_locais`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/sql/023_logistica_base.sql:15)
+- tabela espelho [`logistica_eventos_espelho`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/sql/023_logistica_base.sql:29)
+- helper [`vendas_buscar_locais_mapeados()`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/public/vendas_helper.php:46)
 
 Decisão recomendada:
 
-- padronizar um campo confiável de CPF completo por evento/cliente
-- se não existir de forma consistente hoje, criar rotina de saneamento antes do login do app
+- o `select` do app deve usar `GET /v1/client/locations`
+- a API deve listar apenas locais `MAPEADO`
+- o login deve comparar por `me_local_id` sempre que possível
+
+### Cliente e CPF
+
+O projeto já tem trilha explícita para guardar CPF do cliente vinculado ao evento:
+
+- migração com `me_event_id` e `me_cliente_cpf` em [`sql/add_me_contrato_columns.sql`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/sql/add_me_contrato_columns.sql:27)
+- uso dessas colunas em [`public/comercial_degust_public.php`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/public/comercial_degust_public.php:191)
+- vínculo do módulo de eventos por `me_event_id` em [`sql/050_eventos_modulo.sql`](/Users/tiagozucarelli/Desktop/PAINELSMILEPRO/sql/050_eventos_modulo.sql:31)
+
+Decisão recomendada:
+
+- a autenticação deve usar `me_event_id` como chave principal de vínculo
+- a busca do CPF deve partir do cadastro comercial/contrato e não apenas do `snapshot`
+- o `snapshot` continua como fonte de exibição para `nome`, `data` e `local`
 
 ## Endpoints da API - V1
 
