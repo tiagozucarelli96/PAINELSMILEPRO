@@ -322,9 +322,14 @@ function client_app_api_me_available(): bool
     if (!client_app_api_me_fallback_enabled()) {
         return false;
     }
-    client_app_api_me_helpers();
-    $cfg = eventos_me_get_config();
-    return trim((string)($cfg['base'] ?? '')) !== '' && trim((string)($cfg['token'] ?? '')) !== '';
+    try {
+        client_app_api_me_helpers();
+        $cfg = eventos_me_get_config();
+        return trim((string)($cfg['base'] ?? '')) !== '' && trim((string)($cfg['token'] ?? '')) !== '';
+    } catch (Throwable $e) {
+        error_log('client_app_api_me_available: ' . $e->getMessage());
+        return false;
+    }
 }
 
 function client_app_api_me_pick_text(array $source, array $keys): string
@@ -344,52 +349,57 @@ function client_app_api_me_pick_text(array $source, array $keys): string
 
 function client_app_api_me_client_cpf(PDO $pdo, array $event): string
 {
-    client_app_api_me_helpers();
+    try {
+        client_app_api_me_helpers();
 
-    $eventCpf = client_app_api_normalize_cpf(client_app_api_me_pick_text($event, [
-        'cpfCliente',
-        'cpf',
-        'cliente_cpf',
-        'documento',
-        'cpf_cliente',
-        'clienteCpf',
-        'documentoCliente',
-        'cpfDocumento',
-        'cpfcnpj',
-        'cpfCnpj',
-        'doc',
-    ]));
-    if ($eventCpf !== '') {
-        return $eventCpf;
-    }
+        $eventCpf = client_app_api_normalize_cpf(client_app_api_me_pick_text($event, [
+            'cpfCliente',
+            'cpf',
+            'cliente_cpf',
+            'documento',
+            'cpf_cliente',
+            'clienteCpf',
+            'documentoCliente',
+            'cpfDocumento',
+            'cpfcnpj',
+            'cpfCnpj',
+            'doc',
+        ]));
+        if ($eventCpf !== '') {
+            return $eventCpf;
+        }
 
-    $clientId = (int)($event['idcliente'] ?? $event['idCliente'] ?? $event['cliente_id'] ?? $event['id_cliente'] ?? $event['clienteId'] ?? $event['client_id'] ?? 0);
-    if ($clientId <= 0) {
+        $clientId = (int)($event['idcliente'] ?? $event['idCliente'] ?? $event['cliente_id'] ?? $event['id_cliente'] ?? $event['clienteId'] ?? $event['client_id'] ?? 0);
+        if ($clientId <= 0) {
+            return '';
+        }
+
+        $resp = eventos_me_request('GET', '/api/v1/clients/' . $clientId);
+        if (empty($resp['ok']) || !is_array($resp['data'] ?? null)) {
+            return '';
+        }
+
+        $client = $resp['data']['data'] ?? $resp['data'] ?? [];
+        if (!is_array($client)) {
+            return '';
+        }
+
+        return client_app_api_normalize_cpf(client_app_api_me_pick_text($client, [
+            'cpf',
+            'cpfCliente',
+            'cpfcliente',
+            'cliente_cpf',
+            'cpf_cnpj',
+            'cpfCnpj',
+            'cpfcnpj',
+            'documento',
+            'documentoCliente',
+            'doc',
+        ]));
+    } catch (Throwable $e) {
+        error_log('client_app_api_me_client_cpf: ' . $e->getMessage());
         return '';
     }
-
-    $resp = eventos_me_request('GET', '/api/v1/clients/' . $clientId);
-    if (empty($resp['ok']) || !is_array($resp['data'] ?? null)) {
-        return '';
-    }
-
-    $client = $resp['data']['data'] ?? $resp['data'] ?? [];
-    if (!is_array($client)) {
-        return '';
-    }
-
-    return client_app_api_normalize_cpf(client_app_api_me_pick_text($client, [
-        'cpf',
-        'cpfCliente',
-        'cpfcliente',
-        'cliente_cpf',
-        'cpf_cnpj',
-        'cpfCnpj',
-        'cpfcnpj',
-        'documento',
-        'documentoCliente',
-        'doc',
-    ]));
 }
 
 function client_app_api_me_event_local_matches(array $event, array $location): bool
@@ -421,114 +431,124 @@ function client_app_api_me_event_local_matches(array $event, array $location): b
 
 function client_app_api_sync_meeting_from_me(PDO $pdo, int $meEventId): ?array
 {
-    client_app_api_me_helpers();
-    $existing = $pdo->prepare("SELECT id, me_event_id FROM eventos_reunioes WHERE me_event_id = :me_event_id LIMIT 1");
-    $existing->execute([
-        ':me_event_id' => $meEventId,
-    ]);
-    $row = $existing->fetch(PDO::FETCH_ASSOC) ?: null;
-    if ($row) {
-        return [
-            'meeting_id' => (int)$row['id'],
-            'me_event_id' => (int)$row['me_event_id'],
-        ];
-    }
-
-    $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
-    if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
-        return null;
-    }
-
-    $snapshot = eventos_me_criar_snapshot($eventResult['event']);
-    $insert = $pdo->prepare("
-        INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
-        VALUES (:me_event_id, :snapshot, 'rascunho', 0, NOW(), NOW())
-        RETURNING id, me_event_id
-    ");
-    $insert->execute([
-        ':me_event_id' => $meEventId,
-        ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-    ]);
-    $created = $insert->fetch(PDO::FETCH_ASSOC) ?: null;
-    if (!$created) {
-        return null;
-    }
-
-    $sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
-    $sectionStmt = $pdo->prepare("
-        INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at)
-        VALUES (:meeting_id, :section, '', '', NOW(), NOW())
-        ON CONFLICT (meeting_id, section) DO NOTHING
-    ");
-    foreach ($sections as $section) {
-        $sectionStmt->execute([
-            ':meeting_id' => (int)$created['id'],
-            ':section' => $section,
+    try {
+        client_app_api_me_helpers();
+        $existing = $pdo->prepare("SELECT id, me_event_id FROM eventos_reunioes WHERE me_event_id = :me_event_id LIMIT 1");
+        $existing->execute([
+            ':me_event_id' => $meEventId,
         ]);
-    }
+        $row = $existing->fetch(PDO::FETCH_ASSOC) ?: null;
+        if ($row) {
+            return [
+                'meeting_id' => (int)$row['id'],
+                'me_event_id' => (int)$row['me_event_id'],
+            ];
+        }
 
-    return [
-        'meeting_id' => (int)$created['id'],
-        'me_event_id' => (int)$created['me_event_id'],
-    ];
+        $eventResult = eventos_me_buscar_por_id($pdo, $meEventId);
+        if (empty($eventResult['ok']) || !is_array($eventResult['event'] ?? null)) {
+            return null;
+        }
+
+        $snapshot = eventos_me_criar_snapshot($eventResult['event']);
+        $insert = $pdo->prepare("
+            INSERT INTO eventos_reunioes (me_event_id, me_event_snapshot, status, created_by, created_at, updated_at)
+            VALUES (:me_event_id, :snapshot, 'rascunho', 0, NOW(), NOW())
+            RETURNING id, me_event_id
+        ");
+        $insert->execute([
+            ':me_event_id' => $meEventId,
+            ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
+        $created = $insert->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$created) {
+            return null;
+        }
+
+        $sections = ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'];
+        $sectionStmt = $pdo->prepare("
+            INSERT INTO eventos_reunioes_secoes (meeting_id, section, content_html, content_text, created_at, updated_at)
+            VALUES (:meeting_id, :section, '', '', NOW(), NOW())
+            ON CONFLICT (meeting_id, section) DO NOTHING
+        ");
+        foreach ($sections as $section) {
+            $sectionStmt->execute([
+                ':meeting_id' => (int)$created['id'],
+                ':section' => $section,
+            ]);
+        }
+
+        return [
+            'meeting_id' => (int)$created['id'],
+            'me_event_id' => (int)$created['me_event_id'],
+        ];
+    } catch (Throwable $e) {
+        error_log('client_app_api_sync_meeting_from_me: ' . $e->getMessage());
+        return null;
+    }
 }
 
 function client_app_api_find_meeting_via_me(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array
 {
-    if (!client_app_api_me_available()) {
+    try {
+        if (!client_app_api_me_available()) {
+            return null;
+        }
+
+        $location = client_app_api_location_row($pdo, $locationId);
+        if (!$location) {
+            return null;
+        }
+
+        client_app_api_me_helpers();
+        $resp = eventos_me_request('GET', '/api/v1/events', [
+            'start' => $eventDate,
+            'end' => $eventDate,
+            'limit' => 500,
+        ]);
+        if (empty($resp['ok']) || !is_array($resp['data'] ?? null)) {
+            return null;
+        }
+
+        $events = $resp['data']['data'] ?? $resp['data'] ?? [];
+        if (!is_array($events)) {
+            return null;
+        }
+
+        foreach ($events as $event) {
+            if (!is_array($event)) {
+                continue;
+            }
+
+            $eventDateCandidate = trim((string)($event['dataevento'] ?? $event['data'] ?? ''));
+            if ($eventDateCandidate !== $eventDate) {
+                continue;
+            }
+            if (!client_app_api_me_event_local_matches($event, $location)) {
+                continue;
+            }
+
+            $eventCpf = client_app_api_me_client_cpf($pdo, $event);
+            if ($eventCpf === '' || $eventCpf !== $cpf) {
+                continue;
+            }
+
+            $meEventId = (int)($event['id'] ?? 0);
+            if ($meEventId <= 0) {
+                continue;
+            }
+
+            $meeting = client_app_api_sync_meeting_from_me($pdo, $meEventId);
+            if ($meeting) {
+                return $meeting;
+            }
+        }
+
+        return null;
+    } catch (Throwable $e) {
+        error_log('client_app_api_find_meeting_via_me: ' . $e->getMessage());
         return null;
     }
-
-    $location = client_app_api_location_row($pdo, $locationId);
-    if (!$location) {
-        return null;
-    }
-
-    client_app_api_me_helpers();
-    $resp = eventos_me_request('GET', '/api/v1/events', [
-        'start' => $eventDate,
-        'end' => $eventDate,
-        'limit' => 500,
-    ]);
-    if (empty($resp['ok']) || !is_array($resp['data'] ?? null)) {
-        return null;
-    }
-
-    $events = $resp['data']['data'] ?? $resp['data'] ?? [];
-    if (!is_array($events)) {
-        return null;
-    }
-
-    foreach ($events as $event) {
-        if (!is_array($event)) {
-            continue;
-        }
-
-        $eventDateCandidate = trim((string)($event['dataevento'] ?? $event['data'] ?? ''));
-        if ($eventDateCandidate !== $eventDate) {
-            continue;
-        }
-        if (!client_app_api_me_event_local_matches($event, $location)) {
-            continue;
-        }
-
-        $eventCpf = client_app_api_me_client_cpf($pdo, $event);
-        if ($eventCpf === '' || $eventCpf !== $cpf) {
-            continue;
-        }
-
-        $meEventId = (int)($event['id'] ?? 0);
-        if ($meEventId <= 0) {
-            continue;
-        }
-
-        $meeting = client_app_api_sync_meeting_from_me($pdo, $meEventId);
-        if ($meeting) {
-            return $meeting;
-        }
-    }
-
-    return null;
 }
 
 function client_app_api_find_meeting(PDO $pdo, string $cpf, string $eventDate, int $locationId): ?array

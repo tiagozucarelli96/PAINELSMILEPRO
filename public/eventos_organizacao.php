@@ -317,6 +317,14 @@ if ($meeting_id > 0) {
         }
 
         $portal = eventos_cliente_portal_get($pdo, $meeting_id);
+        if (!$portal) {
+            $portal_result = eventos_cliente_portal_get_or_create($pdo, $meeting_id, $user_id);
+            if (!empty($portal_result['ok']) && !empty($portal_result['portal'])) {
+                $portal = $portal_result['portal'];
+            } else {
+                error_log('eventos_organizacao auto portal: ' . (string)($portal_result['error'] ?? 'falha ao criar portal'));
+            }
+        }
 
         $links_cliente_dj = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_dj');
         $links_cliente_observacoes = eventos_reuniao_listar_links_cliente($pdo, $meeting_id, 'cliente_observacoes');
