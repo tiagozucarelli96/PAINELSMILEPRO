@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import wwebjs from "whatsapp-web.js";
 import { config } from "../config.js";
+import { purgeSessionNoiseConversations, syncChatSnapshot } from "../repository.js";
 
 const { Client, LocalAuth } = wwebjs;
 
@@ -18,6 +19,14 @@ function buildChatId(phoneE164) {
   return `${digits}@c.us`;
 }
 
+function isSupportedDirectChatId(chatId) {
+  return typeof chatId === "string" && chatId.endsWith("@c.us");
+}
+
+function extractDigitsFromChatId(chatId) {
+  return String(chatId || "").replace(/@.+$/, "").replace(/\D+/g, "");
+}
+
 function detectMessageType(message) {
   if (message?.type === "image") {
     return "image";
@@ -32,6 +41,49 @@ function detectMessageType(message) {
     return "file";
   }
   return "text";
+}
+
+function extractMessagePreview(message) {
+  const body = String(message?.body || "").trim();
+  if (body !== "") {
+    return body;
+  }
+
+  switch (detectMessageType(message)) {
+    case "image":
+      return "[imagem]";
+    case "video":
+      return "[video]";
+    case "audio":
+      return "[audio]";
+    case "file":
+      return "[arquivo]";
+    default:
+      return "";
+  }
+}
+
+function shouldIgnoreMessage(message) {
+  const from = String(message?.from || "");
+  const type = String(message?.type || "");
+
+  if (!from || !isSupportedDirectChatId(from)) {
+    return true;
+  }
+
+  if (from.endsWith("@g.us") || from.endsWith("@broadcast") || from.endsWith("@newsletter")) {
+    return true;
+  }
+
+  if (type === "notification_template" || type === "e2e_notification" || type === "gp2") {
+    return true;
+  }
+
+  if (message?.isStatus) {
+    return true;
+  }
+
+  return extractMessagePreview(message) === "";
 }
 
 export class WhatsAppWebJsProvider {
@@ -151,6 +203,8 @@ export class WhatsAppWebJsProvider {
       this.connected = true;
       const wid = client.info?.wid?._serialized || "";
       const digits = wid.replace(/@.+$/, "");
+      await purgeSessionNoiseConversations(this.sessionKey);
+      await this.syncRecentChats(client);
       await this.callbacks.onConnected({
         provider: "whatsapp-web.js",
         sessionKey: this.sessionKey,
@@ -168,11 +222,11 @@ export class WhatsAppWebJsProvider {
         return;
       }
 
-      if (message.from?.endsWith("@g.us") || message.from?.endsWith("@broadcast")) {
+      if (shouldIgnoreMessage(message)) {
         return;
       }
 
-      const digits = String(message.from || "").replace(/@.+$/, "");
+      const digits = extractDigitsFromChatId(message.from);
       if (!digits) {
         return;
       }
@@ -181,7 +235,7 @@ export class WhatsAppWebJsProvider {
         sessionKey: this.sessionKey,
         phoneE164: `+${digits}`,
         contactName: message._data?.notifyName || message._data?.pushname || `+${digits}`,
-        body: message.body || "",
+        body: extractMessagePreview(message),
         messageType: detectMessageType(message),
         externalMessageId: message.id?._serialized || null,
         rawPayload: {
@@ -244,6 +298,58 @@ export class WhatsAppWebJsProvider {
     });
 
     client.pupPage?.on?.("console", (_msg) => {});
+  }
+
+  async syncRecentChats(client) {
+    const chats = await client.getChats();
+    const directChats = chats
+      .filter((chat) => !chat.isGroup && isSupportedDirectChatId(chat.id?._serialized || ""))
+      .sort((left, right) => (right.timestamp || 0) - (left.timestamp || 0))
+      .slice(0, 40);
+
+    for (const chat of directChats) {
+      let lastMessage = chat.lastMessage;
+      if (!lastMessage) {
+        const fetched = await chat.fetchMessages({ limit: 1 });
+        lastMessage = fetched.at(-1);
+      }
+
+      if (!lastMessage || shouldIgnoreMessage(lastMessage)) {
+        continue;
+      }
+
+      const contact = await chat.getContact().catch(() => null);
+      const serialized = String(chat.id?._serialized || "");
+      const digits = extractDigitsFromChatId(serialized);
+      if (!digits) {
+        continue;
+      }
+
+      const displayName =
+        contact?.name ||
+        contact?.pushname ||
+        chat.name ||
+        `+${digits}`;
+
+      await syncChatSnapshot({
+        sessionKey: this.sessionKey,
+        contactName: displayName,
+        phoneE164: `+${digits}`,
+        body: extractMessagePreview(lastMessage),
+        messageType: detectMessageType(lastMessage),
+        externalMessageId: lastMessage.id?._serialized || null,
+        rawPayload: {
+          from: lastMessage.from,
+          to: lastMessage.to,
+          type: lastMessage.type,
+          source: "chat_snapshot",
+          chatId: serialized,
+        },
+        lastMessageAt: lastMessage.timestamp ? new Date(lastMessage.timestamp * 1000).toISOString() : null,
+        unreadCount: Number(chat.unreadCount || 0),
+        direction: lastMessage.fromMe ? "outbound" : "inbound",
+      });
+    }
   }
 
   async teardownClient(emitStatus = true) {

@@ -194,6 +194,26 @@ async function upsertContact(client, fullName, phoneE164) {
   return result.rows[0].id;
 }
 
+function previewForMessage(body, messageType = "text") {
+  const normalizedBody = String(body || "").trim();
+  if (normalizedBody !== "") {
+    return normalizedBody;
+  }
+
+  switch (messageType) {
+    case "image":
+      return "[imagem]";
+    case "video":
+      return "[video]";
+    case "audio":
+      return "[audio]";
+    case "file":
+      return "[arquivo]";
+    default:
+      return "[mensagem sem texto]";
+  }
+}
+
 async function upsertConversation(client, inbox, contactId, preview, assignedUserId = null) {
   const openConversation = await client.query(
     `
@@ -294,11 +314,12 @@ export async function ingestInboundMessage({
       contactName || phoneE164,
       phoneE164
     );
+    const preview = previewForMessage(body, messageType);
     const conversationId = await upsertConversation(
       client,
       inbox,
       contactId,
-      body || "[mensagem sem texto]"
+      preview
     );
 
     const messageResult = await client.query(
@@ -340,6 +361,239 @@ export async function ingestInboundMessage({
       messageId: messageResult.rows[0].id,
       contactId,
     };
+  });
+}
+
+export async function syncChatSnapshot({
+  sessionKey,
+  contactName,
+  phoneE164,
+  body,
+  messageType = "text",
+  externalMessageId = null,
+  rawPayload = {},
+  lastMessageAt = null,
+  unreadCount = 0,
+  direction = "inbound",
+}) {
+  return withTransaction(async (client) => {
+    const inboxResult = await client.query(
+      `
+        SELECT i.id, i.name, i.session_key, i.department_id, d.name AS department_name
+        FROM wa_inboxes i
+        LEFT JOIN wa_departments d ON d.id = i.department_id
+        WHERE i.session_key = $1
+        LIMIT 1
+      `,
+      [sessionKey]
+    );
+
+    const inbox = inboxResult.rows[0];
+    if (!inbox) {
+      throw new Error(`Inbox nao encontrada para session_key ${sessionKey}.`);
+    }
+
+    const preview = previewForMessage(body, messageType);
+    const contactId = await upsertContact(
+      client,
+      contactName || phoneE164,
+      phoneE164
+    );
+
+    const existingConversation = await client.query(
+      `
+        SELECT id, status, assigned_user_id
+        FROM wa_conversations
+        WHERE inbox_id = $1
+          AND contact_id = $2
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `,
+      [inbox.id, contactId]
+    );
+
+    const effectiveTimestamp = lastMessageAt ? new Date(lastMessageAt) : new Date();
+    let conversationId = existingConversation.rows[0]?.id || null;
+
+    if (!conversationId) {
+      const insertResult = await client.query(
+        `
+          INSERT INTO wa_conversations (
+            inbox_id,
+            contact_id,
+            department_id,
+            assigned_user_id,
+            status,
+            priority,
+            subject,
+            last_message_preview,
+            unread_count,
+            started_at,
+            last_message_at,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, NULL, $4, 'normal', $5, $6, $7, $8, $8, NOW(), NOW())
+          RETURNING id
+        `,
+        [
+          inbox.id,
+          contactId,
+          inbox.department_id,
+          unreadCount > 0 ? "waiting" : "pending",
+          `${inbox.name} • ${inbox.department_name || "Sem departamento"}`,
+          preview,
+          unreadCount,
+          effectiveTimestamp,
+        ]
+      );
+      conversationId = insertResult.rows[0].id;
+    } else {
+      await client.query(
+        `
+          UPDATE wa_conversations
+          SET department_id = COALESCE($2, department_id),
+              status = CASE
+                WHEN COALESCE(assigned_user_id, 0) = 0 AND $3 > 0 THEN 'waiting'
+                WHEN status = 'closed' AND $3 > 0 THEN 'waiting'
+                ELSE status
+              END,
+              last_message_preview = $4,
+              unread_count = GREATEST($3, unread_count),
+              last_message_at = $5,
+              updated_at = NOW()
+          WHERE id = $1
+        `,
+        [conversationId, inbox.department_id, unreadCount, preview, effectiveTimestamp]
+      );
+    }
+
+    if (externalMessageId) {
+      const existingMessage = await client.query(
+        `
+          SELECT id
+          FROM wa_messages
+          WHERE conversation_id = $1
+            AND external_message_id = $2
+          LIMIT 1
+        `,
+        [conversationId, externalMessageId]
+      );
+
+      if (!existingMessage.rows[0]?.id) {
+        await client.query(
+          `
+            INSERT INTO wa_messages (
+              conversation_id,
+              direction,
+              message_type,
+              body,
+              external_message_id,
+              created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `,
+          [
+            conversationId,
+            direction === "outbound" ? "outbound" : "inbound",
+            messageType,
+            body || null,
+            externalMessageId,
+            effectiveTimestamp,
+          ]
+        );
+      }
+    }
+
+    await client.query(
+      `
+        UPDATE wa_contacts
+        SET last_message_at = $2,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [contactId, effectiveTimestamp]
+    );
+
+    if (externalMessageId) {
+      const existingDelivery = await client.query(
+        `
+          SELECT id
+          FROM wa_gateway_deliveries
+          WHERE session_key = $1
+            AND direction = $2
+            AND external_message_id = $3
+          LIMIT 1
+        `,
+        [sessionKey, direction, externalMessageId]
+      );
+
+      if (!existingDelivery.rows[0]?.id) {
+        await client.query(
+          `
+            INSERT INTO wa_gateway_deliveries (session_key, direction, external_message_id, payload, created_at)
+            VALUES ($1, $2, $3, $4, NOW())
+          `,
+          [sessionKey, direction, externalMessageId, rawPayload]
+        );
+      }
+    }
+
+    return {
+      conversationId,
+      contactId,
+    };
+  });
+}
+
+export async function purgeSessionNoiseConversations(sessionKey) {
+  return withTransaction(async (client) => {
+    const inboxResult = await client.query(
+      `SELECT id FROM wa_inboxes WHERE session_key = $1 LIMIT 1`,
+      [sessionKey]
+    );
+    const inboxId = inboxResult.rows[0]?.id;
+    if (!inboxId) {
+      return { deleted: 0 };
+    }
+
+    const conversationRows = await client.query(
+      `
+        SELECT DISTINCT c.id, c.contact_id
+        FROM wa_conversations c
+        JOIN wa_messages m ON m.conversation_id = c.id
+        JOIN wa_gateway_deliveries gd ON gd.external_message_id = m.external_message_id
+        WHERE c.inbox_id = $1
+          AND gd.session_key = $2
+          AND (
+            gd.payload->>'type' = 'notification_template'
+            OR gd.payload->>'from' LIKE '%@lid'
+          )
+      `,
+      [inboxId, sessionKey]
+    );
+
+    if (!conversationRows.rows.length) {
+      return { deleted: 0 };
+    }
+
+    const conversationIds = conversationRows.rows.map((row) => row.id);
+    const contactIds = conversationRows.rows.map((row) => row.contact_id);
+
+    await client.query(`DELETE FROM wa_messages WHERE conversation_id = ANY($1::bigint[])`, [conversationIds]);
+    await client.query(`DELETE FROM wa_conversations WHERE id = ANY($1::bigint[])`, [conversationIds]);
+    await client.query(
+      `
+        DELETE FROM wa_contacts
+        WHERE id = ANY($1::bigint[])
+          AND NOT EXISTS (
+            SELECT 1 FROM wa_conversations c WHERE c.contact_id = wa_contacts.id
+          )
+      `,
+      [contactIds]
+    );
+
+    return { deleted: conversationIds.length };
   });
 }
 
