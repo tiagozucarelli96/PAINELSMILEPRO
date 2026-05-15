@@ -17,6 +17,55 @@ require_once __DIR__ . '/core/helpers.php'; // define $pdo / $db_error
 
 $erro = '';
 
+function painel_login_dropdown_cache_path(): string
+{
+    $appEnv = preg_replace('/[^a-z0-9_-]/i', '_', (string)(painel_env('APP_ENV', 'prod') ?? 'prod'));
+    return sys_get_temp_dir() . '/painel_login_users_' . $appEnv . '.json';
+}
+
+function painel_login_dropdown_cache_ttl(): int
+{
+    $ttl = (int)(painel_env('LOGIN_USER_DROPDOWN_CACHE_TTL', '300') ?? '300');
+    return $ttl > 0 ? $ttl : 300;
+}
+
+function painel_login_dropdown_cache_read(): array
+{
+    $cacheFile = painel_login_dropdown_cache_path();
+    $ttl = painel_login_dropdown_cache_ttl();
+    $mtime = @filemtime($cacheFile);
+    if ($mtime === false || (time() - $mtime) > $ttl) {
+        return [];
+    }
+
+    $raw = @file_get_contents($cacheFile);
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    return array_values(array_filter($decoded, static function ($item): bool {
+        return is_array($item)
+            && isset($item['valor'], $item['nome'])
+            && is_string($item['valor'])
+            && is_string($item['nome']);
+    }));
+}
+
+function painel_login_dropdown_cache_write(array $usuarios): void
+{
+    $payload = json_encode(array_values($usuarios), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($payload) || $payload === '') {
+        return;
+    }
+
+    @file_put_contents(painel_login_dropdown_cache_path(), $payload, LOCK_EX);
+}
+
 // Se já logado, vai para o painel
 if (!empty($_SESSION['logado']) && $_SESSION['logado'] == 1) {
     header('Location: index.php?page=dashboard');
@@ -28,42 +77,47 @@ if (!empty($db_error ?? '')) {
     $erro = $db_error;
 }
 
-// Opcional: listar usuários para dropdown.
-// Em produção, a consulta extra degrada bastante o TTFB do login.
-$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', false);
+// Opcional: listar usuários para dropdown com cache para evitar consulta em toda carga.
+$showLoginDropdown = painel_env_bool('LOGIN_SHOW_USER_DROPDOWN', true);
 $usuarios_login = [];
 if ($showLoginDropdown && empty($erro) && isset($pdo) && $pdo) {
-    try {
-        // Descobrir schema (PostgreSQL: public ou current_schema)
-        $cols = [];
-        foreach (["table_schema = current_schema()", "table_schema = 'public'"] as $schemaCond) {
-            $res = $pdo->query("
-                SELECT column_name FROM information_schema.columns
-                WHERE {$schemaCond} AND table_name = 'usuarios'
-            ");
-            $cols = $res->fetchAll(PDO::FETCH_COLUMN);
-            if (!empty($cols)) {
-                break;
+    $usuarios_login = painel_login_dropdown_cache_read();
+    if (empty($usuarios_login)) {
+        try {
+            // Descobrir schema (PostgreSQL: public ou current_schema)
+            $cols = [];
+            foreach (["table_schema = current_schema()", "table_schema = 'public'"] as $schemaCond) {
+                $res = $pdo->query("
+                    SELECT column_name FROM information_schema.columns
+                    WHERE {$schemaCond} AND table_name = 'usuarios'
+                ");
+                $cols = $res->fetchAll(PDO::FETCH_COLUMN);
+                if (!empty($cols)) {
+                    break;
+                }
             }
-        }
-        $has = function(string $c) use ($cols) { return in_array($c, $cols, true); };
-        $loginCol = null;
-        foreach (['loguin','login','usuario','username','user','email'] as $c) {
-            if ($has($c)) { $loginCol = $c; break; }
-        }
-        if ($loginCol) {
-            // Sem filtro ativo: listar todos; login ainda bloqueia inativos
-            $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios ORDER BY " . $loginCol;
-            $stmt = $pdo->query($sql);
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $usuarios_login[] = [
-                    'valor' => (string)$row['login_val'],
-                    'nome'  => (string)$row['login_val'],
-                ];
+            $has = function(string $c) use ($cols) { return in_array($c, $cols, true); };
+            $loginCol = null;
+            foreach (['loguin','login','usuario','username','user','email'] as $c) {
+                if ($has($c)) { $loginCol = $c; break; }
             }
+            if ($loginCol) {
+                // Sem filtro ativo: listar todos; login ainda bloqueia inativos
+                $sql = "SELECT id, nome, " . $loginCol . " AS login_val FROM usuarios ORDER BY " . $loginCol;
+                $stmt = $pdo->query($sql);
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $usuarios_login[] = [
+                        'valor' => (string)$row['login_val'],
+                        'nome'  => (string)$row['login_val'],
+                    ];
+                }
+                if (!empty($usuarios_login)) {
+                    painel_login_dropdown_cache_write($usuarios_login);
+                }
+            }
+        } catch (Throwable $e) {
+            // em falha, dropdown fica vazio; não quebra a tela
         }
-    } catch (Throwable $e) {
-        // em falha, dropdown fica vazio; não quebra a tela
     }
 }
 

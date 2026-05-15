@@ -58,6 +58,9 @@ try {
         $meetingMatch = client_app_api_find_meeting($pdo, $cpf, $eventDate, $locationId);
         if (!$meetingMatch) {
             client_app_api_record_login_attempt($pdo, $cpf, $eventDate, (string)$locationId, null, false, 'nao_encontrado');
+            if (!client_app_api_me_available()) {
+                client_app_api_error(503, 'Evento ainda não sincronizado para o app. Configure a integração ME neste serviço ou sincronize o evento no painel.');
+            }
             client_app_api_error(401, 'Dados do evento não conferem.');
         }
 
