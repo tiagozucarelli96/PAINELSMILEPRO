@@ -628,6 +628,58 @@ function wa_boolish(mixed $value): bool
     return in_array($normalized, ['1', 'true', 't', 'yes', 'y', 'on'], true);
 }
 
+function wa_slugify(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return 'smile-inbox';
+    }
+
+    $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    if (is_string($ascii) && $ascii !== '') {
+        $value = $ascii;
+    }
+
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? 'smile-inbox';
+    $value = trim($value, '-');
+
+    return $value !== '' ? $value : 'smile-inbox';
+}
+
+function wa_generate_session_key(string $name, int $ignoreId = 0): string
+{
+    $base = 'smile-' . wa_slugify($name);
+    $candidate = $base;
+    $suffix = 1;
+
+    while (true) {
+        $stmt = wa_pdo()->prepare('SELECT id FROM wa_inboxes WHERE session_key = :session_key LIMIT 1');
+        $stmt->execute([':session_key' => $candidate]);
+        $foundId = (int)($stmt->fetchColumn() ?: 0);
+
+        if ($foundId === 0 || $foundId === $ignoreId) {
+            return $candidate;
+        }
+
+        $suffix++;
+        $candidate = $base . '-' . str_pad((string)$suffix, 2, '0', STR_PAD_LEFT);
+    }
+}
+
+function wa_fetch_inbox_row(int $id): ?array
+{
+    if ($id <= 0) {
+        return null;
+    }
+
+    $stmt = wa_pdo()->prepare('SELECT * FROM wa_inboxes WHERE id = :id LIMIT 1');
+    $stmt->execute([':id' => $id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return is_array($row) ? $row : null;
+}
+
 function wa_core_user_field_expr(array $availableColumns, array $candidates, string $fallback = "''"): string
 {
     $valid = array_values(array_filter($candidates, static fn (string $column): bool => in_array($column, $availableColumns, true)));
@@ -1124,23 +1176,39 @@ function wa_save_inbox(array $input): void
 
     $id = (int)($input['id'] ?? 0);
     $name = trim((string)($input['name'] ?? ''));
-    $sessionKey = trim((string)($input['session_key'] ?? ''));
     $phoneNumber = trim((string)($input['phone_number'] ?? ''));
-    $provider = trim((string)($input['provider'] ?? 'mock'));
+    $provider = trim((string)($input['provider'] ?? 'baileys'));
     $connectionMode = trim((string)($input['connection_mode'] ?? 'qr'));
     $departmentId = (int)($input['department_id'] ?? 0);
     $notes = trim((string)($input['notes'] ?? ''));
+    $existingInbox = wa_fetch_inbox_row($id);
 
-    if ($name === '' || $sessionKey === '') {
-        throw new RuntimeException('Nome e chave da sessão são obrigatórios.');
+    if (!in_array($provider, ['baileys', 'mock'], true)) {
+        $provider = 'baileys';
     }
+
+    if (!in_array($connectionMode, ['qr', 'pairing_code'], true)) {
+        $connectionMode = 'qr';
+    }
+
+    if ($name === '') {
+        throw new RuntimeException('O nome da inbox é obrigatório.');
+    }
+
+    if ($connectionMode === 'pairing_code' && $phoneNumber === '') {
+        throw new RuntimeException('Informe o telefone da linha para conectar por código.');
+    }
+
+    $sessionKey = $existingInbox
+        ? (string)($existingInbox['session_key'] ?? wa_generate_session_key($name, $id))
+        : wa_generate_session_key($name);
 
     $params = [
         ':name' => $name,
         ':session_key' => $sessionKey,
         ':phone_number' => $phoneNumber !== '' ? $phoneNumber : null,
-        ':provider' => $provider !== '' ? $provider : 'mock',
-        ':connection_mode' => $connectionMode !== '' ? $connectionMode : 'qr',
+        ':provider' => $provider,
+        ':connection_mode' => $connectionMode,
         ':department_id' => $departmentId > 0 ? $departmentId : null,
         ':notes' => $notes !== '' ? $notes : null,
     ];

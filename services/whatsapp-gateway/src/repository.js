@@ -96,6 +96,51 @@ export async function saveSessionRuntime(sessionKey, provider, authState, runtim
   );
 }
 
+export async function saveSessionAuthState(sessionKey, provider, authState) {
+  await query(
+    `
+      INSERT INTO wa_session_credentials (session_key, provider, auth_state, runtime_meta, updated_at)
+      VALUES ($1, $2, $3, NULL, NOW())
+      ON CONFLICT (session_key) DO UPDATE
+      SET provider = EXCLUDED.provider,
+          auth_state = EXCLUDED.auth_state,
+          runtime_meta = wa_session_credentials.runtime_meta,
+          updated_at = NOW()
+    `,
+    [sessionKey, provider, authState]
+  );
+}
+
+export async function clearSessionAuthState(sessionKey, provider) {
+  await query(
+    `
+      INSERT INTO wa_session_credentials (session_key, provider, auth_state, runtime_meta, updated_at)
+      VALUES ($1, $2, NULL, NULL, NOW())
+      ON CONFLICT (session_key) DO UPDATE
+      SET provider = EXCLUDED.provider,
+          auth_state = NULL,
+          runtime_meta = wa_session_credentials.runtime_meta,
+          updated_at = NOW()
+    `,
+    [sessionKey, provider]
+  );
+}
+
+export async function saveSessionRuntimeMeta(sessionKey, provider, runtimeMeta) {
+  await query(
+    `
+      INSERT INTO wa_session_credentials (session_key, provider, auth_state, runtime_meta, updated_at)
+      VALUES ($1, $2, NULL, $3, NOW())
+      ON CONFLICT (session_key) DO UPDATE
+      SET provider = EXCLUDED.provider,
+          auth_state = wa_session_credentials.auth_state,
+          runtime_meta = EXCLUDED.runtime_meta,
+          updated_at = NOW()
+    `,
+    [sessionKey, provider, runtimeMeta]
+  );
+}
+
 export async function getSessionRuntime(sessionKey) {
   const result = await query(
     `

@@ -6,7 +6,7 @@ import {
   ingestInboundMessage,
   ingestOutboundMessage,
   listInboxes,
-  saveSessionRuntime,
+  saveSessionRuntimeMeta,
   storeConnectionEvent,
   updateInboxStatus,
 } from "./repository.js";
@@ -153,10 +153,9 @@ export class SessionManager {
           connectedAt: extra.connectedAt ?? null,
           phoneNumber: extra.phoneNumber ?? undefined,
         });
-        await saveSessionRuntime(
+        await saveSessionRuntimeMeta(
           inbox.session_key,
           inbox.provider,
-          null,
           {
             ...((await getSessionRuntime(inbox.session_key))?.runtime_meta || {}),
             status,
@@ -178,7 +177,7 @@ export class SessionManager {
         await updateInboxStatus(inbox.session_key, "connecting", {
           lastQrAt: new Date(),
         });
-        await saveSessionRuntime(inbox.session_key, inbox.provider, null, {
+        await saveSessionRuntimeMeta(inbox.session_key, inbox.provider, {
           qrText,
           qrImage,
           status: "connecting",
@@ -194,7 +193,7 @@ export class SessionManager {
         });
       },
       onPairingCode: async (pairingCode) => {
-        await saveSessionRuntime(inbox.session_key, inbox.provider, null, {
+        await saveSessionRuntimeMeta(inbox.session_key, inbox.provider, {
           pairingCode,
           status: "connecting",
           generatedAt: new Date().toISOString(),
@@ -209,7 +208,7 @@ export class SessionManager {
       },
       onConnected: async (payload) => {
         const runtime = (await getSessionRuntime(inbox.session_key))?.runtime_meta || {};
-        await saveSessionRuntime(inbox.session_key, inbox.provider, null, {
+        await saveSessionRuntimeMeta(inbox.session_key, inbox.provider, {
           ...runtime,
           status: "connected",
           qrText: null,

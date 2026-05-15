@@ -26,7 +26,7 @@ export const config = {
   port: Number.parseInt(process.env.PORT || process.env.WHATSAPP_GATEWAY_PORT || "8787", 10),
   databaseUrl: process.env.DATABASE_URL || "",
   dbSchema: process.env.DB_SCHEMA || "public",
-  defaultProvider: process.env.WHATSAPP_GATEWAY_DEFAULT_PROVIDER || "mock",
+  defaultProvider: process.env.WHATSAPP_GATEWAY_DEFAULT_PROVIDER || "baileys",
   socketCorsOrigin: process.env.WHATSAPP_GATEWAY_SOCKET_CORS_ORIGIN || "*",
 };
 

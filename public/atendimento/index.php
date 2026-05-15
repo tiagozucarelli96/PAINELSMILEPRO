@@ -311,8 +311,8 @@ $gatewayHealth = wa_gateway_health();
         </ul>
 
         <div class="sidebar-footer">
-            <strong>Conectores futuros</strong><br>
-            Baileys/WPP camada de sessão, webhooks internos, fila de eventos e socket realtime.
+            <strong>Motor da sessão</strong><br>
+            Baileys como camada principal, com webhooks internos, fila de eventos e socket realtime.
         </div>
     </aside>
 
@@ -526,21 +526,8 @@ $gatewayHealth = wa_gateway_health();
                                     <input class="field" name="name" required placeholder="WhatsApp Comercial">
                                 </div>
                                 <div>
-                                    <label class="label">Session key</label>
-                                    <input class="field" name="session_key" required placeholder="smile-comercial-01">
-                                </div>
-                                <div>
-                                    <label class="label">Telefone</label>
+                                    <label class="label">Telefone da linha</label>
                                     <input class="field" name="phone_number" placeholder="+55 11 99999-9999">
-                                </div>
-                                <div>
-                                    <label class="label">Provider</label>
-                                    <select class="select" name="provider">
-                                        <option value="mock">Mock / Homologação</option>
-                                        <option value="baileys">Baileys</option>
-                                        <option value="whatsapp-web.js">whatsapp-web.js</option>
-                                        <option value="wppconnect">WPPConnect</option>
-                                    </select>
                                 </div>
                                 <div>
                                     <label class="label">Modo de conexão</label>
@@ -559,8 +546,10 @@ $gatewayHealth = wa_gateway_health();
                                     </select>
                                 </div>
                                 <div class="full">
-                                    <label class="label">Observações</label>
-                                    <textarea class="textarea" name="notes" placeholder="Observações da sessão"></textarea>
+                                    <div class="topbar-card">
+                                        <strong>O que é realmente necessário</strong>
+                                        <p class="small">O sistema agora gera a <code>session_key</code> automaticamente e usa <code>Baileys</code> como engine padrão. O telefone só é obrigatório se você optar por <strong>Pairing Code</strong>.</p>
+                                    </div>
                                 </div>
                                 <div class="full">
                                     <button class="button" type="submit">Salvar inbox</button>
@@ -612,7 +601,7 @@ $gatewayHealth = wa_gateway_health();
                                                 <?php endif; ?>
                                             </td>
                                             <td><?= wa_e($inbox['department_name'] ?: 'Sem vínculo') ?></td>
-                                            <td><?= wa_e($inbox['provider']) ?><br><span class="small"><?= wa_e($inbox['connection_mode']) ?></span></td>
+                                            <td><?= wa_e($inbox['provider'] === 'baileys' ? 'Baileys' : $inbox['provider']) ?><br><span class="small"><?= wa_e($inbox['connection_mode'] === 'pairing_code' ? 'pairing code' : 'qr') ?></span></td>
                                             <td>
                                                 <span class="badge <?= $statusClass ?>"><?= wa_e(wa_status_label($uiStatus)) ?></span>
                                                 <?php if (!empty($inbox['credential_updated_at'])): ?>
