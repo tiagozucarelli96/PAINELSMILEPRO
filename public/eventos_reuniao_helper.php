@@ -1427,6 +1427,8 @@ function eventos_form_template_normalizar_schema(array $schema): array {
         }
         $label = trim((string)($item['label'] ?? ''));
         $required = !empty($item['required']) && !in_array($type, ['section', 'divider', 'note'], true);
+        $orderable = !empty($item['orderable']) && in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true);
+        $allow_extra_moments = !empty($item['allow_extra_moments']) && $type === 'section';
         $options = [];
         if ($type === 'select' && !empty($item['options']) && is_array($item['options'])) {
             foreach ($item['options'] as $opt) {
@@ -1469,6 +1471,8 @@ function eventos_form_template_normalizar_schema(array $schema): array {
             'type' => $type,
             'label' => $label,
             'required' => $required,
+            'orderable' => $orderable,
+            'allow_extra_moments' => $allow_extra_moments,
             'options' => $options,
             'content_html' => $type === 'note' ? $content_html : '',
             'default_value' => $default_value,

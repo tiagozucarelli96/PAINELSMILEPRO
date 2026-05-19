@@ -1021,11 +1021,14 @@ function normalizeFormSchema(schema) {
         const contentHtml = type === 'note' ? String(field.content_html || '').trim() : '';
 
         const neverRequired = ['section', 'divider', 'note'].includes(type);
+        const canOrder = ['text', 'textarea', 'yesno', 'select', 'file'].includes(type);
         return {
             id: String(field.id || generateFieldId()),
             type: type,
             label: String(field.label || '').trim(),
             required: neverRequired ? false : !!field.required,
+            orderable: canOrder ? !!field.orderable : false,
+            allow_extra_moments: type === 'section' ? !!field.allow_extra_moments : false,
             options: type === 'select' ? options : [],
             content_html: type === 'note' ? contentHtml : ''
         };
@@ -1201,6 +1204,8 @@ function createField(type = 'text') {
         type: normalizedType,
         label: defaultLabelByType(normalizedType),
         required: ['section', 'divider', 'note'].includes(normalizedType) ? false : false,
+        orderable: false,
+        allow_extra_moments: false,
         options: normalizedType === 'select' ? ['Opcao 1'] : [],
         content_html: normalizedType === 'note' ? '<p>Texto informativo</p>' : ''
     };
@@ -1224,8 +1229,12 @@ function renderQuestionList() {
         const type = String(field.type || 'text');
         const label = escapeHtml(String(field.label || ''));
         const required = !!field.required;
+        const orderable = !!field.orderable;
+        const allowExtraMoments = !!field.allow_extra_moments;
         const optionsText = escapeHtml(Array.isArray(field.options) ? field.options.join('\n') : '');
         const canRequire = ['text', 'textarea', 'yesno', 'select', 'file'].includes(type);
+        const canOrder = canRequire;
+        const canAllowExtraMoments = type === 'section';
 
         const typeOptions = fieldTypes.map((opt) => {
             const selected = opt === type ? ' selected' : '';
@@ -1272,6 +1281,14 @@ function renderQuestionList() {
                     <label class="required-toggle ${canRequire ? '' : 'disabled'}">
                         <input type="checkbox" ${required ? 'checked' : ''} ${canRequire ? '' : 'disabled'} onchange="setFieldRequired(${index}, this.checked)">
                         Obrigatoria
+                    </label>
+                    <label class="required-toggle ${canOrder ? '' : 'disabled'}">
+                        <input type="checkbox" ${orderable ? 'checked' : ''} ${canOrder ? '' : 'disabled'} onchange="setFieldOrderable(${index}, this.checked)">
+                        Ordenavel
+                    </label>
+                    <label class="required-toggle ${canAllowExtraMoments ? '' : 'disabled'}">
+                        <input type="checkbox" ${allowExtraMoments ? 'checked' : ''} ${canAllowExtraMoments ? '' : 'disabled'} onchange="setFieldAllowExtraMoments(${index}, this.checked)">
+                        Permitir momentos extras
                     </label>
                     <div class="question-actions">
                         <button type="button" class="question-mini-btn" onclick="duplicateField(${index})">Duplicar</button>
@@ -1574,6 +1591,10 @@ function setFieldType(index, type) {
 
     if (['section', 'divider', 'note'].includes(nextType)) {
         field.required = false;
+        field.orderable = false;
+    }
+    if (nextType !== 'section') {
+        field.allow_extra_moments = false;
     }
 
     setBuilderDirty(true);
@@ -1590,6 +1611,30 @@ function setFieldRequired(index, checked) {
         field.required = false;
     } else {
         field.required = !!checked;
+    }
+    setBuilderDirty(true);
+    renderQuestionList();
+}
+
+function setFieldOrderable(index, checked) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const field = formBuilderFields[index];
+    if (['text', 'textarea', 'yesno', 'select', 'file'].includes(String(field.type || ''))) {
+        field.orderable = !!checked;
+    } else {
+        field.orderable = false;
+    }
+    setBuilderDirty(true);
+    renderQuestionList();
+}
+
+function setFieldAllowExtraMoments(index, checked) {
+    if (!Array.isArray(formBuilderFields) || !formBuilderFields[index]) return;
+    const field = formBuilderFields[index];
+    if (String(field.type || '') === 'section') {
+        field.allow_extra_moments = !!checked;
+    } else {
+        field.allow_extra_moments = false;
     }
     setBuilderDirty(true);
     renderQuestionList();
@@ -1621,6 +1666,8 @@ function duplicateField(index) {
         type: String(src.type || 'text'),
         label: String(src.label || ''),
         required: !!src.required,
+        orderable: !!src.orderable,
+        allow_extra_moments: !!src.allow_extra_moments,
         options: Array.isArray(src.options) ? src.options.map((value) => String(value)) : [],
         content_html: String(src.content_html || '')
     };

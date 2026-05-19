@@ -243,6 +243,50 @@ function eventos_cliente_file_note_input_name(string $field_id, string $section 
 }
 
 /**
+ * Nome do input de ordem manual de um campo ordenável.
+ */
+function eventos_cliente_order_input_name(string $field_id, string $section = ''): string {
+    return eventos_cliente_input_name('order', $field_id, $section);
+}
+
+/**
+ * Chave de payload para ordem manual de um campo ordenável.
+ */
+function eventos_cliente_order_value_key(string $field_id): string {
+    return trim($field_id) . '__order';
+}
+
+/**
+ * Identificador do grupo de momentos extras dentro de uma seção do schema.
+ */
+function eventos_cliente_extra_group_id(string $field_id): string {
+    $id = eventos_cliente_normalizar_identificador($field_id, 'secao');
+    return $id !== '' ? $id : 'secao';
+}
+
+function eventos_cliente_extra_value_key(string $group_id): string {
+    return '__extra_moments_' . eventos_cliente_normalizar_identificador($group_id, 'secao');
+}
+
+function eventos_cliente_extra_input_name(string $section, string $group_id, string $field): string {
+    return eventos_cliente_input_name('extra_' . eventos_cliente_normalizar_identificador($field, 'field'), $group_id, $section);
+}
+
+function eventos_cliente_extra_file_input_name(string $section, string $upload_key): string {
+    return eventos_cliente_input_name('extra_file', $upload_key, $section);
+}
+
+function eventos_cliente_extra_file_note_input_name(string $section, string $upload_key): string {
+    return eventos_cliente_input_name('extra_file_note', $upload_key, $section);
+}
+
+function eventos_cliente_extra_upload_key(string $group_id, string $raw_key): string {
+    $group = eventos_cliente_normalizar_identificador($group_id, 'secao');
+    $key = eventos_cliente_normalizar_identificador($raw_key, 'momento');
+    return 'extra_moment_' . $group . '_' . $key;
+}
+
+/**
  * Nome do input de conteúdo do editor livre por seção.
  */
 function eventos_cliente_content_input_name(string $section): string {
@@ -517,6 +561,8 @@ function eventos_cliente_normalizar_schema($raw): array {
             'type' => $type,
             'label' => $label,
             'required' => !empty($item['required']) && $type !== 'section' && $type !== 'divider' && $type !== 'note',
+            'orderable' => !empty($item['orderable']) && in_array($type, ['text', 'textarea', 'yesno', 'select', 'file'], true),
+            'allow_extra_moments' => !empty($item['allow_extra_moments']) && $type === 'section',
             'options' => $options,
             'content_html' => $type === 'note' ? $content_html : '',
             'default_value' => $default_value,
@@ -560,6 +606,8 @@ function eventos_cliente_schema_garantir_texto_livre(array $schema, string $sect
         'type' => 'textarea',
         'label' => 'Texto livre (opcional)',
         'required' => false,
+        'orderable' => false,
+        'allow_extra_moments' => false,
         'options' => [],
         'content_html' => '',
         'default_value' => trim($default_value),
@@ -569,12 +617,92 @@ function eventos_cliente_schema_garantir_texto_livre(array $schema, string $sect
 }
 
 /**
+ * Normaliza momentos extras enviados dentro de uma seção do schema.
+ */
+function eventos_cliente_normalizar_momentos_extras(array $post, string $section, string $group_id): array {
+    $names = $post[eventos_cliente_extra_input_name($section, $group_id, 'name')] ?? [];
+    $orders = $post[eventos_cliente_extra_input_name($section, $group_id, 'order')] ?? [];
+    $descriptions = $post[eventos_cliente_extra_input_name($section, $group_id, 'description')] ?? [];
+    $keys = $post[eventos_cliente_extra_input_name($section, $group_id, 'key')] ?? [];
+
+    if (!is_array($names)) {
+        return [];
+    }
+
+    $moments = [];
+    $total = count($names);
+    for ($i = 0; $i < $total; $i++) {
+        $name = trim((string)($names[$i] ?? ''));
+        $order = trim((string)($orders[$i] ?? ''));
+        $description = trim((string)($descriptions[$i] ?? ''));
+        $raw_key = trim((string)($keys[$i] ?? ''));
+        if ($name === '' && $order === '' && $description === '') {
+            continue;
+        }
+        if ($raw_key === '') {
+            $raw_key = 'm' . ($i + 1);
+        }
+        $upload_key = eventos_cliente_extra_upload_key($group_id, $raw_key);
+        $moments[] = [
+            'key' => eventos_cliente_normalizar_identificador($raw_key, 'momento'),
+            'upload_key' => $upload_key,
+            'order' => $order,
+            'name' => $name,
+            'description' => $description,
+        ];
+    }
+
+    return $moments;
+}
+
+function eventos_cliente_momentos_extras_from_values(array $values, string $group_id): array {
+    $raw = (string)($values[eventos_cliente_extra_value_key($group_id)] ?? '');
+    if ($raw === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+    $moments = [];
+    foreach ($decoded as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $name = trim((string)($item['name'] ?? ''));
+        $order = trim((string)($item['order'] ?? ''));
+        $description = trim((string)($item['description'] ?? ''));
+        $key = trim((string)($item['key'] ?? ''));
+        $upload_key = trim((string)($item['upload_key'] ?? ''));
+        if ($key === '') {
+            $key = eventos_cliente_normalizar_identificador($upload_key, 'momento');
+        }
+        if ($upload_key === '') {
+            $upload_key = eventos_cliente_extra_upload_key($group_id, $key);
+        }
+        if ($name === '' && $order === '' && $description === '') {
+            continue;
+        }
+        $moments[] = [
+            'key' => eventos_cliente_normalizar_identificador($key, 'momento'),
+            'upload_key' => $upload_key,
+            'order' => $order,
+            'name' => $name,
+            'description' => $description,
+        ];
+    }
+    return $moments;
+}
+
+/**
  * Monta HTML de resposta do cliente a partir do schema.
  */
 function eventos_cliente_montar_resposta_schema(array $schema, array $post, string $section = '', bool $allow_partial = false): array {
     $errors = [];
     $parts = [];
     $values = [];
+    $current_group_id = 'geral';
+    $order_counter = 0;
 
     foreach ($schema as $field) {
         $field_id = trim((string)($field['id'] ?? ''));
@@ -589,6 +717,25 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
         }
         if ($field_type === 'section') {
             $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
+            $current_group_id = eventos_cliente_extra_group_id($field_id);
+            $order_counter = 0;
+            if (!empty($field['allow_extra_moments'])) {
+                $moments = eventos_cliente_normalizar_momentos_extras($post, $section, $current_group_id);
+                if (!empty($moments)) {
+                    $values[eventos_cliente_extra_value_key($current_group_id)] = json_encode($moments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]';
+                    $parts[] = '<div><strong>Momentos extras</strong>';
+                    foreach ($moments as $moment) {
+                        $moment_title = trim((string)($moment['name'] ?? 'Momento extra'));
+                        $moment_order = trim((string)($moment['order'] ?? ''));
+                        $moment_desc = trim((string)($moment['description'] ?? ''));
+                        $heading = ($moment_order !== '' ? 'Ordem ' . $moment_order . ' - ' : '') . ($moment_title !== '' ? $moment_title : 'Momento extra');
+                        $parts[] = '<p><strong>' . eventos_cliente_e($heading) . '</strong><br>' . ($moment_desc !== '' ? nl2br(eventos_cliente_e($moment_desc)) : '<em>Sem descrição.</em>') . '<br><em>Anexos vinculados separadamente, se enviados.</em></p>';
+                    }
+                    $parts[] = '</div>';
+                } else {
+                    $values[eventos_cliente_extra_value_key($current_group_id)] = '[]';
+                }
+            }
             continue;
         }
         if ($field_type === 'note') {
@@ -600,11 +747,26 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
         }
         if ($field_type === 'file') {
             // Upload de arquivo é processado separadamente.
+            if (!empty($field['orderable'])) {
+                $order_counter++;
+                $order_name = eventos_cliente_order_input_name($field_id, $section);
+                $order_value = trim((string)($post[$order_name] ?? (string)$order_counter));
+                $values[eventos_cliente_order_value_key($field_id)] = $order_value;
+                $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br><small>Ordem: ' . eventos_cliente_e($order_value) . '</small><br><em>Arquivo anexado separadamente.</em></p>';
+                continue;
+            }
             $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br><em>Arquivo anexado separadamente.</em></p>';
             continue;
         }
 
         $value = isset($post[$input_name]) ? trim((string)$post[$input_name]) : '';
+        $order_value = '';
+        if (!empty($field['orderable'])) {
+            $order_counter++;
+            $order_name = eventos_cliente_order_input_name($field_id, $section);
+            $order_value = trim((string)($post[$order_name] ?? (string)$order_counter));
+            $values[eventos_cliente_order_value_key($field_id)] = $order_value;
+        }
         if (!$allow_partial && $required && $value === '') {
             $errors[] = 'Preencha o campo obrigatório: ' . $label;
             continue;
@@ -630,7 +792,8 @@ function eventos_cliente_montar_resposta_schema(array $schema, array $post, stri
 
         $values[$field_id] = $value;
         $answer = $display_value !== '' ? nl2br(eventos_cliente_e($display_value)) : '<em>Não informado</em>';
-        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $answer . '</p>';
+        $order_html = $order_value !== '' ? '<small>Ordem: ' . eventos_cliente_e($order_value) . '</small><br>' : '';
+        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $answer . '</p>';
     }
 
     return [
@@ -692,6 +855,7 @@ function eventos_cliente_filtrar_anexos_sem_campo(array $anexos): array {
  */
 function eventos_cliente_montar_visualizacao_schema(array $schema, array $values, array $anexos, string $section = ''): string {
     $parts = [];
+    $current_group_id = 'geral';
 
     foreach ($schema as $field) {
         if (!is_array($field)) {
@@ -707,6 +871,36 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
         }
         if ($field_type === 'section') {
             $parts[] = '<h3>' . eventos_cliente_e($label) . '</h3>';
+            $current_group_id = eventos_cliente_extra_group_id($field_id);
+            if (!empty($field['allow_extra_moments'])) {
+                $moments = eventos_cliente_momentos_extras_from_values($values, $current_group_id);
+                if (!empty($moments)) {
+                    $parts[] = '<div><strong>Momentos extras</strong>';
+                    foreach ($moments as $moment) {
+                        $moment_title = trim((string)($moment['name'] ?? 'Momento extra'));
+                        $moment_order = trim((string)($moment['order'] ?? ''));
+                        $moment_desc = trim((string)($moment['description'] ?? ''));
+                        $upload_key = trim((string)($moment['upload_key'] ?? ''));
+                        $heading = ($moment_order !== '' ? 'Ordem ' . $moment_order . ' - ' : '') . ($moment_title !== '' ? $moment_title : 'Momento extra');
+                        $moment_anexos = $upload_key !== '' ? eventos_cliente_filtrar_anexos_por_campo($anexos, $upload_key) : [];
+                        $attachments_html = '';
+                        if (!empty($moment_anexos)) {
+                            $items = '';
+                            foreach ($moment_anexos as $anexo) {
+                                $name = eventos_cliente_e((string)($anexo['original_name'] ?? 'arquivo'));
+                                $url = trim((string)($anexo['public_url'] ?? ''));
+                                $link_html = $url !== ''
+                                    ? '<a href="' . eventos_cliente_e($url) . '" target="_blank" rel="noopener noreferrer">' . $name . '</a>'
+                                    : $name;
+                                $items .= '<li>' . $link_html . '</li>';
+                            }
+                            $attachments_html = '<br><strong>Anexos:</strong><ul>' . $items . '</ul>';
+                        }
+                        $parts[] = '<p><strong>' . eventos_cliente_e($heading) . '</strong><br>' . ($moment_desc !== '' ? nl2br(eventos_cliente_e($moment_desc)) : '<em>Sem descrição.</em>') . $attachments_html . '</p>';
+                    }
+                    $parts[] = '</div>';
+                }
+            }
             continue;
         }
         if ($field_type === 'note') {
@@ -739,7 +933,9 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
             $attachments_html = $items !== ''
                 ? '<ul>' . $items . '</ul>'
                 : '<em>Nenhum arquivo anexado.</em>';
-            $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $attachments_html . '</p>';
+            $order = !empty($field['orderable']) ? trim((string)($values[eventos_cliente_order_value_key($field_id)] ?? '')) : '';
+            $order_html = $order !== '' ? '<small>Ordem: ' . eventos_cliente_e($order) . '</small><br>' : '';
+            $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $attachments_html . '</p>';
             continue;
         }
 
@@ -762,7 +958,9 @@ function eventos_cliente_montar_visualizacao_schema(array $schema, array $values
         }
 
         $answer = $display !== '' ? nl2br(eventos_cliente_e($display)) : '<em>Não informado</em>';
-        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $answer . '</p>';
+        $order = !empty($field['orderable']) ? trim((string)($values[eventos_cliente_order_value_key($field_id)] ?? '')) : '';
+        $order_html = $order !== '' ? '<small>Ordem: ' . eventos_cliente_e($order) . '</small><br>' : '';
+        $parts[] = '<p><strong>' . eventos_cliente_e($label) . '</strong><br>' . $order_html . $answer . '</p>';
     }
 
     return implode("\n", $parts);
@@ -1105,7 +1303,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
         $secao = $section_views[$link_section]['secao'] ?? null;
         $anexos = $section_views[$link_section]['anexos'] ?? [];
     } elseif ($action === 'salvar' || $action === 'salvar_rascunho') {
-        $is_draft_action = $action === 'salvar_rascunho';
+        $final_send_confirmed = (string)($_POST['final_send_confirmed'] ?? '') === '1';
+        $is_draft_action = $action !== 'salvar' || !$final_send_confirmed;
         if (!$link_editavel) {
             $error = 'Este formulário está em modo somente visualização.';
         } elseif (!empty($link['submitted_at'])) {
@@ -1173,6 +1372,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $link && !$error) {
                                     'file' => $field_file,
                                     'note' => (string)($field_notes[$upload_index] ?? ''),
                                     'form_field_id' => $field_raw_id,
+                                ];
+                            }
+                        }
+                    }
+                    foreach ($schema_submit as $field) {
+                        if (($field['type'] ?? '') !== 'section' || empty($field['allow_extra_moments'])) {
+                            continue;
+                        }
+                        $group_id = eventos_cliente_extra_group_id((string)($field['id'] ?? ''));
+                        $extra_moments = eventos_cliente_normalizar_momentos_extras($_POST, $section_key, $group_id);
+                        foreach ($extra_moments as $moment) {
+                            $upload_key = trim((string)($moment['upload_key'] ?? ''));
+                            if ($upload_key === '') {
+                                continue;
+                            }
+                            $extra_input = eventos_cliente_extra_file_input_name($section_key, $upload_key);
+                            $extra_uploads = eventos_cliente_normalizar_uploads($_FILES, $extra_input);
+                            if (empty($extra_uploads)) {
+                                continue;
+                            }
+                            $extra_notes = eventos_cliente_normalizar_notas_upload($_POST[eventos_cliente_extra_file_note_input_name($section_key, $upload_key)] ?? []);
+                            foreach ($extra_uploads as $upload_index => $extra_file) {
+                                $section_uploads[] = [
+                                    'file' => $extra_file,
+                                    'note' => (string)($extra_notes[$upload_index] ?? ''),
+                                    'form_field_id' => $upload_key,
                                 ];
                             }
                         }
@@ -1576,6 +1801,107 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             text-decoration: underline;
         }
 
+        .orderable-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            margin-bottom: 0.45rem;
+            padding: 0.38rem 0.5rem;
+            border: 1px solid #dbe3ef;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .orderable-row label {
+            margin: 0;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #475569;
+        }
+
+        .orderable-row input {
+            width: 4.4rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            padding: 0.38rem 0.45rem;
+            font-size: 0.9rem;
+        }
+
+        .extra-moments-box {
+            margin: 0 0 1rem 0;
+            border: 1px dashed #b9c8df;
+            border-radius: 10px;
+            background: #f8fafc;
+            padding: 0.8rem;
+        }
+
+        .extra-moments-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.7rem;
+            color: #334155;
+        }
+
+        .extra-moment-add-btn,
+        .extra-moment-remove-btn {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+            color: #1e3a8a;
+            font-weight: 700;
+            font-size: 0.8rem;
+            padding: 0.42rem 0.65rem;
+            cursor: pointer;
+        }
+
+        .extra-moment-remove-btn {
+            margin-top: 0.65rem;
+            color: #b91c1c;
+            border-color: #fecaca;
+            background: #fff7f7;
+        }
+
+        .extra-moment-card {
+            border: 1px solid #dbe3ef;
+            border-radius: 10px;
+            background: #fff;
+            padding: 0.85rem;
+            margin-top: 0.65rem;
+        }
+
+        .extra-moment-card label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #334155;
+            margin-top: 0.55rem;
+        }
+
+        .extra-moment-card input[type="text"],
+        .extra-moment-card input[type="number"],
+        .extra-moment-card input[type="file"],
+        .extra-moment-card textarea {
+            width: 100%;
+            margin-top: 0.3rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 0.55rem;
+            font-size: 0.9rem;
+        }
+
+        .extra-moment-grid {
+            display: grid;
+            grid-template-columns: minmax(80px, 120px) 1fr;
+            gap: 0.65rem;
+        }
+
+        .attachments-list.compact {
+            margin-top: 0.65rem;
+            padding-top: 0.55rem;
+        }
+
         .client-content-frame {
             margin-top: 1rem;
             padding: 1rem;
@@ -1902,6 +2228,18 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             .client-content-frame {
                 padding: 0.85rem;
             }
+
+            .extra-moments-head,
+            .extra-moment-grid {
+                grid-template-columns: 1fr;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .orderable-row {
+                width: 100%;
+                justify-content: space-between;
+            }
         }
     </style>
     <link rel="stylesheet" href="assets/css/custom_modals.css">
@@ -2164,7 +2502,8 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
         
         <form method="POST" id="djForm" enctype="multipart/form-data">
             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
-            <input type="hidden" name="action" id="djActionInput" value="salvar">
+            <input type="hidden" name="action" id="djActionInput" value="salvar_rascunho">
+            <input type="hidden" name="final_send_confirmed" id="djFinalSendConfirmedInput" value="0">
             
             <?php foreach ($section_view_items as $section_view): ?>
             <?php
@@ -2196,25 +2535,144 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                     </ul>
                 </div>
 
+                <?php
+                    $schema_orderable_totals = [];
+                    $schema_total_group_id = 'geral';
+                    foreach ($section_schema as $schema_count_field) {
+                        $schema_count_type = (string)($schema_count_field['type'] ?? '');
+                        if ($schema_count_type === 'section') {
+                            $schema_total_group_id = eventos_cliente_extra_group_id((string)($schema_count_field['id'] ?? ''));
+                            $schema_orderable_totals[$schema_total_group_id] = $schema_orderable_totals[$schema_total_group_id] ?? 0;
+                            continue;
+                        }
+                        if (!empty($schema_count_field['orderable'])) {
+                            $schema_orderable_totals[$schema_total_group_id] = ($schema_orderable_totals[$schema_total_group_id] ?? 0) + 1;
+                        }
+                    }
+                    $schema_form_group_id = 'geral';
+                    $schema_order_counter = 0;
+                ?>
                 <?php foreach ($section_schema as $field): ?>
                     <?php
                         $field_raw_id = (string)($field['id'] ?? '');
                         $field_name = eventos_cliente_field_input_name($field_raw_id, $section_key);
+                        $order_name = eventos_cliente_order_input_name($field_raw_id, $section_key);
                         $file_name = eventos_cliente_file_input_name($field_raw_id, $section_key);
                         $file_note_name = eventos_cliente_file_note_input_name($field_raw_id, $section_key);
                         $file_note_target = $file_name . 'Notes';
                         $label = (string)($field['label'] ?? '');
                         $required = !empty($field['required']);
+                        $orderable = !empty($field['orderable']);
                         $required_attr = $required ? ' required' : '';
                         $field_attachments = eventos_cliente_filtrar_anexos_por_campo($section_anexos, $field_raw_id);
                         $file_required_attr = ($required && empty($field_attachments)) ? ' required' : '';
                         $field_default_value = isset($field['default_value']) ? (string)$field['default_value'] : '';
                         $field_value = isset($section_values[$field_raw_id]) ? (string)$section_values[$field_raw_id] : $field_default_value;
+                        $field_order_value = '';
+                        if ($orderable) {
+                            $schema_order_counter++;
+                            $field_order_value = trim((string)($section_values[eventos_cliente_order_value_key($field_raw_id)] ?? ''));
+                            if ($field_order_value === '') {
+                                $field_order_value = (string)$schema_order_counter;
+                            }
+                        }
                     ?>
                     <?php if (($field['type'] ?? '') === 'divider'): ?>
                         <hr style="margin: 1rem 0; border: 0; border-top: 1px solid #e2e8f0;">
                     <?php elseif (($field['type'] ?? '') === 'section'): ?>
+                        <?php
+                            $schema_form_group_id = eventos_cliente_extra_group_id($field_raw_id);
+                            $schema_order_counter = 0;
+                            $extra_moments = eventos_cliente_momentos_extras_from_values($section_values, $schema_form_group_id);
+                            $extra_name = eventos_cliente_extra_input_name($section_key, $schema_form_group_id, 'name');
+                            $extra_order = eventos_cliente_extra_input_name($section_key, $schema_form_group_id, 'order');
+                            $extra_description = eventos_cliente_extra_input_name($section_key, $schema_form_group_id, 'description');
+                            $extra_key = eventos_cliente_extra_input_name($section_key, $schema_form_group_id, 'key');
+                        ?>
                         <h4 style="margin-top: 1.1rem; margin-bottom: 0.6rem; color: #1e3a8a;"><?= eventos_cliente_e($label) ?></h4>
+                        <?php if (!empty($field['allow_extra_moments'])): ?>
+                        <div class="extra-moments-box"
+                             data-extra-moments-group="<?= eventos_cliente_e($schema_form_group_id) ?>"
+                             data-section-key="<?= eventos_cliente_e($section_key) ?>"
+                             data-name-input="<?= eventos_cliente_e($extra_name) ?>[]"
+                             data-order-input="<?= eventos_cliente_e($extra_order) ?>[]"
+                             data-description-input="<?= eventos_cliente_e($extra_description) ?>[]"
+                             data-key-input="<?= eventos_cliente_e($extra_key) ?>[]"
+                             data-base-order="<?= (int)($schema_orderable_totals[$schema_form_group_id] ?? 0) ?>">
+                            <div class="extra-moments-head">
+                                <strong>Momentos extras</strong>
+                                <button type="button" class="extra-moment-add-btn" data-add-extra-moment>+ Adicionar momento</button>
+                            </div>
+                            <div class="extra-moments-list" data-extra-moments-list>
+                                <?php foreach ($extra_moments as $moment_index => $moment): ?>
+                                    <?php
+                                        $moment_key = (string)($moment['key'] ?? ('m' . ($moment_index + 1)));
+                                        $moment_upload_key = (string)($moment['upload_key'] ?? eventos_cliente_extra_upload_key($schema_form_group_id, $moment_key));
+                                        $moment_file_name = eventos_cliente_extra_file_input_name($section_key, $moment_upload_key);
+                                        $moment_note_name = eventos_cliente_extra_file_note_input_name($section_key, $moment_upload_key);
+                                        $moment_note_target = $moment_file_name . 'Notes';
+                                        $moment_attachments = eventos_cliente_filtrar_anexos_por_campo($section_anexos, $moment_upload_key);
+                                    ?>
+                                    <div class="extra-moment-card">
+                                        <input type="hidden" name="<?= eventos_cliente_e($extra_key) ?>[]" value="<?= eventos_cliente_e($moment_key) ?>">
+                                        <div class="extra-moment-grid">
+                                            <label>Ordem
+                                                <input type="number" min="1" inputmode="numeric" name="<?= eventos_cliente_e($extra_order) ?>[]" value="<?= eventos_cliente_e(trim((string)($moment['order'] ?? '')) !== '' ? (string)$moment['order'] : (string)((int)($schema_orderable_totals[$schema_form_group_id] ?? 0) + $moment_index + 1)) ?>">
+                                            </label>
+                                            <label>Nome do momento
+                                                <input type="text" name="<?= eventos_cliente_e($extra_name) ?>[]" value="<?= eventos_cliente_e((string)($moment['name'] ?? '')) ?>" placeholder="Ex.: Entrada dos pais">
+                                            </label>
+                                        </div>
+                                        <label>Descrição / música / instrução
+                                            <textarea name="<?= eventos_cliente_e($extra_description) ?>[]" rows="3" placeholder="Descreva o momento, música, link e orientações."><?= eventos_cliente_e((string)($moment['description'] ?? '')) ?></textarea>
+                                        </label>
+                                        <label>Anexo
+                                            <input type="file"
+                                                   name="<?= eventos_cliente_e($moment_file_name) ?>[]"
+                                                   multiple
+                                                   accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
+                                                   data-note-target="<?= eventos_cliente_e($moment_note_target) ?>"
+                                                   data-note-name="<?= eventos_cliente_e($moment_note_name) ?>[]">
+                                        </label>
+                                        <div class="file-note-wrap" id="<?= eventos_cliente_e($moment_note_target) ?>"></div>
+                                        <?php if (!empty($moment_attachments)): ?>
+                                        <div class="attachments-list compact">
+                                            <h4>Arquivos deste momento</h4>
+                                            <ul>
+                                                <?php foreach ($moment_attachments as $anexo): ?>
+                                                <?php
+                                                    $can_delete_moment_attachment = !$is_locked
+                                                        && strtolower(trim((string)($anexo['uploaded_by_type'] ?? ''))) === 'cliente'
+                                                        && (int)($anexo['id'] ?? 0) > 0;
+                                                ?>
+                                                <li>
+                                                    <div class="attachment-item-head">
+                                                        <span>📎</span>
+                                                        <?php if (!empty($anexo['public_url'])): ?>
+                                                        <a href="<?= htmlspecialchars($anexo['public_url']) ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></a>
+                                                        <?php else: ?>
+                                                        <span><?= htmlspecialchars($anexo['original_name'] ?? 'arquivo') ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <?php if ($can_delete_moment_attachment): ?>
+                                                    <button type="button"
+                                                            class="attachment-remove-btn"
+                                                            data-delete-anexo="<?= (int)($anexo['id'] ?? 0) ?>"
+                                                            data-delete-section="<?= eventos_cliente_e($section_key) ?>">
+                                                        Excluir arquivo
+                                                    </button>
+                                                    <?php endif; ?>
+                                                </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </div>
+                                        <?php endif; ?>
+                                        <button type="button" class="extra-moment-remove-btn" data-remove-extra-moment>Remover momento</button>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     <?php elseif (($field['type'] ?? '') === 'note'): ?>
                         <?php $note_html = eventos_cliente_note_html($field); ?>
                         <?php if ($note_html !== ''): ?>
@@ -2224,6 +2682,12 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                         <?php endif; ?>
                     <?php else: ?>
                         <div style="margin-bottom: 1rem;">
+                            <?php if ($orderable): ?>
+                            <div class="orderable-row">
+                                <label for="<?= eventos_cliente_e($order_name) ?>">Ordem</label>
+                                <input type="number" min="1" inputmode="numeric" id="<?= eventos_cliente_e($order_name) ?>" name="<?= eventos_cliente_e($order_name) ?>" value="<?= eventos_cliente_e($field_order_value) ?>">
+                            </div>
+                            <?php endif; ?>
                             <label style="display:block; font-weight:600; color:#334155; margin-bottom:0.35rem;" for="<?= eventos_cliente_e($field_name) ?>">
                                 <?= eventos_cliente_e($label) ?><?= $required ? ' *' : '' ?>
                             </label>
@@ -2444,6 +2908,87 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                 }).join('');
             }
 
+            function normalizeClientIdentifier(value, fallback = 'campo') {
+                const normalized = String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '');
+                return normalized || fallback;
+            }
+
+            function extraMomentInputName(prefix, section, key) {
+                const safeSection = normalizeClientIdentifier(section, '');
+                const safeKey = normalizeClientIdentifier(key, 'momento');
+                return `${prefix}_${safeSection ? `${safeSection}_` : ''}${safeKey}`;
+            }
+
+            function nextExtraMomentOrder(box) {
+                const base = Number(box.getAttribute('data-base-order') || 0) || 0;
+                const orders = Array.from(box.querySelectorAll('.extra-moment-card input[type="number"]'))
+                    .map((input) => Number(input.value || 0))
+                    .filter((value) => Number.isFinite(value) && value > 0);
+                const maxExisting = orders.length ? Math.max(...orders) : base;
+                return maxExisting + 1;
+            }
+
+            function createExtraMomentCard(box) {
+                const list = box.querySelector('[data-extra-moments-list]');
+                if (!list) return;
+
+                const group = normalizeClientIdentifier(box.getAttribute('data-extra-moments-group') || 'secao', 'secao');
+                const section = normalizeClientIdentifier(box.getAttribute('data-section-key') || '', '');
+                const rawKey = `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+                const uploadKey = `extra_moment_${group}_${normalizeClientIdentifier(rawKey, 'momento')}`;
+                const fileName = `${extraMomentInputName('extra_file', section, uploadKey)}[]`;
+                const noteName = `${extraMomentInputName('extra_file_note', section, uploadKey)}[]`;
+                const noteTarget = `${extraMomentInputName('extra_file', section, uploadKey)}Notes`;
+                const order = nextExtraMomentOrder(box);
+
+                const card = document.createElement('div');
+                card.className = 'extra-moment-card';
+                card.innerHTML = `
+                    <input type="hidden" name="${escapeHtmlClient(box.getAttribute('data-key-input') || '')}" value="${escapeHtmlClient(rawKey)}">
+                    <div class="extra-moment-grid">
+                        <label>Ordem
+                            <input type="number" min="1" inputmode="numeric" name="${escapeHtmlClient(box.getAttribute('data-order-input') || '')}" value="${order}">
+                        </label>
+                        <label>Nome do momento
+                            <input type="text" name="${escapeHtmlClient(box.getAttribute('data-name-input') || '')}" value="" placeholder="Ex.: Entrada dos pais">
+                        </label>
+                    </div>
+                    <label>Descrição / música / instrução
+                        <textarea name="${escapeHtmlClient(box.getAttribute('data-description-input') || '')}" rows="3" placeholder="Descreva o momento, música, link e orientações."></textarea>
+                    </label>
+                    <label>Anexo
+                        <input type="file"
+                               name="${escapeHtmlClient(fileName)}"
+                               multiple
+                               accept=".png,.jpg,.jpeg,.gif,.webp,.heic,.heif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.xlsm,.ppt,.pptx,.odt,.ods,.odp,.mp3,.wav,.ogg,.aac,.m4a,.mp4,.mov,.webm,.avi,.zip,.rar,.7z,.xml,.ofx"
+                               data-note-target="${escapeHtmlClient(noteTarget)}"
+                               data-note-name="${escapeHtmlClient(noteName)}">
+                    </label>
+                    <div class="file-note-wrap" id="${escapeHtmlClient(noteTarget)}"></div>
+                    <button type="button" class="extra-moment-remove-btn" data-remove-extra-moment>Remover momento</button>
+                `;
+                list.appendChild(card);
+                const fileInput = card.querySelector('input[type="file"][data-note-target]');
+                if (fileInput) {
+                    fileInput.addEventListener('change', () => renderUploadNotesForInput(fileInput));
+                }
+            }
+
+            function bindExtraMomentControls() {
+                document.querySelectorAll('[data-add-extra-moment]').forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const box = button.closest('[data-extra-moments-group]');
+                        if (box) createExtraMomentCard(box);
+                    });
+                });
+                document.addEventListener('click', (event) => {
+                    const button = event.target && event.target.closest ? event.target.closest('[data-remove-extra-moment]') : null;
+                    if (!button) return;
+                    const card = button.closest('.extra-moment-card');
+                    if (card) card.remove();
+                });
+            }
+
             function bindUploadNoteInputs() {
                 document.querySelectorAll('input[type="file"][data-note-target]').forEach((input) => {
                     input.addEventListener('change', () => renderUploadNotesForInput(input));
@@ -2535,13 +3080,17 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                 }
             }
 
-            let pendingDjAction = 'salvar';
+            let pendingDjAction = 'salvar_rascunho';
 
             function setPendingDjAction(action) {
                 pendingDjAction = action === 'salvar_rascunho' ? 'salvar_rascunho' : 'salvar';
                 const actionInput = document.getElementById('djActionInput');
                 if (actionInput) {
                     actionInput.value = pendingDjAction;
+                }
+                const finalSendInput = document.getElementById('djFinalSendConfirmedInput');
+                if (finalSendInput) {
+                    finalSendInput.value = '0';
                 }
             }
 
@@ -2568,6 +3117,10 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
                 }
 
                 setPendingDjAction(action);
+                const finalSendInput = document.getElementById('djFinalSendConfirmedInput');
+                if (finalSendInput) {
+                    finalSendInput.value = isDraftAction ? '0' : '1';
+                }
                 setDjFormSubmittingState(action);
                 HTMLFormElement.prototype.submit.call(form);
             }
@@ -2590,6 +3143,7 @@ $back_link = eventos_cliente_ui_form_back_link($portal_config, $link_type_curren
             });
 
             bindUploadNoteInputs();
+            bindExtraMomentControls();
             bindDeleteAttachmentButtons();
         </script>
         <?php endif; ?>
