@@ -34,12 +34,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $login = trim($_POST['login'] ?? '');
         $senha = $_POST['senha'] ?? '';
         $ativo = isset($_POST['ativo']);
+        $is_dj = $tipo === 'dj';
+
+        if ($is_dj && $login === '') {
+            $login = 'dj-public-' . ($id > 0 ? $id : bin2hex(random_bytes(4)));
+        }
         
         if (!in_array($tipo, ['dj', 'decoracao'])) {
             $error = 'Tipo inválido';
         } elseif (!$nome) {
             $error = 'Nome é obrigatório';
-        } elseif (!$login) {
+        } elseif (!$is_dj && !$login) {
             $error = 'Login é obrigatório';
         } else {
             try {
@@ -69,9 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $success = 'Fornecedor atualizado!';
                 } else {
                     // Criar
-                    if (!$senha) {
+                    if (!$is_dj && !$senha) {
                         $error = 'Senha é obrigatória para novo fornecedor';
                     } else {
+                        if ($is_dj && $senha === '') {
+                            $senha = bin2hex(random_bytes(16));
+                        }
                         $stmt = $pdo->prepare("
                             INSERT INTO eventos_fornecedores (tipo, nome, email, telefone, login, senha_hash, ativo, created_by, created_at, updated_at)
                             VALUES (:tipo, :nome, :email, :telefone, :login, :senha, :ativo, :user_id, NOW(), NOW())
@@ -91,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } catch (PDOException $e) {
                 if (strpos($e->getMessage(), 'login') !== false) {
-                    $error = 'Login já existe. Escolha outro.';
+                    $error = $is_dj ? 'Erro ao gerar acesso público do DJ. Tente salvar novamente.' : 'Login já existe. Escolha outro.';
                 } else {
                     $error = 'Erro ao salvar: ' . $e->getMessage();
                 }
@@ -366,7 +374,7 @@ includeSidebar('Fornecedores - Eventos');
     <div class="portal-link">
         <h4>🔗 Links dos Portais Externos</h4>
         <p style="font-size: 0.875rem; color: #475569; margin-bottom: 0.5rem;">Compartilhe estes links com os fornecedores:</p>
-        <code>Portal DJ: <?= (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] ?>/index.php?page=portal_dj_login</code>
+        <code>Portal DJ público: <?= (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] ?>/index.php?page=portal_dj</code>
         <code style="margin-top: 0.5rem;">Portal Decoração: <?= (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] ?>/index.php?page=portal_decoracao_login</code>
     </div>
     
@@ -385,7 +393,7 @@ includeSidebar('Fornecedores - Eventos');
                 <div class="fornecedor-meta">
                     <?= htmlspecialchars($f['email'] ?: '-') ?> • <?= htmlspecialchars($f['telefone'] ?: '-') ?>
                 </div>
-                <div class="fornecedor-login">Login: <?= htmlspecialchars($f['login']) ?></div>
+                <div class="fornecedor-login">Portal DJ: acesso público, sem login</div>
                 <div style="margin-top: 0.5rem;">
                     <span class="status-badge <?= $f['ativo'] ? 'status-ativo' : 'status-inativo' ?>">
                         <?= $f['ativo'] ? 'Ativo' : 'Inativo' ?>
@@ -477,15 +485,16 @@ includeSidebar('Fornecedores - Eventos');
                     <input type="text" name="telefone" id="fornecedorTelefone" class="form-input">
                 </div>
                 
-                <div class="form-group">
+                <div class="form-group" id="credenciaisLoginGroup">
                     <label class="form-label">Login * (usado para acessar o portal)</label>
                     <input type="text" name="login" id="fornecedorLogin" class="form-input" required>
                 </div>
                 
-                <div class="form-group">
+                <div class="form-group" id="credenciaisSenhaGroup">
                     <label class="form-label">Senha <span id="senhaObrigatorio">*</span></label>
                     <input type="password" name="senha" id="fornecedorSenha" class="form-input">
                     <small id="senhaHint" style="color: #64748b; display: none;">Deixe em branco para manter a senha atual</small>
+                    <small id="djPublicHint" style="color: #64748b; display: none;">O Portal DJ agora é público e não usa login ou senha.</small>
                 </div>
                 
                 <div class="form-group">
@@ -505,13 +514,32 @@ includeSidebar('Fornecedores - Eventos');
 </div>
 
 <script>
+function atualizarCamposCredenciais() {
+    const tipo = document.getElementById('fornecedorTipo').value;
+    const id = document.getElementById('fornecedorId').value;
+    const isDj = tipo === 'dj';
+    const loginGroup = document.getElementById('credenciaisLoginGroup');
+    const senhaGroup = document.getElementById('credenciaisSenhaGroup');
+    const loginInput = document.getElementById('fornecedorLogin');
+    const senhaInput = document.getElementById('fornecedorSenha');
+    const senhaObrigatorio = document.getElementById('senhaObrigatorio');
+    const senhaHint = document.getElementById('senhaHint');
+    const djPublicHint = document.getElementById('djPublicHint');
+
+    loginGroup.style.display = isDj ? 'none' : 'block';
+    senhaGroup.style.display = isDj ? 'none' : 'block';
+    loginInput.required = !isDj;
+    senhaInput.required = !isDj && id === '';
+    senhaObrigatorio.style.display = (!isDj && id === '') ? 'inline' : 'none';
+    senhaHint.style.display = (!isDj && id !== '') ? 'block' : 'none';
+    djPublicHint.style.display = isDj ? 'block' : 'none';
+}
+
 function abrirModal() {
     document.getElementById('modalTitle').textContent = 'Novo Fornecedor';
     document.getElementById('formFornecedor').reset();
     document.getElementById('fornecedorId').value = '';
-    document.getElementById('fornecedorSenha').required = true;
-    document.getElementById('senhaObrigatorio').style.display = 'inline';
-    document.getElementById('senhaHint').style.display = 'none';
+    atualizarCamposCredenciais();
     document.getElementById('modalFornecedor').classList.add('show');
 }
 
@@ -526,14 +554,15 @@ function editarFornecedor(f) {
     document.getElementById('fornecedorSenha').value = '';
     document.getElementById('fornecedorSenha').required = false;
     document.getElementById('fornecedorAtivo').checked = f.ativo;
-    document.getElementById('senhaObrigatorio').style.display = 'none';
-    document.getElementById('senhaHint').style.display = 'block';
+    atualizarCamposCredenciais();
     document.getElementById('modalFornecedor').classList.add('show');
 }
 
 function fecharModal() {
     document.getElementById('modalFornecedor').classList.remove('show');
 }
+
+document.getElementById('fornecedorTipo').addEventListener('change', atualizarCamposCredenciais);
 </script>
 
 <?php endSidebar(); ?>

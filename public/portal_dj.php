@@ -11,38 +11,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
 
-// Verificar login
-if (empty($_SESSION['portal_dj_logado']) || $_SESSION['portal_dj_logado'] !== true) {
-    $redirect = (string)($_SERVER['REQUEST_URI'] ?? '');
-    $redirect_param = '';
-    $starts_ok = (substr($redirect, 0, 9) === '/index.php' || substr($redirect, 0, 8) === 'index.php');
-    if ($redirect !== '' && $starts_ok && strpos($redirect, 'page=portal_dj') !== false) {
-        $redirect_param = '&redirect=' . urlencode($redirect);
-    }
-    header('Location: index.php?page=portal_dj_login' . $redirect_param);
-    exit;
-}
-
-$fornecedor_id = $_SESSION['portal_dj_fornecedor_id'];
-$nome = $_SESSION['portal_dj_nome'];
-
-// Logout
-if (isset($_GET['logout'])) {
-    // Invalidar sessão no banco
-    if (!empty($_SESSION['portal_dj_token'])) {
-        $stmt = $pdo->prepare("UPDATE eventos_fornecedores_sessoes SET ativo = FALSE WHERE token = :token");
-        $stmt->execute([':token' => $_SESSION['portal_dj_token']]);
-    }
-    
-    unset($_SESSION['portal_dj_logado']);
-    unset($_SESSION['portal_dj_fornecedor_id']);
-    unset($_SESSION['portal_dj_nome']);
-    unset($_SESSION['portal_dj_token']);
-    
-    header('Location: index.php?page=portal_dj_login');
-    exit;
-}
-
 // Buscar próximos 30 eventos (somente tipo real casamento/15 anos)
 $eventos = [];
 $eventos_por_data = [];
@@ -1649,8 +1617,7 @@ if ($aba_detalhe === '' || !array_key_exists($aba_detalhe, $abas_detalhe)) {
     <div class="header">
         <h1>🎧 Portal DJ</h1>
         <div class="header-user">
-            <span>Olá, <?= htmlspecialchars($nome) ?></span>
-            <a href="?page=portal_dj&logout=1" class="btn btn-light">Sair</a>
+            <span>Acesso público</span>
         </div>
     </div>
     
