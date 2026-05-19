@@ -26,6 +26,390 @@ function eventos_dispatcher(PDO $pdo): ?NotificationDispatcher {
     }
 }
 
+function eventos_notificacoes_e($value): string {
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function eventos_notificacoes_formatar_data(?string $data): string {
+    $data = trim((string)$data);
+    if ($data === '') {
+        return '-';
+    }
+    $ts = strtotime($data);
+    return $ts ? date('d/m/Y', $ts) : $data;
+}
+
+function eventos_notificacoes_cortar_texto(string $texto, int $limite): string {
+    if ($limite <= 0) {
+        return '';
+    }
+    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+        return mb_strlen($texto, 'UTF-8') > $limite ? mb_substr($texto, 0, $limite, 'UTF-8') : $texto;
+    }
+    return strlen($texto) > $limite ? substr($texto, 0, $limite) : $texto;
+}
+
+function eventos_notificacoes_data_na_janela_5_dias(?string $data): bool {
+    $data = trim((string)$data);
+    if ($data === '') {
+        return false;
+    }
+
+    try {
+        $hoje = new DateTimeImmutable('today');
+        $evento = new DateTimeImmutable(substr($data, 0, 10));
+        $limite = $hoje->modify('+5 days');
+        return $evento >= $hoje && $evento <= $limite;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function eventos_notificacoes_buscar_contexto(PDO $pdo, int $meeting_id): ?array {
+    $stmt = $pdo->prepare("
+        SELECT r.id, r.me_event_id, r.me_event_snapshot
+        FROM eventos_reunioes r
+        WHERE r.id = :id
+        LIMIT 1
+    ");
+    $stmt->execute([':id' => $meeting_id]);
+    $reuniao = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!$reuniao) {
+        return null;
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    $snapshot = is_array($snapshot) ? $snapshot : [];
+    $me_event_id = (int)($reuniao['me_event_id'] ?? 0);
+    $space = '';
+
+    try {
+        if ($me_event_id > 0 && eventos_reuniao_has_table($pdo, 'logistica_eventos_espelho')) {
+            $stmt_space = $pdo->prepare("
+                SELECT TRIM(COALESCE(space_visivel, '')) AS space_visivel
+                FROM logistica_eventos_espelho
+                WHERE me_event_id = :me_event_id
+                LIMIT 1
+            ");
+            $stmt_space->execute([':me_event_id' => $me_event_id]);
+            $space = trim((string)($stmt_space->fetchColumn() ?: ''));
+        }
+    } catch (Throwable $e) {
+        error_log('eventos_notificacoes_buscar_contexto space: ' . $e->getMessage());
+    }
+
+    if ($space === '') {
+        $space = trim((string)($snapshot['space_visivel'] ?? $snapshot['unidade'] ?? ''));
+    }
+
+    $cliente = is_array($snapshot['cliente'] ?? null) ? $snapshot['cliente'] : [];
+    $local = function_exists('eventos_me_snapshot_local')
+        ? eventos_me_snapshot_local($snapshot, '')
+        : trim((string)($snapshot['local'] ?? ''));
+    $cliente_nome = function_exists('eventos_me_snapshot_cliente_nome')
+        ? eventos_me_snapshot_cliente_nome($snapshot, '')
+        : trim((string)($cliente['nome'] ?? ''));
+
+    return [
+        'meeting_id' => (int)$reuniao['id'],
+        'me_event_id' => $me_event_id,
+        'snapshot' => $snapshot,
+        'nome_evento' => trim((string)($snapshot['nome'] ?? 'Evento')),
+        'data_evento' => trim((string)($snapshot['data'] ?? '')),
+        'local_evento' => trim($local),
+        'cliente_nome' => trim($cliente_nome),
+        'space_visivel' => $space,
+    ];
+}
+
+function eventos_notificacoes_buscar_gerentes_evento(PDO $pdo, string $space_visivel): array {
+    $space = trim($space_visivel);
+    if ($space === '' || !eventos_reuniao_has_table($pdo, 'usuarios_spaces_visiveis')) {
+        return [];
+    }
+
+    $ativo_where = eventos_reuniao_has_column($pdo, 'usuarios', 'ativo') ? "AND COALESCE(u.ativo, TRUE) = TRUE" : "";
+    $stmt = $pdo->prepare("
+        SELECT DISTINCT u.id, u.nome, u.email
+        FROM usuarios u
+        JOIN usuarios_spaces_visiveis us ON us.usuario_id = u.id
+        WHERE u.email IS NOT NULL
+          AND TRIM(u.email) <> ''
+          AND LOWER(TRIM(COALESCE(u.cargo, ''))) = LOWER('Gerente de eventos')
+          AND LOWER(TRIM(us.space_visivel)) = LOWER(TRIM(:space))
+          {$ativo_where}
+        ORDER BY u.nome ASC
+    ");
+    $stmt->execute([':space' => $space]);
+
+    $destinatarios = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $email = trim((string)($row['email'] ?? ''));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            continue;
+        }
+        $destinatarios[(int)$row['id']] = [
+            'id' => (int)$row['id'],
+            'nome' => trim((string)($row['nome'] ?? '')),
+            'email' => $email,
+        ];
+    }
+
+    return array_values($destinatarios);
+}
+
+function eventos_notificacoes_label_secao(string $section): string {
+    $labels = [
+        'decoracao' => 'Decoração',
+        'observacoes_gerais' => 'Observações gerais',
+        'dj_protocolo' => 'DJ / Protocolo',
+        'formulario' => 'Formulário',
+    ];
+    return $labels[$section] ?? $section;
+}
+
+function eventos_notificacoes_payload_values(string $html): array {
+    if (!function_exists('eventos_reuniao_extrair_payload_formulario')) {
+        return [];
+    }
+    $payload = eventos_reuniao_extrair_payload_formulario($html);
+    $values = $payload['values'] ?? [];
+    return is_array($values) ? $values : [];
+}
+
+function eventos_notificacoes_schema_labels(?string $schema_json): array {
+    $labels = [];
+    $decoded = json_decode((string)$schema_json, true);
+    if (!is_array($decoded)) {
+        return $labels;
+    }
+    foreach ($decoded as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $id = trim((string)($field['id'] ?? ''));
+        $label = trim((string)($field['label'] ?? ''));
+        if ($id !== '' && $label !== '') {
+            $labels[$id] = $label;
+        }
+    }
+    return $labels;
+}
+
+function eventos_notificacoes_resumir_alteracoes_reuniao(string $prev_html, string $new_html, ?string $prev_schema_json = null, ?string $new_schema_json = null): array {
+    $labels = array_replace(
+        eventos_notificacoes_schema_labels($prev_schema_json),
+        eventos_notificacoes_schema_labels($new_schema_json)
+    );
+
+    $prev_values = eventos_notificacoes_payload_values($prev_html);
+    $new_values = eventos_notificacoes_payload_values($new_html);
+    $changes = [];
+
+    foreach (array_unique(array_merge(array_keys($prev_values), array_keys($new_values))) as $key) {
+        $antes = trim((string)($prev_values[$key] ?? ''));
+        $depois = trim((string)($new_values[$key] ?? ''));
+        if ($antes === $depois) {
+            continue;
+        }
+        $changes[] = [
+            'campo' => $labels[$key] ?? (string)$key,
+            'antes' => $antes !== '' ? $antes : 'vazio',
+            'depois' => $depois !== '' ? $depois : 'vazio',
+        ];
+    }
+
+    if (!empty($changes)) {
+        return array_slice($changes, 0, 12);
+    }
+
+    $prev_text = function_exists('eventos_reuniao_html_para_texto') ? eventos_reuniao_html_para_texto($prev_html) : trim(strip_tags($prev_html));
+    $new_text = function_exists('eventos_reuniao_html_para_texto') ? eventos_reuniao_html_para_texto($new_html) : trim(strip_tags($new_html));
+    if (trim($prev_text) !== trim($new_text)) {
+        return [[
+            'campo' => 'Conteúdo da seção',
+            'antes' => $prev_text !== '' ? eventos_notificacoes_cortar_texto($prev_text, 240) : 'vazio',
+            'depois' => $new_text !== '' ? eventos_notificacoes_cortar_texto($new_text, 240) : 'vazio',
+        ]];
+    }
+
+    return [];
+}
+
+function eventos_notificacoes_montar_base_url(): string {
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    $base_url = trim((string)(getenv('APP_URL') ?: getenv('BASE_URL') ?: ''));
+    if ($base_url === '' && $host !== '') {
+        $base_url = $scheme . '://' . $host;
+    }
+    return rtrim($base_url, '/');
+}
+
+function eventos_notificacoes_email_html(array $ctx, string $titulo, string $descricao, array $alteracoes, string $url_destino = '', string $extra_html = ''): string {
+    $nome = eventos_notificacoes_e($ctx['nome_evento'] ?? 'Evento');
+    $data = eventos_notificacoes_e(eventos_notificacoes_formatar_data((string)($ctx['data_evento'] ?? '')));
+    $local = eventos_notificacoes_e(trim((string)($ctx['local_evento'] ?? '')) ?: '-');
+    $cliente = eventos_notificacoes_e(trim((string)($ctx['cliente_nome'] ?? '')) ?: '-');
+    $unidade = eventos_notificacoes_e(trim((string)($ctx['space_visivel'] ?? '')) ?: '-');
+    $titulo_e = eventos_notificacoes_e($titulo);
+    $descricao_e = eventos_notificacoes_e($descricao);
+
+    $rows = '';
+    foreach ($alteracoes as $alteracao) {
+        $campo = eventos_notificacoes_e($alteracao['campo'] ?? 'Campo');
+        $antes = eventos_notificacoes_e($alteracao['antes'] ?? 'vazio');
+        $depois = eventos_notificacoes_e($alteracao['depois'] ?? 'vazio');
+        $rows .= "<tr><td style='padding:10px;border-bottom:1px solid #e5e7eb;font-weight:600;'>{$campo}</td><td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{$antes}</td><td style='padding:10px;border-bottom:1px solid #e5e7eb;'>{$depois}</td></tr>";
+    }
+    if ($rows === '') {
+        $rows = "<tr><td colspan='3' style='padding:10px;border-bottom:1px solid #e5e7eb;'>Atualização registrada no sistema.</td></tr>";
+    }
+
+    $button = '';
+    if (trim($url_destino) !== '') {
+        $url = eventos_notificacoes_e($url_destino);
+        $button = "<p style='margin:24px 0 0;'><a href='{$url}' style='display:inline-block;background:#1e3a8a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;font-weight:700;'>Abrir evento no painel</a></p>";
+    }
+
+    return "
+        <div style='font-family:Arial,sans-serif;color:#111827;line-height:1.5;max-width:680px;margin:0 auto;'>
+            <p style='font-size:12px;color:#6b7280;margin:0 0 12px;'>Notificação automática do Painel Smile Eventos</p>
+            <h1 style='font-size:22px;margin:0 0 12px;color:#111827;'>{$titulo_e}</h1>
+            <p style='margin:0 0 18px;'>{$descricao_e}</p>
+            <div style='background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:0 0 18px;'>
+                <p style='margin:0 0 6px;'><strong>Evento:</strong> {$nome}</p>
+                <p style='margin:0 0 6px;'><strong>Data:</strong> {$data}</p>
+                <p style='margin:0 0 6px;'><strong>Local:</strong> {$local}</p>
+                <p style='margin:0 0 6px;'><strong>Cliente:</strong> {$cliente}</p>
+                <p style='margin:0;'><strong>Unidade:</strong> {$unidade}</p>
+            </div>
+            <table cellpadding='0' cellspacing='0' style='border-collapse:collapse;width:100%;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'>
+                <thead><tr style='background:#eef2ff;'><th align='left' style='padding:10px;'>Campo</th><th align='left' style='padding:10px;'>Antes</th><th align='left' style='padding:10px;'>Depois</th></tr></thead>
+                <tbody>{$rows}</tbody>
+            </table>
+            {$extra_html}
+            {$button}
+            <p style='font-size:12px;color:#6b7280;margin-top:24px;'>Você recebeu este email porque seu cargo é gerente de evento e sua unidade no cadastro corresponde à unidade do evento.</p>
+        </div>
+    ";
+}
+
+function eventos_notificacoes_enviar_para_gerentes(PDO $pdo, int $meeting_id, string $assunto, string $titulo, string $descricao, array $alteracoes, array $anexos = [], string $extra_html = ''): array {
+    $ctx = eventos_notificacoes_buscar_contexto($pdo, $meeting_id);
+    if (!$ctx || !eventos_notificacoes_data_na_janela_5_dias((string)($ctx['data_evento'] ?? ''))) {
+        return ['ok' => false, 'motivo' => 'fora_janela_5_dias', 'destinatarios' => []];
+    }
+
+    $destinatarios = eventos_notificacoes_buscar_gerentes_evento($pdo, (string)($ctx['space_visivel'] ?? ''));
+    if (empty($destinatarios)) {
+        return ['ok' => false, 'motivo' => 'sem_gerente_unidade', 'destinatarios' => []];
+    }
+
+    $base_url = eventos_notificacoes_montar_base_url();
+    $url = $base_url !== '' ? $base_url . '/index.php?page=eventos_reuniao_final&id=' . $meeting_id : '';
+    $html = eventos_notificacoes_email_html($ctx, $titulo, $descricao, $alteracoes, $url, $extra_html);
+
+    $emailHelper = new EmailGlobalHelper();
+    $enviados = 0;
+    foreach ($destinatarios as $destinatario) {
+        $ok = !empty($anexos)
+            ? $emailHelper->enviarEmailComAnexos($destinatario['email'], $assunto, $html, true, $anexos)
+            : $emailHelper->enviarEmail($destinatario['email'], $assunto, $html, true);
+        if ($ok) {
+            $enviados++;
+        }
+    }
+
+    return ['ok' => $enviados > 0, 'enviados' => $enviados, 'destinatarios' => $destinatarios];
+}
+
+function eventos_notificar_gerente_evento_atualizacao_reuniao(PDO $pdo, int $meeting_id, string $section, string $prev_html, string $new_html, ?string $prev_schema_json = null, ?string $new_schema_json = null): void {
+    try {
+        $alteracoes = eventos_notificacoes_resumir_alteracoes_reuniao($prev_html, $new_html, $prev_schema_json, $new_schema_json);
+        if (empty($alteracoes)) {
+            return;
+        }
+
+        $ctx = eventos_notificacoes_buscar_contexto($pdo, $meeting_id);
+        $nome = $ctx ? (string)($ctx['nome_evento'] ?? 'Evento') : 'Evento';
+        $data = $ctx ? eventos_notificacoes_formatar_data((string)($ctx['data_evento'] ?? '')) : '-';
+        $secao_label = eventos_notificacoes_label_secao($section);
+        $assunto = "Atualizacao na reuniao final - {$nome} - {$data}";
+        $titulo = "NOVA ATUALIZAÇÃO DO EVENTO {$nome}, DIA {$data}";
+        $descricao = "Houve alteração na reunião final, seção {$secao_label}.";
+
+        eventos_notificacoes_enviar_para_gerentes($pdo, $meeting_id, $assunto, $titulo, $descricao, $alteracoes);
+    } catch (Throwable $e) {
+        error_log('eventos_notificar_gerente_evento_atualizacao_reuniao: ' . $e->getMessage());
+    }
+}
+
+function eventos_notificacoes_baixar_anexo_base64(string $url, int $max_bytes = 10485760): string {
+    $url = trim($url);
+    if ($url === '' || !preg_match('#^https?://#i', $url)) {
+        return '';
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 20,
+            'follow_location' => 1,
+            'user_agent' => 'PainelSmileEventos/1.0',
+        ],
+    ]);
+    $data = @file_get_contents($url, false, $context, 0, $max_bytes + 1);
+    if (!is_string($data) || $data === '' || strlen($data) > $max_bytes) {
+        return '';
+    }
+    return base64_encode($data);
+}
+
+function eventos_notificar_gerente_evento_resumo_atualizado(PDO $pdo, int $meeting_id, array $arquivo): void {
+    try {
+        $ctx = eventos_notificacoes_buscar_contexto($pdo, $meeting_id);
+        $nome = $ctx ? (string)($ctx['nome_evento'] ?? 'Evento') : 'Evento';
+        $data = $ctx ? eventos_notificacoes_formatar_data((string)($ctx['data_evento'] ?? '')) : '-';
+        $assunto = "Atualizacao no resumo do evento - {$nome} - {$data}";
+        $titulo = "NOVA ATUALIZAÇÃO DO EVENTO {$nome}, DIA {$data}";
+        $descricao = "O resumo do evento foi atualizado. O novo resumo segue em anexo quando o arquivo está disponível para download pelo sistema.";
+        $nome_arquivo = trim((string)($arquivo['original_name'] ?? 'resumo-evento.pdf')) ?: 'resumo-evento.pdf';
+        $public_url = trim((string)($arquivo['public_url'] ?? ''));
+        $anexos = [];
+
+        $content = eventos_notificacoes_baixar_anexo_base64($public_url);
+        if ($content !== '') {
+            $anexos[] = [
+                'filename' => $nome_arquivo,
+                'content' => $content,
+            ];
+        }
+
+        $extra = '';
+        if ($public_url !== '') {
+            $url_e = eventos_notificacoes_e($public_url);
+            $extra = "<p style='margin-top:16px;'>Link do novo resumo: <a href='{$url_e}'>{$url_e}</a></p>";
+        }
+
+        eventos_notificacoes_enviar_para_gerentes(
+            $pdo,
+            $meeting_id,
+            $assunto,
+            $titulo,
+            $descricao,
+            [[
+                'campo' => 'Resumo do evento',
+                'antes' => 'versão anterior',
+                'depois' => $nome_arquivo,
+            ]],
+            $anexos,
+            $extra
+        );
+    } catch (Throwable $e) {
+        error_log('eventos_notificar_gerente_evento_resumo_atualizado: ' . $e->getMessage());
+    }
+}
+
 /**
  * Notificar quando link de cliente DJ é criado
  */

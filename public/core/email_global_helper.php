@@ -71,6 +71,14 @@ class EmailGlobalHelper {
      * Enviar e-mail usando APENAS Resend (API)
      */
     public function enviarEmail($para, $assunto, $corpo, $eh_html = true) {
+        return $this->enviarEmailComAnexos($para, $assunto, $corpo, $eh_html, []);
+    }
+
+    /**
+     * Enviar e-mail com anexos opcionais usando Resend.
+     * Cada anexo deve conter: filename, content (base64) e content_type opcional.
+     */
+    public function enviarEmailComAnexos($para, $assunto, $corpo, $eh_html = true, array $anexos = []) {
         error_log("[EMAIL] ====== INÍCIO DO ENVIO DE E-MAIL ======");
         error_log("[EMAIL] Destinatário: $para");
         error_log("[EMAIL] Assunto: $assunto");
@@ -156,7 +164,7 @@ class EmailGlobalHelper {
         
         // Usar APENAS Resend
         error_log("[EMAIL] Usando Resend (API) para envio");
-        $resultado = $this->enviarComResend($para, $assunto, $corpo, $eh_html, $resend_api_key);
+        $resultado = $this->enviarComResend($para, $assunto, $corpo, $eh_html, $resend_api_key, $anexos);
         error_log("[EMAIL] ====== FIM DO ENVIO DE E-MAIL (resultado: " . ($resultado ? 'SUCESSO' : 'FALHA') . ") ======");
         return $resultado;
     }
@@ -164,7 +172,7 @@ class EmailGlobalHelper {
     /**
      * Enviar usando Resend API
      */
-    private function enviarComResend($para, $assunto, $corpo, $eh_html, $api_key) {
+    private function enviarComResend($para, $assunto, $corpo, $eh_html, $api_key, array $anexos = []) {
         try {
             // Garantir que autoload foi carregado (sem duplicar)
             if (!isset($GLOBALS['autoload_carregado'])) {
@@ -219,12 +227,33 @@ class EmailGlobalHelper {
             }
             
             // Resend retorna um objeto Email com propriedade id
-            $result = $resend->emails->send([
+            $payload = [
                 'from' => $email_remetente,
                 'to' => $para,
                 'subject' => $assunto,
                 'html' => $eh_html ? $corpo : nl2br(htmlspecialchars($corpo)),
-            ]);
+            ];
+
+            $attachments = [];
+            foreach ($anexos as $anexo) {
+                if (!is_array($anexo)) {
+                    continue;
+                }
+                $filename = trim((string)($anexo['filename'] ?? $anexo['nome'] ?? ''));
+                $content = trim((string)($anexo['content'] ?? ''));
+                if ($filename === '' || $content === '') {
+                    continue;
+                }
+                $attachments[] = [
+                    'filename' => $filename,
+                    'content' => $content,
+                ];
+            }
+            if (!empty($attachments)) {
+                $payload['attachments'] = $attachments;
+            }
+
+            $result = $resend->emails->send($payload);
             
             // Verificar se tem ID (indica sucesso) - SDK pode retornar objeto ou array
             $result_id = null;

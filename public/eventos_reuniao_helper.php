@@ -2144,8 +2144,24 @@ function eventos_reuniao_salvar_secao(
             if ($should_notify && function_exists('eventos_notificar_decoracao_atualizada')) {
                 eventos_notificar_decoracao_atualizada($pdo, $meeting_id);
             }
+
+            $should_notify_manager = ($changed_html || $changed_schema)
+                && in_array($section, ['decoracao', 'observacoes_gerais', 'dj_protocolo', 'formulario'], true)
+                && in_array($author_type, ['interno', 'fornecedor'], true);
+
+            if ($should_notify_manager && function_exists('eventos_notificar_gerente_evento_atualizacao_reuniao')) {
+                eventos_notificar_gerente_evento_atualizacao_reuniao(
+                    $pdo,
+                    $meeting_id,
+                    $section,
+                    $prev_html,
+                    $content_html,
+                    $prev_schema,
+                    $form_schema_json
+                );
+            }
         } catch (Throwable $e) {
-            error_log("eventos_reuniao_salvar_secao: falha ao notificar decoração: " . $e->getMessage());
+            error_log("eventos_reuniao_salvar_secao: falha ao notificar atualização: " . $e->getMessage());
         }
         
         return ['ok' => true, 'version' => $next];
@@ -5652,6 +5668,18 @@ function eventos_arquivos_salvar_item(
 
         if ($started_transaction) {
             $pdo->commit();
+        }
+
+        if (
+            ($campo_row['chave_sistema'] ?? '') === 'resumo_evento'
+            && $uploaded_by_type === 'interno'
+            && function_exists('eventos_notificar_gerente_evento_resumo_atualizado')
+        ) {
+            try {
+                eventos_notificar_gerente_evento_resumo_atualizado($pdo, $meeting_id, $item);
+            } catch (Throwable $e) {
+                error_log('eventos_arquivos_salvar_item resumo notificacao: ' . $e->getMessage());
+            }
         }
 
         return [
