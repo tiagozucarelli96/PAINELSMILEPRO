@@ -279,9 +279,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                     }
                     $config_payload[$field] = ((string)($_POST[$field] ?? '0') === '1');
                 }
-                $config_payload['visivel_cardapio'] = false;
-                $config_payload['editavel_cardapio'] = false;
-
                 $result = eventos_cliente_portal_atualizar_config(
                     $pdo,
                     $meeting_id,
@@ -352,8 +349,8 @@ $visivel_convidados = !empty($portal['visivel_convidados']);
 $editavel_convidados = !empty($portal['editavel_convidados']);
 $visivel_arquivos = !empty($portal['visivel_arquivos']);
 $editavel_arquivos = !empty($portal['editavel_arquivos']);
-$visivel_cardapio = false;
-$editavel_cardapio = false;
+$visivel_cardapio = !empty($portal['visivel_cardapio']);
+$editavel_cardapio = !empty($portal['editavel_cardapio']);
 $convidados_resumo = $meeting_id > 0 ? eventos_convidados_resumo($pdo, $meeting_id) : ['total' => 0, 'checkin' => 0, 'pendentes' => 0];
 $arquivos_resumo = $meeting_id > 0 ? eventos_arquivos_resumo($pdo, $meeting_id) : [
     'campos_total' => 0,
@@ -1179,11 +1176,11 @@ includeSidebar('Organização eventos');
             <p>Monte as opções do cliente com base no pacote do evento, seções configuradas e escolhas bloqueadas após o envio.</p>
             <div class="module-options">
                 <label class="check-row">
-                    <input type="checkbox" id="cfgVisivelCardapio" disabled>
+                    <input type="checkbox" id="cfgVisivelCardapio" <?= $visivel_cardapio ? 'checked' : '' ?>>
                     <span>Visível para o cliente</span>
                 </label>
                 <label class="check-row">
-                    <input type="checkbox" id="cfgEditavelCardapio" disabled>
+                    <input type="checkbox" id="cfgEditavelCardapio" <?= $editavel_cardapio ? 'checked' : '' ?>>
                     <span>Editável pelo cliente</span>
                 </label>
             </div>
@@ -1691,11 +1688,8 @@ async function salvarConfigPortal() {
     if (editavelArquivos && editavelArquivos.checked && visivelArquivos) {
         visivelArquivos.checked = true;
     }
-    if (visivelCardapio) {
-        visivelCardapio.checked = false;
-    }
-    if (editavelCardapio) {
-        editavelCardapio.checked = false;
+    if (editavelCardapio && editavelCardapio.checked && visivelCardapio) {
+        visivelCardapio.checked = true;
     }
 
     const formData = new FormData();

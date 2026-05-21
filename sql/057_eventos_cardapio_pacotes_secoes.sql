@@ -55,10 +55,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_logistica_cardapio_item_secoes
     ON logistica_cardapio_item_secoes (item_tipo, item_id, secao_cardapio_id);
 
 ALTER TABLE IF EXISTS eventos_cliente_portais
-    ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT TRUE;
 
 ALTER TABLE IF EXISTS eventos_cliente_portais
-    ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE IF EXISTS eventos_cliente_portais
+    ALTER COLUMN visivel_cardapio SET DEFAULT TRUE,
+    ALTER COLUMN editavel_cardapio SET DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS eventos_cardapio_respostas (
     id BIGSERIAL PRIMARY KEY,

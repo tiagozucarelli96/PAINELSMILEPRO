@@ -322,11 +322,11 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                 visivel_secao_formulario BOOLEAN NULL DEFAULT TRUE,
                 editavel_secao_formulario BOOLEAN NULL DEFAULT FALSE,
                 visivel_convidados BOOLEAN NOT NULL DEFAULT TRUE,
-                editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_convidados BOOLEAN NOT NULL DEFAULT TRUE,
                 visivel_arquivos BOOLEAN NOT NULL DEFAULT TRUE,
-                editavel_arquivos BOOLEAN NOT NULL DEFAULT FALSE,
-                visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE,
-                editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE,
+                editavel_arquivos BOOLEAN NOT NULL DEFAULT TRUE,
+                visivel_cardapio BOOLEAN NOT NULL DEFAULT TRUE,
+                editavel_cardapio BOOLEAN NOT NULL DEFAULT TRUE,
                 created_by_user_id INTEGER NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -346,11 +346,11 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_secao_formulario BOOLEAN NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_secao_formulario BOOLEAN NULL DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_convidados BOOLEAN NOT NULL DEFAULT TRUE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_arquivos BOOLEAN NOT NULL DEFAULT TRUE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_arquivos BOOLEAN NOT NULL DEFAULT FALSE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_arquivos BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER NULL");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()");
@@ -367,11 +367,11 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_secao_formulario SET DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_secao_formulario SET DEFAULT FALSE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_convidados SET DEFAULT TRUE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_convidados SET DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_convidados SET DEFAULT TRUE");
         $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_arquivos SET DEFAULT TRUE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_arquivos SET DEFAULT FALSE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_cardapio SET DEFAULT FALSE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_cardapio SET DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_arquivos SET DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_cardapio SET DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_cardapio SET DEFAULT TRUE");
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_meeting ON eventos_cliente_portais(meeting_id)");
         $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_cliente_portais_token ON eventos_cliente_portais(token)");
     } catch (Throwable $e) {
@@ -435,19 +435,19 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                     $set_parts[] = 'visivel_convidados = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados')) {
-                    $set_parts[] = 'editavel_convidados = FALSE';
+                    $set_parts[] = 'editavel_convidados = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_arquivos')) {
                     $set_parts[] = 'visivel_arquivos = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_arquivos')) {
-                    $set_parts[] = 'editavel_arquivos = FALSE';
+                    $set_parts[] = 'editavel_arquivos = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_cardapio')) {
-                    $set_parts[] = 'visivel_cardapio = FALSE';
+                    $set_parts[] = 'visivel_cardapio = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_cardapio')) {
-                    $set_parts[] = 'editavel_cardapio = FALSE';
+                    $set_parts[] = 'editavel_cardapio = TRUE';
                 }
                 if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at')) {
                     $set_parts[] = 'updated_at = NOW()';
@@ -468,6 +468,46 @@ function eventos_reuniao_ensure_schema(PDO $pdo): void {
                     if (!empty($set_link_parts)) {
                         $pdo->exec("UPDATE eventos_links_publicos SET " . implode(', ', $set_link_parts));
                     }
+                }
+
+                $stmt_mark = $pdo->prepare("INSERT INTO eventos_reuniao_migrations (name, executed_at) VALUES (:name, NOW()) ON CONFLICT (name) DO NOTHING");
+                $stmt_mark->execute([':name' => $migration_name]);
+            }
+
+            $migration_name = '2026-05-22_portal_padrao_cliente_liberado';
+            $stmt = $pdo->prepare("SELECT 1 FROM eventos_reuniao_migrations WHERE name = :name LIMIT 1");
+            $stmt->execute([':name' => $migration_name]);
+            $already_ran = (bool)$stmt->fetchColumn();
+
+            if (!$already_ran) {
+                $set_parts = [];
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao')) {
+                    $set_parts[] = 'visivel_reuniao = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_convidados')) {
+                    $set_parts[] = 'visivel_convidados = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_convidados')) {
+                    $set_parts[] = 'editavel_convidados = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_arquivos')) {
+                    $set_parts[] = 'visivel_arquivos = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_arquivos')) {
+                    $set_parts[] = 'editavel_arquivos = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_cardapio')) {
+                    $set_parts[] = 'visivel_cardapio = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_cardapio')) {
+                    $set_parts[] = 'editavel_cardapio = TRUE';
+                }
+                if (eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'updated_at')) {
+                    $set_parts[] = 'updated_at = NOW()';
+                }
+
+                if (!empty($set_parts)) {
+                    $pdo->exec("UPDATE eventos_cliente_portais SET " . implode(', ', $set_parts));
                 }
 
                 $stmt_mark = $pdo->prepare("INSERT INTO eventos_reuniao_migrations (name, executed_at) VALUES (:name, NOW()) ON CONFLICT (name) DO NOTHING");
@@ -4006,8 +4046,8 @@ function eventos_cliente_portal_normalizar_row(?array $row): ?array {
     $row['editavel_convidados'] = !empty($row['editavel_convidados']);
     $row['visivel_arquivos'] = !empty($row['visivel_arquivos']);
     $row['editavel_arquivos'] = !empty($row['editavel_arquivos']);
-    $row['visivel_cardapio'] = false;
-    $row['editavel_cardapio'] = false;
+    $row['visivel_cardapio'] = !empty($row['visivel_cardapio']);
+    $row['editavel_cardapio'] = !empty($row['editavel_cardapio']);
     $row['secoes'] = eventos_cliente_portal_obter_config_secoes($row);
     $row['url'] = $token !== '' ? eventos_cliente_portal_build_url($token) : '';
     return $row;
@@ -4149,7 +4189,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_editavel_convidados_col) {
             $columns[] = 'editavel_convidados';
-            $values[] = 'FALSE';
+            $values[] = 'TRUE';
         }
         if ($has_visivel_arquivos_col) {
             $columns[] = 'visivel_arquivos';
@@ -4157,7 +4197,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_editavel_arquivos_col) {
             $columns[] = 'editavel_arquivos';
-            $values[] = 'FALSE';
+            $values[] = 'TRUE';
         }
         if ($has_visivel_cardapio_col) {
             $columns[] = 'visivel_cardapio';
@@ -4165,7 +4205,7 @@ function eventos_cliente_portal_get_or_create(PDO $pdo, int $meeting_id, int $us
         }
         if ($has_editavel_cardapio_col) {
             $columns[] = 'editavel_cardapio';
-            $values[] = 'FALSE';
+            $values[] = 'TRUE';
         }
         if ($has_created_by_col) {
             $columns[] = 'created_by_user_id';
@@ -4597,8 +4637,12 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     $editavel_arquivos = array_key_exists('editavel_arquivos', $config)
         ? !empty($config['editavel_arquivos'])
         : !empty($portal_atual['editavel_arquivos']);
-    $visivel_cardapio = false;
-    $editavel_cardapio = false;
+    $visivel_cardapio = array_key_exists('visivel_cardapio', $config)
+        ? !empty($config['visivel_cardapio'])
+        : !empty($portal_atual['visivel_cardapio']);
+    $editavel_cardapio = array_key_exists('editavel_cardapio', $config)
+        ? !empty($config['editavel_cardapio'])
+        : !empty($portal_atual['editavel_cardapio']);
 
     if ($editavel_reuniao) {
         $visivel_reuniao = true;
@@ -4611,6 +4655,9 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     }
     if ($editavel_arquivos) {
         $visivel_arquivos = true;
+    }
+    if ($editavel_cardapio) {
+        $visivel_cardapio = true;
     }
     $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
     $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');

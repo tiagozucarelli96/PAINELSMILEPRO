@@ -2,8 +2,12 @@
 -- Lista de convidados no portal do cliente + check-in interno
 
 ALTER TABLE IF EXISTS eventos_cliente_portais
-    ADD COLUMN IF NOT EXISTS visivel_convidados BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS visivel_convidados BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS editavel_convidados BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE IF EXISTS eventos_cliente_portais
+    ALTER COLUMN visivel_convidados SET DEFAULT TRUE,
+    ALTER COLUMN editavel_convidados SET DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS eventos_convidados_config (
     id BIGSERIAL PRIMARY KEY,

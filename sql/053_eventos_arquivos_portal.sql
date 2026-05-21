@@ -2,8 +2,12 @@
 -- Módulo de arquivos no portal do cliente (campos solicitados + uploads)
 
 ALTER TABLE IF EXISTS eventos_cliente_portais
-    ADD COLUMN IF NOT EXISTS visivel_arquivos BOOLEAN NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS editavel_arquivos BOOLEAN NOT NULL DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS visivel_arquivos BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS editavel_arquivos BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE IF EXISTS eventos_cliente_portais
+    ALTER COLUMN visivel_arquivos SET DEFAULT TRUE,
+    ALTER COLUMN editavel_arquivos SET DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS eventos_arquivos_campos (
     id BIGSERIAL PRIMARY KEY,

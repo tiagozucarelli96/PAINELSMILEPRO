@@ -320,8 +320,10 @@ function logistica_cardapio_ensure_schema(PDO $pdo, bool $withMeetingSchema = tr
     }
 
     try {
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
-        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT FALSE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS visivel_cardapio BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ADD COLUMN IF NOT EXISTS editavel_cardapio BOOLEAN NOT NULL DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN visivel_cardapio SET DEFAULT TRUE");
+        $pdo->exec("ALTER TABLE IF EXISTS eventos_cliente_portais ALTER COLUMN editavel_cardapio SET DEFAULT TRUE");
     } catch (Throwable $e) {
         error_log('logistica_cardapio_ensure_schema portal cardapio: ' . $e->getMessage());
     }
