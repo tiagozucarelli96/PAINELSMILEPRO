@@ -4723,6 +4723,23 @@ function eventos_cliente_portal_atualizar_config(PDO $pdo, int $meeting_id, arra
     if ($editavel_cardapio) {
         $visivel_cardapio = true;
     }
+    if ($editavel_cardapio && eventos_reuniao_has_table($pdo, 'eventos_cardapio_respostas')) {
+        try {
+            $stmt_cardapio_enviado = $pdo->prepare("
+                SELECT 1
+                FROM eventos_cardapio_respostas
+                WHERE meeting_id = :meeting_id
+                  AND submitted_at IS NOT NULL
+                LIMIT 1
+            ");
+            $stmt_cardapio_enviado->execute([':meeting_id' => $meeting_id]);
+            if ($stmt_cardapio_enviado->fetchColumn()) {
+                $editavel_cardapio = false;
+            }
+        } catch (Throwable $e) {
+            error_log('eventos_cliente_portal_atualizar_config cardapio enviado: ' . $e->getMessage());
+        }
+    }
     $has_visivel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_reuniao');
     $has_editavel_reuniao_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'editavel_reuniao');
     $has_visivel_dj_col = eventos_reuniao_has_column($pdo, 'eventos_cliente_portais', 'visivel_dj');

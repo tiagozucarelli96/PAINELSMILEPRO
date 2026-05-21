@@ -317,13 +317,6 @@ $pode_editar = $error === ''
             color: #0f172a;
         }
 
-        .item-type {
-            color: #64748b;
-            font-size: 0.78rem;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-
         .empty-box {
             border-radius: 14px;
             border: 1px dashed #cbd5e1;
@@ -482,9 +475,13 @@ $pode_editar = $error === ''
                             <?php
                             $secao_id = (int)$secao['id'];
                             $max_escolhas = (int)$secao['quantidade_maxima'];
+                            $exigir_quantidade_exata = !empty($secao['exigir_quantidade_exata']);
                             $selected_count = (int)($secao['selected_count'] ?? 0);
                             ?>
-                            <section class="section-card" data-section-id="<?= $secao_id ?>" data-max="<?= $max_escolhas ?>">
+                            <section class="section-card"
+                                     data-section-id="<?= $secao_id ?>"
+                                     data-max="<?= $max_escolhas ?>"
+                                     data-exact="<?= $exigir_quantidade_exata ? '1' : '0' ?>">
                                 <div class="section-head">
                                     <div>
                                         <h2 class="section-title"><?= eventos_cliente_cardapio_e((string)$secao['nome']) ?></h2>
@@ -492,10 +489,12 @@ $pode_editar = $error === ''
                                             <p class="section-desc"><?= eventos_cliente_cardapio_e((string)$secao['descricao']) ?></p>
                                         <?php endif; ?>
                                     </div>
-                                    <div class="section-limit">Escolha <?= $max_escolhas ?></div>
+                                    <div class="section-limit">
+                                        <?= $exigir_quantidade_exata ? 'Escolha ' : 'Escolha até ' ?><?= $max_escolhas ?>
+                                    </div>
                                 </div>
 
-                                <?php if (!empty($secao['itens']) && count($secao['itens']) < $max_escolhas): ?>
+                                <?php if ($exigir_quantidade_exata && !empty($secao['itens']) && count($secao['itens']) < $max_escolhas): ?>
                                     <div class="alert alert-error" style="margin-bottom:0.8rem;">
                                         Esta seção ainda não possui itens suficientes para completar a seleção.
                                     </div>
@@ -519,7 +518,6 @@ $pode_editar = $error === ''
                                                     <?= !$pode_editar ? 'disabled' : '' ?>
                                                 >
                                                 <div class="item-name"><?= eventos_cliente_cardapio_e((string)$item['nome']) ?></div>
-                                                <div class="item-type"><?= eventos_cliente_cardapio_e((string)$item['item_tipo']) ?></div>
                                             </label>
                                         <?php endforeach; ?>
                                     </div>
@@ -590,14 +588,33 @@ $pode_editar = $error === ''
 
         document.getElementById('cardapioForm')?.addEventListener('submit', (event) => {
             const sections = Array.from(document.querySelectorAll('.section-card[data-max]'));
+            const incompleteAllowed = [];
             for (const section of sections) {
                 const max = parseInt(section.getAttribute('data-max') || '0', 10);
+                const exact = section.getAttribute('data-exact') === '1';
                 const checked = section.querySelectorAll('input[type="checkbox"]:checked').length;
-                if (checked !== max) {
-                    const title = section.querySelector('.section-title')?.textContent || 'esta seção';
+                const title = section.querySelector('.section-title')?.textContent || 'esta seção';
+                if (checked > max) {
+                    event.preventDefault();
+                    window.alert('Selecione no máximo ' + max + ' opção(ões) em ' + title + ' antes de enviar.');
+                    return;
+                }
+
+                if (exact && checked !== max) {
                     event.preventDefault();
                     window.alert('Selecione ' + max + ' opção(ões) em ' + title + ' antes de enviar.');
                     return;
+                }
+
+                if (!exact && checked < max) {
+                    incompleteAllowed.push('Você escolheu ' + checked + ' de ' + max + ' opção(ões) em ' + title + '.');
+                }
+            }
+
+            if (incompleteAllowed.length > 0) {
+                const message = incompleteAllowed.join('\n') + '\n\nConfirma enviar assim?';
+                if (!window.confirm(message)) {
+                    event.preventDefault();
                 }
             }
         });

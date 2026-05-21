@@ -37,3 +37,10 @@ CREATE TABLE IF NOT EXISTS eventos_notificacoes_central_ignorados (
 CREATE INDEX IF NOT EXISTS idx_eventos_notificacoes_central_ign_user
     ON eventos_notificacoes_central_ignorados(usuario_id, ignored_at DESC);
 
+-- Mantém a configuração do portal coerente com o bloqueio real do cardápio.
+UPDATE eventos_cliente_portais p
+SET editavel_cardapio = FALSE
+FROM eventos_cardapio_respostas r
+WHERE r.meeting_id = p.meeting_id
+  AND r.submitted_at IS NOT NULL
+  AND COALESCE(p.editavel_cardapio, FALSE) = TRUE;

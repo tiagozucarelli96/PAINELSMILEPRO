@@ -254,6 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
+            case 'desbloquear_cardapio_cliente':
+                if ($meeting_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
+                    exit;
+                }
+
+                $unlocked = logistica_cardapio_resposta_desbloquear_cliente($pdo, $meeting_id);
+                echo json_encode($unlocked, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
             case 'salvar_portal_config':
                 if ($meeting_id <= 0) {
                     echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
@@ -363,6 +373,8 @@ $arquivos_resumo = $meeting_id > 0 ? eventos_arquivos_resumo($pdo, $meeting_id) 
 $cardapio_summary_result = $meeting_id > 0 ? logistica_cardapio_evento_resumo($pdo, $meeting_id) : ['ok' => false, 'summary' => []];
 $cardapio_summary = $cardapio_summary_result['summary'] ?? [];
 $cardapio_submitted_at = trim((string)($cardapio_summary['submitted_at'] ?? ''));
+$cardapio_bloqueado_por_envio = $cardapio_submitted_at !== '';
+$editavel_cardapio_efetivo = $editavel_cardapio && !$cardapio_bloqueado_por_envio;
 $cardapio_submitted_fmt = $cardapio_submitted_at !== '' ? date('d/m/Y H:i', strtotime($cardapio_submitted_at)) : '';
 $cardapio_helper_note = 'Selecione um pacote do evento para montar o cardápio.';
 if (!empty($cardapio_summary['has_pacote'])) {
@@ -1180,12 +1192,22 @@ includeSidebar('Organização eventos');
                     <span>Visível para o cliente</span>
                 </label>
                 <label class="check-row">
-                    <input type="checkbox" id="cfgEditavelCardapio" <?= $editavel_cardapio ? 'checked' : '' ?>>
-                    <span>Editável pelo cliente</span>
+                    <input
+                        type="checkbox"
+                        id="cfgEditavelCardapio"
+                        <?= $editavel_cardapio_efetivo ? 'checked' : '' ?>
+                        <?= $cardapio_bloqueado_por_envio ? 'disabled' : '' ?>
+                    >
+                    <span><?= $cardapio_bloqueado_por_envio ? 'Bloqueado após envio do cliente' : 'Editável pelo cliente' ?></span>
                 </label>
             </div>
             <div class="card-actions">
                 <a href="index.php?page=eventos_cardapio&id=<?= (int)$meeting_id ?>" class="btn btn-primary">Abrir Cardápio</a>
+                <?php if ($cardapio_bloqueado_por_envio): ?>
+                <button type="button" class="btn btn-secondary" id="btnDesbloquearCardapio" onclick="desbloquearCardapioCliente()">
+                    Desbloquear cardápio
+                </button>
+                <?php endif; ?>
             </div>
             <div class="helper-note">
                 <?= htmlspecialchars($cardapio_helper_note) ?>
@@ -1724,6 +1746,45 @@ async function salvarConfigPortal() {
         if (portalConfigSaveQueued) {
             portalConfigSaveQueued = false;
             salvarConfigPortal();
+        }
+    }
+}
+
+async function desbloquearCardapioCliente() {
+    if (!meetingId) return;
+    if (!confirm('Desbloquear o cardápio para o cliente editar mantendo as escolhas atuais?')) {
+        return;
+    }
+
+    const btn = document.getElementById('btnDesbloquearCardapio');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Desbloqueando...';
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'desbloquear_cardapio_cliente');
+    formData.append('meeting_id', String(meetingId));
+
+    mostrarStatusConfig('Desbloqueando cardápio...');
+    try {
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp);
+        if (!data.ok) {
+            mostrarStatusConfig(data.error || 'Erro ao desbloquear cardápio.', true);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Desbloquear cardápio';
+            }
+            return;
+        }
+        mostrarStatusConfig('Cardápio desbloqueado para edição do cliente.');
+        window.location.reload();
+    } catch (err) {
+        mostrarStatusConfig('Erro: ' + err.message, true);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Desbloquear cardápio';
         }
     }
 }

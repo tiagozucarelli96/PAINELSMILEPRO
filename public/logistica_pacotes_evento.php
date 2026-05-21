@@ -396,6 +396,23 @@ includeSidebar('Pacotes de Evento');
         font-weight: 600;
     }
 
+    .rule-mode {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 160px;
+    }
+
+    .rule-mode .form-check {
+        margin-top: 0;
+    }
+
+    .rule-mode-help {
+        color: #64748b;
+        font-size: 0.78rem;
+        line-height: 1.35;
+    }
+
     .sortable-table .table {
         table-layout: fixed;
     }
@@ -499,7 +516,7 @@ includeSidebar('Pacotes de Evento');
                 <a class="btn-secondary" href="index.php?page=logistica_cardapio_secoes">Abrir Seções de Cardápio</a>
             </div>
         <?php else: ?>
-            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote. Arraste as linhas para definir a ordem.</p>
+            <p class="helper-text">Preencha a quantidade de escolhas por seção. Deixe `0` ou vazio para não exibir a seção neste pacote. Use a exigência exata quando o cliente precisar escolher todos os itens definidos. Arraste as linhas para definir a ordem.</p>
             <form method="POST" id="pacoteRulesForm">
                 <input type="hidden" name="action" value="save_rules">
                 <input type="hidden" name="id" value="<?= (int)$edit_item['id'] ?>">
@@ -511,6 +528,7 @@ includeSidebar('Pacotes de Evento');
                                 <th>Seção</th>
                                 <th>Descrição</th>
                                 <th>Qtd. de escolhas</th>
+                                <th>Regra</th>
                             </tr>
                         </thead>
                         <tbody id="rulesSortableBody">
@@ -540,6 +558,19 @@ includeSidebar('Pacotes de Evento');
                                         <input class="form-input" type="number" min="0" step="1"
                                                name="regras[<?= $index ?>][quantidade_maxima]"
                                                value="<?= $rule ? (int)$rule['quantidade_maxima'] : 0 ?>">
+                                    </td>
+                                    <td>
+                                        <div class="rule-mode">
+                                            <input type="hidden" name="regras[<?= $index ?>][exigir_quantidade_exata]" value="0">
+                                            <label class="form-check">
+                                                <input type="checkbox"
+                                                       name="regras[<?= $index ?>][exigir_quantidade_exata]"
+                                                       value="1"
+                                                       <?= (!$rule || !empty($rule['exigir_quantidade_exata'])) ? 'checked' : '' ?>>
+                                                <span>Exigir quantidade exata</span>
+                                            </label>
+                                            <div class="rule-mode-help">Desmarcado permite escolher até a quantidade.</div>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -586,7 +617,7 @@ includeSidebar('Pacotes de Evento');
                                         <?php foreach ($pacote_rules as $rule): ?>
                                             <span class="rule-chip">
                                                 <?= logistica_pacotes_evento_e((string)$rule['secao_nome']) ?>:
-                                                <?= (int)$rule['quantidade_maxima'] ?>
+                                                <?= !empty($rule['exigir_quantidade_exata']) ? '' : 'até ' ?><?= (int)$rule['quantidade_maxima'] ?>
                                             </span>
                                         <?php endforeach; ?>
                                     </div>
