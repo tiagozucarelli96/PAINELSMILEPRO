@@ -67,10 +67,7 @@ $data_fmt = $data_ts ? date('d/m/Y', $data_ts) : '-';
 
 $hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['horainicio'] ?? $snapshot['hora'] ?? ''));
 $hora_fim = trim((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? ''));
-$horario_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_fmt = $hora_inicio . ' - ' . $hora_fim;
-}
+$horario_fmt = eventos_reuniao_snapshot_horario_evento($snapshot, '-', $reuniao);
 
 $emitido_por = trim((string)($_SESSION['nome'] ?? 'Usuário'));
 
@@ -156,10 +153,8 @@ if ($qr_data_uri !== '') {
 }
 
 $data_evento_fmt = $data_fmt;
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $data_evento_fmt = $data_fmt . ' às ' . $hora_inicio . ' às ' . $hora_fim;
-} elseif ($hora_inicio !== '') {
-    $data_evento_fmt = $data_fmt . ' às ' . $hora_inicio;
+if ($horario_fmt !== '-') {
+    $data_evento_fmt = $data_fmt . ' às ' . $horario_fmt;
 }
 
 $html = '<!doctype html>

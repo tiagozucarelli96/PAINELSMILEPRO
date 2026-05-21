@@ -270,7 +270,6 @@ if ($current_page === 'dashboard') {
     eventosNotificacoesCentralEnsureSchema($pdo);
     $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
     $dashboard_can_view_event_notifications = $is_superadmin_dashboard || !empty($_SESSION['perm_notificacoes_eventos']);
-    $dashboard_can_view_logistica_alertas = $is_superadmin_dashboard || !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_logistico_divergencias']);
     $dashboard_current_month = new DateTimeImmutable('now');
     $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
     $dashboard_sales_goal_key = dashboardGetSalesGoalKey($dashboard_current_month);
@@ -283,6 +282,26 @@ if ($current_page === 'dashboard') {
     $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
     $avisos_dashboard = [];
     $eventos_notificacoes_dashboard = [];
+
+    if ((int)($usuario_id_dashboard ?? 0) > 0) {
+        try {
+            $stmtPermNotifEventos = $pdo->prepare("
+                SELECT
+                    COALESCE(perm_superadmin, FALSE) AS perm_superadmin,
+                    COALESCE(perm_notificacoes_eventos, FALSE) AS perm_notificacoes_eventos
+                FROM usuarios
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmtPermNotifEventos->execute([':id' => (int)$usuario_id_dashboard]);
+            $permNotifEventosRow = $stmtPermNotifEventos->fetch(PDO::FETCH_ASSOC) ?: [];
+            $dashboard_can_view_event_notifications = $dashboard_can_view_event_notifications
+                || !empty($permNotifEventosRow['perm_superadmin'])
+                || !empty($permNotifEventosRow['perm_notificacoes_eventos']);
+        } catch (Throwable $e) {
+            error_log("[SIDEBAR] Erro ao verificar permissão da central de eventos: " . $e->getMessage());
+        }
+    }
 
     if (
         $is_superadmin_dashboard &&
@@ -595,15 +614,6 @@ if ($current_page === 'dashboard') {
         flex: 1;
         max-width: 100%;
     }
-    .dashboard-alertas-loading {
-        padding: 1rem 1.25rem;
-        border-radius: 14px;
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        color: #64748b;
-        font-size: 0.9rem;
-        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-    }
     .metric-card-form {
         margin-top: 0.65rem;
     }
@@ -844,47 +854,6 @@ if ($current_page === 'dashboard') {
                     <p>Bem-vindo, ' . htmlspecialchars($nomeUser) . '! | Email: ' . htmlspecialchars($user_email) . '</p>
                 </div>
             </div>
-            ' . ($dashboard_can_view_logistica_alertas ? '
-            <div class="dashboard-notifications-wrapper" id="dashboard-logistica-alertas-wrapper" hidden>
-                <div class="dashboard-alertas-loading">Carregando alertas logísticos...</div>
-            </div>
-            ' : '') . '
-            ' . ($dashboard_can_view_event_notifications ? '
-            <div class="dashboard-section" id="eventos-notificacoes-section">
-                <div class="section-header">
-                    <h2>🔔 Notificações dos eventos</h2>
-                    <span class="section-badge" id="eventos-notificacoes-count">' . count($eventos_notificacoes_dashboard) . ' pendente(s)</span>
-                </div>
-                <div class="eventos-notificacoes-list">
-                    ' . (empty($eventos_notificacoes_dashboard)
-                        ? '<div class="empty-state">
-                            <div class="empty-icon">🔔</div>
-                            <p>Nenhuma notificação de evento pendente</p>
-                        </div>'
-                        : implode('', array_map(function ($notificacao) {
-                            $createdRaw = trim((string)($notificacao['created_at'] ?? ''));
-                            $createdFmt = $createdRaw !== '' ? date('d/m/Y H:i', strtotime($createdRaw)) : '-';
-                            $dataEventoRaw = trim((string)($notificacao['data_evento'] ?? ''));
-                            $dataEventoFmt = $dataEventoRaw !== '' ? date('d/m/Y', strtotime($dataEventoRaw)) : '-';
-                            $targetUrl = trim((string)($notificacao['target_url'] ?? '#'));
-                            return '
-                            <div class="evento-notificacao-item" data-evento-notificacao-id="' . (int)($notificacao['id'] ?? 0) . '">
-                                <a class="evento-notificacao-link" href="' . htmlspecialchars($targetUrl) . '">
-                                    <span class="evento-notificacao-title">' . htmlspecialchars((string)($notificacao['nome_evento'] ?? 'Evento')) . '</span>
-                                    <span class="evento-notificacao-action">' . htmlspecialchars((string)($notificacao['titulo'] ?? 'Atualização do evento')) . '</span>
-                                    <span class="evento-notificacao-meta">
-                                        <span>Data evento: ' . htmlspecialchars($dataEventoFmt) . '</span>
-                                        <span>Aviso: ' . htmlspecialchars($createdFmt) . '</span>
-                                    </span>
-                                </a>
-                                <a class="evento-notificacao-open" href="' . htmlspecialchars($targetUrl) . '">Abrir</a>
-                                <button type="button" class="evento-notificacao-ignore" onclick="ignorarEventoNotificacao(' . (int)($notificacao['id'] ?? 0) . ', this)" aria-label="Ignorar notificação">&times;</button>
-                            </div>';
-                        }, $eventos_notificacoes_dashboard))
-                    ) . '
-                </div>
-            </div>
-            ' : '') . '
         </div>
         
         <!-- Métricas Principais -->
@@ -954,6 +923,44 @@ if ($current_page === 'dashboard') {
                 </div>
             </div>
         </div>
+
+        ' . ($dashboard_can_view_event_notifications ? '
+        <!-- Notificações dos eventos -->
+        <div class="dashboard-section" id="eventos-notificacoes-section">
+            <div class="section-header">
+                <h2>🔔 Notificações dos eventos</h2>
+                <span class="section-badge" id="eventos-notificacoes-count">' . count($eventos_notificacoes_dashboard) . ' pendente(s)</span>
+            </div>
+            <div class="eventos-notificacoes-list">
+                ' . (empty($eventos_notificacoes_dashboard)
+                    ? '<div class="empty-state">
+                        <div class="empty-icon">🔔</div>
+                        <p>Nenhuma notificação de evento pendente</p>
+                    </div>'
+                    : implode('', array_map(function ($notificacao) {
+                        $createdRaw = trim((string)($notificacao['created_at'] ?? ''));
+                        $createdFmt = $createdRaw !== '' ? date('d/m/Y H:i', strtotime($createdRaw)) : '-';
+                        $dataEventoRaw = trim((string)($notificacao['data_evento'] ?? ''));
+                        $dataEventoFmt = $dataEventoRaw !== '' ? date('d/m/Y', strtotime($dataEventoRaw)) : '-';
+                        $targetUrl = trim((string)($notificacao['target_url'] ?? '#'));
+                        return '
+                        <div class="evento-notificacao-item" data-evento-notificacao-id="' . (int)($notificacao['id'] ?? 0) . '">
+                            <a class="evento-notificacao-link" href="' . htmlspecialchars($targetUrl) . '">
+                                <span class="evento-notificacao-title">' . htmlspecialchars((string)($notificacao['nome_evento'] ?? 'Evento')) . '</span>
+                                <span class="evento-notificacao-action">' . htmlspecialchars((string)($notificacao['titulo'] ?? 'Atualização do evento')) . '</span>
+                                <span class="evento-notificacao-meta">
+                                    <span>Data evento: ' . htmlspecialchars($dataEventoFmt) . '</span>
+                                    <span>Aviso: ' . htmlspecialchars($createdFmt) . '</span>
+                                </span>
+                            </a>
+                            <a class="evento-notificacao-open" href="' . htmlspecialchars($targetUrl) . '">Abrir</a>
+                            <button type="button" class="evento-notificacao-ignore" onclick="ignorarEventoNotificacao(' . (int)($notificacao['id'] ?? 0) . ', this)" aria-label="Ignorar notificação">&times;</button>
+                        </div>';
+                    }, $eventos_notificacoes_dashboard))
+                ) . '
+            </div>
+        </div>
+        ' : '') . '
         
 	        ' . ($can_view_dashboard_agenda ? '
 	        <!-- Agenda do Dia -->

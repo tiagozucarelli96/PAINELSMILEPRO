@@ -221,6 +221,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 exit;
 
+            case 'atualizar_horario_cerimonia':
+                if ($meeting_id <= 0) {
+                    echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
+                    exit;
+                }
+                $horario_cerimonia = trim((string)($_POST['horario_cerimonia'] ?? ''));
+                $updated = eventos_reuniao_atualizar_horario_cerimonia($pdo, $meeting_id, $horario_cerimonia);
+                echo json_encode($updated, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
+
             case 'atualizar_pacote_evento':
                 if ($meeting_id <= 0) {
                     echo json_encode(['ok' => false, 'error' => 'Reunião inválida.']);
@@ -330,15 +340,9 @@ if ($meeting_id > 0) {
 
 $nome_evento = trim((string)($snapshot['nome'] ?? 'Evento'));
 $data_evento = trim((string)($snapshot['data'] ?? ''));
-$hora_inicio = trim((string)($snapshot['hora_inicio'] ?? $snapshot['hora'] ?? ''));
-$hora_fim = trim((string)($snapshot['hora_fim'] ?? ''));
 $local_evento = trim((string)($snapshot['local'] ?? 'Local não definido'));
 $cliente_nome = trim((string)($snapshot['cliente']['nome'] ?? 'Cliente não informado'));
 $data_fmt = $data_evento !== '' ? date('d/m/Y', strtotime($data_evento)) : '-';
-$horario_fmt = $hora_inicio !== '' ? $hora_inicio : '-';
-if ($hora_inicio !== '' && $hora_fim !== '') {
-    $horario_fmt .= ' - ' . $hora_fim;
-}
 
 $portal_url = (string)($portal['url'] ?? '');
 $visivel_reuniao = !empty($portal['visivel_reuniao']);
@@ -378,6 +382,9 @@ if (!empty($cardapio_summary['has_pacote'])) {
 }
 $tipo_evento_real = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ($snapshot['tipo_evento_real'] ?? '')));
 $tipo_evento_real_label = eventos_reuniao_tipo_evento_real_label($tipo_evento_real, $pdo);
+$horario_fmt = eventos_reuniao_snapshot_horario_evento($snapshot, '-', $reuniao);
+$horario_cerimonia = eventos_reuniao_snapshot_horario_cerimonia($snapshot, $reuniao, '');
+$is_casamento = $tipo_evento_real === 'casamento';
 $tipos_evento_real_options = eventos_reuniao_tipos_evento_real_options($pdo, false);
 if ($tipo_evento_real !== '' && !isset($tipos_evento_real_options[$tipo_evento_real])) {
     $tipos_evento_real_options[$tipo_evento_real] = $tipo_evento_real_label;
@@ -865,13 +872,18 @@ includeSidebar('Organização eventos');
         gap: 0.38rem;
     }
 
+    .tipo-real-field.is-hidden {
+        display: none;
+    }
+
     .tipo-real-field label {
         font-size: 0.84rem;
         font-weight: 700;
         color: #334155;
     }
 
-    .tipo-real-select {
+    .tipo-real-select,
+    .tipo-real-input {
         width: 100%;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
@@ -1025,6 +1037,16 @@ includeSidebar('Organização eventos');
                     </option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div class="tipo-real-field <?= $is_casamento ? '' : 'is-hidden' ?>" id="horarioCerimoniaField">
+                <label for="horarioCerimoniaInput">Horário da cerimônia</label>
+                <input
+                    type="time"
+                    id="horarioCerimoniaInput"
+                    class="tipo-real-input"
+                    value="<?= htmlspecialchars($horario_cerimonia) ?>"
+                    <?= $is_casamento ? '' : 'disabled' ?>
+                >
             </div>
             <div class="tipo-real-field">
                 <label for="pacoteEventoSelect">Pacote do evento</label>
@@ -1210,6 +1232,8 @@ let portalConfigSaveInFlight = false;
 let portalConfigSaveQueued = false;
 let tipoEventoSaveInFlight = false;
 let tipoEventoSaveQueuedValue = null;
+let horarioCerimoniaSaveInFlight = false;
+let horarioCerimoniaSaveQueuedValue = null;
 let pacoteEventoSaveInFlight = false;
 let pacoteEventoSaveQueuedValue = null;
 let pendingOrganizarEventId = null;
@@ -1551,6 +1575,22 @@ function mostrarStatusConfig(texto, isError = false) {
     el.style.display = 'block';
 }
 
+function atualizarVisibilidadeHorarioCerimonia(tipoEventoReal) {
+    const field = document.getElementById('horarioCerimoniaField');
+    const input = document.getElementById('horarioCerimoniaInput');
+    const isCasamento = String(tipoEventoReal || '').trim() === 'casamento';
+    if (field) {
+        field.classList.toggle('is-hidden', !isCasamento);
+    }
+    if (input) {
+        input.disabled = !isCasamento;
+        if (!isCasamento) {
+            input.value = '';
+            input.dataset.lastValue = '';
+        }
+    }
+}
+
 async function salvarTipoEventoReal(tipoEventoReal) {
     if (!meetingId) return;
     const select = document.getElementById('tipoEventoRealSelect');
@@ -1589,6 +1629,7 @@ async function salvarTipoEventoReal(tipoEventoReal) {
             return;
         }
         select.dataset.lastValue = nextValue;
+        atualizarVisibilidadeHorarioCerimonia(nextValue);
         mostrarStatusConfig('Tipo do evento salvo automaticamente.');
     } catch (err) {
         select.value = lastValue;
@@ -1602,6 +1643,58 @@ async function salvarTipoEventoReal(tipoEventoReal) {
             if (queuedValue !== String(select.dataset.lastValue || '').trim()) {
                 select.value = queuedValue;
                 salvarTipoEventoReal(queuedValue);
+            }
+        }
+    }
+}
+
+async function salvarHorarioCerimonia(horarioCerimoniaRaw) {
+    if (!meetingId) return;
+    const input = document.getElementById('horarioCerimoniaInput');
+    const tipoSelect = document.getElementById('tipoEventoRealSelect');
+    if (!input || !tipoSelect || String(tipoSelect.value || '').trim() !== 'casamento') return;
+
+    const nextValue = String(horarioCerimoniaRaw || '').trim();
+    const lastValue = String(input.dataset.lastValue || '').trim();
+    if (nextValue === lastValue) return;
+
+    if (horarioCerimoniaSaveInFlight) {
+        horarioCerimoniaSaveQueuedValue = nextValue;
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'atualizar_horario_cerimonia');
+    formData.append('meeting_id', String(meetingId));
+    formData.append('horario_cerimonia', nextValue);
+
+    horarioCerimoniaSaveInFlight = true;
+    input.disabled = true;
+    mostrarStatusConfig('Salvando horário da cerimônia...');
+
+    try {
+        const resp = await fetch(window.location.href, { method: 'POST', body: formData });
+        const data = await parseJsonResponse(resp);
+        if (!data.ok) {
+            input.value = lastValue;
+            mostrarStatusConfig(data.error || 'Erro ao salvar horário da cerimônia.', true);
+            return;
+        }
+        input.dataset.lastValue = data.horario_cerimonia || nextValue;
+        input.value = data.horario_cerimonia || nextValue;
+        mostrarStatusConfig('Horário da cerimônia salvo automaticamente.');
+    } catch (err) {
+        input.value = lastValue;
+        mostrarStatusConfig('Erro: ' + err.message, true);
+    } finally {
+        horarioCerimoniaSaveInFlight = false;
+        input.disabled = false;
+        if (horarioCerimoniaSaveQueuedValue !== null) {
+            const queuedValue = String(horarioCerimoniaSaveQueuedValue || '').trim();
+            horarioCerimoniaSaveQueuedValue = null;
+            if (queuedValue !== String(input.dataset.lastValue || '').trim()) {
+                input.value = queuedValue;
+                salvarHorarioCerimonia(queuedValue);
             }
         }
     }
@@ -1751,8 +1844,18 @@ function bindTipoEventoRealAutoSave() {
     const select = document.getElementById('tipoEventoRealSelect');
     if (!select) return;
     select.dataset.lastValue = String(select.value || '').trim();
+    atualizarVisibilidadeHorarioCerimonia(select.value);
     select.addEventListener('change', () => {
         salvarTipoEventoReal(select.value);
+    });
+}
+
+function bindHorarioCerimoniaAutoSave() {
+    const input = document.getElementById('horarioCerimoniaInput');
+    if (!input) return;
+    input.dataset.lastValue = String(input.value || '').trim();
+    input.addEventListener('change', () => {
+        salvarHorarioCerimonia(input.value);
     });
 }
 
@@ -1807,6 +1910,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindSearchEvents();
     bindPortalConfigAutoSave();
     bindTipoEventoRealAutoSave();
+    bindHorarioCerimoniaAutoSave();
     bindPacoteEventoAutoSave();
     bindTipoEventoModal();
 });

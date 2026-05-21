@@ -30,6 +30,10 @@ if (!function_exists('eventos_cliente_ui_normalizar_horario_curto')) {
 if (!function_exists('eventos_cliente_ui_horario_evento')) {
     function eventos_cliente_ui_horario_evento(array $snapshot, string $fallback = '-'): string
     {
+        if (function_exists('eventos_reuniao_snapshot_horario_evento')) {
+            return eventos_reuniao_snapshot_horario_evento($snapshot, $fallback);
+        }
+
         $candidates = [
             (string)($snapshot['hora_inicio'] ?? ''),
             (string)($snapshot['hora'] ?? ''),

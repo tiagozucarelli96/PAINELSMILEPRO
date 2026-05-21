@@ -914,6 +914,62 @@ function eventos_reuniao_tipo_evento_real_label(string $tipo_evento_real, ?PDO $
     return (string)($defaults[$tipo]['label'] ?? 'Não definido');
 }
 
+function eventos_reuniao_normalizar_horario_curto(?string $value, string $fallback = ''): string {
+    $value = trim((string)$value);
+    if ($value === '') {
+        return $fallback;
+    }
+
+    if (preg_match('/\b(\d{1,2}):(\d{2})/', $value, $matches)) {
+        $hour = max(0, min(23, (int)$matches[1]));
+        $minute = max(0, min(59, (int)$matches[2]));
+        return sprintf('%02d:%02d', $hour, $minute);
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false) {
+        return $fallback;
+    }
+
+    return date('H:i', $timestamp);
+}
+
+function eventos_reuniao_snapshot_tipo_evento_real(array $snapshot, ?array $reuniao = null, ?PDO $pdo = null): string {
+    $tipo = '';
+    if (is_array($reuniao)) {
+        $tipo = eventos_reuniao_normalizar_tipo_evento_real((string)($reuniao['tipo_evento_real'] ?? ''), $pdo);
+    }
+    if ($tipo === '') {
+        $tipo = eventos_reuniao_normalizar_tipo_evento_real((string)($snapshot['tipo_evento_real'] ?? ''), $pdo);
+    }
+    return $tipo;
+}
+
+function eventos_reuniao_snapshot_horario_cerimonia(array $snapshot, ?array $reuniao = null, string $fallback = ''): string {
+    if (eventos_reuniao_snapshot_tipo_evento_real($snapshot, $reuniao) !== 'casamento') {
+        return $fallback;
+    }
+
+    return eventos_reuniao_normalizar_horario_curto((string)($snapshot['horario_cerimonia'] ?? $snapshot['hora_cerimonia'] ?? ''), $fallback);
+}
+
+function eventos_reuniao_snapshot_horario_evento(array $snapshot, string $fallback = '-', ?array $reuniao = null): string {
+    $hora_inicio = eventos_reuniao_normalizar_horario_curto((string)($snapshot['hora_inicio'] ?? $snapshot['horainicio'] ?? $snapshot['hora'] ?? ''), '');
+    $hora_fim = eventos_reuniao_normalizar_horario_curto((string)($snapshot['hora_fim'] ?? $snapshot['horafim'] ?? $snapshot['horatermino'] ?? $snapshot['hora_termino'] ?? ''), '');
+
+    $horario = $hora_inicio !== '' ? $hora_inicio : $fallback;
+    if ($hora_inicio !== '' && $hora_fim !== '') {
+        $horario .= ' - ' . $hora_fim;
+    }
+
+    $horario_cerimonia = eventos_reuniao_snapshot_horario_cerimonia($snapshot, $reuniao, '');
+    if ($horario_cerimonia !== '') {
+        $horario .= ' | Cerimônia: ' . $horario_cerimonia;
+    }
+
+    return $horario;
+}
+
 /**
  * Mapeia tipo real para o tipo usado na lista de convidados.
  */
@@ -1954,6 +2010,9 @@ function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, s
         $snapshot = [];
     }
     $snapshot['tipo_evento_real'] = $tipo;
+    if ($tipo !== 'casamento') {
+        unset($snapshot['horario_cerimonia'], $snapshot['hora_cerimonia']);
+    }
     $snapshot['snapshot_at'] = date('Y-m-d H:i:s');
 
     try {
@@ -1991,6 +2050,65 @@ function eventos_reuniao_atualizar_tipo_evento_real(PDO $pdo, int $meeting_id, s
     } catch (Throwable $e) {
         error_log('eventos_reuniao_atualizar_tipo_evento_real: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao atualizar tipo do evento'];
+    }
+}
+
+function eventos_reuniao_atualizar_horario_cerimonia(PDO $pdo, int $meeting_id, string $horario_cerimonia): array {
+    eventos_reuniao_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    $reuniao = eventos_reuniao_get($pdo, $meeting_id);
+    if (!$reuniao) {
+        return ['ok' => false, 'error' => 'Reunião não encontrada'];
+    }
+
+    $snapshot = json_decode((string)($reuniao['me_event_snapshot'] ?? '{}'), true);
+    if (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+
+    if (eventos_reuniao_snapshot_tipo_evento_real($snapshot, $reuniao, $pdo) !== 'casamento') {
+        return ['ok' => false, 'error' => 'Horário da cerimônia disponível somente para casamento'];
+    }
+
+    $horario = trim($horario_cerimonia);
+    if ($horario !== '') {
+        $horario = eventos_reuniao_normalizar_horario_curto($horario, '');
+        if ($horario === '') {
+            return ['ok' => false, 'error' => 'Horário da cerimônia inválido'];
+        }
+    }
+
+    if ($horario === '') {
+        unset($snapshot['horario_cerimonia'], $snapshot['hora_cerimonia']);
+    } else {
+        $snapshot['horario_cerimonia'] = $horario;
+    }
+    $snapshot['snapshot_at'] = date('Y-m-d H:i:s');
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE eventos_reunioes
+            SET me_event_snapshot = :snapshot,
+                updated_at = NOW()
+            WHERE id = :id
+            RETURNING *
+        ");
+        $stmt->execute([
+            ':snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+            ':id' => $meeting_id,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$row) {
+            return ['ok' => false, 'error' => 'Não foi possível atualizar o horário da cerimônia'];
+        }
+
+        return ['ok' => true, 'reuniao' => $row, 'horario_cerimonia' => $horario];
+    } catch (Throwable $e) {
+        error_log('eventos_reuniao_atualizar_horario_cerimonia: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao atualizar horário da cerimônia'];
     }
 }
 

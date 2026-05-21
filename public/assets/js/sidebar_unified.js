@@ -237,7 +237,6 @@
         }
         
         const DASHBOARD_AVISOS_API = 'avisos_dashboard_api.php';
-        const DASHBOARD_LOGISTICA_ALERTAS_API = 'dashboard_logistica_alertas.php';
 
         function formatarDataAvisoDashboard(dataTexto) {
             if (!dataTexto) return '';
@@ -400,42 +399,10 @@
             if (String(sidebarUnifiedConfig.currentPage || "") !== "dashboard") {
                 return;
             }
-            carregarDashboardLogisticaAlertas();
             carregarDashboardNotificacoes();
             // Polling a cada 30 segundos
             setInterval(carregarDashboardNotificacoes, 30000);
-            setInterval(carregarDashboardLogisticaAlertas, 120000);
         });
-
-        async function carregarDashboardLogisticaAlertas() {
-            const wrapper = document.getElementById('dashboard-logistica-alertas-wrapper');
-            if (!wrapper) return;
-
-            try {
-                const response = await fetch(DASHBOARD_LOGISTICA_ALERTAS_API, {
-                    credentials: 'same-origin',
-                    headers: { 'Accept': 'text/html' }
-                });
-
-                if (!response.ok) {
-                    wrapper.hidden = true;
-                    return;
-                }
-
-                const html = (await response.text()).trim();
-                if (!html) {
-                    wrapper.hidden = true;
-                    wrapper.innerHTML = '';
-                    return;
-                }
-
-                wrapper.hidden = false;
-                wrapper.innerHTML = html;
-            } catch (error) {
-                console.error('Erro ao carregar alertas logísticos:', error);
-                wrapper.hidden = true;
-            }
-        }
 
         async function carregarDashboardNotificacoes() {
             try {
