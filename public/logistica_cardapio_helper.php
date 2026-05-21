@@ -1471,7 +1471,7 @@ function logistica_cardapio_resposta_desbloquear_cliente(PDO $pdo, int $meeting_
             $stmt = $pdo->prepare("
                 DELETE FROM eventos_notificacoes_central
                 WHERE meeting_id = :meeting_id
-                  AND tipo = 'cardapio_finalizado'
+                  AND tipo IN ('cardapio_finalizado', 'cardapio_desbloqueio_solicitado')
             ");
             $stmt->execute([':meeting_id' => $meeting_id]);
         }
@@ -1488,6 +1488,44 @@ function logistica_cardapio_resposta_desbloquear_cliente(PDO $pdo, int $meeting_
         }
         error_log('logistica_cardapio_resposta_desbloquear_cliente: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao desbloquear o cardápio.'];
+    }
+}
+
+function logistica_cardapio_solicitar_desbloqueio_cliente(PDO $pdo, int $meeting_id): array
+{
+    logistica_cardapio_ensure_schema($pdo);
+    if ($meeting_id <= 0) {
+        return ['ok' => false, 'error' => 'Reunião inválida'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, submitted_at
+            FROM eventos_cardapio_respostas
+            WHERE meeting_id = :meeting_id
+              AND submitted_at IS NOT NULL
+            LIMIT 1
+        ");
+        $stmt->execute([':meeting_id' => $meeting_id]);
+        $resposta = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        if (!$resposta) {
+            return ['ok' => false, 'error' => 'O cardápio não está bloqueado para solicitar desbloqueio.'];
+        }
+
+        eventosNotificacoesCentralCriar(
+            $pdo,
+            $meeting_id,
+            'cardapio_desbloqueio_solicitado',
+            'Cliente solicitou desbloqueio do cardápio',
+            'index.php?page=eventos_organizacao&id=' . $meeting_id,
+            'cardapio_desbloqueio_solicitado:' . $meeting_id . ':' . (int)($resposta['id'] ?? 0),
+            'O cliente solicitou reabertura do cardápio para ajustar as escolhas.'
+        );
+
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_solicitar_desbloqueio_cliente: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'Erro ao enviar a solicitação.'];
     }
 }
 

@@ -48,23 +48,37 @@ if ($token === '') {
                 $error = 'O cardápio não está disponível para este portal.';
             }
 
-            if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') === 'save_cardapio') {
-                if (empty($portal['editavel_cardapio'])) {
-                    $error = 'O cardápio não está habilitado para edição neste portal.';
-                } elseif (!empty($contexto_cardapio['locked'])) {
-                    $error = 'O cardápio já foi enviado e está bloqueado para edição.';
-                } else {
-                    $result = logistica_cardapio_resposta_salvar_cliente(
-                        $pdo,
-                        (int)$reuniao['id'],
-                        (int)($portal['id'] ?? 0),
-                        $_POST['selecao'] ?? []
-                    );
-                    if (!empty($result['ok'])) {
-                        $success = 'Escolhas salvas com sucesso. O cardápio foi bloqueado para nova edição.';
-                        $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']);
+            if ($error === '' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+                $post_action = (string)($_POST['action'] ?? '');
+                if ($post_action === 'save_cardapio') {
+                    if (empty($portal['editavel_cardapio'])) {
+                        $error = 'O cardápio não está habilitado para edição neste portal.';
+                    } elseif (!empty($contexto_cardapio['locked'])) {
+                        $error = 'O cardápio já foi enviado e está bloqueado para edição.';
                     } else {
-                        $error = (string)($result['error'] ?? 'Não foi possível salvar as escolhas do cardápio.');
+                        $result = logistica_cardapio_resposta_salvar_cliente(
+                            $pdo,
+                            (int)$reuniao['id'],
+                            (int)($portal['id'] ?? 0),
+                            $_POST['selecao'] ?? []
+                        );
+                        if (!empty($result['ok'])) {
+                            $success = 'Escolhas salvas com sucesso. O cardápio foi bloqueado para nova edição.';
+                            $contexto_cardapio = logistica_cardapio_evento_contexto($pdo, (int)$reuniao['id']);
+                        } else {
+                            $error = (string)($result['error'] ?? 'Não foi possível salvar as escolhas do cardápio.');
+                        }
+                    }
+                } elseif ($post_action === 'solicitar_desbloqueio_cardapio') {
+                    if (empty($contexto_cardapio['locked'])) {
+                        $error = 'O cardápio ainda não está bloqueado.';
+                    } else {
+                        $result = logistica_cardapio_solicitar_desbloqueio_cliente($pdo, (int)$reuniao['id']);
+                        if (!empty($result['ok'])) {
+                            $success = 'Solicitação enviada para a equipe.';
+                        } else {
+                            $error = (string)($result['error'] ?? 'Não foi possível enviar a solicitação.');
+                        }
                     }
                 }
             }
@@ -382,6 +396,19 @@ $pode_editar = $error === ''
             color: #0f172a;
         }
 
+        .unlock-request {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .unlock-request p {
+            margin: 0;
+        }
+
         @media (max-width: 640px) {
             .hero h1 {
                 font-size: 1.55rem;
@@ -466,6 +493,19 @@ $pode_editar = $error === ''
             <?php elseif (empty($contexto_cardapio['secoes'])): ?>
                 <div class="alert alert-info">O cardápio deste evento ainda não está pronto para seleção. Entre em contato com a equipe.</div>
             <?php else: ?>
+                <?php if (!empty($contexto_cardapio['locked'])): ?>
+                    <div class="alert alert-info unlock-request">
+                        <p>
+                            Seu cardápio já foi enviado e está bloqueado para alterações.
+                            Caso precise ajustar alguma escolha, solicite o desbloqueio para nossa equipe.
+                        </p>
+                        <form method="POST">
+                            <input type="hidden" name="action" value="solicitar_desbloqueio_cardapio">
+                            <input type="hidden" name="token" value="<?= eventos_cliente_cardapio_e($token) ?>">
+                            <button class="btn-submit" type="submit">Solicitar desbloqueio</button>
+                        </form>
+                    </div>
+                <?php endif; ?>
                 <form method="POST" id="cardapioForm">
                     <input type="hidden" name="action" value="save_cardapio">
                     <input type="hidden" name="token" value="<?= eventos_cliente_cardapio_e($token) ?>">
