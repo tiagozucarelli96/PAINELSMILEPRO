@@ -157,6 +157,7 @@ return [
     
     // Eventos (Reunião Final, Portais DJ/Decoração)
     'eventos' => 'perm_eventos',
+    'eventos_notificacoes_central_api' => 'perm_notificacoes_eventos',
     'eventos_realizar' => 'perm_eventos_realizar',
     // Páginas compartilhadas entre Organização e Realização: aceita uma das permissões.
     'eventos_checklist' => ['perm_eventos', 'perm_eventos_realizar'],

@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/conexao.php';
 require_once __DIR__ . '/eventos_me_helper.php';
+require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
 
 function eventos_reuniao_buscar_defaults_pre_contrato(PDO $pdo, int $me_event_id): array
 {
@@ -3112,7 +3113,30 @@ function eventos_reuniao_salvar_anexo(
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
-    return ['ok' => true, 'anexo' => $stmt->fetch(PDO::FETCH_ASSOC)];
+    $anexo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (
+        is_array($anexo)
+        && $uploaded_by_type === 'cliente'
+        && !$is_draft
+        && trim((string)($form_field_id ?? '')) !== ''
+    ) {
+        try {
+            eventosNotificacoesCentralCriar(
+                $pdo,
+                $meeting_id,
+                'arquivo_formulario_cliente',
+                'Cliente anexou arquivo dentro de formulário',
+                'index.php?page=eventos_reuniao_final&id=' . $meeting_id,
+                'arquivo_formulario_cliente:' . $meeting_id . ':' . (int)($anexo['id'] ?? 0),
+                'Arquivo "' . trim((string)($anexo['original_name'] ?? 'arquivo')) . '" anexado pelo cliente.'
+            );
+        } catch (Throwable $e) {
+            error_log('eventos_reuniao_salvar_anexo notificacao central: ' . $e->getMessage());
+        }
+    }
+
+    return ['ok' => true, 'anexo' => $anexo];
 }
 
 /**
@@ -3894,7 +3918,47 @@ function eventos_link_publico_registrar_envio(PDO $pdo, int $link_id, string $co
     $sql .= " WHERE id = :id";
 
     $stmt = $pdo->prepare($sql);
-    return $stmt->execute($params);
+    $ok = $stmt->execute($params);
+
+    if ($ok) {
+        try {
+            $stmtLink = $pdo->prepare("
+                SELECT id, meeting_id, link_type, section, slot_index, form_title
+                FROM eventos_links_publicos
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmtLink->execute([':id' => $link_id]);
+            $link = $stmtLink->fetch(PDO::FETCH_ASSOC) ?: [];
+            $meetingId = (int)($link['meeting_id'] ?? 0);
+            $linkType = strtolower(trim((string)($link['link_type'] ?? '')));
+            $section = strtolower(trim((string)($link['section'] ?? '')));
+            $slot = max(1, (int)($link['slot_index'] ?? 1));
+
+            $titulo = 'Cliente enviou formulário da reunião final';
+            if ($linkType === 'cliente_dj' || $section === 'dj_protocolo') {
+                $titulo = 'Cliente respondeu formulário de DJ / protocolo';
+            } elseif ($linkType === 'cliente_observacoes' || $section === 'observacoes_gerais') {
+                $titulo = 'Cliente preencheu observações gerais';
+            } elseif ($linkType === 'cliente_formulario') {
+                $titulo = 'Cliente enviou formulário da reunião final';
+            }
+
+            eventosNotificacoesCentralCriar(
+                $pdo,
+                $meetingId,
+                'formulario_cliente',
+                $titulo,
+                'index.php?page=eventos_reuniao_final&id=' . $meetingId,
+                'formulario_cliente:' . $meetingId . ':' . $link_id . ':' . date('YmdHis'),
+                'Quadro ' . $slot . ' enviado pelo cliente.'
+            );
+        } catch (Throwable $e) {
+            error_log('eventos_link_publico_registrar_envio notificacao central: ' . $e->getMessage());
+        }
+    }
+
+    return $ok;
 }
 
 /**
@@ -5730,6 +5794,25 @@ function eventos_arquivos_salvar_item(
                 eventos_notificar_gerente_evento_resumo_atualizado($pdo, $meeting_id, $item);
             } catch (Throwable $e) {
                 error_log('eventos_arquivos_salvar_item resumo notificacao: ' . $e->getMessage());
+            }
+        }
+
+        if ($uploaded_by_type === 'cliente') {
+            try {
+                $tituloNotificacao = $replaced_count > 0
+                    ? 'Cliente reenviou/substituiu arquivo solicitado'
+                    : 'Cliente anexou arquivo';
+                eventosNotificacoesCentralCriar(
+                    $pdo,
+                    $meeting_id,
+                    $replaced_count > 0 ? 'arquivo_cliente_substituido' : 'arquivo_cliente_anexado',
+                    $tituloNotificacao,
+                    'index.php?page=eventos_arquivos&id=' . $meeting_id,
+                    'arquivo_cliente:' . $meeting_id . ':' . (int)($item['id'] ?? 0),
+                    'Arquivo "' . trim((string)($item['original_name'] ?? 'arquivo')) . '" enviado pelo cliente.'
+                );
+            } catch (Throwable $e) {
+                error_log('eventos_arquivos_salvar_item notificacao central: ' . $e->getMessage());
             }
         }
 

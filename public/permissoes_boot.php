@@ -35,7 +35,7 @@ try {
     'perm_vendas_administracao',
     'perm_smile_chat','perm_smile_chat_admin',
     // Eventos (Organização)
-    'perm_eventos',
+    'perm_eventos','perm_notificacoes_eventos',
     // Eventos (Realizar evento)
     'perm_eventos_realizar',
     // Permissões específicas de Agenda (usadas em agenda_helper.php)

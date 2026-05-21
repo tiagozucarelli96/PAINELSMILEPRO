@@ -324,6 +324,62 @@
             }
         }
 
+        async function ignorarEventoNotificacao(notificacaoId, botao) {
+            const id = Number(notificacaoId || 0);
+            if (!id) return;
+
+            if (botao) {
+                botao.disabled = true;
+            }
+
+            try {
+                const formData = new FormData();
+                formData.append('action', 'ignore');
+                formData.append('id', String(id));
+
+                const response = await fetch('index.php?page=eventos_notificacoes_central_api', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' }
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) {
+                    throw new Error(payload.error || 'Não foi possível ignorar a notificação.');
+                }
+
+                const item = botao ? botao.closest('.evento-notificacao-item') : document.querySelector(`[data-evento-notificacao-id="${id}"]`);
+                if (item) {
+                    item.remove();
+                }
+                atualizarContagemEventosNotificacoes();
+            } catch (error) {
+                alert(error.message || 'Não foi possível ignorar a notificação.');
+                if (botao) {
+                    botao.disabled = false;
+                }
+            }
+        }
+
+        function atualizarContagemEventosNotificacoes() {
+            const lista = document.querySelector('#eventos-notificacoes-section .eventos-notificacoes-list');
+            const badge = document.getElementById('eventos-notificacoes-count');
+            if (!lista || !badge) return;
+
+            const total = lista.querySelectorAll('.evento-notificacao-item').length;
+            badge.textContent = `${total} pendente(s)`;
+            if (total === 0) {
+                lista.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🔔</div>
+                        <p>Nenhuma notificação de evento pendente</p>
+                    </div>
+                `;
+            }
+        }
+
+        window.ignorarEventoNotificacao = ignorarEventoNotificacao;
+
         document.addEventListener('click', function(e) {
             const modal = document.getElementById('dashboardAvisoModal');
             if (modal && e.target === modal) {

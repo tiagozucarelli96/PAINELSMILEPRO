@@ -3,6 +3,7 @@
  * logistica_cardapio_helper.php
  * Estrutura de seções, pacotes, vínculos de cardápio e escolhas do cliente.
  */
+require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
 
 function logistica_cardapio_require_pacotes_helper(): void
 {
@@ -1384,6 +1385,20 @@ function logistica_cardapio_resposta_salvar_cliente(PDO $pdo, int $meeting_id, ?
         }
         error_log('logistica_cardapio_resposta_salvar_cliente: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'Erro ao salvar as escolhas do cardápio.'];
+    }
+
+    try {
+        eventosNotificacoesCentralCriar(
+            $pdo,
+            $meeting_id,
+            'cardapio_finalizado',
+            'Cliente finalizou o cardápio',
+            'index.php?page=eventos_cardapio&id=' . $meeting_id,
+            'cardapio_finalizado:' . $meeting_id . ':' . (int)($resposta['id'] ?? 0),
+            'Escolhas do cardápio enviadas pelo cliente.'
+        );
+    } catch (Throwable $e) {
+        error_log('logistica_cardapio_resposta_salvar_cliente notificacao central: ' . $e->getMessage());
     }
 
     return [

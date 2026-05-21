@@ -265,8 +265,11 @@ if ($current_page === 'dashboard') {
     // Buscar dados reais do banco
     require_once __DIR__ . '/conexao.php';
     require_once __DIR__ . '/administrativo_avisos_helper.php';
+    require_once __DIR__ . '/eventos_notificacoes_central_helper.php';
     adminAvisosEnsureSchema($pdo);
+    eventosNotificacoesCentralEnsureSchema($pdo);
     $is_superadmin_dashboard = !empty($_SESSION['perm_superadmin']);
+    $dashboard_can_view_event_notifications = $is_superadmin_dashboard || !empty($_SESSION['perm_notificacoes_eventos']);
     $dashboard_can_view_logistica_alertas = $is_superadmin_dashboard || !empty($_SESSION['perm_logistico']) || !empty($_SESSION['perm_logistico_divergencias']);
     $dashboard_current_month = new DateTimeImmutable('now');
     $dashboard_manual_sales_key = dashboardGetManualSalesKey($dashboard_current_month);
@@ -279,6 +282,7 @@ if ($current_page === 'dashboard') {
     $user_email = $_SESSION['email'] ?? $_SESSION['user_email'] ?? 'Não informado';
     $usuario_id_dashboard = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
     $avisos_dashboard = [];
+    $eventos_notificacoes_dashboard = [];
 
     if (
         $is_superadmin_dashboard &&
@@ -301,6 +305,15 @@ if ($current_page === 'dashboard') {
             error_log('[SIDEBAR] Erro ao salvar vendas realizadas manualmente: ' . $e->getMessage());
             $dashboard_manual_sales_feedback = 'error';
             $dashboard_bypass_cache = true;
+        }
+    }
+
+    if ($dashboard_can_view_event_notifications && (int)($usuario_id_dashboard ?? 0) > 0) {
+        try {
+            $eventos_notificacoes_dashboard = eventosNotificacoesCentralBuscarDashboard($pdo, (int)$usuario_id_dashboard, 12);
+        } catch (Throwable $e) {
+            error_log("[SIDEBAR] Erro ao buscar notificações dos eventos: " . $e->getMessage());
+            $eventos_notificacoes_dashboard = [];
         }
     }
 
@@ -677,6 +690,76 @@ if ($current_page === 'dashboard') {
         overflow: hidden;
         text-overflow: ellipsis;
     }
+    .eventos-notificacoes-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+    .evento-notificacao-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.9rem 1rem;
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    }
+    .evento-notificacao-link {
+        min-width: 0;
+        color: inherit;
+        text-decoration: none;
+    }
+    .evento-notificacao-title {
+        display: block;
+        color: #0f172a;
+        font-weight: 800;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .evento-notificacao-action {
+        display: block;
+        margin-top: 0.2rem;
+        color: #1d4ed8;
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+    .evento-notificacao-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 0.75rem;
+        margin-top: 0.25rem;
+        color: #64748b;
+        font-size: 0.78rem;
+    }
+    .evento-notificacao-open {
+        border: none;
+        border-radius: 10px;
+        background: #1e3a8a;
+        color: #fff;
+        padding: 0.55rem 0.8rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .evento-notificacao-ignore {
+        width: 2rem;
+        height: 2rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        background: #fff;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+    .evento-notificacao-ignore:hover {
+        border-color: #fecaca;
+        color: #b91c1c;
+        background: #fff7f7;
+    }
     .dashboard-aviso-modal {
         position: fixed;
         inset: 0;
@@ -744,6 +827,14 @@ if ($current_page === 'dashboard') {
             width: 100%;
         }
     }
+    @media (max-width: 720px) {
+        .evento-notificacao-item {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .evento-notificacao-open {
+            display: none;
+        }
+    }
     </style>
     <div class="page-container">
         <div class="dashboard-header-container">
@@ -756,6 +847,42 @@ if ($current_page === 'dashboard') {
             ' . ($dashboard_can_view_logistica_alertas ? '
             <div class="dashboard-notifications-wrapper" id="dashboard-logistica-alertas-wrapper" hidden>
                 <div class="dashboard-alertas-loading">Carregando alertas logísticos...</div>
+            </div>
+            ' : '') . '
+            ' . ($dashboard_can_view_event_notifications ? '
+            <div class="dashboard-section" id="eventos-notificacoes-section">
+                <div class="section-header">
+                    <h2>🔔 Notificações dos eventos</h2>
+                    <span class="section-badge" id="eventos-notificacoes-count">' . count($eventos_notificacoes_dashboard) . ' pendente(s)</span>
+                </div>
+                <div class="eventos-notificacoes-list">
+                    ' . (empty($eventos_notificacoes_dashboard)
+                        ? '<div class="empty-state">
+                            <div class="empty-icon">🔔</div>
+                            <p>Nenhuma notificação de evento pendente</p>
+                        </div>'
+                        : implode('', array_map(function ($notificacao) {
+                            $createdRaw = trim((string)($notificacao['created_at'] ?? ''));
+                            $createdFmt = $createdRaw !== '' ? date('d/m/Y H:i', strtotime($createdRaw)) : '-';
+                            $dataEventoRaw = trim((string)($notificacao['data_evento'] ?? ''));
+                            $dataEventoFmt = $dataEventoRaw !== '' ? date('d/m/Y', strtotime($dataEventoRaw)) : '-';
+                            $targetUrl = trim((string)($notificacao['target_url'] ?? '#'));
+                            return '
+                            <div class="evento-notificacao-item" data-evento-notificacao-id="' . (int)($notificacao['id'] ?? 0) . '">
+                                <a class="evento-notificacao-link" href="' . htmlspecialchars($targetUrl) . '">
+                                    <span class="evento-notificacao-title">' . htmlspecialchars((string)($notificacao['nome_evento'] ?? 'Evento')) . '</span>
+                                    <span class="evento-notificacao-action">' . htmlspecialchars((string)($notificacao['titulo'] ?? 'Atualização do evento')) . '</span>
+                                    <span class="evento-notificacao-meta">
+                                        <span>Data evento: ' . htmlspecialchars($dataEventoFmt) . '</span>
+                                        <span>Aviso: ' . htmlspecialchars($createdFmt) . '</span>
+                                    </span>
+                                </a>
+                                <a class="evento-notificacao-open" href="' . htmlspecialchars($targetUrl) . '">Abrir</a>
+                                <button type="button" class="evento-notificacao-ignore" onclick="ignorarEventoNotificacao(' . (int)($notificacao['id'] ?? 0) . ', this)" aria-label="Ignorar notificação">&times;</button>
+                            </div>';
+                        }, $eventos_notificacoes_dashboard))
+                    ) . '
+                </div>
             </div>
             ' : '') . '
         </div>

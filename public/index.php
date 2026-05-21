@@ -336,6 +336,7 @@ $routes = [
 
   // Eventos (Reunião Final, Portais DJ/Decoração, Galeria)
   'eventos' => 'eventos_landing.php',
+  'eventos_notificacoes_central_api' => 'eventos_notificacoes_central_api.php',
   'eventos_realizar' => 'eventos_realizar.php',
   'eventos_checklist' => 'eventos_checklist.php',
   'eventos_organizacao' => 'eventos_organizacao.php',

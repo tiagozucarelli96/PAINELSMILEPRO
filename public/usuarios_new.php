@@ -88,6 +88,7 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         'perm_pessoal',
         'perm_portao',
         'perm_eventos_realizar',
+        'perm_notificacoes_eventos',
         'perm_agenda_eventos',
         'perm_vendas_administracao',
         'perm_marketing',
@@ -103,12 +104,29 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
         return;
     }
 
+    if (in_array('perm_notificacoes_eventos', $missing, true)) {
+        try {
+            $pdo->exec("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_notificacoes_eventos BOOLEAN DEFAULT FALSE");
+            $pdo->exec("UPDATE usuarios SET perm_notificacoes_eventos = TRUE WHERE COALESCE(perm_superadmin, FALSE) = TRUE");
+            $existingPerms = array_flip(usuariosFetchPermissionColumns($pdo, true));
+            $missing = array_values(array_filter($requiredColumns, static function ($column) use ($existingPerms) {
+                return !isset($existingPerms[$column]);
+            }));
+            if (empty($missing)) {
+                return;
+            }
+        } catch (Throwable $e) {
+            error_log('Erro ao garantir coluna perm_notificacoes_eventos: ' . $e->getMessage());
+        }
+    }
+
     if (!usuariosSchemaMarkerFresh('usuarios_known_permissions_schema_ready')) {
         $updates = [
             'perm_superadmin' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_superadmin BOOLEAN DEFAULT FALSE",
             'perm_pessoal' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_pessoal BOOLEAN DEFAULT FALSE",
             'perm_portao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_portao BOOLEAN DEFAULT FALSE",
             'perm_eventos_realizar' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_eventos_realizar BOOLEAN DEFAULT FALSE",
+            'perm_notificacoes_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_notificacoes_eventos BOOLEAN DEFAULT FALSE",
             'perm_agenda_eventos' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_agenda_eventos BOOLEAN DEFAULT FALSE",
             'perm_vendas_administracao' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_vendas_administracao BOOLEAN DEFAULT FALSE",
             'perm_marketing' => "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perm_marketing BOOLEAN DEFAULT FALSE",
@@ -121,6 +139,8 @@ function usuariosEnsureKnownPermissionColumns(PDO $pdo, array &$existingPerms): 
                 $pdo->exec($updates[$column]);
                 if ($column === 'perm_eventos_realizar') {
                     $pdo->exec("UPDATE usuarios SET perm_eventos_realizar = COALESCE(perm_eventos, FALSE)");
+                } elseif ($column === 'perm_notificacoes_eventos') {
+                    $pdo->exec("UPDATE usuarios SET perm_notificacoes_eventos = TRUE WHERE COALESCE(perm_superadmin, FALSE) = TRUE");
                 }
             } catch (Throwable $e) {
                 error_log('Erro ao garantir coluna ' . $column . ': ' . $e->getMessage());
@@ -1417,7 +1437,7 @@ ob_start();
         <?php 
         // Definir permissões válidas da sidebar + superadmin
         $valid_perms_for_count = [
-            'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_logistico',
+            'perm_superadmin', 'perm_pessoal', 'perm_agenda', 'perm_demandas', 'perm_comercial', 'perm_marketing', 'perm_eventos', 'perm_eventos_realizar', 'perm_notificacoes_eventos', 'perm_logistico',
             'perm_configuracoes', 'perm_cadastros', 'perm_financeiro', 'perm_administrativo', 'perm_vendas_administracao',
             'perm_portao'
         ];
@@ -1596,6 +1616,7 @@ ob_start();
                     'perm_marketing' => '📣 Marketing',
                     'perm_eventos' => '🎉 Eventos',
                     'perm_eventos_realizar' => '✅ Realizar evento',
+                    'perm_notificacoes_eventos' => '🔔 Notificações dos eventos',
                     'perm_logistico' => '📦 Logística',
                     'perm_configuracoes' => '⚙️ Configurações',
                     'perm_cadastros' => '📝 Cadastros',
@@ -1616,6 +1637,7 @@ ob_start();
                     'perm_marketing',
                     'perm_eventos',
                     'perm_eventos_realizar',
+                    'perm_notificacoes_eventos',
                     'perm_logistico',
                     'perm_configuracoes',
                     'perm_cadastros',

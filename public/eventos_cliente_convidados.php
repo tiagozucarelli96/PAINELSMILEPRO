@@ -171,6 +171,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                 $json_or_redirect(false, (string)($saved['error'] ?? 'Nao foi possivel salvar os rascunhos.'));
                 break;
             }
+            if ((int)($saved['updated'] ?? 0) > 0) {
+                try {
+                    eventosNotificacoesCentralCriar(
+                        $pdo,
+                        $meeting_id,
+                        'lista_convidados_concluida',
+                        'Cliente concluiu lista de convidados',
+                        'index.php?page=eventos_lista_convidados&id=' . $meeting_id,
+                        'lista_convidados_concluida:' . $meeting_id . ':' . date('YmdHis'),
+                        (int)($saved['updated'] ?? 0) . ' convidado(s) publicado(s) pelo cliente.'
+                    );
+                } catch (Throwable $e) {
+                    error_log('eventos_cliente_convidados notificacao central: ' . $e->getMessage());
+                }
+            }
             $json_or_redirect(true, 'Lista salva com sucesso.', [
                 'updated' => (int)($saved['updated'] ?? 0),
                 'resumo' => $saved['resumo'] ?? eventos_convidados_resumo($pdo, $meeting_id),
