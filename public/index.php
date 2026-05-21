@@ -212,6 +212,7 @@ $routes = [
   'pessoal_modulo' => 'pessoal_modulo.php',
   'minha_conta' => 'minha_conta.php',
   'config_email_global' => 'config_email_global.php',
+  'cliente_notificacoes' => 'cliente_notificacoes.php',
   'config_logistica' => 'config_logistica.php',
   'logistica_catalogo' => 'logistica_catalogo.php',
   'logistica_conexao' => 'logistica_conexao.php',

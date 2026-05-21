@@ -147,6 +147,16 @@ ob_start();
             <div class="funcionalidade-card-content"></div>
         </a>
 
+        <!-- Notificações para Clientes -->
+        <a href="index.php?page=cliente_notificacoes" class="funcionalidade-card">
+            <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #0f766e, #14b8a6);">
+                <span class="funcionalidade-card-icon">🔔</span>
+                <div class="funcionalidade-card-title">Notificações para Clientes</div>
+                <div class="funcionalidade-card-subtitle">Modelos, códigos e regras de envio</div>
+            </div>
+            <div class="funcionalidade-card-content"></div>
+        </a>
+
         <!-- Logística -->
         <a href="index.php?page=config_logistica" class="funcionalidade-card">
             <div class="funcionalidade-card-header" style="background: linear-gradient(135deg, #22c55e, #16a34a);">

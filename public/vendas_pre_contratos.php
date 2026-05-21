@@ -12,6 +12,7 @@ require_once __DIR__ . '/sidebar_integration.php';
 require_once __DIR__ . '/vendas_me_helper.php';
 require_once __DIR__ . '/vendas_helper.php';
 require_once __DIR__ . '/eventos_reuniao_helper.php';
+require_once __DIR__ . '/cliente_notificacoes_helper.php';
 require_once __DIR__ . '/pacotes_evento_helper.php';
 require_once __DIR__ . '/upload_magalu.php';
 
@@ -773,6 +774,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'usuario_nome' => $usuario_nome_notificacao,
                     'url_destino' => 'index.php?page=vendas_administracao&editar=' . (int)$pre_contrato_id,
                 ]);
+
+                cliente_notificacoes_enviar_contrato_aprovado(
+                    $pdo,
+                    array_merge($pre_contrato, ['id' => (int)$pre_contrato_id]),
+                    (int)$me_event_id,
+                    (int)$usuario_id
+                );
 
                 header('Location: ' . $redirect_url_success);
                 exit;
